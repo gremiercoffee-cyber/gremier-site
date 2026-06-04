@@ -180,7 +180,54 @@
     .toast.show { transform:translateX(-50%) translateY(0); }
 
     /* RESPONSIVE */
-    @media(max-width:768px){ .sidebar{width:60px;} .sidebar-logo,.nav-item span,.sidebar-bottom .user-info{display:none;} .main{margin-left:60px;padding:20px;} .form-row-2,.form-row-3{grid-template-columns:1fr;} }
+    @media(max-width:768px){
+      .sidebar { display:none; }
+      .main { margin-left:0; padding:16px; }
+      .form-row-2,.form-row-3 { grid-template-columns:1fr; }
+      .bottom-tab-bar { display:flex; }
+    }
+    @media(min-width:769px){
+      .bottom-tab-bar { display:none; }
+    }
+
+    /* BOTTOM TAB BAR FOR MOBILE */
+    .bottom-tab-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      z-index: 100;
+      flex-direction: row;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .bottom-tab-bar::-webkit-scrollbar { display:none; }
+    .tab-bar-btn {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px 14px;
+      gap: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text2);
+      font-family: 'DM Sans', sans-serif;
+      font-size: .6rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      transition: color .2s;
+      border-top: 2px solid transparent;
+    }
+    .tab-bar-btn.active { color: var(--amber); border-top-color: var(--amber); }
+    .tab-bar-btn .tab-icon { font-size: 1.1rem; }
+
+    @media(max-width:768px){
+      .main { padding-bottom: 80px; }
+    }
 
     .section-spacer { margin-bottom:24px; }
     .flex-between { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:18px; }
@@ -409,6 +456,31 @@
       </div>
 
     </div><!-- /main -->
+  </div>
+
+  <!-- MOBILE BOTTOM TAB BAR -->
+  <div class="bottom-tab-bar" id="bottomTabBar">
+    <button class="tab-bar-btn active" id="tbar-dashboard" onclick="showTab('dashboard')">
+      <span class="tab-icon">📊</span>Dashboard
+    </button>
+    <button class="tab-bar-btn" id="tbar-products" onclick="showTab('products')">
+      <span class="tab-icon">📦</span>Products
+    </button>
+    <button class="tab-bar-btn" id="tbar-orders" onclick="showTab('orders')">
+      <span class="tab-icon">🛒</span>Orders
+    </button>
+    <button class="tab-bar-btn" id="tbar-paylinks" onclick="showTab('paylinks')">
+      <span class="tab-icon">🔗</span>Pay Links
+    </button>
+    <button class="tab-bar-btn" id="tbar-reports" onclick="showTab('reports')">
+      <span class="tab-icon">📈</span>Reports
+    </button>
+    <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
+      <span class="tab-icon">🚚</span>Delivery
+    </button>
+    <button class="tab-bar-btn" id="tbar-weborders" onclick="showTab('weborders')">
+      <span class="tab-icon">🌐</span>Web Orders
+    </button>
   </div>
 </div>
 
@@ -1391,6 +1463,9 @@ function showTab(tab) {
   document.getElementById('tab-'+tab).style.display='block';
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('nav-'+tab)?.classList.add('active');
+  // Update mobile bottom bar
+  document.querySelectorAll('.tab-bar-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tbar-'+tab)?.classList.add('active');
   if (tab==='orders') loadOrders();
   if (tab==='products') renderProductsList();
   if (tab==='paylinks') loadPayLinks();
