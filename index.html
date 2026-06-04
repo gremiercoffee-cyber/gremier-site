@@ -7,14 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
-  <!-- PWA -->
-  <link rel="manifest" href="manifest.json"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
-  <link rel="apple-touch-icon" href="icon-192-maskable.png"/>
-  <meta name="theme-color" content="#0d0a07"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <meta name="apple-mobile-web-app-title" content="Gremier Coffee"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -45,6 +38,20 @@
     .cart-btn:hover { border-color:var(--amber); color:var(--amber); }
     .cart-count { background:var(--amber); color:var(--bg); font-size:.65rem; font-weight:700; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
     @media(max-width:640px){ .nav-links{display:none;} nav{padding:0 16px;} .auth-btn span{display:none;} }
+    .hamburger { display:none; background:none; border:none; color:var(--cream2); font-size:1.3rem; cursor:pointer; padding:4px 8px; }
+    @media(max-width:640px){ .hamburger{display:flex;align-items:center;} }
+    .mobile-menu {
+      position:fixed; top:64px; left:0; right:0; background:rgba(13,10,7,0.97);
+      backdrop-filter:blur(12px); border-bottom:1px solid var(--border);
+      z-index:99; padding:16px 20px; display:none; flex-direction:column; gap:4px;
+    }
+    .mobile-menu.open { display:flex; }
+    .mobile-menu a {
+      color:var(--cream2); text-decoration:none; font-size:.9rem; padding:12px 8px;
+      border-bottom:1px solid var(--border); cursor:pointer; transition:color .2s;
+      letter-spacing:.05em;
+    }
+    .mobile-menu a:hover { color:var(--amber); }
 
     /* BUTTONS */
     .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:500; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; border-radius:2px; transition:all .2s; border:none; padding:13px 32px; }
@@ -421,13 +428,22 @@
   const SITE_URL = window.location.origin;
 </script>
 
+<!-- MOBILE MENU -->
+<div class="mobile-menu" id="mobileMenu">
+  <a onclick="showPage('home');closeMobileMenu()" id="mm-home">Home</a>
+  <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
+  <a onclick="showPage('home');setTimeout(()=>scrollToSection('coffeeBarsSection'),120);closeMobileMenu()" id="mm-bars">Coffee Bars</a>
+  <a onclick="showPage('home');setTimeout(()=>scrollToSection('aboutSection'),120);closeMobileMenu()" id="mm-about">About</a>
+  <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Orders</a>
+</div>
+
 <nav>
   <span class="nav-logo" onclick="showPage('home')">Gremier <span>Coffee</span></span>
   <ul class="nav-links">
     <li><a onclick="showPage('home')">Home</a></li>
     <li><a onclick="showPage('shop')">Shop</a></li>
-    <li><a onclick="showPage('home'); setTimeout(()=>scrollTo('coffeeBarsSection'),120)">Coffee Bars</a></li>
-    <li><a onclick="showPage('home'); setTimeout(()=>scrollTo('aboutSection'),120)">About</a></li>
+    <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('coffeeBarsSection'),120)">Coffee Bars</a></li>
+    <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('aboutSection'),120)">About</a></li>
     <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Orders</a></li>
   </ul>
   <div class="nav-right">
@@ -450,15 +466,15 @@
       <div class="eyebrow" id="t-hero-eyebrow">Israel's Premier Cold Brew</div>
       <h1 class="hero-title">Cold Brew<br><em id="t-hero-em">Delivered</em></h1>
       <div class="hero-subtitle" id="t-hero-sub">Straight to your door.</div>
-      <p class="hero-desc" id="t-hero-desc">Crafted from the finest beans, brewed slow and cold for 18 hours. The smoothest cold brew in Israel — delivered fresh to your fridge or your event.</p>
+      <p class="hero-desc" id="t-hero-desc">Crafted from the finest beans, brewed slow and cold for maximum smoothness. Israel's best cold brew — delivered fresh to your fridge or your event.</p>
       <div class="hero-btns">
         <button class="btn btn-primary" onclick="showPage('shop')" id="t-hero-shop">Shop Now</button>
-        <button class="btn btn-outline" onclick="showPage('home'); setTimeout(()=>scrollTo('coffeeBarsSection'),120)" id="t-hero-bars">Coffee Bars</button>
+        <button class="btn btn-outline" onclick="showPage('home'); setTimeout(()=>scrollToSection('coffeeBarsSection'),120)" id="t-hero-bars">Coffee Bars</button>
       </div>
       <div style="margin-top:20px">
         <button onclick="openChatbot()" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;margin:0 auto;color:var(--cream2);font-family:'DM Sans',sans-serif;font-size:.82rem;letter-spacing:.05em;transition:color .2s;padding:0" onmouseover="this.style.color='var(--amber)'" onmouseout="this.style.color='var(--cream2)'">
           <span style="font-size:1rem">💬</span>
-          <span id="t-chat-cta">Want to order fast? Just tell me what you want →</span>
+          <span id="t-chat-cta">Know what you want? Build your order here →</span>
         </button>
       </div>
     </div>
@@ -471,10 +487,10 @@
       <h2 class="section-title" id="t-why-title">Cold Brew, Done Right</h2>
     </div>
     <div class="why-grid">
-      <div class="why-item"><div class="why-icon">🧊</div><div class="why-title" id="t-w1t">18-Hour Cold Brew</div><div class="why-desc" id="t-w1d">Slow-steeped at cold temperature for maximum smoothness and zero bitterness.</div></div>
-      <div class="why-item"><div class="why-icon">🚚</div><div class="why-title" id="t-w2t">Delivered Fresh</div><div class="why-desc" id="t-w2d">From our brewhouse to your door — cold, fresh, and ready to drink.</div></div>
-      <div class="why-item"><div class="why-icon">☕</div><div class="why-title" id="t-w3t">Premium Beans</div><div class="why-desc" id="t-w3d">Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.</div></div>
-      <div class="why-item"><div class="why-icon">🎉</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">❄</div><div class="why-title" id="t-w1t">Slow Cold Brew</div><div class="why-desc" id="t-w1d">Slow-steeped at cold temperature for maximum smoothness and zero bitterness.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">→</div><div class="why-title" id="t-w2t">Delivered Fresh</div><div class="why-desc" id="t-w2d">From our brewhouse to your door — cold, fresh, and ready to drink.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">◉</div><div class="why-title" id="t-w3t">Premium Beans</div><div class="why-desc" id="t-w3d">Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
     </div>
   </div>
 
@@ -643,7 +659,7 @@
     <div>
       <div class="footer-col-title" id="t-ft-info">Info</div>
       <ul class="footer-links">
-        <li><a onclick="showPage('home'); setTimeout(()=>scrollTo('aboutSection'),120)">About Us</a></li>
+        <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('aboutSection'),120)">About Us</a></li>
         <li><a href="#">Shipping Policy</a></li>
         <li><a href="#">Refund Policy</a></li>
         <li><a href="#">Privacy Policy</a></li>
@@ -657,7 +673,7 @@
 </footer>
 
 <!-- WhatsApp Float Button -->
-<a href="https://wa.me/972552703413" target="_blank" rel="noopener" aria-label="Chat on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;width:52px;height:52px;background:#25D366;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;" onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
+<a href="https://wa.me/972552703413" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;background:#25D366;border-radius:24px;display:flex;align-items:center;gap:8px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:#fff;letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
   <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.7-1.81A11.94 11.94 0 0016 27c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="white"/>
     <path d="M21.8 18.4c-.3-.15-1.77-.87-2.04-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.76-1.66-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.73-.71 1.97-1.39.24-.68.24-1.27.17-1.39-.07-.12-.27-.19-.57-.34z" fill="#25D366"/>
@@ -667,8 +683,9 @@
 <div class="toast" id="toast"></div>
 
 <!-- ── CHATBOT FAB ── -->
-<button class="chatbot-fab" onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant">
-  ☕
+<button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant" style="position:fixed;bottom:88px;left:20px;z-index:90;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:24px;box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:transform .2s,box-shadow .2s;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:var(--bg);letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span id="t-chat-fab">Build your order</span>
 </button>
 
 <!-- ── CHATBOT BACKDROP ── -->
@@ -711,10 +728,10 @@ let isAdmin = false;
 const T = {
   en: {
     'hero-eyebrow':'Israel\'s Premier Cold Brew','hero-em':'Delivered','hero-sub':'Straight to your door.',
-    'hero-desc':'Crafted from the finest beans, brewed slow and cold for 18 hours. The smoothest cold brew in Israel.',
+    'hero-desc':'Crafted from the finest beans, brewed slow and cold for maximum smoothness. Israel\'s best cold brew.',
     'hero-shop':'Shop Now','hero-bars':'Coffee Bars',
     'why-eye':'Why Gremier','why-title':'Cold Brew, Done Right',
-    'w1t':'18-Hour Cold Brew','w1d':'Slow-steeped at cold temperature for maximum smoothness and zero bitterness.',
+    'w1t':'Slow Cold Brew','w1d':'Slow-steeped at cold temperature for maximum smoothness and zero bitterness.',
     'w2t':'Delivered Fresh','w2d':'From our brewhouse to your door — cold, fresh, ready to drink.',
     'w3t':'Premium Beans','w3d':'Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.',
     'w4t':'Events & Bars','w4d':'Set up a cold brew bar at your wedding, birthday, or corporate event.',
@@ -741,6 +758,8 @@ const T = {
     'ft-copy':'© 2025 Gremier Coffee Co. All rights reserved.',
     'ft-made':'Made with ☕ in Israel',
     'cartLabel':'Cart',
+    't-chat-fab':'Build your order',
+    't-wa-label':'Contact us',
     'sign-in':'Sign In','sign-out':'Sign Out',
     'enquire':'Enquire & Book',
     'cats':{'all':'All','bottles':'Bottles','minis':'Mini Packs','bulk':'Bulk & 5L','subscriptions':'Subscriptions'},
@@ -750,10 +769,10 @@ const T = {
   },
   he: {
     'hero-eyebrow':'קולד ברו ישראלי מוביל','hero-em':'עד הבית','hero-sub':'ישירות לדלת שלך.',
-    'hero-desc':'מבושל לאט וקר 18 שעות מהפולים הטובים ביותר. הקולד ברו החלק ביותר בישראל.',
+    'hero-desc':'מהפולים הטובים ביותר, מבושל לאט וקר לחלקות מקסימלית. הקולד ברו הטוב ביותר בישראל.',
     'hero-shop':'לחנות','hero-bars':'בר קפה',
     'why-eye':'למה גרמייר','why-title':'קולד ברו, כמו שצריך',
-    'w1t':'18 שעות חליטה','w1d':'חליטה איטית בטמפרטורה קרה לחלקות מקסימלית.',
+    'w1t':'חליטה איטית','w1d':'חליטה איטית בטמפרטורה קרה לחלקות מקסימלית וללא מרירות.',
     'w2t':'משלוח טרי','w2d':'ממחסן הבישול עד הדלת — קר, טרי ומוכן לשתייה.',
     'w3t':'פולים פרימיום','w3d':'מקולומביה, אתיופיה ומעבר. קלוי במיוחד לקולד ברו.',
     'w4t':'אירועים ובארים','w4d':'הקימו בר קולד ברו בחתונה, יומולדת, או אירוע עסקי.',
@@ -780,6 +799,8 @@ const T = {
     'ft-copy':'© 2025 גרמייר קפה. כל הזכויות שמורות.',
     'ft-made':'עם ☕ בישראל',
     'cartLabel':'עגלה',
+    't-chat-fab':'בנה הזמנה',
+    't-wa-label':'צור קשר',
     'sign-in':'התחברות','sign-out':'התנתקות',
     'enquire':'לפרטים ותיאום',
     'cats':{'all':'הכל','bottles':'בקבוקים','minis':'מיני פקים','bulk':'5 ליטר','subscriptions':'מנויים'},
@@ -794,7 +815,7 @@ function trCat(key) { return T[lang].cats[key] || key; }
 
 function applyTranslations() {
   document.body.classList.toggle('rtl', lang === 'he');
-  document.getElementById('langBtn').textContent = lang === 'en' ? 'עב' : 'EN';
+  document.getElementById('langBtn').textContent = lang === 'en' ? 'עב / HE' : 'EN';
   const map = {
     't-hero-eyebrow':'hero-eyebrow','t-hero-em':'hero-em','t-hero-sub':'hero-sub',
     't-hero-desc':'hero-desc','t-hero-shop':'hero-shop','t-hero-bars':'hero-bars',
@@ -819,6 +840,13 @@ function applyTranslations() {
     const el = document.getElementById(id);
     if (el) el.textContent = tr(key);
   }
+  // Update floating button labels directly
+  const chatFab = document.getElementById('t-chat-fab');
+  if (chatFab) chatFab.textContent = tr('t-chat-fab');
+  const waLabel = document.getElementById('t-wa-label');
+  if (waLabel) waLabel.textContent = tr('t-wa-label');
+  const chatCta = document.getElementById('t-chat-cta');
+  if (chatCta) chatCta.textContent = lang==='he' ? 'יודע מה אתה רוצה? בנה את ההזמנה שלך כאן →' : 'Know what you want? Build your order here →';
   renderGrids();
 }
 
@@ -1122,7 +1150,15 @@ function showPage(page) {
   if (page === 'myorders') loadMyOrders();
 }
 
-function scrollTo(id) {
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  menu.classList.toggle('open');
+}
+function closeMobileMenu() {
+  document.getElementById('mobileMenu').classList.remove('open');
+}
+
+function scrollToSection(id) {
   document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -1144,7 +1180,7 @@ async function init() {
 init();
 
 // ══ CHATBOT ══
-const CHAT_EDGE_URL = SUPABASE_URL + '/functions/v1/chat-assistant';
+const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
 let chatHistory = [];
 let chatOpen = false;
 
@@ -1311,10 +1347,7 @@ async function sendChatMessage() {
   input.focus();
 }
 
-// ── PWA SERVICE WORKER ──
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
-}
+
 </script>
 </body>
 </html>
