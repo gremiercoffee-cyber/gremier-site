@@ -565,11 +565,22 @@ async function initAdmin() {
 }
 
 async function checkAdminAccess(user) {
-  const { data: profile } = await sb.from('profiles').select('is_admin').eq('id', user.id).single();
-  if (!profile?.is_admin) {
+  // Check by email directly — most reliable
+  const adminEmails = ['gremiercoffee@gmail.com', 'yonigrey@gmail.com'];
+  if (!adminEmails.includes(user.email)) {
     document.getElementById('accessDenied').style.display = 'block';
     await sb.auth.signOut(); return;
   }
+  // Also try to ensure profile has is_admin=true
+  try {
+    await sb.from('profiles').upsert({
+      id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name || '',
+      is_admin: true
+    }, { onConflict: 'id' });
+  } catch(e) { console.log('Profile upsert:', e); }
+
   adminUser = user;
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
