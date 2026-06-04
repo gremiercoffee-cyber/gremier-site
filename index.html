@@ -6,7 +6,7 @@
   <title>Gremier Coffee Co.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400&display=swap" rel="stylesheet"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -18,11 +18,11 @@
       --red:#c0392b; --green:#2d8a4e;
     }
     html { scroll-behavior: smooth; }
-    body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; overflow-x:hidden; }
+    body { background:var(--bg); color:var(--text); font-family:'Poppins',sans-serif; font-weight:300; min-height:100vh; overflow-x:hidden; }
 
     /* NAV */
     nav { position:fixed; top:0; left:0; right:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:0 32px; height:64px; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); box-shadow:0 1px 12px rgba(0,0,0,0.06); }
-    .nav-logo { font-family:'Playfair Display',serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; text-decoration:none; letter-spacing:.02em; cursor:pointer; }
+    .nav-logo { font-family:'Poppins',sans-serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; text-decoration:none; letter-spacing:.02em; cursor:pointer; }
     .nav-logo span { color:var(--amber); }
     .nav-links { display:flex; gap:28px; list-style:none; }
     .nav-links a { color:#555555; text-decoration:none; font-size:.82rem; letter-spacing:.1em; text-transform:uppercase; transition:color .2s; cursor:pointer; }
@@ -30,10 +30,10 @@
     .nav-right { display:flex; align-items:center; gap:12px; }
     .lang-btn { font-size:.75rem; letter-spacing:.08em; color:var(--text2); cursor:pointer; border:1px solid var(--border); padding:4px 10px; border-radius:20px; background:none; transition:all .2s; }
     .lang-btn:hover { border-color:var(--amber); color:var(--amber); }
-    .auth-btn { font-family:'DM Sans',sans-serif; font-size:.8rem; background:none; border:1px solid var(--border); color:#555555; padding:7px 16px; border-radius:20px; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:7px; }
+    .auth-btn { font-family:'Poppins',sans-serif; font-size:.8rem; background:none; border:1px solid var(--border); color:#555555; padding:7px 16px; border-radius:20px; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:7px; }
     .auth-btn:hover { border-color:var(--amber); color:var(--amber); }
     .auth-btn img { width:20px; height:20px; border-radius:50%; }
-    .cart-btn { position:relative; background:none; border:1px solid var(--border); cursor:pointer; color:#1a1a1a; display:flex; align-items:center; gap:8px; font-family:'DM Sans',sans-serif; font-size:.82rem; padding:7px 16px; border-radius:24px; transition:all .2s; }
+    .cart-btn { position:relative; background:none; border:1px solid var(--border); cursor:pointer; color:#1a1a1a; display:flex; align-items:center; gap:8px; font-family:'Poppins',sans-serif; font-size:.82rem; padding:7px 16px; border-radius:24px; transition:all .2s; }
     .cart-btn:hover { border-color:var(--amber); color:var(--amber); }
     .cart-count { background:var(--amber); color:var(--bg); font-size:.65rem; font-weight:700; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
     @media(max-width:640px){ .nav-links{display:none;} nav{padding:0 16px;} .auth-btn span{display:none;} }
@@ -53,7 +53,7 @@
     .mobile-menu a:hover { color:var(--amber); }
 
     /* BUTTONS */
-    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:500; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; border-radius:2px; transition:all .2s; border:none; padding:13px 32px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:'Poppins',sans-serif; font-size:.82rem; font-weight:500; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; border-radius:2px; transition:all .2s; border:none; padding:13px 32px; }
     .btn-primary { background:var(--amber); color:var(--bg); }
     .btn-primary:hover { background:var(--amber2); transform:translateY(-1px); }
     .btn-outline { background:transparent; color:var(--cream); border:1px solid var(--border); }
@@ -74,9 +74,9 @@
     .hero-bg { position:absolute; inset:0; background: radial-gradient(ellipse 80% 60% at 60% 40%,rgba(200,135,58,.07) 0%,transparent 60%), var(--bg); }
     .hero-content { position:relative; z-index:2; max-width:680px; text-align:center; }
     .eyebrow { font-size:.72rem; letter-spacing:.25em; text-transform:uppercase; color:var(--amber); margin-bottom:20px; }
-    .hero-title { font-family:'Playfair Display',serif; font-size:clamp(3rem,8vw,6rem); font-weight:900; line-height:1; color:#1a1a1a; margin-bottom:8px; }
-    .hero-title em { font-style:italic; color:var(--amber); }
-    .hero-subtitle { font-family:'Playfair Display',serif; font-size:clamp(1.1rem,2.5vw,1.8rem); font-weight:400; font-style:italic; color:var(--cream2); margin-bottom:28px; }
+    .hero-title { font-family:'Poppins',sans-serif; font-size:clamp(2.8rem,7vw,5.5rem); font-weight:900; line-height:1.05; color:#1a1a1a; margin-bottom:8px; letter-spacing:-0.02em; }
+    .hero-title em { font-style:italic; color:var(--amber); font-weight:700; }
+    .hero-subtitle { font-family:'Poppins',sans-serif; font-size:clamp(1.1rem,2.5vw,1.8rem); font-weight:400; font-style:italic; color:var(--cream2); margin-bottom:28px; }
     .hero-desc { font-size:.95rem; color:var(--text2); line-height:1.7; max-width:480px; margin:0 auto 44px; }
     .hero-btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
     .divider { width:56px; height:1px; background:var(--amber); margin:0 auto 20px; opacity:.6; }
@@ -85,19 +85,19 @@
     .section { padding:80px 32px; }
     .section-alt { background:#f7f5f2; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
     .section-header { text-align:center; margin-bottom:52px; }
-    .section-title { font-family:'Playfair Display',serif; font-size:clamp(1.8rem,4vw,2.8rem); font-weight:700; color:#1a1a1a; }
+    .section-title { font-family:'Poppins',sans-serif; font-size:clamp(1.8rem,4vw,2.8rem); font-weight:700; color:#1a1a1a; }
 
     /* WHY GRID */
     .why-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:24px; max-width:900px; margin:0 auto; }
     .why-item { text-align:center; padding:28px 20px; border:1px solid var(--border); border-radius:4px; background:#ffffff; transition:border-color .2s,box-shadow .2s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
     .why-item:hover { border-color:rgba(200,135,58,.3); }
     .why-icon { font-size:1.8rem; margin-bottom:12px; }
-    .why-title { font-family:'Playfair Display',serif; font-size:1rem; font-weight:700; color:var(--cream); margin-bottom:6px; }
+    .why-title { font-family:'Poppins',sans-serif; font-size:1rem; font-weight:700; color:var(--cream); margin-bottom:6px; }
     .why-desc { font-size:.82rem; color:var(--text2); line-height:1.6; }
 
     /* PRODUCT GRID */
     .category-filter { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:44px; }
-    .filter-btn { background:transparent; border:1px solid var(--border); color:var(--text2); padding:7px 18px; font-family:'DM Sans',sans-serif; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; border-radius:20px; transition:all .2s; }
+    .filter-btn { background:transparent; border:1px solid var(--border); color:var(--text2); padding:7px 18px; font-family:'Poppins',sans-serif; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; border-radius:20px; transition:all .2s; }
     .filter-btn.active, .filter-btn:hover { border-color:var(--amber); color:var(--amber); background:rgba(200,135,58,.08); }
     .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:22px; max-width:1200px; margin:0 auto; }
     .product-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; overflow:hidden; cursor:pointer; transition:transform .2s,border-color .2s,box-shadow .2s; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
@@ -109,7 +109,7 @@
     .product-badge { position:absolute; top:10px; left:10px; background:var(--amber); color:var(--bg); font-size:.62rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:2px; z-index:2; }
     .product-badge.sale { background:var(--red); color:#fff; }
     .product-info { padding:18px; }
-    .product-name { font-family:'Playfair Display',serif; font-size:1rem; font-weight:700; color:#1a1a1a; margin-bottom:5px; line-height:1.3; }
+    .product-name { font-family:'Poppins',sans-serif; font-size:1rem; font-weight:700; color:#1a1a1a; margin-bottom:5px; line-height:1.3; }
     .product-desc { font-size:.78rem; color:var(--text2); line-height:1.5; margin-bottom:14px; }
     .product-footer { display:flex; align-items:center; justify-content:space-between; }
     .product-price { font-size:1.05rem; font-weight:500; color:var(--amber); }
@@ -123,7 +123,7 @@
     .coffeebar-card:hover { border-color:rgba(200,135,58,.5); transform:translateY(-4px); }
     .coffeebar-card.featured { border-color:var(--amber); border-width:2px; background:linear-gradient(135deg,#ffffff 0%,rgba(200,135,58,.04) 100%); }
     .coffeebar-tag { position:absolute; top:-12px; left:28px; background:var(--amber); color:var(--bg); font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:3px 10px; border-radius:2px; }
-    .coffeebar-name { font-family:'Playfair Display',serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; margin-bottom:6px; }
+    .coffeebar-name { font-family:'Poppins',sans-serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; margin-bottom:6px; }
     .coffeebar-price { font-size:1.8rem; font-weight:500; color:var(--amber); margin-bottom:20px; }
     .coffeebar-features { list-style:none; margin-bottom:28px; }
     .coffeebar-features li { font-size:.84rem; color:var(--text2); padding:7px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
@@ -135,7 +135,7 @@
     .drawer { position:fixed; top:0; right:0; bottom:0; width:400px; max-width:100vw; background:#ffffff; border-left:1px solid var(--border); z-index:201; transform:translateX(100%); transition:transform .35s cubic-bezier(.4,0,.2,1); display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,.08); }
     .drawer.open { transform:translateX(0); }
     .drawer-header { display:flex; align-items:center; justify-content:space-between; padding:22px 26px; border-bottom:1px solid var(--border); }
-    .drawer-title { font-family:'Playfair Display',serif; font-size:1.25rem; color:#1a1a1a; }
+    .drawer-title { font-family:'Poppins',sans-serif; font-size:1.25rem; color:#1a1a1a; }
     .close-x { background:none; border:none; color:#999999; font-size:1.4rem; cursor:pointer; transition:color .2s; line-height:1; }
     .close-x:hover { color:var(--cream); }
     .drawer-body { flex:1; overflow-y:auto; padding:22px 26px; }
@@ -156,20 +156,20 @@
     .drawer-footer { padding:22px 26px; border-top:1px solid var(--border); }
     .cart-total-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
     .cart-total-label { font-size:.8rem; color:var(--text2); text-transform:uppercase; letter-spacing:.1em; }
-    .cart-total-price { font-family:'Playfair Display',serif; font-size:1.4rem; color:var(--amber); }
+    .cart-total-price { font-family:'Poppins',sans-serif; font-size:1.4rem; color:var(--amber); }
 
     /* MODAL */
     .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:300; display:flex; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity .3s; }
     .modal-overlay.open { opacity:1; pointer-events:all; }
     .modal { background:#ffffff; border:1px solid var(--border); border-radius:4px; width:100%; max-width:500px; max-height:90vh; overflow-y:auto; padding:36px; transform:scale(.96); transition:transform .3s; box-shadow:0 20px 60px rgba(0,0,0,.12); }
     .modal-overlay.open .modal { transform:scale(1); }
-    .modal-title { font-family:'Playfair Display',serif; font-size:1.7rem; color:#1a1a1a; margin-bottom:6px; }
+    .modal-title { font-family:'Poppins',sans-serif; font-size:1.7rem; color:#1a1a1a; margin-bottom:6px; }
     .modal-sub { font-size:.84rem; color:var(--text2); margin-bottom:28px; }
 
     /* FORMS */
     .form-group { margin-bottom:18px; }
     .form-label { display:block; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:7px; }
-    .form-input { width:100%; background:#f7f5f2; border:1px solid var(--border); color:#1a1a1a; padding:11px 14px; font-family:'DM Sans',sans-serif; font-size:.88rem; border-radius:2px; outline:none; transition:border-color .2s; }
+    .form-input { width:100%; background:#f7f5f2; border:1px solid var(--border); color:#1a1a1a; padding:11px 14px; font-family:'Poppins',sans-serif; font-size:.88rem; border-radius:2px; outline:none; transition:border-color .2s; }
     .form-input:focus { border-color:var(--amber); }
     .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     @media(max-width:500px){ .form-row{grid-template-columns:1fr;} }
@@ -190,11 +190,11 @@
     .confirm-screen { text-align:center; padding:16px 0; }
     .confirm-icon { font-size:3.5rem; margin-bottom:16px; animation:popIn .5s cubic-bezier(.175,.885,.32,1.275); }
     @keyframes popIn { 0%{transform:scale(0);opacity:0} 100%{transform:scale(1);opacity:1} }
-    .confirm-title { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); margin-bottom:10px; }
+    .confirm-title { font-family:'Poppins',sans-serif; font-size:1.8rem; color:var(--cream); margin-bottom:10px; }
     .confirm-sub { font-size:.88rem; color:var(--text2); line-height:1.6; max-width:320px; margin:0 auto 28px; }
 
     /* AUTH MODAL */
-    .google-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:13px; background:#fff; color:#3c4043; border:1px solid #dadce0; border-radius:4px; font-family:'DM Sans',sans-serif; font-size:.9rem; cursor:pointer; transition:box-shadow .2s; }
+    .google-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:13px; background:#fff; color:#3c4043; border:1px solid #dadce0; border-radius:4px; font-family:'Poppins',sans-serif; font-size:.9rem; cursor:pointer; transition:box-shadow .2s; }
     .google-signin-btn:hover { box-shadow:0 2px 8px rgba(0,0,0,.3); }
     .google-icon { width:20px; height:20px; }
     .auth-divider { display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--text2); font-size:.78rem; }
@@ -204,7 +204,7 @@
     .my-orders-list { max-width:760px; margin:0 auto; }
     .order-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; padding:22px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
     .order-card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
-    .order-num { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--cream); }
+    .order-num { font-family:'Poppins',sans-serif; font-size:1.05rem; color:var(--cream); }
     .order-date { font-size:.78rem; color:var(--text2); }
     .status-badge { font-size:.68rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 10px; border-radius:12px; }
     .status-pending { background:rgba(200,135,58,.15); color:var(--amber); }
@@ -224,7 +224,7 @@
     /* FOOTER */
     footer { background:#1a1a1a; border-top:1px solid var(--border); padding:56px 32px 28px; }
     .footer-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:44px; max-width:1000px; margin:0 auto 44px; }
-    .footer-brand { font-family:'Playfair Display',serif; font-size:1.25rem; font-weight:700; color:#ffffff; margin-bottom:10px; }
+    .footer-brand { font-family:'Poppins',sans-serif; font-size:1.25rem; font-weight:700; color:#ffffff; margin-bottom:10px; }
     .footer-brand span { color:var(--amber); }
     .footer-desc { font-size:.83rem; color:#aaaaaa; line-height:1.6; margin-bottom:16px; }
     .footer-contact { font-size:.83rem; color:#aaaaaa; line-height:2; }
@@ -353,7 +353,7 @@
     flex: 1;
     padding: 9px;
     border-radius: 8px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Poppins', sans-serif;
     font-size: .8rem;
     font-weight: 600;
     cursor: pointer;
@@ -389,7 +389,7 @@
     color: #1a1a1a;
     padding: 10px 14px;
     border-radius: 22px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Poppins', sans-serif;
     font-size: .88rem;
     outline: none;
     transition: border-color .2s;
@@ -471,7 +471,7 @@
         <button class="btn btn-outline" onclick="showPage('home'); setTimeout(()=>scrollToSection('coffeeBarsSection'),120)" id="t-hero-bars">Coffee Bars</button>
       </div>
       <div style="margin-top:20px">
-        <button onclick="openChatbot()" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;margin:0 auto;color:var(--cream2);font-family:'DM Sans',sans-serif;font-size:.82rem;letter-spacing:.05em;transition:color .2s;padding:0" onmouseover="this.style.color='var(--amber)'" onmouseout="this.style.color='var(--cream2)'">
+        <button onclick="openChatbot()" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;margin:0 auto;color:var(--cream2);font-family:'Poppins',sans-serif;font-size:.82rem;letter-spacing:.05em;transition:color .2s;padding:0" onmouseover="this.style.color='var(--amber)'" onmouseout="this.style.color='var(--cream2)'">
           <span style="font-size:1rem">💬</span>
           <span id="t-chat-cta">Know what you want? Build your order here →</span>
         </button>
@@ -672,7 +672,7 @@
 </footer>
 
 <!-- WhatsApp Float Button -->
-<a href="https://wa.me/972552703413" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;background:#25D366;border-radius:24px;display:flex;align-items:center;gap:8px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:#fff;letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
+<a href="https://wa.me/972552703413" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;background:#25D366;border-radius:24px;display:flex;align-items:center;gap:8px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;font-family:'Poppins',sans-serif;font-size:.78rem;font-weight:500;color:#fff;letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
   <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.7-1.81A11.94 11.94 0 0016 27c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="white"/>
     <path d="M21.8 18.4c-.3-.15-1.77-.87-2.04-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.76-1.66-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.73-.71 1.97-1.39.24-.68.24-1.27.17-1.39-.07-.12-.27-.19-.57-.34z" fill="#25D366"/>
@@ -682,10 +682,12 @@
 <div class="toast" id="toast"></div>
 
 <!-- ── CHATBOT FAB ── -->
-<button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant" style="position:fixed;bottom:88px;left:20px;z-index:90;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:24px;box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:transform .2s,box-shadow .2s;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:var(--bg);letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-  <span id="t-chat-fab">Build your order</span>
-</button>
+<div style="position:fixed;bottom:88px;left:16px;z-index:90;display:flex;flex-direction:column;align-items:center;gap:6px;" id="chatFabWrapper">
+  <div style="background:#1a1a1a;color:#fff;font-family:'Poppins',sans-serif;font-size:.68rem;font-weight:500;padding:6px 10px;border-radius:8px;max-width:140px;text-align:center;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,0.15);" id="chatFabLabel">Tell me what you want — I'll add it to your cart</div>
+  <button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant" style="width:52px;height:52px;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,0.25);transition:transform .2s,box-shadow .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </button>
+</div>
 
 <!-- ── CHATBOT BACKDROP ── -->
 <div class="overlay" id="chatbotOverlay" onclick="closeChatbot()"></div>
@@ -1204,7 +1206,7 @@ function openChatbot() {
   chatOpen = true;
   document.getElementById('chatbotOverlay').classList.add('open');
   document.getElementById('chatbotPanel').classList.add('open');
-  document.getElementById('chatbotFab').style.display = 'none';
+  const fabW = document.getElementById('chatFabWrapper'); if(fabW) fabW.style.display='none';
   if (chatHistory.length === 0) {
     appendBotMessage(lang === 'he'
       ? 'היי! תגיד לי מה תרצה להזמין — או תשאל אותי כל שאלה על הקולד ברו שלנו.'
@@ -1217,7 +1219,7 @@ function closeChatbot() {
   chatOpen = false;
   document.getElementById('chatbotOverlay').classList.remove('open');
   document.getElementById('chatbotPanel').classList.remove('open');
-  document.getElementById('chatbotFab').style.display = 'flex';
+  const fabW2 = document.getElementById('chatFabWrapper'); if(fabW2) fabW2.style.display='flex';
 }
 
 function appendBotMessage(text, cartItems) {
