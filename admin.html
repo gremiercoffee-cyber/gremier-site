@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gremier Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <!-- PWA -->
+  <link rel="manifest" href="admin-manifest.json"/>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="apple-touch-icon" href="icon-192-maskable.png"/>
+  <meta name="theme-color" content="#c8873a"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Gremier Admin"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    :root {
+      --bg:#0d0a07; --bg2:#13100c; --bg3:#1a1510; --card:#1f1a13;
+      --border:#2e2619; --cream:#f0e6d0; --cream2:#c8b89a;
+      --amber:#c8873a; --amber2:#e09a48; --text:#f0e6d0; --text2:#9a8a72;
+      --red:#c0392b; --green:#2d8a4e; --blue:#4a90d9;
+    }
+    body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; }
+
+    /* AUTH SCREEN */
+    #authScreen { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .auth-box { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:48px 40px; width:100%; max-width:400px; text-align:center; }
+    .auth-logo { font-family:'Playfair Display',serif; font-size:1.6rem; color:var(--cream); margin-bottom:6px; }
+    .auth-logo span { color:var(--amber); }
+    .auth-tag { font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:var(--text2); margin-bottom:36px; }
+    .google-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:13px; background:#fff; color:#3c4043; border:1px solid #dadce0; border-radius:4px; font-family:'DM Sans',sans-serif; font-size:.9rem; cursor:pointer; transition:box-shadow .2s; }
+    .google-btn:hover { box-shadow:0 2px 8px rgba(0,0,0,.3); }
+    .access-denied { color:var(--red); font-size:.85rem; margin-top:16px; display:none; }
+
+    /* LAYOUT */
+    #appScreen { display:none; min-height:100vh; }
+    .admin-layout { display:flex; min-height:100vh; }
+
+    /* SIDEBAR */
+    .sidebar { width:220px; background:var(--bg2); border-right:1px solid var(--border); padding:24px 0; display:flex; flex-direction:column; position:fixed; top:0; bottom:0; left:0; z-index:50; }
+    .sidebar-logo { font-family:'Playfair Display',serif; font-size:1.1rem; color:var(--cream); padding:0 20px 24px; border-bottom:1px solid var(--border); margin-bottom:16px; }
+    .sidebar-logo span { color:var(--amber); }
+    .sidebar-logo small { display:block; font-family:'DM Sans',sans-serif; font-size:.65rem; letter-spacing:.15em; text-transform:uppercase; color:var(--text2); margin-top:3px; }
+    .nav-item { display:flex; align-items:center; gap:10px; padding:11px 20px; color:var(--text2); font-size:.85rem; cursor:pointer; transition:all .2s; border-left:3px solid transparent; }
+    .nav-item:hover { color:var(--cream); background:var(--bg3); }
+    .nav-item.active { color:var(--amber); border-left-color:var(--amber); background:rgba(200,135,58,.06); }
+    .nav-item .icon { font-size:1rem; width:20px; text-align:center; }
+    .sidebar-bottom { margin-top:auto; padding:16px 20px; border-top:1px solid var(--border); }
+    .user-info { font-size:.78rem; color:var(--text2); margin-bottom:10px; word-break:break-all; }
+    .signout-btn { font-size:.75rem; color:var(--text2); background:none; border:1px solid var(--border); padding:6px 14px; border-radius:3px; cursor:pointer; transition:all .2s; width:100%; }
+    .signout-btn:hover { border-color:var(--red); color:var(--red); }
+    .view-site-btn { font-size:.75rem; color:var(--amber); background:none; border:1px solid var(--border); padding:6px 14px; border-radius:3px; cursor:pointer; transition:all .2s; width:100%; margin-top:6px; text-decoration:none; display:block; text-align:center; }
+
+    /* MAIN */
+    .main { margin-left:220px; flex:1; padding:32px; min-height:100vh; }
+    .page-header { margin-bottom:28px; }
+    .page-title { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); margin-bottom:4px; }
+    .page-sub { font-size:.85rem; color:var(--text2); }
+
+    /* CARDS */
+    .card { background:var(--card); border:1px solid var(--border); border-radius:4px; }
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; margin-bottom:28px; }
+    .stat-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:20px; }
+    .stat-label { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:8px; }
+    .stat-value { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--amber); }
+    .stat-sub { font-size:.75rem; color:var(--text2); margin-top:3px; }
+
+    /* BUTTONS */
+    .btn { display:inline-flex; align-items:center; gap:7px; font-family:'DM Sans',sans-serif; font-size:.8rem; font-weight:500; letter-spacing:.08em; cursor:pointer; border-radius:3px; transition:all .2s; border:none; padding:9px 18px; }
+    .btn-amber { background:var(--amber); color:var(--bg); }
+    .btn-amber:hover { background:var(--amber2); }
+    .btn-outline { background:transparent; color:var(--cream2); border:1px solid var(--border); }
+    .btn-outline:hover { border-color:var(--amber); color:var(--amber); }
+    .btn-green { background:var(--green); color:#fff; }
+    .btn-green:hover { background:#36a35d; }
+    .btn-red { background:var(--red); color:#fff; }
+    .btn-red:hover { opacity:.85; }
+    .btn-blue { background:var(--blue); color:#fff; }
+    .btn-sm { padding:6px 12px; font-size:.74rem; }
+    .btn-full { width:100%; justify-content:center; }
+
+    /* FORMS */
+    .form-group { margin-bottom:16px; }
+    .form-label { display:block; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:6px; }
+    .form-input { width:100%; background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:10px 13px; font-family:'DM Sans',sans-serif; font-size:.87rem; border-radius:3px; outline:none; transition:border-color .2s; }
+    .form-input:focus { border-color:var(--amber); }
+    select.form-input { cursor:pointer; }
+    .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+    .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); }
+    .toggle-label { font-size:.85rem; color:var(--cream2); }
+    .toggle { position:relative; width:40px; height:22px; }
+    .toggle input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; inset:0; background:var(--bg3); border:1px solid var(--border); border-radius:11px; cursor:pointer; transition:.3s; }
+    .toggle-slider::before { content:''; position:absolute; width:16px; height:16px; left:2px; top:2px; background:var(--text2); border-radius:50%; transition:.3s; }
+    .toggle input:checked + .toggle-slider { background:rgba(200,135,58,.2); border-color:var(--amber); }
+    .toggle input:checked + .toggle-slider::before { transform:translateX(18px); background:var(--amber); }
+
+    /* TABLES */
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:.83rem; }
+    th { text-align:left; font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); padding:10px 14px; border-bottom:1px solid var(--border); font-weight:500; }
+    td { padding:12px 14px; border-bottom:1px solid rgba(46,38,25,.5); color:var(--cream2); vertical-align:middle; }
+    tr:hover td { background:rgba(255,255,255,.02); }
+    .status-pill { font-size:.67rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:10px; }
+    .s-pending { background:rgba(200,135,58,.15); color:var(--amber); }
+    .s-confirmed { background:rgba(74,144,217,.15); color:#6aa8e8; }
+    .s-fulfilled { background:rgba(45,138,78,.15); color:#4caf72; }
+    .s-cancelled { background:rgba(192,57,43,.15); color:#e57368; }
+    .s-paid { background:rgba(45,138,78,.15); color:#4caf72; }
+    .s-unpaid { background:rgba(200,135,58,.15); color:var(--amber); }
+
+    /* FILTERS BAR */
+    .filter-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px; }
+    .filter-bar select, .filter-bar input { background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:.8rem; border-radius:3px; outline:none; }
+
+    /* IMAGE UPLOAD */
+    .img-upload-area { border:2px dashed var(--border); border-radius:4px; padding:20px; text-align:center; cursor:pointer; transition:border-color .2s; }
+    .img-upload-area:hover { border-color:var(--amber); }
+    .img-upload-area.dragover { border-color:var(--amber); background:rgba(200,135,58,.05); }
+    .img-upload-icon { font-size:2rem; margin-bottom:8px; opacity:.5; }
+    .img-upload-text { font-size:.82rem; color:var(--text2); }
+    .img-previews { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .img-preview { position:relative; width:80px; height:80px; border-radius:4px; overflow:hidden; border:1px solid var(--border); }
+    .img-preview img { width:100%; height:100%; object-fit:cover; }
+    .img-remove { position:absolute; top:2px; right:2px; background:rgba(0,0,0,.7); border:none; color:#fff; width:18px; height:18px; border-radius:50%; font-size:.7rem; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+
+    /* PRODUCT ITEMS */
+    .products-list { display:flex; flex-direction:column; gap:12px; }
+    .product-row { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:16px 18px; display:flex; align-items:center; gap:16px; }
+    .product-row-thumb { width:52px; height:52px; border-radius:4px; overflow:hidden; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0; }
+    .product-row-thumb img { width:100%; height:100%; object-fit:cover; }
+    .product-row-info { flex:1; }
+    .product-row-name { font-size:.92rem; color:var(--cream); margin-bottom:3px; }
+    .product-row-meta { font-size:.76rem; color:var(--text2); }
+    .product-row-actions { display:flex; gap:8px; flex-shrink:0; }
+    .inactive-row { opacity:.5; }
+
+    /* MODAL */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; opacity:0; pointer-events:none; transition:opacity .3s; }
+    .modal-backdrop.open { opacity:1; pointer-events:all; }
+    .modal-box { background:var(--bg2); border:1px solid var(--border); border-radius:4px; width:100%; max-width:620px; padding:32px; transform:scale(.97); transition:transform .3s; margin:auto; }
+    .modal-backdrop.open .modal-box { transform:scale(1); }
+    .modal-title { font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--cream); margin-bottom:22px; }
+
+    /* PAYMENT LINK */
+    .pl-items { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+    .pl-item { display:flex; align-items:center; gap:12px; background:var(--bg3); padding:10px 14px; border-radius:4px; border:1px solid var(--border); }
+    .pl-item-name { flex:1; font-size:.85rem; color:var(--cream); }
+    .pl-item-price { font-size:.85rem; color:var(--amber); white-space:nowrap; }
+    .pl-item-rm { background:none; border:none; color:var(--text2); cursor:pointer; font-size:.9rem; transition:color .2s; }
+    .pl-item-rm:hover { color:var(--red); }
+    .qty-inline { display:flex; align-items:center; gap:6px; }
+    .qty-inline-btn { background:var(--bg); border:1px solid var(--border); color:var(--cream); width:22px; height:22px; border-radius:3px; cursor:pointer; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
+    .pl-total-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-top:1px solid var(--border); font-size:.9rem; }
+    .pl-total-amt { font-family:'Playfair Display',serif; font-size:1.4rem; color:var(--amber); }
+    .link-result { background:var(--bg3); border:1px solid var(--amber); border-radius:4px; padding:14px; margin-top:14px; display:flex; align-items:center; gap:10px; }
+    .link-url { flex:1; font-size:.78rem; color:var(--cream2); word-break:break-all; }
+    .copy-btn { background:var(--amber); border:none; color:var(--bg); padding:7px 14px; border-radius:3px; font-size:.76rem; cursor:pointer; white-space:nowrap; font-weight:500; transition:background .2s; }
+    .copy-btn:hover { background:var(--amber2); }
+
+    /* REPORTS */
+    .reports-stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
+    .chart-placeholder { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:20px; margin-bottom:20px; }
+    .chart-bars { display:flex; align-items:flex-end; gap:6px; height:100px; }
+    .chart-bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .chart-bar { width:100%; background:var(--amber); border-radius:2px 2px 0 0; opacity:.7; transition:opacity .2s; min-height:2px; }
+    .chart-bar:hover { opacity:1; }
+    .chart-bar-label { font-size:.62rem; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; text-align:center; }
+
+    /* LOADING */
+    .loading { display:flex; align-items:center; justify-content:center; padding:48px; color:var(--text2); gap:10px; }
+    .spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--amber); border-radius:50%; animation:spin .7s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* TOAST */
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--card); border:1px solid var(--amber); color:var(--cream); padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; transition:transform .3s; white-space:nowrap; }
+    .toast.show { transform:translateX(-50%) translateY(0); }
+
+    /* RESPONSIVE */
+    @media(max-width:768px){ .sidebar{width:60px;} .sidebar-logo,.nav-item span,.sidebar-bottom .user-info{display:none;} .main{margin-left:60px;padding:20px;} .form-row-2,.form-row-3{grid-template-columns:1fr;} }
+
+    .section-spacer { margin-bottom:24px; }
+    .flex-between { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:18px; }
+    .tag { font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:2px 8px; border-radius:10px; background:rgba(200,135,58,.15); color:var(--amber); }
+    .product-search { background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:8px 14px; border-radius:3px; outline:none; font-family:'DM Sans',sans-serif; font-size:.82rem; width:100%; max-width:300px; }
+    .product-search::placeholder { color:var(--text2); }
+    .empty-state { text-align:center; padding:48px 20px; color:var(--text2); font-size:.9rem; }
+  </style>
+</head>
+<body>
+
+<!-- CONFIG -->
+<script>
+  const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
+  const CLOUDINARY_CLOUD = 'dqhfv5grg';
+  const CLOUDINARY_PRESET = 'gremier_products'; // create unsigned preset in Cloudinary
+  const ADMIN_EMAIL = 'gremiercoffee@gmail.com';
+  const SITE_URL = window.location.origin;
+</script>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-box">
+    <div class="auth-logo">Gremier <span>Coffee</span></div>
+    <div class="auth-tag">Admin Panel</div>
+    <button class="google-btn" onclick="signInAdmin()">
+      <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+    <div class="access-denied" id="accessDenied">⛔ Access denied. Admin only.</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appScreen">
+  <div class="admin-layout">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-logo">Gremier <span>Coffee</span><small>Admin</small></div>
+      <div class="nav-item active" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
+      <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
+      <div class="nav-item" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
+      <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
+      <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
+      <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
+      <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">🌐</span><span>Web Orders</span></div>
+      <div class="sidebar-bottom">
+        <div class="user-info" id="adminEmail">—</div>
+        <a href="index.html" target="_blank" class="view-site-btn">View Site ↗</a>
+        <button class="signout-btn" onclick="signOut()">Sign Out</button>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- DASHBOARD -->
+      <div id="tab-dashboard" class="tab-content">
+        <div class="page-header">
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-sub">Welcome back. Here's what's happening.</p>
+        </div>
+        <div class="stat-grid" id="dashStats"><div class="loading"><div class="spinner"></div></div></div>
+        <div class="flex-between">
+          <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Recent Orders</h3>
+          <button class="btn btn-outline btn-sm" onclick="showTab('orders')">View All</button>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="dashOrdersTable"><tr><td class="loading" colspan="5"><div class="spinner"></div></td></tr></table></div>
+        </div>
+      </div>
+
+      <!-- PRODUCTS -->
+      <div id="tab-products" class="tab-content" style="display:none">
+        <div class="page-header">
+          <div class="flex-between">
+            <div><h1 class="page-title">Products</h1><p class="page-sub">Manage your catalog</p></div>
+            <button class="btn btn-amber" onclick="openProductModal()">+ Add Product</button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <input type="text" class="product-search" placeholder="Search products..." oninput="filterProducts(this.value)" id="productSearch"/>
+          <select class="form-input" style="width:auto" onchange="filterProductsCat(this.value)" id="productCatFilter">
+            <option value="all">All Categories</option>
+            <option value="bottles">Bottles</option>
+            <option value="minis">Mini Packs</option>
+            <option value="bulk">Bulk & 5L</option>
+            <option value="subscriptions">Subscriptions</option>
+          </select>
+        </div>
+        <div id="productsList"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- ORDERS -->
+      <div id="tab-orders" class="tab-content" style="display:none">
+        <div class="page-header">
+          <h1 class="page-title">Orders</h1>
+          <p class="page-sub">All customer orders</p>
+        </div>
+        <div class="filter-bar">
+          <select class="form-input" style="width:auto" onchange="filterOrders()" id="orderPeriod">
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month" selected>This Month</option>
+            <option value="year">This Year</option>
+          </select>
+          <select class="form-input" style="width:auto" onchange="filterOrders()" id="orderStatus">
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="fulfilled">Fulfilled</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
+        </div>
+        <div class="stat-grid" id="orderStats"></div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="ordersTable">
+            <thead><tr>
+              <th>#</th><th>Customer</th><th>Items</th><th>Total</th>
+              <th>Status</th><th>Payment</th><th>Date</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- PAYMENT LINKS -->
+      <div id="tab-paylinks" class="tab-content" style="display:none">
+        <div class="page-header">
+          <div class="flex-between">
+            <div><h1 class="page-title">Payment Links</h1><p class="page-sub">Generate and send payment links via WhatsApp</p></div>
+            <button class="btn btn-amber" onclick="openNewLink()">+ New Link</button>
+          </div>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="payLinksTable">
+            <thead><tr><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody id="payLinksBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- REPORTS -->
+      <div id="tab-reports" class="tab-content" style="display:none">
+        <div class="page-header">
+          <div class="flex-between">
+            <div><h1 class="page-title">Reports</h1><p class="page-sub">Sales analytics & accounting exports</p></div>
+            <button class="btn btn-outline btn-sm" onclick="exportReportCSV()">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <select class="form-input" style="width:auto" onchange="loadReports()" id="reportPeriod">
+            <option value="week">This Week</option>
+            <option value="month" selected>This Month</option>
+            <option value="year">This Year</option>
+            <option value="all">All Time</option>
+          </select>
+          <input type="month" class="form-input" style="width:auto" id="reportMonth" onchange="loadReportsByMonth()"/>
+        </div>
+        <div class="reports-stats" id="reportStats"></div>
+        <div class="chart-placeholder" id="revenueChart"></div>
+        <div class="flex-between section-spacer">
+          <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Per-Product Breakdown</h3>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="productBreakTable">
+            <thead><tr><th>Product</th><th>Units Sold</th><th>Revenue</th><th>Avg Price</th></tr></thead>
+            <tbody id="productBreakBody"></tbody>
+          </table></div>
+        </div>
+        <div class="flex-between section-spacer" style="margin-top:24px">
+          <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Customer History</h3>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="customerTable">
+            <thead><tr><th>Customer</th><th>Email / Phone</th><th>Orders</th><th>Total Spent</th><th>Last Order</th></tr></thead>
+            <tbody id="customerBody"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- DELIVERY SETTINGS TAB -->
+      <div id="tab-delivery" class="tab-content" style="display:none">
+        <div class="page-header">
+          <div class="flex-between">
+            <div><h1 class="page-title">Delivery Settings</h1><p class="page-sub">Zones, pricing, and delivery rules</p></div>
+            <button class="btn btn-amber" onclick="saveDeliverySettings()">Save Settings</button>
+          </div>
+        </div>
+        <div class="card" style="padding:24px 28px;margin-bottom:24px">
+          <h3 style="font-family:Playfair Display,serif;font-size:1.1rem;color:var(--cream);margin-bottom:18px">Global Settings</h3>
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Expedited Surcharge (₪)</label><input class="form-input" type="number" id="gsExpedited" placeholder="20"/></div>
+            <div class="form-group"><label class="form-label">Default Regular Fee (₪)</label><input class="form-input" type="number" id="gsRegular" placeholder="30"/></div>
+            <div class="form-group"><label class="form-label">Default Expedited Fee (₪)</label><input class="form-input" type="number" id="gsExpDefault" placeholder="50"/></div>
+          </div>
+        </div>
+        <div class="flex-between" style="margin-bottom:16px">
+          <h3 style="font-family:Playfair Display,serif;font-size:1.1rem;color:var(--cream)">Delivery Zones</h3>
+          <button class="btn btn-amber btn-sm" onclick="openZoneModal()">+ Add Zone</button>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="zonesTable">
+            <thead><tr><th>City / Zone</th><th>Region</th><th>Regular (₪)</th><th>Expedited (₪)</th><th>Free Above (₪)</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="zonesBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- WEB ORDERS TAB -->
+      <div id="tab-weborders" class="tab-content" style="display:none">
+        <div class="page-header">
+          <h1 class="page-title">Web Orders — Schedule Deliveries</h1>
+          <p class="page-sub">Website orders waiting to be scheduled. Tap one to assign a delivery date.</p>
+        </div>
+        <div class="stat-grid" id="webOrderStats"></div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="webOrdersTable">
+            <thead><tr><th>#</th><th>Customer</th><th>Address / Zone</th><th>Items</th><th>Total</th><th>Delivery</th><th>Status</th><th>Schedule</th></tr></thead>
+            <tbody id="webOrdersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div>
+</div>
+
+<!-- ZONE MODAL -->
+<div class="modal-backdrop" id="zoneModal">
+  <div class="modal-box" style="max-width:520px">
+    <div id="zoneModalContent"></div>
+  </div>
+</div>
+
+<!-- SCHEDULE MODAL -->
+<div class="modal-backdrop" id="schedModal">
+  <div class="modal-box" style="max-width:480px">
+    <div id="schedModalContent"></div>
+  </div>
+</div>
+
+<!-- PRODUCT MODAL -->
+<div class="modal-backdrop" id="productModal">
+  <div class="modal-box">
+    <h2 class="modal-title" id="productModalTitle">Add Product</h2>
+    <input type="hidden" id="editProductId"/>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Name (English)</label><input class="form-input" id="pNameEn" placeholder="Classic Dark Roast"/></div>
+      <div class="form-group"><label class="form-label">Name (Hebrew)</label><input class="form-input" id="pNameHe" placeholder="קלייה כהה קלאסית"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Description (EN)</label><input class="form-input" id="pDescEn" placeholder="Bold, smooth cold brew"/></div>
+      <div class="form-group"><label class="form-label">Description (HE)</label><input class="form-input" id="pDescHe" placeholder="קולד ברו עמוק וחלק"/></div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">Category</label>
+        <select class="form-input" id="pCategory">
+          <option value="bottles">Bottles</option>
+          <option value="minis">Mini Packs</option>
+          <option value="bulk">Bulk & 5L</option>
+          <option value="subscriptions">Subscriptions</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Price (₪)</label><input class="form-input" type="number" id="pPrice" placeholder="49"/></div>
+      <div class="form-group"><label class="form-label">Original Price (₪)</label><input class="form-input" type="number" id="pOrigPrice" placeholder="Optional"/></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Badge Text</label><input class="form-input" id="pBadge" placeholder="Most Popular"/></div>
+      <div class="form-group"><label class="form-label">Badge Type</label>
+        <select class="form-input" id="pBadgeType">
+          <option value="">Default (amber)</option>
+          <option value="sale">Sale (red)</option>
+          <option value="popular">Popular</option>
+          <option value="deal">Best Deal</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="toggle-row">
+      <span class="toggle-label">Active (visible on site)</span>
+      <label class="toggle"><input type="checkbox" id="pActive" checked/><span class="toggle-slider"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Subscription product</span>
+      <label class="toggle"><input type="checkbox" id="pSubscription"/><span class="toggle-slider"></span></label>
+    </div>
+
+    <div class="form-group" style="margin-top:16px">
+      <label class="form-label">Product Images</label>
+      <div class="img-upload-area" id="imgDropArea" onclick="document.getElementById('imgFileInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)">
+        <div class="img-upload-icon">📷</div>
+        <div class="img-upload-text">Tap to upload photos, or drag & drop<br><small style="color:var(--text2);font-size:.72rem">Multiple images supported</small></div>
+      </div>
+      <input type="file" id="imgFileInput" accept="image/*" multiple style="display:none" onchange="handleImgFiles(this.files)"/>
+      <div class="img-previews" id="imgPreviews"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Variations (optional)</label>
+      <input class="form-input" id="pVariations" placeholder='e.g. Size: 500ml, 1L | Flavor: Classic, Colombia'/>
+      <small style="color:var(--text2);font-size:.72rem;display:block;margin-top:4px">Format: Name: Option1, Option2 | Name2: Option1, Option2</small>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" onclick="saveProduct()" id="saveProductBtn">Save Product</button>
+      <button class="btn btn-outline" onclick="closeProductModal()">Cancel</button>
+      <button class="btn btn-red btn-sm" onclick="deleteProduct()" id="deleteProductBtn" style="margin-left:auto;display:none">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ORDER DETAIL MODAL -->
+<div class="modal-backdrop" id="orderModal">
+  <div class="modal-box">
+    <h2 class="modal-title" id="orderModalTitle">Order Detail</h2>
+    <div id="orderModalContent"></div>
+    <button class="btn btn-outline" onclick="closeOrderModal()" style="margin-top:16px">Close</button>
+  </div>
+</div>
+
+<!-- PAYMENT LINK MODAL -->
+<div class="modal-backdrop" id="payLinkModal">
+  <div class="modal-box">
+    <h2 class="modal-title">New Payment Link</h2>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
+      <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Add Products</label>
+      <input type="text" class="form-input" placeholder="Search product..." oninput="searchPayLinkProducts(this.value)" id="plProductSearch"/>
+      <div id="plProductResults" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+    <div class="pl-items" id="plItems"></div>
+    <div class="pl-total-row">
+      <span style="font-size:.82rem;color:var(--text2);text-transform:uppercase;letter-spacing:.08em">Subtotal</span>
+      <span class="pl-total-amt" id="plSubtotal">₪0</span>
+    </div>
+    <div class="form-row-2" style="margin-top:12px">
+      <div class="form-group">
+        <label class="form-label">Final Price (override)</label>
+        <input class="form-input" type="number" id="plFinalPrice" placeholder="Leave blank = subtotal" oninput="updatePlTotal()"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Discount Note</label>
+        <input class="form-input" id="plDiscountNote" placeholder="e.g. Loyalty discount"/>
+      </div>
+    </div>
+    <div class="pl-total-row" style="border-top:2px solid var(--amber)">
+      <span style="font-size:.88rem;color:var(--cream);text-transform:uppercase;letter-spacing:.08em">Total</span>
+      <span class="pl-total-amt" id="plFinalTotal">₪0</span>
+    </div>
+    <button class="btn btn-amber btn-full" style="margin-top:16px" onclick="generatePayLink()">Generate Payment Link</button>
+    <div id="plLinkResult" style="display:none"></div>
+    <button class="btn btn-outline" onclick="closePayLinkModal()" style="margin-top:10px;width:100%">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let adminUser = null;
+let allProducts = [];
+let allOrders = [];
+let editingImages = []; // array of Cloudinary URLs
+let plCartItems = [];
+
+// ══ AUTH ══
+async function initAdmin() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await checkAdminAccess(session.user);
+  sb.auth.onAuthStateChange(async (_, session) => {
+    if (session) await checkAdminAccess(session.user);
+  });
+}
+
+async function checkAdminAccess(user) {
+  const { data: profile } = await sb.from('profiles').select('is_admin').eq('id', user.id).single();
+  if (!profile?.is_admin) {
+    document.getElementById('accessDenied').style.display = 'block';
+    await sb.auth.signOut(); return;
+  }
+  adminUser = user;
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  document.getElementById('adminEmail').textContent = user.email;
+  loadDashboard();
+  loadAllProducts();
+}
+
+async function signInAdmin() {
+  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.href } });
+}
+
+async function signOut() { await sb.auth.signOut(); location.reload(); }
+
+// ══ TABS ══
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
+  document.getElementById('tab-'+tab).style.display='block';
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-'+tab).classList.add('active');
+  if (tab==='orders') loadOrders();
+  if (tab==='products') renderProductsList();
+  if (tab==='paylinks') loadPayLinks();
+  if (tab==='reports') loadReports();
+}
+
+// ══ DASHBOARD ══
+async function loadDashboard() {
+  const { data: orders } = await sb.from('orders').select('*').order('created_at',{ascending:false});
+  allOrders = orders || [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayOrders = allOrders.filter(o=>new Date(o.created_at)>=today);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthOrders = allOrders.filter(o=>new Date(o.created_at)>=monthStart);
+  const monthRevenue = monthOrders.reduce((s,o)=>s+parseFloat(o.total||0),0);
+
+  document.getElementById('dashStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Today's Orders</div><div class="stat-value">${todayOrders.length}</div><div class="stat-sub">${todayOrders.reduce((s,o)=>s+parseFloat(o.total||0),0).toFixed(0)} ₪ revenue</div></div>
+    <div class="stat-card"><div class="stat-label">This Month</div><div class="stat-value">${monthOrders.length}</div><div class="stat-sub">₪${monthRevenue.toFixed(0)} revenue</div></div>
+    <div class="stat-card"><div class="stat-label">Total Orders</div><div class="stat-value">${allOrders.length}</div><div class="stat-sub">All time</div></div>
+    <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value">${allOrders.filter(o=>o.status==='pending').length}</div><div class="stat-sub">Awaiting action</div></div>
+  `;
+
+  const recent = allOrders.slice(0,8);
+  document.getElementById('dashOrdersTable').innerHTML = `
+    <thead><tr><th>#</th><th>Customer</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
+    <tbody>${recent.map(o=>`<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
+      <td>#${o.order_number}</td>
+      <td>${o.customer_name}</td>
+      <td style="color:var(--amber)">₪${o.total}</td>
+      <td><span class="status-pill s-${o.status}">${o.status}</span></td>
+      <td>${new Date(o.created_at).toLocaleDateString()}</td>
+    </tr>`).join('')}</tbody>`;
+}
+
+// ══ PRODUCTS ══
+async function loadAllProducts() {
+  const { data } = await sb.from('products').select('*').order('sort_order');
+  allProducts = data || [];
+  renderProductsList();
+}
+
+let prodFilter = { search:'', cat:'all' };
+
+function filterProducts(val) { prodFilter.search = val.toLowerCase(); renderProductsList(); }
+function filterProductsCat(val) { prodFilter.cat = val; renderProductsList(); }
+
+function productIcon(cat) {
+  return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
+}
+
+function renderProductsList() {
+  let list = allProducts;
+  if (prodFilter.search) list = list.filter(p=>p.name_en.toLowerCase().includes(prodFilter.search)||( p.name_he||'').includes(prodFilter.search));
+  if (prodFilter.cat !== 'all') list = list.filter(p=>p.category===prodFilter.cat);
+  const el = document.getElementById('productsList');
+  if (!list.length) { el.innerHTML='<div class="empty-state">No products found.</div>'; return; }
+  el.innerHTML = `<div class="products-list">${list.map(p=>{
+    const thumb = p.images?.length
+      ? `<img src="${p.images[0]}" alt="${p.name_en}"/>`
+      : productIcon(p.category);
+    return `<div class="product-row ${p.is_active?'':'inactive-row'}">
+      <div class="product-row-thumb">${thumb}</div>
+      <div class="product-row-info">
+        <div class="product-row-name">${p.name_en} ${p.name_he?`<small style="color:var(--text2)">/ ${p.name_he}</small>`:''}</div>
+        <div class="product-row-meta">₪${p.price} · ${p.category}${p.is_active?'':' · <span style="color:var(--red)">hidden</span>'}${p.is_subscription?' · <span style="color:var(--amber)">subscription</span>':''}</div>
+      </div>
+      <div class="product-row-actions">
+        <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">Edit</button>
+        <button class="btn btn-sm ${p.is_active?'btn-red':'btn-green'}" onclick="toggleProductActive('${p.id}',${p.is_active})">${p.is_active?'Hide':'Show'}</button>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function openProductModal(productId) {
+  editingImages = [];
+  document.getElementById('imgPreviews').innerHTML = '';
+  document.getElementById('editProductId').value = productId || '';
+  document.getElementById('productModalTitle').textContent = productId ? 'Edit Product' : 'Add Product';
+  document.getElementById('deleteProductBtn').style.display = productId ? 'flex' : 'none';
+  if (productId) {
+    const p = allProducts.find(x=>x.id===productId);
+    if (!p) return;
+    document.getElementById('pNameEn').value = p.name_en || '';
+    document.getElementById('pNameHe').value = p.name_he || '';
+    document.getElementById('pDescEn').value = p.description_en || '';
+    document.getElementById('pDescHe').value = p.description_he || '';
+    document.getElementById('pCategory').value = p.category || 'bottles';
+    document.getElementById('pPrice').value = p.price || '';
+    document.getElementById('pOrigPrice').value = p.original_price || '';
+    document.getElementById('pBadge').value = p.badge_text || '';
+    document.getElementById('pBadgeType').value = p.badge_type || '';
+    document.getElementById('pActive').checked = p.is_active;
+    document.getElementById('pSubscription').checked = p.is_subscription;
+    if (p.variations?.length) {
+      document.getElementById('pVariations').value = p.variations.map(v=>`${v.name}: ${v.options.join(', ')}`).join(' | ');
+    }
+    editingImages = [...(p.images || [])];
+    renderImgPreviews();
+  } else {
+    ['pNameEn','pNameHe','pDescEn','pDescHe','pPrice','pOrigPrice','pBadge','pVariations'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('pCategory').value='bottles';
+    document.getElementById('pBadgeType').value='';
+    document.getElementById('pActive').checked=true;
+    document.getElementById('pSubscription').checked=false;
+  }
+  document.getElementById('productModal').classList.add('open');
+}
+
+function closeProductModal() { document.getElementById('productModal').classList.remove('open'); }
+
+function renderImgPreviews() {
+  document.getElementById('imgPreviews').innerHTML = editingImages.map((url,i)=>`
+    <div class="img-preview">
+      <img src="${url}" alt="Product image"/>
+      <button class="img-remove" onclick="removeImg(${i})">×</button>
+    </div>`).join('');
+}
+
+function removeImg(idx) { editingImages.splice(idx,1); renderImgPreviews(); }
+
+function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('dragover'); }
+function handleDrop(e) { e.preventDefault(); e.currentTarget.classList.remove('dragover'); handleImgFiles(e.dataTransfer.files); }
+
+async function handleImgFiles(files) {
+  const btn = document.getElementById('saveProductBtn');
+  btn.textContent = 'Uploading...'; btn.disabled = true;
+  for (const file of files) {
+    const url = await uploadToCloudinary(file);
+    if (url) { editingImages.push(url); renderImgPreviews(); }
+  }
+  btn.textContent = 'Save Product'; btn.disabled = false;
+}
+
+async function uploadToCloudinary(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', CLOUDINARY_PRESET);
+  fd.append('folder', 'gremier_products');
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method:'POST', body:fd });
+    const data = await res.json();
+    return data.secure_url;
+  } catch(e) { showToast('Image upload failed'); return null; }
+}
+
+function parseVariations(str) {
+  if (!str.trim()) return [];
+  return str.split('|').map(part=>{
+    const [name, opts] = part.split(':');
+    if (!name || !opts) return null;
+    return { name: name.trim(), options: opts.split(',').map(o=>o.trim()).filter(Boolean) };
+  }).filter(Boolean);
+}
+
+async function saveProduct() {
+  const id = document.getElementById('editProductId').value;
+  const data = {
+    name_en: document.getElementById('pNameEn').value.trim(),
+    name_he: document.getElementById('pNameHe').value.trim(),
+    description_en: document.getElementById('pDescEn').value.trim(),
+    description_he: document.getElementById('pDescHe').value.trim(),
+    category: document.getElementById('pCategory').value,
+    price: parseFloat(document.getElementById('pPrice').value) || 0,
+    original_price: parseFloat(document.getElementById('pOrigPrice').value) || null,
+    badge_text: document.getElementById('pBadge').value.trim(),
+    badge_type: document.getElementById('pBadgeType').value,
+    is_active: document.getElementById('pActive').checked,
+    is_subscription: document.getElementById('pSubscription').checked,
+    images: editingImages,
+    variations: parseVariations(document.getElementById('pVariations').value),
+    updated_at: new Date().toISOString(),
+  };
+  if (!data.name_en || !data.price) { showToast('Name and price are required'); return; }
+  let error;
+  if (id) {
+    ({ error } = await sb.from('products').update(data).eq('id', id));
+  } else {
+    ({ error } = await sb.from('products').insert(data));
+  }
+  if (error) { showToast('Error saving product'); console.error(error); return; }
+  showToast(id ? 'Product updated ✓' : 'Product added ✓');
+  closeProductModal();
+  await loadAllProducts();
+}
+
+async function deleteProduct() {
+  const id = document.getElementById('editProductId').value;
+  if (!id || !confirm('Delete this product?')) return;
+  await sb.from('products').delete().eq('id', id);
+  showToast('Product deleted');
+  closeProductModal();
+  await loadAllProducts();
+}
+
+async function toggleProductActive(id, current) {
+  await sb.from('products').update({ is_active: !current }).eq('id', id);
+  await loadAllProducts();
+}
+
+// ══ ORDERS ══
+async function loadOrders() {
+  const period = document.getElementById('orderPeriod').value;
+  const status = document.getElementById('orderStatus').value;
+  let query = sb.from('orders').select('*').order('created_at', {ascending:false});
+  const now = new Date();
+  if (period === 'today') { const d = new Date(now); d.setHours(0,0,0,0); query = query.gte('created_at', d.toISOString()); }
+  else if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); query = query.gte('created_at', d.toISOString()); }
+  else if (period === 'month') { const d = new Date(now.getFullYear(), now.getMonth(), 1); query = query.gte('created_at', d.toISOString()); }
+  else if (period === 'year') { const d = new Date(now.getFullYear(), 0, 1); query = query.gte('created_at', d.toISOString()); }
+  if (status !== 'all') query = query.eq('status', status);
+  const { data } = await query;
+  allOrders = data || [];
+  renderOrdersTable(allOrders);
+  renderOrderStats(allOrders);
+}
+
+function filterOrders() { loadOrders(); }
+
+function renderOrderStats(orders) {
+  const total = orders.reduce((s,o)=>s+parseFloat(o.total||0),0);
+  const paid = orders.filter(o=>o.payment_status==='paid').reduce((s,o)=>s+parseFloat(o.total||0),0);
+  document.getElementById('orderStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">${orders.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value">₪${total.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Order</div><div class="stat-value">₪${orders.length?Math.round(total/orders.length):0}</div></div>
+    <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪${paid.toFixed(0)}</div></div>
+  `;
+}
+
+function renderOrdersTable(orders) {
+  const body = document.getElementById('ordersBody');
+  if (!orders.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No orders found.</td></tr>'; return; }
+  body.innerHTML = orders.map(o=>{
+    const items = (o.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
+    const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
+    return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
+      <td style="color:var(--cream)">#${o.order_number}</td>
+      <td>${o.customer_name}<br><small style="color:var(--text2)">${o.customer_phone||''}</small></td>
+      <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${items}">${items}</td>
+      <td style="color:var(--amber)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
+      <td><span class="status-pill s-${o.status}">${o.status}</span></td>
+      <td><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></td>
+      <td>${date}</td>
+      <td>
+        <select class="form-input" style="padding:5px 8px;font-size:.74rem;width:auto" onchange="updateOrderStatus('${o.id}',this.value)" onclick="event.stopPropagation()">
+          <option ${o.status==='pending'?'selected':''}>pending</option>
+          <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
+          <option ${o.status==='fulfilled'?'selected':''}>fulfilled</option>
+          <option ${o.status==='cancelled'?'selected':''}>cancelled</option>
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function updateOrderStatus(id, status) {
+  await sb.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+  showToast('Status updated ✓');
+  loadOrders();
+}
+
+function openOrderDetail(id) {
+  const o = allOrders.find(x=>x.id===id);
+  if (!o) return;
+  const items = (o.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${i.name_en} ×${i.qty}</span><span style="color:var(--amber)">₪${i.price*i.qty}</span></div>`).join('');
+  document.getElementById('orderModalTitle').textContent = `Order #${o.order_number}`;
+  document.getElementById('orderModalContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
+      <div><div class="form-label">Customer</div><div style="font-size:.9rem;color:var(--cream)">${o.customer_name}</div></div>
+      <div><div class="form-label">Phone</div><div style="font-size:.9rem;color:var(--cream)">${o.customer_phone||'—'}</div></div>
+      <div><div class="form-label">Email</div><div style="font-size:.9rem;color:var(--cream)">${o.customer_email||'—'}</div></div>
+      <div><div class="form-label">Address</div><div style="font-size:.9rem;color:var(--cream)">${o.delivery_address||'—'}</div></div>
+      <div><div class="form-label">Status</div><span class="status-pill s-${o.status}">${o.status}</span></div>
+      <div><div class="form-label">Payment</div><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></div>
+    </div>
+    ${o.notes?`<div style="background:var(--bg3);padding:10px 14px;border-radius:4px;font-size:.82rem;color:var(--text2);margin-bottom:16px">Notes: ${o.notes}</div>`:''}
+    <div>${items}</div>
+    <div style="display:flex;justify-content:space-between;padding:12px 0;font-size:.95rem"><span style="color:var(--text2)">Total</span><span style="color:var(--amber);font-size:1.1rem">₪${o.total}</span></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <select class="form-input" style="flex:1" onchange="updateOrderStatus('${o.id}',this.value)">
+        <option ${o.status==='pending'?'selected':''}>pending</option>
+        <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
+        <option ${o.status==='fulfilled'?'selected':''}>fulfilled</option>
+        <option ${o.status==='cancelled'?'selected':''}>cancelled</option>
+      </select>
+      <select class="form-input" style="flex:1" onchange="updatePaymentStatus('${o.id}',this.value)">
+        <option ${o.payment_status==='unpaid'?'selected':''}>unpaid</option>
+        <option ${o.payment_status==='paid'?'selected':''}>paid</option>
+      </select>
+    </div>`;
+  document.getElementById('orderModal').classList.add('open');
+}
+
+async function updatePaymentStatus(id, status) {
+  await sb.from('orders').update({ payment_status:status }).eq('id',id);
+  showToast('Payment status updated ✓');
+  loadOrders();
+}
+
+function closeOrderModal() { document.getElementById('orderModal').classList.remove('open'); }
+
+function exportOrdersCSV() {
+  const rows = [['Order#','Customer','Phone','Email','Address','Items','Subtotal','Discount','Total','Status','Payment','Date']];
+  allOrders.forEach(o=>{
+    const items = (o.items||[]).map(i=>`${i.name_en} x${i.qty}`).join('; ');
+    rows.push([o.order_number,o.customer_name,o.customer_phone,o.customer_email,o.delivery_address,items,o.subtotal,o.discount,o.total,o.status,o.payment_status,new Date(o.created_at).toLocaleDateString()]);
+  });
+  downloadCSV(rows, 'gremier-orders.csv');
+}
+
+// ══ PAYMENT LINKS ══
+plCartItems = [];
+
+function openNewLink() {
+  plCartItems = [];
+  document.getElementById('plCustomer').value = '';
+  document.getElementById('plPhone').value = '';
+  document.getElementById('plProductSearch').value = '';
+  document.getElementById('plFinalPrice').value = '';
+  document.getElementById('plDiscountNote').value = '';
+  document.getElementById('plProductResults').innerHTML = '';
+  document.getElementById('plLinkResult').style.display = 'none';
+  renderPlItems();
+  searchPayLinkProducts('');
+  document.getElementById('payLinkModal').classList.add('open');
+}
+
+function closePayLinkModal() { document.getElementById('payLinkModal').classList.remove('open'); }
+
+function searchPayLinkProducts(query) {
+  const q = query.toLowerCase();
+  const results = q
+    ? allProducts.filter(p=>p.is_active && (p.name_en.toLowerCase().includes(q)||(p.name_he||'').includes(q)))
+    : allProducts.filter(p=>p.is_active).slice(0,8);
+  document.getElementById('plProductResults').innerHTML = results.map(p=>
+    `<button class="btn btn-outline btn-sm" onclick="addPlItem('${p.id}')">${p.name_en} — ₪${p.price}</button>`
+  ).join('');
+}
+
+function addPlItem(productId) {
+  const p = allProducts.find(x=>x.id===productId);
+  if (!p) return;
+  const existing = plCartItems.find(x=>x.id===productId);
+  if (existing) existing.qty++;
+  else plCartItems.push({ id:p.id, name_en:p.name_en, name_he:p.name_he, price:p.price, qty:1 });
+  renderPlItems();
+}
+
+function renderPlItems() {
+  const container = document.getElementById('plItems');
+  if (!plCartItems.length) { container.innerHTML='<div style="color:var(--text2);font-size:.83rem;padding:8px 0">No products added yet.</div>'; }
+  else container.innerHTML = plCartItems.map(item=>`
+    <div class="pl-item">
+      <div class="pl-item-name">${item.name_en}</div>
+      <div class="qty-inline">
+        <button class="qty-inline-btn" onclick="plChangeQty('${item.id}',-1)">−</button>
+        <span style="font-size:.83rem;color:var(--cream);min-width:20px;text-align:center">${item.qty}</span>
+        <button class="qty-inline-btn" onclick="plChangeQty('${item.id}',1)">+</button>
+      </div>
+      <div class="pl-item-price">₪${item.price * item.qty}</div>
+      <button class="pl-item-rm" onclick="plRemoveItem('${item.id}')">✕</button>
+    </div>`).join('');
+  updatePlTotal();
+}
+
+function plChangeQty(id, delta) {
+  const item = plCartItems.find(x=>x.id===id);
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= 0) plCartItems = plCartItems.filter(x=>x.id!==id);
+  renderPlItems();
+}
+
+function plRemoveItem(id) { plCartItems = plCartItems.filter(x=>x.id!==id); renderPlItems(); }
+
+function updatePlTotal() {
+  const subtotal = plCartItems.reduce((s,i)=>s+i.price*i.qty,0);
+  document.getElementById('plSubtotal').textContent = `₪${subtotal}`;
+  const override = parseFloat(document.getElementById('plFinalPrice').value);
+  const final = isNaN(override) ? subtotal : override;
+  document.getElementById('plFinalTotal').textContent = `₪${final}`;
+}
+
+async function generatePayLink() {
+  if (!plCartItems.length) { showToast('Add at least one product'); return; }
+  const subtotal = plCartItems.reduce((s,i)=>s+i.price*i.qty,0);
+  const override = parseFloat(document.getElementById('plFinalPrice').value);
+  const total = isNaN(override) ? subtotal : override;
+  const discount = subtotal - total;
+  const linkCode = Math.random().toString(36).substr(2,10);
+
+  const linkData = {
+    link_code: linkCode,
+    customer_name: document.getElementById('plCustomer').value.trim() || null,
+    customer_phone: document.getElementById('plPhone').value.trim() || null,
+    items: plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
+    subtotal, discount: discount > 0 ? discount : 0,
+    discount_note: document.getElementById('plDiscountNote').value.trim() || null,
+    total, status: 'pending',
+    created_by: adminUser?.id,
+    // Tranzila URL will go here once connected:
+    tranzila_url: null,
+  };
+
+  const { error } = await sb.from('payment_links').insert(linkData);
+  if (error) { showToast('Error creating link'); console.error(error); return; }
+
+  const linkUrl = `${SITE_URL}/pay.html?code=${linkCode}`;
+  const whatsappMsg = encodeURIComponent(`Hi! Here's your payment link for your Gremier Coffee order (₪${total}):\n${linkUrl}`);
+  const phone = document.getElementById('plPhone').value.replace(/\D/g,'');
+
+  document.getElementById('plLinkResult').style.display = 'block';
+  document.getElementById('plLinkResult').innerHTML = `
+    <div class="link-result">
+      <div class="link-url">${linkUrl}</div>
+      <button class="copy-btn" onclick="copyLink('${linkUrl}')">Copy</button>
+    </div>
+    ${phone ? `<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${whatsappMsg}" target="_blank" class="btn btn-green btn-full" style="margin-top:10px;text-decoration:none">📲 Send on WhatsApp</a>` : ''}
+    <div style="font-size:.76rem;color:var(--text2);margin-top:8px;text-align:center">
+      ${discount>0?`Discount: ₪${discount.toFixed(2)} — ${linkData.discount_note||''}`:''}<br/>
+      💳 Tranzila payment will activate here once connected.
+    </div>`;
+  showToast('Payment link created ✓');
+  loadPayLinks();
+}
+
+function copyLink(url) {
+  navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
+}
+
+async function loadPayLinks() {
+  const { data } = await sb.from('payment_links').select('*').order('created_at',{ascending:false});
+  const body = document.getElementById('payLinksBody');
+  if (!data?.length) { body.innerHTML='<tr><td colspan="6" class="empty-state">No payment links yet.</td></tr>'; return; }
+  body.innerHTML = data.map(l=>{
+    const items = (l.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
+    const date = new Date(l.created_at).toLocaleDateString();
+    const linkUrl = `${SITE_URL}/pay.html?code=${l.link_code}`;
+    const phone = (l.customer_phone||'').replace(/\D/g,'');
+    const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
+    return `<tr>
+      <td>${l.customer_name||'—'}<br><small style="color:var(--text2)">${l.customer_phone||''}</small></td>
+      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${items}</td>
+      <td style="color:var(--amber)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
+      <td><span class="status-pill s-${l.status}">${l.status}</span></td>
+      <td>${date}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
+        ${phone?`<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${waMsg}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WhatsApp</a>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ══ REPORTS ══
+async function loadReports() {
+  const period = document.getElementById('reportPeriod').value;
+  const now = new Date();
+  let since = null;
+  if (period==='week') { const d=new Date(now); d.setDate(d.getDate()-7); since=d.toISOString(); }
+  else if (period==='month') { since=new Date(now.getFullYear(),now.getMonth(),1).toISOString(); }
+  else if (period==='year') { since=new Date(now.getFullYear(),0,1).toISOString(); }
+  let query = sb.from('orders').select('*');
+  if (since) query = query.gte('created_at', since);
+  const { data } = await query;
+  const orders = data || [];
+  renderReports(orders, period);
+}
+
+async function loadReportsByMonth() {
+  const val = document.getElementById('reportMonth').value;
+  if (!val) return;
+  const [yr, mo] = val.split('-').map(Number);
+  const start = new Date(yr, mo-1, 1).toISOString();
+  const end = new Date(yr, mo, 1).toISOString();
+  const { data } = await sb.from('orders').select('*').gte('created_at',start).lt('created_at',end);
+  renderReports(data||[], `${yr}-${mo}`);
+}
+
+function renderReports(orders, period) {
+  const total = orders.reduce((s,o)=>s+parseFloat(o.total||0),0);
+  const paid = orders.filter(o=>o.payment_status==='paid').reduce((s,o)=>s+parseFloat(o.total||0),0);
+  const avg = orders.length ? total/orders.length : 0;
+
+  document.getElementById('reportStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value">₪${total.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">${orders.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Order</div><div class="stat-value">₪${avg.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Collected</div><div class="stat-value">₪${paid.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value">₪${(total-paid).toFixed(0)}</div></div>
+  `;
+
+  // Revenue chart by day/week
+  const byDate = {};
+  orders.forEach(o=>{
+    const d = new Date(o.created_at);
+    const key = period==='year' ? `${d.toLocaleString('en',{month:'short'})}` : `${d.getDate()}/${d.getMonth()+1}`;
+    byDate[key] = (byDate[key]||0) + parseFloat(o.total||0);
+  });
+  const keys = Object.keys(byDate);
+  const vals = Object.values(byDate);
+  const maxVal = Math.max(...vals, 1);
+  document.getElementById('revenueChart').innerHTML = `
+    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:14px">Revenue Over Time</div>
+    <div class="chart-bars">${keys.map((k,i)=>`
+      <div class="chart-bar-wrap">
+        <div class="chart-bar" style="height:${Math.max(2,Math.round((vals[i]/maxVal)*100))}px" title="₪${vals[i].toFixed(0)}"></div>
+        <div class="chart-bar-label">${k}</div>
+      </div>`).join('')}
+    </div>`;
+
+  // Per-product breakdown
+  const productMap = {};
+  orders.forEach(o=>(o.items||[]).forEach(item=>{
+    const key = item.name_en;
+    if (!productMap[key]) productMap[key] = { units:0, revenue:0 };
+    productMap[key].units += item.qty;
+    productMap[key].revenue += item.price * item.qty;
+  }));
+  const sorted = Object.entries(productMap).sort((a,b)=>b[1].revenue-a[1].revenue);
+  document.getElementById('productBreakBody').innerHTML = sorted.map(([name,d])=>`
+    <tr><td style="color:var(--cream)">${name}</td><td>${d.units}</td><td style="color:var(--amber)">₪${d.revenue.toFixed(0)}</td><td>₪${(d.revenue/d.units).toFixed(0)}</td></tr>
+  `).join('') || '<tr><td colspan="4" class="empty-state">No data.</td></tr>';
+
+  // Customer history
+  const customerMap = {};
+  orders.forEach(o=>{
+    const key = o.customer_email || o.customer_phone || o.customer_name;
+    if (!customerMap[key]) customerMap[key] = { name:o.customer_name, contact:o.customer_email||o.customer_phone||'—', orders:0, spent:0, last:o.created_at };
+    customerMap[key].orders++;
+    customerMap[key].spent += parseFloat(o.total||0);
+    if (new Date(o.created_at) > new Date(customerMap[key].last)) customerMap[key].last = o.created_at;
+  });
+  const custSorted = Object.values(customerMap).sort((a,b)=>b.spent-a.spent);
+  document.getElementById('customerBody').innerHTML = custSorted.map(c=>`
+    <tr><td style="color:var(--cream)">${c.name}</td><td style="color:var(--text2)">${c.contact}</td><td>${c.orders}</td><td style="color:var(--amber)">₪${c.spent.toFixed(0)}</td><td>${new Date(c.last).toLocaleDateString()}</td></tr>
+  `).join('') || '<tr><td colspan="5" class="empty-state">No customer data.</td></tr>';
+}
+
+function exportReportCSV() {
+  // orders table export for accounting
+  const rows = [['Order#','Date','Customer','Phone','Email','Items','Subtotal','Discount','Total','Status','Payment']];
+  allOrders.forEach(o=>{
+    rows.push([o.order_number, new Date(o.created_at).toLocaleDateString(), o.customer_name, o.customer_phone, o.customer_email,
+      (o.items||[]).map(i=>`${i.name_en} x${i.qty}`).join('; '), o.subtotal, o.discount, o.total, o.status, o.payment_status]);
+  });
+  downloadCSV(rows, `gremier-report-${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// ══ UTILS ══
+function downloadCSV(rows, filename) {
+  const csv = rows.map(r=>r.map(c=>`"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = filename; a.click();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+// ══ DELIVERY SETTINGS ══
+async function loadDeliverySettings() {
+  const { data } = await sb.from('delivery_settings').select('*').eq('id',1).single();
+  if (data) {
+    document.getElementById('gsExpedited').value = data.expedited_surcharge || 20;
+    document.getElementById('gsRegular').value = data.default_regular_price || 30;
+    document.getElementById('gsExpDefault').value = data.default_expedited_price || 50;
+  }
+  loadZones();
+}
+
+async function saveDeliverySettings() {
+  const data = {
+    expedited_surcharge: parseFloat(document.getElementById('gsExpedited').value)||20,
+    default_regular_price: parseFloat(document.getElementById('gsRegular').value)||30,
+    default_expedited_price: parseFloat(document.getElementById('gsExpDefault').value)||50,
+    updated_at: new Date().toISOString()
+  };
+  await sb.from('delivery_settings').upsert({id:1,...data});
+  showToast('Delivery settings saved ✓');
+}
+
+let allZones = [];
+async function loadZones() {
+  const { data } = await sb.from('delivery_zones').select('*').order('sort_order');
+  allZones = data || [];
+  renderZones();
+}
+
+function renderZones() {
+  const body = document.getElementById('zonesBody');
+  if (!allZones.length) { body.innerHTML='<tr><td colspan="7" class="empty-state">No zones yet.</td></tr>'; return; }
+  body.innerHTML = allZones.map(z=>`<tr>
+    <td style="color:var(--cream)">${z.name_en}${z.name_he?' <small style="color:var(--text2)">/ '+z.name_he+'</small>':''}</td>
+    <td>${z.region||'—'}</td>
+    <td style="color:var(--amber)">₪${z.regular_price}</td>
+    <td style="color:var(--amber)">₪${z.expedited_price}</td>
+    <td>${z.free_above?'₪'+z.free_above:'—'}</td>
+    <td><span class="status-pill ${z.is_active?'s-fulfilled':'s-cancelled'}">${z.is_active?'Active':'Disabled'}</span></td>
+    <td style="display:flex;gap:6px">
+      <button class="btn btn-outline btn-sm" onclick="openZoneModal('${z.id}')">Edit</button>
+      <button class="btn btn-sm ${z.is_active?'btn-red':'btn-green'}" onclick="toggleZone('${z.id}',${z.is_active})">${z.is_active?'Disable':'Enable'}</button>
+    </td>
+  </tr>`).join('');
+}
+
+async function toggleZone(id, current) {
+  await sb.from('delivery_zones').update({is_active:!current}).eq('id',id);
+  loadZones();
+}
+
+function openZoneModal(zoneId) {
+  const z = zoneId ? allZones.find(x=>x.id===zoneId) : null;
+  const title = z ? 'Edit Zone' : 'Add Zone';
+  const regions = ['Jerusalem','Center','North','South','Other'];
+  const html = `
+    <h2 class="modal-title">${title}</h2>
+    <input type="hidden" id="zoneId" value="${zoneId||''}"/>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Name (EN)</label><input class="form-input" id="zNameEn" value="${z?.name_en||''}"/></div>
+      <div class="form-group"><label class="form-label">Name (HE)</label><input class="form-input" id="zNameHe" value="${z?.name_he||''}"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Region</label>
+      <select class="form-input" id="zRegion">${regions.map(r=>'<option '+(z?.region===r?'selected':'')+'>'+r+'</option>').join('')}</select>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">Regular (₪)</label><input class="form-input" type="number" id="zRegular" value="${z?.regular_price||''}"/></div>
+      <div class="form-group"><label class="form-label">Expedited (₪)</label><input class="form-input" type="number" id="zExpedited" value="${z?.expedited_price||''}"/></div>
+      <div class="form-group"><label class="form-label">Free Above (₪)</label><input class="form-input" type="number" id="zFreeAbove" value="${z?.free_above||''}" placeholder="Never free"/></div>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Zone active at checkout</span>
+      <label class="toggle"><input type="checkbox" id="zActive" ${z?.is_active!==false?'checked':''}/><span class="toggle-slider"></span></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn btn-amber" onclick="saveZone()">Save Zone</button>
+      <button class="btn btn-outline" onclick="closeZoneModal()">Cancel</button>
+      ${zoneId?'<button class="btn btn-red btn-sm" style="margin-left:auto" onclick="deleteZone(''+zoneId+'')">Delete</button>':''}
+    </div>`;
+  document.getElementById('zoneModalContent').innerHTML = html;
+  document.getElementById('zoneModal').classList.add('open');
+}
+
+function closeZoneModal() { document.getElementById('zoneModal').classList.remove('open'); }
+
+async function saveZone() {
+  const id = document.getElementById('zoneId').value;
+  const data = {
+    name_en: document.getElementById('zNameEn').value.trim(),
+    name_he: document.getElementById('zNameHe').value.trim(),
+    region: document.getElementById('zRegion').value,
+    regular_price: parseFloat(document.getElementById('zRegular').value)||0,
+    expedited_price: parseFloat(document.getElementById('zExpedited').value)||0,
+    free_above: parseFloat(document.getElementById('zFreeAbove').value)||null,
+    is_active: document.getElementById('zActive').checked,
+  };
+  if (!data.name_en) { showToast('Zone name required'); return; }
+  if (id) await sb.from('delivery_zones').update(data).eq('id',id);
+  else await sb.from('delivery_zones').insert(data);
+  showToast(id?'Zone updated ✓':'Zone added ✓');
+  closeZoneModal();
+  loadZones();
+}
+
+async function deleteZone(id) {
+  if (!confirm('Delete this zone?')) return;
+  await sb.from('delivery_zones').delete().eq('id',id);
+  showToast('Zone deleted');
+  closeZoneModal();
+  loadZones();
+}
+
+// ══ WEB ORDERS ══
+async function loadWebOrders() {
+  const { data } = await sb.from('pending_website_deliveries').select('*').order('created_at',{ascending:false});
+  window._webOrders = data || [];
+  const pending = (data||[]).filter(x=>x.status==='pending_schedule');
+  const scheduled = (data||[]).filter(x=>x.status==='scheduled');
+  document.getElementById('webOrderStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Pending Scheduling</div><div class="stat-value" style="color:var(--amber)">${pending.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value" style="color:#4caf72">${scheduled.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${(data||[]).length}</div></div>`;
+  const body = document.getElementById('webOrdersBody');
+  if (!data?.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No web orders yet.</td></tr>'; return; }
+  body.innerHTML = (data||[]).map(o=>{
+    const itemsText = (o.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
+    const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
+    const phone = (o.customer_phone||'').replace(/\D/g,'');
+    const waMsg = encodeURIComponent('Hi '+o.customer_name+'! Your Gremier Coffee order is confirmed.\n'+itemsText+'\nTotal: ₪'+o.order_total+'\nWe will be in touch about delivery.');
+    return '<tr>'
+      +'<td style="color:var(--cream)">#'+(o.order_number||'—')+'</td>'
+      +'<td>'+o.customer_name+'<br><small style="color:var(--text2)">'+(o.customer_phone||'')+'</small>'
+        +(phone?'<br><a href="https://wa.me/972'+phone.replace(/^0/,'')+'?text='+waMsg+'" target="_blank" style="font-size:.7rem;color:#25d366">WhatsApp</a>':'')
+      +'</td>'
+      +'<td>'+(o.delivery_address||'—')+'<br><small style="color:var(--text2)">'+(o.delivery_zone||'')+' · '+(o.delivery_type||'regular')+'</small></td>'
+      +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+itemsText+'">'+itemsText+'</td>'
+      +'<td style="color:var(--amber)">₪'+o.order_total+'<br><small style="color:var(--text2)">+₪'+o.delivery_fee+' delivery</small></td>'
+      +'<td>'+(o.scheduled_date?o.scheduled_date+' '+(o.scheduled_time||''):'<span style="color:var(--amber)">Not scheduled</span>')+'</td>'
+      +'<td><span class="status-pill '+(o.status==='pending_schedule'?'s-pending':o.status==='scheduled'?'s-confirmed':'s-fulfilled')+'">'+o.status.replace('_',' ')+'</span></td>'
+      +'<td><button class="btn btn-amber btn-sm" onclick="openScheduleModal(''+o.id+'')">Schedule</button></td>'
+      +'</tr>';
+  }).join('');
+}
+
+function openScheduleModal(id) {
+  const o = (window._webOrders||[]).find(x=>x.id===id);
+  const today = new Date().toISOString().split('T')[0];
+  const itemsText = (o?.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
+  document.getElementById('schedModalContent').innerHTML = `
+    <h2 class="modal-title">Schedule Delivery</h2>
+    <input type="hidden" id="schedOrderId" value="${id}"/>
+    <div style="background:var(--bg3);padding:14px;border-radius:4px;margin-bottom:20px;font-size:.85rem;color:var(--cream2)">
+      <strong style="color:var(--cream)">${o?.customer_name||'Customer'}</strong><br/>
+      ${o?.delivery_address||''}<br/><small>${itemsText}</small>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Delivery Date</label><input class="form-input" type="date" id="schedDate" value="${today}" min="${today}"/></div>
+      <div class="form-group"><label class="form-label">Time (optional)</label><input class="form-input" type="time" id="schedTime"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes</label><input class="form-input" id="schedNotes" placeholder="Any delivery notes..."/></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" onclick="confirmSchedule()">Confirm Schedule</button>
+      <button class="btn btn-outline" onclick="closeSchedModal()">Cancel</button>
+    </div>`;
+  document.getElementById('schedModal').classList.add('open');
+}
+
+function closeSchedModal() { document.getElementById('schedModal').classList.remove('open'); }
+
+async function confirmSchedule() {
+  const id = document.getElementById('schedOrderId').value;
+  const date = document.getElementById('schedDate').value;
+  const time = document.getElementById('schedTime').value;
+  const notes = document.getElementById('schedNotes').value;
+  if (!date) { showToast('Please pick a date'); return; }
+  await sb.from('pending_website_deliveries').update({
+    scheduled_date: date, scheduled_time: time||null,
+    notes: notes||null, status: 'scheduled'
+  }).eq('id', id);
+  // ── Write to dashboard jobs table (same Supabase project) ──
+  // Uses exact column names from App.jsx / jobToRow()
+  const o = (window._webOrders||[]).find(x=>x.id===id);
+  if (o) {
+    const jobId = 'web_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const itemsLabel = (o.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
+    const dashJob = {
+      id: jobId,
+      type: 'delivery',
+      delivery_type: 'private',
+      private_name: o.customer_name || 'Website Order',
+      private_address: o.delivery_address || '',
+      date: date,
+      time: time || null,
+      done: false,
+      needs_confirmation: false,
+      quantities: Object.fromEntries(
+        (o.items||[]).map(i => [i.product_id || i.name_en, i.qty])
+      ),
+      planned_total: o.order_total,
+      label: 'Website Order — ' + (o.customer_name||'') + ' — ' + itemsLabel,
+      people: null,
+      store_name: null,
+      created_at: new Date().toISOString(),
+      wa_needs_send: false,
+      billed: false,
+      paid: false,
+    };
+    const { error: jobErr } = await sb.from('jobs').insert(dashJob);
+    if (jobErr) {
+      console.error('Failed to create dashboard job:', jobErr);
+      showToast('Scheduled but dashboard sync failed — check console');
+    } else {
+      showToast('Delivery scheduled + added to dashboard ✓');
+    }
+  }
+  showToast('Delivery scheduled ✓');
+  closeSchedModal();
+  loadWebOrders();
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
+  document.getElementById('tab-'+tab).style.display='block';
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('nav-'+tab)?.classList.add('active');
+  if (tab==='orders') loadOrders();
+  if (tab==='products') renderProductsList();
+  if (tab==='paylinks') loadPayLinks();
+  if (tab==='reports') loadReports();
+  if (tab==='delivery') loadDeliverySettings();
+  if (tab==='weborders') loadWebOrders();
+}
+
+initAdmin();
+
+// ── PWA SERVICE WORKER ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>
