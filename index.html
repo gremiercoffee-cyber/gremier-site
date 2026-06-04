@@ -1208,8 +1208,8 @@ function openChatbot() {
   document.getElementById('chatbotFab').style.display = 'none';
   if (chatHistory.length === 0) {
     appendBotMessage(lang === 'he'
-      ? 'היי! 👋 תגיד לי מה תרצה להזמין — או תשאל אותי כל שאלה על הקולד ברו שלנו. 🧊'
-      : 'Hey! 👋 Tell me what you'd like to order — or ask me anything about our cold brew. 🧊', []);
+      ? 'היי! תגיד לי מה תרצה להזמין — או תשאל אותי כל שאלה על הקולד ברו שלנו.'
+      : 'Hey! Tell me what you would like to order, or ask me anything about our cold brew.', []);
   }
   setTimeout(() => document.getElementById('chatbotInput').focus(), 300);
 }
@@ -1287,12 +1287,12 @@ function confirmCartItems(cartItems, btn) {
   if (added > 0) {
     appendBotMessage(lang==='he'
       ? '✓ נוסף לעגלה! רוצה להמשיך לקנות או לעבור לתשלום?'
-      : '✓ Added to your cart! Want to keep shopping or head to checkout?', []);
+      : 'Added to your cart! Want to keep shopping or head to checkout?', []);
     openCart();
   } else {
     appendBotMessage(lang==='he'
       ? 'מצטער, לא הצלחתי למצוא את המוצרים. נסה שוב?'
-      : 'Sorry, I couldn't find those products. Try again?', []);
+      : 'Sorry, I could not find those products. Try again?', []);
   }
 }
 
@@ -1301,7 +1301,7 @@ function rejectCartItems(btn) {
   if (parent) parent.remove();
   appendBotMessage(lang==='he'
     ? 'בסדר! אם תשנה את דעתך, פשוט תגיד לי. 😊'
-    : 'No problem! Just let me know if you change your mind. 😊', []);
+    : 'No problem! Just let me know if you change your mind.', []);
 }
 
 async function sendChatMessage() {
@@ -1330,7 +1330,7 @@ async function sendChatMessage() {
     if (!res.ok) throw new Error('Network error');
 
     const data = await res.json();
-    const reply = data.reply || (lang==='he' ? 'משהו השתבש. נסה שוב!' : 'Something went wrong. Try again!');
+    const reply = data.reply || (lang==='he' ? 'משהו השתבש. נסה שוב!' : 'Something went wrong. Try again.');
     const cartItems = data.cart_items || [];
 
     chatHistory.push({ role: 'assistant', content: reply });
@@ -1340,7 +1340,7 @@ async function sendChatMessage() {
     hideThinking();
     appendBotMessage(lang==='he'
       ? 'אופס, משהו השתבש. נסה שוב!'
-      : 'Oops, something went wrong. Try again!', []);
+      : 'Oops, something went wrong. Try again.', []);
   }
 
   document.getElementById('chatbotSend').disabled = false;
