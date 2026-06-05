@@ -19,7 +19,6 @@
     }
     html { scroll-behavior: smooth; }
     body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; overflow-x:hidden; }
-
     /* NAV */
     nav { position:fixed; top:0; left:0; right:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:0 32px; height:64px; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); box-shadow:0 1px 12px rgba(0,0,0,0.06); }
     .nav-logo { font-family:'Playfair Display',serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; text-decoration:none; letter-spacing:.02em; cursor:pointer; }
@@ -51,7 +50,6 @@
       letter-spacing:.05em;
     }
     .mobile-menu a:hover { color:#1a1a1a; }
-
     /* BUTTONS */
     .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:500; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; border-radius:2px; transition:all .2s; border:none; padding:13px 32px; }
     .btn-primary { background:#1a1a1a; color:#ffffff; }
@@ -63,12 +61,10 @@
     .btn-green { background:var(--green); color:#fff; }
     .btn-green:hover { background:#36a35d; }
     .btn-red { background:var(--red); color:#fff; }
-
     /* PAGES */
     .page { display:none; }
     .page.active { display:block; animation:fadeIn .3s ease; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-
     /* HERO */
     .hero { min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; padding:80px 32px 60px; }
     .hero-bg { position:absolute; inset:0; background: radial-gradient(ellipse 80% 60% at 60% 40%,rgba(200,135,58,.07) 0%,transparent 60%), var(--bg); }
@@ -80,13 +76,11 @@
     .hero-desc { font-size:.95rem; color:var(--text2); line-height:1.7; max-width:480px; margin:0 auto 44px; }
     .hero-btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
     .divider { width:56px; height:1px; background:#1a1a1a; margin:0 auto 20px; opacity:.2; }
-
     /* SECTIONS */
     .section { padding:80px 32px; }
     .section-alt { background:#f7f5f2; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
     .section-header { text-align:center; margin-bottom:52px; }
     .section-title { font-family:'Playfair Display',serif; font-size:clamp(1.8rem,4vw,2.8rem); font-weight:700; color:#1a1a1a; }
-
     /* WHY GRID */
     .why-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:24px; max-width:900px; margin:0 auto; }
     .why-item { text-align:center; padding:28px 20px; border:1px solid var(--border); border-radius:4px; background:#ffffff; transition:border-color .2s,box-shadow .2s; box-shadow:0 2px 8px rgba(0,0,0,0.04); }
@@ -94,7 +88,6 @@
     .why-icon { font-size:1.8rem; margin-bottom:12px; }
     .why-title { font-family:'DM Sans',sans-serif; font-size:1rem; font-weight:700; color:var(--cream); margin-bottom:6px; }
     .why-desc { font-size:.82rem; color:var(--text2); line-height:1.6; }
-
     /* PRODUCT GRID */
     .category-filter { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:44px; }
     .filter-btn { background:transparent; border:1px solid var(--border); color:var(--text2); padding:7px 18px; font-family:'DM Sans',sans-serif; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; border-radius:20px; transition:all .2s; }
@@ -116,7 +109,6 @@
     .product-price .orig { font-size:.76rem; color:var(--text2); text-decoration:line-through; margin-right:5px; }
     .add-btn { background:#1a1a1a; color:#ffffff; border:none; width:30px; height:30px; border-radius:50%; font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s,transform .15s; }
     .add-btn:hover { background:#333333; transform:scale(1.1); }
-
     /* COFFEE BARS */
     .coffeebar-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:28px; max-width:980px; margin:0 auto; }
     .coffeebar-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; padding:36px 28px; position:relative; transition:border-color .2s,transform .2s; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
@@ -128,7 +120,6 @@
     .coffeebar-features { list-style:none; margin-bottom:28px; }
     .coffeebar-features li { font-size:.84rem; color:var(--text2); padding:7px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
     .coffeebar-features li::before { content:'✦'; color:#1a1a1a; font-size:.55rem; }
-
     /* CART DRAWER */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; opacity:0; pointer-events:none; transition:opacity .3s; }
     .overlay.open { opacity:1; pointer-events:all; }
@@ -157,7 +148,6 @@
     .cart-total-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
     .cart-total-label { font-size:.8rem; color:var(--text2); text-transform:uppercase; letter-spacing:.1em; }
     .cart-total-price { font-family:'Playfair Display',serif; font-size:1.4rem; color:#1a1a1a; }
-
     /* MODAL */
     .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:300; display:flex; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity .3s; }
     .modal-overlay.open { opacity:1; pointer-events:all; }
@@ -165,7 +155,6 @@
     .modal-overlay.open .modal { transform:scale(1); }
     .modal-title { font-family:'Playfair Display',serif; font-size:1.7rem; color:#1a1a1a; margin-bottom:6px; }
     .modal-sub { font-size:.84rem; color:var(--text2); margin-bottom:28px; }
-
     /* FORMS */
     .form-group { margin-bottom:18px; }
     .form-label { display:block; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:7px; }
@@ -173,33 +162,28 @@
     .form-input:focus { border-color:#1a1a1a; }
     .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     @media(max-width:500px){ .form-row{grid-template-columns:1fr;} }
-
     /* ORDER SUMMARY BOX */
     .order-summary-box { background:#f7f5f2; border-radius:4px; padding:18px; margin-bottom:20px; border:1px solid var(--border); }
     .order-summary-title { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:10px; }
     .order-line { display:flex; justify-content:space-between; font-size:.83rem; color:var(--cream2); padding:3px 0; }
     .order-total-line { display:flex; justify-content:space-between; font-size:.95rem; color:var(--cream); padding-top:10px; margin-top:6px; border-top:1px solid var(--border); font-weight:500; }
-
     /* PAYMENT PLACEHOLDER */
     .payment-ph { background:#f7f5f2; border:2px dashed var(--border); border-radius:4px; padding:22px; text-align:center; margin:20px 0; }
     .payment-ph-icon { font-size:1.8rem; margin-bottom:7px; }
     .payment-ph-title { font-size:.88rem; color:var(--cream); margin-bottom:3px; }
     .payment-ph-sub { font-size:.76rem; color:var(--text2); }
-
     /* CONFIRMATION */
     .confirm-screen { text-align:center; padding:16px 0; }
     .confirm-icon { font-size:3.5rem; margin-bottom:16px; animation:popIn .5s cubic-bezier(.175,.885,.32,1.275); }
     @keyframes popIn { 0%{transform:scale(0);opacity:0} 100%{transform:scale(1);opacity:1} }
     .confirm-title { font-family:'DM Sans',sans-serif; font-size:1.8rem; color:var(--cream); margin-bottom:10px; }
     .confirm-sub { font-size:.88rem; color:var(--text2); line-height:1.6; max-width:320px; margin:0 auto 28px; }
-
     /* AUTH MODAL */
     .google-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:13px; background:#fff; color:#3c4043; border:1px solid #dadce0; border-radius:4px; font-family:'DM Sans',sans-serif; font-size:.9rem; cursor:pointer; transition:box-shadow .2s; }
     .google-signin-btn:hover { box-shadow:0 2px 8px rgba(0,0,0,.3); }
     .google-icon { width:20px; height:20px; }
     .auth-divider { display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--text2); font-size:.78rem; }
     .auth-divider::before, .auth-divider::after { content:''; flex:1; height:1px; background:var(--border); }
-
     /* MY ORDERS */
     .my-orders-list { max-width:760px; margin:0 auto; }
     .order-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; padding:22px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
@@ -215,12 +199,10 @@
     .order-card-footer { display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid var(--border); }
     .order-total-label { font-size:.78rem; color:var(--text2); }
     .order-total-amt { font-size:1.1rem; color:#1a1a1a; font-weight:500; }
-
     /* LOADING */
     .loading { display:flex; align-items:center; justify-content:center; padding:60px 20px; color:var(--text2); gap:10px; }
     .spinner { width:22px; height:22px; border:2px solid var(--border); border-top-color:#1a1a1a; border-radius:50%; animation:spin .7s linear infinite; }
     @keyframes spin { to{transform:rotate(360deg)} }
-
     /* FOOTER */
     footer { background:#1a1a1a; border-top:1px solid var(--border); padding:56px 32px 28px; }
     .footer-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:44px; max-width:1000px; margin:0 auto 44px; }
@@ -234,14 +216,12 @@
     .footer-links a { font-size:.83rem; color:#aaaaaa; text-decoration:none; transition:color .2s; cursor:pointer; }
     .footer-links a:hover { color:#1a1a1a; }
     .footer-bottom { max-width:1000px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding-top:28px; border-top:1px solid #333333; font-size:.76rem; color:#888888; flex-wrap:wrap; gap:10px; }
-
     /* RTL */
     body.rtl { direction:rtl; }
     body.rtl .drawer { right:auto; left:0; border-left:none; border-right:1px solid var(--border); transform:translateX(-100%); }
     body.rtl .drawer.open { transform:translateX(0); }
     body.rtl .product-badge { left:auto; right:10px; }
     body.rtl .coffeebar-tag { left:auto; right:28px; }
-
     /* ── CHATBOT ── */
   .chatbot-fab {
     position: fixed;
@@ -273,7 +253,6 @@
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
   }
-
   .chatbot-panel {
     position: fixed;
     bottom: 0; left: 0; right: 0;
@@ -288,7 +267,6 @@
     transition: transform .3s cubic-bezier(.4,0,.2,1);
   }
   .chatbot-panel.open { transform: translateY(0); }
-
   .chatbot-header {
     display: flex;
     align-items: center;
@@ -307,7 +285,6 @@
   }
   .chatbot-name { font-size: .9rem; font-weight: 500; color: var(--cream); }
   .chatbot-status { font-size: .72rem; color: var(--green); }
-
   .chatbot-messages {
     flex: 1;
     overflow-y: auto;
@@ -316,7 +293,6 @@
     flex-direction: column;
     gap: 10px;
   }
-
   .chat-msg {
     display: flex;
     flex-direction: column;
@@ -324,7 +300,6 @@
   }
   .chat-msg.user { align-items: flex-end; }
   .chat-msg.bot { align-items: flex-start; }
-
   .chat-bubble {
     max-width: 82%;
     padding: 10px 14px;
@@ -343,7 +318,6 @@
     border: 1px solid var(--border);
     border-radius: 16px 16px 16px 4px;
   }
-
   .chat-cart-confirm {
     display: flex;
     gap: 8px;
@@ -362,7 +336,6 @@
   }
   .chat-confirm-btn.yes { background: #1a1a1a; color: #ffffff; }
   .chat-confirm-btn.no { background: var(--bg3); color: var(--cream2); border: 1px solid var(--border); }
-
   .chat-thinking {
     background: var(--card);
     border: 1px solid var(--border);
@@ -373,7 +346,6 @@
     align-self: flex-start;
     animation: fadeIn .2s ease;
   }
-
   .chatbot-input-row {
     padding: 12px 16px 28px;
     border-top: 1px solid var(--border);
@@ -410,14 +382,32 @@
   }
   .chatbot-send:hover { background: #333333; transform: scale(1.05); }
   .chatbot-send:disabled { background: var(--border); cursor: default; transform: none; }
-
+  /* QUICK REPLY CHIPS */
+  .chat-quick-replies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 16px 10px;
+  }
+  .chat-qr-btn {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    color: #1a1a1a;
+    padding: 7px 13px;
+    border-radius: 20px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .78rem;
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+  }
+  .chat-qr-btn:hover { border-color: #1a1a1a; background: #f7f5f2; }
   /* TOAST */
     .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; color:var(--cream); padding:12px 24px; border-radius:4px; font-size:.85rem; z-index:500; transition:transform .3s; white-space:nowrap; }
     .toast.show { transform:translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
-
 <!-- ── CONFIG — REPLACE THESE ── -->
 <script>
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
@@ -426,7 +416,6 @@
   const ADMIN_EMAIL = 'gremiercoffee@gmail.com';
   const SITE_URL = window.location.origin;
 </script>
-
 <!-- MOBILE MENU -->
 <div class="mobile-menu" id="mobileMenu">
   <a onclick="showPage('home');closeMobileMenu()" id="mm-home">Home</a>
@@ -435,7 +424,6 @@
   <a onclick="showPage('home');setTimeout(()=>scrollToSection('aboutSection'),120);closeMobileMenu()" id="mm-about">About</a>
   <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Orders</a>
 </div>
-
 <nav>
   <span class="nav-logo" onclick="showPage('home')">Gremier <span>Coffee</span></span>
   <ul class="nav-links">
@@ -456,7 +444,6 @@
     </button>
   </div>
 </nav>
-
 <!-- ══ HOME ══ -->
 <div id="homePage" class="page active">
   <div class="hero">
@@ -478,7 +465,6 @@
       </div>
     </div>
   </div>
-
   <div class="section section-alt">
     <div class="section-header">
       <div class="eyebrow" id="t-why-eye">Why Gremier</div>
@@ -492,7 +478,6 @@
       <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
     </div>
   </div>
-
   <div class="section">
     <div class="section-header">
       <div class="eyebrow" id="t-feat-eye">Our Range</div>
@@ -504,7 +489,6 @@
       <button class="btn btn-outline" onclick="showPage('shop')" id="t-view-all">View All Products</button>
     </div>
   </div>
-
   <div class="section section-alt" id="coffeeBarsSection">
     <div class="section-header">
       <div class="eyebrow" id="t-cb-eye">Events</div>
@@ -514,7 +498,6 @@
     </div>
     <div class="coffeebar-grid" id="coffeeBarGrid"><div class="loading"><div class="spinner"></div></div></div>
   </div>
-
   <div class="section" id="aboutSection">
     <div style="max-width:620px;margin:0 auto;text-align:center;">
       <div class="eyebrow" id="t-about-eye">Our Story</div>
@@ -524,7 +507,6 @@
     </div>
   </div>
 </div>
-
 <!-- ══ SHOP ══ -->
 <div id="shopPage" class="page" style="padding-top:80px">
   <div class="section">
@@ -534,10 +516,33 @@
       <h2 class="section-title" id="t-shop-title">Shop Cold Brew</h2>
     </div>
     <div class="category-filter" id="catFilter"></div>
+    <!-- Subscription callout — shown only when subscriptions tab active -->
+    <div id="subCallout" style="display:none;background:#f7f5f2;border:1px solid var(--border);border-radius:6px;padding:24px 28px;margin-bottom:32px;max-width:780px;margin-left:auto;margin-right:auto;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="font-size:1.6rem">🔄</span>
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#1a1a1a;font-weight:700" id="t-sub-title">Subscribe & Save 10%</div>
+          <div style="font-size:.82rem;color:var(--text2);margin-top:2px" id="t-sub-sub">Fresh cold brew delivered to your door every month. Cancel anytime.</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px">
+        <div style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
+          <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px">Save</div>
+          <div style="font-size:1.1rem;font-weight:600;color:#1a1a1a" id="t-sub-save">10% off every order</div>
+        </div>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
+          <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px">Delivery</div>
+          <div style="font-size:1.1rem;font-weight:600;color:#1a1a1a" id="t-sub-del">Monthly, on your schedule</div>
+        </div>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
+          <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px">Flexibility</div>
+          <div style="font-size:1.1rem;font-weight:600;color:#1a1a1a" id="t-sub-flex">Pause or cancel anytime</div>
+        </div>
+      </div>
+    </div>
     <div class="product-grid" id="shopGrid"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
-
 <!-- ══ MY ORDERS ══ -->
 <div id="myordersPage" class="page" style="padding-top:80px">
   <div class="section">
@@ -549,7 +554,6 @@
     <div class="my-orders-list" id="myOrdersList"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
-
 <!-- ══ CART DRAWER ══ -->
 <div class="overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="drawer" id="cartDrawer">
@@ -566,7 +570,6 @@
     <button class="btn btn-primary btn-full" onclick="openCheckout()" id="t-cart-checkout">Proceed to Checkout</button>
   </div>
 </div>
-
 <!-- ══ CHECKOUT MODAL ══ -->
 <div class="modal-overlay" id="checkoutOverlay">
   <div class="modal">
@@ -621,7 +624,6 @@
     </div>
   </div>
 </div>
-
 <!-- ══ AUTH MODAL ══ -->
 <div class="modal-overlay" id="authOverlay">
   <div class="modal" style="max-width:420px">
@@ -634,7 +636,6 @@
     <button class="btn btn-outline btn-full" style="margin-top:12px" onclick="closeAuthModal()" id="t-auth-cancel">Cancel</button>
   </div>
 </div>
-
 <!-- FOOTER -->
 <footer>
   <div class="footer-grid">
@@ -670,17 +671,14 @@
     <span id="t-ft-made">Made with ☕ in Israel</span>
   </div>
 </footer>
-
 <!-- WhatsApp Float Button -->
-<a href="https://wa.me/972552703413" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;background:#25D366;border-radius:24px;display:flex;align-items:center;gap:8px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:#fff;letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
+<a href="https://wa.me/972552703413?text=Hi%20Gremier%20Coffee!%20I%27d%20like%20to%20place%20an%20order%20%F0%9F%8D%BA" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;background:#25D366;border-radius:24px;display:flex;align-items:center;gap:8px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:#fff;letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
   <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.7-1.81A11.94 11.94 0 0016 27c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="white"/>
     <path d="M21.8 18.4c-.3-.15-1.77-.87-2.04-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.76-1.66-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.73-.71 1.97-1.39.24-.68.24-1.27.17-1.39-.07-.12-.27-.19-.57-.34z" fill="#25D366"/>
   </svg>
 </a>
-
 <div class="toast" id="toast"></div>
-
 <!-- ── CHATBOT FAB ── -->
 <div style="position:fixed;bottom:88px;left:16px;z-index:90;display:flex;flex-direction:column;align-items:center;gap:6px;" id="chatFabWrapper">
   <div style="background:#1a1a1a;color:#fff;font-family:'DM Sans',sans-serif;font-size:.68rem;font-weight:500;padding:6px 10px;border-radius:8px;max-width:140px;text-align:center;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,0.15);" id="chatFabLabel">Tell me what you want — I'll add it to your cart</div>
@@ -688,10 +686,8 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   </button>
 </div>
-
 <!-- ── CHATBOT BACKDROP ── -->
 <div class="overlay" id="chatbotOverlay" onclick="closeChatbot()"></div>
-
 <!-- ── CHATBOT PANEL ── -->
 <div class="chatbot-panel" id="chatbotPanel">
   <div class="chatbot-header">
@@ -711,12 +707,10 @@
     <button class="chatbot-send" id="chatbotSend" onclick="sendChatMessage()">↑</button>
   </div>
 </div>
-
 <script>
 // ══ SUPABASE INIT ══
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // ══ STATE ══
 let lang = 'en';
 let cart = [];
@@ -724,7 +718,6 @@ let products = [];
 let activeCategory = 'all';
 let currentUser = null;
 let isAdmin = false;
-
 // ══ TRANSLATIONS ══
 const T = {
   en: {
@@ -810,10 +803,8 @@ const T = {
     'order-status':{'pending':'ממתין','confirmed':'אושר','fulfilled':'סופק','cancelled':'בוטל'},
   }
 };
-
 function tr(key) { return T[lang][key] || key; }
 function trCat(key) { return T[lang].cats[key] || key; }
-
 function applyTranslations() {
   document.body.classList.toggle('rtl', lang === 'he');
   document.getElementById('langBtn').textContent = lang === 'en' ? 'עב / HE' : 'EN';
@@ -850,20 +841,16 @@ function applyTranslations() {
   if (chatCta) chatCta.textContent = lang==='he' ? 'יודע מה אתה רוצה? בנה את ההזמנה שלך כאן →' : 'Know what you want? Build your order here →';
   renderGrids();
 }
-
 function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); }
-
 // ══ AUTH ══
 async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) await setUser(session.user);
-
   sb.auth.onAuthStateChange(async (event, session) => {
     if (session) await setUser(session.user);
     else clearUser();
   });
 }
-
 async function setUser(user) {
   currentUser = user;
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
@@ -879,13 +866,11 @@ async function setUser(user) {
   document.getElementById('coName').value = user.user_metadata?.full_name || '';
   document.getElementById('coEmail').value = user.email || '';
 }
-
 function clearUser() {
   currentUser = null; isAdmin = false;
   document.getElementById('authBtn').innerHTML = `<span>${tr('sign-in')}</span>`;
   document.getElementById('myOrdersNav').style.display = 'none';
 }
-
 function handleAuthClick() {
   if (currentUser) {
     if (confirm(tr('sign-out') + '?')) sb.auth.signOut();
@@ -893,17 +878,14 @@ function handleAuthClick() {
     openAuthModal();
   }
 }
-
 function openAuthModal() { document.getElementById('authOverlay').classList.add('open'); }
 function closeAuthModal() { document.getElementById('authOverlay').classList.remove('open'); }
-
 async function signInWithGoogle() {
   await sb.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: SITE_URL }
   });
 }
-
 // ══ PRODUCTS ══
 const coffeeBarProducts = [
   { id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי', price:249, featured:false,
@@ -913,19 +895,15 @@ const coffeeBarProducts = [
     featuresEn:['Cold brew setup for up to 80 guests','Premium dispenser included','Full 4-flavor selection','Cups, napkins & signage','Setup & breakdown by us','30% off extra dispenser'],
     featuresHe:['הגדרה ל-80 אורחים','מתקן פרימיום כלול','4 טעמים לבחירה','כוסות, מפיות ושילוט','הקמה ופירוק על ידינו','30% הנחה על מתקן נוסף'] },
 ];
-
 const featuredOrder = ['Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast','Caramel Cremier','5L Classic Dark Roast','Combo Subscription'];
-
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
   if (error || !data) { products = []; return; }
   products = data;
 }
-
 function productIcon(cat) {
   return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
 }
-
 function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
@@ -950,20 +928,21 @@ function productCardHTML(p) {
       </div>
     </div>`;
 }
-
 function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
   if (!grid) return;
   const featured = featuredOrder.map(n => products.find(p => p.name_en === n)).filter(Boolean);
   grid.innerHTML = featured.length ? featured.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center">No products yet.</p>';
 }
-
 const categories = [
   {key:'all'},{key:'bottles'},{key:'minis'},{key:'bulk'},{key:'subscriptions'}
 ];
-
-function setCategory(cat) { activeCategory = cat; renderShop(); }
-
+function setCategory(cat) {
+  activeCategory = cat;
+  const callout = document.getElementById('subCallout');
+  if (callout) callout.style.display = cat === 'subscriptions' ? 'block' : 'none';
+  renderShop();
+}
 function renderShop() {
   const filter = document.getElementById('catFilter');
   if (filter) {
@@ -976,7 +955,6 @@ function renderShop() {
   const list = activeCategory === 'all' ? products : products.filter(p => p.category === activeCategory);
   grid.innerHTML = list.length ? list.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center;width:100%">No products in this category.</p>';
 }
-
 function renderCoffeeBars() {
   const grid = document.getElementById('coffeeBarGrid');
   if (!grid) return;
@@ -994,16 +972,13 @@ function renderCoffeeBars() {
       </div>`;
   }).join('');
 }
-
 function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); }
-
 function enquireCoffeeBar(id) {
   const b = coffeeBarProducts.find(x=>x.id===id);
   if (!b) return;
   const msg = `Hi! I'm interested in the ${b.nameEn} (₪${b.price}). Please send me more details.`;
   window.location.href = `mailto:gremiercoffee@gmail.com?subject=Coffee Bar Enquiry&body=${encodeURIComponent(msg)}`;
 }
-
 // ══ CART ══
 function addToCart(productId) {
   const p = products.find(x => x.id === productId);
@@ -1016,14 +991,11 @@ function addToCart(productId) {
   if (btn) { btn.textContent='✓'; btn.style.background='var(--green)'; setTimeout(()=>{btn.textContent='+';btn.style.background='';},800); }
   showToast(lang==='he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
 }
-
 function updateCartCount() {
   document.getElementById('cartCount').textContent = cart.reduce((s,i)=>s+i.qty,0);
 }
-
 function openCart() { renderCartDrawer(); document.getElementById('cartOverlay').classList.add('open'); document.getElementById('cartDrawer').classList.add('open'); }
 function closeCart() { document.getElementById('cartOverlay').classList.remove('open'); document.getElementById('cartDrawer').classList.remove('open'); }
-
 function renderCartDrawer() {
   const body = document.getElementById('cartBody');
   const footer = document.getElementById('cartFooter');
@@ -1054,7 +1026,6 @@ function renderCartDrawer() {
   }).join('');
   document.getElementById('cartTotal').textContent = `₪${total}`;
 }
-
 function changeQty(id, delta) {
   const item = cart.find(x=>x.id===id);
   if (!item) return;
@@ -1062,12 +1033,10 @@ function changeQty(id, delta) {
   if (item.qty <= 0) cart = cart.filter(x=>x.id!==id);
   updateCartCount(); renderCartDrawer();
 }
-
 function removeFromCart(id) {
   cart = cart.filter(x=>x.id!==id);
   updateCartCount(); renderCartDrawer();
 }
-
 // ══ CHECKOUT ══
 function openCheckout() {
   closeCart();
@@ -1082,9 +1051,7 @@ function openCheckout() {
   document.getElementById('checkoutOverlay').classList.add('open');
   setTimeout(()=>updateDeliveryPrice(), 50);
 }
-
 function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
-
 async function submitOrder() {
   const name = document.getElementById('coName').value.trim();
   const phone = document.getElementById('coPhone').value.trim();
@@ -1117,7 +1084,6 @@ async function submitOrder() {
   document.getElementById('checkoutFormView').style.display = 'none';
   document.getElementById('checkoutConfirmView').style.display = 'block';
 }
-
 // ══ MY ORDERS ══
 async function loadMyOrders() {
   if (!currentUser) { document.getElementById('myOrdersList').innerHTML = `<p style="color:var(--text2);text-align:center">${lang==='he'?'יש להתחבר':'Please sign in to view your orders.'}</p>`; return; }
@@ -1141,7 +1107,6 @@ async function loadMyOrders() {
     </div>`;
   }).join('');
 }
-
 // ══ PAGES ══
 function showPage(page) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1150,7 +1115,6 @@ function showPage(page) {
   if (page === 'shop') { activeCategory='all'; renderShop(); }
   if (page === 'myorders') loadMyOrders();
 }
-
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   menu.classList.toggle('open');
@@ -1158,18 +1122,15 @@ function toggleMobileMenu() {
 function closeMobileMenu() {
   document.getElementById('mobileMenu').classList.remove('open');
 }
-
 function scrollToSection(id) {
   document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});
 }
-
 // ══ TOAST ══
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
-
 // ══ INIT ══
 async function init() {
   await initAuth();
@@ -1177,14 +1138,11 @@ async function init() {
   await loadDeliveryZones();
   applyTranslations();
 }
-
 init();
-
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
 let chatHistory = [];
 let chatOpen = false;
-
 // Product ID map — matches edge function ids to our products array
 const CHAT_PRODUCT_MAP = {
   'classic-dark-roast':     'Classic Dark Roast',
@@ -1201,34 +1159,170 @@ const CHAT_PRODUCT_MAP = {
   'combo-subscription':     'Combo Subscription',
   'colombia-subscription':  'Colombia Monthly Subscription',
 };
-
+// Quick-reply chip sets shown after key moments
+const CHAT_QUICK_REPLIES = {
+  welcome: {
+    en: ['🛒 Start an order','☕ What\'s your best seller?','🎉 I need a coffee bar','🔄 Tell me about subscriptions'],
+    he: ['🛒 התחל הזמנה','☕ מה הכי נמכר?','🎉 בר קפה לאירוע','🔄 מידע על מנויים'],
+  },
+  afterAdd: {
+    en: ['➕ Add another product','🫙 Mini 4-Pack of Cremier','🧴 Any syrups available?','✅ Go to checkout'],
+    he: ['➕ הוסף עוד מוצר','🫙 4-Pack Cremier מיני','🧴 יש סירופים?','✅ לתשלום'],
+  },
+  browse: {
+    en: ['🫙 Show me bottles','📦 Mini packs','🪣 Bulk / 5L','🔄 Subscriptions'],
+    he: ['🫙 בקבוקים','📦 מיני פקים','🪣 כמויות / 5 ליטר','🔄 מנויים'],
+  },
+};
+// Hardcoded upsell suggestion products (shown as mini cards in chat)
+function getChatSuggestedProducts() {
+  const priority = ['Caramel Cremier','Mini Cremier 4-Pack','Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast'];
+  return priority.map(n => products.find(p => p.name_en === n)).filter(Boolean).slice(0,3);
+}
 function openChatbot() {
   chatOpen = true;
   document.getElementById('chatbotOverlay').classList.add('open');
   document.getElementById('chatbotPanel').classList.add('open');
   const fabW = document.getElementById('chatFabWrapper'); if(fabW) fabW.style.display='none';
   if (chatHistory.length === 0) {
-    appendBotMessage(lang === 'he'
-      ? 'היי! תגיד לי מה תרצה להזמין — או תשאל אותי כל שאלה על הקולד ברו שלנו.'
-      : 'Hey! Tell me what you would like to order, or ask me anything about our cold brew.', []);
+    const greeting = lang==='he'
+      ? 'היי! 👋 אני עוזר ההזמנות של גרמייר. איך אפשר לעזור?'
+      : 'Hey! 👋 I\'m the Gremier order assistant. What can I help you with?';
+    appendBotMessage(greeting, [], CHAT_QUICK_REPLIES.welcome);
+    // show product suggestion cards after greeting
+    setTimeout(() => appendProductSuggestions(), 400);
   }
   setTimeout(() => document.getElementById('chatbotInput').focus(), 300);
 }
-
 function closeChatbot() {
   chatOpen = false;
   document.getElementById('chatbotOverlay').classList.remove('open');
   document.getElementById('chatbotPanel').classList.remove('open');
   const fabW2 = document.getElementById('chatFabWrapper'); if(fabW2) fabW2.style.display='flex';
 }
-
-function appendBotMessage(text, cartItems) {
+// Render mini product cards inline in chat
+function appendProductSuggestions() {
+  const suggested = getChatSuggestedProducts();
+  if (!suggested.length) return;
   const container = document.getElementById('chatbotMessages');
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-msg bot';
+  const label = lang==='he' ? 'המוצרים הפופולריים שלנו:' : 'Our popular picks:';
+  wrap.innerHTML = `<div class="chat-bubble" style="padding:10px 12px">${label}</div>`;
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:6px;width:100%';
+  suggested.forEach(p => {
+    const name = lang==='he' ? (p.name_he||p.name_en) : p.name_en;
+    const img = p.images?.length ? `<img src="${p.images[0]}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0" alt=""/>` : `<div style="width:44px;height:44px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">${productIcon(p.category)}</div>`;
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;align-items:center;gap:10px;background:#f7f5f2;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;transition:border-color .2s';
+    card.innerHTML = `${img}<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:#1a1a1a;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div><div style="font-size:.76rem;color:var(--text2)">₪${p.price}</div></div><button style="background:#1a1a1a;color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>`;
+    card.onclick = () => chatAddProduct(p.id, name);
+    grid.appendChild(card);
+  });
+  wrap.appendChild(grid);
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+}
+function chatAddProduct(productId, name) {
+  addToCart(productId);
+  appendUserMessage(lang==='he' ? `הוסף ${name}` : `Add ${name}`);
+  chatHistory.push({ role:'user', content: lang==='he' ? `הוסף ${name} לעגלה` : `Add ${name} to my cart` });
+  const upsellMsg = lang==='he'
+    ? `✓ ${name} נוסף לעגלה! רוצה להוסיף עוד? יש לנו גם 4-Pack Cremier מיני שמשתלב מעולה.`
+    : `✓ ${name} added! Want to add anything else? The Mini Cremier 4-Pack pairs great with it.`;
+  appendBotMessage(upsellMsg, [], CHAT_QUICK_REPLIES.afterAdd);
+  chatHistory.push({ role:'assistant', content: upsellMsg });
+}
+// Render quick-reply chips
+function appendQuickReplies(replies) {
+  if (!replies || !replies.length) return;
+  const container = document.getElementById('chatbotMessages');
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-quick-replies';
+  wrap.id = 'chatQuickReplies';
+  replies.forEach(label => {
+    const btn = document.createElement('button');
+    btn.className = 'chat-qr-btn';
+    btn.textContent = label;
+    btn.onclick = () => {
+      wrap.remove();
+      handleQuickReply(label);
+    };
+    wrap.appendChild(btn);
+  });
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+}
+function handleQuickReply(label) {
+  // Map chip labels to actions
+  const lower = label.toLowerCase();
+  if (lower.includes('checkout') || lower.includes('תשלום')) {
+    appendUserMessage(label);
+    closeChatbot(); openCheckout(); return;
+  }
+  if (lower.includes('mini') && lower.includes('cremier')) {
+    const p = products.find(x => x.name_en === 'Mini Cremier 4-Pack');
+    if (p) { chatAddProduct(p.id, p.name_en); return; }
+  }
+  if (lower.includes('syrup') || lower.includes('סירופ')) {
+    appendUserMessage(label);
+    appendBotMessage(lang==='he'
+      ? 'סירופים עדיין בדרך! נעדכן ברגע שיהיו זמינים. בינתיים — שווה לנסות את ה-Caramel Cremier 😍'
+      : 'Syrups are coming soon! We\'ll have them up shortly. In the meantime, our Caramel Cremier is the next best thing 😍', [], CHAT_QUICK_REPLIES.browse);
+    chatHistory.push({ role:'user', content: label });
+    return;
+  }
+  if (lower.includes('subscription') || lower.includes('מנוי')) {
+    appendUserMessage(label);
+    const subMsg = lang==='he'
+      ? 'המנויים שלנו: קבל קולד ברו טרי כל חודש עם 10% הנחה. יש Combo (קלאסיק + קולומביה) ו-Colombia בלבד. רוצה שאוסיף אחד לעגלה?'
+      : 'Our subscriptions deliver fresh cold brew monthly with 10% off. We have a Combo (Classic + Colombia) and Colombia-only. Want me to add one to your cart?';
+    appendBotMessage(subMsg, [], [
+      lang==='en' ? '🔄 Combo Subscription' : '🔄 מנוי קומבו',
+      lang==='en' ? '🔄 Colombia Subscription' : '🔄 מנוי קולומביה',
+      lang==='en' ? '← Back' : '← חזרה',
+    ]);
+    chatHistory.push({ role:'user', content: label });
+    return;
+  }
+  if (lower.includes('combo subscription') || lower.includes('מנוי קומבו')) {
+    const p = products.find(x => x.name_en === 'Combo Subscription');
+    if (p) { chatAddProduct(p.id, p.name_en); return; }
+  }
+  if (lower.includes('colombia subscription') || lower.includes('מנוי קולומביה')) {
+    const p = products.find(x => x.name_en === 'Colombia Monthly Subscription');
+    if (p) { chatAddProduct(p.id, p.name_en); return; }
+  }
+  if (lower.includes('coffee bar') || lower.includes('בר קפה')) {
+    appendUserMessage(label);
+    closeChatbot();
+    showPage('home');
+    setTimeout(() => scrollToSection('coffeeBarsSection'), 200);
+    return;
+  }
+  if (lower.includes('bottles') || lower.includes('בקבוק')) {
+    appendUserMessage(label);
+    closeChatbot(); showPage('shop'); setCategory('bottles'); return;
+  }
+  if (lower.includes('mini') || lower.includes('מיני')) {
+    appendUserMessage(label);
+    closeChatbot(); showPage('shop'); setCategory('minis'); return;
+  }
+  if (lower.includes('bulk') || lower.includes('5l') || lower.includes('כמות')) {
+    appendUserMessage(label);
+    closeChatbot(); showPage('shop'); setCategory('bulk'); return;
+  }
+  // fallback — send as a text message to the AI
+  sendChatMessageText(label);
+}
+function appendBotMessage(text, cartItems, quickReplies) {
+  const container = document.getElementById('chatbotMessages');
+  // remove any existing quick reply row first
+  document.getElementById('chatQuickReplies')?.remove();
   const div = document.createElement('div');
   div.className = 'chat-msg bot';
   div.innerHTML = '<div class="chat-bubble">' + text + '</div>';
-
-  // If cart items are pending confirmation, show confirm/cancel
   if (cartItems && cartItems.length > 0) {
     const confirmDiv = document.createElement('div');
     confirmDiv.className = 'chat-cart-confirm';
@@ -1239,12 +1333,12 @@ function appendBotMessage(text, cartItems) {
       </button>`;
     div.appendChild(confirmDiv);
   }
-
   container.appendChild(div);
+  if (quickReplies && quickReplies.length) appendQuickReplies(quickReplies);
   container.scrollTop = container.scrollHeight;
 }
-
 function appendUserMessage(text) {
+  document.getElementById('chatQuickReplies')?.remove();
   const container = document.getElementById('chatbotMessages');
   const div = document.createElement('div');
   div.className = 'chat-msg user';
@@ -1252,7 +1346,6 @@ function appendUserMessage(text) {
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
-
 function showThinking() {
   const container = document.getElementById('chatbotMessages');
   const div = document.createElement('div');
@@ -1262,17 +1355,13 @@ function showThinking() {
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
-
 function hideThinking() {
   const el = document.getElementById('chatThinking');
   if (el) el.remove();
 }
-
 function confirmCartItems(cartItems, btn) {
-  // Disable both buttons
   const parent = btn.closest('.chat-cart-confirm');
   if (parent) parent.remove();
-
   let added = 0;
   cartItems.forEach(item => {
     const product = products.find(p =>
@@ -1284,71 +1373,59 @@ function confirmCartItems(cartItems, btn) {
       added++;
     }
   });
-
   if (added > 0) {
     appendBotMessage(lang==='he'
-      ? '✓ נוסף לעגלה! רוצה להמשיך לקנות או לעבור לתשלום?'
-      : 'Added to your cart! Want to keep shopping or head to checkout?', []);
+      ? '✓ נוסף לעגלה! רוצה להוסיף עוד?'
+      : '✓ Added to cart! Want to add anything else?', [], CHAT_QUICK_REPLIES.afterAdd);
     openCart();
   } else {
     appendBotMessage(lang==='he'
       ? 'מצטער, לא הצלחתי למצוא את המוצרים. נסה שוב?'
-      : 'Sorry, I could not find those products. Try again?', []);
+      : 'Sorry, I couldn\'t find those products. Try again?', [], CHAT_QUICK_REPLIES.browse);
   }
 }
-
 function rejectCartItems(btn) {
   const parent = btn.closest('.chat-cart-confirm');
   if (parent) parent.remove();
   appendBotMessage(lang==='he'
-    ? 'בסדר! אם תשנה את דעתך, פשוט תגיד לי. 😊'
-    : 'No problem! Just let me know if you change your mind.', []);
+    ? 'בסדר! משהו אחר?'
+    : 'No problem! Anything else?', [], CHAT_QUICK_REPLIES.browse);
 }
-
 async function sendChatMessage() {
   const input = document.getElementById('chatbotInput');
   const text = input.value.trim();
   if (!text) return;
-
   input.value = '';
+  sendChatMessageText(text);
+}
+async function sendChatMessageText(text) {
   document.getElementById('chatbotSend').disabled = true;
   appendUserMessage(text);
   chatHistory.push({ role: 'user', content: text });
   showThinking();
-
   try {
     const res = await fetch(CHAT_EDGE_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
       body: JSON.stringify({ messages: chatHistory }),
     });
-
     hideThinking();
-
     if (!res.ok) throw new Error('Network error');
-
     const data = await res.json();
     const reply = data.reply || (lang==='he' ? 'משהו השתבש. נסה שוב!' : 'Something went wrong. Try again.');
     const cartItems = data.cart_items || [];
-
     chatHistory.push({ role: 'assistant', content: reply });
-    appendBotMessage(reply, cartItems);
-
+    // always show afterAdd chips after AI reply so customer can keep going
+    appendBotMessage(reply, cartItems, cartItems.length ? [] : CHAT_QUICK_REPLIES.afterAdd);
   } catch(err) {
     hideThinking();
     appendBotMessage(lang==='he'
       ? 'אופס, משהו השתבש. נסה שוב!'
-      : 'Oops, something went wrong. Try again.', []);
+      : 'Oops, something went wrong. Try again.', [], CHAT_QUICK_REPLIES.welcome);
   }
-
   document.getElementById('chatbotSend').disabled = false;
-  input.focus();
+  document.getElementById('chatbotInput').focus();
 }
-
-
 </script>
 </body>
 </html>
