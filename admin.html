@@ -287,6 +287,7 @@
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">🌐</span><span>Web Orders</span></div>
+      <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="sidebar-bottom">
         <div class="user-info" id="adminEmail">—</div>
         <a href="index.html" target="_blank" class="view-site-btn">View Site ↗</a>
@@ -458,6 +459,16 @@
           </table></div>
         </div>
       </div>
+      <!-- SITE IMAGES -->
+      <div id="tab-siteimages" class="tab-content" style="display:none">
+        <div class="page-header">
+          <h1 class="page-title">Site Images</h1>
+          <p class="page-sub">Upload here — changes go live on the website instantly.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px" id="siteImagesGrid">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
     </div><!-- /main -->
   </div>
   <!-- MOBILE BOTTOM TAB BAR -->
@@ -482,6 +493,9 @@
     </button>
     <button class="tab-bar-btn" id="tbar-weborders" onclick="showTab('weborders')">
       <span class="tab-icon">🌐</span>Web Orders
+    </button>
+    <button class="tab-bar-btn" id="tbar-siteimages" onclick="showTab('siteimages')">
+      <span class="tab-icon">🖼️</span>Site Images
     </button>
   </div>
 </div>
@@ -1388,6 +1402,67 @@ function showTab(tab) {
   if (tab==='reports') loadReports();
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='weborders') loadWebOrders();
+  if (tab==='siteimages') loadSiteImages();
+}
+// ══ SITE IMAGES ══
+const SITE_IMAGE_SLOTS = [
+  { key:'hero_1',        label:'Hero Image 1',        hint:'Main homepage hero — large landscape' },
+  { key:'hero_2',        label:'Hero Image 2',        hint:'Second hero / slideshow image' },
+  { key:'hero_3',        label:'Hero Image 3',        hint:'Third hero / slideshow image' },
+  { key:'coffeebar_ad_1',label:'Coffee Bar Ad 1',     hint:'Coffee bars section — promo image' },
+  { key:'coffeebar_ad_2',label:'Coffee Bar Ad 2',     hint:'Coffee bars section — second image' },
+];
+let siteImageCache = {};
+async function loadSiteImages() {
+  const grid = document.getElementById('siteImagesGrid');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const { data } = await sb.from('site_settings').select('key,value');
+  siteImageCache = {};
+  (data||[]).forEach(row => siteImageCache[row.key] = row.value);
+  grid.innerHTML = SITE_IMAGE_SLOTS.map(slot => {
+    const url = siteImageCache[slot.key];
+    const thumb = url
+      ? `<img src="${url}" style="width:100%;height:160px;object-fit:cover;border-radius:4px;display:block;margin-bottom:10px" alt="${slot.label}"/>`
+      : `<div style="width:100%;height:160px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:2rem;margin-bottom:10px;color:var(--text2)">🖼️</div>`;
+    return `<div class="card" style="padding:16px">
+      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text2);margin-bottom:4px">${slot.label}</div>
+      <div style="font-size:.76rem;color:var(--text2);margin-bottom:10px">${slot.hint}</div>
+      ${thumb}
+      <label style="display:block">
+        <input type="file" accept="image/*" style="display:none" onchange="uploadSiteImage('${slot.key}', this)"/>
+        <span class="btn btn-outline btn-sm btn-full" style="cursor:pointer;display:flex;justify-content:center">
+          ${url ? '🔄 Replace Image' : '⬆️ Upload Image'}
+        </span>
+      </label>
+      ${url ? `<button class="btn btn-sm btn-full" style="margin-top:8px;background:none;border:1px solid var(--red);color:var(--red)" onclick="clearSiteImage('${slot.key}')">Remove</button>` : ''}
+    </div>`;
+  }).join('');
+}
+async function uploadSiteImage(key, input) {
+  const file = input.files[0];
+  if (!file) return;
+  showToast('Uploading...');
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', CLOUDINARY_PRESET);
+  fd.append('folder', 'gremier_site');
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method:'POST', body:fd });
+    const data = await res.json();
+    if (!data.secure_url) throw new Error('Upload failed');
+    await sb.from('site_settings').upsert({ key, value: data.secure_url, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    showToast(`${key} updated ✓`);
+    loadSiteImages();
+  } catch(e) {
+    console.error(e);
+    showToast('Upload failed — check Cloudinary preset');
+  }
+}
+async function clearSiteImage(key) {
+  if (!confirm('Remove this image?')) return;
+  await sb.from('site_settings').upsert({ key, value: null, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  showToast('Image removed');
+  loadSiteImages();
 }
 initAdmin();
 // ── PWA SERVICE WORKER ──
