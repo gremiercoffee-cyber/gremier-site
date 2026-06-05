@@ -556,13 +556,14 @@
       <label class="toggle"><input type="checkbox" id="pSubscription"/><span class="toggle-slider"></span></label>
     </div>
     <div class="form-group" style="margin-top:16px">
-      <label class="form-label">Product Images</label>
-      <div class="img-upload-area" id="imgDropArea" onclick="document.getElementById('imgFileInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)">
-        <div class="img-upload-icon">📷</div>
-        <div class="img-upload-text">Tap to upload photos, or drag & drop<br><small style="color:var(--text2);font-size:.72rem">Multiple images supported</small></div>
+      <label class="form-label" style="font-size:.85rem;font-weight:600;color:var(--cream);margin-bottom:8px;display:block">📷 Product Images</label>
+      <div class="img-upload-area" id="imgDropArea" onclick="document.getElementById('imgFileInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" style="border:2px dashed #1a1a1a;border-radius:6px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--bg3)">
+        <div style="font-size:2.4rem;margin-bottom:8px">📷</div>
+        <div style="font-size:.88rem;color:var(--cream);font-weight:500;margin-bottom:4px">Tap to upload product photos</div>
+        <div style="font-size:.76rem;color:var(--text2)">Or drag & drop · Multiple images OK · JPG, PNG, WebP</div>
       </div>
       <input type="file" id="imgFileInput" accept="image/*" multiple style="display:none" onchange="handleImgFiles(this.files)"/>
-      <div class="img-previews" id="imgPreviews"></div>
+      <div class="img-previews" id="imgPreviews" style="margin-top:10px"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Variations (optional)</label>
