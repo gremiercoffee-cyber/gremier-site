@@ -163,11 +163,46 @@
     .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--cream); border:1px solid var(--cream); color:#ffffff; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; transition:transform .3s; white-space:nowrap; }
     .toast.show { transform:translateX(-50%) translateY(0); }
     /* RESPONSIVE */
+    html, body { max-width:100vw; overflow-x:hidden; }
     @media(max-width:768px){
       .sidebar { display:none; }
-      .main { margin-left:0; padding:16px; }
+      .main { margin-left:0; padding:12px; max-width:100vw; overflow-x:hidden; }
       .form-row-2,.form-row-3 { grid-template-columns:1fr; }
       .bottom-tab-bar { display:flex; }
+      /* stat cards: 2 columns on mobile */
+      .stat-grid { grid-template-columns:1fr 1fr; gap:10px; }
+      .stat-card { padding:14px 12px; }
+      .stat-value { font-size:1.4rem; }
+      /* tables: scroll horizontally inside wrapper, never push page */
+      .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:calc(100vw - 24px); }
+      table { min-width:520px; }
+      td, th { padding:9px 10px; font-size:.76rem; }
+      /* modals: full-width with small padding */
+      .modal-backdrop { padding:10px; align-items:flex-start; }
+      .modal-box { padding:20px 16px; max-width:100% !important; width:100%; }
+      .modal-title { font-size:1.2rem; margin-bottom:14px; }
+      /* filter bar wraps nicely */
+      .filter-bar { gap:7px; }
+      .filter-bar select, .filter-bar input { font-size:.76rem; padding:7px 9px; }
+      /* product rows */
+      .product-row { flex-wrap:wrap; gap:10px; padding:12px; }
+      .product-row-actions { width:100%; display:flex; gap:8px; }
+      .product-row-actions .btn { flex:1; justify-content:center; }
+      /* page header */
+      .page-header { margin-bottom:16px; }
+      .page-title { font-size:1.4rem; }
+      .flex-between { margin-bottom:12px; }
+      /* payment link items */
+      .pl-item { flex-wrap:wrap; }
+      /* chart */
+      .chart-placeholder { padding:12px; }
+      /* hide less important table columns on very small screens */
+      .hide-mobile { display:none !important; }
+    }
+    @media(max-width:400px){
+      .stat-grid { grid-template-columns:1fr 1fr; }
+      .stat-value { font-size:1.2rem; }
+      .main { padding:8px; }
     }
     @media(min-width:769px){
       .bottom-tab-bar { display:none; }
@@ -322,8 +357,8 @@
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
             <thead><tr>
-              <th>#</th><th>Customer</th><th>Items</th><th>Total</th>
-              <th>Status</th><th>Payment</th><th>Date</th><th>Actions</th>
+              <th>#</th><th>Customer</th><th class="hide-mobile">Items</th><th>Total</th>
+              <th>Status</th><th class="hide-mobile">Payment</th><th class="hide-mobile">Date</th><th>Actions</th>
             </tr></thead>
             <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
@@ -339,7 +374,7 @@
         </div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="payLinksTable">
-            <thead><tr><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Customer</th><th class="hide-mobile">Items</th><th>Total</th><th>Status</th><th class="hide-mobile">Created</th><th>Actions</th></tr></thead>
             <tbody id="payLinksBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
@@ -404,7 +439,7 @@
         </div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="zonesTable">
-            <thead><tr><th>City / Zone</th><th>Region</th><th>Regular (₪)</th><th>Expedited (₪)</th><th>Free Above (₪)</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>City / Zone</th><th class="hide-mobile">Region</th><th>Regular (₪)</th><th class="hide-mobile">Expedited (₪)</th><th class="hide-mobile">Free Above (₪)</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="zonesBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
@@ -418,7 +453,7 @@
         <div class="stat-grid" id="webOrderStats"></div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="webOrdersTable">
-            <thead><tr><th>#</th><th>Customer</th><th>Address / Zone</th><th>Items</th><th>Total</th><th>Delivery</th><th>Status</th><th>Schedule</th></tr></thead>
+            <thead><tr><th>#</th><th>Customer</th><th class="hide-mobile">Address / Zone</th><th class="hide-mobile">Items</th><th>Total</th><th class="hide-mobile">Delivery</th><th>Status</th><th>Schedule</th></tr></thead>
             <tbody id="webOrdersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
@@ -839,11 +874,11 @@ function renderOrdersTable(orders) {
     return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
       <td style="color:var(--cream)">#${o.order_number}</td>
       <td>${o.customer_name}<br><small style="color:var(--text2)">${o.customer_phone||''}</small></td>
-      <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${items}">${items}</td>
+      <td class="hide-mobile" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${items}">${items}</td>
       <td style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
       <td><span class="status-pill s-${o.status}">${o.status}</span></td>
-      <td><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></td>
-      <td>${date}</td>
+      <td class="hide-mobile"><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></td>
+      <td class="hide-mobile">${date}</td>
       <td>
         <select class="form-input" style="padding:5px 8px;font-size:.74rem;width:auto" onchange="updateOrderStatus('${o.id}',this.value)" onclick="event.stopPropagation()">
           <option ${o.status==='pending'?'selected':''}>pending</option>
@@ -1022,10 +1057,10 @@ async function loadPayLinks() {
     const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
     return `<tr>
       <td>${l.customer_name||'—'}<br><small style="color:var(--text2)">${l.customer_phone||''}</small></td>
-      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${items}</td>
+      <td class="hide-mobile" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${items}</td>
       <td style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
       <td><span class="status-pill s-${l.status}">${l.status}</span></td>
-      <td>${date}</td>
+      <td class="hide-mobile">${date}</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
         ${phone?`<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${waMsg}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WhatsApp</a>`:''}
@@ -1163,10 +1198,10 @@ function renderZones() {
   if (!allZones.length) { body.innerHTML='<tr><td colspan="7" class="empty-state">No zones yet.</td></tr>'; return; }
   body.innerHTML = allZones.map(z=>`<tr>
     <td style="color:var(--cream)">${z.name_en}${z.name_he?' <small style="color:var(--text2)">/ '+z.name_he+'</small>':''}</td>
-    <td>${z.region||'—'}</td>
+    <td class="hide-mobile">${z.region||'—'}</td>
     <td style="color:var(--cream)">₪${z.regular_price}</td>
-    <td style="color:var(--cream)">₪${z.expedited_price}</td>
-    <td>${z.free_above?'₪'+z.free_above:'—'}</td>
+    <td class="hide-mobile" style="color:var(--cream)">₪${z.expedited_price}</td>
+    <td class="hide-mobile">${z.free_above?'₪'+z.free_above:'—'}</td>
     <td><span class="status-pill ${z.is_active?'s-fulfilled':'s-cancelled'}">${z.is_active?'Active':'Disabled'}</span></td>
     <td style="display:flex;gap:6px">
       <button class="btn btn-outline btn-sm" onclick="openZoneModal('${z.id}')">Edit</button>
