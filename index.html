@@ -151,6 +151,31 @@
     .coffeebar-features { list-style:none; margin-bottom:28px; }
     .coffeebar-features li { font-size:.84rem; color:var(--text2); padding:7px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
     .coffeebar-features li::before { content:'✦'; color:#1a1a1a; font-size:.55rem; }
+    /* PRODUCT DRAWER */
+    #pdBackdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:180; opacity:0; pointer-events:none; transition:opacity .3s; }
+    #pdBackdrop.open { opacity:1; pointer-events:all; }
+    #pdDrawer { position:fixed; bottom:0; left:0; right:0; z-index:181; background:#fff; border-radius:16px 16px 0 0; max-height:90vh; overflow-y:auto; transform:translateY(100%); transition:transform .35s cubic-bezier(.4,0,.2,1); padding-bottom:40px; }
+    #pdDrawer.open { transform:translateY(0); }
+    .pd-handle { width:40px; height:4px; background:var(--border); border-radius:2px; margin:12px auto 0; }
+    .pd-img-wrap { width:100%; height:240px; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:4rem; overflow:hidden; }
+    .pd-img-wrap img { width:100%; height:100%; object-fit:cover; }
+    .pd-thumbs { display:flex; gap:8px; padding:10px 20px 0; overflow-x:auto; }
+    .pd-thumb { width:56px; height:56px; border-radius:4px; object-fit:cover; cursor:pointer; border:2px solid transparent; flex-shrink:0; transition:border-color .2s; }
+    .pd-thumb.active { border-color:#1a1a1a; }
+    .pd-body { padding:18px 20px 0; }
+    .pd-badge { display:inline-block; font-size:.68rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; background:#1a1a1a; color:#fff; padding:3px 10px; border-radius:2px; margin-bottom:8px; }
+    .pd-badge.sale { background:var(--red); }
+    .pd-name { font-family:'Playfair Display',serif; font-size:1.5rem; color:#1a1a1a; line-height:1.2; margin-bottom:6px; }
+    .pd-price { font-size:1.15rem; color:#1a1a1a; font-weight:500; margin-bottom:12px; }
+    .pd-price .orig { text-decoration:line-through; color:var(--text2); font-size:.88rem; margin-right:6px; font-weight:300; }
+    .pd-desc { font-size:.87rem; color:var(--text2); line-height:1.75; margin-bottom:20px; }
+    .pd-qty-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .pd-qty { display:flex; align-items:center; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+    .pd-qty button { background:none; border:none; width:36px; height:36px; font-size:1.1rem; cursor:pointer; color:#1a1a1a; transition:background .15s; }
+    .pd-qty button:hover { background:var(--bg3); }
+    .pd-qty span { min-width:34px; text-align:center; font-size:.9rem; font-weight:500; border-left:1px solid var(--border); border-right:1px solid var(--border); height:36px; display:flex; align-items:center; justify-content:center; }
+    .pd-add-btn { flex:1; padding:12px; background:#1a1a1a; color:#fff; border:none; border-radius:4px; font-family:'DM Sans',sans-serif; font-size:.85rem; font-weight:500; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; transition:background .2s; }
+    .pd-add-btn:hover { background:#333; }
     /* CART DRAWER */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; opacity:0; pointer-events:none; transition:opacity .3s; }
     .overlay.open { opacity:1; pointer-events:all; }
@@ -631,6 +656,27 @@
     <div class="my-orders-list" id="myOrdersList"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
+<!-- ══ PRODUCT DRAWER ══ -->
+<div id="pdBackdrop" onclick="closeProductDrawer()"></div>
+<div id="pdDrawer">
+  <div class="pd-handle"></div>
+  <div class="pd-img-wrap" id="pdImgWrap"><span id="pdImgPlaceholder">☕</span></div>
+  <div class="pd-thumbs" id="pdThumbs"></div>
+  <div class="pd-body">
+    <div id="pdBadge" class="pd-badge" style="display:none"></div>
+    <div class="pd-name" id="pdName"></div>
+    <div class="pd-price" id="pdPrice"></div>
+    <div class="pd-desc" id="pdDesc"></div>
+    <div class="pd-qty-row">
+      <div class="pd-qty">
+        <button onclick="pdChangeQty(-1)">−</button>
+        <span id="pdQty">1</span>
+        <button onclick="pdChangeQty(1)">+</button>
+      </div>
+      <button class="pd-add-btn" onclick="pdAddToCart()" id="pdAddBtn">Add to Cart</button>
+    </div>
+  </div>
+</div>
 <!-- ══ CART DRAWER ══ -->
 <div class="overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="drawer" id="cartDrawer">
@@ -1061,6 +1107,78 @@ async function loadProducts() {
 function productIcon(cat) {
   return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
 }
+// ══ PRODUCT DRAWER ══
+let pdCurrentProduct = null;
+let pdQty = 1;
+let pdActiveImg = 0;
+function openProductDrawer(productId) {
+  const p = products.find(x => x.id === productId);
+  if (!p) return;
+  pdCurrentProduct = p;
+  pdQty = 1;
+  pdActiveImg = 0;
+  const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
+  const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
+  // image
+  const imgWrap = document.getElementById('pdImgWrap');
+  const placeholder = document.getElementById('pdImgPlaceholder');
+  if (p.images && p.images.length > 0) {
+    placeholder.style.display = 'none';
+    imgWrap.innerHTML = `<img id="pdMainImg" src="${p.images[0]}" alt="${name}"/>`;
+  } else {
+    imgWrap.innerHTML = `<span style="font-size:4rem">${productIcon(p.category)}</span>`;
+  }
+  // thumbnails
+  const thumbs = document.getElementById('pdThumbs');
+  if (p.images && p.images.length > 1) {
+    thumbs.innerHTML = p.images.map((url, i) =>
+      `<img class="pd-thumb${i===0?' active':''}" src="${url}" onclick="pdSwitchImg(${i},'${url}')" alt=""/>`
+    ).join('');
+  } else {
+    thumbs.innerHTML = '';
+  }
+  // badge
+  const badge = document.getElementById('pdBadge');
+  if (p.badge_text) {
+    badge.textContent = p.badge_text;
+    badge.className = 'pd-badge' + (p.badge_type === 'sale' ? ' sale' : '');
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+  document.getElementById('pdName').textContent = name;
+  document.getElementById('pdPrice').innerHTML = p.original_price
+    ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
+    : `₪${p.price}`;
+  document.getElementById('pdDesc').textContent = desc || '';
+  document.getElementById('pdQty').textContent = 1;
+  document.getElementById('pdAddBtn').textContent = lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart';
+  document.getElementById('pdBackdrop').classList.add('open');
+  document.getElementById('pdDrawer').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeProductDrawer() {
+  document.getElementById('pdBackdrop').classList.remove('open');
+  document.getElementById('pdDrawer').classList.remove('open');
+  document.body.style.overflow = '';
+  pdCurrentProduct = null;
+}
+function pdSwitchImg(idx, url) {
+  pdActiveImg = idx;
+  const main = document.getElementById('pdMainImg');
+  if (main) main.src = url;
+  document.querySelectorAll('.pd-thumb').forEach((t, i) => t.classList.toggle('active', i === idx));
+}
+function pdChangeQty(delta) {
+  pdQty = Math.max(1, pdQty + delta);
+  document.getElementById('pdQty').textContent = pdQty;
+}
+function pdAddToCart() {
+  if (!pdCurrentProduct) return;
+  for (let i = 0; i < pdQty; i++) addToCart(pdCurrentProduct.id);
+  closeProductDrawer();
+  openCart();
+}
 function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
@@ -1070,7 +1188,7 @@ function productCardHTML(p) {
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
   const origPrice = p.original_price ? `<span class="orig">₪${p.original_price}</span>` : '';
   return `
-    <div class="product-card" onclick="addToCart('${p.id}')">
+    <div class="product-card" onclick="openProductDrawer('${p.id}')">
       <div class="product-img">
         <div class="product-img-gradient"></div>
         ${img}${badge}
@@ -1080,7 +1198,7 @@ function productCardHTML(p) {
         <div class="product-desc">${desc || ''}</div>
         <div class="product-footer">
           <div class="product-price">${origPrice}₪${p.price}</div>
-          <button class="add-btn" data-id="${p.id}" onclick="event.stopPropagation();addToCart('${p.id}')">+</button>
+          <button class="add-btn" data-id="${p.id}" onclick="event.stopPropagation();openProductDrawer('${p.id}')">+</button>
         </div>
       </div>
     </div>`;
