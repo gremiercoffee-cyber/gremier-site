@@ -748,20 +748,22 @@
     <span id="t-ft-made">Made with ☕ in Israel</span>
   </div>
 </footer>
-<!-- WhatsApp Float Button -->
-<a href="https://wa.me/972552703413?text=Hi%20Gremier%20Coffee!%20I%27d%20like%20to%20place%20an%20order%20%F0%9F%8D%BA" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp" style="position:fixed;bottom:88px;right:20px;z-index:90;background:#25D366;border-radius:24px;display:flex;align-items:center;gap:8px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.35);transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;color:#fff;letter-spacing:.04em;white-space:nowrap;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.45)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 16px rgba(0,0,0,0.35)'">
-  <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.7-1.81A11.94 11.94 0 0016 27c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="white"/>
-    <path d="M21.8 18.4c-.3-.15-1.77-.87-2.04-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.76-1.66-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.73-.71 1.97-1.39.24-.68.24-1.27.17-1.39-.07-.12-.27-.19-.57-.34z" fill="#25D366"/>
-  </svg>
-</a>
-<div class="toast" id="toast"></div>
-<!-- ── CHATBOT FAB ── -->
-<div style="position:fixed;bottom:88px;left:16px;z-index:90;display:flex;flex-direction:column;align-items:center;gap:6px;" id="chatFabWrapper">
-  <div style="background:#1a1a1a;color:#fff;font-family:'DM Sans',sans-serif;font-size:.68rem;font-weight:500;padding:6px 10px;border-radius:8px;max-width:140px;text-align:center;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,0.15);" id="chatFabLabel">Tell me what you want — I'll add it to your cart</div>
-  <button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant" style="width:52px;height:52px;background:#1a1a1a;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,0.25);transition:transform .2s,box-shadow .2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-  </button>
+<!-- Float Buttons — bottom right, stacked -->
+<div style="position:fixed;bottom:20px;right:16px;z-index:90;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+  <!-- WhatsApp -->
+  <a href="https://wa.me/972552703413?text=Hi%20Gremier%20Coffee!%20I%27d%20like%20to%20place%20an%20order%20%F0%9F%8D%BA" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp"
+    style="background:#25D366;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 12px rgba(0,0,0,0.25);transition:transform .2s,box-shadow .2s;text-decoration:none;"
+    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.7-1.81A11.94 11.94 0 0016 27c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="white"/><path d="M21.8 18.4c-.3-.15-1.77-.87-2.04-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.76-1.66-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.73-.71 1.97-1.39.24-.68.24-1.27.17-1.39-.07-.12-.27-.19-.57-.34z" fill="#25D366"/></svg>
+  </a>
+  <!-- Chat FAB -->
+  <div id="chatFabWrapper" style="display:flex">
+    <button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant"
+      style="width:44px;height:44px;background:#1a1a1a;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;box-shadow:0 3px 12px rgba(0,0,0,0.25);transition:transform .2s;"
+      onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
+  </div>
 </div>
 <!-- ── CHATBOT BACKDROP ── -->
 <div class="overlay" id="chatbotOverlay" onclick="closeChatbot()"></div>
@@ -1504,22 +1506,26 @@ function handleQuickReply(label) {
 }
 function appendBotMessage(text, cartItems, quickReplies) {
   const container = document.getElementById('chatbotMessages');
-  // remove any existing quick reply row first
   document.getElementById('chatQuickReplies')?.remove();
   const div = document.createElement('div');
   div.className = 'chat-msg bot';
   div.innerHTML = '<div class="chat-bubble">' + text + '</div>';
-  if (cartItems && cartItems.length > 0) {
-    const confirmDiv = document.createElement('div');
-    confirmDiv.className = 'chat-cart-confirm';
-    confirmDiv.innerHTML = `
-      <button class="chat-confirm-btn no" onclick="rejectCartItems(this)">${lang==='he'?'לא תודה':'No thanks'}</button>
-      <button class="chat-confirm-btn yes" onclick="confirmCartItems(${JSON.stringify(cartItems).replace(/"/g,'&quot;')}, this)">
-        ${lang==='he'?'כן, הוסף לעגלה ✓':'Yes, add to cart ✓'}
-      </button>`;
-    div.appendChild(confirmDiv);
-  }
   container.appendChild(div);
+  // Auto-add cart items immediately — no confirm step
+  if (cartItems && cartItems.length > 0) {
+    let added = 0;
+    cartItems.forEach(item => {
+      const product = products.find(p =>
+        p.name_en === CHAT_PRODUCT_MAP[item.id] ||
+        p.name_en?.toLowerCase().includes((CHAT_PRODUCT_MAP[item.id]||'').toLowerCase())
+      );
+      if (product) {
+        for (let i = 0; i < (item.qty || 1); i++) addToCart(product.id);
+        added++;
+      }
+    });
+    if (added > 0) openCart();
+  }
   if (quickReplies && quickReplies.length) appendQuickReplies(quickReplies);
   container.scrollTop = container.scrollHeight;
 }
@@ -1544,38 +1550,6 @@ function showThinking() {
 function hideThinking() {
   const el = document.getElementById('chatThinking');
   if (el) el.remove();
-}
-function confirmCartItems(cartItems, btn) {
-  const parent = btn.closest('.chat-cart-confirm');
-  if (parent) parent.remove();
-  let added = 0;
-  cartItems.forEach(item => {
-    const product = products.find(p =>
-      p.name_en === CHAT_PRODUCT_MAP[item.id] ||
-      p.name_en.toLowerCase().includes((CHAT_PRODUCT_MAP[item.id]||'').toLowerCase())
-    );
-    if (product) {
-      for (let i = 0; i < (item.qty || 1); i++) addToCart(product.id);
-      added++;
-    }
-  });
-  if (added > 0) {
-    appendBotMessage(lang==='he'
-      ? '✓ נוסף לעגלה! רוצה להוסיף עוד?'
-      : '✓ Added to cart! Want to add anything else?', [], CHAT_QUICK_REPLIES.afterAdd);
-    openCart();
-  } else {
-    appendBotMessage(lang==='he'
-      ? 'מצטער, לא הצלחתי למצוא את המוצרים. נסה שוב?'
-      : 'Sorry, I couldn\'t find those products. Try again?', [], CHAT_QUICK_REPLIES.browse);
-  }
-}
-function rejectCartItems(btn) {
-  const parent = btn.closest('.chat-cart-confirm');
-  if (parent) parent.remove();
-  appendBotMessage(lang==='he'
-    ? 'בסדר! משהו אחר?'
-    : 'No problem! Anything else?', [], CHAT_QUICK_REPLIES.browse);
 }
 async function sendChatMessage() {
   const input = document.getElementById('chatbotInput');
