@@ -19,6 +19,37 @@
     }
     html { scroll-behavior: smooth; }
     body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; overflow-x:hidden; }
+    /* MEMBERSHIP BANNER */
+    #memberBanner { position:fixed; top:0; left:0; right:0; z-index:110; background:#1a1a1a; color:#fff; display:flex; align-items:center; justify-content:center; gap:10px; padding:9px 40px 9px 16px; font-size:.77rem; letter-spacing:.03em; }
+    #memberBanner.hidden { display:none; }
+    #memberBanner a { color:#c8873a; text-decoration:none; font-weight:500; cursor:pointer; border-bottom:1px solid rgba(200,135,58,.4); }
+    #memberBanner a:hover { border-bottom-color:#c8873a; }
+    #memberBanner .banner-close { position:absolute; right:12px; background:none; border:none; color:rgba(255,255,255,.5); font-size:1.1rem; cursor:pointer; padding:0 6px; }
+    #memberBanner .banner-close:hover { color:#fff; }
+    body.has-banner nav { top:38px; }
+    body.has-banner .mobile-menu { top:102px; }
+    body.has-banner .page { padding-top:118px !important; }
+    /* MEMBERSHIP POPUP */
+    #memberPopup { position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.5); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:24px; opacity:0; pointer-events:none; transition:opacity .3s; }
+    #memberPopup.open { opacity:1; pointer-events:all; }
+    .member-popup-box { background:#fff; border-radius:8px; padding:36px 32px; max-width:400px; width:100%; text-align:center; position:relative; box-shadow:0 20px 60px rgba(0,0,0,.2); transform:translateY(14px); transition:transform .3s; }
+    #memberPopup.open .member-popup-box { transform:translateY(0); }
+    .member-popup-icon { font-size:2.2rem; margin-bottom:12px; }
+    .member-popup-title { font-family:'Playfair Display',serif; font-size:1.5rem; color:#1a1a1a; margin-bottom:8px; }
+    .member-popup-sub { font-size:.86rem; color:var(--text2); line-height:1.65; margin-bottom:20px; }
+    .member-popup-perks { display:flex; flex-direction:column; gap:7px; margin-bottom:24px; text-align:left; }
+    .member-perk { display:flex; align-items:center; gap:9px; font-size:.82rem; color:#1a1a1a; }
+    .member-popup-close { position:absolute; top:12px; right:14px; background:none; border:none; font-size:1.3rem; color:var(--text2); cursor:pointer; }
+    /* LOYALTY PILL */
+    #loyaltyPill { display:none; align-items:center; gap:6px; background:var(--bg3); border:1px solid var(--border); border-radius:20px; padding:5px 12px; font-size:.75rem; color:#1a1a1a; cursor:pointer; transition:all .2s; white-space:nowrap; }
+    #loyaltyPill:hover { border-color:#1a1a1a; }
+    #loyaltyPill .lp-star { color:#c8873a; }
+    /* POINTS MODAL */
+    #pointsModal { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:24px; opacity:0; pointer-events:none; transition:opacity .3s; }
+    #pointsModal.open { opacity:1; pointer-events:all; }
+    .points-modal-box { background:#fff; border-radius:8px; padding:28px 24px; max-width:360px; width:100%; position:relative; box-shadow:0 16px 48px rgba(0,0,0,.15); }
+    .points-bar-track { background:var(--bg3); border-radius:4px; height:8px; margin:10px 0 5px; }
+    .points-bar-fill { background:#1a1a1a; border-radius:4px; height:8px; transition:width .6s ease; }
     /* NAV */
     nav { position:fixed; top:0; left:0; right:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:0 32px; height:64px; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); box-shadow:0 1px 12px rgba(0,0,0,0.06); }
     .nav-logo { font-family:'Playfair Display',serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; text-decoration:none; letter-spacing:.02em; cursor:pointer; }
@@ -408,7 +439,49 @@
   </style>
 </head>
 <body>
-<!-- ── CONFIG — REPLACE THESE ── -->
+<!-- ══ MEMBERSHIP BANNER (non-members only) ══ -->
+<div id="memberBanner" class="hidden">
+  ✦ <span id="bannerText">Become a Gremier Member — earn points on every order.</span>
+  <a onclick="openAuthModal()">Join free →</a>
+  <button class="banner-close" onclick="dismissBanner()" aria-label="Close">×</button>
+</div>
+<!-- ══ MEMBERSHIP POPUP (once per day for non-members) ══ -->
+<div id="memberPopup">
+  <div class="member-popup-box">
+    <button class="member-popup-close" onclick="closeMemberPopup()">×</button>
+    <div class="member-popup-icon">☕</div>
+    <div class="member-popup-title" id="popup-title">Join Gremier Members</div>
+    <div class="member-popup-sub" id="popup-sub">Sign in with Google and start earning points on every order. Free to join, always.</div>
+    <div class="member-popup-perks">
+      <div class="member-perk"><span class="member-perk-icon">⭐</span><span id="perk1">Earn 1 point for every ₪10 you spend</span></div>
+      <div class="member-perk"><span class="member-perk-icon">🎁</span><span id="perk2">200 points = 10% off your next order</span></div>
+      <div class="member-perk"><span class="member-perk-icon">🚀</span><span id="perk3">Early access to new products & deals</span></div>
+      <div class="member-perk"><span class="member-perk-icon">📦</span><span id="perk4">Track your orders easily</span></div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="closeMemberPopup(); openAuthModal()" id="popup-join-btn">Join Now — It's Free</button>
+    <button style="background:none;border:none;color:var(--text2);font-size:.78rem;margin-top:12px;cursor:pointer;width:100%" onclick="closeMemberPopup()" id="popup-skip">Maybe later</button>
+  </div>
+</div>
+<!-- ══ POINTS MODAL ══ -->
+<div id="pointsModal">
+  <div class="points-modal-box">
+    <button style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:1.2rem;color:var(--text2);cursor:pointer" onclick="closePointsModal()">×</button>
+    <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#1a1a1a;margin-bottom:4px" id="pts-title">Your Points</div>
+    <div style="font-size:.82rem;color:var(--text2);margin-bottom:16px" id="pts-sub">₪10 spent = 1 point · 200 points = 10% coupon</div>
+    <div style="font-size:2.4rem;font-family:'Playfair Display',serif;color:#1a1a1a;text-align:center;margin-bottom:4px" id="pts-count">0</div>
+    <div style="font-size:.78rem;color:var(--text2);text-align:center;margin-bottom:8px" id="pts-label">points</div>
+    <div class="points-bar-track"><div class="points-bar-fill" id="ptsBarFill" style="width:0%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--text2);margin-bottom:18px">
+      <span>0</span><span id="pts-bar-label">200 pts = 10% off</span>
+    </div>
+    <div id="couponAvailableBox" style="display:none;background:#f7f5f2;border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;margin-bottom:16px">
+      <div style="font-size:1rem;margin-bottom:4px">🎉</div>
+      <div style="font-size:.88rem;font-weight:500;color:#1a1a1a" id="pts-coupon-title">You have a 10% discount ready!</div>
+      <div style="font-size:.76rem;color:var(--text2);margin-top:3px" id="pts-coupon-sub">It will be automatically applied at checkout.</div>
+    </div>
+    <button class="btn btn-outline btn-full btn-sm" onclick="closePointsModal(); showPage('shop')">Shop Now</button>
+  </div>
+</div>
 <script>
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
@@ -435,6 +508,10 @@
   </ul>
   <div class="nav-right">
     <button class="lang-btn" onclick="toggleLang()" id="langBtn">עב</button>
+    <div id="loyaltyPill" onclick="openPointsModal()">
+      <span class="lp-star">⭐</span>
+      <span id="loyaltyPillText">0 pts</span>
+    </div>
     <button class="auth-btn" onclick="handleAuthClick()" id="authBtn">
       <span id="authBtnLabel">Sign In</span>
     </button>
@@ -846,15 +923,24 @@ function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations();
 async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) await setUser(session.user);
+  else showMembershipForGuest();
   sb.auth.onAuthStateChange(async (event, session) => {
     if (session) await setUser(session.user);
-    else clearUser();
+    else { clearUser(); showMembershipForGuest(); }
   });
 }
+let userPoints = 0;
+let userCouponAvailable = false;
 async function setUser(user) {
   currentUser = user;
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   isAdmin = profile?.is_admin || false;
+  userPoints = profile?.points || 0;
+  userCouponAvailable = profile?.coupon_available || false;
+  // ensure profile row exists with points columns
+  if (!profile) {
+    await sb.from('profiles').upsert({ id: user.id, points: 0, coupon_available: false }, { onConflict: 'id' });
+  }
   const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Account';
   const avatar = user.user_metadata?.avatar_url;
   const btn = document.getElementById('authBtn');
@@ -862,21 +948,90 @@ async function setUser(user) {
     ? `<img src="${avatar}" alt=""/> <span>${name.split(' ')[0]}</span>`
     : `<span>${name.split(' ')[0]}</span>`;
   document.getElementById('myOrdersNav').style.display = 'block';
-  // pre-fill checkout
   document.getElementById('coName').value = user.user_metadata?.full_name || '';
   document.getElementById('coEmail').value = user.email || '';
+  // hide banner and popup for members
+  hideMemberBanner();
+  closeMemberPopup();
+  // show loyalty pill
+  updateLoyaltyPill();
 }
 function clearUser() {
-  currentUser = null; isAdmin = false;
+  currentUser = null; isAdmin = false; userPoints = 0; userCouponAvailable = false;
   document.getElementById('authBtn').innerHTML = `<span>${tr('sign-in')}</span>`;
   document.getElementById('myOrdersNav').style.display = 'none';
+  document.getElementById('loyaltyPill').style.display = 'none';
 }
-function handleAuthClick() {
-  if (currentUser) {
-    if (confirm(tr('sign-out') + '?')) sb.auth.signOut();
-  } else {
-    openAuthModal();
-  }
+// ══ MEMBERSHIP UI ══
+function showMembershipForGuest() {
+  showMemberBanner();
+  checkAndShowMemberPopup();
+}
+function showMemberBanner() {
+  const b = document.getElementById('memberBanner');
+  b.classList.remove('hidden');
+  document.body.classList.add('has-banner');
+}
+function hideMemberBanner() {
+  document.getElementById('memberBanner').classList.add('hidden');
+  document.body.classList.remove('has-banner');
+}
+function dismissBanner() {
+  hideMemberBanner();
+  // banner stays hidden for this session only — comes back next visit
+}
+function checkAndShowMemberPopup() {
+  const key = 'gremier_member_popup_last';
+  const last = localStorage.getItem(key);
+  const today = new Date().toDateString();
+  if (last === today) return; // already shown today
+  setTimeout(() => {
+    document.getElementById('memberPopup').classList.add('open');
+    localStorage.setItem(key, today);
+  }, 2500); // show after 2.5s so page loads first
+}
+function closeMemberPopup() {
+  document.getElementById('memberPopup').classList.remove('open');
+}
+// ══ LOYALTY / POINTS ══
+function updateLoyaltyPill() {
+  const pill = document.getElementById('loyaltyPill');
+  pill.style.display = 'flex';
+  const text = userCouponAvailable
+    ? (lang==='he' ? '🎁 קופון זמין!' : '🎁 Coupon ready!')
+    : `${userPoints} ${lang==='he' ? 'נק׳' : 'pts'}`;
+  document.getElementById('loyaltyPillText').textContent = text;
+}
+function openPointsModal() {
+  const pct = Math.min(100, Math.round((userPoints / 200) * 100));
+  document.getElementById('pts-count').textContent = userPoints;
+  document.getElementById('ptsBarFill').style.width = pct + '%';
+  document.getElementById('couponAvailableBox').style.display = userCouponAvailable ? 'block' : 'none';
+  document.getElementById('pointsModal').classList.add('open');
+}
+function closePointsModal() { document.getElementById('pointsModal').classList.remove('open'); }
+async function awardPointsForOrder(orderTotal) {
+  if (!currentUser) return;
+  const earned = Math.floor(orderTotal / 10);
+  if (earned <= 0) return;
+  const newPoints = userPoints + earned;
+  const newCoupon = userCouponAvailable || newPoints >= 200;
+  // if crossing 200, reset points and mark coupon
+  const finalPoints = newCoupon && !userCouponAvailable ? newPoints - 200 : newPoints;
+  await sb.from('profiles').update({ points: finalPoints, coupon_available: newCoupon }).eq('id', currentUser.id);
+  userPoints = finalPoints;
+  userCouponAvailable = newCoupon;
+  updateLoyaltyPill();
+}
+function applyCouponIfAvailable() {
+  if (userCouponAvailable) return true;
+  return false;
+}
+async function redeemCoupon() {
+  if (!currentUser || !userCouponAvailable) return;
+  await sb.from('profiles').update({ coupon_available: false }).eq('id', currentUser.id);
+  userCouponAvailable = false;
+  updateLoyaltyPill();
 }
 function openAuthModal() { document.getElementById('authOverlay').classList.add('open'); }
 function closeAuthModal() { document.getElementById('authOverlay').classList.remove('open'); }
@@ -1040,12 +1195,16 @@ function removeFromCart(id) {
 // ══ CHECKOUT ══
 function openCheckout() {
   closeCart();
-  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
   const lines = cart.map(i=>`<div class="order-line"><span>${lang==='he'?(i.name_he||i.name_en):i.name_en} ×${i.qty}</span><span>₪${i.price*i.qty}</span></div>`).join('');
+  const couponLine = couponDiscount > 0
+    ? `<div class="order-line" style="color:var(--green)"><span>🎁 ${lang==='he'?'קופון חבר (10%)':'Member coupon (10%)'}</span><span>-₪${couponDiscount}</span></div>`
+    : '';
   document.getElementById('coSummary').innerHTML = `
     <div class="order-summary-title">${lang==='he'?'סיכום הזמנה':'Order Summary'}</div>
-    ${lines}
-    <div class="order-total-line"><span>${lang==='he'?'סה"כ':'Total'}</span><span>₪${total}</span></div>`;
+    ${lines}${couponLine}
+    <div class="order-total-line"><span>${lang==='he'?'סה"כ':'Total'}</span><span>₪${cartTotal - couponDiscount}</span></div>`;
   document.getElementById('checkoutFormView').style.display = 'block';
   document.getElementById('checkoutConfirmView').style.display = 'none';
   document.getElementById('checkoutOverlay').classList.add('open');
@@ -1061,7 +1220,9 @@ async function submitOrder() {
   }
   const deliveryFee = updateDeliveryPrice() || 0;
   const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
-  const total = cartTotal + deliveryFee;
+  // apply coupon if available
+  const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
+  const total = cartTotal + deliveryFee - couponDiscount;
   const cityId = document.getElementById('coCity')?.value;
   const zone = deliveryZones.find(z=>z.id===cityId);
   const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
@@ -1073,18 +1234,42 @@ async function submitOrder() {
     delivery_address: (zone ? (lang==='he'?zone.name_he:zone.name_en)+', ' : '') + addr,
     notes: document.getElementById('coNotes').value.trim(),
     items: cart.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
-    subtotal: total, discount: 0, total,
     subtotal: cartTotal,
+    discount: couponDiscount,
+    total,
     delivery_info: { delivery_type: shipType, delivery_fee: deliveryFee, zone_id: cityId, zone_name: zone?.name_en||'' },
     status: 'pending', payment_status: 'unpaid', payment_method: 'cod', source: 'website'
   };
   const { error } = await sb.from('orders').insert(orderData);
   if (error) { console.error(error); alert('Something went wrong. Please try again.'); return; }
+  // award points and redeem coupon if used
+  if (currentUser) {
+    await awardPointsForOrder(cartTotal);
+    if (couponDiscount > 0) await redeemCoupon();
+  }
   cart = []; updateCartCount();
   document.getElementById('checkoutFormView').style.display = 'none';
   document.getElementById('checkoutConfirmView').style.display = 'block';
 }
-// ══ MY ORDERS ══
+// ══ SITE SETTINGS (live images) ══
+let siteSettings = {};
+async function loadSiteSettings() {
+  const { data } = await sb.from('site_settings').select('key,value');
+  (data||[]).forEach(r => { if(r.value) siteSettings[r.key] = r.value; });
+  applySiteImages();
+}
+function applySiteImages() {
+  // Hero background — use hero_1 if set
+  if (siteSettings.hero_1) {
+    const heroBg = document.querySelector('.hero-bg');
+    if (heroBg) heroBg.style.background = `url('${siteSettings.hero_1}') center/cover no-repeat`;
+  }
+  // Coffee bar ad images — inject into coffeebar grid if not yet rendered by products
+  ['coffeebar_ad_1','coffeebar_ad_2'].forEach((key,i) => {
+    const el = document.getElementById('siteAdImg_'+i);
+    if (el && siteSettings[key]) el.src = siteSettings[key];
+  });
+}
 async function loadMyOrders() {
   if (!currentUser) { document.getElementById('myOrdersList').innerHTML = `<p style="color:var(--text2);text-align:center">${lang==='he'?'יש להתחבר':'Please sign in to view your orders.'}</p>`; return; }
   const { data, error } = await sb.from('orders').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:false});
@@ -1136,6 +1321,7 @@ async function init() {
   await initAuth();
   await loadProducts();
   await loadDeliveryZones();
+  loadSiteSettings();
   applyTranslations();
 }
 init();
