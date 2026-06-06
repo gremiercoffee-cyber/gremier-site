@@ -1141,6 +1141,7 @@ function productIcon(cat) {
 let pdCurrentProduct = null;
 let pdQty = 1;
 let pdActiveImg = 0;
+let pdScrollY = 0;
 function openProductDrawer(productId) {
   const p = products.find(x => String(x.id) === String(productId));
   if (!p) return;
@@ -1149,11 +1150,10 @@ function openProductDrawer(productId) {
   pdActiveImg = 0;
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
-  // image
+  // image — set innerHTML directly; do NOT reference a child placeholder element,
+  // because writing innerHTML here destroys it and breaks every subsequent open.
   const imgWrap = document.getElementById('pdImgWrap');
-  const placeholder = document.getElementById('pdImgPlaceholder');
   if (p.images && p.images.length > 0) {
-    placeholder.style.display = 'none';
     imgWrap.innerHTML = `<img id="pdMainImg" src="${p.images[0]}" alt="${name}"/>`;
   } else {
     imgWrap.innerHTML = `<span style="font-size:4rem">${productIcon(p.category)}</span>`;
@@ -1185,16 +1185,23 @@ function openProductDrawer(productId) {
   document.getElementById('pdAddBtn').textContent = lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart';
   document.getElementById('pdBackdrop').classList.add('open');
   document.getElementById('pdDrawer').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  pdScrollY = window.scrollY;
   document.body.style.position = 'fixed';
-  document.body.style.width = '100%';
+  document.body.style.top = `-${pdScrollY}px`;
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.overflow = 'hidden';
 }
 function closeProductDrawer() {
   document.getElementById('pdBackdrop').classList.remove('open');
   document.getElementById('pdDrawer').classList.remove('open');
   document.body.style.removeProperty('overflow');
   document.body.style.removeProperty('position');
+  document.body.style.removeProperty('top');
+  document.body.style.removeProperty('left');
+  document.body.style.removeProperty('right');
   document.body.style.removeProperty('width');
+  window.scrollTo(0, pdScrollY || 0);
   pdCurrentProduct = null;
 }
 function pdSwitchImg(idx, url) {
