@@ -179,6 +179,11 @@
     .pd-qty span { min-width:34px; text-align:center; font-size:.9rem; font-weight:500; border-left:1px solid var(--border); border-right:1px solid var(--border); height:36px; display:flex; align-items:center; justify-content:center; }
     .pd-add-btn { flex:1; padding:12px; background:#1a1a1a; color:#fff; border:none; border-radius:4px; font-family:'DM Sans',sans-serif; font-size:.85rem; font-weight:500; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; transition:background .2s; }
     .pd-add-btn:hover { background:#333; }
+    .pd-features { list-style:none; margin:0 0 18px; padding:0; }
+    .pd-features li { font-size:.84rem; color:var(--text2); padding:8px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:9px; }
+    .pd-features li::before { content:'✓'; color:#1a1a1a; font-weight:700; flex-shrink:0; }
+    .pd-wa-link { display:flex; align-items:center; gap:7px; font-size:.82rem; color:var(--text2); text-decoration:none; margin:4px 0 16px; }
+    .pd-wa-link:hover { color:#1a1a1a; }
     /* CART DRAWER */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; opacity:0; pointer-events:none; transition:opacity .3s; }
     .overlay.open { opacity:1; pointer-events:all; }
@@ -713,6 +718,8 @@
     <div class="pd-name" id="pdName"></div>
     <div class="pd-price" id="pdPrice"></div>
     <div class="pd-desc" id="pdDesc"></div>
+    <ul class="pd-features" id="pdFeatures" style="display:none"></ul>
+    <a class="pd-wa-link" id="pdWhatsApp" href="" target="_blank" rel="noopener" style="display:none">💬 Have questions? Message us on WhatsApp →</a>
     <div class="pd-qty-row">
       <div class="pd-qty">
         <button onclick="pdChangeQty(-1)">−</button>
@@ -1233,18 +1240,49 @@ async function signInWithGoogle() {
 }
 // ══ PRODUCTS ══
 const coffeeBarProducts = [
-  { id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי', price:249, featured:false, image:'',
-    featuresEn:['Cold brew service for your event','Classic & House Blend flavors','Professional setup & breakdown','Branded signage included'],
-    featuresHe:['שירות קולד ברו לאירוע שלך','טעמי קלאסיק ובלנד הבית','הקמה ופירוק מקצועי','שילוט ממותג כלול'] },
-  { id:'premium', nameEn:'Premium Coffee Bar', nameHe:'בר קפה פרימיום', price:349, featured:true, tag:'Most Popular',
-    featuresEn:['Cold brew service for up to 125 guests','Full 4-flavor selection','Professional setup & breakdown','Cups, napkins & branded signage','Custom event signage'],
-    featuresHe:['שירות לעד 125 אורחים','4 טעמים לבחירה','הקמה ופירוק מקצועי','כוסות, מפיות ושילוט ממותג','שילוט מותאם לאירוע'] },
+  {
+    id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי',
+    name_en:'Basic Coffee Bar', name_he:'בר קפה בסיסי',
+    price:249, featured:false, image:'', category:'event', tag:null,
+    description_en:"A complete cold brew bar experience for your event. We handle everything — setup, service, and breakdown. Have questions? Message us and we'll walk you through it.",
+    description_he:'חוויית בר קולד ברו מלאה לאירוע שלך. אנחנו מטפלים בהכל — הקמה, שירות ופירוק. יש שאלות? שלחו לנו הודעה.',
+    featuresEn:[], featuresHe:[],
+  },
+  {
+    id:'premium', nameEn:'Premium Coffee Bar', nameHe:'בר קפה פרימיום',
+    name_en:'Premium Coffee Bar', name_he:'בר קפה פרימיום',
+    price:349, featured:true, tag:'Most Popular', image:'', category:'event',
+    description_en:"Our premium cold brew bar for larger events. Expanded flavor options, a full branded setup, and professional service from start to finish. Have questions? Message us.",
+    description_he:'בר הקולד ברו הפרימיום שלנו לאירועים גדולים יותר. מבחר טעמים מורחב, סטאפ ממותג מלא ושירות מקצועי. יש שאלות? שלחו הודעה.',
+    featuresEn:[], featuresHe:[],
+  },
 ];
 const featuredOrder = ['Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast','Caramel Cremier','5L Classic Dark Roast','Combo Subscription'];
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
   if (error || !data) { products = []; return; }
   products = data;
+}
+function mergeCoffeeBarsIntoProducts() {
+  coffeeBarProducts.forEach(cb => {
+    if (!products.find(p => String(p.id) === String(cb.id))) {
+      products.push({
+        id: cb.id,
+        name_en: cb.name_en,
+        name_he: cb.name_he,
+        price: cb.price,
+        images: cb.image ? [cb.image] : [],
+        category: 'event',
+        description_en: cb.description_en || '',
+        description_he: cb.description_he || '',
+        badge_text: cb.tag || null,
+        badge_type: null,
+        original_price: null,
+        featuresEn: cb.featuresEn || [],
+        featuresHe: cb.featuresHe || [],
+      });
+    }
+  });
 }
 function productIcon(cat) {
   return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
@@ -1293,8 +1331,28 @@ function openProductDrawer(productId) {
     ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
     : `₪${p.price}`;
   document.getElementById('pdDesc').textContent = desc || '';
+  // features list
+  const featList = document.getElementById('pdFeatures');
+  const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
+  if (features && features.length > 0) {
+    featList.innerHTML = features.map(f => `<li>${f}</li>`).join('');
+    featList.style.display = 'block';
+  } else {
+    featList.innerHTML = '';
+    featList.style.display = 'none';
+  }
+  // WhatsApp link — only for event/coffee bar products
+  const waLink = document.getElementById('pdWhatsApp');
+  if (p.category === 'event') {
+    waLink.href = `https://wa.me/972552703413?text=${encodeURIComponent(`Hi! I have a question about the ${p.name_en} ☕`)}`;
+    waLink.style.display = 'flex';
+  } else {
+    waLink.style.display = 'none';
+  }
   document.getElementById('pdQty').textContent = 1;
-  document.getElementById('pdAddBtn').textContent = lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart';
+  document.getElementById('pdAddBtn').textContent = p.category === 'event'
+    ? (lang === 'he' ? 'הזמן עכשיו' : 'Book Now')
+    : (lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart');
   document.getElementById('pdBackdrop').classList.add('open');
   document.getElementById('pdDrawer').classList.add('open');
   pdScrollY = window.scrollY;
@@ -1406,20 +1464,18 @@ function renderCoffeeBarsPage() {
   if (!grid) return;
   grid.innerHTML = coffeeBarProducts.map(b => {
     const name = lang === 'he' ? b.nameHe : b.nameEn;
-    const features = lang === 'he' ? b.featuresHe : b.featuresEn;
     const imgHtml = b.image
       ? `<img src="${b.image}" alt="${name}"/>`
       : `<span>${lang==='he'?'תמונה בקרוב':'Photo coming soon'}</span>`;
     const tag = b.tag ? `<div class="cbp-card-tag">${b.tag}</div>` : '';
     return `
-      <div class="cbp-card ${b.featured?'featured':''}">
+      <div class="cbp-card ${b.featured?'featured':''}" data-product-id="${b.id}" style="cursor:pointer">
         <div class="cbp-card-img">${imgHtml}</div>
         <div class="cbp-card-body">
           ${tag}
           <div class="cbp-card-name">${name}</div>
           <div class="cbp-card-price">₪${b.price}</div>
-          <ul class="cbp-card-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>
-          <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20the%20${encodeURIComponent(b.nameEn)}%20package%20for%20my%20event%20%E2%98%95%20Can%20you%20send%20me%20details%3F" target="_blank" rel="noopener" class="btn btn-primary btn-full" style="text-decoration:none">${lang==='he'?'לתיאום האירוע':'Book This Package ↗'}</a>
+          <div class="btn btn-primary btn-full" style="pointer-events:none;text-align:center;margin-top:8px">${lang==='he'?'לפרטים והזמנה':'View Details & Book'}</div>
         </div>
       </div>`;
   }).join('');
@@ -1563,9 +1619,19 @@ function applySiteImages() {
     const img = document.getElementById('cbpHeroImg');
     if (w && img) { img.src = siteSettings.cb_hero; w.style.display = 'block'; }
   }
-  // Coffee bar package images
-  if (siteSettings.cb_basic_img) coffeeBarProducts.find(b=>b.id==='basic') && (coffeeBarProducts.find(b=>b.id==='basic').image = siteSettings.cb_basic_img);
-  if (siteSettings.cb_premium_img) coffeeBarProducts.find(b=>b.id==='premium') && (coffeeBarProducts.find(b=>b.id==='premium').image = siteSettings.cb_premium_img);
+  // Coffee bar package images — sync into both coffeeBarProducts and the merged products array
+  if (siteSettings.cb_basic_img) {
+    const cb = coffeeBarProducts.find(b=>b.id==='basic');
+    if (cb) cb.image = siteSettings.cb_basic_img;
+    const p = products.find(p=>String(p.id)==='basic');
+    if (p) p.images = [siteSettings.cb_basic_img];
+  }
+  if (siteSettings.cb_premium_img) {
+    const cb = coffeeBarProducts.find(b=>b.id==='premium');
+    if (cb) cb.image = siteSettings.cb_premium_img;
+    const p = products.find(p=>String(p.id)==='premium');
+    if (p) p.images = [siteSettings.cb_premium_img];
+  }
   // Gallery images
   ['cb_gallery_1','cb_gallery_2','cb_gallery_3','cb_gallery_4'].forEach((key,i) => {
     const el = document.getElementById('cbpGal'+(i+1));
@@ -1667,6 +1733,7 @@ function updateDeliveryPrice() {
 async function init() {
   await initAuth();
   await loadProducts();
+  mergeCoffeeBarsIntoProducts();
   try { await loadDeliveryZones(); } catch(e) { console.warn('Delivery zones unavailable:', e); }
   loadSiteSettings();
   applyTranslations();
