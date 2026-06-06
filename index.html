@@ -124,7 +124,7 @@
     .filter-btn { background:transparent; border:1px solid var(--border); color:var(--text2); padding:7px 18px; font-family:'DM Sans',sans-serif; font-size:.76rem; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; border-radius:20px; transition:all .2s; }
     .filter-btn.active, .filter-btn:hover { border-color:#1a1a1a; color:#1a1a1a; background:rgba(200,135,58,.08); }
     .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:22px; max-width:1200px; margin:0 auto; }
-    .product-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; overflow:hidden; cursor:pointer; transition:transform .2s,border-color .2s,box-shadow .2s; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+    .product-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; overflow:hidden; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transition:transform .2s,border-color .2s,box-shadow .2s; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
     .product-card:hover { transform:translateY(-4px); border-color:rgba(200,135,58,.6); box-shadow:0 12px 32px rgba(0,0,0,.12); }
     .product-img { width:100%; aspect-ratio:4/3; background:#f7f5f2; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
     .product-img img { width:100%; height:100%; object-fit:cover; pointer-events:none; user-select:none; }
@@ -154,14 +154,14 @@
     /* PRODUCT DRAWER */
     #pdBackdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:180; opacity:0; pointer-events:none; transition:opacity .3s; }
     #pdBackdrop.open { opacity:1; pointer-events:all; }
-    #pdDrawer { position:fixed; bottom:0; left:0; right:0; z-index:181; background:#fff; border-radius:16px 16px 0 0; max-height:92vh; min-height:60vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; transform:translateY(100%); transition:transform .35s cubic-bezier(.4,0,.2,1); padding-bottom:40px; }
+    #pdDrawer { position:fixed; bottom:0; left:0; right:0; z-index:181; background:#fff; border-radius:16px 16px 0 0; max-height:82vh; max-height:82dvh; min-height:50vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; transform:translateY(100%); transition:transform .35s cubic-bezier(.4,0,.2,1); padding-bottom:40px; }
     #pdDrawer.open { transform:translateY(0); }
     .pd-handle-row { position:sticky; top:0; z-index:3; background:#fff; display:flex; align-items:center; justify-content:center; padding:14px 16px 8px; border-bottom:1px solid var(--border); }
     .pd-handle { width:40px; height:4px; background:var(--border); border-radius:2px; }
     .pd-close-btn { position:absolute; right:14px; top:50%; transform:translateY(-50%); background:var(--bg3); border:1px solid var(--border); color:#1a1a1a; width:32px; height:32px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; line-height:1; }
     .pd-close-btn:hover { background:var(--border); }
-    .pd-img-wrap { width:100%; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:4rem; overflow:hidden; }
-    .pd-img-wrap img { width:100%; height:auto; display:block; }
+    .pd-img-wrap { width:100%; max-height:38vh; max-height:38dvh; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:4rem; overflow:hidden; }
+    .pd-img-wrap img { width:100%; max-height:38vh; max-height:38dvh; height:auto; object-fit:contain; display:block; }
     .pd-thumbs { display:flex; gap:8px; padding:10px 20px 0; overflow-x:auto; }
     .pd-thumb { width:56px; height:56px; border-radius:4px; object-fit:cover; cursor:pointer; border:2px solid transparent; flex-shrink:0; transition:border-color .2s; }
     .pd-thumb.active { border-color:#1a1a1a; }
@@ -825,9 +825,12 @@
   <div id="chatFabWrapper" style="display:flex;align-items:center;gap:10px">
     <div id="chatTooltip">
       Talk to me about<br>what you want to order
-      <svg width="38" height="22" viewBox="0 0 38 22" fill="none" style="display:block;margin-left:auto;margin-top:2px" aria-hidden="true">
-        <path d="M4 5 Q14 1 30 14" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-        <path d="M25 11 L30 14 L25 18" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <svg width="44" height="28" viewBox="0 0 44 28" fill="none" style="display:block;margin-left:auto;margin-top:4px" aria-hidden="true">
+        <!-- curve starts bottom-left, arcs up and ends pointing right -->
+        <path d="M6 22 C 8 10, 22 6, 38 14" stroke="#1a1a1a" stroke-width="1.7" stroke-linecap="round" fill="none"/>
+        <!-- arrowhead: two lines meeting at the tip (38,14) pointing right -->
+        <line x1="33" y1="10" x2="38" y2="14" stroke="#1a1a1a" stroke-width="1.7" stroke-linecap="round"/>
+        <line x1="33" y1="18" x2="38" y2="14" stroke="#1a1a1a" stroke-width="1.7" stroke-linecap="round"/>
       </svg>
     </div>
     <button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant"
@@ -1463,11 +1466,49 @@ function showToast(msg) {
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
+// ══ DELIVERY ZONES ══
+let deliveryZones = [];
+async function loadDeliveryZones() {
+  try {
+    const { data } = await sb.from('delivery_zones').select('*').order('name_en');
+    deliveryZones = data || [];
+  } catch(e) { deliveryZones = []; }
+  const sel = document.getElementById('coCity');
+  if (!sel || !deliveryZones.length) return;
+  const opts = deliveryZones.map(z =>
+    `<option value="${z.id}">${lang === 'he' ? z.name_he : z.name_en}</option>`
+  ).join('');
+  sel.innerHTML = `<option value="">${lang === 'he' ? 'בחר עיר...' : 'Select your city...'}</option>` + opts;
+}
+function updateDeliveryPrice() {
+  const cityId = document.getElementById('coCity')?.value;
+  const zone = deliveryZones.find(z => z.id === cityId);
+  const isExpedited = document.getElementById('shipExpedited')?.checked;
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const feeRow = document.getElementById('deliveryFeeRow');
+  const freeNote = document.getElementById('freeDeliveryNote');
+  if (!zone) {
+    if (feeRow) feeRow.style.display = 'none';
+    if (freeNote) freeNote.style.display = 'none';
+    document.getElementById('shipRegularPrice').textContent = '—';
+    document.getElementById('shipExpeditedPrice').textContent = '—';
+    return 0;
+  }
+  const isFree = zone.free_threshold && cartTotal >= zone.free_threshold;
+  const regularFee = isFree ? 0 : (zone.regular_price || 0);
+  const expeditedFee = zone.expedited_price || 0;
+  const fee = isExpedited ? expeditedFee : regularFee;
+  document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : `₪${zone.regular_price}`;
+  document.getElementById('shipExpeditedPrice').textContent = `₪${expeditedFee}`;
+  if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
+  if (freeNote) freeNote.style.display = (isFree && !isExpedited) ? 'block' : 'none';
+  return fee;
+}
 // ══ INIT ══
 async function init() {
   await initAuth();
   await loadProducts();
-  await loadDeliveryZones();
+  try { await loadDeliveryZones(); } catch(e) { console.warn('Delivery zones unavailable:', e); }
   loadSiteSettings();
   applyTranslations();
 }
