@@ -97,7 +97,7 @@
     .page.active { display:block; animation:fadeIn .3s ease; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
     /* HERO */
-    .hero { min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; padding:80px 32px 60px; }
+    .hero { min-height:58vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; padding:60px 32px 48px; }
     .hero-bg { position:absolute; inset:0; background: radial-gradient(ellipse 80% 60% at 60% 40%,rgba(200,135,58,.07) 0%,transparent 60%), var(--bg); }
     .hero-content { position:relative; z-index:2; max-width:680px; text-align:center; }
     .eyebrow { font-size:.72rem; letter-spacing:.25em; text-transform:uppercase; color:#1a1a1a; margin-bottom:20px; }
@@ -276,10 +276,10 @@
     .footer-links a:hover { color:#1a1a1a; }
     .footer-bottom { max-width:1000px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding-top:28px; border-top:1px solid #333333; font-size:.76rem; color:#888888; flex-wrap:wrap; gap:10px; }
     /* DESIGN POLISH */
-    .eyebrow { color:var(--amber) !important; }
-    .divider { background:var(--amber); opacity:.55; height:2px; }
     .btn-amber { background:var(--amber); color:#fff; }
     .btn-amber:hover { background:var(--amber2); transform:translateY(-1px); }
+    .btn-light { background:#fff; color:#1a1a1a; }
+    .btn-light:hover { background:#f0ede8; transform:translateY(-1px); }
     /* COFFEE BARS FULL PAGE */
     .cbp-hero { background:#1a1a1a; padding:80px 32px 64px; text-align:center; }
     .cbp-hero-title { font-family:'Playfair Display',serif; font-size:clamp(2.8rem,7vw,5rem); font-weight:900; color:#fff; line-height:1.05; margin-bottom:16px; }
@@ -290,16 +290,16 @@
     .cbp-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:28px; max-width:860px; margin:0 auto; }
     .cbp-card { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.07); transition:transform .25s,box-shadow .25s; }
     .cbp-card:hover { transform:translateY(-5px); box-shadow:0 16px 48px rgba(0,0,0,.13); }
-    .cbp-card.featured { border:2px solid var(--amber); }
+    .cbp-card.featured { border:2px solid #1a1a1a; }
     .cbp-card-img { width:100%; height:220px; background:var(--bg3); display:flex; align-items:center; justify-content:center; overflow:hidden; color:var(--text2); font-size:.82rem; letter-spacing:.05em; }
     .cbp-card-img img { width:100%; height:100%; object-fit:cover; }
     .cbp-card-body { padding:28px; }
-    .cbp-card-tag { display:inline-block; background:var(--amber); color:#fff; font-size:.6rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; padding:3px 9px; border-radius:2px; margin-bottom:10px; }
+    .cbp-card-tag { display:inline-block; background:#1a1a1a; color:#fff; font-size:.6rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; padding:3px 9px; border-radius:2px; margin-bottom:10px; }
     .cbp-card-name { font-family:'Playfair Display',serif; font-size:1.5rem; color:#1a1a1a; margin-bottom:4px; }
     .cbp-card-price { font-size:2rem; font-weight:600; color:#1a1a1a; margin-bottom:20px; }
     .cbp-card-features { list-style:none; margin-bottom:26px; }
     .cbp-card-features li { font-size:.84rem; color:var(--text2); padding:8px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
-    .cbp-card-features li::before { content:'✦'; color:var(--amber); font-size:.5rem; flex-shrink:0; }
+    .cbp-card-features li::before { content:'✦'; color:#1a1a1a; font-size:.5rem; flex-shrink:0; }
     .cbp-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:24px; max-width:860px; margin:0 auto; }
     .cbp-step { text-align:center; padding:28px 16px; }
     .cbp-step-num { width:46px; height:46px; background:#1a1a1a; color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:1.15rem; font-weight:700; margin:0 auto 16px; }
@@ -603,38 +603,31 @@
   <div class="hero">
     <div class="hero-bg"></div>
     <div class="hero-content">
-      <div class="eyebrow" id="t-hero-eyebrow">Israel's Premier Cold Brew</div>
-      <h1 class="hero-title">Cold Brew<br><em id="t-hero-em" style="color:#1a1a1a;font-style:italic;">Delivered</em></h1>
-      <div class="hero-subtitle" id="t-hero-sub">Straight to your door.</div>
-      <p class="hero-desc" id="t-hero-desc">Crafted from the finest beans, brewed slow and cold for maximum smoothness. Israel's best cold brew — delivered fresh to your fridge or your event.</p>
+      <h1 class="hero-title" id="t-hero-title">Cold Brew<br><em id="t-hero-em" style="color:#1a1a1a;font-style:italic;">Delivered.</em></h1>
+      <p class="hero-desc" id="t-hero-desc" style="margin-bottom:32px">Israel's finest cold brew — crafted slow, delivered fresh.</p>
       <div class="hero-btns">
-        <button class="btn btn-amber" onclick="showPage('shop')" id="t-hero-shop">Shop Now</button>
+        <button class="btn btn-primary" onclick="showPage('shop')" id="t-hero-shop">Shop Now</button>
         <button class="btn btn-outline" onclick="showPage('coffeebars')" id="t-hero-bars">Coffee Bars</button>
       </div>
-    </div>
-  </div>
-  <div class="section section-alt">
-    <div class="section-header">
-      <div class="eyebrow" id="t-why-eye">Why Gremier</div>
-      <div class="divider"></div>
-      <h2 class="section-title" id="t-why-title">Cold Brew, Done Right</h2>
-    </div>
-    <div class="why-grid">
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">❄</div><div class="why-title" id="t-w1t">Slow Cold Brew</div><div class="why-desc" id="t-w1d">Slow-steeped at cold temperature for maximum smoothness and zero bitterness.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">→</div><div class="why-title" id="t-w2t">Delivered Fresh</div><div class="why-desc" id="t-w2d">From our brewhouse to your door — cold, fresh, and ready to drink.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">◉</div><div class="why-title" id="t-w3t">Premium Beans</div><div class="why-desc" id="t-w3d">Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
     </div>
   </div>
   <div class="section">
     <div class="section-header">
       <div class="eyebrow" id="t-feat-eye">Our Range</div>
       <div class="divider"></div>
-      <h2 class="section-title" id="t-feat-title">Most Popular</h2>
+      <h2 class="section-title" id="t-feat-title">Shop Cold Brew</h2>
     </div>
     <div class="product-grid" id="featuredGrid"><div class="loading"><div class="spinner"></div></div></div>
     <div style="text-align:center;margin-top:44px">
       <button class="btn btn-outline" onclick="showPage('shop')" id="t-view-all">View All Products</button>
+    </div>
+  </div>
+  <div class="section section-alt">
+    <div class="why-grid" style="max-width:860px;margin:0 auto">
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">❄</div><div class="why-title" id="t-w1t">Slow Cold Brew</div><div class="why-desc" id="t-w1d">Slow-steeped at cold temperature for maximum smoothness and zero bitterness.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">→</div><div class="why-title" id="t-w2t">Delivered Fresh</div><div class="why-desc" id="t-w2d">From our brewhouse to your door — cold, fresh, ready to drink.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">◉</div><div class="why-title" id="t-w3t">Premium Beans</div><div class="why-desc" id="t-w3d">Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
     </div>
   </div>
   <div class="section section-alt" id="coffeeBarsSection">
@@ -728,11 +721,16 @@
 </div>
 <!-- ══ COFFEE BARS PAGE ══ -->
 <div id="coffeebarsPage" class="page" style="padding-top:64px">
+  <!-- Shop callout strip -->
+  <div style="background:#f7f5f2;border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:.82rem;color:var(--text2)">Just want cold brew delivered to your door?</span>
+    <button class="btn btn-outline" onclick="showPage('shop')" style="font-size:.78rem;padding:6px 18px">Shop Online →</button>
+  </div>
   <div class="cbp-hero">
     <div class="eyebrow" style="color:rgba(255,255,255,.4)!important;margin-bottom:16px">Events & Occasions</div>
     <h1 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h1>
-    <p class="cbp-hero-sub">A full cold brew experience at your wedding, birthday, corporate event, or any occasion — professionally set up, beautifully presented, completely handled.</p>
-    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95%20Can%20you%20tell%20me%20more%3F" target="_blank" rel="noopener" class="btn btn-amber" style="text-decoration:none">Book via WhatsApp ↗</a>
+    <p class="cbp-hero-sub">A full cold brew experience at your wedding, birthday, corporate event, or any occasion — we handle everything, from setup to service.</p>
+    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95%20Can%20you%20tell%20me%20more%3F" target="_blank" rel="noopener" class="btn btn-light" style="text-decoration:none">Book Your Event on WhatsApp ↗</a>
   </div>
   <div id="cbpHeroImgWrap" class="cbp-hero-img-wrap" style="display:none">
     <img id="cbpHeroImg" src="" alt="Gremier Coffee Bar at event"/>
@@ -747,7 +745,10 @@
     </div>
     <div class="cbp-cards" id="cbpPackages"></div>
     <p style="text-align:center;color:var(--text2);font-size:.82rem;margin-top:28px;line-height:1.7">
-      Pricing and capacity vary by event. <a href="https://wa.me/972552703413?text=Hi!%20I%27d%20like%20a%20custom%20quote%20for%20a%20Gremier%20Coffee%20Bar%20%E2%98%95" target="_blank" rel="noopener" style="color:var(--amber);text-decoration:none;font-weight:500">Contact us for a custom quote →</a>
+      Prices vary by guest count and event requirements. <a href="https://wa.me/972552703413?text=Hi!%20I%27d%20like%20a%20custom%20quote%20for%20a%20Gremier%20Coffee%20Bar%20%E2%98%95" target="_blank" rel="noopener" style="color:#1a1a1a;text-decoration:none;font-weight:500">Message us for a custom quote →</a>
+    </p>
+    <p style="text-align:center;color:var(--text2);font-size:.8rem;margin-top:10px">
+      Coffee products are also available to order directly online — <button onclick="showPage('shop')" style="background:none;border:none;padding:0;cursor:pointer;color:#1a1a1a;font-weight:600;font-size:.8rem;text-decoration:underline">browse the shop →</button>
     </p>
   </div>
 
@@ -796,7 +797,7 @@
   <div class="cbp-cta-band">
     <h2 class="cbp-cta-title">Ready to Elevate<br>Your Event?</h2>
     <p class="cbp-cta-sub">Let's make your next occasion unforgettable. Message us on WhatsApp and we'll get back to you within hours.</p>
-    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95" target="_blank" rel="noopener" class="btn btn-amber" style="text-decoration:none;font-size:.9rem">Message Us on WhatsApp ☕</a>
+    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95" target="_blank" rel="noopener" class="btn btn-light" style="text-decoration:none;font-size:.9rem">Book Your Event on WhatsApp ☕</a>
   </div>
 </div>
 <!-- ══ CART DRAWER ══ -->
@@ -1410,7 +1411,7 @@ function renderCoffeeBarsPage() {
           <div class="cbp-card-name">${name}</div>
           <div class="cbp-card-price">₪${b.price}</div>
           <ul class="cbp-card-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>
-          <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20the%20${encodeURIComponent(b.nameEn)}%20%E2%98%95%20Can%20you%20send%20me%20details%3F" target="_blank" rel="noopener" class="btn btn-primary btn-full" style="text-decoration:none">${lang==='he'?'לפרטים ותיאום':'Book via WhatsApp ↗'}</a>
+          <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20the%20${encodeURIComponent(b.nameEn)}%20package%20for%20my%20event%20%E2%98%95%20Can%20you%20send%20me%20details%3F" target="_blank" rel="noopener" class="btn btn-primary btn-full" style="text-decoration:none">${lang==='he'?'לתיאום האירוע':'Book This Package ↗'}</a>
         </div>
       </div>`;
   }).join('');
