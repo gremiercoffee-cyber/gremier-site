@@ -127,7 +127,7 @@
     .product-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; overflow:hidden; cursor:pointer; transition:transform .2s,border-color .2s,box-shadow .2s; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
     .product-card:hover { transform:translateY(-4px); border-color:rgba(200,135,58,.6); box-shadow:0 12px 32px rgba(0,0,0,.12); }
     .product-img { width:100%; aspect-ratio:4/3; background:#f7f5f2; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
-    .product-img img { width:100%; height:100%; object-fit:cover; }
+    .product-img img { width:100%; height:100%; object-fit:cover; pointer-events:none; user-select:none; }
     .product-img-placeholder { font-size:3rem; opacity:.3; }
     .product-img-gradient { position:absolute; inset:0; background:radial-gradient(ellipse at center,rgba(200,135,58,.08) 0%,transparent 70%); }
     .product-badge { position:absolute; top:10px; left:10px; background:#1a1a1a; color:#ffffff; font-size:.62rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:2px; z-index:2; }
@@ -156,7 +156,9 @@
     #pdBackdrop.open { opacity:1; pointer-events:all; }
     #pdDrawer { position:fixed; bottom:0; left:0; right:0; z-index:181; background:#fff; border-radius:16px 16px 0 0; max-height:92vh; min-height:60vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; transform:translateY(100%); transition:transform .35s cubic-bezier(.4,0,.2,1); padding-bottom:40px; }
     #pdDrawer.open { transform:translateY(0); }
-    .pd-handle { width:40px; height:4px; background:var(--border); border-radius:2px; margin:12px auto 0; }
+    .pd-handle-row { display:flex; align-items:center; justify-content:center; padding:14px 16px 6px; position:relative; }
+    .pd-handle { width:40px; height:4px; background:var(--border); border-radius:2px; }
+    .pd-close-btn { position:absolute; right:14px; top:50%; transform:translateY(-50%); background:var(--bg3); border:1px solid var(--border); color:#1a1a1a; width:32px; height:32px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; line-height:1; }
     .pd-img-wrap { width:100%; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:4rem; overflow:hidden; }
     .pd-img-wrap img { width:100%; height:auto; display:block; }
     .pd-thumbs { display:flex; gap:8px; padding:10px 20px 0; overflow-x:auto; }
@@ -458,6 +460,21 @@
     white-space: nowrap;
   }
   .chat-qr-btn:hover { border-color: #1a1a1a; background: #f7f5f2; }
+  /* CHAT TOOLTIP */
+  #chatTooltip {
+    background:#1a1a1a; color:#fff; font-family:'DM Sans',sans-serif;
+    font-size:.76rem; line-height:1.4; padding:8px 13px; border-radius:8px;
+    white-space:nowrap; position:relative; box-shadow:0 3px 12px rgba(0,0,0,.3);
+    animation:tooltipIn .4s ease .9s both;
+    pointer-events:none;
+  }
+  #chatTooltip::after {
+    content:''; position:absolute; right:-7px; top:50%; transform:translateY(-50%);
+    border:7px solid transparent; border-left-color:#1a1a1a; border-right-width:0;
+  }
+  @keyframes tooltipIn { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+  #chatTooltip.fade-out { animation:tooltipOut .4s ease forwards; }
+  @keyframes tooltipOut { to{opacity:0;transform:translateX(-6px)} }
   /* TOAST */
     .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; color:var(--cream); padding:12px 24px; border-radius:4px; font-size:.85rem; z-index:500; transition:transform .3s; white-space:nowrap; }
     .toast.show { transform:translateX(-50%) translateY(0); }
@@ -659,7 +676,10 @@
 <!-- ══ PRODUCT DRAWER ══ -->
 <div id="pdBackdrop" onclick="closeProductDrawer()"></div>
 <div id="pdDrawer">
-  <div class="pd-handle"></div>
+  <div class="pd-handle-row">
+    <div class="pd-handle"></div>
+    <button class="pd-close-btn" onclick="closeProductDrawer()" aria-label="Close">×</button>
+  </div>
   <div class="pd-img-wrap" id="pdImgWrap"><span id="pdImgPlaceholder">☕</span></div>
   <div class="pd-thumbs" id="pdThumbs"></div>
   <div class="pd-body">
@@ -803,7 +823,8 @@
     <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.7-1.81A11.94 11.94 0 0016 27c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="white"/><path d="M21.8 18.4c-.3-.15-1.77-.87-2.04-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.76-1.66-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.73-.71 1.97-1.39.24-.68.24-1.27.17-1.39-.07-.12-.27-.19-.57-.34z" fill="#25D366"/></svg>
   </a>
   <!-- Chat FAB -->
-  <div id="chatFabWrapper" style="display:flex">
+  <div id="chatFabWrapper" style="display:flex;align-items:center;gap:10px">
+    <div id="chatTooltip">Talk to me about what you want to order</div>
     <button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant"
       style="width:44px;height:44px;background:#1a1a1a;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;box-shadow:0 3px 12px rgba(0,0,0,0.25);transition:transform .2s;"
       onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
@@ -1113,7 +1134,7 @@ let pdCurrentProduct = null;
 let pdQty = 1;
 let pdActiveImg = 0;
 function openProductDrawer(productId) {
-  const p = products.find(x => x.id === productId);
+  const p = products.find(x => String(x.id) === String(productId));
   if (!p) return;
   pdCurrentProduct = p;
   pdQty = 1;
@@ -1184,7 +1205,7 @@ function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
   const img = (p.images && p.images.length > 0)
-    ? `<img src="${p.images[0]}" alt="${name}" loading="lazy"/>`
+    ? `<img src="${p.images[0]}" alt="${name}" loading="lazy" draggable="false"/>`
     : `<div class="product-img-placeholder">${productIcon(p.category)}</div>`;
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
   const origPrice = p.original_price ? `<span class="orig">₪${p.original_price}</span>` : '';
@@ -1257,7 +1278,7 @@ function enquireCoffeeBar(id) {
 }
 // ══ CART ══
 function addToCart(productId) {
-  const p = products.find(x => x.id === productId);
+  const p = products.find(x => String(x.id) === String(productId));
   if (!p) return;
   const existing = cart.find(x => x.id === productId);
   if (existing) existing.qty++;
@@ -1486,7 +1507,15 @@ function getChatSuggestedProducts() {
   const priority = ['Caramel Cremier','Mini Cremier 4-Pack','Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast'];
   return priority.map(n => products.find(p => p.name_en === n)).filter(Boolean).slice(0,3);
 }
+function dismissChatTooltip() {
+  const tip = document.getElementById('chatTooltip');
+  if (!tip) return;
+  tip.classList.add('fade-out');
+  setTimeout(() => tip.remove(), 400);
+}
+setTimeout(dismissChatTooltip, 5000);
 function openChatbot() {
+  dismissChatTooltip();
   chatOpen = true;
   document.getElementById('chatbotOverlay').classList.add('open');
   document.getElementById('chatbotPanel').classList.add('open');
