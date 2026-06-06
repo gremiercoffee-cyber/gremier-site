@@ -275,6 +275,42 @@
     .footer-links a { font-size:.83rem; color:#aaaaaa; text-decoration:none; transition:color .2s; cursor:pointer; }
     .footer-links a:hover { color:#1a1a1a; }
     .footer-bottom { max-width:1000px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding-top:28px; border-top:1px solid #333333; font-size:.76rem; color:#888888; flex-wrap:wrap; gap:10px; }
+    /* DESIGN POLISH */
+    .eyebrow { color:var(--amber) !important; }
+    .divider { background:var(--amber); opacity:.55; height:2px; }
+    .btn-amber { background:var(--amber); color:#fff; }
+    .btn-amber:hover { background:var(--amber2); transform:translateY(-1px); }
+    /* COFFEE BARS FULL PAGE */
+    .cbp-hero { background:#1a1a1a; padding:80px 32px 64px; text-align:center; }
+    .cbp-hero-title { font-family:'Playfair Display',serif; font-size:clamp(2.8rem,7vw,5rem); font-weight:900; color:#fff; line-height:1.05; margin-bottom:16px; }
+    .cbp-hero-title em { color:var(--amber); font-style:italic; }
+    .cbp-hero-sub { font-size:.97rem; color:rgba(255,255,255,.62); max-width:520px; margin:0 auto 36px; line-height:1.8; }
+    .cbp-hero-img-wrap { width:100%; overflow:hidden; }
+    .cbp-hero-img-wrap img { width:100%; max-height:480px; object-fit:cover; display:block; }
+    .cbp-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:28px; max-width:860px; margin:0 auto; }
+    .cbp-card { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.07); transition:transform .25s,box-shadow .25s; }
+    .cbp-card:hover { transform:translateY(-5px); box-shadow:0 16px 48px rgba(0,0,0,.13); }
+    .cbp-card.featured { border:2px solid var(--amber); }
+    .cbp-card-img { width:100%; height:220px; background:var(--bg3); display:flex; align-items:center; justify-content:center; overflow:hidden; color:var(--text2); font-size:.82rem; letter-spacing:.05em; }
+    .cbp-card-img img { width:100%; height:100%; object-fit:cover; }
+    .cbp-card-body { padding:28px; }
+    .cbp-card-tag { display:inline-block; background:var(--amber); color:#fff; font-size:.6rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; padding:3px 9px; border-radius:2px; margin-bottom:10px; }
+    .cbp-card-name { font-family:'Playfair Display',serif; font-size:1.5rem; color:#1a1a1a; margin-bottom:4px; }
+    .cbp-card-price { font-size:2rem; font-weight:600; color:#1a1a1a; margin-bottom:20px; }
+    .cbp-card-features { list-style:none; margin-bottom:26px; }
+    .cbp-card-features li { font-size:.84rem; color:var(--text2); padding:8px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+    .cbp-card-features li::before { content:'✦'; color:var(--amber); font-size:.5rem; flex-shrink:0; }
+    .cbp-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:24px; max-width:860px; margin:0 auto; }
+    .cbp-step { text-align:center; padding:28px 16px; }
+    .cbp-step-num { width:46px; height:46px; background:#1a1a1a; color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:1.15rem; font-weight:700; margin:0 auto 16px; }
+    .cbp-step-title { font-size:.95rem; font-weight:600; color:#1a1a1a; margin-bottom:7px; }
+    .cbp-step-desc { font-size:.82rem; color:var(--text2); line-height:1.7; }
+    .cbp-gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; max-width:920px; margin:0 auto; }
+    .cbp-gallery-item { aspect-ratio:4/3; background:var(--bg3); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; color:var(--text2); font-size:.78rem; letter-spacing:.04em; }
+    .cbp-gallery-item img { width:100%; height:100%; object-fit:cover; }
+    .cbp-cta-band { background:#1a1a1a; padding:80px 32px; text-align:center; }
+    .cbp-cta-title { font-family:'Playfair Display',serif; font-size:clamp(2rem,5vw,3.4rem); color:#fff; margin-bottom:14px; line-height:1.15; }
+    .cbp-cta-sub { font-size:.93rem; color:rgba(255,255,255,.58); max-width:420px; margin:0 auto 36px; line-height:1.75; }
     /* RTL */
     body.rtl { direction:rtl; }
     body.rtl .drawer { right:auto; left:0; border-left:none; border-right:1px solid var(--border); transform:translateX(-100%); }
@@ -534,7 +570,7 @@
 <div class="mobile-menu" id="mobileMenu">
   <a onclick="showPage('home');closeMobileMenu()" id="mm-home">Home</a>
   <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
-  <a onclick="showPage('home');setTimeout(()=>scrollToSection('coffeeBarsSection'),120);closeMobileMenu()" id="mm-bars">Coffee Bars</a>
+  <a onclick="showPage('coffeebars');closeMobileMenu()" id="mm-bars">Coffee Bars</a>
   <a onclick="showPage('home');setTimeout(()=>scrollToSection('aboutSection'),120);closeMobileMenu()" id="mm-about">About</a>
   <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Orders</a>
 </div>
@@ -543,7 +579,7 @@
   <ul class="nav-links">
     <li><a onclick="showPage('home')">Home</a></li>
     <li><a onclick="showPage('shop')">Shop</a></li>
-    <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('coffeeBarsSection'),120)">Coffee Bars</a></li>
+    <li><a onclick="showPage('coffeebars')">Coffee Bars</a></li>
     <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('aboutSection'),120)">About</a></li>
     <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Orders</a></li>
   </ul>
@@ -572,14 +608,8 @@
       <div class="hero-subtitle" id="t-hero-sub">Straight to your door.</div>
       <p class="hero-desc" id="t-hero-desc">Crafted from the finest beans, brewed slow and cold for maximum smoothness. Israel's best cold brew — delivered fresh to your fridge or your event.</p>
       <div class="hero-btns">
-        <button class="btn btn-primary" onclick="showPage('shop')" id="t-hero-shop">Shop Now</button>
-        <button class="btn btn-outline" onclick="showPage('home'); setTimeout(()=>scrollToSection('coffeeBarsSection'),120)" id="t-hero-bars">Coffee Bars</button>
-      </div>
-      <div style="margin-top:20px">
-        <button onclick="openChatbot()" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;margin:0 auto;color:var(--cream2);font-family:'DM Sans',sans-serif;font-size:.82rem;letter-spacing:.05em;transition:color .2s;padding:0" onmouseover="this.style.color='var(--amber)'" onmouseout="this.style.color='var(--cream2)'">
-          <span style="font-size:1rem">💬</span>
-          <span id="t-chat-cta">Know what you want? Build your order here →</span>
-        </button>
+        <button class="btn btn-amber" onclick="showPage('shop')" id="t-hero-shop">Shop Now</button>
+        <button class="btn btn-outline" onclick="showPage('coffeebars')" id="t-hero-bars">Coffee Bars</button>
       </div>
     </div>
   </div>
@@ -694,6 +724,79 @@
       </div>
       <button class="pd-add-btn" onclick="pdAddToCart()" id="pdAddBtn">Add to Cart</button>
     </div>
+  </div>
+</div>
+<!-- ══ COFFEE BARS PAGE ══ -->
+<div id="coffeebarsPage" class="page" style="padding-top:64px">
+  <div class="cbp-hero">
+    <div class="eyebrow" style="color:rgba(255,255,255,.4)!important;margin-bottom:16px">Events & Occasions</div>
+    <h1 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h1>
+    <p class="cbp-hero-sub">A full cold brew experience at your wedding, birthday, corporate event, or any occasion — professionally set up, beautifully presented, completely handled.</p>
+    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95%20Can%20you%20tell%20me%20more%3F" target="_blank" rel="noopener" class="btn btn-amber" style="text-decoration:none">Book via WhatsApp ↗</a>
+  </div>
+  <div id="cbpHeroImgWrap" class="cbp-hero-img-wrap" style="display:none">
+    <img id="cbpHeroImg" src="" alt="Gremier Coffee Bar at event"/>
+  </div>
+
+  <!-- Packages -->
+  <div class="section">
+    <div class="section-header">
+      <div class="eyebrow">Choose Your Package</div>
+      <div class="divider"></div>
+      <h2 class="section-title">Coffee Bar Packages</h2>
+    </div>
+    <div class="cbp-cards" id="cbpPackages"></div>
+    <p style="text-align:center;color:var(--text2);font-size:.82rem;margin-top:28px;line-height:1.7">
+      Pricing and capacity vary by event. <a href="https://wa.me/972552703413?text=Hi!%20I%27d%20like%20a%20custom%20quote%20for%20a%20Gremier%20Coffee%20Bar%20%E2%98%95" target="_blank" rel="noopener" style="color:var(--amber);text-decoration:none;font-weight:500">Contact us for a custom quote →</a>
+    </p>
+  </div>
+
+  <!-- How it works -->
+  <div class="section section-alt">
+    <div class="section-header">
+      <div class="eyebrow">The Process</div>
+      <div class="divider"></div>
+      <h2 class="section-title">How It Works</h2>
+    </div>
+    <div class="cbp-steps">
+      <div class="cbp-step">
+        <div class="cbp-step-num">1</div>
+        <div class="cbp-step-title">Reach Out</div>
+        <div class="cbp-step-desc">Message us on WhatsApp with your event date, expected guests, and any ideas you have.</div>
+      </div>
+      <div class="cbp-step">
+        <div class="cbp-step-num">2</div>
+        <div class="cbp-step-title">We Plan Together</div>
+        <div class="cbp-step-desc">We'll tailor the setup, flavors, and branding to fit your event perfectly.</div>
+      </div>
+      <div class="cbp-step">
+        <div class="cbp-step-num">3</div>
+        <div class="cbp-step-title">We Show Up</div>
+        <div class="cbp-step-desc">Our team arrives early, handles setup, serves your guests, and breaks everything down after.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gallery -->
+  <div class="section">
+    <div class="section-header">
+      <div class="eyebrow">At Your Event</div>
+      <div class="divider"></div>
+      <h2 class="section-title">In Action</h2>
+    </div>
+    <div class="cbp-gallery">
+      <div class="cbp-gallery-item" id="cbpGal1"><span>Photo coming soon</span></div>
+      <div class="cbp-gallery-item" id="cbpGal2"><span>Photo coming soon</span></div>
+      <div class="cbp-gallery-item" id="cbpGal3"><span>Photo coming soon</span></div>
+      <div class="cbp-gallery-item" id="cbpGal4"><span>Photo coming soon</span></div>
+    </div>
+  </div>
+
+  <!-- Final CTA -->
+  <div class="cbp-cta-band">
+    <h2 class="cbp-cta-title">Ready to Elevate<br>Your Event?</h2>
+    <p class="cbp-cta-sub">Let's make your next occasion unforgettable. Message us on WhatsApp and we'll get back to you within hours.</p>
+    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95" target="_blank" rel="noopener" class="btn btn-amber" style="text-decoration:none;font-size:.9rem">Message Us on WhatsApp ☕</a>
   </div>
 </div>
 <!-- ══ CART DRAWER ══ -->
@@ -1121,12 +1224,12 @@ async function signInWithGoogle() {
 }
 // ══ PRODUCTS ══
 const coffeeBarProducts = [
-  { id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי', price:249, featured:false,
-    featuresEn:['Cold brew setup for up to 30 guests','Standard dispenser included','Classic & House Blend','Setup & breakdown by us','20% off extra dispenser'],
-    featuresHe:['הגדרה ל-30 אורחים','מתקן סטנדרטי כלול','קלאסיק ובלנד הבית','הקמה ופירוק על ידינו','20% הנחה על מתקן נוסף'] },
+  { id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי', price:249, featured:false, image:'',
+    featuresEn:['Cold brew service for your event','Classic & House Blend flavors','Professional setup & breakdown','Branded signage included'],
+    featuresHe:['שירות קולד ברו לאירוע שלך','טעמי קלאסיק ובלנד הבית','הקמה ופירוק מקצועי','שילוט ממותג כלול'] },
   { id:'premium', nameEn:'Premium Coffee Bar', nameHe:'בר קפה פרימיום', price:349, featured:true, tag:'Most Popular',
-    featuresEn:['Cold brew setup for up to 80 guests','Premium dispenser included','Full 4-flavor selection','Cups, napkins & signage','Setup & breakdown by us','30% off extra dispenser'],
-    featuresHe:['הגדרה ל-80 אורחים','מתקן פרימיום כלול','4 טעמים לבחירה','כוסות, מפיות ושילוט','הקמה ופירוק על ידינו','30% הנחה על מתקן נוסף'] },
+    featuresEn:['Cold brew service for up to 125 guests','Full 4-flavor selection','Professional setup & breakdown','Cups, napkins & branded signage','Custom event signage'],
+    featuresHe:['שירות לעד 125 אורחים','4 טעמים לבחירה','הקמה ופירוק מקצועי','כוסות, מפיות ושילוט ממותג','שילוט מותאם לאירוע'] },
 ];
 const featuredOrder = ['Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast','Caramel Cremier','5L Classic Dark Roast','Combo Subscription'];
 async function loadProducts() {
@@ -1289,11 +1392,31 @@ function renderCoffeeBars() {
   }).join('');
 }
 function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); }
+function renderCoffeeBarsPage() {
+  const grid = document.getElementById('cbpPackages');
+  if (!grid) return;
+  grid.innerHTML = coffeeBarProducts.map(b => {
+    const name = lang === 'he' ? b.nameHe : b.nameEn;
+    const features = lang === 'he' ? b.featuresHe : b.featuresEn;
+    const imgHtml = b.image
+      ? `<img src="${b.image}" alt="${name}"/>`
+      : `<span>${lang==='he'?'תמונה בקרוב':'Photo coming soon'}</span>`;
+    const tag = b.tag ? `<div class="cbp-card-tag">${b.tag}</div>` : '';
+    return `
+      <div class="cbp-card ${b.featured?'featured':''}">
+        <div class="cbp-card-img">${imgHtml}</div>
+        <div class="cbp-card-body">
+          ${tag}
+          <div class="cbp-card-name">${name}</div>
+          <div class="cbp-card-price">₪${b.price}</div>
+          <ul class="cbp-card-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>
+          <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20the%20${encodeURIComponent(b.nameEn)}%20%E2%98%95%20Can%20you%20send%20me%20details%3F" target="_blank" rel="noopener" class="btn btn-primary btn-full" style="text-decoration:none">${lang==='he'?'לפרטים ותיאום':'Book via WhatsApp ↗'}</a>
+        </div>
+      </div>`;
+  }).join('');
+}
 function enquireCoffeeBar(id) {
-  const b = coffeeBarProducts.find(x=>x.id===id);
-  if (!b) return;
-  const msg = `Hi! I'm interested in the ${b.nameEn} (₪${b.price}). Please send me more details.`;
-  window.location.href = `mailto:gremiercoffee@gmail.com?subject=Coffee Bar Enquiry&body=${encodeURIComponent(msg)}`;
+  showPage('coffeebars');
 }
 // ══ CART ══
 function addToCart(productId) {
@@ -1425,10 +1548,19 @@ function applySiteImages() {
     const heroBg = document.querySelector('.hero-bg');
     if (heroBg) heroBg.style.background = `url('${siteSettings.hero_1}') center/cover no-repeat`;
   }
-  // Coffee bar ad images — inject into coffeebar grid if not yet rendered by products
-  ['coffeebar_ad_1','coffeebar_ad_2'].forEach((key,i) => {
-    const el = document.getElementById('siteAdImg_'+i);
-    if (el && siteSettings[key]) el.src = siteSettings[key];
+  // Coffee bars page — hero image
+  if (siteSettings.cb_hero) {
+    const w = document.getElementById('cbpHeroImgWrap');
+    const img = document.getElementById('cbpHeroImg');
+    if (w && img) { img.src = siteSettings.cb_hero; w.style.display = 'block'; }
+  }
+  // Coffee bar package images
+  if (siteSettings.cb_basic_img) coffeeBarProducts.find(b=>b.id==='basic') && (coffeeBarProducts.find(b=>b.id==='basic').image = siteSettings.cb_basic_img);
+  if (siteSettings.cb_premium_img) coffeeBarProducts.find(b=>b.id==='premium') && (coffeeBarProducts.find(b=>b.id==='premium').image = siteSettings.cb_premium_img);
+  // Gallery images
+  ['cb_gallery_1','cb_gallery_2','cb_gallery_3','cb_gallery_4'].forEach((key,i) => {
+    const el = document.getElementById('cbpGal'+(i+1));
+    if (el && siteSettings[key]) el.innerHTML = `<img src="${siteSettings[key]}" alt="Coffee bar event photo"/>`;
   });
 }
 async function loadMyOrders() {
@@ -1460,6 +1592,7 @@ function showPage(page) {
   window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'shop') { activeCategory='all'; renderShop(); }
   if (page === 'myorders') loadMyOrders();
+  if (page === 'coffeebars') renderCoffeeBarsPage();
 }
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
