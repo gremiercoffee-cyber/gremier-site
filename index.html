@@ -6,7 +6,7 @@
   <title>Gremier Coffee Co.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;700&display=swap" rel="stylesheet"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -156,9 +156,10 @@
     #pdBackdrop.open { opacity:1; pointer-events:all; }
     #pdDrawer { position:fixed; bottom:0; left:0; right:0; z-index:181; background:#fff; border-radius:16px 16px 0 0; max-height:92vh; min-height:60vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; transform:translateY(100%); transition:transform .35s cubic-bezier(.4,0,.2,1); padding-bottom:40px; }
     #pdDrawer.open { transform:translateY(0); }
-    .pd-handle-row { display:flex; align-items:center; justify-content:center; padding:14px 16px 6px; position:relative; }
+    .pd-handle-row { position:sticky; top:0; z-index:3; background:#fff; display:flex; align-items:center; justify-content:center; padding:14px 16px 8px; border-bottom:1px solid var(--border); }
     .pd-handle { width:40px; height:4px; background:var(--border); border-radius:2px; }
     .pd-close-btn { position:absolute; right:14px; top:50%; transform:translateY(-50%); background:var(--bg3); border:1px solid var(--border); color:#1a1a1a; width:32px; height:32px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; line-height:1; }
+    .pd-close-btn:hover { background:var(--border); }
     .pd-img-wrap { width:100%; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:4rem; overflow:hidden; }
     .pd-img-wrap img { width:100%; height:auto; display:block; }
     .pd-thumbs { display:flex; gap:8px; padding:10px 20px 0; overflow-x:auto; }
@@ -462,19 +463,17 @@
   .chat-qr-btn:hover { border-color: #1a1a1a; background: #f7f5f2; }
   /* CHAT TOOLTIP */
   #chatTooltip {
-    background:#1a1a1a; color:#fff; font-family:'DM Sans',sans-serif;
-    font-size:.76rem; line-height:1.4; padding:8px 13px; border-radius:8px;
-    white-space:nowrap; position:relative; box-shadow:0 3px 12px rgba(0,0,0,.3);
-    animation:tooltipIn .4s ease .9s both;
+    font-family:'Caveat', cursive;
+    font-size:1.05rem;
+    color:#1a1a1a;
+    text-align:right;
+    line-height:1.35;
     pointer-events:none;
+    animation:tooltipIn .5s ease .8s both;
   }
-  #chatTooltip::after {
-    content:''; position:absolute; right:-7px; top:50%; transform:translateY(-50%);
-    border:7px solid transparent; border-left-color:#1a1a1a; border-right-width:0;
-  }
-  @keyframes tooltipIn { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
   #chatTooltip.fade-out { animation:tooltipOut .4s ease forwards; }
-  @keyframes tooltipOut { to{opacity:0;transform:translateX(-6px)} }
+  @keyframes tooltipOut { to{opacity:0} }
   /* TOAST */
     .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; color:var(--cream); padding:12px 24px; border-radius:4px; font-size:.85rem; z-index:500; transition:transform .3s; white-space:nowrap; }
     .toast.show { transform:translateX(-50%) translateY(0); }
@@ -824,7 +823,13 @@
   </a>
   <!-- Chat FAB -->
   <div id="chatFabWrapper" style="display:flex;align-items:center;gap:10px">
-    <div id="chatTooltip">Talk to me about what you want to order</div>
+    <div id="chatTooltip">
+      Talk to me about<br>what you want to order
+      <svg width="38" height="22" viewBox="0 0 38 22" fill="none" style="display:block;margin-left:auto;margin-top:2px" aria-hidden="true">
+        <path d="M4 5 Q14 1 30 14" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+        <path d="M25 11 L30 14 L25 18" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
     <button onclick="openChatbot()" id="chatbotFab" aria-label="Open order assistant"
       style="width:44px;height:44px;background:#1a1a1a;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;box-shadow:0 3px 12px rgba(0,0,0,0.25);transition:transform .2s;"
       onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
@@ -1513,7 +1518,6 @@ function dismissChatTooltip() {
   tip.classList.add('fade-out');
   setTimeout(() => tip.remove(), 400);
 }
-setTimeout(dismissChatTooltip, 5000);
 function openChatbot() {
   dismissChatTooltip();
   chatOpen = true;
