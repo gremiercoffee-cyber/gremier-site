@@ -1186,11 +1186,15 @@ function openProductDrawer(productId) {
   document.getElementById('pdBackdrop').classList.add('open');
   document.getElementById('pdDrawer').classList.add('open');
   document.body.style.overflow = 'hidden';
+  document.body.style.position = 'fixed';
+  document.body.style.width = '100%';
 }
 function closeProductDrawer() {
   document.getElementById('pdBackdrop').classList.remove('open');
   document.getElementById('pdDrawer').classList.remove('open');
-  document.body.style.overflow = '';
+  document.body.style.removeProperty('overflow');
+  document.body.style.removeProperty('position');
+  document.body.style.removeProperty('width');
   pdCurrentProduct = null;
 }
 function pdSwitchImg(idx, url) {
@@ -1218,7 +1222,7 @@ function productCardHTML(p) {
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
   const origPrice = p.original_price ? `<span class="orig">₪${p.original_price}</span>` : '';
   return `
-    <div class="product-card" onclick="openProductDrawer('${p.id}')">
+    <div class="product-card" data-product-id="${p.id}">
       <div class="product-img">
         <div class="product-img-gradient"></div>
         ${img}${badge}
@@ -1228,7 +1232,7 @@ function productCardHTML(p) {
         <div class="product-desc">${desc || ''}</div>
         <div class="product-footer">
           <div class="product-price">${origPrice}₪${p.price}</div>
-          <button class="add-btn" data-id="${p.id}" onclick="event.stopPropagation();openProductDrawer('${p.id}')">+</button>
+          <button class="add-btn" data-id="${p.id}">+</button>
         </div>
       </div>
     </div>`;
@@ -1466,6 +1470,12 @@ function showToast(msg) {
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
+// ══ PRODUCT CARD EVENT DELEGATION ══
+// One permanent listener on document — survives every innerHTML re-render
+document.addEventListener('click', function(e) {
+  const card = e.target.closest('[data-product-id]');
+  if (card) openProductDrawer(card.dataset.productId);
+});
 // ══ DELIVERY ZONES ══
 let deliveryZones = [];
 async function loadDeliveryZones() {
