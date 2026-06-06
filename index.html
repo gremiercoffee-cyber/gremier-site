@@ -1244,19 +1244,19 @@ const coffeeBarProducts = [
     id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי',
     name_en:'Basic Coffee Bar', name_he:'בר קפה בסיסי',
     price:249, featured:false, image:'', category:'event', tag:null,
-    description_en:"The essentials, at a lower price. We send the cold brew and sugar syrup — you supply your own dispenser and milk. Great if you already have the setup and just want the good coffee.",
-    description_he:'הבסיסי, במחיר נמוך יותר. אנחנו שולחים את הקולד ברו וסירופ סוכר — אתם מביאים את המתקן והחלב. מושלם אם כבר יש לכם את הציוד ואתם רק רוצים את הקפה.',
-    featuresEn:['Cold brew coffee included','Sugar syrup included','Dispenser not included — bring your own','Milk not included — bring your own'],
-    featuresHe:['קולד ברו כלול','סירופ סוכר כלול','מתקן לא כלול — הביאו משלכם','חלב לא כלול — הביאו משלכם'],
+    description_en:"Cold brew, ready to serve at your event. We send the coffee and sugar syrup — you handle the rest your way. A simple, affordable way to bring premium cold brew to any occasion.",
+    description_he:'קולד ברו, מוכן להגשה באירוע שלך. אנחנו שולחים את הקפה וסירופ הסוכר — השאר בידיים שלך. דרך פשוטה ומשתלמת להביא קולד ברו פרימיום לכל אירוע.',
+    featuresEn:['Cold brew coffee included','Sugar syrup included','Easy self-serve setup','Elevates any event instantly'],
+    featuresHe:['קולד ברו כלול','סירופ סוכר כלול','הגשה עצמית קלה','מעלה כל אירוע ברגע'],
   },
   {
     id:'premium', nameEn:'Premium Coffee Bar', nameHe:'בר קפה פרימיום',
     name_en:'Premium Coffee Bar', name_he:'בר קפה פרימיום',
     price:349, featured:true, tag:'All-Inclusive', image:'', category:'event',
-    description_en:"Everything you need, packed and ready. We send the dispenser, cold brew, milk, cups, straws, and three syrups. All you do is pour the coffee into the dispenser — the rest is already there. That's it.",
-    description_he:'הכל כלול, ארוז ומוכן. אנחנו שולחים את המתקן, קולד ברו, חלב, כוסות, קשיות ושלושה סירופים. כל מה שצריך לעשות הוא לשפוך את הקפה למתקן — השאר כבר שם.',
-    featuresEn:['Dispenser included','Cold brew coffee included','Milk included','Cups & straws included','3 syrups: caramel, vanilla & sugar'],
-    featuresHe:['מתקן כלול','קולד ברו כלול','חלב כלול','כוסות וקשיות כלולות','3 סירופים: קרמל, וניל וסוכר'],
+    description_en:"Open the box and you're ready. Dispenser, cold brew, milk, cups, straws, and three syrups — caramel, vanilla & sugar — all packed and included. Pour the coffee into the dispenser and start serving. That's genuinely all it takes.",
+    description_he:'פתח את הקופסה ואתה מוכן. מתקן, קולד ברו, חלב, כוסות, קשיות ושלושה סירופים — קרמל, וניל וסוכר — הכל ארוז וכלול. שפוך את הקפה למתקן והתחל להגיש. זה באמת כל מה שצריך.',
+    featuresEn:['Dispenser included — just pour & serve','Cold brew + milk included','Cups & straws included','3 syrups: caramel, vanilla & sugar','Delivered to you or straight to your event'],
+    featuresHe:['מתקן כלול — רק לשפוך ולהגיש','קולד ברו וחלב כלולים','כוסות וקשיות כלולות','3 סירופים: קרמל, וניל וסוכר','משלוח אליך או ישירות לאירוע'],
   },
 ];
 const featuredOrder = ['Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast','Caramel Cremier','5L Classic Dark Roast','Combo Subscription'];
@@ -1329,9 +1329,11 @@ function openProductDrawer(productId) {
     badge.style.display = 'none';
   }
   document.getElementById('pdName').textContent = name;
-  document.getElementById('pdPrice').innerHTML = p.original_price
-    ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
-    : `₪${p.price}`;
+  document.getElementById('pdPrice').innerHTML = p.category === 'event'
+    ? `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}`
+    : p.original_price
+      ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
+      : `₪${p.price}`;
   document.getElementById('pdDesc').textContent = desc || '';
   // features list
   const featList = document.getElementById('pdFeatures');
@@ -1454,7 +1456,7 @@ function renderCoffeeBars() {
       <div class="coffeebar-card ${b.featured ? 'featured' : ''}">
         ${b.tag ? `<div class="coffeebar-tag">${b.tag}</div>` : ''}
         <div class="coffeebar-name">${name}</div>
-        <div class="coffeebar-price">₪${b.price}</div>
+        <div class="coffeebar-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${b.price}</div>
         <ul class="coffeebar-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>
         <button class="btn btn-primary btn-full" onclick="enquireCoffeeBar('${b.id}')">${btnTxt}</button>
       </div>`;
@@ -1476,14 +1478,14 @@ function renderCoffeeBarsPage() {
         <div class="cbp-card-body">
           ${tag}
           <div class="cbp-card-name">${name}</div>
-          <div class="cbp-card-price">₪${b.price}</div>
+          <div class="cbp-card-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${b.price}</div>
           <div class="btn btn-primary btn-full" style="pointer-events:none;text-align:center;margin-top:8px">${lang==='he'?'לפרטים והזמנה':'View Details & Book'}</div>
         </div>
       </div>`;
   }).join('');
 }
 function enquireCoffeeBar(id) {
-  showPage('coffeebars');
+  openProductDrawer(id);
 }
 // ══ CART ══
 function addToCart(productId) {
