@@ -719,6 +719,11 @@
     <div class="pd-price" id="pdPrice"></div>
     <div class="pd-desc" id="pdDesc"></div>
     <ul class="pd-features" id="pdFeatures" style="display:none"></ul>
+    <!-- Guest count dropdown — only shown for coffeebars products -->
+    <div id="pdGuestSection" style="display:none;margin-bottom:16px">
+      <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px" id="pdGuestLabel">Number of Guests</label>
+      <select id="pdGuestSelect" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:#1a1a1a;padding:10px 13px;font-family:'DM Sans',sans-serif;font-size:.87rem;border-radius:3px;outline:none" onchange="pdOnGuestChange(this)"></select>
+    </div>
     <a class="pd-wa-link" id="pdWhatsApp" href="" target="_blank" rel="noopener" style="display:none">💬 Have questions? Message us on WhatsApp →</a>
     <div class="pd-qty-row">
       <div class="pd-qty">
@@ -1266,15 +1271,17 @@ async function loadProducts() {
   products = data;
 }
 function mergeCoffeeBarsIntoProducts() {
-  coffeeBarProducts.forEach(cb => {
-    if (!products.find(p => String(p.id) === String(cb.id))) {
+  // Only inject hardcoded fallbacks if Supabase returned no coffeebars products
+  const hasCbFromDB = products.some(p => p.category === 'coffeebars');
+  if (!hasCbFromDB) {
+    coffeeBarProducts.forEach(cb => {
       products.push({
         id: cb.id,
         name_en: cb.name_en,
         name_he: cb.name_he,
         price: cb.price,
         images: cb.image ? [cb.image] : [],
-        category: 'event',
+        category: 'coffeebars',
         description_en: cb.description_en || '',
         description_he: cb.description_he || '',
         badge_text: cb.tag || null,
@@ -1283,8 +1290,8 @@ function mergeCoffeeBarsIntoProducts() {
         featuresEn: cb.featuresEn || [],
         featuresHe: cb.featuresHe || [],
       });
-    }
-  });
+    });
+  }
 }
 function productIcon(cat) {
   return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
@@ -1294,6 +1301,12 @@ let pdCurrentProduct = null;
 let pdQty = 1;
 let pdActiveImg = 0;
 let pdScrollY = 0;
+let pdSelectedPrice = null;
+function pdOnGuestChange(select) {
+  pdSelectedPrice = parseFloat(select.value);
+  const label = select.options[select.selectedIndex]?.text.split('—')[0]?.trim() || '';
+  document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?label||'מחיר':'Price for '+label}</span>₪${pdSelectedPrice}`;
+}
 function openProductDrawer(productId) {
   const p = products.find(x => String(x.id) === String(productId));
   if (!p) return;
@@ -1329,7 +1342,7 @@ function openProductDrawer(productId) {
     badge.style.display = 'none';
   }
   document.getElementById('pdName').textContent = name;
-  document.getElementById('pdPrice').innerHTML = p.category === 'event'
+  document.getElementById('pdPrice').innerHTML = p.category === 'coffeebars'
     ? `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}`
     : p.original_price
       ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
@@ -1345,16 +1358,31 @@ function openProductDrawer(productId) {
     featList.innerHTML = '';
     featList.style.display = 'none';
   }
-  // WhatsApp link — only for event/coffee bar products
+  // Guest count dropdown for coffeebars products
+  pdSelectedPrice = null;
+  const guestSection = document.getElementById('pdGuestSection');
+  const guestSelect = document.getElementById('pdGuestSelect');
+  const guestTierVar = (p.variations || []).find(v => v.type === 'guest_count');
+  if (p.category === 'coffeebars' && guestTierVar && guestTierVar.options?.length) {
+    guestSelect.innerHTML = guestTierVar.options.map(o =>
+      `<option value="${o.price}">${o.label} — ₪${o.price}</option>`
+    ).join('');
+    guestSection.style.display = 'block';
+    // Trigger price update for the default selection
+    pdOnGuestChange(guestSelect);
+  } else {
+    guestSection.style.display = 'none';
+  }
+  // WhatsApp link — only for coffeebars products
   const waLink = document.getElementById('pdWhatsApp');
-  if (p.category === 'event') {
+  if (p.category === 'coffeebars') {
     waLink.href = `https://wa.me/972552703413?text=${encodeURIComponent(`Hi! I have a question about the ${p.name_en} ☕`)}`;
     waLink.style.display = 'flex';
   } else {
     waLink.style.display = 'none';
   }
   document.getElementById('pdQty').textContent = 1;
-  document.getElementById('pdAddBtn').textContent = p.category === 'event'
+  document.getElementById('pdAddBtn').textContent = p.category === 'coffeebars'
     ? (lang === 'he' ? 'הזמן עכשיו' : 'Book Now')
     : (lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart');
   document.getElementById('pdBackdrop').classList.add('open');
@@ -1390,9 +1418,31 @@ function pdChangeQty(delta) {
 }
 function pdAddToCart() {
   if (!pdCurrentProduct) return;
-  for (let i = 0; i < pdQty; i++) addToCart(pdCurrentProduct.id);
-  closeProductDrawer();
-  openCart();
+  if (pdCurrentProduct.category === 'coffeebars' && pdSelectedPrice) {
+    const guestSelect = document.getElementById('pdGuestSelect');
+    const guestLabel = guestSelect?.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim() || '';
+    const cartId = pdCurrentProduct.id + '_' + pdSelectedPrice;
+    const existing = cart.find(x => x.id === cartId);
+    const nameSuffix = guestLabel ? ` · ${guestLabel}` : '';
+    if (existing) { existing.qty++; }
+    else cart.push({
+      id: cartId,
+      name_en: pdCurrentProduct.name_en + nameSuffix,
+      name_he: (pdCurrentProduct.name_he || pdCurrentProduct.name_en) + nameSuffix,
+      price: pdSelectedPrice,
+      images: pdCurrentProduct.images,
+      category: pdCurrentProduct.category,
+      qty: 1,
+    });
+    updateCartCount();
+    showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
+    closeProductDrawer();
+    openCart();
+  } else {
+    for (let i = 0; i < pdQty; i++) addToCart(pdCurrentProduct.id);
+    closeProductDrawer();
+    openCart();
+  }
 }
 function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
@@ -1448,17 +1498,19 @@ function renderShop() {
 function renderCoffeeBars() {
   const grid = document.getElementById('coffeeBarGrid');
   if (!grid) return;
-  grid.innerHTML = coffeeBarProducts.map(b => {
-    const name = lang === 'he' ? b.nameHe : b.nameEn;
-    const features = lang === 'he' ? b.featuresHe : b.featuresEn;
-    const btnTxt = lang === 'he' ? 'לפרטים ותיאום' : 'Enquire & Book';
+  const cbList = products.filter(p => p.category === 'coffeebars');
+  if (!cbList.length) { grid.innerHTML = ''; return; }
+  const btnTxt = lang === 'he' ? 'לפרטים והזמנה' : 'View Details & Book';
+  grid.innerHTML = cbList.map(p => {
+    const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
+    const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
     return `
-      <div class="coffeebar-card ${b.featured ? 'featured' : ''}">
-        ${b.tag ? `<div class="coffeebar-tag">${b.tag}</div>` : ''}
+      <div class="coffeebar-card ${p.badge_text ? 'featured' : ''}" data-product-id="${p.id}" style="cursor:pointer">
+        ${p.badge_text ? `<div class="coffeebar-tag">${p.badge_text}</div>` : ''}
         <div class="coffeebar-name">${name}</div>
-        <div class="coffeebar-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${b.price}</div>
-        <ul class="coffeebar-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>
-        <button class="btn btn-primary btn-full" onclick="enquireCoffeeBar('${b.id}')">${btnTxt}</button>
+        <div class="coffeebar-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}</div>
+        ${features.length ? `<ul class="coffeebar-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>` : ''}
+        <button class="btn btn-primary btn-full" style="pointer-events:none">${btnTxt}</button>
       </div>`;
   }).join('');
 }
@@ -1466,19 +1518,21 @@ function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); }
 function renderCoffeeBarsPage() {
   const grid = document.getElementById('cbpPackages');
   if (!grid) return;
-  grid.innerHTML = coffeeBarProducts.map(b => {
-    const name = lang === 'he' ? b.nameHe : b.nameEn;
-    const imgHtml = b.image
-      ? `<img src="${b.image}" alt="${name}"/>`
+  const cbList = products.filter(p => p.category === 'coffeebars');
+  if (!cbList.length) { grid.innerHTML = '<p style="text-align:center;color:var(--text2)">Packages coming soon.</p>'; return; }
+  grid.innerHTML = cbList.map(p => {
+    const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
+    const imgHtml = (p.images && p.images.length)
+      ? `<img src="${p.images[0]}" alt="${name}"/>`
       : `<span>${lang==='he'?'תמונה בקרוב':'Photo coming soon'}</span>`;
-    const tag = b.tag ? `<div class="cbp-card-tag">${b.tag}</div>` : '';
+    const tag = p.badge_text ? `<div class="cbp-card-tag">${p.badge_text}</div>` : '';
     return `
-      <div class="cbp-card ${b.featured?'featured':''}" data-product-id="${b.id}" style="cursor:pointer">
+      <div class="cbp-card ${p.badge_text?'featured':''}" data-product-id="${p.id}" style="cursor:pointer">
         <div class="cbp-card-img">${imgHtml}</div>
         <div class="cbp-card-body">
           ${tag}
           <div class="cbp-card-name">${name}</div>
-          <div class="cbp-card-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${b.price}</div>
+          <div class="cbp-card-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}</div>
           <div class="btn btn-primary btn-full" style="pointer-events:none;text-align:center;margin-top:8px">${lang==='he'?'לפרטים והזמנה':'View Details & Book'}</div>
         </div>
       </div>`;

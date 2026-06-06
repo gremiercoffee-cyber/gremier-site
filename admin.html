@@ -327,6 +327,7 @@
             <option value="minis">Mini Packs</option>
             <option value="bulk">Bulk & 5L</option>
             <option value="subscriptions">Subscriptions</option>
+            <option value="coffeebars">☕ Coffee Bars</option>
           </select>
         </div>
         <div id="productsList"><div class="loading"><div class="spinner"></div></div></div>
@@ -534,15 +535,30 @@
     </div>
     <div class="form-row-3">
       <div class="form-group"><label class="form-label">Category</label>
-        <select class="form-input" id="pCategory">
+        <select class="form-input" id="pCategory" onchange="onCategoryChange(this.value)">
           <option value="bottles">Bottles</option>
           <option value="minis">Mini Packs</option>
           <option value="bulk">Bulk & 5L</option>
           <option value="subscriptions">Subscriptions</option>
+          <option value="coffeebars">☕ Coffee Bars</option>
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Price (₪)</label><input class="form-input" type="number" id="pPrice" placeholder="49"/></div>
+      <div class="form-group"><label class="form-label">Base Price (₪) <small style="font-weight:300;text-transform:none;letter-spacing:0;color:var(--text2)">— shown as "Starting from"</small></label><input class="form-input" type="number" id="pPrice" placeholder="49"/></div>
       <div class="form-group"><label class="form-label">Original Price (₪)</label><input class="form-input" type="number" id="pOrigPrice" placeholder="Optional"/></div>
+    </div>
+    <!-- GUEST PRICING — only shown for coffeebars category -->
+    <div id="guestPricingSection" style="display:none;margin-bottom:16px">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:16px 18px">
+        <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px;font-weight:500">☕ Guest Count Pricing</div>
+        <div style="font-size:.78rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Set a price for each guest tier. Leave blank to hide that tier. The lowest filled-in price auto-updates the Base Price above.</div>
+        <div class="form-row-2" style="gap:10px">
+          <div class="form-group"><label class="form-label">Up to 25 guests (₪)</label><input class="form-input" type="number" id="gp25" placeholder="249" oninput="syncBasePrice()"/></div>
+          <div class="form-group"><label class="form-label">Up to 50 guests (₪)</label><input class="form-input" type="number" id="gp50" placeholder="299" oninput="syncBasePrice()"/></div>
+          <div class="form-group"><label class="form-label">Up to 75 guests (₪)</label><input class="form-input" type="number" id="gp75" placeholder="349" oninput="syncBasePrice()"/></div>
+          <div class="form-group"><label class="form-label">Up to 100 guests (₪)</label><input class="form-input" type="number" id="gp100" placeholder="399" oninput="syncBasePrice()"/></div>
+          <div class="form-group"><label class="form-label">Up to 125 guests (₪)</label><input class="form-input" type="number" id="gp125" placeholder="449" oninput="syncBasePrice()"/></div>
+        </div>
+      </div>
     </div>
     <div class="form-row-2">
       <div class="form-group"><label class="form-label">Badge Text</label><input class="form-input" id="pBadge" placeholder="Most Popular"/></div>
@@ -746,6 +762,32 @@ function renderProductsList() {
     </div>`;
   }).join('')}</div>`;
 }
+function onCategoryChange(cat) {
+  document.getElementById('guestPricingSection').style.display = cat === 'coffeebars' ? 'block' : 'none';
+}
+function syncBasePrice() {
+  const tiers = [25,50,75,100,125];
+  const first = tiers.map(t=>parseFloat(document.getElementById('gp'+t).value)).find(v=>!isNaN(v)&&v>0);
+  if (first) document.getElementById('pPrice').value = first;
+}
+function loadGuestPricing(variations) {
+  [25,50,75,100,125].forEach(t => document.getElementById('gp'+t).value = '');
+  const gv = (variations||[]).find(v=>v.type==='guest_count');
+  if (!gv) return;
+  (gv.options||[]).forEach(o => {
+    const el = document.getElementById('gp'+o.guests);
+    if (el) el.value = o.price || '';
+  });
+}
+function buildGuestPricingVariation() {
+  const tiers = [25,50,75,100,125];
+  const options = tiers.map(t=>{
+    const val = parseFloat(document.getElementById('gp'+t).value);
+    return isNaN(val)||val<=0 ? null : { label:`Up to ${t} guests`, guests:t, price:val };
+  }).filter(Boolean);
+  if (!options.length) return null;
+  return { name:'Number of Guests', type:'guest_count', options };
+}
 function openProductModal(productId) {
   editingImages = [];
   document.getElementById('imgPreviews').innerHTML = '';
@@ -766,17 +808,24 @@ function openProductModal(productId) {
     document.getElementById('pBadgeType').value = p.badge_type || '';
     document.getElementById('pActive').checked = p.is_active;
     document.getElementById('pSubscription').checked = p.is_subscription;
-    if (p.variations?.length) {
-      document.getElementById('pVariations').value = p.variations.map(v=>`${v.name}: ${v.options.join(', ')}`).join(' | ');
+    const nonGuestVars = (p.variations||[]).filter(v=>v.type!=='guest_count');
+    if (nonGuestVars.length) {
+      document.getElementById('pVariations').value = nonGuestVars.map(v=>`${v.name}: ${v.options.join(', ')}`).join(' | ');
+    } else {
+      document.getElementById('pVariations').value = '';
     }
+    loadGuestPricing(p.variations);
+    onCategoryChange(p.category || 'bottles');
     editingImages = [...(p.images || [])];
     renderImgPreviews();
   } else {
     ['pNameEn','pNameHe','pDescEn','pDescHe','pPrice','pOrigPrice','pBadge','pVariations'].forEach(id=>document.getElementById(id).value='');
+    [25,50,75,100,125].forEach(t=>document.getElementById('gp'+t).value='');
     document.getElementById('pCategory').value='bottles';
     document.getElementById('pBadgeType').value='';
     document.getElementById('pActive').checked=true;
     document.getElementById('pSubscription').checked=false;
+    onCategoryChange('bottles');
   }
   document.getElementById('productModal').classList.add('open');
 }
@@ -834,7 +883,11 @@ async function saveProduct() {
     is_active: document.getElementById('pActive').checked,
     is_subscription: document.getElementById('pSubscription').checked,
     images: editingImages,
-    variations: parseVariations(document.getElementById('pVariations').value),
+    variations: (() => {
+      const base = parseVariations(document.getElementById('pVariations').value);
+      const gp = buildGuestPricingVariation();
+      return gp ? [...base, gp] : base;
+    })(),
     updated_at: new Date().toISOString(),
   };
   if (!data.name_en || !data.price) { showToast('Name and price are required'); return; }
