@@ -1720,13 +1720,14 @@ async function loadMyOrders() {
   }).join('');
 }
 // ══ PAGES ══
-function showPage(page) {
+function showPage(page, fromHistory) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(page+'Page').classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'shop') { activeCategory='all'; renderShop(); }
   if (page === 'myorders') loadMyOrders();
   if (page === 'coffeebars') renderCoffeeBarsPage();
+  if (!fromHistory) history.pushState({ page }, '');
 }
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
@@ -1798,12 +1799,19 @@ async function init() {
   applyTranslations();
 }
 init();
-window.addEventListener('popstate', function() {
+// Seed the initial history state so back-navigation lands on 'home'
+history.replaceState({ page: 'home' }, '');
+window.addEventListener('popstate', function(e) {
+  // Close any open drawer first
   if (document.getElementById('pdDrawer').classList.contains('open')) {
-    closeProductDrawer();
-  } else if (document.getElementById('cartDrawer').classList.contains('open')) {
-    closeCart();
+    closeProductDrawer(); return;
   }
+  if (document.getElementById('cartDrawer').classList.contains('open')) {
+    closeCart(); return;
+  }
+  // Otherwise navigate to the page stored in history state
+  const page = e.state?.page || 'home';
+  showPage(page, true); // true = don't push a new entry
 });
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
