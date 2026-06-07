@@ -1958,22 +1958,62 @@ window.addEventListener('popstate', function(e) {
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
 let chatHistory = [];
 let chatOpen = false;
-// Product ID map — matches edge function ids to our products array
-const CHAT_PRODUCT_MAP = {
-  'classic-dark-roast':     'Classic Dark Roast',
-  'house-blend':            'House Blend Medium Roast',
-  'colombia-light':         'Colombia Light Roast',
-  'caramel-cremier':        'Caramel Cremier',
-  'mini-classic-4pack':     'Mini Classic 4-Pack',
-  'mini-house-4pack':       'Mini House Blend 4-Pack',
-  'mini-cremier-4pack':     'Mini Cremier 4-Pack',
-  '5l-classic':             '5L Classic Dark Roast',
-  '5l-house-blend':         '5L House Blend',
-  '5l-colombia':            '5L Colombia Light Roast',
-  '3x5l-classic':           '3 × 5L Classic Dark Roast',
-  'combo-subscription':     'Combo Subscription',
-  'colombia-subscription':  'Colombia Monthly Subscription',
-};
+let chatCatalogVersion = 0;
+
+function slugifyProductName(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function buildChatCatalog() {
+  return products.map(p => ({
+    id: p.id,
+    slug: slugifyProductName(p.name_en),
+    name_en: p.name_en,
+    name_he: p.name_he || '',
+    description_en: p.description_en || '',
+    description_he: p.description_he || '',
+    price: p.price,
+    original_price: p.original_price || null,
+    category: p.category,
+    badge_text: p.badge_text || null,
+    is_subscription: !!p.is_subscription,
+    variations: p.variations || [],
+    guest_pricing: (p.variations || []).find(v => v.type === 'guest_count')?.options || null,
+  }));
+}
+
+async function refreshChatProducts() {
+  await loadProducts();
+  mergeCoffeeBarsIntoProducts();
+  chatCatalogVersion++;
+}
+
+function resolveChatProduct(item) {
+  if (!item) return null;
+  const id = item.id || item.product_id;
+  const name = item.name || item.name_en || item.name_he;
+  if (id) {
+    let p = products.find(x => String(x.id) === String(id));
+    if (p) return p;
+    const idLower = String(id).toLowerCase();
+    p = products.find(x => slugifyProductName(x.name_en) === idLower);
+    if (p) return p;
+  }
+  if (name) {
+    const lower = String(name).toLowerCase();
+    let p = products.find(x =>
+      x.name_en?.toLowerCase() === lower ||
+      (x.name_he && x.name_he === name)
+    );
+    if (p) return p;
+    p = products.find(x =>
+      x.name_en?.toLowerCase().includes(lower) ||
+      lower.includes(x.name_en?.toLowerCase() || '')
+    );
+    if (p) return p;
+  }
+  return null;
+}
 // Quick-reply chip sets shown after key moments
 const CHAT_QUICK_REPLIES = {
   welcome: {
@@ -1989,10 +2029,20 @@ const CHAT_QUICK_REPLIES = {
     he: ['🫙 בקבוקים','📦 מיני פקים','🪣 כמויות / 5 ליטר','🔄 מנויים'],
   },
 };
-// Hardcoded upsell suggestion products (shown as mini cards in chat)
+// Product suggestions — always from live catalog
 function getChatSuggestedProducts() {
-  const priority = ['Caramel Cremier','Mini Cremier 4-Pack','Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast'];
-  return priority.map(n => products.find(p => p.name_en === n)).filter(Boolean).slice(0,3);
+  const picks = [];
+  featuredOrder.forEach(n => {
+    const p = products.find(x => x.name_en === n);
+    if (p && !picks.includes(p)) picks.push(p);
+  });
+  products.forEach(p => {
+    if (picks.length >= 3) return;
+    if (p.category === 'coffeebars') return;
+    if (p.is_active === false) return;
+    if (!picks.includes(p)) picks.push(p);
+  });
+  return picks.slice(0, 3);
 }
 function dismissChatTooltip() {
   const tip = document.getElementById('chatTooltip');
@@ -2000,8 +2050,9 @@ function dismissChatTooltip() {
   tip.classList.add('fade-out');
   setTimeout(() => tip.remove(), 400);
 }
-function openChatbot() {
+async function openChatbot() {
   dismissChatTooltip();
+  await refreshChatProducts();
   chatOpen = true;
   document.getElementById('chatbotOverlay').classList.add('open');
   document.getElementById('chatbotPanel').classList.add('open');
@@ -2149,10 +2200,7 @@ function appendBotMessage(text, cartItems, quickReplies) {
   if (cartItems && cartItems.length > 0) {
     let added = 0;
     cartItems.forEach(item => {
-      const product = products.find(p =>
-        p.name_en === CHAT_PRODUCT_MAP[item.id] ||
-        p.name_en?.toLowerCase().includes((CHAT_PRODUCT_MAP[item.id]||'').toLowerCase())
-      );
+      const product = resolveChatProduct(item);
       if (product) {
         for (let i = 0; i < (item.qty || 1); i++) addToCart(product.id);
         added++;
@@ -2198,10 +2246,16 @@ async function sendChatMessageText(text) {
   chatHistory.push({ role: 'user', content: text });
   showThinking();
   try {
+    await refreshChatProducts();
     const res = await fetch(CHAT_EDGE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-      body: JSON.stringify({ messages: chatHistory }),
+      body: JSON.stringify({
+        messages: chatHistory,
+        products: buildChatCatalog(),
+        lang,
+        catalog_version: chatCatalogVersion,
+      }),
     });
     hideThinking();
     if (!res.ok) throw new Error('Network error');
@@ -2223,43 +2277,3 @@ async function sendChatMessageText(text) {
 </script>
 </body>
 </html>
-`;
-
-export default function App() {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, "text/html");
-
-    doc.querySelectorAll("style").forEach(style => {
-      document.head.appendChild(style.cloneNode(true));
-    });
-
-    doc.querySelectorAll("link").forEach(link => {
-      if (!document.querySelector(`link[href="${link.href}"]`)) {
-        document.head.appendChild(link.cloneNode(true));
-      }
-    });
-
-    const title = doc.querySelector("title");
-    if (title) document.title = title.textContent;
-
-    document.body.innerHTML = doc.body.innerHTML;
-
-    doc.querySelectorAll("script").forEach(oldScript => {
-      const newScript = document.createElement("script");
-      if (oldScript.src) {
-        newScript.src = oldScript.src;
-      } else {
-        newScript.textContent = oldScript.textContent;
-      }
-      document.body.appendChild(newScript);
-    });
-  }, []);
-
-  return <div ref={containerRef} />;
-}
