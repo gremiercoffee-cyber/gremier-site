@@ -1,3 +1,6 @@
+import { useEffect, useRef } from "react";
+
+const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,7 +54,7 @@
     .points-bar-track { background:var(--bg3); border-radius:4px; height:8px; margin:10px 0 5px; }
     .points-bar-fill { background:#1a1a1a; border-radius:4px; height:8px; transition:width .6s ease; }
     /* NAV */
-    nav { position:fixed; top:0; left:0; right:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:0 32px; height:64px; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); box-shadow:0 1px 12px rgba(0,0,0,0.06); }
+    nav { position:fixed; top:0; left:0; right:0; z-index:120; display:flex; align-items:center; justify-content:space-between; padding:0 32px; height:64px; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); box-shadow:0 1px 12px rgba(0,0,0,0.06); }
     .nav-logo { font-family:'Playfair Display',serif; font-size:1.4rem; font-weight:700; color:#1a1a1a; text-decoration:none; letter-spacing:.02em; cursor:pointer; }
     .nav-logo span { color:#1a1a1a; }
     .nav-links { display:flex; gap:28px; list-style:none; }
@@ -263,6 +266,27 @@
     .order-card-footer { display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid var(--border); }
     .order-total-label { font-size:.78rem; color:var(--text2); }
     .order-total-amt { font-size:1.1rem; color:#1a1a1a; font-weight:500; }
+    /* ACCOUNT PAGE */
+    .account-page-wrap { max-width:760px; margin:0 auto; padding:0 16px; }
+    .account-profile-card { background:#fff; border:1px solid var(--border); border-radius:6px; padding:28px 24px; margin-bottom:22px; display:flex; align-items:center; gap:20px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+    .account-avatar { width:60px; height:60px; border-radius:50%; object-fit:cover; background:var(--bg3); border:2px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.6rem; overflow:hidden; }
+    .account-avatar img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+    .account-name { font-family:'Playfair Display',serif; font-size:1.2rem; color:#1a1a1a; margin-bottom:3px; }
+    .account-email { font-size:.78rem; color:var(--text2); }
+    .account-signout-btn { margin-left:auto; background:none; border:1px solid var(--border); color:var(--text2); font-family:'DM Sans',sans-serif; font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; padding:6px 14px; border-radius:20px; cursor:pointer; transition:all .2s; white-space:nowrap; flex-shrink:0; }
+    .account-signout-btn:hover { border-color:#1a1a1a; color:#1a1a1a; }
+    .account-points-card { background:#1a1a1a; color:#fff; border-radius:6px; padding:24px; margin-bottom:22px; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+    .account-points-label { font-size:.7rem; letter-spacing:.18em; text-transform:uppercase; color:rgba(255,255,255,.5); margin-bottom:6px; }
+    .account-points-number { font-family:'Playfair Display',serif; font-size:2.8rem; font-weight:700; line-height:1; margin-bottom:4px; }
+    .account-points-sub { font-size:.78rem; color:rgba(255,255,255,.55); margin-bottom:18px; }
+    .acc-pts-bar-track { background:rgba(255,255,255,.15); border-radius:4px; height:6px; margin-bottom:6px; }
+    .acc-pts-bar-fill { background:#c8873a; border-radius:4px; height:6px; transition:width .6s ease; }
+    .acc-pts-bar-labels { display:flex; justify-content:space-between; font-size:.68rem; color:rgba(255,255,255,.45); margin-bottom:18px; }
+    .acc-coupon-box { background:rgba(200,135,58,.18); border:1px solid rgba(200,135,58,.35); border-radius:4px; padding:12px 16px; display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+    .acc-coupon-box .acc-coupon-icon { font-size:1.2rem; }
+    .acc-coupon-text { font-size:.82rem; color:#fff; font-weight:500; }
+    .acc-coupon-sub { font-size:.72rem; color:rgba(255,255,255,.6); }
+    .account-section-title { font-size:.68rem; letter-spacing:.15em; text-transform:uppercase; color:var(--text2); margin-bottom:14px; font-weight:500; }
     /* LOADING */
     .loading { display:flex; align-items:center; justify-content:center; padding:60px 20px; color:var(--text2); gap:10px; }
     .spinner { width:22px; height:22px; border:2px solid var(--border); border-top-color:#1a1a1a; border-radius:50%; animation:spin .7s linear infinite; }
@@ -577,7 +601,7 @@
   <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
   <a onclick="showPage('coffeebars');closeMobileMenu()" id="mm-bars">Coffee Bars</a>
   <a onclick="showPage('home');setTimeout(()=>scrollToSection('aboutSection'),120);closeMobileMenu()" id="mm-about">About</a>
-  <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Orders</a>
+  <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Account</a>
 </div>
 <nav>
   <span class="nav-logo" onclick="showPage('home')" style="display:flex;align-items:center;gap:10px">
@@ -589,7 +613,7 @@
     <li><a onclick="showPage('shop')">Shop</a></li>
     <li><a onclick="showPage('coffeebars')">Coffee Bars</a></li>
     <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('aboutSection'),120)">About</a></li>
-    <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Orders</a></li>
+    <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Account</a></li>
   </ul>
   <div class="nav-right">
     <button class="lang-btn" onclick="toggleLang()" id="langBtn">עב</button>
@@ -693,15 +717,53 @@
     <div class="product-grid" id="shopGrid"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
-<!-- ══ MY ORDERS ══ -->
+<!-- ══ ACCOUNT PAGE ══ -->
 <div id="myordersPage" class="page" style="padding-top:80px">
   <div class="section">
     <div class="section-header">
       <div class="eyebrow" id="t-mo-eye">Account</div>
       <div class="divider"></div>
-      <h2 class="section-title" id="t-mo-title">My Orders</h2>
+      <h2 class="section-title" id="t-mo-title">My Account</h2>
     </div>
-    <div class="my-orders-list" id="myOrdersList"><div class="loading"><div class="spinner"></div></div></div>
+    <div class="account-page-wrap">
+      <!-- Not signed in state -->
+      <div id="accountNotSignedIn" style="text-align:center;padding:48px 20px;display:none">
+        <div style="font-size:2.4rem;margin-bottom:14px;opacity:.35">☕</div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#1a1a1a;margin-bottom:8px" id="t-acc-signin-title">Sign in to view your account</div>
+        <div style="font-size:.84rem;color:var(--text2);margin-bottom:24px" id="t-acc-signin-sub">Track orders, view points, and manage your profile.</div>
+        <button class="btn btn-primary" onclick="openAuthModal()" id="t-acc-signin-btn">Sign In</button>
+      </div>
+      <!-- Signed in state -->
+      <div id="accountSignedIn" style="display:none">
+        <!-- Profile card -->
+        <div class="account-profile-card">
+          <div class="account-avatar" id="accAvatar">👤</div>
+          <div>
+            <div class="account-name" id="accName">—</div>
+            <div class="account-email" id="accEmail">—</div>
+          </div>
+          <button class="account-signout-btn" onclick="signOut()" id="t-acc-signout">Sign Out</button>
+        </div>
+        <!-- Points & loyalty card -->
+        <div class="account-points-card">
+          <div class="account-points-label" id="t-acc-pts-label">Loyalty Points</div>
+          <div class="account-points-number" id="accPtsNumber">0</div>
+          <div class="account-points-sub" id="t-acc-pts-sub">₪10 spent = 1 point · 200 points = 10% off</div>
+          <div class="acc-pts-bar-track"><div class="acc-pts-bar-fill" id="accPtsBarFill" style="width:0%"></div></div>
+          <div class="acc-pts-bar-labels"><span>0</span><span id="accPtsBarGoal">200 pts = 10% off</span></div>
+          <div id="accCouponBox" class="acc-coupon-box" style="display:none">
+            <span class="acc-coupon-icon">🎉</span>
+            <div>
+              <div class="acc-coupon-text" id="t-acc-coupon-title">You have a 10% discount ready!</div>
+              <div class="acc-coupon-sub" id="t-acc-coupon-sub">Automatically applied at checkout.</div>
+            </div>
+          </div>
+        </div>
+        <!-- Order history -->
+        <div class="account-section-title" id="t-acc-orders-title">Order History</div>
+        <div class="my-orders-list" id="myOrdersList"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
   </div>
 </div>
 <!-- ══ PRODUCT DRAWER ══ -->
@@ -752,7 +814,6 @@
   <div id="cbpHeroImgWrap" class="cbp-hero-img-wrap" style="display:none">
     <img id="cbpHeroImg" src="" alt="Gremier Coffee Bar at event"/>
   </div>
-
   <!-- Packages -->
   <div class="section">
     <div class="section-header">
@@ -768,7 +829,6 @@
       Coffee products are also available to order directly online — <button onclick="showPage('shop')" style="background:none;border:none;padding:0;cursor:pointer;color:#1a1a1a;font-weight:600;font-size:.8rem;text-decoration:underline">browse the shop →</button>
     </p>
   </div>
-
   <!-- How it works -->
   <div class="section section-alt">
     <div class="section-header">
@@ -794,7 +854,6 @@
       </div>
     </div>
   </div>
-
   <!-- Gallery -->
   <div class="section">
     <div class="section-header">
@@ -809,7 +868,6 @@
       <div class="cbp-gallery-item" id="cbpGal4"><span>Photo coming soon</span></div>
     </div>
   </div>
-
   <!-- Final CTA -->
   <div class="cbp-cta-band">
     <h2 class="cbp-cta-title">Ready to Elevate<br>Your Event?</h2>
@@ -1147,8 +1205,8 @@ async function setUser(user) {
   const avatar = user.user_metadata?.avatar_url;
   const btn = document.getElementById('authBtn');
   btn.innerHTML = avatar
-    ? `<img src="${avatar}" alt=""/> <span>${name.split(' ')[0]}</span>`
-    : `<span>${name.split(' ')[0]}</span>`;
+    ? \`<img src="\${avatar}" alt=""/> <span>\${name.split(' ')[0]}</span>\`
+    : \`<span>\${name.split(' ')[0]}</span>\`;
   document.getElementById('myOrdersNav').style.display = 'block';
   document.getElementById('coName').value = user.user_metadata?.full_name || '';
   document.getElementById('coEmail').value = user.email || '';
@@ -1160,7 +1218,7 @@ async function setUser(user) {
 }
 function clearUser() {
   currentUser = null; isAdmin = false; userPoints = 0; userCouponAvailable = false;
-  document.getElementById('authBtn').innerHTML = `<span>${tr('sign-in')}</span>`;
+  document.getElementById('authBtn').innerHTML = \`<span>\${tr('sign-in')}</span>\`;
   document.getElementById('myOrdersNav').style.display = 'none';
   document.getElementById('loyaltyPill').style.display = 'none';
 }
@@ -1197,11 +1255,14 @@ function closeMemberPopup() {
 }
 // ══ LOYALTY / POINTS ══
 function updateLoyaltyPill() {
+  // If account page is active, refresh it too
+  const accPage = document.getElementById('myordersPage');
+  if (accPage && accPage.classList.contains('active') && currentUser) updateAccountPage();
   const pill = document.getElementById('loyaltyPill');
   pill.style.display = 'flex';
   const text = userCouponAvailable
     ? (lang==='he' ? '🎁 קופון זמין!' : '🎁 Coupon ready!')
-    : `${userPoints} ${lang==='he' ? 'נק׳' : 'pts'}`;
+    : \`\${userPoints} \${lang==='he' ? 'נק׳' : 'pts'}\`;
   document.getElementById('loyaltyPillText').textContent = text;
 }
 function openPointsModal() {
@@ -1305,7 +1366,7 @@ let pdSelectedPrice = null;
 function pdOnGuestChange(select) {
   pdSelectedPrice = parseFloat(select.value);
   const label = select.options[select.selectedIndex]?.text.split('—')[0]?.trim() || '';
-  document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?label||'מחיר':'Price for '+label}</span>₪${pdSelectedPrice}`;
+  document.getElementById('pdPrice').innerHTML = \`<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">\${lang==='he'?label||'מחיר':'Price for '+label}</span>₪\${pdSelectedPrice}\`;
 }
 function openProductDrawer(productId) {
   const p = products.find(x => String(x.id) === String(productId));
@@ -1319,15 +1380,15 @@ function openProductDrawer(productId) {
   // because writing innerHTML here destroys it and breaks every subsequent open.
   const imgWrap = document.getElementById('pdImgWrap');
   if (p.images && p.images.length > 0) {
-    imgWrap.innerHTML = `<img id="pdMainImg" src="${p.images[0]}" alt="${name}"/>`;
+    imgWrap.innerHTML = \`<img id="pdMainImg" src="\${p.images[0]}" alt="\${name}"/>\`;
   } else {
-    imgWrap.innerHTML = `<span style="font-size:4rem">${productIcon(p.category)}</span>`;
+    imgWrap.innerHTML = \`<span style="font-size:4rem">\${productIcon(p.category)}</span>\`;
   }
   // thumbnails
   const thumbs = document.getElementById('pdThumbs');
   if (p.images && p.images.length > 1) {
     thumbs.innerHTML = p.images.map((url, i) =>
-      `<img class="pd-thumb${i===0?' active':''}" src="${url}" onclick="pdSwitchImg(${i},'${url}')" alt=""/>`
+      \`<img class="pd-thumb\${i===0?' active':''}" src="\${url}" onclick="pdSwitchImg(\${i},'\${url}')" alt=""/>\`
     ).join('');
   } else {
     thumbs.innerHTML = '';
@@ -1343,16 +1404,16 @@ function openProductDrawer(productId) {
   }
   document.getElementById('pdName').textContent = name;
   document.getElementById('pdPrice').innerHTML = p.category === 'coffeebars'
-    ? `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}`
+    ? \`<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">\${lang==='he'?'החל מ':'Starting from'}</span>₪\${p.price}\`
     : p.original_price
-      ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
-      : `₪${p.price}`;
+      ? \`<span class="orig">₪\${p.original_price}</span>₪\${p.price}\`
+      : \`₪\${p.price}\`;
   document.getElementById('pdDesc').textContent = desc || '';
   // features list
   const featList = document.getElementById('pdFeatures');
   const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
   if (features && features.length > 0) {
-    featList.innerHTML = features.map(f => `<li>${f}</li>`).join('');
+    featList.innerHTML = features.map(f => \`<li>\${f}</li>\`).join('');
     featList.style.display = 'block';
   } else {
     featList.innerHTML = '';
@@ -1365,7 +1426,7 @@ function openProductDrawer(productId) {
   const guestTierVar = (p.variations || []).find(v => v.type === 'guest_count');
   if (p.category === 'coffeebars' && guestTierVar && guestTierVar.options?.length) {
     guestSelect.innerHTML = guestTierVar.options.map(o =>
-      `<option value="${o.price}">${o.label} — ₪${o.price}</option>`
+      \`<option value="\${o.price}">\${o.label} — ₪\${o.price}</option>\`
     ).join('');
     guestSection.style.display = 'block';
     // Trigger price update for the default selection
@@ -1376,7 +1437,7 @@ function openProductDrawer(productId) {
   // WhatsApp link — only for coffeebars products
   const waLink = document.getElementById('pdWhatsApp');
   if (p.category === 'coffeebars') {
-    waLink.href = `https://wa.me/972552703413?text=${encodeURIComponent(`Hi! I have a question about the ${p.name_en} ☕`)}`;
+    waLink.href = \`https://wa.me/972552703413?text=\${encodeURIComponent(\`Hi! I have a question about the \${p.name_en} ☕\`)}\`;
     waLink.style.display = 'flex';
   } else {
     waLink.style.display = 'none';
@@ -1390,7 +1451,7 @@ function openProductDrawer(productId) {
   history.pushState({ drawer: 'product' }, '');
   pdScrollY = window.scrollY;
   document.body.style.position = 'fixed';
-  document.body.style.top = `-${pdScrollY}px`;
+  document.body.style.top = \`-\${pdScrollY}px\`;
   document.body.style.left = '0';
   document.body.style.right = '0';
   document.body.style.overflow = 'hidden';
@@ -1424,7 +1485,7 @@ function pdAddToCart() {
     const guestLabel = guestSelect?.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim() || '';
     const cartId = pdCurrentProduct.id + '_' + pdSelectedPrice;
     const existing = cart.find(x => x.id === cartId);
-    const nameSuffix = guestLabel ? ` · ${guestLabel}` : '';
+    const nameSuffix = guestLabel ? \` · \${guestLabel}\` : '';
     if (existing) { existing.qty++; }
     else cart.push({
       id: cartId,
@@ -1449,25 +1510,25 @@ function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
   const img = (p.images && p.images.length > 0)
-    ? `<img src="${p.images[0]}" alt="${name}" loading="lazy" draggable="false"/>`
-    : `<div class="product-img-placeholder">${productIcon(p.category)}</div>`;
-  const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
-  const origPrice = p.original_price ? `<span class="orig">₪${p.original_price}</span>` : '';
-  return `
-    <div class="product-card" data-product-id="${p.id}">
+    ? \`<img src="\${p.images[0]}" alt="\${name}" loading="lazy" draggable="false"/>\`
+    : \`<div class="product-img-placeholder">\${productIcon(p.category)}</div>\`;
+  const badge = p.badge_text ? \`<div class="product-badge \${p.badge_type === 'sale' ? 'sale' : ''}">\${p.badge_text}</div>\` : '';
+  const origPrice = p.original_price ? \`<span class="orig">₪\${p.original_price}</span>\` : '';
+  return \`
+    <div class="product-card" data-product-id="\${p.id}">
       <div class="product-img">
         <div class="product-img-gradient"></div>
-        ${img}${badge}
+        \${img}\${badge}
       </div>
       <div class="product-info">
-        <div class="product-name">${name}</div>
-        <div class="product-desc">${desc || ''}</div>
+        <div class="product-name">\${name}</div>
+        <div class="product-desc">\${desc || ''}</div>
         <div class="product-footer">
-          <div class="product-price">${origPrice}₪${p.price}</div>
-          <button class="add-btn" data-id="${p.id}">+</button>
+          <div class="product-price">\${origPrice}₪\${p.price}</div>
+          <button class="add-btn" data-id="\${p.id}">+</button>
         </div>
       </div>
-    </div>`;
+    </div>\`;
 }
 function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
@@ -1488,7 +1549,7 @@ function renderShop() {
   const filter = document.getElementById('catFilter');
   if (filter) {
     filter.innerHTML = categories.map(c =>
-      `<button class="filter-btn ${activeCategory===c.key?'active':''}" onclick="setCategory('${c.key}')">${trCat(c.key)}</button>`
+      \`<button class="filter-btn \${activeCategory===c.key?'active':''}" onclick="setCategory('\${c.key}')">\${trCat(c.key)}</button>\`
     ).join('');
   }
   const grid = document.getElementById('shopGrid');
@@ -1505,14 +1566,14 @@ function renderCoffeeBars() {
   grid.innerHTML = cbList.map(p => {
     const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
     const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
-    return `
-      <div class="coffeebar-card ${p.badge_text ? 'featured' : ''}" data-product-id="${p.id}" style="cursor:pointer">
-        ${p.badge_text ? `<div class="coffeebar-tag">${p.badge_text}</div>` : ''}
-        <div class="coffeebar-name">${name}</div>
-        <div class="coffeebar-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}</div>
-        ${features.length ? `<ul class="coffeebar-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>` : ''}
-        <button class="btn btn-primary btn-full" style="pointer-events:none">${btnTxt}</button>
-      </div>`;
+    return \`
+      <div class="coffeebar-card \${p.badge_text ? 'featured' : ''}" data-product-id="\${p.id}" style="cursor:pointer">
+        \${p.badge_text ? \`<div class="coffeebar-tag">\${p.badge_text}</div>\` : ''}
+        <div class="coffeebar-name">\${name}</div>
+        <div class="coffeebar-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">\${lang==='he'?'החל מ':'Starting from'}</span>₪\${p.price}</div>
+        \${features.length ? \`<ul class="coffeebar-features">\${features.map(f=>\`<li>\${f}</li>\`).join('')}</ul>\` : ''}
+        <button class="btn btn-primary btn-full" style="pointer-events:none">\${btnTxt}</button>
+      </div>\`;
   }).join('');
 }
 function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); }
@@ -1524,19 +1585,19 @@ function renderCoffeeBarsPage() {
   grid.innerHTML = cbList.map(p => {
     const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
     const imgHtml = (p.images && p.images.length)
-      ? `<img src="${p.images[0]}" alt="${name}"/>`
-      : `<span>${lang==='he'?'תמונה בקרוב':'Photo coming soon'}</span>`;
-    const tag = p.badge_text ? `<div class="cbp-card-tag">${p.badge_text}</div>` : '';
-    return `
-      <div class="cbp-card ${p.badge_text?'featured':''}" data-product-id="${p.id}" style="cursor:pointer">
-        <div class="cbp-card-img">${imgHtml}</div>
+      ? \`<img src="\${p.images[0]}" alt="\${name}"/>\`
+      : \`<span>\${lang==='he'?'תמונה בקרוב':'Photo coming soon'}</span>\`;
+    const tag = p.badge_text ? \`<div class="cbp-card-tag">\${p.badge_text}</div>\` : '';
+    return \`
+      <div class="cbp-card \${p.badge_text?'featured':''}" data-product-id="\${p.id}" style="cursor:pointer">
+        <div class="cbp-card-img">\${imgHtml}</div>
         <div class="cbp-card-body">
-          ${tag}
-          <div class="cbp-card-name">${name}</div>
-          <div class="cbp-card-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}</div>
-          <div class="btn btn-primary btn-full" style="pointer-events:none;text-align:center;margin-top:8px">${lang==='he'?'לפרטים והזמנה':'View Details & Book'}</div>
+          \${tag}
+          <div class="cbp-card-name">\${name}</div>
+          <div class="cbp-card-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">\${lang==='he'?'החל מ':'Starting from'}</span>₪\${p.price}</div>
+          <div class="btn btn-primary btn-full" style="pointer-events:none;text-align:center;margin-top:8px">\${lang==='he'?'לפרטים והזמנה':'View Details & Book'}</div>
         </div>
-      </div>`;
+      </div>\`;
   }).join('');
 }
 function enquireCoffeeBar(id) {
@@ -1550,7 +1611,7 @@ function addToCart(productId) {
   if (existing) existing.qty++;
   else cart.push({ id:p.id, name_en:p.name_en, name_he:p.name_he, price:p.price, images:p.images, category:p.category, qty:1 });
   updateCartCount();
-  const btn = document.querySelector(`[data-id="${productId}"]`);
+  const btn = document.querySelector(\`[data-id="\${productId}"]\`);
   if (btn) { btn.textContent='✓'; btn.style.background='var(--green)'; setTimeout(()=>{btn.textContent='+';btn.style.background='';},800); }
   showToast(lang==='he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
 }
@@ -1563,7 +1624,7 @@ function renderCartDrawer() {
   const body = document.getElementById('cartBody');
   const footer = document.getElementById('cartFooter');
   if (!cart.length) {
-    body.innerHTML = `<div class="cart-empty-msg"><div class="ei">🛒</div><p>${tr('empty-cart')}</p></div>`;
+    body.innerHTML = \`<div class="cart-empty-msg"><div class="ei">🛒</div><p>\${tr('empty-cart')}</p></div>\`;
     footer.style.display = 'none'; return;
   }
   footer.style.display = 'block';
@@ -1571,23 +1632,23 @@ function renderCartDrawer() {
   body.innerHTML = cart.map(item => {
     const name = lang==='he' ? (item.name_he||item.name_en) : item.name_en;
     const thumb = (item.images && item.images.length)
-      ? `<img src="${item.images[0]}" alt="${name}"/>`
+      ? \`<img src="\${item.images[0]}" alt="\${name}"/>\`
       : productIcon(item.category);
-    return `<div class="cart-item">
-      <div class="cart-item-thumb">${thumb}</div>
+    return \`<div class="cart-item">
+      <div class="cart-item-thumb">\${thumb}</div>
       <div class="cart-item-info">
-        <div class="cart-item-name">${name}</div>
-        <div class="cart-item-price">₪${item.price} × ${item.qty} = ₪${item.price*item.qty}</div>
+        <div class="cart-item-name">\${name}</div>
+        <div class="cart-item-price">₪\${item.price} × \${item.qty} = ₪\${item.price*item.qty}</div>
         <div class="qty-controls">
-          <button class="qty-btn" onclick="changeQty('${item.id}',-1)">−</button>
-          <span class="qty-val">${item.qty}</span>
-          <button class="qty-btn" onclick="changeQty('${item.id}',1)">+</button>
-          <button class="rm-btn" onclick="removeFromCart('${item.id}')">${lang==='he'?'הסר':'Remove'}</button>
+          <button class="qty-btn" onclick="changeQty('\${item.id}',-1)">−</button>
+          <span class="qty-val">\${item.qty}</span>
+          <button class="qty-btn" onclick="changeQty('\${item.id}',1)">+</button>
+          <button class="rm-btn" onclick="removeFromCart('\${item.id}')">\${lang==='he'?'הסר':'Remove'}</button>
         </div>
       </div>
-    </div>`;
+    </div>\`;
   }).join('');
-  document.getElementById('cartTotal').textContent = `₪${total}`;
+  document.getElementById('cartTotal').textContent = \`₪\${total}\`;
 }
 function changeQty(id, delta) {
   const item = cart.find(x=>x.id===id);
@@ -1605,14 +1666,14 @@ function openCheckout() {
   closeCart();
   const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
-  const lines = cart.map(i=>`<div class="order-line"><span>${lang==='he'?(i.name_he||i.name_en):i.name_en} ×${i.qty}</span><span>₪${i.price*i.qty}</span></div>`).join('');
+  const lines = cart.map(i=>\`<div class="order-line"><span>\${lang==='he'?(i.name_he||i.name_en):i.name_en} ×\${i.qty}</span><span>₪\${i.price*i.qty}</span></div>\`).join('');
   const couponLine = couponDiscount > 0
-    ? `<div class="order-line" style="color:var(--green)"><span>🎁 ${lang==='he'?'קופון חבר (10%)':'Member coupon (10%)'}</span><span>-₪${couponDiscount}</span></div>`
+    ? \`<div class="order-line" style="color:var(--green)"><span>🎁 \${lang==='he'?'קופון חבר (10%)':'Member coupon (10%)'}</span><span>-₪\${couponDiscount}</span></div>\`
     : '';
-  document.getElementById('coSummary').innerHTML = `
-    <div class="order-summary-title">${lang==='he'?'סיכום הזמנה':'Order Summary'}</div>
-    ${lines}${couponLine}
-    <div class="order-total-line"><span>${lang==='he'?'סה"כ':'Total'}</span><span>₪${cartTotal - couponDiscount}</span></div>`;
+  document.getElementById('coSummary').innerHTML = \`
+    <div class="order-summary-title">\${lang==='he'?'סיכום הזמנה':'Order Summary'}</div>
+    \${lines}\${couponLine}
+    <div class="order-total-line"><span>\${lang==='he'?'סה"כ':'Total'}</span><span>₪\${cartTotal - couponDiscount}</span></div>\`;
   document.getElementById('checkoutFormView').style.display = 'block';
   document.getElementById('checkoutConfirmView').style.display = 'none';
   document.getElementById('checkoutOverlay').classList.add('open');
@@ -1670,7 +1731,7 @@ function applySiteImages() {
   // Hero background — use hero_1 if set
   if (siteSettings.hero_1) {
     const heroBg = document.querySelector('.hero-bg');
-    if (heroBg) heroBg.style.background = `url('${siteSettings.hero_1}') center/cover no-repeat`;
+    if (heroBg) heroBg.style.background = \`url('\${siteSettings.hero_1}') center/cover no-repeat\`;
   }
   // Coffee bars page — hero image
   if (siteSettings.cb_hero) {
@@ -1694,29 +1755,67 @@ function applySiteImages() {
   // Gallery images
   ['cb_gallery_1','cb_gallery_2','cb_gallery_3','cb_gallery_4'].forEach((key,i) => {
     const el = document.getElementById('cbpGal'+(i+1));
-    if (el && siteSettings[key]) el.innerHTML = `<img src="${siteSettings[key]}" alt="Coffee bar event photo"/>`;
+    if (el && siteSettings[key]) el.innerHTML = \`<img src="\${siteSettings[key]}" alt="Coffee bar event photo"/>\`;
   });
 }
+function updateAccountPage() {
+  if (!currentUser) {
+    document.getElementById('accountNotSignedIn').style.display = 'block';
+    document.getElementById('accountSignedIn').style.display = 'none';
+    return;
+  }
+  document.getElementById('accountNotSignedIn').style.display = 'none';
+  document.getElementById('accountSignedIn').style.display = 'block';
+  // Profile
+  const name = currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Account';
+  const avatar = currentUser.user_metadata?.avatar_url;
+  document.getElementById('accName').textContent = name;
+  document.getElementById('accEmail').textContent = currentUser.email || '';
+  const avatarEl = document.getElementById('accAvatar');
+  avatarEl.innerHTML = avatar ? \`<img src="\${avatar}" alt=""/>\` : '👤';
+  // Points
+  document.getElementById('accPtsNumber').textContent = userPoints;
+  const pct = Math.min(100, Math.round((userPoints / 200) * 100));
+  document.getElementById('accPtsBarFill').style.width = pct + '%';
+  if (lang === 'he') {
+    document.getElementById('t-acc-pts-label').textContent = 'נקודות נאמנות';
+    document.getElementById('t-acc-pts-sub').textContent = '₪10 = נקודה אחת · 200 נקודות = 10% הנחה';
+    document.getElementById('accPtsBarGoal').textContent = '200 נק׳ = 10% הנחה';
+    document.getElementById('t-acc-coupon-title').textContent = 'יש לך הנחה של 10% מוכנה!';
+    document.getElementById('t-acc-coupon-sub').textContent = 'תיושם אוטומטית בקופה.';
+    document.getElementById('t-acc-orders-title').textContent = 'היסטוריית הזמנות';
+    document.getElementById('t-acc-signout').textContent = 'התנתק';
+    document.getElementById('t-acc-signin-title').textContent = 'התחבר לצפייה בחשבון';
+    document.getElementById('t-acc-signin-sub').textContent = 'עקוב אחר הזמנות, נקודות ופרופיל.';
+    document.getElementById('t-acc-signin-btn').textContent = 'כניסה';
+  }
+  document.getElementById('accCouponBox').style.display = userCouponAvailable ? 'flex' : 'none';
+}
 async function loadMyOrders() {
-  if (!currentUser) { document.getElementById('myOrdersList').innerHTML = `<p style="color:var(--text2);text-align:center">${lang==='he'?'יש להתחבר':'Please sign in to view your orders.'}</p>`; return; }
+  if (!currentUser) {
+    document.getElementById('accountNotSignedIn').style.display = 'block';
+    document.getElementById('accountSignedIn').style.display = 'none';
+    return;
+  }
+  updateAccountPage();
   const { data, error } = await sb.from('orders').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:false});
   const list = document.getElementById('myOrdersList');
-  if (error || !data?.length) { list.innerHTML = `<p style="color:var(--text2);text-align:center">${tr('empty-orders')}</p>`; return; }
+  if (error || !data?.length) { list.innerHTML = \`<p style="color:var(--text2);text-align:center">\${tr('empty-orders')}</p>\`; return; }
   list.innerHTML = data.map(order => {
     const date = new Date(order.created_at).toLocaleDateString(lang==='he'?'he-IL':'en-IL',{day:'numeric',month:'short',year:'numeric'});
     const statusLabel = tr('order-status')[order.status] || order.status;
-    const itemsText = (order.items||[]).map(i=>`${lang==='he'?(i.name_he||i.name_en):i.name_en} ×${i.qty}`).join(', ');
-    return `<div class="order-card">
+    const itemsText = (order.items||[]).map(i=>\`\${lang==='he'?(i.name_he||i.name_en):i.name_en} ×\${i.qty}\`).join(', ');
+    return \`<div class="order-card">
       <div class="order-card-header">
-        <div><div class="order-num">${lang==='he'?'הזמנה':'Order'} #${order.order_number}</div><div class="order-date">${date}</div></div>
-        <span class="status-badge status-${order.status}">${statusLabel}</span>
+        <div><div class="order-num">\${lang==='he'?'הזמנה':'Order'} #\${order.order_number}</div><div class="order-date">\${date}</div></div>
+        <span class="status-badge status-\${order.status}">\${statusLabel}</span>
       </div>
-      <div class="order-items-list">${itemsText}</div>
+      <div class="order-items-list">\${itemsText}</div>
       <div class="order-card-footer">
-        <span class="order-total-label">${lang==='he'?'סה"כ':'Total'}</span>
-        <span class="order-total-amt">₪${order.total}</span>
+        <span class="order-total-label">\${lang==='he'?'סה"כ':'Total'}</span>
+        <span class="order-total-amt">₪\${order.total}</span>
       </div>
-    </div>`;
+    </div>\`;
   }).join('');
 }
 // ══ PAGES ══
@@ -1761,9 +1860,9 @@ async function loadDeliveryZones() {
   const sel = document.getElementById('coCity');
   if (!sel || !deliveryZones.length) return;
   const opts = deliveryZones.map(z =>
-    `<option value="${z.id}">${lang === 'he' ? z.name_he : z.name_en}</option>`
+    \`<option value="\${z.id}">\${lang === 'he' ? z.name_he : z.name_en}</option>\`
   ).join('');
-  sel.innerHTML = `<option value="">${lang === 'he' ? 'בחר עיר...' : 'Select your city...'}</option>` + opts;
+  sel.innerHTML = \`<option value="">\${lang === 'he' ? 'בחר עיר...' : 'Select your city...'}</option>\` + opts;
 }
 function updateDeliveryPrice() {
   const cityId = document.getElementById('coCity')?.value;
@@ -1783,9 +1882,9 @@ function updateDeliveryPrice() {
   const regularFee = isFree ? 0 : (zone.regular_price || 0);
   const expeditedFee = zone.expedited_price || 0;
   const fee = isExpedited ? expeditedFee : regularFee;
-  document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : `₪${zone.regular_price}`;
-  document.getElementById('shipExpeditedPrice').textContent = `₪${expeditedFee}`;
-  if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
+  document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : \`₪\${zone.regular_price}\`;
+  document.getElementById('shipExpeditedPrice').textContent = \`₪\${expeditedFee}\`;
+  if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : \`₪\${fee}\`; }
   if (freeNote) freeNote.style.display = (isFree && !isExpedited) ? 'block' : 'none';
   return fee;
 }
@@ -1889,15 +1988,15 @@ function appendProductSuggestions() {
   const wrap = document.createElement('div');
   wrap.className = 'chat-msg bot';
   const label = lang==='he' ? 'המוצרים הפופולריים שלנו:' : 'Our popular picks:';
-  wrap.innerHTML = `<div class="chat-bubble" style="padding:10px 12px">${label}</div>`;
+  wrap.innerHTML = \`<div class="chat-bubble" style="padding:10px 12px">\${label}</div>\`;
   const grid = document.createElement('div');
   grid.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:6px;width:100%';
   suggested.forEach(p => {
     const name = lang==='he' ? (p.name_he||p.name_en) : p.name_en;
-    const img = p.images?.length ? `<img src="${p.images[0]}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0" alt=""/>` : `<div style="width:44px;height:44px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">${productIcon(p.category)}</div>`;
+    const img = p.images?.length ? \`<img src="\${p.images[0]}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0" alt=""/>\` : \`<div style="width:44px;height:44px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">\${productIcon(p.category)}</div>\`;
     const card = document.createElement('div');
     card.style.cssText = 'display:flex;align-items:center;gap:10px;background:#f7f5f2;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;transition:border-color .2s';
-    card.innerHTML = `${img}<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:#1a1a1a;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div><div style="font-size:.76rem;color:var(--text2)">₪${p.price}</div></div><button style="background:#1a1a1a;color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>`;
+    card.innerHTML = \`\${img}<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:#1a1a1a;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\${name}</div><div style="font-size:.76rem;color:var(--text2)">₪\${p.price}</div></div><button style="background:#1a1a1a;color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>\`;
     card.onclick = () => chatAddProduct(p.id, name);
     grid.appendChild(card);
   });
@@ -1907,11 +2006,11 @@ function appendProductSuggestions() {
 }
 function chatAddProduct(productId, name) {
   addToCart(productId);
-  appendUserMessage(lang==='he' ? `הוסף ${name}` : `Add ${name}`);
-  chatHistory.push({ role:'user', content: lang==='he' ? `הוסף ${name} לעגלה` : `Add ${name} to my cart` });
+  appendUserMessage(lang==='he' ? \`הוסף \${name}\` : \`Add \${name}\`);
+  chatHistory.push({ role:'user', content: lang==='he' ? \`הוסף \${name} לעגלה\` : \`Add \${name} to my cart\` });
   const upsellMsg = lang==='he'
-    ? `✓ ${name} נוסף לעגלה! רוצה להוסיף עוד? יש לנו גם 4-Pack Cremier מיני שמשתלב מעולה.`
-    : `✓ ${name} added! Want to add anything else? The Mini Cremier 4-Pack pairs great with it.`;
+    ? \`✓ \${name} נוסף לעגלה! רוצה להוסיף עוד? יש לנו גם 4-Pack Cremier מיני שמשתלב מעולה.\`
+    : \`✓ \${name} added! Want to add anything else? The Mini Cremier 4-Pack pairs great with it.\`;
   appendBotMessage(upsellMsg, [], CHAT_QUICK_REPLIES.afterAdd);
   chatHistory.push({ role:'assistant', content: upsellMsg });
 }
@@ -2082,3 +2181,43 @@ async function sendChatMessageText(text) {
 </script>
 </body>
 </html>
+`;
+
+export default function App() {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, "text/html");
+
+    doc.querySelectorAll("style").forEach(style => {
+      document.head.appendChild(style.cloneNode(true));
+    });
+
+    doc.querySelectorAll("link").forEach(link => {
+      if (!document.querySelector(`link[href="${link.href}"]`)) {
+        document.head.appendChild(link.cloneNode(true));
+      }
+    });
+
+    const title = doc.querySelector("title");
+    if (title) document.title = title.textContent;
+
+    document.body.innerHTML = doc.body.innerHTML;
+
+    doc.querySelectorAll("script").forEach(oldScript => {
+      const newScript = document.createElement("script");
+      if (oldScript.src) {
+        newScript.src = oldScript.src;
+      } else {
+        newScript.textContent = oldScript.textContent;
+      }
+      document.body.appendChild(newScript);
+    });
+  }, []);
+
+  return <div ref={containerRef} />;
+}
