@@ -9,7 +9,7 @@
   <link rel="manifest" href="admin-manifest.json"/>
   <link rel="icon" type="image/png" href="logo.png"/>
   <link rel="apple-touch-icon" href="logo.png"/>
-  <meta name="theme-color" content="#121212"/>
+  <meta name="theme-color" content="#141414"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="Gremier Admin"/>
@@ -17,10 +17,10 @@
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     :root {
-      --bg:#121212; --bg2:#161616; --bg3:#1e1e1e; --card:#1a1a1a;
-      --border:#333333; --silver:#c0c0c0; --silver-dim:#888888;
-      --cream:#e8e8e8; --cream2:#b0b0b0;
-      --amber:#e0e0e0; --amber2:#c0c0c0; --text:#e8e8e8; --text2:#888888;
+      --bg:#141414; --bg2:#1e1e1e; --bg3:#2a2a2a; --card:#252525; --highlight:#303030;
+      --border:#454545; --silver:#d0d0d0; --silver-dim:#9a9a9a;
+      --cream:#efefef; --cream2:#c4c4c4;
+      --amber:#e0e0e0; --amber2:#c0c0c0; --text:#efefef; --text2:#9a9a9a;
       --red:#e57368; --green:#4caf72; --blue:#6aa8e8;
     }
     body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; }
@@ -41,8 +41,8 @@
     .sidebar-logo img { width:72px; height:72px; object-fit:contain; display:block; margin:0 auto 8px; }
     .sidebar-logo small { display:block; font-family:'DM Sans',sans-serif; font-size:.65rem; letter-spacing:.2em; text-transform:uppercase; color:var(--silver-dim); margin-top:4px; }
     .nav-item { display:flex; align-items:center; gap:10px; padding:11px 20px; color:var(--text2); font-size:.85rem; cursor:pointer; transition:all .2s; border-left:3px solid transparent; }
-    .nav-item:hover { color:var(--cream); background:var(--bg3); }
-    .nav-item.active { color:var(--cream); border-left-color:var(--silver); background:rgba(192,192,192,.06); }
+    .nav-item:hover { color:var(--cream); background:var(--highlight); }
+    .nav-item.active { color:var(--cream); border-left-color:var(--silver); background:rgba(208,208,208,.1); }
     .nav-item .icon { font-size:1rem; width:20px; text-align:center; }
     .sidebar-bottom { margin-top:auto; padding:16px 20px; border-top:1px solid var(--border); }
     .user-info { font-size:.78rem; color:var(--text2); margin-bottom:10px; word-break:break-all; }
@@ -50,14 +50,14 @@
     .signout-btn:hover { border-color:var(--red); color:var(--red); }
     .view-site-btn { font-size:.75rem; color:var(--cream); background:none; border:1px solid var(--border); padding:6px 14px; border-radius:3px; cursor:pointer; transition:all .2s; width:100%; margin-top:6px; text-decoration:none; display:block; text-align:center; }
     /* MAIN */
-    .main { margin-left:220px; flex:1; padding:32px; min-height:100vh; }
+    .main { margin-left:220px; flex:1; padding:32px; min-height:100vh; max-width:calc(100vw - 220px); overflow-x:hidden; }
     .page-header { margin-bottom:28px; }
     .page-title { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); margin-bottom:4px; }
     .page-sub { font-size:.85rem; color:var(--text2); }
     /* CARDS */
     .card { background:var(--card); border:1px solid var(--border); border-radius:4px; }
     .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; margin-bottom:28px; }
-    .stat-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.25); }
+    .stat-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.2); }
     .stat-label { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:8px; }
     .stat-value { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); }
     .stat-sub { font-size:.75rem; color:var(--text2); margin-top:3px; }
@@ -77,7 +77,7 @@
     /* FORMS */
     .form-group { margin-bottom:16px; }
     .form-label { display:block; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:6px; }
-    .form-input { width:100%; background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:10px 13px; font-family:'DM Sans',sans-serif; font-size:.87rem; border-radius:3px; outline:none; transition:border-color .2s; }
+    .form-input { width:100%; background:var(--highlight); border:1px solid var(--border); color:var(--cream); padding:10px 13px; font-family:'DM Sans',sans-serif; font-size:.87rem; border-radius:3px; outline:none; transition:border-color .2s; }
     .form-input:focus { border-color:var(--cream); }
     select.form-input { cursor:pointer; }
     .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -91,12 +91,22 @@
     .toggle input:checked + .toggle-slider { background:rgba(192,192,192,.15); border-color:var(--silver); }
     .toggle input:checked + .toggle-slider::before { transform:translateX(18px); background:var(--silver); }
     /* TABLES */
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; font-size:.83rem; }
-    th { text-align:left; font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); padding:10px 14px; border-bottom:1px solid var(--border); font-weight:500; }
-    td { padding:12px 14px; border-bottom:1px solid var(--border); color:var(--cream2); vertical-align:middle; }
-    tr:hover td { background:rgba(255,255,255,.03); }
-    .status-pill { font-size:.67rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:10px; }
+    .table-wrap { overflow-x:hidden; max-width:100%; }
+    table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:.78rem; }
+    th { text-align:left; font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--silver-dim); padding:8px 8px; border-bottom:1px solid var(--border); font-weight:500; background:var(--highlight); }
+    td { padding:8px 8px; border-bottom:1px solid var(--border); color:var(--cream2); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; }
+    tr:hover td { background:rgba(255,255,255,.05); }
+    .cell-num { width:36px; white-space:nowrap; }
+    .cell-total { width:54px; white-space:nowrap; }
+    .cell-status { width:76px; }
+    .cell-date { width:64px; white-space:nowrap; font-size:.72rem; }
+    .cell-actions { width:72px; overflow:visible; }
+    .cell-customer { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cell-customer small { display:block; font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cell-actions-wrap { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
+    .cell-actions-wrap .btn { padding:4px 6px; font-size:.62rem; letter-spacing:0; justify-content:center; white-space:nowrap; }
+    .table-select { padding:4px 4px; font-size:.65rem; width:100%; max-width:76px; min-width:0; }
+    .status-pill { font-size:.6rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:2px 6px; border-radius:10px; white-space:nowrap; display:inline-block; }
     .s-pending { background:rgba(192,192,192,.1); color:var(--silver); }
     .s-confirmed { background:rgba(74,144,217,.15); color:#6aa8e8; }
     .s-fulfilled { background:rgba(45,138,78,.15); color:#4caf72; }
@@ -105,7 +115,7 @@
     .s-unpaid { background:rgba(192,192,192,.1); color:var(--silver); }
     /* FILTERS BAR */
     .filter-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px; }
-    .filter-bar select, .filter-bar input { background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:.8rem; border-radius:3px; outline:none; }
+    .filter-bar select, .filter-bar input { background:var(--highlight); border:1px solid var(--border); color:var(--cream); padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:.8rem; border-radius:3px; outline:none; }
     /* IMAGE UPLOAD */
     .img-upload-area { border:2px dashed var(--border); border-radius:4px; padding:20px; text-align:center; cursor:pointer; transition:border-color .2s; }
     .img-upload-area:hover { border-color:var(--cream); }
@@ -129,12 +139,12 @@
     /* MODAL */
     .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; opacity:0; pointer-events:none; transition:opacity .3s; }
     .modal-backdrop.open { opacity:1; pointer-events:all; }
-    .modal-box { background:var(--bg2); border:1px solid var(--border); border-radius:4px; width:100%; max-width:620px; padding:32px; transform:scale(.97); transition:transform .3s; margin:auto; }
+    .modal-box { background:var(--card); border:1px solid var(--border); border-radius:4px; width:100%; max-width:620px; padding:32px; transform:scale(.97); transition:transform .3s; margin:auto; }
     .modal-backdrop.open .modal-box { transform:scale(1); }
     .modal-title { font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--cream); margin-bottom:22px; }
     /* PAYMENT LINK */
     .pl-items { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
-    .pl-item { display:flex; align-items:center; gap:12px; background:var(--bg3); padding:10px 14px; border-radius:4px; border:1px solid var(--border); }
+    .pl-item { display:flex; align-items:center; gap:12px; background:var(--highlight); padding:10px 14px; border-radius:4px; border:1px solid var(--border); }
     .pl-item-name { flex:1; font-size:.85rem; color:var(--cream); }
     .pl-item-price { font-size:.85rem; color:var(--cream); white-space:nowrap; }
     .pl-item-rm { background:none; border:none; color:var(--text2); cursor:pointer; font-size:.9rem; transition:color .2s; }
@@ -149,7 +159,7 @@
     .copy-btn:hover { background:var(--cream); }
     /* REPORTS */
     .reports-stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
-    .chart-placeholder { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:20px; margin-bottom:20px; }
+    .chart-placeholder { background:var(--highlight); border:1px solid var(--border); border-radius:4px; padding:20px; margin-bottom:20px; }
     .chart-bars { display:flex; align-items:flex-end; gap:6px; height:100px; }
     .chart-bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
     .chart-bar { width:100%; background:var(--cream); border-radius:2px 2px 0 0; opacity:.5; transition:opacity .2s; min-height:2px; }
@@ -173,10 +183,19 @@
       .stat-grid { grid-template-columns:1fr 1fr; gap:10px; }
       .stat-card { padding:14px 12px; }
       .stat-value { font-size:1.4rem; }
-      /* tables: scroll horizontally inside wrapper, never push page */
-      .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:calc(100vw - 24px); }
-      table { min-width:520px; }
-      td, th { padding:9px 10px; font-size:.76rem; }
+      /* tables: fit viewport, no horizontal scroll */
+      .table-wrap { overflow-x:hidden; max-width:100%; }
+      table { min-width:0; font-size:.72rem; }
+      th { padding:7px 6px; font-size:.58rem; }
+      td { padding:7px 6px; }
+      .cell-date { width:52px; font-size:.65rem; }
+      .cell-actions { width:64px; }
+      .cell-status { width:68px; }
+      .cell-total { width:48px; }
+      .cell-num { width:32px; }
+      .status-pill { font-size:.55rem; padding:2px 5px; }
+      .table-select { max-width:64px; font-size:.6rem; }
+      .cell-actions-wrap .btn { padding:3px 5px; font-size:.58rem; }
       /* modals: full-width with small padding */
       .modal-backdrop { padding:10px; align-items:flex-start; }
       .modal-box { padding:20px 16px; max-width:100% !important; width:100%; }
@@ -198,6 +217,7 @@
       .chart-placeholder { padding:12px; }
       /* hide less important table columns on very small screens */
       .hide-mobile { display:none !important; }
+      .hide-xs { display:none !important; }
     }
     @media(max-width:400px){
       .stat-grid { grid-template-columns:1fr 1fr; }
@@ -251,7 +271,7 @@
     .product-search::placeholder { color:var(--text2); }
     .empty-state { text-align:center; padding:48px 20px; color:var(--text2); font-size:.9rem; }
     /* MOBILE HEADER */
-    .mobile-header { display:none; align-items:center; gap:12px; padding:14px 16px; background:var(--bg2); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; }
+    .mobile-header { display:none; align-items:center; gap:12px; padding:14px 16px; background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; margin:-12px -12px 16px; }
     .mobile-header img { width:36px; height:36px; object-fit:contain; }
     .mobile-header span { font-family:'Playfair Display',serif; font-size:1rem; color:var(--cream); letter-spacing:.02em; }
     @media(max-width:768px){ .mobile-header { display:flex; } }
@@ -368,8 +388,8 @@
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
             <thead><tr>
-              <th>#</th><th>Customer</th><th class="hide-mobile">Items</th><th>Total</th>
-              <th>Status</th><th class="hide-mobile">Payment</th><th class="hide-mobile">Date</th><th>Actions</th>
+              <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
+              <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
             </tr></thead>
             <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
@@ -385,7 +405,7 @@
         </div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="payLinksTable">
-            <thead><tr><th>Customer</th><th class="hide-mobile">Items</th><th>Total</th><th>Status</th><th class="hide-mobile">Created</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th><th class="cell-status">Status</th><th class="cell-date hide-mobile">Created</th><th class="cell-actions">Actions</th></tr></thead>
             <tbody id="payLinksBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
@@ -464,7 +484,7 @@
         <div class="stat-grid" id="webOrderStats"></div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="webOrdersTable">
-            <thead><tr><th>#</th><th>Customer</th><th class="hide-mobile">Address / Zone</th><th class="hide-mobile">Items</th><th>Total</th><th class="hide-mobile">Delivery</th><th>Status</th><th>Schedule</th></tr></thead>
+            <thead><tr><th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Address</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th><th class="hide-mobile">Delivery</th><th class="cell-status">Status</th><th class="cell-actions">Schedule</th></tr></thead>
             <tbody id="webOrdersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
@@ -727,14 +747,16 @@ async function loadDashboard() {
   `;
   const recent = allOrders.slice(0,8);
   document.getElementById('dashOrdersTable').innerHTML = `
-    <thead><tr><th>#</th><th>Customer</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
-    <tbody>${recent.map(o=>`<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
-      <td>#${o.order_number}</td>
-      <td>${o.customer_name}</td>
-      <td style="color:var(--cream)">₪${o.total}</td>
-      <td><span class="status-pill s-${o.status}">${o.status}</span></td>
-      <td>${new Date(o.created_at).toLocaleDateString()}</td>
-    </tr>`).join('')}</tbody>`;
+    <thead><tr><th class="cell-num">#</th><th>Customer</th><th class="cell-total">Total</th><th class="cell-status">Status</th><th class="cell-date hide-mobile">Date</th></tr></thead>
+    <tbody>${recent.map(o=>{
+      const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
+      return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
+      <td class="cell-num">#${o.order_number}</td>
+      <td class="cell-customer">${o.customer_name}</td>
+      <td class="cell-total" style="color:var(--cream)">₪${o.total}</td>
+      <td class="cell-status"><span class="status-pill s-${o.status}">${o.status}</span></td>
+      <td class="cell-date hide-mobile">${date}</td>
+    </tr>`}).join('')}</tbody>`;
 }
 // ══ PRODUCTS ══
 async function loadAllProducts() {
@@ -957,15 +979,15 @@ function renderOrdersTable(orders) {
     const items = (o.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
     return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
-      <td style="color:var(--cream)">#${o.order_number}</td>
-      <td>${o.customer_name}<br><small style="color:var(--text2)">${o.customer_phone||''}</small></td>
-      <td class="hide-mobile" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${items}">${items}</td>
-      <td style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
-      <td><span class="status-pill s-${o.status}">${o.status}</span></td>
+      <td class="cell-num" style="color:var(--cream)">#${o.order_number}</td>
+      <td class="cell-customer">${o.customer_name}${o.customer_phone?`<br><small>${o.customer_phone}</small>`:''}</td>
+      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
+      <td class="cell-total" style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
+      <td class="cell-status"><span class="status-pill s-${o.status}">${o.status}</span></td>
       <td class="hide-mobile"><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></td>
-      <td class="hide-mobile">${date}</td>
-      <td>
-        <select class="form-input" style="padding:5px 8px;font-size:.74rem;width:auto" onchange="updateOrderStatus('${o.id}',this.value)" onclick="event.stopPropagation()">
+      <td class="cell-date hide-mobile">${date}</td>
+      <td class="cell-actions" onclick="event.stopPropagation()">
+        <select class="form-input table-select" onchange="updateOrderStatus('${o.id}',this.value)">
           <option ${o.status==='pending'?'selected':''}>pending</option>
           <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
           <option ${o.status==='fulfilled'?'selected':''}>fulfilled</option>
@@ -1141,14 +1163,16 @@ async function loadPayLinks() {
     const phone = (l.customer_phone||'').replace(/\D/g,'');
     const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
     return `<tr>
-      <td>${l.customer_name||'—'}<br><small style="color:var(--text2)">${l.customer_phone||''}</small></td>
-      <td class="hide-mobile" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${items}</td>
-      <td style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
-      <td><span class="status-pill s-${l.status}">${l.status}</span></td>
-      <td class="hide-mobile">${date}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
-        ${phone?`<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${waMsg}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WhatsApp</a>`:''}
+      <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}</td>
+      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
+      <td class="cell-total" style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
+      <td class="cell-status"><span class="status-pill s-${l.status}">${l.status}</span></td>
+      <td class="cell-date hide-mobile">${date}</td>
+      <td class="cell-actions">
+        <div class="cell-actions-wrap">
+          <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
+          ${phone?`<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${waMsg}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
+        </div>
       </td>
     </tr>`;
   }).join('');
@@ -1287,10 +1311,12 @@ function renderZones() {
     <td style="color:var(--cream)">₪${z.regular_price}</td>
     <td class="hide-mobile" style="color:var(--cream)">₪${z.expedited_price}</td>
     <td class="hide-mobile">${z.free_above?'₪'+z.free_above:'—'}</td>
-    <td><span class="status-pill ${z.is_active?'s-fulfilled':'s-cancelled'}">${z.is_active?'Active':'Disabled'}</span></td>
-    <td style="display:flex;gap:6px">
-      <button class="btn btn-outline btn-sm" onclick="openZoneModal('${z.id}')">Edit</button>
-      <button class="btn btn-sm ${z.is_active?'btn-red':'btn-green'}" onclick="toggleZone('${z.id}',${z.is_active})">${z.is_active?'Disable':'Enable'}</button>
+    <td><span class="status-pill ${z.is_active?'s-fulfilled':'s-cancelled'}">${z.is_active?'Active':'Off'}</span></td>
+    <td class="cell-actions">
+      <div class="cell-actions-wrap">
+        <button class="btn btn-outline btn-sm" onclick="openZoneModal('${z.id}')">Edit</button>
+        <button class="btn btn-sm ${z.is_active?'btn-red':'btn-green'}" onclick="toggleZone('${z.id}',${z.is_active})">${z.is_active?'Off':'On'}</button>
+      </div>
     </td>
   </tr>`).join('');
 }
@@ -1373,16 +1399,16 @@ async function loadWebOrders() {
     const phone = (o.customer_phone||'').replace(/\D/g,'');
     const waMsg = encodeURIComponent('Hi '+o.customer_name+'! Your Gremier Coffee order is confirmed.\n'+itemsText+'\nTotal: ₪'+o.order_total+'\nWe will be in touch about delivery.');
     return '<tr>'
-      +'<td style="color:var(--cream)">#'+(o.order_number||'—')+'</td>'
-      +'<td>'+o.customer_name+'<br><small style="color:var(--text2)">'+(o.customer_phone||'')+'</small>'
-        +(phone?'<br><a href="https://wa.me/972'+phone.replace(/^0/,'')+'?text='+waMsg+'" target="_blank" style="font-size:.7rem;color:#25d366">WhatsApp</a>':'')
+      +'<td class="cell-num" style="color:var(--cream)">#'+(o.order_number||'—')+'</td>'
+      +'<td class="cell-customer">'+o.customer_name+(o.customer_phone?'<br><small>'+o.customer_phone+'</small>':'')
+        +(phone?'<br><a href="https://wa.me/972'+phone.replace(/^0/,'')+'?text='+waMsg+'" target="_blank" style="font-size:.65rem;color:#25d366">WA</a>':'')
       +'</td>'
-      +'<td>'+(o.delivery_address||'—')+'<br><small style="color:var(--text2)">'+(o.delivery_zone||'')+' · '+(o.delivery_type||'regular')+'</small></td>'
-      +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+itemsText+'">'+itemsText+'</td>'
-      +'<td style="color:var(--cream)">₪'+o.order_total+'<br><small style="color:var(--text2)">+₪'+o.delivery_fee+' delivery</small></td>'
-      +'<td>'+(o.scheduled_date?o.scheduled_date+' '+(o.scheduled_time||''):'<span style="color:var(--cream)">Not scheduled</span>')+'</td>'
-      +'<td><span class="status-pill '+(o.status==='pending_schedule'?'s-pending':o.status==='scheduled'?'s-confirmed':'s-fulfilled')+'">'+o.status.replace('_',' ')+'</span></td>'
-      +'<td><button class="btn btn-amber btn-sm" onclick="openScheduleModal(\"'+o.id+'\")">Schedule</button></td>'
+      +'<td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(o.delivery_address||'')+'">'+(o.delivery_address||'—')+'</td>'
+      +'<td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+itemsText+'">'+itemsText+'</td>'
+      +'<td class="cell-total" style="color:var(--cream)">₪'+o.order_total+'</td>'
+      +'<td class="hide-mobile" style="font-size:.72rem">'+(o.scheduled_date?o.scheduled_date:'—')+'</td>'
+      +'<td class="cell-status"><span class="status-pill '+(o.status==='pending_schedule'?'s-pending':o.status==='scheduled'?'s-confirmed':'s-fulfilled')+'">'+(o.status==='pending_schedule'?'pending':'scheduled')+'</span></td>'
+      +'<td class="cell-actions"><button class="btn btn-amber btn-sm" onclick="openScheduleModal(\"'+o.id+'\")">Set</button></td>'
       +'</tr>';
   }).join('');
 }
