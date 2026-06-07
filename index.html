@@ -1387,6 +1387,7 @@ function openProductDrawer(productId) {
     : (lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart');
   document.getElementById('pdBackdrop').classList.add('open');
   document.getElementById('pdDrawer').classList.add('open');
+  history.pushState({ drawer: 'product' }, '');
   pdScrollY = window.scrollY;
   document.body.style.position = 'fixed';
   document.body.style.top = `-${pdScrollY}px`;
@@ -1556,7 +1557,7 @@ function addToCart(productId) {
 function updateCartCount() {
   document.getElementById('cartCount').textContent = cart.reduce((s,i)=>s+i.qty,0);
 }
-function openCart() { renderCartDrawer(); document.getElementById('cartOverlay').classList.add('open'); document.getElementById('cartDrawer').classList.add('open'); }
+function openCart() { renderCartDrawer(); document.getElementById('cartOverlay').classList.add('open'); document.getElementById('cartDrawer').classList.add('open'); history.pushState({ drawer: 'cart' }, ''); }
 function closeCart() { document.getElementById('cartOverlay').classList.remove('open'); document.getElementById('cartDrawer').classList.remove('open'); }
 function renderCartDrawer() {
   const body = document.getElementById('cartBody');
@@ -1797,6 +1798,13 @@ async function init() {
   applyTranslations();
 }
 init();
+window.addEventListener('popstate', function() {
+  if (document.getElementById('pdDrawer').classList.contains('open')) {
+    closeProductDrawer();
+  } else if (document.getElementById('cartDrawer').classList.contains('open')) {
+    closeCart();
+  }
+});
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
 let chatHistory = [];
