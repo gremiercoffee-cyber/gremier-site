@@ -196,6 +196,7 @@
       .status-pill { font-size:.55rem; padding:2px 5px; }
       .table-select { max-width:64px; font-size:.6rem; }
       .cell-actions-wrap .btn { padding:3px 5px; font-size:.58rem; }
+      .member-detail-grid { grid-template-columns:1fr; }
       /* modals: full-width with small padding */
       .modal-backdrop { padding:10px; align-items:flex-start; }
       .modal-box { padding:20px 16px; max-width:100% !important; width:100%; }
@@ -270,6 +271,17 @@
     .product-search { background:var(--bg3); border:1px solid var(--border); color:var(--cream); padding:8px 14px; border-radius:3px; outline:none; font-family:'DM Sans',sans-serif; font-size:.82rem; width:100%; max-width:300px; }
     .product-search::placeholder { color:var(--text2); }
     .empty-state { text-align:center; padding:48px 20px; color:var(--text2); font-size:.9rem; }
+    /* MEMBERS */
+    .member-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:22px; }
+    .member-detail-item .form-label { margin-bottom:4px; }
+    .member-detail-value { font-size:.88rem; color:var(--cream); word-break:break-word; }
+    .member-orders-title { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--cream); margin-bottom:12px; padding-top:4px; border-top:1px solid var(--border); }
+    .member-order-row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:.82rem; cursor:pointer; transition:background .15s; }
+    .member-order-row:hover { background:rgba(255,255,255,.03); margin:0 -8px; padding:10px 8px; border-radius:3px; }
+    .member-order-row:last-child { border-bottom:none; }
+    .member-order-meta { color:var(--text2); font-size:.74rem; margin-top:3px; }
+    .member-points-badge { display:inline-block; font-size:.65rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:2px 7px; border-radius:10px; background:rgba(192,192,192,.12); color:var(--silver); }
+    .member-coupon-badge { background:rgba(76,175,114,.15); color:var(--green); }
     /* MOBILE HEADER */
     .mobile-header { display:none; align-items:center; gap:12px; padding:14px 16px; background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; margin:-12px -12px 16px; }
     .mobile-header img { width:36px; height:36px; object-fit:contain; }
@@ -310,6 +322,7 @@
       <div class="nav-item" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
+      <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">🌐</span><span>Web Orders</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
@@ -448,6 +461,38 @@
           </table></div>
         </div>
       </div>
+      <!-- MEMBERS -->
+      <div id="tab-members" class="tab-content" style="display:none">
+        <div class="page-header">
+          <h1 class="page-title">Members</h1>
+          <p class="page-sub">All registered website members — profiles, loyalty points, and order history</p>
+        </div>
+        <div class="filter-bar">
+          <input type="text" class="product-search" placeholder="Search by name, email, or phone..." oninput="filterMembers(this.value)" id="memberSearch"/>
+          <select class="form-input" style="width:auto" onchange="sortMembers(this.value)" id="memberSort">
+            <option value="spent">Sort: Total Spent</option>
+            <option value="orders">Sort: Order Count</option>
+            <option value="recent">Sort: Last Order</option>
+            <option value="name">Sort: Name</option>
+            <option value="points">Sort: Points</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="exportMembersCSV()">⬇ Export CSV</button>
+        </div>
+        <div class="stat-grid" id="memberStats"><div class="loading"><div class="spinner"></div></div></div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Name</th><th class="hide-mobile">Email</th><th class="hide-mobile">Phone</th>
+                <th class="cell-num">Orders</th><th class="cell-total">Spent</th>
+                <th class="hide-mobile">Points</th><th class="cell-date hide-mobile">Last Order</th>
+                <th class="cell-actions">View</th>
+              </tr></thead>
+              <tbody id="membersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
       <!-- DELIVERY SETTINGS TAB -->
       <div id="tab-delivery" class="tab-content" style="display:none">
         <div class="page-header">
@@ -526,6 +571,9 @@
     <button class="tab-bar-btn" id="tbar-reports" onclick="showTab('reports')">
       <span class="tab-icon">📈</span>Reports
     </button>
+    <button class="tab-bar-btn" id="tbar-members" onclick="showTab('members')">
+      <span class="tab-icon">👤</span>Members
+    </button>
     <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
       <span class="tab-icon">🚚</span>Delivery
     </button>
@@ -535,6 +583,14 @@
     <button class="tab-bar-btn" id="tbar-siteimages" onclick="showTab('siteimages')">
       <span class="tab-icon">🖼️</span>Site Images
     </button>
+  </div>
+</div>
+<!-- MEMBER DETAIL MODAL -->
+<div class="modal-backdrop" id="memberModal">
+  <div class="modal-box" style="max-width:680px">
+    <h2 class="modal-title" id="memberModalTitle">Member</h2>
+    <div id="memberModalContent"></div>
+    <button class="btn btn-outline" onclick="closeMemberModal()" style="margin-top:16px">Close</button>
   </div>
 </div>
 <!-- ZONE MODAL -->
@@ -682,6 +738,8 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let adminUser = null;
 let allProducts = [];
 let allOrders = [];
+let allMembers = [];
+let memberFilter = { search:'', sort:'spent' };
 let editingImages = []; // array of Cloudinary URLs
 let plCartItems = [];
 // ══ AUTH ══
@@ -1264,6 +1322,178 @@ function exportReportCSV() {
   });
   downloadCSV(rows, `gremier-report-${new Date().toISOString().slice(0,10)}.csv`);
 }
+// ══ MEMBERS ══
+function buildMemberRecords(profiles) {
+  return profiles.map(profile => {
+    const email = (profile.email || '').toLowerCase();
+    const orders = allOrders.filter(o =>
+      o.user_id === profile.id ||
+      (email && o.customer_email && o.customer_email.toLowerCase() === email)
+    ).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const latest = orders[0];
+    const addresses = [...new Set(orders.map(o => o.delivery_address).filter(Boolean))];
+    return {
+      id: profile.id,
+      name: profile.full_name || latest?.customer_name || profile.email?.split('@')[0] || '—',
+      email: profile.email || latest?.customer_email || '—',
+      phone: profile.phone || latest?.customer_phone || '—',
+      address: addresses[0] || '—',
+      addresses,
+      points: profile.points || 0,
+      couponAvailable: profile.coupon_available || false,
+      joined: profile.created_at || null,
+      orders,
+      orderCount: orders.length,
+      totalSpent: orders.reduce((s, o) => s + parseFloat(o.total || 0), 0),
+      lastOrder: latest?.created_at || null,
+    };
+  });
+}
+async function loadMembers() {
+  const body = document.getElementById('membersBody');
+  body.innerHTML = '<tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr>';
+  const { data: profiles, error } = await sb.from('profiles').select('*');
+  if (error) console.error('profiles load:', error);
+  if (!allOrders.length) {
+    const { data } = await sb.from('orders').select('*').order('created_at', { ascending: false });
+    allOrders = data || [];
+  }
+  let members = (profiles || []).filter(p => !p.is_admin);
+  const profileIds = new Set(members.map(m => m.id));
+  [...new Set(allOrders.map(o => o.user_id).filter(Boolean))]
+    .filter(id => !profileIds.has(id))
+    .forEach(id => {
+      const o = allOrders.find(x => x.user_id === id);
+      members.push({
+        id, email: o?.customer_email || '', full_name: o?.customer_name || '',
+        points: 0, coupon_available: false, is_admin: false,
+      });
+    });
+  allMembers = buildMemberRecords(members);
+  sortMembers(memberFilter.sort, false);
+  renderMemberStats();
+  renderMembersList();
+}
+function renderMemberStats() {
+  const withOrders = allMembers.filter(m => m.orderCount > 0);
+  const totalSpent = allMembers.reduce((s, m) => s + m.totalSpent, 0);
+  const totalOrders = allMembers.reduce((s, m) => s + m.orderCount, 0);
+  document.getElementById('memberStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total Members</div><div class="stat-value">${allMembers.length}</div></div>
+    <div class="stat-card"><div class="stat-label">With Orders</div><div class="stat-value">${withOrders.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Member Orders</div><div class="stat-value">${totalOrders}</div></div>
+    <div class="stat-card"><div class="stat-label">Member Revenue</div><div class="stat-value">₪${totalSpent.toFixed(0)}</div></div>`;
+}
+function filterMembers(val) { memberFilter.search = val.toLowerCase(); renderMembersList(); }
+function sortMembers(val, updateSelect = true) {
+  memberFilter.sort = val;
+  if (updateSelect) document.getElementById('memberSort').value = val;
+  const sorters = {
+    spent: (a, b) => b.totalSpent - a.totalSpent,
+    orders: (a, b) => b.orderCount - a.orderCount,
+    recent: (a, b) => (b.lastOrder ? new Date(b.lastOrder) : 0) - (a.lastOrder ? new Date(a.lastOrder) : 0),
+    name: (a, b) => a.name.localeCompare(b.name),
+    points: (a, b) => b.points - a.points,
+  };
+  allMembers.sort(sorters[val] || sorters.spent);
+  renderMembersList();
+}
+function getFilteredMembers() {
+  if (!memberFilter.search) return allMembers;
+  const q = memberFilter.search;
+  return allMembers.filter(m =>
+    m.name.toLowerCase().includes(q) ||
+    m.email.toLowerCase().includes(q) ||
+    m.phone.includes(q)
+  );
+}
+function renderMembersList() {
+  const list = getFilteredMembers();
+  const body = document.getElementById('membersBody');
+  if (!list.length) {
+    body.innerHTML = '<tr><td colspan="8" class="empty-state">No members found.</td></tr>';
+    return;
+  }
+  body.innerHTML = list.map(m => {
+    const lastDate = m.lastOrder
+      ? new Date(m.lastOrder).toLocaleDateString('en-IL', { day: 'numeric', month: 'short' })
+      : '—';
+    const phoneLink = m.phone && m.phone !== '—'
+      ? `<a href="tel:${m.phone}" style="color:var(--cream2);text-decoration:none">${m.phone}</a>`
+      : '—';
+    return `<tr>
+      <td class="cell-customer" style="color:var(--cream)">${m.name}${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}</td>
+      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.email}">${m.email}</td>
+      <td class="hide-mobile">${phoneLink}</td>
+      <td class="cell-num">${m.orderCount}</td>
+      <td class="cell-total" style="color:var(--cream)">₪${m.totalSpent.toFixed(0)}</td>
+      <td class="hide-mobile">${m.points}</td>
+      <td class="cell-date hide-mobile">${lastDate}</td>
+      <td class="cell-actions"><button class="btn btn-outline btn-sm" onclick="openMemberDetail('${m.id}')">View</button></td>
+    </tr>`;
+  }).join('');
+}
+function openMemberDetail(memberId) {
+  const m = allMembers.find(x => x.id === memberId);
+  if (!m) return;
+  document.getElementById('memberModalTitle').textContent = m.name;
+  const joined = m.joined ? new Date(m.joined).toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const lastDate = m.lastOrder ? new Date(m.lastOrder).toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const avgOrder = m.orderCount ? m.totalSpent / m.orderCount : 0;
+  const phoneWa = (m.phone || '').replace(/\D/g, '');
+  const ordersHtml = m.orders.length
+    ? m.orders.map(o => {
+        const date = new Date(o.created_at).toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' });
+        const items = (o.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
+        return `<div class="member-order-row" onclick="openOrderFromMember('${o.id}')">
+          <div>
+            <div style="color:var(--cream);font-weight:500">#${o.order_number} · ${date}</div>
+            <div class="member-order-meta">${items}</div>
+            ${o.delivery_address ? `<div class="member-order-meta">${o.delivery_address}</div>` : ''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="color:var(--cream);font-weight:500">₪${o.total}</div>
+            <span class="status-pill s-${o.status}">${o.status}</span>
+            <span class="status-pill s-${o.payment_status}" style="margin-left:4px">${o.payment_status}</span>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state" style="padding:24px">No orders yet.</div>';
+  document.getElementById('memberModalContent').innerHTML = `
+    <div class="member-detail-grid">
+      <div class="member-detail-item"><div class="form-label">Full Name</div><div class="member-detail-value">${m.name}</div></div>
+      <div class="member-detail-item"><div class="form-label">Email</div><div class="member-detail-value">${m.email !== '—' ? `<a href="mailto:${m.email}" style="color:var(--cream)">${m.email}</a>` : '—'}</div></div>
+      <div class="member-detail-item"><div class="form-label">Phone</div><div class="member-detail-value">${m.phone !== '—' ? `<a href="tel:${m.phone}" style="color:var(--cream)">${m.phone}</a>` : '—'}${phoneWa ? ` · <a href="https://wa.me/972${phoneWa.replace(/^0/,'')}" target="_blank" style="color:#25d366;font-size:.82rem">WhatsApp</a>` : ''}</div></div>
+      <div class="member-detail-item"><div class="form-label">Default Address</div><div class="member-detail-value">${m.address}</div></div>
+      <div class="member-detail-item"><div class="form-label">Loyalty Points</div><div class="member-detail-value">${m.points} pts${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">10% coupon ready</span>' : ''}</div></div>
+      <div class="member-detail-item"><div class="form-label">Member Since</div><div class="member-detail-value">${joined}</div></div>
+      <div class="member-detail-item"><div class="form-label">Total Orders</div><div class="member-detail-value">${m.orderCount}</div></div>
+      <div class="member-detail-item"><div class="form-label">Total Spent</div><div class="member-detail-value" style="font-family:'Playfair Display',serif;font-size:1.2rem">₪${m.totalSpent.toFixed(0)}</div></div>
+      <div class="member-detail-item"><div class="form-label">Avg Order</div><div class="member-detail-value">₪${avgOrder.toFixed(0)}</div></div>
+      <div class="member-detail-item"><div class="form-label">Last Order</div><div class="member-detail-value">${lastDate}</div></div>
+    </div>
+    <div class="member-orders-title">Order History (${m.orderCount})</div>
+    <div>${ordersHtml}</div>`;
+  document.getElementById('memberModal').classList.add('open');
+}
+function openOrderFromMember(orderId) {
+  closeMemberModal();
+  openOrderDetail(orderId);
+}
+function closeMemberModal() { document.getElementById('memberModal').classList.remove('open'); }
+function exportMembersCSV() {
+  const rows = [['Name','Email','Phone','Address','Orders','Total Spent','Avg Order','Points','Coupon Available','Last Order','Member Since']];
+  getFilteredMembers().forEach(m => {
+    rows.push([
+      m.name, m.email, m.phone, m.address, m.orderCount,
+      m.totalSpent.toFixed(2), m.orderCount ? (m.totalSpent / m.orderCount).toFixed(2) : 0,
+      m.points, m.couponAvailable ? 'Yes' : 'No',
+      m.lastOrder ? new Date(m.lastOrder).toLocaleDateString() : '',
+      m.joined ? new Date(m.joined).toLocaleDateString() : '',
+    ]);
+  });
+  downloadCSV(rows, `gremier-members-${new Date().toISOString().slice(0,10)}.csv`);
+}
 // ══ UTILS ══
 function downloadCSV(rows, filename) {
   const csv = rows.map(r=>r.map(c=>`"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -1497,6 +1727,7 @@ function showTab(tab) {
   if (tab==='products') renderProductsList();
   if (tab==='paylinks') loadPayLinks();
   if (tab==='reports') loadReports();
+  if (tab==='members') loadMembers();
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='weborders') loadWebOrders();
   if (tab==='siteimages') loadSiteImages();
