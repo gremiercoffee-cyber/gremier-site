@@ -1,6 +1,3 @@
-import { useEffect, useRef } from "react";
-
-const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1938,8 +1935,13 @@ async function init() {
   loadSiteSettings();
   applyTranslations();
   updateCartCount();
+  chatCatalogFingerprint = computeCatalogFingerprint();
 }
 init();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshChatProducts();
+});
+window.addEventListener('focus', () => refreshChatProducts());
 // Seed the initial history state so back-navigation lands on 'home'
 history.replaceState({ page: 'home' }, '');
 window.addEventListener('popstate', function(e) {
@@ -1959,6 +1961,49 @@ const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/cha
 let chatHistory = [];
 let chatOpen = false;
 let chatCatalogVersion = 0;
+let chatCatalogFingerprint = '';
+let catalogPollTimer = null;
+
+function computeCatalogFingerprint() {
+  return products
+    .map(p => [p.id, p.name_en, p.price, p.description_en || '', p.category || '', p.updated_at || ''].join(':'))
+    .sort()
+    .join('|');
+}
+
+function notifyCatalogUpdated(prevFp, newFp) {
+  if (!prevFp || prevFp === newFp) return;
+  // Drop stale assistant replies so the AI doesn't keep referencing old products
+  chatHistory = chatHistory.filter(m => m.role === 'user');
+  if (chatOpen) {
+    const msg = lang === 'he'
+      ? '🔄 התפריט עודכן — אני רואה את המוצרים החדשים עכשיו. במה אוכל לעזור?'
+      : '🔄 Menu updated — I\'m now looking at the latest products. What would you like?';
+    appendBotMessage(msg, [], CHAT_QUICK_REPLIES.welcome);
+    chatHistory.push({ role: 'assistant', content: msg });
+    setTimeout(() => appendProductSuggestions(), 300);
+  }
+}
+
+function startCatalogPoll() {
+  stopCatalogPoll();
+  catalogPollTimer = setInterval(() => refreshChatProducts(), 30000);
+}
+
+function stopCatalogPoll() {
+  if (catalogPollTimer) { clearInterval(catalogPollTimer); catalogPollTimer = null; }
+}
+
+async function refreshChatProducts() {
+  const prevFp = chatCatalogFingerprint;
+  await loadProducts();
+  mergeCoffeeBarsIntoProducts();
+  const newFp = computeCatalogFingerprint();
+  notifyCatalogUpdated(prevFp, newFp);
+  chatCatalogFingerprint = newFp;
+  chatCatalogVersion++;
+  return prevFp !== newFp;
+}
 
 function slugifyProductName(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -1979,13 +2024,8 @@ function buildChatCatalog() {
     is_subscription: !!p.is_subscription,
     variations: p.variations || [],
     guest_pricing: (p.variations || []).find(v => v.type === 'guest_count')?.options || null,
+    updated_at: p.updated_at || null,
   }));
-}
-
-async function refreshChatProducts() {
-  await loadProducts();
-  mergeCoffeeBarsIntoProducts();
-  chatCatalogVersion++;
 }
 
 function resolveChatProduct(item) {
@@ -2053,6 +2093,7 @@ function dismissChatTooltip() {
 async function openChatbot() {
   dismissChatTooltip();
   await refreshChatProducts();
+  startCatalogPoll();
   chatOpen = true;
   document.getElementById('chatbotOverlay').classList.add('open');
   document.getElementById('chatbotPanel').classList.add('open');
@@ -2069,6 +2110,7 @@ async function openChatbot() {
 }
 function closeChatbot() {
   chatOpen = false;
+  stopCatalogPoll();
   document.getElementById('chatbotOverlay').classList.remove('open');
   document.getElementById('chatbotPanel').classList.remove('open');
   const fabW2 = document.getElementById('chatFabWrapper'); if(fabW2) fabW2.style.display='flex';
@@ -2255,6 +2297,8 @@ async function sendChatMessageText(text) {
         products: buildChatCatalog(),
         lang,
         catalog_version: chatCatalogVersion,
+        catalog_fingerprint: chatCatalogFingerprint,
+        force_fresh_catalog: true,
       }),
     });
     hideThinking();
