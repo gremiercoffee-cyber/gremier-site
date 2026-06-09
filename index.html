@@ -1409,6 +1409,15 @@ const coffeeBarProducts = [
   },
 ];
 const featuredOrder = ['Classic Dark Roast','Caramel Cremier','House Blend Medium Roast','Colombia Light Roast'];
+const FEATURED_ALIASES = {
+  'Caramel Cremier': 'Caramel Cremier 4 Pack',
+};
+function findFeaturedProduct(name) {
+  const key = FEATURED_ALIASES[name] || name;
+  return products.find(p => p.name_en === key)
+    || products.find(p => p.name_en.toLowerCase() === name.toLowerCase())
+    || products.find(p => p.name_en.toLowerCase().includes(name.toLowerCase()));
+}
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
   if (error || !data) { products = []; return; }
@@ -1636,7 +1645,7 @@ function productCardHTML(p) {
 function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
   if (!grid) return;
-  const featured = featuredOrder.map(n => products.find(p => p.name_en === n)).filter(Boolean).slice(0, 4);
+  const featured = featuredOrder.map(n => findFeaturedProduct(n)).filter(Boolean).slice(0, 4);
   grid.innerHTML = featured.length ? featured.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center">No products yet.</p>';
 }
 const categories = [
@@ -2415,7 +2424,7 @@ const CHAT_QUICK_REPLIES = {
 function getChatSuggestedProducts() {
   const picks = [];
   featuredOrder.forEach(n => {
-    const p = products.find(x => x.name_en === n);
+    const p = findFeaturedProduct(n);
     if (p && !picks.includes(p)) picks.push(p);
   });
   products.forEach(p => {
