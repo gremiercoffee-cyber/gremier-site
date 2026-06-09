@@ -375,14 +375,18 @@
 
   function getReturnPayload() {
     const p = new URLSearchParams(window.location.search);
+    const txn = p.get('transaction_id') || '';
+    const resolvedOrderId = p.get('order_id') || orderId || (txn && !txn.startsWith('pl_') ? txn : '');
     return {
-      order_id: p.get('order_id') || orderId || '',
+      order_id: resolvedOrderId,
       link_code: linkCode || p.get('code') || '',
+      transaction_id: txn,
+      payment_return: p.get('payment') === 'return',
       payme_status: p.get('payme_status') || p.get('payme_status_code') || '',
       status: p.get('status') || '',
       sale_status: p.get('sale_status') || p.get('payme_sale_status') || '',
       payme_sale_id: p.get('payme_sale_id') || p.get('sale_id') || '',
-      payme_transaction_id: p.get('payme_transaction_id') || p.get('transaction_id') || '',
+      payme_transaction_id: p.get('payme_transaction_id') || '',
     };
   }
 
@@ -404,6 +408,7 @@
       body: JSON.stringify(getReturnPayload()),
     });
     const data = await res.json().catch(() => ({}));
+    if (!res.ok && !data.error) data.error = `HTTP ${res.status}`;
     if (data.order_id) orderId = data.order_id;
     return data;
   }
@@ -427,7 +432,7 @@
 
     if (!isPaymentReturnUrl()) return false;
 
-    orderId = params.get('order_id');
+    orderId = params.get('order_id') || params.get('transaction_id');
 
     if (linkCode) {
       const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
@@ -468,8 +473,17 @@
         navPayPush('paid');
         applyPayView('paid');
       } else {
-        navPayPush('failed');
-        applyPayView('failed');
+        const payload = getReturnPayload();
+        const paymeOk = ['success', 'completed', 'paid', '1'].includes(
+          String(payload.payme_status || payload.status || payload.sale_status).toLowerCase()
+        );
+        if (paymeOk) {
+          navPayPush('paid');
+          applyPayView('paid');
+        } else {
+          navPayPush('failed');
+          applyPayView('failed');
+        }
       }
     } catch (err) {
       console.error('Payment return error:', err);

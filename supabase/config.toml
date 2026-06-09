@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.payme-webhook]
 verify_jwt = false
+
+[functions.confirm-payment-return]
+verify_jwt = false

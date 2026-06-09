@@ -2058,6 +2058,8 @@ function showCheckoutResult(kind) {
   navPush({ page: appPage, layer: 'checkout', checkoutView: 'result', resultKind: kind });
 }
 async function confirmPaymentReturnFromUrl(params, orderId) {
+  const txn = params.get('transaction_id') || '';
+  const resolvedOrderId = orderId || params.get('order_id') || (txn && !txn.startsWith('pl_') ? txn : '');
   const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
     method: 'POST',
     headers: {
@@ -2066,29 +2068,45 @@ async function confirmPaymentReturnFromUrl(params, orderId) {
       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
     },
     body: JSON.stringify({
-      order_id: orderId || params.get('order_id') || '',
+      order_id: resolvedOrderId,
       link_code: params.get('code') || '',
+      transaction_id: txn,
+      payment_return: params.get('payment') === 'return',
       payme_status: params.get('payme_status') || params.get('payme_status_code') || '',
       status: params.get('status') || '',
       sale_status: params.get('sale_status') || params.get('payme_sale_status') || '',
       payme_sale_id: params.get('payme_sale_id') || params.get('sale_id') || '',
-      payme_transaction_id: params.get('payme_transaction_id') || params.get('transaction_id') || '',
+      payme_transaction_id: params.get('payme_transaction_id') || '',
     }),
   });
-  return res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok && !data.error) data.error = `HTTP ${res.status}`;
+  return data;
 }
 async function handlePaymentReturn() {
   const params = new URLSearchParams(window.location.search);
   const isReturn = params.get('payment') === 'return'
     || ['payme_status', 'payme_sale_status', 'sale_status', 'payme_sale_id'].some(k => params.has(k));
   if (!isReturn) return;
-  const orderId = params.get('order_id') || sessionStorage.getItem('gremier_pending_order');
+
+  const txn = params.get('transaction_id') || '';
+  const orderId = params.get('order_id') || txn || sessionStorage.getItem('gremier_pending_order');
+  const paymeOk = ['success', 'completed', 'paid', '1'].includes(
+    String(params.get('payme_status') || params.get('status') || params.get('sale_status') || '').toLowerCase()
+  );
+
   appPage = 'home';
   history.replaceState({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind: 'pending', __app: 'gremier' }, '', window.location.pathname || '/');
   showPage('home', true);
   closeAllLayersUI();
   openCheckoutUI('result', 'pending');
-  if (!orderId) return;
+
+  if (!orderId) {
+    const resultKind = paymeOk ? 'paid' : 'failed';
+    navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind });
+    openCheckoutUI('result', resultKind);
+    return;
+  }
 
   let paid = false;
   for (let i = 0; i < 20; i++) {
@@ -2097,7 +2115,7 @@ async function handlePaymentReturn() {
     await new Promise(r => setTimeout(r, 1500));
   }
 
-  const resultKind = paid ? 'paid' : 'failed';
+  const resultKind = paid || paymeOk ? 'paid' : 'failed';
   if (resultKind === 'paid') {
     cart = [];
     updateCartCount();
