@@ -327,9 +327,9 @@
       <div class="nav-item" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
-      <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">🌐</span><span>Web Orders</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
+      <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery Zones</span></div>
       </div>
       <div class="sidebar-bottom">
         <div class="user-info" id="adminEmail">—</div>
@@ -579,14 +579,14 @@
     <button class="tab-bar-btn" id="tbar-reports" onclick="showTab('reports')">
       <span class="tab-icon">📈</span>Reports
     </button>
-    <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
-      <span class="tab-icon">🚚</span>Delivery
-    </button>
     <button class="tab-bar-btn" id="tbar-weborders" onclick="showTab('weborders')">
       <span class="tab-icon">🌐</span>Web Orders
     </button>
     <button class="tab-bar-btn" id="tbar-siteimages" onclick="showTab('siteimages')">
       <span class="tab-icon">🖼️</span>Site Images
+    </button>
+    <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
+      <span class="tab-icon">🚚</span>Zones
     </button>
   </div>
 </div>
@@ -664,7 +664,7 @@
     <div class="form-group">
       <label class="form-label">Delivery Price (₪)</label>
       <input class="form-input" type="number" id="pDeliveryPrice" min="0" step="1" placeholder="Leave blank — uses zone default"/>
-      <small style="color:var(--text2);font-size:.72rem;display:block;margin-top:4px">Fixed delivery fee when this product is in the cart. Enter <strong style="color:var(--cream);font-weight:500">0</strong> for free delivery. If multiple products have a fee, the highest applies.</small>
+      <small style="color:var(--text2);font-size:.72rem;display:block;margin-top:4px">Overrides zone delivery when this product is in the cart. Leave blank to use zone pricing. Enter <strong style="color:var(--cream);font-weight:500">0</strong> for free delivery. Mixed cart uses the highest product fee.</small>
     </div>
     <div class="toggle-row">
       <span class="toggle-label">Active (visible on site)</span>
@@ -830,7 +830,7 @@ async function loadDashboard() {
 // ══ PRODUCTS ══
 async function loadAllProducts() {
   const { data } = await sb.from('products').select('*').order('sort_order');
-  allProducts = data || [];
+  allProducts = (data || []).map(normalizeProduct);
   renderProductsList();
 }
 let prodFilter = { search:'', cat:'all' };
@@ -888,6 +888,33 @@ function buildGuestPricingVariation() {
   if (!options.length) return null;
   return { name:'Number of Guests', type:'guest_count', options };
 }
+function readDeliveryPriceInput() {
+  const v = document.getElementById('pDeliveryPrice').value.trim();
+  if (v === '') return null;
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+function getProductDeliveryPrice(p) {
+  if (!p) return null;
+  if (p.delivery_price != null && p.delivery_price !== '' && !isNaN(parseFloat(p.delivery_price))) {
+    return parseFloat(p.delivery_price);
+  }
+  const dv = (p.variations || []).find(v => v.type === 'delivery_price');
+  if (dv != null && dv.price != null && !isNaN(parseFloat(dv.price))) return parseFloat(dv.price);
+  return null;
+}
+function normalizeProduct(p) {
+  return { ...p, delivery_price: getProductDeliveryPrice(p) };
+}
+function buildProductVariations() {
+  const base = parseVariations(document.getElementById('pVariations').value);
+  const gp = buildGuestPricingVariation();
+  let vars = gp ? [...base, gp] : base;
+  vars = vars.filter(v => v.type !== 'delivery_price');
+  const deliveryPrice = readDeliveryPriceInput();
+  if (deliveryPrice !== null) vars.push({ type: 'delivery_price', price: deliveryPrice });
+  return vars;
+}
 function openProductModal(productId) {
   editingImages = [];
   document.getElementById('imgPreviews').innerHTML = '';
@@ -904,12 +931,12 @@ function openProductModal(productId) {
     document.getElementById('pCategory').value = p.category || 'bottles';
     document.getElementById('pPrice').value = p.price || '';
     document.getElementById('pOrigPrice').value = p.original_price || '';
-    document.getElementById('pDeliveryPrice').value = p.delivery_price != null ? p.delivery_price : '';
+    document.getElementById('pDeliveryPrice').value = getProductDeliveryPrice(p) ?? '';
     document.getElementById('pBadge').value = p.badge_text || '';
     document.getElementById('pBadgeType').value = p.badge_type || '';
     document.getElementById('pActive').checked = p.is_active;
     document.getElementById('pSubscription').checked = p.is_subscription;
-    const nonGuestVars = (p.variations||[]).filter(v=>v.type!=='guest_count');
+    const nonGuestVars = (p.variations||[]).filter(v=>v.type!=='guest_count' && v.type!=='delivery_price');
     if (nonGuestVars.length) {
       document.getElementById('pVariations').value = nonGuestVars.map(v=>`${v.name}: ${v.options.join(', ')}`).join(' | ');
     } else {
@@ -979,22 +1006,12 @@ async function saveProduct() {
     category: document.getElementById('pCategory').value,
     price: parseFloat(document.getElementById('pPrice').value) || 0,
     original_price: parseFloat(document.getElementById('pOrigPrice').value) || null,
-    delivery_price: (() => {
-      const v = document.getElementById('pDeliveryPrice').value.trim();
-      if (v === '') return null;
-      const n = parseFloat(v);
-      return isNaN(n) ? null : n;
-    })(),
     badge_text: document.getElementById('pBadge').value.trim(),
     badge_type: document.getElementById('pBadgeType').value,
     is_active: document.getElementById('pActive').checked,
     is_subscription: document.getElementById('pSubscription').checked,
     images: editingImages,
-    variations: (() => {
-      const base = parseVariations(document.getElementById('pVariations').value);
-      const gp = buildGuestPricingVariation();
-      return gp ? [...base, gp] : base;
-    })(),
+    variations: buildProductVariations(),
     updated_at: new Date().toISOString(),
   };
   if (!data.name_en || !data.price) { showToast('Name and price are required'); return; }
@@ -1004,7 +1021,7 @@ async function saveProduct() {
   } else {
     ({ error } = await sb.from('products').insert(data));
   }
-  if (error) { showToast('Error saving product'); console.error(error); return; }
+  if (error) { showToast('Error saving product — ' + (error.message || 'check console')); console.error(error); return; }
   showToast(id ? 'Product updated ✓' : 'Product added ✓');
   closeProductModal();
   await loadAllProducts();

@@ -1370,7 +1370,12 @@ const featuredOrder = ['Classic Dark Roast','House Blend Medium Roast','Colombia
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
   if (error || !data) { products = []; return; }
-  products = data;
+  products = data.map(p => {
+    const dv = (p.variations || []).find(v => v.type === 'delivery_price');
+    const fromVar = dv != null && dv.price != null ? parseFloat(dv.price) : null;
+    const fromCol = p.delivery_price != null ? parseFloat(p.delivery_price) : null;
+    return { ...p, delivery_price: fromCol != null && !isNaN(fromCol) ? fromCol : fromVar };
+  });
 }
 function mergeCoffeeBarsIntoProducts() {
   // Only inject hardcoded fallbacks if Supabase returned no coffeebars products
@@ -1725,6 +1730,23 @@ function openCheckout() {
   setTimeout(()=>updateDeliveryPrice(), 50);
 }
 function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
+async function callCreatePayment(orderId) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ order_id: orderId, language: lang }),
+  });
+  const payData = await res.json().catch(() => ({}));
+  if (!res.ok || !payData?.sale_url) {
+    const msg = payData?.error || payData?.message || `Payment failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return payData;
+}
 async function submitOrder() {
   const name = document.getElementById('coName').value.trim();
   const phone = document.getElementById('coPhone').value.trim();
@@ -1766,19 +1788,20 @@ async function submitOrder() {
       return;
     }
 
-    const { data: payData, error: payFnError } = await sb.functions.invoke('create-payment', {
-      body: { order_id: inserted.id, language: lang },
-    });
-    if (payFnError || !payData?.sale_url) {
-      console.error(payFnError, payData);
-      const msg = payData?.error || payFnError?.message
-        || (lang==='he' ? 'לא ניתן לפתוח תשלום' : 'Could not start payment');
-      alert(msg);
+    let payData;
+    try {
+      payData = await callCreatePayment(inserted.id);
+    } catch (payErr) {
+      console.error(payErr);
+      alert(payErr.message || (lang==='he' ? 'לא ניתן לפתוח תשלום' : 'Could not start payment'));
       return;
     }
 
     sessionStorage.setItem('gremier_pending_order', inserted.id);
     window.location.href = payData.sale_url;
+  } catch (err) {
+    console.error(err);
+    alert(lang==='he' ? 'משהו השתבש. נסו שוב.' : 'Something went wrong. Please try again.');
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = prevLabel;
@@ -2005,7 +2028,7 @@ function updateDeliveryPrice() {
     .filter(v => v !== null && v !== undefined && !isNaN(v));
   const hasProductFee = customFees.length > 0;
   const productFee = hasProductFee ? Math.max(...customFees) : null;
-  const isFree = !hasProductFee && zone.free_threshold && cartTotal >= zone.free_threshold;
+  const isFree = !hasProductFee && zone.free_above && cartTotal >= zone.free_above;
   const zoneRegular = isFree ? 0 : (zone.regular_price || 0);
   const zoneExpedited = zone.expedited_price || 0;
   const regularFee = hasProductFee ? productFee : zoneRegular;

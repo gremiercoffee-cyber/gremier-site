@@ -1,2 +1,5 @@
+[functions.create-payment]
+verify_jwt = false
+
 [functions.payme-webhook]
 verify_jwt = false
