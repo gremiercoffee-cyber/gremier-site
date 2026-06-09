@@ -74,20 +74,47 @@ function buildOrderMessage(order: OrderNotifyRow) {
   return { subject, text, payload };
 }
 
-async function sendViaGoogleSheet(payload: Record<string, unknown>): Promise<boolean> {
-  const url = Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
-  if (!url) return false;
-  const secret = Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET");
-  const body = secret ? { ...payload, secret } : payload;
-  const res = await fetch(url, {
+async function postToGoogleAppsScript(
+  url: string,
+  payload: Record<string, unknown>,
+): Promise<{ ok: boolean; text: string }> {
+  const init: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    console.error("Google Sheet webhook failed:", await res.text());
+    body: JSON.stringify(payload),
+    redirect: "manual",
+  };
+  let res = await fetch(url, init);
+  if ([301, 302, 303, 307, 308].includes(res.status)) {
+    const location = res.headers.get("location");
+    if (location) {
+      console.log("Google Apps Script redirect — re-POSTing to:", location);
+      res = await fetch(location, init);
+    }
+  }
+  const text = await res.text();
+  let parsedOk = res.ok;
+  try {
+    const json = JSON.parse(text) as { ok?: boolean };
+    if (json.ok === true) parsedOk = true;
+  } catch { /* non-json */ }
+  return { ok: parsedOk, text };
+}
+
+async function sendViaGoogleSheet(payload: Record<string, unknown>): Promise<boolean> {
+  const url = Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
+  if (!url) {
+    console.warn("GOOGLE_ORDER_WEBHOOK_URL not set — skipping sheet notification");
     return false;
   }
+  const secret = Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET");
+  const body = secret ? { ...payload, secret } : payload;
+  const { ok, text } = await postToGoogleAppsScript(url, body);
+  if (!ok) {
+    console.error("Google Sheet webhook failed:", text);
+    return false;
+  }
+  console.log("Google Sheet webhook OK:", text.slice(0, 120));
   return true;
 }
 
@@ -107,18 +134,15 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
   return true;
 }
 
-async function sendOrderPaidNotification(order: OrderNotifyRow): Promise<void> {
+async function sendOrderPaidNotification(order: OrderNotifyRow): Promise<boolean> {
   const { subject, text, payload } = buildOrderMessage(order);
   try {
     const sheeted = await sendViaGoogleSheet(payload);
-    if (!sheeted) {
-      const pushed = await sendViaPushover(`💳 ${subject}`, text);
-      if (!pushed) {
-        console.warn("Order paid but no notification sent — set GOOGLE_ORDER_WEBHOOK_URL or PUSHOVER keys");
-      }
-    }
+    if (sheeted) return true;
+    return await sendViaPushover(`💳 ${subject}`, text);
   } catch (err) {
     console.error("Order notification error:", err);
+    return false;
   }
 }
 
@@ -567,17 +591,39 @@ async function notifyPaidOrder(
 
     .from("orders")
 
-    .select("id, order_number, customer_name, customer_email, customer_phone, delivery_address, items, subtotal, discount, total, source, notes")
+    .select("id, order_number, customer_name, customer_email, customer_phone, delivery_address, items, subtotal, discount, total, source, notes, payment_status, delivery_info")
 
     .eq("id", orderId)
 
     .maybeSingle();
 
-  if (data) {
+  if (!data || data.payment_status !== "paid") return;
 
-    await sendOrderPaidNotification(data as OrderNotifyRow);
+  const info = data.delivery_info && typeof data.delivery_info === "object"
 
-  }
+    ? data.delivery_info as Record<string, unknown>
+
+    : {};
+
+  if (info.order_notified_at) return;
+
+  const ok = await sendOrderPaidNotification(data as OrderNotifyRow);
+
+  if (!ok) return;
+
+  await supabase
+
+    .from("orders")
+
+    .update({
+
+      delivery_info: { ...info, order_notified_at: new Date().toISOString() },
+
+      updated_at: new Date().toISOString(),
+
+    })
+
+    .eq("id", orderId);
 
 }
 
@@ -671,6 +717,8 @@ Deno.serve(async (req) => {
 
       if (result.alreadyPaid) {
 
+        await notifyPaidOrder(supabase, result.orderId);
+
         return new Response(JSON.stringify({ ok: true, already_paid: true }), {
 
           headers: { "Content-Type": "application/json" },
@@ -710,6 +758,8 @@ Deno.serve(async (req) => {
 
 
     if (order.payment_status === "paid") {
+
+      await notifyPaidOrder(supabase, order.id);
 
       return new Response(JSON.stringify({ ok: true, already_paid: true }), {
 

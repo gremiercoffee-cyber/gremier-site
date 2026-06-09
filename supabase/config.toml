@@ -6,3 +6,12 @@ verify_jwt = false
 
 [functions.confirm-payment-return]
 verify_jwt = false
+
+[functions.notify-paid-order]
+verify_jwt = false
+
+[functions.chat-assistant]
+verify_jwt = false
+
+[functions.notifications]
+verify_jwt = false

@@ -3,3 +3,4 @@ ops-app/dist/
 ops-app/.env
 ops-app/.env.local
 ops/
+.tools/

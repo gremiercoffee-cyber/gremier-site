@@ -1637,6 +1637,31 @@ async function updateOrderStatus(id, status) {
   showToast('Status updated ✓');
   loadOrders();
 }
+async function sendOrderToGoogleSheet(orderId) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.sent) {
+      showToast('Sent to Google Sheet ✓');
+    } else if (data.skipped === 'already_notified') {
+      showToast('Already on Google Sheet ✓');
+    } else {
+      showToast(data.error || data.skipped || 'Sheet send failed — check Supabase secrets');
+      console.warn('notify-paid-order:', data);
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Could not reach notify-paid-order function');
+  }
+}
 function openOrderDetail(id) {
   const o = allOrders.find(x=>x.id===id);
   if (!o) return;
@@ -1666,6 +1691,7 @@ function openOrderDetail(id) {
         <option ${o.payment_status==='paid'?'selected':''}>paid</option>
       </select>
     </div>
+    ${o.payment_status === 'paid' ? `<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="sendOrderToGoogleSheet('${o.id}')">📋 Send to Google Sheet</button>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
 }
