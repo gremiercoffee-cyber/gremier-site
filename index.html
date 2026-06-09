@@ -930,7 +930,7 @@
   <div class="modal">
     <div id="checkoutFormView">
       <h2 class="modal-title" id="t-co-title">Checkout</h2>
-      <p class="modal-sub" id="t-co-sub">We'll confirm your order and be in touch about delivery.</p>
+      <p class="modal-sub" id="t-co-sub">Fill in your details, then continue to secure card payment.</p>
       <div class="form-group"><label class="form-label" id="t-co-name">Full Name</label><input class="form-input" id="coName" type="text" placeholder="Your name"/></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label" id="t-co-phone">Phone</label><input class="form-input" id="coPhone" type="tel" placeholder="05X-XXXXXXX"/></div>
@@ -965,16 +965,16 @@
       <div class="order-summary-box" id="coSummary"></div>
       <div class="payment-ph">
         <div class="payment-ph-icon">💳</div>
-        <div class="payment-ph-title" id="t-pay-title">Secure Payment — Coming Soon</div>
-        <div class="payment-ph-sub" id="t-pay-sub">Tranzila payment will be enabled here. For now we'll confirm and collect on delivery.</div>
+        <div class="payment-ph-title" id="t-pay-title">Secure Payment via PayMe</div>
+        <div class="payment-ph-sub" id="t-pay-sub">You'll be redirected to PayMe to pay securely by card. Your order is confirmed only after payment.</div>
       </div>
-      <button class="btn btn-primary btn-full" onclick="submitOrder()" id="t-co-submit">Place Order</button>
+      <button class="btn btn-primary btn-full" onclick="submitOrder()" id="t-co-submit">Proceed to Payment</button>
       <button class="btn btn-outline btn-full" style="margin-top:10px" onclick="closeCheckout()" id="t-co-cancel">Cancel</button>
     </div>
     <div id="checkoutConfirmView" class="confirm-screen" style="display:none">
       <div class="confirm-icon">✅</div>
-      <h2 class="confirm-title" id="t-conf-title">Order Received!</h2>
-      <p class="confirm-sub" id="t-conf-sub">Thank you! We'll be in touch within a few hours to confirm your delivery.</p>
+      <h2 class="confirm-title" id="t-conf-title">Payment Successful!</h2>
+      <p class="confirm-sub" id="t-conf-sub">Thank you! We've received your payment and will be in touch about delivery.</p>
       <button class="btn btn-primary" onclick="closeCheckout(); showPage('home')" id="t-conf-btn">Back to Home</button>
     </div>
   </div>
@@ -1107,14 +1107,17 @@ const T = {
     'shop-eye':'The Range','shop-title':'Shop Cold Brew',
     'mo-eye':'Account','mo-title':'My Orders',
     'cart-title':'Your Cart','cart-total':'Total','cart-checkout':'Proceed to Checkout',
-    'co-title':'Checkout','co-sub':'We\'ll confirm your order and be in touch about delivery.',
+    'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure card payment.',
     'co-name':'Full Name','co-phone':'Phone','co-email':'Email',
     'co-addr':'Delivery Address','co-notes':'Notes (optional)',
-    'pay-title':'Secure Payment — Coming Soon',
-    'pay-sub':'Tranzila payment will be enabled here. For now we\'ll confirm and collect on delivery.',
-    'co-submit':'Place Order','co-cancel':'Cancel',
-    'conf-title':'Order Received!',
-    'conf-sub':'Thank you! We\'ll be in touch within a few hours to confirm your delivery.',
+    'pay-title':'Secure Payment via PayMe',
+    'pay-sub':'You\'ll be redirected to PayMe to pay securely by card. Your order is confirmed only after payment.',
+    'co-submit':'Proceed to Payment','co-cancel':'Cancel',
+    'conf-title':'Payment Successful!',
+    'conf-sub':'Thank you! We\'ve received your payment and will be in touch about delivery.',
+    'pay-fail-title':'Payment Not Completed',
+    'pay-fail-sub':'Your payment was not completed. You can try again from your cart.',
+    'pay-pending-sub':'Confirming your payment…',
     'conf-btn':'Back to Home',
     'auth-title':'Sign In','auth-sub':'Sign in to track your orders and check out faster.',
     'google-btn':'Continue with Google','auth-cancel':'Cancel',
@@ -1130,7 +1133,7 @@ const T = {
     'cats':{'all':'All','bottles':'Bottles','minis':'Mini Packs','bulk':'Bulk & 5L','subscriptions':'Subscriptions'},
     'empty-cart':'Your cart is empty',
     'empty-orders':'No orders yet.',
-    'order-status':{'pending':'Pending','confirmed':'Confirmed','fulfilled':'Fulfilled','cancelled':'Cancelled'},
+    'order-status':{'pending':'Pending','awaiting_payment':'Awaiting Payment','confirmed':'Confirmed','fulfilled':'Fulfilled','cancelled':'Cancelled'},
   },
   he: {
     'hero-eyebrow':'קולד ברו ישראלי מוביל','hero-em':'עד הבית','hero-sub':'ישירות לדלת שלך.',
@@ -1148,14 +1151,17 @@ const T = {
     'shop-eye':'המוצרים','shop-title':'חנות קולד ברו',
     'mo-eye':'חשבון','mo-title':'ההזמנות שלי',
     'cart-title':'העגלה שלך','cart-total':'סה"כ','cart-checkout':'המשך לתשלום',
-    'co-title':'תשלום','co-sub':'נאשר את ההזמנה וניצור קשר.',
+    'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח בכרטיס.',
     'co-name':'שם מלא','co-phone':'טלפון','co-email':'אימייל',
     'co-addr':'כתובת למשלוח','co-notes':'הערות (אופציונלי)',
-    'pay-title':'תשלום מאובטח — בקרוב',
-    'pay-sub':'כאן תשולב מערכת Tranzila. בינתיים נגבה עם המשלוח.',
-    'co-submit':'שלח הזמנה','co-cancel':'ביטול',
-    'conf-title':'ההזמנה התקבלה!',
-    'conf-sub':'תודה! ניצור קשר תוך כמה שעות לאישור פרטי המשלוח.',
+    'pay-title':'תשלום מאובטח דרך PayMe',
+    'pay-sub':'תועברו לדף תשלום מאובטח של PayMe. ההזמנה תאושר רק לאחר התשלום.',
+    'co-submit':'המשך לתשלום','co-cancel':'ביטול',
+    'conf-title':'התשלום התקבל!',
+    'conf-sub':'תודה! קיבלנו את התשלום וניצור קשר לגבי המשלוח.',
+    'pay-fail-title':'התשלום לא הושלם',
+    'pay-fail-sub':'התשלום לא הושלם. אפשר לנסות שוב מהעגלה.',
+    'pay-pending-sub':'מאשרים את התשלום…',
     'conf-btn':'חזרה לדף הבית',
     'auth-title':'התחברות','auth-sub':'התחבר/י למעקב הזמנות וקופה מהירה.',
     'google-btn':'המשך עם Google','auth-cancel':'ביטול',
@@ -1171,7 +1177,7 @@ const T = {
     'cats':{'all':'הכל','bottles':'בקבוקים','minis':'מיני פקים','bulk':'5 ליטר','subscriptions':'מנויים'},
     'empty-cart':'העגלה ריקה',
     'empty-orders':'אין הזמנות עדיין.',
-    'order-status':{'pending':'ממתין','confirmed':'אושר','fulfilled':'סופק','cancelled':'בוטל'},
+    'order-status':{'pending':'ממתין','awaiting_payment':'ממתין לתשלום','confirmed':'אושר','fulfilled':'סופק','cancelled':'בוטל'},
   }
 };
 function tr(key) { return T[lang][key] || key; }
@@ -1725,38 +1731,116 @@ async function submitOrder() {
   if (!name || !phone || !addr) {
     alert(lang==='he'?'אנא מלאו שם, טלפון וכתובת':'Please fill in name, phone and address'); return;
   }
-  const deliveryFee = updateDeliveryPrice() || 0;
-  const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
-  // apply coupon if available
-  const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
-  const total = cartTotal + deliveryFee - couponDiscount;
-  const cityId = document.getElementById('coCity')?.value;
-  const zone = deliveryZones.find(z=>z.id===cityId);
-  const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
-  const orderData = {
-    user_id: currentUser?.id || null,
-    customer_name: name,
-    customer_email: document.getElementById('coEmail').value.trim(),
-    customer_phone: phone,
-    delivery_address: (zone ? (lang==='he'?zone.name_he:zone.name_en)+', ' : '') + addr,
-    notes: document.getElementById('coNotes').value.trim(),
-    items: cart.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
-    subtotal: cartTotal,
-    discount: couponDiscount,
-    total,
-    delivery_info: { delivery_type: shipType, delivery_fee: deliveryFee, zone_id: cityId, zone_name: zone?.name_en||'' },
-    status: 'pending', payment_status: 'unpaid', payment_method: 'cod', source: 'website'
-  };
-  const { error } = await sb.from('orders').insert(orderData);
-  if (error) { console.error(error); alert('Something went wrong. Please try again.'); return; }
-  // award points and redeem coupon if used
-  if (currentUser) {
-    await awardPointsForOrder(cartTotal);
-    if (couponDiscount > 0) await redeemCoupon();
+  const submitBtn = document.getElementById('t-co-submit');
+  const prevLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = lang==='he' ? 'מעביר לתשלום…' : 'Redirecting to payment…';
+
+  try {
+    const deliveryFee = updateDeliveryPrice() || 0;
+    const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+    const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
+    const total = cartTotal + deliveryFee - couponDiscount;
+    const cityId = document.getElementById('coCity')?.value;
+    const zone = deliveryZones.find(z=>z.id===cityId);
+    const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
+    const orderData = {
+      user_id: currentUser?.id || null,
+      customer_name: name,
+      customer_email: document.getElementById('coEmail').value.trim(),
+      customer_phone: phone,
+      delivery_address: (zone ? (lang==='he'?zone.name_he:zone.name_en)+', ' : '') + addr,
+      notes: document.getElementById('coNotes').value.trim(),
+      items: cart.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
+      subtotal: cartTotal,
+      discount: couponDiscount,
+      total,
+      delivery_info: { delivery_type: shipType, delivery_fee: deliveryFee, zone_id: cityId, zone_name: zone?.name_en||'' },
+      status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
+    };
+    const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
+    if (error || !inserted?.id) {
+      console.error(error);
+      alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
+      return;
+    }
+
+    const payRes = await fetch(CREATE_PAYMENT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+      body: JSON.stringify({ order_id: inserted.id, language: lang }),
+    });
+    const payData = await payRes.json();
+    if (!payRes.ok || !payData.sale_url) {
+      console.error(payData);
+      alert(payData.error || (lang==='he'?'לא ניתן לפתוח תשלום':'Could not start payment'));
+      return;
+    }
+
+    sessionStorage.setItem('gremier_pending_order', inserted.id);
+    window.location.href = payData.sale_url;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = prevLabel;
   }
-  cart = []; updateCartCount();
+}
+function showCheckoutResult(kind) {
   document.getElementById('checkoutFormView').style.display = 'none';
   document.getElementById('checkoutConfirmView').style.display = 'block';
+  const icon = document.querySelector('#checkoutConfirmView .confirm-icon');
+  const title = document.getElementById('t-conf-title');
+  const sub = document.getElementById('t-conf-sub');
+  if (kind === 'paid') {
+    if (icon) icon.textContent = '✅';
+    title.textContent = tr('conf-title');
+    sub.textContent = tr('conf-sub');
+  } else if (kind === 'pending') {
+    if (icon) icon.textContent = '⏳';
+    title.textContent = tr('conf-title');
+    sub.textContent = tr('pay-pending-sub');
+  } else {
+    if (icon) icon.textContent = '⚠️';
+    title.textContent = tr('pay-fail-title');
+    sub.textContent = tr('pay-fail-sub');
+  }
+  document.getElementById('checkoutOverlay').classList.add('open');
+}
+async function handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('payment') !== 'return') return;
+  const orderId = params.get('order_id');
+  history.replaceState({ page: 'home' }, '', window.location.pathname || '/');
+  if (!orderId) return;
+
+  showPage('home', true);
+  showCheckoutResult('pending');
+
+  let paid = false;
+  for (let i = 0; i < 8; i++) {
+    const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+    if (order?.payment_status === 'paid') { paid = true; break; }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  const paymeStatus = String(params.get('payme_status') || '').toLowerCase();
+  if (paid || paymeStatus === 'success') {
+    cart = [];
+    updateCartCount();
+    sessionStorage.removeItem('gremier_pending_order');
+    showCheckoutResult('paid');
+    if (currentUser) await refreshUserProfile();
+  } else {
+    showCheckoutResult('failed');
+  }
+}
+async function refreshUserProfile() {
+  if (!currentUser) return;
+  const { data: profile } = await sb.from('profiles').select('points, coupon_available').eq('id', currentUser.id).single();
+  if (profile) {
+    userPoints = profile.points || 0;
+    userCouponAvailable = !!profile.coupon_available;
+    updateLoyaltyPill();
+  }
 }
 // ══ SITE SETTINGS (live images) ══
 let siteSettings = {};
@@ -1935,6 +2019,7 @@ async function init() {
   loadSiteSettings();
   applyTranslations();
   updateCartCount();
+  handlePaymentReturn();
 }
 init();
 // Seed the initial history state so back-navigation lands on 'home'
@@ -1953,6 +2038,7 @@ window.addEventListener('popstate', function(e) {
 });
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
+const CREATE_PAYMENT_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/create-payment';
 let chatHistory = [];
 let chatOpen = false;
 let chatCatalogVersion = 0;

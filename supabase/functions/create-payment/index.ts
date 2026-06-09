@@ -1,0 +1,122 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+type OrderRow = {
+  id: string;
+  order_number?: number | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+  total?: number | null;
+  payment_status?: string | null;
+  delivery_info?: Record<string, unknown> | null;
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const { order_id, language } = await req.json();
+    if (!order_id) {
+      throw new Error("Missing order_id");
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+
+    const sellerId = Deno.env.get("PAYME_SELLER_ID");
+    if (!sellerId) {
+      throw new Error("PayMe is not configured");
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("id, order_number, customer_name, customer_email, customer_phone, total, payment_status, delivery_info")
+      .eq("id", order_id)
+      .single();
+
+    if (orderError || !order) {
+      throw new Error("Order not found");
+    }
+
+    const row = order as OrderRow;
+    if (row.payment_status === "paid") {
+      throw new Error("Order is already paid");
+    }
+
+    const totalShekels = Number(row.total) || 0;
+    if (totalShekels <= 0) {
+      throw new Error("Invalid order total");
+    }
+
+    const siteUrl = (Deno.env.get("SITE_URL") || "https://gremier-site.vercel.app").replace(/\/$/, "");
+    const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
+    const paymeBase = (Deno.env.get("PAYME_API_URL") || "https://live.payme.io/").replace(/\/?$/, "/");
+    const lang = String(language || "he").toUpperCase() === "EN" ? "EN" : "HE";
+
+    const payload: Record<string, unknown> = {
+      seller_payme_id: sellerId,
+      sale_price: Math.round(totalShekels * 100),
+      currency: "ILS",
+      product_name: `Gremier Coffee Order #${row.order_number ?? row.id.slice(0, 8)}`,
+      installments: 1,
+      transaction_id: row.id,
+      sale_callback_url: `${supabaseUrl}/functions/v1/payme-webhook`,
+      sale_return_url: `${siteUrl}/?payment=return&order_id=${encodeURIComponent(row.id)}`,
+      sale_send_notification: true,
+      language: lang,
+      buyer_name: row.customer_name || undefined,
+      buyer_email: row.customer_email || undefined,
+      buyer_phone: row.customer_phone || undefined,
+    };
+    if (row.customer_email) {
+      payload.sale_email = row.customer_email;
+    }
+
+    const paymeRes = await fetch(`${paymeBase}api/generate-sale`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const paymeData = await paymeRes.json();
+    if (!paymeRes.ok || paymeData.status_code !== 0 || !paymeData.sale_url) {
+      const detail = paymeData.status_error_details || paymeData.message || "PayMe payment could not be created";
+      throw new Error(String(detail));
+    }
+
+    const deliveryInfo = {
+      ...(row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {}),
+      payme_sale_id: paymeData.payme_sale_id,
+    };
+
+    await supabase
+      .from("orders")
+      .update({
+        payment_method: "payme",
+        status: "awaiting_payment",
+        delivery_info: deliveryInfo,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+
+    return new Response(JSON.stringify({ sale_url: paymeData.sale_url, payme_sale_id: paymeData.payme_sale_id }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Payment error";
+    return new Response(JSON.stringify({ error: message }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
