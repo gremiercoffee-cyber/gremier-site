@@ -14,6 +14,19 @@ type OrderRow = {
 
 type PaymePayload = Record<string, unknown>;
 
+function getServiceRoleKey(): string {
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacy) return legacy;
+  try {
+    const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+    if (!raw) return "";
+    const keys = JSON.parse(raw) as Record<string, string>;
+    return keys.default || keys.service_role || Object.values(keys)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 function md5Hex(text: string): string {
   return encodeHex(new Md5().update(text).digest());
 }
@@ -123,10 +136,13 @@ serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    const serviceKey = getServiceRoleKey();
+    if (!serviceKey) {
+      console.error("PayMe webhook: missing service role key");
+      return new Response(JSON.stringify({ ok: false }), { status: 500 });
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
 
     const order = await findOrder(supabase, payload);
     if (!order) {
