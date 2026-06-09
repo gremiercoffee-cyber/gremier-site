@@ -53,13 +53,58 @@
 <script>
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
+  const PAY_APP = 'gremier-pay';
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const params = new URLSearchParams(window.location.search);
   const linkCode = params.get('code');
+  let orderId = null;
   let paymentLink = null;
+  let payView = 'loading';
+  let navSkipPush = false;
 
-  async function callCreatePayment(code) {
+  function payUrl() {
+    return linkCode ? `pay.html?code=${encodeURIComponent(linkCode)}` : 'pay.html';
+  }
+  function navPayPush(view) {
+    if (navSkipPush) return;
+    payView = view;
+    history.pushState({ view, code: linkCode, __app: PAY_APP }, '', payUrl());
+  }
+  function navPayReplace(view) {
+    if (navSkipPush) return;
+    payView = view;
+    history.replaceState({ view, code: linkCode, __app: PAY_APP }, '', payUrl());
+  }
+  function navPayBack() {
+    if (!navSkipPush) history.back();
+  }
+  function applyPayView(view) {
+    payView = view;
+    if (view === 'checkout' && paymentLink) renderCheckout(paymentLink);
+    else if (view === 'pending') renderPending();
+    else if (view === 'paid') renderPaid();
+    else if (view === 'failed') renderFailed();
+    else if (view === 'invalid') renderInvalid();
+    else if (view === 'notfound') renderNotFound();
+  }
+  function handlePayPopState(e) {
+    navSkipPush = true;
+    try {
+      if (!e.state || e.state.__app !== PAY_APP) {
+        if (paymentLink) {
+          applyPayView('checkout');
+          navPayReplace('checkout');
+        }
+        return;
+      }
+      applyPayView(e.state.view || 'checkout');
+    } finally {
+      navSkipPush = false;
+    }
+  }
+
+  async function callCreatePayment(id) {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
       method: 'POST',
       headers: {
@@ -67,13 +112,57 @@
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({ payment_link_code: code, language: 'en' }),
+      body: JSON.stringify({ order_id: id, language: 'en' }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.sale_url) {
       throw new Error(data.error || 'Could not start PayMe payment');
     }
     return data.sale_url;
+  }
+
+  async function ensureOrderId(link) {
+    if (link.order_id) return link.order_id;
+
+    const { data: existing } = await sb.from('orders')
+      .select('id, payment_status')
+      .eq('source', 'payment_link')
+      .filter('delivery_info->>payment_link_code', 'eq', link.link_code)
+      .maybeSingle();
+
+    if (existing?.id) {
+      if (existing.payment_status === 'paid') throw new Error('This payment link is already paid');
+      await sb.from('payment_links').update({ order_id: existing.id }).eq('link_code', link.link_code);
+      return existing.id;
+    }
+
+    const orderData = {
+      customer_name: link.customer_name || 'Payment Link Customer',
+      customer_phone: link.customer_phone || null,
+      customer_email: null,
+      delivery_address: null,
+      items: link.items || [],
+      subtotal: link.subtotal,
+      discount: link.discount || 0,
+      total: link.total,
+      status: 'awaiting_payment',
+      payment_status: 'unpaid',
+      payment_method: 'payme',
+      source: 'payment_link',
+      delivery_info: { payment_link_code: link.link_code },
+      notes: link.discount_note || null,
+    };
+    const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
+    if (error || !inserted?.id) throw new Error('Could not start payment');
+    await sb.from('payment_links').update({ order_id: inserted.id }).eq('link_code', link.link_code);
+    return inserted.id;
+  }
+
+  function renderInvalid() {
+    document.getElementById('payCard').innerHTML = '<div class="pay-error">Invalid payment link.</div>';
+  }
+  function renderNotFound() {
+    document.getElementById('payCard').innerHTML = '<div class="pay-error">Payment link not found or expired.</div>';
   }
 
   function renderPaid() {
@@ -91,7 +180,7 @@
       <div class="pay-status">⚠️</div>
       <div class="pay-status-title">Payment not completed</div>
       <div class="pay-status-sub">Your payment was not finished. You can try again below.</div>
-      <button class="pay-btn" style="margin-top:24px" onclick="startPayment()">Try again</button>`;
+      <button class="pay-btn" style="margin-top:24px" onclick="retryPayment()">Try again</button>`;
   }
 
   function renderPending() {
@@ -127,13 +216,22 @@
       <div class="pay-error" id="payError" style="display:none"></div>`;
   }
 
+  function retryPayment() {
+    if (!paymentLink) return;
+    applyPayView('checkout');
+    navPayReplace('checkout');
+  }
+
   async function startPayment() {
     const btn = document.getElementById('payBtn');
     const errEl = document.getElementById('payError');
     if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
     if (errEl) errEl.style.display = 'none';
     try {
-      const saleUrl = await callCreatePayment(linkCode);
+      orderId = await ensureOrderId(paymentLink);
+      paymentLink.order_id = orderId;
+      navPayReplace('checkout');
+      const saleUrl = await callCreatePayment(orderId);
       window.location.href = saleUrl;
     } catch (e) {
       if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
@@ -143,45 +241,68 @@
 
   async function handleReturn() {
     if (params.get('payment') !== 'return') return false;
-    renderPending();
-    history.replaceState({}, '', `pay.html?code=${encodeURIComponent(linkCode || '')}`);
+    orderId = params.get('order_id');
+    navPayReplace('pending');
+    applyPayView('pending');
     let paid = false;
     for (let i = 0; i < 8; i++) {
+      if (orderId) {
+        const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+        if (order?.payment_status === 'paid') { paid = true; break; }
+      }
       const { data: link } = await sb.from('payment_links').select('status').eq('link_code', linkCode).maybeSingle();
       if (link?.status === 'paid') { paid = true; break; }
       await new Promise(r => setTimeout(r, 1500));
     }
     if (paid || String(params.get('payme_status')).toLowerCase() === 'success') {
-      renderPaid();
+      navPayPush('paid');
+      applyPayView('paid');
     } else {
-      renderFailed();
+      navPayPush('failed');
+      applyPayView('failed');
     }
     return true;
   }
 
   async function init() {
+    window.addEventListener('popstate', handlePayPopState);
+
     if (!linkCode) {
-      document.getElementById('payCard').innerHTML = '<div class="pay-error">Invalid payment link.</div>';
+      applyPayView('invalid');
+      navPayReplace('invalid');
       return;
     }
     if (await handleReturn()) return;
 
     const { data: link, error } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
     if (error || !link) {
-      document.getElementById('payCard').innerHTML = '<div class="pay-error">Payment link not found or expired.</div>';
+      applyPayView('notfound');
+      navPayReplace('notfound');
       return;
     }
     paymentLink = link;
 
     if (link.status === 'paid') {
-      renderPaid();
+      applyPayView('paid');
+      navPayReplace('paid');
       return;
     }
 
-    renderCheckout(link);
+    if (link.order_id) {
+      const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
+      if (order?.payment_status === 'paid') {
+        applyPayView('paid');
+        navPayReplace('paid');
+        return;
+      }
+    }
+
+    applyPayView('checkout');
+    navPayReplace('checkout');
   }
 
   init();
 </script>
 </body>
 </html>
+

@@ -704,6 +704,12 @@
       <span class="toggle-label">Subscription product</span>
       <label class="toggle"><input type="checkbox" id="pSubscription"/><span class="toggle-slider"></span></label>
     </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Coffee Bar product</span>
+      <label class="toggle"><input type="checkbox" id="pCoffeeBar"/><span class="toggle-slider"></span></label>
+    </div>
+    <!-- Legacy static-card copy lives in supabase/migrations/20260610110000_seed_coffee_bar_descriptions.sql
+         Basic Coffee Bar + Premium Coffee Bar — run that SQL once, or paste description_en/he from the migration when creating those products. -->
     <div class="form-group" style="margin-top:16px">
       <label class="form-label" style="font-size:.85rem;font-weight:600;color:var(--cream);margin-bottom:8px;display:block">📷 Product Images</label>
       <div class="img-upload-area" id="imgDropArea" onclick="document.getElementById('imgFileInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" style="border:2px dashed var(--border);border-radius:6px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--bg3)">
@@ -941,7 +947,7 @@ function renderProductsList() {
       <div class="product-row-thumb">${thumb}</div>
       <div class="product-row-info">
         <div class="product-row-name">${p.name_en} ${p.name_he?`<small style="color:var(--text2)">/ ${p.name_he}</small>`:''}</div>
-        <div class="product-row-meta">₪${p.price} · ${p.category}${p.delivery_price != null ? ` · 🚚 ${p.delivery_price === 0 ? 'free delivery' : '₪'+p.delivery_price+' delivery'}` : ''}${p.is_active?'':' · <span style="color:var(--red)">hidden</span>'}${p.is_subscription?' · <span style="color:var(--cream)">subscription</span>':''}</div>
+        <div class="product-row-meta">₪${p.price} · ${p.category}${p.delivery_price != null ? ` · 🚚 ${p.delivery_price === 0 ? 'free delivery' : '₪'+p.delivery_price+' delivery'}` : ''}${p.is_active?'':' · <span style="color:var(--red)">hidden</span>'}${p.is_subscription?' · <span style="color:var(--cream)">subscription</span>':''}${p.is_coffee_bar?' · <span style="color:var(--cream)">coffee bar</span>':''}</div>
       </div>
       <div class="product-row-actions">
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">Edit</button>
@@ -1024,6 +1030,7 @@ function openProductModal(productId) {
     document.getElementById('pBadgeType').value = p.badge_type || '';
     document.getElementById('pActive').checked = p.is_active;
     document.getElementById('pSubscription').checked = p.is_subscription;
+    document.getElementById('pCoffeeBar').checked = !!p.is_coffee_bar;
     const nonGuestVars = (p.variations||[]).filter(v=>v.type!=='guest_count' && v.type!=='delivery_price');
     if (nonGuestVars.length) {
       document.getElementById('pVariations').value = nonGuestVars.map(v=>`${v.name}: ${v.options.join(', ')}`).join(' | ');
@@ -1041,6 +1048,7 @@ function openProductModal(productId) {
     document.getElementById('pBadgeType').value='';
     document.getElementById('pActive').checked=true;
     document.getElementById('pSubscription').checked=false;
+    document.getElementById('pCoffeeBar').checked=false;
     onCategoryChange('bottles');
   }
   document.getElementById('productModal').classList.add('open');
@@ -1098,16 +1106,27 @@ async function saveProduct() {
     badge_type: document.getElementById('pBadgeType').value,
     is_active: document.getElementById('pActive').checked,
     is_subscription: document.getElementById('pSubscription').checked,
+    is_coffee_bar: document.getElementById('pCoffeeBar').checked,
     images: editingImages,
     variations: buildProductVariations(),
     updated_at: new Date().toISOString(),
   };
   if (!data.name_en || !data.price) { showToast('Name and price are required'); return; }
   let error;
+  const savePayload = { ...data };
   if (id) {
-    ({ error } = await sb.from('products').update(data).eq('id', id));
+    ({ error } = await sb.from('products').update(savePayload).eq('id', id));
   } else {
-    ({ error } = await sb.from('products').insert(data));
+    ({ error } = await sb.from('products').insert(savePayload));
+  }
+  if (error && String(error.message || '').includes('is_coffee_bar')) {
+    delete savePayload.is_coffee_bar;
+    if (id) {
+      ({ error } = await sb.from('products').update(savePayload).eq('id', id));
+    } else {
+      ({ error } = await sb.from('products').insert(savePayload));
+    }
+    if (!error) showToast('Saved — run migration to enable Coffee Bar flag');
   }
   if (error) { showToast('Error saving product — ' + (error.message || 'check console')); console.error(error); return; }
   showToast(id ? 'Product updated ✓' : 'Product added ✓');

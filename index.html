@@ -621,7 +621,7 @@
       <div class="member-perk"><span class="member-perk-icon">🚀</span><span id="perk3">Early access to new products & deals</span></div>
       <div class="member-perk"><span class="member-perk-icon">📦</span><span id="perk4">Track your orders easily</span></div>
     </div>
-    <button class="btn btn-primary btn-full" onclick="closeMemberPopup(); openAuthModal()" id="popup-join-btn">Join Now — It's Free</button>
+    <button class="btn btn-primary btn-full" onclick="joinFromMemberPopup()" id="popup-join-btn">Join Now — It's Free</button>
     <button style="background:none;border:none;color:var(--text2);font-size:.78rem;margin-top:12px;cursor:pointer;width:100%" onclick="closeMemberPopup()" id="popup-skip">Maybe later</button>
   </div>
 </div>
@@ -735,9 +735,9 @@
       <div class="eyebrow" id="t-cb-eye">Events</div>
       <div class="divider"></div>
       <h2 class="section-title" id="t-cb-title">Coffee Bars</h2>
-      <p style="color:var(--text2);font-size:.88rem;margin-top:10px;max-width:480px;margin-left:auto;margin-right:auto;" id="t-cb-desc">Elevate your event with a premium cold brew station. We bring everything.</p>
+      <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.75;" id="t-cb-desc">Bring a premium Gremier cold brew bar to your wedding, party, or corporate event. We set up a beautiful station with our slow-steeped coffee — tailored to your guest count and occasion. Based in Jerusalem, serving events across Israel.</p>
     </div>
-    <div class="coffeebar-grid" id="coffeeBarGrid"><div class="loading"><div class="spinner"></div></div></div>
+    <div class="product-grid" id="coffeeBarGrid"><div class="loading"><div class="spinner"></div></div></div>
   </div>
   <div class="section" id="aboutSection">
     <div style="max-width:620px;margin:0 auto;text-align:center;">
@@ -884,11 +884,12 @@
   <!-- Packages -->
   <div class="section">
     <div class="section-header">
-      <div class="eyebrow">Choose Your Package</div>
+      <div class="eyebrow" id="t-cbp-eye">Events & Occasions</div>
       <div class="divider"></div>
-      <h2 class="section-title">Coffee Bar Packages</h2>
+      <h2 class="section-title" id="t-cbp-title">Coffee Bar Packages</h2>
+      <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.75;" id="t-cbp-intro">Bring a premium Gremier cold brew bar to your wedding, party, or corporate event. We set up a beautiful station with our slow-steeped coffee — tailored to your guest count and occasion. Based in Jerusalem, serving events across Israel.</p>
     </div>
-    <div class="cbp-cards" id="cbpPackages"></div>
+    <div class="product-grid" id="cbpPackages"><div class="loading"><div class="spinner"></div></div></div>
     <p style="text-align:center;color:var(--text2);font-size:.82rem;margin-top:28px;line-height:1.7">
       Prices vary by guest count and event requirements. <a href="https://wa.me/972552703413?text=Hi!%20I%27d%20like%20a%20custom%20quote%20for%20a%20Gremier%20Coffee%20Bar%20%E2%98%95" target="_blank" rel="noopener" style="color:#1a1a1a;text-decoration:none;font-weight:500">Message us for a custom quote →</a>
     </p>
@@ -1010,7 +1011,7 @@
       <div class="confirm-icon">✅</div>
       <h2 class="confirm-title" id="t-conf-title">Payment Successful!</h2>
       <p class="confirm-sub" id="t-conf-sub">Thank you! We've received your payment and will be in touch about delivery.</p>
-      <button class="btn btn-primary" onclick="closeCheckout(); showPage('home')" id="t-conf-btn">Back to Home</button>
+      <button class="btn btn-primary" onclick="exitCheckoutToHome()" id="t-conf-btn">Back to Home</button>
     </div>
   </div>
 </div>
@@ -1136,7 +1137,11 @@ const T = {
     'w3t':'Premium Beans','w3d':'Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.',
     'w4t':'Events & Bars','w4d':'Set up a cold brew bar at your wedding, birthday, or corporate event.',
     'feat-eye':'Our Range','feat-title':'Most Popular','view-all':'View All Products',
-    'cb-eye':'Events','cb-title':'Coffee Bars','cb-desc':'Elevate your event with a premium cold brew station.',
+    'cb-eye':'Events','cb-title':'Coffee Bars',
+    'cb-desc':'Bring a premium Gremier cold brew bar to your wedding, party, or corporate event. We set up a beautiful station with our slow-steeped coffee — tailored to your guest count and occasion. Based in Jerusalem, serving events across Israel.',
+    'cbp-eye':'Events & Occasions','cbp-title':'Coffee Bar Packages',
+    'cbp-intro':'Bring a premium Gremier cold brew bar to your wedding, party, or corporate event. We set up a beautiful station with our slow-steeped coffee — tailored to your guest count and occasion. Based in Jerusalem, serving events across Israel.',
+    'cb-empty':'Coffee bar packages coming soon',
     'about-eye':'Our Story','about-title':'Born From Passion',
     'about-desc':'Founded in 2024 with a single mission: bring world-class cold brew to Israel. Every batch crafted with care.',
     'shop-eye':'The Range','shop-title':'Shop Cold Brew',
@@ -1181,7 +1186,11 @@ const T = {
     'w3t':'פולים פרימיום','w3d':'מקולומביה, אתיופיה ומעבר. קלוי במיוחד לקולד ברו.',
     'w4t':'אירועים ובארים','w4d':'הקימו בר קולד ברו בחתונה, יומולדת, או אירוע עסקי.',
     'feat-eye':'המוצרים שלנו','feat-title':'הפופולריים','view-all':'לכל המוצרים',
-    'cb-eye':'אירועים','cb-title':'בר קפה לאירועים','cb-desc':'שדרגו את האירוע עם תחנת קולד ברו פרימיום.',
+    'cb-eye':'אירועים','cb-title':'בר קפה לאירועים',
+    'cb-desc':'הביאו בר קולד ברו פרימיום של גרמייר לחתונה, מסיבה או אירוע עסקי. אנחנו מקימים תחנה יפה עם הקפה שלנו — מותאם למספר האורחים ולסוג האירוע. מבוססים בירושלים, מגיעים לכל הארץ.',
+    'cbp-eye':'אירועים ואירועים מיוחדים','cbp-title':'חבילות בר קפה',
+    'cbp-intro':'הביאו בר קולד ברו פרימיום של גרמייר לחתונה, מסיבה או אירוע עסקי. אנחנו מקימים תחנה יפה עם הקפה שלנו — מותאם למספר האורחים ולסוג האירוע. מבוססים בירושלים, מגיעים לכל הארץ.',
+    'cb-empty':'חבילות בר קפה בקרוב',
     'about-eye':'הסיפור שלנו','about-title':'נולד מתשוקה',
     'about-desc':'נוסדה ב-2024 עם משימה אחת: להביא קולד ברו ברמה עולמית לישראל.',
     'shop-eye':'המוצרים','shop-title':'חנות קולד ברו',
@@ -1230,6 +1239,7 @@ function applyTranslations() {
     't-w1t':'w1t','t-w1d':'w1d','t-w2t':'w2t','t-w2d':'w2d','t-w3t':'w3t','t-w3d':'w3d','t-w4t':'w4t','t-w4d':'w4d',
     't-feat-eye':'feat-eye','t-feat-title':'feat-title','t-view-all':'view-all',
     't-cb-eye':'cb-eye','t-cb-title':'cb-title','t-cb-desc':'cb-desc',
+    't-cbp-eye':'cbp-eye','t-cbp-title':'cbp-title','t-cbp-intro':'cbp-intro',
     't-about-eye':'about-eye','t-about-title':'about-title','t-about-desc':'about-desc',
     't-shop-eye':'shop-eye','t-shop-title':'shop-title',
     't-mo-eye':'mo-eye','t-mo-title':'mo-title',
@@ -1295,7 +1305,7 @@ async function setUser(user) {
   document.getElementById('coEmail').value = user.email || '';
   // hide banner and popup for members
   hideMemberBanner();
-  closeMemberPopup();
+  closeMemberPopup(true);
   // show loyalty pill
   updateLoyaltyPill();
 }
@@ -1329,12 +1339,18 @@ function checkAndShowMemberPopup() {
   const today = new Date().toDateString();
   if (last === today) return; // already shown today
   setTimeout(() => {
-    document.getElementById('memberPopup').classList.add('open');
+    openMemberPopupUI();
+    navPush({ page: appPage, layer: 'member' });
     localStorage.setItem(key, today);
   }, 2500); // show after 2.5s so page loads first
 }
-function closeMemberPopup() {
-  document.getElementById('memberPopup').classList.remove('open');
+function closeMemberPopup(fromNav) {
+  if (fromNav) {
+    document.getElementById('memberPopup').classList.remove('open');
+    return;
+  }
+  if (document.getElementById('memberPopup').classList.contains('open')) navBack();
+  else document.getElementById('memberPopup').classList.remove('open');
 }
 // ══ LOYALTY / POINTS ══
 function updateLoyaltyPill() {
@@ -1349,13 +1365,17 @@ function updateLoyaltyPill() {
   document.getElementById('loyaltyPillText').textContent = text;
 }
 function openPointsModal() {
-  const pct = Math.min(100, Math.round((userPoints / 200) * 100));
-  document.getElementById('pts-count').textContent = userPoints;
-  document.getElementById('ptsBarFill').style.width = pct + '%';
-  document.getElementById('couponAvailableBox').style.display = userCouponAvailable ? 'block' : 'none';
-  document.getElementById('pointsModal').classList.add('open');
+  openPointsModalUI();
+  navPush({ page: appPage, layer: 'points' });
 }
-function closePointsModal() { document.getElementById('pointsModal').classList.remove('open'); }
+function closePointsModal(fromNav) {
+  if (fromNav) {
+    document.getElementById('pointsModal').classList.remove('open');
+    return;
+  }
+  if (document.getElementById('pointsModal').classList.contains('open')) navBack();
+  else document.getElementById('pointsModal').classList.remove('open');
+}
 async function awardPointsForOrder(orderTotal) {
   if (!currentUser) return;
   const earned = Math.floor(orderTotal / 10);
@@ -1379,8 +1399,18 @@ async function redeemCoupon() {
   userCouponAvailable = false;
   updateLoyaltyPill();
 }
-function openAuthModal() { document.getElementById('authOverlay').classList.add('open'); }
-function closeAuthModal() { document.getElementById('authOverlay').classList.remove('open'); }
+function openAuthModal() {
+  openAuthModalUI();
+  navPush({ page: appPage, layer: 'auth' });
+}
+function closeAuthModal(fromNav) {
+  if (fromNav) {
+    document.getElementById('authOverlay').classList.remove('open');
+    return;
+  }
+  if (document.getElementById('authOverlay').classList.contains('open')) navBack();
+  else document.getElementById('authOverlay').classList.remove('open');
+}
 async function signInWithGoogle() {
   await sb.auth.signInWithOAuth({
     provider: 'google',
@@ -1388,26 +1418,15 @@ async function signInWithGoogle() {
   });
 }
 // ══ PRODUCTS ══
-const coffeeBarProducts = [
-  {
-    id:'basic', nameEn:'Basic Coffee Bar', nameHe:'בר קפה בסיסי',
-    name_en:'Basic Coffee Bar', name_he:'בר קפה בסיסי',
-    price:249, featured:false, image:'', category:'event', tag:null,
-    description_en:"Cold brew, ready to serve at your event. We send the coffee and sugar syrup — you handle the rest your way. A simple, affordable way to bring premium cold brew to any occasion.",
-    description_he:'קולד ברו, מוכן להגשה באירוע שלך. אנחנו שולחים את הקפה וסירופ הסוכר — השאר בידיים שלך. דרך פשוטה ומשתלמת להביא קולד ברו פרימיום לכל אירוע.',
-    featuresEn:['Cold brew coffee included','Sugar syrup included','Easy self-serve setup','Elevates any event instantly'],
-    featuresHe:['קולד ברו כלול','סירופ סוכר כלול','הגשה עצמית קלה','מעלה כל אירוע ברגע'],
-  },
-  {
-    id:'premium', nameEn:'Premium Coffee Bar', nameHe:'בר קפה פרימיום',
-    name_en:'Premium Coffee Bar', name_he:'בר קפה פרימיום',
-    price:349, featured:true, tag:'All-Inclusive', image:'', category:'event',
-    description_en:"Open the box and you're ready. Dispenser, cold brew, milk, cups, straws, and three syrups — caramel, vanilla & sugar — all packed and included. Pour the coffee into the dispenser and start serving. That's genuinely all it takes.",
-    description_he:'פתח את הקופסה ואתה מוכן. מתקן, קולד ברו, חלב, כוסות, קשיות ושלושה סירופים — קרמל, וניל וסוכר — הכל ארוז וכלול. שפוך את הקפה למתקן והתחל להגיש. זה באמת כל מה שצריך.',
-    featuresEn:['Dispenser included — just pour & serve','Cold brew + milk included','Cups & straws included','3 syrups: caramel, vanilla & sugar','Delivered to you or straight to your event'],
-    featuresHe:['מתקן כלול — רק לשפוך ולהגיש','קולד ברו וחלב כלולים','כוסות וקשיות כלולות','3 סירופים: קרמל, וניל וסוכר','משלוח אליך או ישירות לאירוע'],
-  },
-];
+function isCoffeeBarProduct(p) {
+  return !!(p && (p.is_coffee_bar || p.category === 'coffeebars'));
+}
+function getCoffeeBarProducts() {
+  return products.filter(isCoffeeBarProduct);
+}
+function coffeeBarEmptyHTML() {
+  return `<p style="color:var(--text2);text-align:center;width:100%;grid-column:1/-1;padding:28px 16px;font-size:.9rem;line-height:1.6">${tr('cb-empty')}</p>`;
+}
 // Home "Most Popular" — IDs are stable; names are fallback if a product is recreated.
 const FEATURED_PRODUCT_IDS = [
   '5553dae1-d35d-4d02-b3a1-3633e9ca6bfc', // Classic Dark Roast
@@ -1456,29 +1475,6 @@ async function loadProducts() {
     return { ...p, delivery_price: fromCol != null && !isNaN(fromCol) ? fromCol : fromVar };
   });
 }
-function mergeCoffeeBarsIntoProducts() {
-  // Only inject hardcoded fallbacks if Supabase returned no coffeebars products
-  const hasCbFromDB = products.some(p => p.category === 'coffeebars');
-  if (!hasCbFromDB) {
-    coffeeBarProducts.forEach(cb => {
-      products.push({
-        id: cb.id,
-        name_en: cb.name_en,
-        name_he: cb.name_he,
-        price: cb.price,
-        images: cb.image ? [cb.image] : [],
-        category: 'coffeebars',
-        description_en: cb.description_en || '',
-        description_he: cb.description_he || '',
-        badge_text: cb.tag || null,
-        badge_type: null,
-        original_price: null,
-        featuresEn: cb.featuresEn || [],
-        featuresHe: cb.featuresHe || [],
-      });
-    });
-  }
-}
 function productIcon(cat) {
   return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
 }
@@ -1493,7 +1489,7 @@ function pdOnGuestChange(select) {
   const label = select.options[select.selectedIndex]?.text.split('—')[0]?.trim() || '';
   document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?label||'מחיר':'Price for '+label}</span>₪${pdSelectedPrice}`;
 }
-function openProductDrawer(productId) {
+function openProductDrawerUI(productId) {
   const p = products.find(x => String(x.id) === String(productId));
   if (!p) return;
   pdCurrentProduct = p;
@@ -1501,15 +1497,12 @@ function openProductDrawer(productId) {
   pdActiveImg = 0;
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
-  // image — set innerHTML directly; do NOT reference a child placeholder element,
-  // because writing innerHTML here destroys it and breaks every subsequent open.
   const imgWrap = document.getElementById('pdImgWrap');
   if (p.images && p.images.length > 0) {
     imgWrap.innerHTML = `<img id="pdMainImg" src="${p.images[0]}" alt="${name}"/>`;
   } else {
     imgWrap.innerHTML = `<span style="font-size:4rem">${productIcon(p.category)}</span>`;
   }
-  // thumbnails
   const thumbs = document.getElementById('pdThumbs');
   if (p.images && p.images.length > 1) {
     thumbs.innerHTML = p.images.map((url, i) =>
@@ -1518,7 +1511,6 @@ function openProductDrawer(productId) {
   } else {
     thumbs.innerHTML = '';
   }
-  // badge
   const badge = document.getElementById('pdBadge');
   if (p.badge_text) {
     badge.textContent = p.badge_text;
@@ -1528,13 +1520,12 @@ function openProductDrawer(productId) {
     badge.style.display = 'none';
   }
   document.getElementById('pdName').textContent = name;
-  document.getElementById('pdPrice').innerHTML = p.category === 'coffeebars'
+  document.getElementById('pdPrice').innerHTML = isCoffeeBarProduct(p)
     ? `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}`
     : p.original_price
       ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
       : `₪${p.price}`;
   document.getElementById('pdDesc').textContent = desc || '';
-  // features list
   const featList = document.getElementById('pdFeatures');
   const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
   if (features && features.length > 0) {
@@ -1544,36 +1535,32 @@ function openProductDrawer(productId) {
     featList.innerHTML = '';
     featList.style.display = 'none';
   }
-  // Guest count dropdown for coffeebars products
   pdSelectedPrice = null;
   const guestSection = document.getElementById('pdGuestSection');
   const guestSelect = document.getElementById('pdGuestSelect');
   const guestTierVar = (p.variations || []).find(v => v.type === 'guest_count');
-  if (p.category === 'coffeebars' && guestTierVar && guestTierVar.options?.length) {
+  if (isCoffeeBarProduct(p) && guestTierVar && guestTierVar.options?.length) {
     guestSelect.innerHTML = guestTierVar.options.map(o =>
       `<option value="${o.price}">${o.label} — ₪${o.price}</option>`
     ).join('');
     guestSection.style.display = 'block';
-    // Trigger price update for the default selection
     pdOnGuestChange(guestSelect);
   } else {
     guestSection.style.display = 'none';
   }
-  // WhatsApp link — only for coffeebars products
   const waLink = document.getElementById('pdWhatsApp');
-  if (p.category === 'coffeebars') {
+  if (isCoffeeBarProduct(p)) {
     waLink.href = `https://wa.me/972552703413?text=${encodeURIComponent(`Hi! I have a question about the ${p.name_en} ☕`)}`;
     waLink.style.display = 'flex';
   } else {
     waLink.style.display = 'none';
   }
   document.getElementById('pdQty').textContent = 1;
-  document.getElementById('pdAddBtn').textContent = p.category === 'coffeebars'
+  document.getElementById('pdAddBtn').textContent = isCoffeeBarProduct(p)
     ? (lang === 'he' ? 'הזמן עכשיו' : 'Book Now')
     : (lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart');
   document.getElementById('pdBackdrop').classList.add('open');
   document.getElementById('pdDrawer').classList.add('open');
-  history.pushState({ drawer: 'product' }, '');
   pdScrollY = window.scrollY;
   document.body.style.position = 'fixed';
   document.body.style.top = `-${pdScrollY}px`;
@@ -1581,17 +1568,26 @@ function openProductDrawer(productId) {
   document.body.style.right = '0';
   document.body.style.overflow = 'hidden';
 }
-function closeProductDrawer() {
-  document.getElementById('pdBackdrop').classList.remove('open');
-  document.getElementById('pdDrawer').classList.remove('open');
-  document.body.style.removeProperty('overflow');
-  document.body.style.removeProperty('position');
-  document.body.style.removeProperty('top');
-  document.body.style.removeProperty('left');
-  document.body.style.removeProperty('right');
-  document.body.style.removeProperty('width');
-  window.scrollTo(0, pdScrollY || 0);
-  pdCurrentProduct = null;
+function openProductDrawer(productId) {
+  openProductDrawerUI(productId);
+  navPush({ page: appPage, layer: 'product', productId: String(productId) });
+}
+function closeProductDrawer(fromNav) {
+  if (!document.getElementById('pdDrawer').classList.contains('open')) return;
+  if (fromNav) {
+    document.getElementById('pdBackdrop').classList.remove('open');
+    document.getElementById('pdDrawer').classList.remove('open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('position');
+    document.body.style.removeProperty('top');
+    document.body.style.removeProperty('left');
+    document.body.style.removeProperty('right');
+    document.body.style.removeProperty('width');
+    window.scrollTo(0, pdScrollY || 0);
+    pdCurrentProduct = null;
+    return;
+  }
+  navBack();
 }
 function pdSwitchImg(idx, url) {
   pdActiveImg = idx;
@@ -1605,7 +1601,7 @@ function pdChangeQty(delta) {
 }
 function pdAddToCart() {
   if (!pdCurrentProduct) return;
-  if (pdCurrentProduct.category === 'coffeebars' && pdSelectedPrice) {
+  if (isCoffeeBarProduct(pdCurrentProduct) && pdSelectedPrice) {
     const guestSelect = document.getElementById('pdGuestSelect');
     const guestLabel = guestSelect?.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim() || '';
     const cartId = pdCurrentProduct.id + '_' + pdSelectedPrice;
@@ -1624,12 +1620,14 @@ function pdAddToCart() {
     });
     updateCartCount();
     showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
-    closeProductDrawer();
-    openCart();
+    closeProductDrawer(true);
+    openCartUI();
+    navReplace({ page: appPage, layer: 'cart' });
   } else {
     for (let i = 0; i < pdQty; i++) addToCart(pdCurrentProduct.id);
-    closeProductDrawer();
-    openCart();
+    closeProductDrawer(true);
+    openCartUI();
+    navReplace({ page: appPage, layer: 'cart' });
   }
 }
 const CARD_DESC_FALLBACK = {
@@ -1643,8 +1641,20 @@ const CARD_DESC_FALLBACK = {
 function productCardDesc(p) {
   const raw = lang === 'he' ? (p.description_he || p.description_en) : (p.description_en || p.description_he);
   if (raw && String(raw).trim()) return String(raw).trim();
+  if (isCoffeeBarProduct(p)) {
+    const fb = CARD_DESC_FALLBACK.coffeebars;
+    return lang === 'he' ? fb.he : fb.en;
+  }
   const fb = CARD_DESC_FALLBACK[p.category] || CARD_DESC_FALLBACK.default;
   return lang === 'he' ? fb.he : fb.en;
+}
+function productCardPriceHTML(p) {
+  if (isCoffeeBarProduct(p)) {
+    const fromLabel = lang === 'he' ? 'החל מ' : 'Starting from';
+    return `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${fromLabel}</span>₪${p.price}`;
+  }
+  const origPrice = p.original_price ? `<span class="orig">₪${p.original_price}</span>` : '';
+  return `${origPrice}₪${p.price}`;
 }
 function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
@@ -1653,7 +1663,6 @@ function productCardHTML(p) {
     ? `<img src="${p.images[0]}" alt="${name}" loading="lazy" draggable="false"/>`
     : `<div class="product-img-placeholder">${productIcon(p.category)}</div>`;
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
-  const origPrice = p.original_price ? `<span class="orig">₪${p.original_price}</span>` : '';
   return `
     <div class="product-card" data-product-id="${p.id}">
       <div class="product-img">
@@ -1664,7 +1673,7 @@ function productCardHTML(p) {
         <div class="product-name">${name}</div>
         <div class="product-desc">${desc}</div>
         <div class="product-footer">
-          <div class="product-price">${origPrice}₪${p.price}</div>
+          <div class="product-price">${productCardPriceHTML(p)}</div>
           <button class="add-btn" data-id="${p.id}">+</button>
         </div>
       </div>
@@ -1700,48 +1709,15 @@ function renderShop() {
 function renderCoffeeBars() {
   const grid = document.getElementById('coffeeBarGrid');
   if (!grid) return;
-  const cbList = products.filter(p => p.category === 'coffeebars');
-  if (!cbList.length) { grid.innerHTML = ''; return; }
-  const btnTxt = lang === 'he' ? 'לפרטים והזמנה' : 'View Details & Book';
-  grid.innerHTML = cbList.map(p => {
-    const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
-    const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
-    return `
-      <div class="coffeebar-card ${p.badge_text ? 'featured' : ''}" data-product-id="${p.id}" style="cursor:pointer">
-        ${p.badge_text ? `<div class="coffeebar-tag">${p.badge_text}</div>` : ''}
-        <div class="coffeebar-name">${name}</div>
-        <div class="coffeebar-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}</div>
-        ${features.length ? `<ul class="coffeebar-features">${features.map(f=>`<li>${f}</li>`).join('')}</ul>` : ''}
-        <button class="btn btn-primary btn-full" style="pointer-events:none">${btnTxt}</button>
-      </div>`;
-  }).join('');
+  const cbList = getCoffeeBarProducts();
+  grid.innerHTML = cbList.length ? cbList.map(productCardHTML).join('') : coffeeBarEmptyHTML();
 }
 function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); }
 function renderCoffeeBarsPage() {
   const grid = document.getElementById('cbpPackages');
   if (!grid) return;
-  const cbList = products.filter(p => p.category === 'coffeebars');
-  if (!cbList.length) { grid.innerHTML = '<p style="text-align:center;color:var(--text2)">Packages coming soon.</p>'; return; }
-  grid.innerHTML = cbList.map(p => {
-    const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
-    const imgHtml = (p.images && p.images.length)
-      ? `<img src="${p.images[0]}" alt="${name}"/>`
-      : `<span>${lang==='he'?'תמונה בקרוב':'Photo coming soon'}</span>`;
-    const tag = p.badge_text ? `<div class="cbp-card-tag">${p.badge_text}</div>` : '';
-    return `
-      <div class="cbp-card ${p.badge_text?'featured':''}" data-product-id="${p.id}" style="cursor:pointer">
-        <div class="cbp-card-img">${imgHtml}</div>
-        <div class="cbp-card-body">
-          ${tag}
-          <div class="cbp-card-name">${name}</div>
-          <div class="cbp-card-price"><span style="font-size:.6rem;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}</div>
-          <div class="btn btn-primary btn-full" style="pointer-events:none;text-align:center;margin-top:8px">${lang==='he'?'לפרטים והזמנה':'View Details & Book'}</div>
-        </div>
-      </div>`;
-  }).join('');
-}
-function enquireCoffeeBar(id) {
-  openProductDrawer(id);
+  const cbList = getCoffeeBarProducts();
+  grid.innerHTML = cbList.length ? cbList.map(productCardHTML).join('') : coffeeBarEmptyHTML();
 }
 // ══ CART ══
 function addToCart(productId) {
@@ -1761,8 +1737,22 @@ function updateCartCount() {
   el.textContent = n;
   el.dataset.empty = n ? '0' : '1';
 }
-function openCart() { renderCartDrawer(); document.getElementById('cartOverlay').classList.add('open'); document.getElementById('cartDrawer').classList.add('open'); history.pushState({ drawer: 'cart' }, ''); }
-function closeCart() { document.getElementById('cartOverlay').classList.remove('open'); document.getElementById('cartDrawer').classList.remove('open'); }
+function openCart() {
+  openCartUI();
+  navPush({ page: appPage, layer: 'cart' });
+}
+function closeCart(fromNav) {
+  if (fromNav) {
+    document.getElementById('cartOverlay').classList.remove('open');
+    document.getElementById('cartDrawer').classList.remove('open');
+    return;
+  }
+  if (document.getElementById('cartDrawer').classList.contains('open')) navBack();
+  else {
+    document.getElementById('cartOverlay').classList.remove('open');
+    document.getElementById('cartDrawer').classList.remove('open');
+  }
+}
 function renderCartDrawer() {
   const body = document.getElementById('cartBody');
   const footer = document.getElementById('cartFooter');
@@ -1806,27 +1796,19 @@ function removeFromCart(id) {
 }
 // ══ CHECKOUT ══
 function openCheckout() {
-  closeCart();
-  const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
-  const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
-  const lines = cart.map(i=>`<div class="order-line"><span>${lang==='he'?(i.name_he||i.name_en):i.name_en} ×${i.qty}</span><span>₪${i.price*i.qty}</span></div>`).join('');
-  const couponLine = couponDiscount > 0
-    ? `<div class="order-line" style="color:var(--green)"><span>🎁 ${lang==='he'?'קופון חבר (10%)':'Member coupon (10%)'}</span><span>-₪${couponDiscount}</span></div>`
-    : '';
-  document.getElementById('coSummary').innerHTML = `
-    <div class="order-summary-title">${lang==='he'?'סיכום הזמנה':'Order Summary'}</div>
-    ${lines}${couponLine}
-    <div class="order-total-line"><span>${lang==='he'?'סה"כ':'Total'}</span><span>₪${cartTotal - couponDiscount}</span></div>`;
-  document.getElementById('checkoutFormView').style.display = 'block';
-  document.getElementById('checkoutConfirmView').style.display = 'none';
-  document.getElementById('checkoutOverlay').classList.add('open');
-  selectedCheckoutCity = null;
-  const cityInput = document.getElementById('coCityInput');
-  if (cityInput) cityInput.value = '';
-  hideCitySuggestions();
-  setTimeout(()=>updateDeliveryPrice(), 50);
+  document.getElementById('cartOverlay').classList.remove('open');
+  document.getElementById('cartDrawer').classList.remove('open');
+  openCheckoutUI('form');
+  navPush({ page: appPage, layer: 'checkout', checkoutView: 'form' });
 }
-function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
+function closeCheckout(fromNav) {
+  if (fromNav) {
+    document.getElementById('checkoutOverlay').classList.remove('open');
+    return;
+  }
+  if (document.getElementById('checkoutOverlay').classList.contains('open')) navBack();
+  else document.getElementById('checkoutOverlay').classList.remove('open');
+}
 async function callCreatePayment(orderId) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
     method: 'POST',
@@ -1927,35 +1909,19 @@ async function submitOrder() {
   }
 }
 function showCheckoutResult(kind) {
-  document.getElementById('checkoutFormView').style.display = 'none';
-  document.getElementById('checkoutConfirmView').style.display = 'block';
-  const icon = document.querySelector('#checkoutConfirmView .confirm-icon');
-  const title = document.getElementById('t-conf-title');
-  const sub = document.getElementById('t-conf-sub');
-  if (kind === 'paid') {
-    if (icon) icon.textContent = '✅';
-    title.textContent = tr('conf-title');
-    sub.textContent = tr('conf-sub');
-  } else if (kind === 'pending') {
-    if (icon) icon.textContent = '⏳';
-    title.textContent = tr('conf-title');
-    sub.textContent = tr('pay-pending-sub');
-  } else {
-    if (icon) icon.textContent = '⚠️';
-    title.textContent = tr('pay-fail-title');
-    sub.textContent = tr('pay-fail-sub');
-  }
-  document.getElementById('checkoutOverlay').classList.add('open');
+  openCheckoutUI('result', kind);
+  navPush({ page: appPage, layer: 'checkout', checkoutView: 'result', resultKind: kind });
 }
 async function handlePaymentReturn() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('payment') !== 'return') return;
   const orderId = params.get('order_id');
-  history.replaceState({ page: 'home' }, '', window.location.pathname || '/');
-  if (!orderId) return;
-
+  appPage = 'home';
+  history.replaceState({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind: 'pending', __app: 'gremier' }, '', window.location.pathname || '/');
   showPage('home', true);
-  showCheckoutResult('pending');
+  closeAllLayersUI();
+  openCheckoutUI('result', 'pending');
+  if (!orderId) return;
 
   let paid = false;
   for (let i = 0; i < 8; i++) {
@@ -1965,15 +1931,15 @@ async function handlePaymentReturn() {
   }
 
   const paymeStatus = String(params.get('payme_status') || '').toLowerCase();
-  if (paid || paymeStatus === 'success') {
+  const resultKind = (paid || paymeStatus === 'success') ? 'paid' : 'failed';
+  if (resultKind === 'paid') {
     cart = [];
     updateCartCount();
     sessionStorage.removeItem('gremier_pending_order');
-    showCheckoutResult('paid');
     if (currentUser) await refreshUserProfile();
-  } else {
-    showCheckoutResult('failed');
   }
+  navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind });
+  openCheckoutUI('result', resultKind);
 }
 async function refreshUserProfile() {
   if (!currentUser) return;
@@ -2002,19 +1968,6 @@ function applySiteImages() {
     const w = document.getElementById('cbpHeroImgWrap');
     const img = document.getElementById('cbpHeroImg');
     if (w && img) { img.src = siteSettings.cb_hero; w.style.display = 'block'; }
-  }
-  // Coffee bar package images — sync into both coffeeBarProducts and the merged products array
-  if (siteSettings.cb_basic_img) {
-    const cb = coffeeBarProducts.find(b=>b.id==='basic');
-    if (cb) cb.image = siteSettings.cb_basic_img;
-    const p = products.find(p=>String(p.id)==='basic');
-    if (p) p.images = [siteSettings.cb_basic_img];
-  }
-  if (siteSettings.cb_premium_img) {
-    const cb = coffeeBarProducts.find(b=>b.id==='premium');
-    if (cb) cb.image = siteSettings.cb_premium_img;
-    const p = products.find(p=>String(p.id)==='premium');
-    if (p) p.images = [siteSettings.cb_premium_img];
   }
   // Gallery images
   ['cb_gallery_1','cb_gallery_2','cb_gallery_3','cb_gallery_4'].forEach((key,i) => {
@@ -2082,22 +2035,216 @@ async function loadMyOrders() {
     </div>`;
   }).join('');
 }
+// ══ APP NAVIGATION (browser / backspace back) ══
+let appPage = 'home';
+let navSkipPush = false;
+
+function navPush(state) {
+  if (navSkipPush) return;
+  history.pushState({ ...state, __app: 'gremier' }, '');
+}
+function navReplace(state) {
+  if (navSkipPush) return;
+  history.replaceState({ ...state, __app: 'gremier' }, '');
+}
+function navBack() {
+  if (!navSkipPush) history.back();
+}
+function closeAllLayersUI() {
+  if (document.getElementById('pdDrawer')?.classList.contains('open')) {
+    document.getElementById('pdBackdrop').classList.remove('open');
+    document.getElementById('pdDrawer').classList.remove('open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('position');
+    document.body.style.removeProperty('top');
+    document.body.style.removeProperty('left');
+    document.body.style.removeProperty('right');
+    document.body.style.removeProperty('width');
+    if (pdScrollY) window.scrollTo(0, pdScrollY);
+    pdCurrentProduct = null;
+  }
+  document.getElementById('cartOverlay')?.classList.remove('open');
+  document.getElementById('cartDrawer')?.classList.remove('open');
+  document.getElementById('checkoutOverlay')?.classList.remove('open');
+  document.getElementById('chatbotOverlay')?.classList.remove('open');
+  document.getElementById('chatbotPanel')?.classList.remove('open');
+  const chatFab = document.getElementById('chatFabWrapper');
+  if (chatFab) chatFab.style.display = 'flex';
+  chatOpen = false;
+  document.getElementById('authOverlay')?.classList.remove('open');
+  document.getElementById('pointsModal')?.classList.remove('open');
+  document.getElementById('memberPopup')?.classList.remove('open');
+  document.getElementById('mobileMenu')?.classList.remove('open');
+}
+function prepareCheckoutContent() {
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
+  const lines = cart.map(i => `<div class="order-line"><span>${lang === 'he' ? (i.name_he || i.name_en) : i.name_en} ×${i.qty}</span><span>₪${i.price * i.qty}</span></div>`).join('');
+  const couponLine = couponDiscount > 0
+    ? `<div class="order-line" style="color:var(--green)"><span>🎁 ${lang === 'he' ? 'קופון חבר (10%)' : 'Member coupon (10%)'}</span><span>-₪${couponDiscount}</span></div>`
+    : '';
+  document.getElementById('coSummary').innerHTML = `
+    <div class="order-summary-title">${lang === 'he' ? 'סיכום הזמנה' : 'Order Summary'}</div>
+    ${lines}${couponLine}
+    <div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span>₪${cartTotal - couponDiscount}</span></div>`;
+  selectedCheckoutCity = null;
+  const cityInput = document.getElementById('coCityInput');
+  if (cityInput) cityInput.value = '';
+  hideCitySuggestions();
+  setTimeout(() => updateDeliveryPrice(), 50);
+}
+function showCheckoutResultUI(kind) {
+  document.getElementById('checkoutFormView').style.display = 'none';
+  document.getElementById('checkoutConfirmView').style.display = 'block';
+  const icon = document.querySelector('#checkoutConfirmView .confirm-icon');
+  const title = document.getElementById('t-conf-title');
+  const sub = document.getElementById('t-conf-sub');
+  if (kind === 'paid') {
+    if (icon) icon.textContent = '✅';
+    title.textContent = tr('conf-title');
+    sub.textContent = tr('conf-sub');
+  } else if (kind === 'pending') {
+    if (icon) icon.textContent = '⏳';
+    title.textContent = tr('conf-title');
+    sub.textContent = tr('pay-pending-sub');
+  } else {
+    if (icon) icon.textContent = '⚠️';
+    title.textContent = tr('pay-fail-title');
+    sub.textContent = tr('pay-fail-sub');
+  }
+}
+function openCheckoutUI(view = 'form', resultKind) {
+  if (view === 'form') {
+    document.getElementById('checkoutFormView').style.display = 'block';
+    document.getElementById('checkoutConfirmView').style.display = 'none';
+    prepareCheckoutContent();
+  } else {
+    showCheckoutResultUI(resultKind || 'paid');
+  }
+  document.getElementById('checkoutOverlay').classList.add('open');
+}
+function openCartUI() {
+  renderCartDrawer();
+  document.getElementById('cartOverlay').classList.add('open');
+  document.getElementById('cartDrawer').classList.add('open');
+}
+function openChatbotUI() {
+  chatOpen = true;
+  document.getElementById('chatbotOverlay').classList.add('open');
+  document.getElementById('chatbotPanel').classList.add('open');
+  const fabW = document.getElementById('chatFabWrapper');
+  if (fabW) fabW.style.display = 'none';
+}
+function closeChatbotUI() {
+  closeChatbot(true);
+}
+function joinFromMemberPopup() {
+  closeMemberPopup(true);
+  openAuthModalUI();
+  navReplace({ page: appPage, layer: 'auth' });
+}
+function goToShopFromChat(category) {
+  closeChatbotUI();
+  navReplace({ page: 'shop', layer: null });
+  showPage('shop', true);
+  if (category) setCategory(category);
+}
+function openCheckoutFromChat() {
+  closeChatbotUI();
+  openCheckoutUI('form');
+  navReplace({ page: appPage, layer: 'checkout', checkoutView: 'form' });
+}
+function openMemberPopupUI() {
+  document.getElementById('memberPopup').classList.add('open');
+}
+function openPointsModalUI() {
+  const pct = Math.min(100, Math.round((userPoints / 200) * 100));
+  document.getElementById('pts-count').textContent = userPoints;
+  document.getElementById('ptsBarFill').style.width = pct + '%';
+  document.getElementById('couponAvailableBox').style.display = userCouponAvailable ? 'block' : 'none';
+  document.getElementById('pointsModal').classList.add('open');
+}
+function openAuthModalUI() {
+  document.getElementById('authOverlay').classList.add('open');
+}
+function applyNavState(state) {
+  if (!state || state.__app !== 'gremier') {
+    state = { page: appPage || 'home', layer: null };
+  }
+  const targetPage = state.page || 'home';
+  closeAllLayersUI();
+  if (targetPage !== appPage) showPage(targetPage, true);
+  else appPage = targetPage;
+  switch (state.layer) {
+    case 'product':
+      if (state.productId) openProductDrawerUI(state.productId);
+      break;
+    case 'cart':
+      openCartUI();
+      break;
+    case 'checkout':
+      openCheckoutUI(state.checkoutView || 'form', state.resultKind);
+      break;
+    case 'chat':
+      openChatbotUI();
+      break;
+    case 'auth':
+      openAuthModalUI();
+      break;
+    case 'points':
+      openPointsModalUI();
+      break;
+    case 'member':
+      openMemberPopupUI();
+      break;
+    case 'menu':
+      document.getElementById('mobileMenu').classList.add('open');
+      break;
+  }
+}
+function handleAppPopState(e) {
+  navSkipPush = true;
+  try {
+    if (!e.state || e.state.__app !== 'gremier') {
+      applyNavState({ page: appPage || 'home', layer: null });
+      navReplace({ page: appPage || 'home', layer: null });
+      return;
+    }
+    applyNavState(e.state);
+  } finally {
+    navSkipPush = false;
+  }
+}
+function exitCheckoutToHome() {
+  closeAllLayersUI();
+  appPage = 'home';
+  showPage('home', true);
+  navReplace({ page: 'home', layer: null });
+}
 // ══ PAGES ══
 function showPage(page, fromHistory) {
+  appPage = page;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(page+'Page').classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'shop') { activeCategory='all'; renderShop(); }
   if (page === 'myorders') loadMyOrders();
   if (page === 'coffeebars') renderCoffeeBarsPage();
-  if (!fromHistory) history.pushState({ page }, '');
+  document.getElementById('mobileMenu')?.classList.remove('open');
+  if (!fromHistory) navPush({ page, layer: null });
 }
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
-  menu.classList.toggle('open');
+  if (menu.classList.contains('open')) {
+    navBack();
+  } else {
+    menu.classList.add('open');
+    navPush({ page: appPage, layer: 'menu' });
+  }
 }
 function closeMobileMenu() {
-  document.getElementById('mobileMenu').classList.remove('open');
+  if (document.getElementById('mobileMenu').classList.contains('open')) navBack();
+  else document.getElementById('mobileMenu').classList.remove('open');
 }
 function scrollToSection(id) {
   document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -2118,7 +2265,7 @@ document.addEventListener('click', function(e) {
     addToCart(addBtn.dataset.id);
     return;
   }
-  const card = e.target.closest('.product-card[data-product-id], .coffeebar-card[data-product-id], .cbp-card[data-product-id]');
+  const card = e.target.closest('.product-card[data-product-id]');
   if (card) openProductDrawer(card.dataset.productId);
 });
 // ══ DELIVERY & CITY SEARCH ══
@@ -2348,7 +2495,6 @@ function updateDeliveryPrice() {
 async function init() {
   await initAuth();
   await loadProducts();
-  mergeCoffeeBarsIntoProducts();
   try { await loadDeliveryZones(); } catch(e) { console.warn('Delivery zones unavailable:', e); }
   loadSiteSettings();
   applyTranslations();
@@ -2356,20 +2502,9 @@ async function init() {
   handlePaymentReturn();
 }
 init();
-// Seed the initial history state so back-navigation lands on 'home'
-history.replaceState({ page: 'home' }, '');
-window.addEventListener('popstate', function(e) {
-  // Close any open drawer first
-  if (document.getElementById('pdDrawer').classList.contains('open')) {
-    closeProductDrawer(); return;
-  }
-  if (document.getElementById('cartDrawer').classList.contains('open')) {
-    closeCart(); return;
-  }
-  // Otherwise navigate to the page stored in history state
-  const page = e.state?.page || 'home';
-  showPage(page, true); // true = don't push a new entry
-});
+appPage = 'home';
+navReplace({ page: 'home', layer: null });
+window.addEventListener('popstate', handleAppPopState);
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
 let chatHistory = [];
@@ -2380,7 +2515,6 @@ let chatCatalogVersion = 0;
 // about the latest products. The edge function also re-fetches on its side.
 async function refreshChatProducts() {
   await loadProducts();
-  mergeCoffeeBarsIntoProducts();
   chatCatalogVersion++;
 }
 
@@ -2401,6 +2535,7 @@ function buildChatCatalog() {
     category: p.category,
     badge_text: p.badge_text || null,
     is_subscription: !!p.is_subscription,
+    is_coffee_bar: !!p.is_coffee_bar,
     variations: p.variations || [],
     guest_pricing: (p.variations || []).find(v => v.type === 'guest_count')?.options || null,
     updated_at: p.updated_at || null,
@@ -2453,7 +2588,7 @@ function getChatSuggestedProducts() {
   const picks = getFeaturedProducts().slice();
   products.forEach(p => {
     if (picks.length >= 3) return;
-    if (p.category === 'coffeebars') return;
+    if (isCoffeeBarProduct(p)) return;
     if (p.is_active === false) return;
     if (!picks.some(x => x.id === p.id)) picks.push(p);
   });
@@ -2468,25 +2603,28 @@ function dismissChatTooltip() {
 async function openChatbot() {
   dismissChatTooltip();
   await refreshChatProducts();
-  chatOpen = true;
-  document.getElementById('chatbotOverlay').classList.add('open');
-  document.getElementById('chatbotPanel').classList.add('open');
-  const fabW = document.getElementById('chatFabWrapper'); if(fabW) fabW.style.display='none';
+  openChatbotUI();
+  navPush({ page: appPage, layer: 'chat' });
   if (chatHistory.length === 0) {
     const greeting = lang==='he'
       ? 'היי! 👋 אני עוזר ההזמנות של גרמייר. איך אפשר לעזור?'
       : 'Hey! 👋 I\'m the Gremier order assistant. What can I help you with?';
     appendBotMessage(greeting, [], CHAT_QUICK_REPLIES.welcome);
-    // show product suggestion cards after greeting
     setTimeout(() => appendProductSuggestions(), 400);
   }
   setTimeout(() => document.getElementById('chatbotInput').focus(), 300);
 }
-function closeChatbot() {
-  chatOpen = false;
-  document.getElementById('chatbotOverlay').classList.remove('open');
-  document.getElementById('chatbotPanel').classList.remove('open');
-  const fabW2 = document.getElementById('chatFabWrapper'); if(fabW2) fabW2.style.display='flex';
+function closeChatbot(fromNav) {
+  if (fromNav) {
+    chatOpen = false;
+    document.getElementById('chatbotOverlay').classList.remove('open');
+    document.getElementById('chatbotPanel').classList.remove('open');
+    const fabW2 = document.getElementById('chatFabWrapper');
+    if (fabW2) fabW2.style.display = 'flex';
+    return;
+  }
+  if (document.getElementById('chatbotPanel').classList.contains('open')) navBack();
+  else closeChatbot(true);
 }
 // Render mini product cards inline in chat
 function appendProductSuggestions() {
@@ -2547,7 +2685,7 @@ function handleQuickReply(label) {
   const lower = label.toLowerCase();
   if (lower.includes('checkout') || lower.includes('תשלום')) {
     appendUserMessage(label);
-    closeChatbot(); openCheckout(); return;
+    closeChatbotUI(); openCheckoutFromChat(); return;
   }
   if (lower.includes('mini') && lower.includes('cremier')) {
     const p = products.find(x => x.name_en === 'Mini Cremier 4-Pack');
@@ -2584,22 +2722,23 @@ function handleQuickReply(label) {
   }
   if (lower.includes('coffee bar') || lower.includes('בר קפה')) {
     appendUserMessage(label);
-    closeChatbot();
-    showPage('home');
+    closeChatbotUI();
+    navReplace({ page: 'home', layer: null });
+    showPage('home', true);
     setTimeout(() => scrollToSection('coffeeBarsSection'), 200);
     return;
   }
   if (lower.includes('bottles') || lower.includes('בקבוק')) {
     appendUserMessage(label);
-    closeChatbot(); showPage('shop'); setCategory('bottles'); return;
+    goToShopFromChat('bottles'); return;
   }
   if (lower.includes('mini') || lower.includes('מיני')) {
     appendUserMessage(label);
-    closeChatbot(); showPage('shop'); setCategory('minis'); return;
+    goToShopFromChat('minis'); return;
   }
   if (lower.includes('bulk') || lower.includes('5l') || lower.includes('כמות')) {
     appendUserMessage(label);
-    closeChatbot(); showPage('shop'); setCategory('bulk'); return;
+    goToShopFromChat('bulk'); return;
   }
   // fallback — send as a text message to the AI
   sendChatMessageText(label);
@@ -2657,6 +2796,7 @@ async function sendChatMessage() {
 }
 async function sendChatMessageText(text) {
   document.getElementById('chatbotSend').disabled = true;
+  await refreshChatProducts();
   appendUserMessage(text);
   chatHistory.push({ role: 'user', content: text });
   showThinking();

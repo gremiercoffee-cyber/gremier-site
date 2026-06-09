@@ -19,6 +19,7 @@ type ChatProduct = {
   is_subscription?: boolean;
   guest_pricing?: Array<{ label: string; guests: number; price: number }> | null;
   updated_at?: string | null;
+  is_coffee_bar?: boolean;
 };
 
 type ChatMessage = { role: string; content: string };
@@ -44,15 +45,34 @@ function mapDbProduct(row: Record<string, unknown>): ChatProduct {
     is_subscription: !!row.is_subscription,
     guest_pricing: (guestVar?.options as ChatProduct["guest_pricing"]) || null,
     updated_at: row.updated_at ? String(row.updated_at) : null,
+    is_coffee_bar: !!row.is_coffee_bar,
   };
+}
+
+function getServiceRoleKey(): string {
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacy) return legacy;
+  try {
+    const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+    if (!raw) return "";
+    const keys = JSON.parse(raw) as Record<string, string>;
+    return keys.default || keys.service_role || Object.values(keys)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
+function mergeCatalogs(db: ChatProduct[], client: ChatProduct[]): ChatProduct[] {
+  const map = new Map<string, ChatProduct>();
+  for (const p of client) map.set(String(p.id), p);
+  for (const p of db) map.set(String(p.id), p);
+  return Array.from(map.values());
 }
 
 /** Always pull the latest active products from Supabase — never rely on a stale hardcoded list. */
 async function fetchLiveProductsFromDb(): Promise<ChatProduct[]> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const apiKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
-    Deno.env.get("SUPABASE_ANON_KEY");
+  const apiKey = getServiceRoleKey() || Deno.env.get("SUPABASE_ANON_KEY") || "";
 
   if (!supabaseUrl || !apiKey) {
     console.warn("Supabase env vars missing — falling back to client catalog only");
@@ -60,7 +80,7 @@ async function fetchLiveProductsFromDb(): Promise<ChatProduct[]> {
   }
 
   const url =
-    `${supabaseUrl}/rest/v1/products?is_active=eq.true&select=id,name_en,name_he,description_en,description_he,price,original_price,category,badge_text,is_subscription,variations,updated_at&order=sort_order.asc`;
+    `${supabaseUrl}/rest/v1/products?is_active=eq.true&select=id,name_en,name_he,description_en,description_he,price,original_price,category,badge_text,is_subscription,is_coffee_bar,variations,updated_at&order=sort_order.asc`;
 
   const res = await fetch(url, {
     headers: {
@@ -91,6 +111,7 @@ function buildCatalogPrompt(products: ChatProduct[], lang: string, fetchedAt: st
     if (p.category) line += ` | category: ${p.category}`;
     if (p.badge_text) line += ` | badge: ${p.badge_text}`;
     if (p.is_subscription) line += ` | subscription`;
+    if (p.is_coffee_bar) line += ` | coffee bar`;
     if (desc) line += ` | ${desc}`;
     if (p.guest_pricing?.length) {
       line += ` | guest pricing: ${p.guest_pricing.map((g) => `${g.label} ₪${g.price}`).join(", ")}`;
@@ -140,7 +161,7 @@ serve(async (req) => {
 
     // ALWAYS re-fetch from database on every request
     const dbProducts = await fetchLiveProductsFromDb();
-    const products = dbProducts.length ? dbProducts : clientProducts;
+    const products = mergeCatalogs(dbProducts, clientProducts);
     const fetchedAt = new Date().toISOString();
 
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
@@ -211,6 +232,8 @@ Use cart_items:[] when not adding anything to cart.`;
       reply,
       cart_items,
       catalog_count: products.length,
+      catalog_db_count: dbProducts.length,
+      catalog_client_count: clientProducts.length,
       catalog_fetched_at: fetchedAt,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
