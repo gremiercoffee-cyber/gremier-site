@@ -1771,11 +1771,20 @@ async function callCreatePayment(orderId) {
     body: JSON.stringify({ order_id: orderId, language: lang }),
   });
   const payData = await res.json().catch(() => ({}));
-  if (!res.ok || !payData?.sale_url) {
-    const msg = payData?.error || `Payment failed (${res.status})`;
+  const saleUrl = payData?.sale_url || payData?.redirect_url;
+  if (!res.ok || !saleUrl) {
+    if (payData?.message && String(payData.message).toLowerCase().includes('hello')) {
+      throw new Error(lang === 'he'
+        ? 'שירות התשלום לא מוגדר — יש לעדכן את create-payment ב-Supabase'
+        : 'Payment service not set up — redeploy create-payment in Supabase');
+    }
+    const msg = payData?.error
+      || payData?.message
+      || (payData?.ok === undefined && res.ok ? (lang === 'he' ? 'שירות התשלום לא מעודכן' : 'Payment service needs redeploying') : null)
+      || `Payment failed (${res.status})`;
     throw new Error(msg);
   }
-  return payData;
+  return { ...payData, sale_url: saleUrl };
 }
 async function submitOrder() {
   const name = document.getElementById('coName').value.trim();

@@ -104,19 +104,34 @@ serve(async (req) => {
       body: JSON.stringify(payload),
     });
 
-    const paymeData = await paymeRes.json();
+    const paymeText = await paymeRes.text();
+    let paymeData: Record<string, unknown> = {};
+    try {
+      paymeData = paymeText ? JSON.parse(paymeText) : {};
+    } catch {
+      throw new Error(`PayMe returned invalid response (${paymeRes.status})`);
+    }
     console.log("PayMe generate-sale response:", paymeRes.status, paymeData);
 
-    if (!paymeRes.ok || paymeData.status_code !== 0 || !paymeData.sale_url) {
-      const detail = paymeData.status_error_details || paymeData.message
-        || JSON.stringify(paymeData).slice(0, 200)
+    const statusCode = Number(paymeData.status_code);
+    const paymeSaleId = String(paymeData.payme_sale_id || "");
+    let saleUrl = String(paymeData.sale_url || paymeData.sale_url_full || "");
+
+    // Some PayMe responses include only payme_sale_id — build hosted page URL
+    if (!saleUrl && paymeSaleId) {
+      saleUrl = `${paymeBase}sale/generate/${paymeSaleId}`;
+    }
+
+    if (!paymeRes.ok || statusCode !== 0 || !saleUrl) {
+      const detail = paymeData.status_error_details || paymeData.status_error_code || paymeData.message
+        || paymeText.slice(0, 200)
         || "PayMe payment could not be created";
       throw new Error(String(detail));
     }
 
     const deliveryInfo = {
       ...(row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {}),
-      payme_sale_id: paymeData.payme_sale_id,
+      payme_sale_id: paymeSaleId,
     };
 
     await supabase
@@ -129,7 +144,7 @@ serve(async (req) => {
       })
       .eq("id", row.id);
 
-    return new Response(JSON.stringify({ sale_url: paymeData.sale_url, payme_sale_id: paymeData.payme_sale_id }), {
+    return new Response(JSON.stringify({ sale_url: saleUrl, payme_sale_id: paymeSaleId, ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
