@@ -712,11 +712,10 @@
       <label class="toggle"><input type="checkbox" id="pSubscription"/><span class="toggle-slider"></span></label>
     </div>
     <div class="toggle-row">
-      <span class="toggle-label">Coffee Bar product</span>
+      <span class="toggle-label">Show in Coffee Bar section</span>
       <label class="toggle"><input type="checkbox" id="pCoffeeBar"/><span class="toggle-slider"></span></label>
     </div>
-    <!-- Legacy static-card copy lives in supabase/migrations/20260610110000_seed_coffee_bar_descriptions.sql
-         Basic Coffee Bar + Premium Coffee Bar — run that SQL once, or paste description_en/he from the migration when creating those products. -->
+    <small style="color:var(--text2);font-size:.72rem;display:block;margin:-8px 0 16px">Also use the ☕ Coffee Bar button on the Products list for quick toggling.</small>
     <div class="form-group" style="margin-top:16px">
       <label class="form-label" style="font-size:.85rem;font-weight:600;color:var(--cream);margin-bottom:8px;display:block">📷 Product Images</label>
       <div class="img-upload-area" id="imgDropArea" onclick="document.getElementById('imgFileInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" style="border:2px dashed var(--border);border-radius:6px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--bg3)">
@@ -732,6 +731,12 @@
       <small style="color:var(--text2);font-size:.72rem;display:block;margin-bottom:10px">Add a variation name (e.g. Size), then one row per option. Optional price overrides the base price when selected.</small>
       <div id="variationGroupsEditor"></div>
       <button type="button" class="btn btn-outline btn-sm" onclick="addVariationGroup()" style="margin-top:4px">+ Add variation group</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Add-ons (optional)</label>
+      <small style="color:var(--text2);font-size:.72rem;display:block;margin-bottom:10px">Optional extras customers can tick on the product page (e.g. extra syrup, oat milk).</small>
+      <div id="addonsEditor"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addAddonRow()" style="margin-top:4px">+ Add add-on</button>
     </div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-amber" onclick="saveProduct()" id="saveProductBtn">Save Product</button>
@@ -958,6 +963,7 @@ function renderProductsList() {
         <div class="product-row-meta">₪${p.price} · ${p.category}${p.delivery_price != null ? ` · 🚚 ${p.delivery_price === 0 ? 'free delivery' : '₪'+p.delivery_price+' delivery'}` : ''}${p.is_active?'':' · <span style="color:var(--red)">hidden</span>'}${p.is_subscription?' · <span style="color:var(--cream)">subscription</span>':''}${p.is_coffee_bar?' · <span style="color:var(--cream)">coffee bar</span>':''}</div>
       </div>
       <div class="product-row-actions">
+        <button class="btn btn-sm ${p.is_coffee_bar?'btn-amber':'btn-outline'}" onclick="toggleCoffeeBar('${p.id}',${!!p.is_coffee_bar})" title="Show in Coffee Bar section on the website">${p.is_coffee_bar?'☕ Coffee Bar ✓':'☕ Coffee Bar'}</button>
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">Edit</button>
         <button class="btn btn-sm ${p.is_active?'btn-red':'btn-green'}" onclick="toggleProductActive('${p.id}',${p.is_active})">${p.is_active?'Hide':'Show'}</button>
       </div>
@@ -991,10 +997,52 @@ function buildGuestPricingVariation() {
   return { name:'Number of Guests', type:'guest_count', options };
 }
 function isSystemVariation(v) {
-  return v && (v.type === 'guest_count' || v.type === 'delivery_price');
+  return v && (v.type === 'guest_count' || v.type === 'delivery_price' || v.type === 'addons');
 }
 function isChoiceVariation(v) {
   return v && !isSystemVariation(v) && v.name && Array.isArray(v.options) && v.options.length;
+}
+function renderAddonsEditor(items) {
+  const el = document.getElementById('addonsEditor');
+  if (!el) return;
+  const rows = (items && items.length) ? items : [{ name: '', price: '' }];
+  el.innerHTML = rows.map((a, i) => `<div class="variation-option-row">
+    <input class="form-input addon-name" value="${escAttr(a.name || '')}" placeholder="Add-on name (e.g. Oat milk)"/>
+    <input class="form-input addon-price" type="number" min="0" step="1" value="${a.price !== '' && a.price != null ? a.price : ''}" placeholder="Price ₪"/>
+    <button type="button" class="variation-opt-remove" onclick="removeAddonRow(${i})" title="Remove">×</button>
+  </div>`).join('');
+}
+function collectAddonsFromEditor() {
+  const rows = document.querySelectorAll('#addonsEditor .variation-option-row');
+  return Array.from(rows).map(row => ({
+    name: row.querySelector('.addon-name')?.value || '',
+    price: row.querySelector('.addon-price')?.value ?? '',
+  }));
+}
+function addAddonRow() {
+  const items = collectAddonsFromEditor();
+  items.push({ name: '', price: '' });
+  renderAddonsEditor(items);
+}
+function removeAddonRow(idx) {
+  const items = collectAddonsFromEditor();
+  items.splice(idx, 1);
+  renderAddonsEditor(items.length ? items : [{ name: '', price: '' }]);
+}
+function loadAddonsFromProduct(variations) {
+  const block = (variations || []).find(v => v.type === 'addons');
+  return (block?.items || []).map(a => ({ name: a.name || '', price: a.price ?? '' }));
+}
+function collectAddonsForSave() {
+  const items = collectAddonsFromEditor()
+    .filter(a => a.name.trim())
+    .map(a => {
+      const item = { name: a.name.trim() };
+      const price = parseFloat(a.price);
+      if (!isNaN(price) && price >= 0) item.price = price;
+      return item;
+    });
+  return items.length ? { type: 'addons', items } : null;
 }
 function normalizeVariationOption(o) {
   if (typeof o === 'string') return { label: o, price: '' };
@@ -1104,11 +1152,28 @@ function normalizeProduct(p) {
 function buildProductVariations() {
   const base = collectChoiceVariationsForSave();
   const gp = buildGuestPricingVariation();
-  let vars = gp ? [...base, gp] : base;
-  vars = vars.filter(v => v.type !== 'delivery_price');
+  const addons = collectAddonsForSave();
+  let vars = gp ? [...base, gp] : [...base];
+  vars = vars.filter(v => v.type !== 'delivery_price' && v.type !== 'addons');
+  if (addons) vars.push(addons);
   const deliveryPrice = readDeliveryPriceInput();
   if (deliveryPrice !== null) vars.push({ type: 'delivery_price', price: deliveryPrice });
   return vars;
+}
+async function toggleCoffeeBar(id, current) {
+  const next = !current;
+  const { error } = await sb.from('products').update({ is_coffee_bar: next, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) {
+    if (String(error.message || '').includes('is_coffee_bar')) {
+      showToast('Coffee Bar flag needs DB migration — run products_is_coffee_bar.sql');
+    } else {
+      showToast('Could not update — ' + (error.message || 'check console'));
+      console.error(error);
+    }
+    return;
+  }
+  showToast(next ? 'Now shown in Coffee Bar section ✓' : 'Removed from Coffee Bar section');
+  await loadAllProducts();
 }
 function openProductModal(productId) {
   editingImages = [];
@@ -1133,6 +1198,7 @@ function openProductModal(productId) {
     document.getElementById('pSubscription').checked = p.is_subscription;
     document.getElementById('pCoffeeBar').checked = !!p.is_coffee_bar;
     renderVariationGroupsEditor(loadVariationGroupsFromProduct(p.variations));
+    renderAddonsEditor(loadAddonsFromProduct(p.variations));
     loadGuestPricing(p.variations);
     onCategoryChange(p.category || 'bottles');
     editingImages = [...(p.images || [])];
@@ -1140,6 +1206,7 @@ function openProductModal(productId) {
   } else {
     ['pNameEn','pNameHe','pDescEn','pDescHe','pPrice','pOrigPrice','pDeliveryPrice','pBadge'].forEach(id=>document.getElementById(id).value='');
     renderVariationGroupsEditor([]);
+    renderAddonsEditor([]);
     [25,50,75,100,125].forEach(t=>document.getElementById('gp'+t).value='');
     document.getElementById('pCategory').value='bottles';
     document.getElementById('pBadgeType').value='';

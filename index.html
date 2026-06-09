@@ -849,6 +849,7 @@
     <div class="pd-desc" id="pdDesc"></div>
     <ul class="pd-features" id="pdFeatures" style="display:none"></ul>
     <div id="pdVariationsSection" style="display:none"></div>
+    <div id="pdAddonsSection" style="display:none;margin-bottom:16px"></div>
     <!-- Guest count dropdown — only shown for coffeebars products -->
     <div id="pdGuestSection" style="display:none;margin-bottom:16px">
       <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px" id="pdGuestLabel">Number of Guests</label>
@@ -1420,7 +1421,7 @@ async function signInWithGoogle() {
 }
 // ══ PRODUCTS ══
 function isCoffeeBarProduct(p) {
-  return !!(p && (p.is_coffee_bar || p.category === 'coffeebars'));
+  return !!(p && p.is_coffee_bar);
 }
 function getCoffeeBarProducts() {
   return products.filter(isCoffeeBarProduct);
@@ -1488,7 +1489,11 @@ let pdSelectedPrice = null;
 let pdSelectedVariations = {};
 const pdSelectStyle = "width:100%;background:var(--bg3);border:1px solid var(--border);color:#1a1a1a;padding:10px 13px;font-family:'DM Sans',sans-serif;font-size:.87rem;border-radius:3px;outline:none";
 function isChoiceVariation(v) {
-  return v && v.type !== 'guest_count' && v.type !== 'delivery_price' && v.name && Array.isArray(v.options) && v.options.length;
+  return v && v.type !== 'guest_count' && v.type !== 'delivery_price' && v.type !== 'addons' && v.name && Array.isArray(v.options) && v.options.length;
+}
+function getProductAddons(p) {
+  const block = (p?.variations || []).find(v => v.type === 'addons');
+  return Array.isArray(block?.items) ? block.items.filter(a => a && a.name) : [];
 }
 function getChoiceVariations(p) {
   return (p?.variations || []).filter(isChoiceVariation);
@@ -1508,6 +1513,56 @@ function pdGetVariationSuffix() {
   const labels = Object.values(pdSelectedVariations).map(v => v.label).filter(Boolean);
   return labels.length ? ' · ' + labels.join(' · ') : '';
 }
+function pdGetSelectedAddons() {
+  if (!pdCurrentProduct) return [];
+  const addons = getProductAddons(pdCurrentProduct);
+  const selected = [];
+  document.querySelectorAll('#pdAddonsSection input[type=checkbox]:checked').forEach(cb => {
+    const a = addons[parseInt(cb.dataset.addonIdx, 10)];
+    if (a) selected.push(a);
+  });
+  return selected;
+}
+function pdGetAddonsTotal() {
+  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0), 0);
+}
+function pdGetAddonSuffix() {
+  const selected = pdGetSelectedAddons();
+  if (!selected.length) return '';
+  return ' · +' + selected.map(a => a.name).join(', ');
+}
+function pdUpdateDrawerPrice() {
+  if (!pdCurrentProduct || isCoffeeBarProduct(pdCurrentProduct)) return;
+  const p = pdCurrentProduct;
+  const total = pdGetVariationPrice(p) + pdGetAddonsTotal(p);
+  document.getElementById('pdPrice').innerHTML = p.original_price
+    ? `<span class="orig">₪${p.original_price}</span>₪${total}`
+    : `₪${total}`;
+}
+function pdOnAddonChange() {
+  if (pdCurrentProduct && isCoffeeBarProduct(pdCurrentProduct) && pdSelectedPrice) {
+    pdOnGuestChange(document.getElementById('pdGuestSelect'));
+  } else {
+    pdUpdateDrawerPrice();
+  }
+}
+function renderPdAddons(p) {
+  const section = document.getElementById('pdAddonsSection');
+  const addons = getProductAddons(p);
+  if (!addons.length) {
+    section.innerHTML = '';
+    section.style.display = 'none';
+    return;
+  }
+  const title = lang === 'he' ? 'תוספות (אופציונלי)' : 'Add-ons (optional)';
+  section.style.display = 'block';
+  section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${title}</div>` +
+    addons.map((a, i) => `<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" data-addon-idx="${i}" onchange="pdOnAddonChange()"/>
+      <span style="flex:1;font-size:.87rem;color:#1a1a1a">${escHtml(a.name)}</span>
+      <span style="font-size:.87rem;color:var(--text2)">+₪${parseFloat(a.price) || 0}</span>
+    </label>`).join('');
+}
 function pdOnVariationChange() {
   pdSelectedVariations = {};
   document.querySelectorAll('#pdVariationsSection select[data-variation]').forEach(sel => {
@@ -1519,13 +1574,7 @@ function pdOnVariationChange() {
       price: priceRaw !== '' && priceRaw != null ? parseFloat(priceRaw) : null,
     };
   });
-  if (pdCurrentProduct && !isCoffeeBarProduct(pdCurrentProduct)) {
-    const price = pdGetVariationPrice(pdCurrentProduct);
-    const p = pdCurrentProduct;
-    document.getElementById('pdPrice').innerHTML = p.original_price
-      ? `<span class="orig">₪${p.original_price}</span>₪${price}`
-      : `₪${price}`;
-  }
+  pdUpdateDrawerPrice();
 }
 function renderPdVariationDropdowns(p) {
   const section = document.getElementById('pdVariationsSection');
@@ -1541,9 +1590,8 @@ function renderPdVariationDropdowns(p) {
     const opts = g.options.map(normalizeVariationOption).filter(o => o.label);
     if (!opts.length) return '';
     const optionsHtml = opts.map(o => {
-      const priceLabel = o.price != null && !isNaN(o.price) ? ` — ₪${o.price}` : '';
       const priceAttr = o.price != null && !isNaN(o.price) ? o.price : '';
-      return `<option data-label="${escHtml(o.label)}" data-price="${priceAttr}">${escHtml(o.label)}${priceLabel}</option>`;
+      return `<option data-label="${escHtml(o.label)}" data-price="${priceAttr}">${escHtml(o.label)}</option>`;
     }).join('');
     return `<div style="margin-bottom:14px">
       <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px">${escHtml(g.name)}</label>
@@ -1558,7 +1606,8 @@ function escHtml(s) {
 function pdOnGuestChange(select) {
   pdSelectedPrice = parseFloat(select.value);
   const label = select.options[select.selectedIndex]?.text.split('—')[0]?.trim() || '';
-  document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?label||'מחיר':'Price for '+label}</span>₪${pdSelectedPrice}`;
+  const total = pdSelectedPrice + pdGetAddonsTotal();
+  document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?label||'מחיר':'Price for '+label}</span>₪${total}`;
 }
 function openProductDrawerUI(productId) {
   const p = products.find(x => String(x.id) === String(productId));
@@ -1609,6 +1658,7 @@ function openProductDrawerUI(productId) {
   pdSelectedPrice = null;
   pdSelectedVariations = {};
   renderPdVariationDropdowns(p);
+  renderPdAddons(p);
   const guestSection = document.getElementById('pdGuestSection');
   const guestSelect = document.getElementById('pdGuestSelect');
   const guestTierVar = (p.variations || []).find(v => v.type === 'guest_count');
@@ -1677,19 +1727,22 @@ function pdAddToCart() {
   if (isCoffeeBarProduct(pdCurrentProduct) && pdSelectedPrice) {
     const guestSelect = document.getElementById('pdGuestSelect');
     const guestLabel = guestSelect?.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim() || '';
-    const cartId = pdCurrentProduct.id + '_' + pdSelectedPrice;
+    const addonSuffix = pdGetAddonSuffix();
+    const price = pdSelectedPrice + pdGetAddonsTotal();
+    const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
+    const cartId = pdCurrentProduct.id + '_' + pdSelectedPrice + (addonKey ? '_' + addonKey : '');
     const existing = cart.find(x => x.id === cartId);
-    const nameSuffix = guestLabel ? ` · ${guestLabel}` : '';
-    if (existing) { existing.qty++; }
+    const nameSuffix = (guestLabel ? ` · ${guestLabel}` : '') + addonSuffix;
+    if (existing) { existing.qty += pdQty; }
     else cart.push({
       id: cartId,
       name_en: pdCurrentProduct.name_en + nameSuffix,
       name_he: (pdCurrentProduct.name_he || pdCurrentProduct.name_en) + nameSuffix,
-      price: pdSelectedPrice,
+      price,
       images: pdCurrentProduct.images,
       category: pdCurrentProduct.category,
       delivery_price: pdCurrentProduct.delivery_price != null ? parseFloat(pdCurrentProduct.delivery_price) : null,
-      qty: 1,
+      qty: pdQty,
     });
     updateCartCount();
     showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
@@ -1698,9 +1751,11 @@ function pdAddToCart() {
     navReplace({ page: appPage, layer: 'cart' });
   } else {
     const p = pdCurrentProduct;
-    const suffix = pdGetVariationSuffix();
-    const price = pdGetVariationPrice(p);
-    const cartId = suffix ? p.id + '_' + Object.values(pdSelectedVariations).map(v => v.label).join('_') : p.id;
+    const suffix = pdGetVariationSuffix() + pdGetAddonSuffix();
+    const price = pdGetVariationPrice(p) + pdGetAddonsTotal();
+    const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
+    const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
+    const cartId = [p.id, varKey, addonKey].filter(Boolean).join('_');
     const existing = cart.find(x => x.id === cartId);
     if (existing) existing.qty += pdQty;
     else cart.push({
@@ -2353,7 +2408,7 @@ document.addEventListener('click', function(e) {
     e.preventDefault();
     e.stopPropagation();
     const p = products.find(x => String(x.id) === String(addBtn.dataset.id));
-    if (p && getChoiceVariations(p).length) {
+    if (p && (getChoiceVariations(p).length || getProductAddons(p).length)) {
       openProductDrawer(addBtn.dataset.id);
     } else {
       addToCart(addBtn.dataset.id);
