@@ -76,6 +76,7 @@ async function postToGoogleAppsScript(
   url: string,
   payload: Record<string, unknown>,
 ): Promise<{ ok: boolean; text: string }> {
+  const normalizedUrl = url.replace(/\/dev(\?|$)/, "/exec$1");
   const init: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -83,43 +84,61 @@ async function postToGoogleAppsScript(
     redirect: "manual",
   };
 
-  let res = await fetch(url, init);
-  if ([301, 302, 303, 307, 308].includes(res.status)) {
+  let res = await fetch(normalizedUrl, init);
+  for (let i = 0; i < 5; i++) {
+    if (![301, 302, 303, 307, 308].includes(res.status)) break;
     const location = res.headers.get("location");
-    if (location) {
-      console.log("Google Apps Script redirect — re-POSTing to:", location);
-      res = await fetch(location, init);
-    }
+    if (!location) break;
+    console.log("Google Apps Script redirect — re-POSTing to:", location);
+    res = await fetch(location, init);
   }
 
   const text = await res.text();
   let parsedOk = res.ok;
+  if (text.includes('"ok":true') || text.includes('"ok": true')) {
+    parsedOk = true;
+  }
   try {
-    const json = JSON.parse(text) as { ok?: boolean };
+    const json = JSON.parse(text) as { ok?: boolean; error?: string };
     if (json.ok === true) parsedOk = true;
+    if (json.ok === false) parsedOk = false;
   } catch {
-    // non-json body
+    if (text.includes("<!DOCTYPE html") || text.includes("<html")) parsedOk = false;
   }
   return { ok: parsedOk, text };
 }
 
 /** POST order to Google Apps Script web app → sheet row + email via MailApp. */
-async function sendViaGoogleSheet(payload: Record<string, unknown>): Promise<boolean> {
-  const url = Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
+async function sendViaGoogleSheet(
+  payload: Record<string, unknown>,
+): Promise<{ ok: boolean; detail?: string }> {
+  const url = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL") || "").trim().replace(/^["']+|["']+$/g, "");
   if (!url) {
     console.warn("GOOGLE_ORDER_WEBHOOK_URL not set — skipping sheet notification");
-    return false;
+    return { ok: false, detail: "GOOGLE_ORDER_WEBHOOK_URL not set in Supabase secrets" };
   }
 
-  const secret = Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET");
+  const secret = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET") || "").trim().replace(/^["']+|["']+$/g, "");
   const body = secret ? { ...payload, secret } : payload;
   const { ok, text } = await postToGoogleAppsScript(url, body);
   if (!ok) {
     console.error("Google Sheet webhook failed:", text);
-    return false;
+    let detail = text.slice(0, 300);
+    try {
+      const json = JSON.parse(text) as { error?: string };
+      if (json.error === "unauthorized") {
+        detail = "Secret mismatch — GOOGLE_ORDER_WEBHOOK_SECRET must match WEBHOOK_SECRET in Apps Script";
+      } else if (json.error) {
+        detail = json.error;
+      }
+    } catch { /* use raw text */ }
+    if (detail.includes("<!DOCTYPE html") || detail.includes("<html")) {
+      detail = "Google returned a login page — redeploy Apps Script with Who has access: Anyone";
+    }
+    return { ok: false, detail };
   }
   console.log("Google Sheet webhook OK:", text.slice(0, 120));
-  return true;
+  return { ok: true };
 }
 
 async function sendViaPushover(title: string, message: string): Promise<boolean> {
@@ -147,15 +166,17 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
 }
 
 /** Notify when an order is paid. Google Sheet webhook first, Pushover fallback. */
-export async function sendOrderPaidNotification(order: OrderNotifyRow): Promise<boolean> {
+export async function sendOrderPaidNotification(order: OrderNotifyRow): Promise<{ ok: boolean; detail?: string }> {
   const { subject, text, payload } = buildOrderMessage(order);
   try {
-    const sheeted = await sendViaGoogleSheet(payload);
-    if (sheeted) return true;
-    return await sendViaPushover(`💳 ${subject}`, text);
+    const sheet = await sendViaGoogleSheet(payload);
+    if (sheet.ok) return { ok: true };
+    const pushed = await sendViaPushover(`💳 ${subject}`, text);
+    if (pushed) return { ok: true };
+    return { ok: false, detail: sheet.detail || "Google webhook and Pushover both failed" };
   } catch (err) {
     console.error("Order notification error:", err);
-    return false;
+    return { ok: false, detail: String(err) };
   }
 }
 
@@ -180,12 +201,13 @@ export async function notifyPaidOrderOnce(
     : {};
   if (info.order_notified_at) return { sent: true, skipped: "already_notified" };
 
-  const ok = await sendOrderPaidNotification(order as OrderNotifyRow);
-  if (!ok) {
+  const result = await sendOrderPaidNotification(order as OrderNotifyRow);
+  if (!result.ok) {
     const hasUrl = !!Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
     return {
       sent: false,
       error: hasUrl ? "webhook_failed" : "GOOGLE_ORDER_WEBHOOK_URL not set in Supabase secrets",
+      detail: result.detail,
     };
   }
 

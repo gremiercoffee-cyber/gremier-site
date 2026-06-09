@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHash } from "node:crypto";
+import { enqueuePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -78,36 +79,43 @@ async function postToGoogleAppsScript(
   url: string,
   payload: Record<string, unknown>,
 ): Promise<{ ok: boolean; text: string }> {
+  const normalizedUrl = url.replace(/\/dev(\?|$)/, "/exec$1");
   const init: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     redirect: "manual",
   };
-  let res = await fetch(url, init);
-  if ([301, 302, 303, 307, 308].includes(res.status)) {
+  let res = await fetch(normalizedUrl, init);
+  for (let i = 0; i < 5; i++) {
+    if (![301, 302, 303, 307, 308].includes(res.status)) break;
     const location = res.headers.get("location");
-    if (location) {
-      console.log("Google Apps Script redirect — re-POSTing to:", location);
-      res = await fetch(location, init);
-    }
+    if (!location) break;
+    console.log("Google Apps Script redirect — re-POSTing to:", location);
+    res = await fetch(location, init);
   }
   const text = await res.text();
   let parsedOk = res.ok;
+  if (text.includes('"ok":true') || text.includes('"ok": true')) {
+    parsedOk = true;
+  }
   try {
-    const json = JSON.parse(text) as { ok?: boolean };
+    const json = JSON.parse(text) as { ok?: boolean; error?: string };
     if (json.ok === true) parsedOk = true;
-  } catch { /* non-json */ }
+    if (json.ok === false) parsedOk = false;
+  } catch {
+    if (text.includes("<!DOCTYPE html") || text.includes("<html")) parsedOk = false;
+  }
   return { ok: parsedOk, text };
 }
 
 async function sendViaGoogleSheet(payload: Record<string, unknown>): Promise<boolean> {
-  const url = Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
+  const url = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL") || "").trim().replace(/^["']+|["']+$/g, "");
   if (!url) {
     console.warn("GOOGLE_ORDER_WEBHOOK_URL not set — skipping sheet notification");
     return false;
   }
-  const secret = Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET");
+  const secret = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET") || "").trim().replace(/^["']+|["']+$/g, "");
   const body = secret ? { ...payload, secret } : payload;
   const { ok, text } = await postToGoogleAppsScript(url, body);
   if (!ok) {
@@ -727,6 +735,8 @@ Deno.serve(async (req) => {
 
       }
 
+      await enqueuePendingWebsiteDelivery(supabase, result.orderId);
+
       await notifyPaidOrder(supabase, result.orderId);
 
       return new Response(JSON.stringify({ ok: true, order_id: result.orderId }), {
@@ -826,6 +836,8 @@ Deno.serve(async (req) => {
       await redeemCouponIfUsed(supabase, order.user_id, Number(order.discount) || 0);
 
     }
+
+    await enqueuePendingWebsiteDelivery(supabase, order.id);
 
     await notifyPaidOrder(supabase, order.id);
 

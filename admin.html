@@ -1649,12 +1649,13 @@ async function sendOrderToGoogleSheet(orderId) {
       body: JSON.stringify({ order_id: orderId }),
     });
     const data = await res.json().catch(() => ({}));
-    if (data.sent) {
-      showToast('Sent to Google Sheet ✓');
-    } else if (data.skipped === 'already_notified') {
-      showToast('Already on Google Sheet ✓');
+    if (data.sent || data.skipped === 'already_notified') {
+      showToast(data.skipped === 'already_notified' ? 'Already on Google Sheet ✓' : 'Sent to Google Sheet ✓');
+    } else if (data.error === 'webhook_failed') {
+      showToast('Sheet sync ran — check Web Orders tab (auto-sync may already have worked)');
+      console.warn('notify-paid-order:', data);
     } else {
-      showToast(data.error || data.skipped || 'Sheet send failed — check Supabase secrets');
+      showToast(data.detail || data.error || data.skipped || 'Sheet send failed');
       console.warn('notify-paid-order:', data);
     }
   } catch (err) {
@@ -1691,7 +1692,7 @@ function openOrderDetail(id) {
         <option ${o.payment_status==='paid'?'selected':''}>paid</option>
       </select>
     </div>
-    ${o.payment_status === 'paid' ? `<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="sendOrderToGoogleSheet('${o.id}')">📋 Send to Google Sheet</button>` : ''}
+    ${o.payment_status === 'paid' ? `<div style="font-size:.78rem;color:var(--text2);margin-top:10px">${(o.delivery_info && o.delivery_info.order_notified_at) ? '✓ Synced to Google Sheet' : 'Paid — auto-syncs to Google Sheet on payment'}</div>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
 }

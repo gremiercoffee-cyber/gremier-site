@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { notifyPaidOrderOnce } from "../_shared/order-notify.ts";
+import { enqueuePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +44,7 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
+    await enqueuePendingWebsiteDelivery(supabase, orderId);
     const result = await notifyPaidOrderOnce(supabase, orderId);
 
     return new Response(JSON.stringify(result), {

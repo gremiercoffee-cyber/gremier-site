@@ -168,6 +168,45 @@ const MINI_PRODUCTS = ["vanilla_mini", "original_mini", "caramel_mini"];
 function getProductRatio(pid, concType) {
   return MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
 }
+const WEBSITE_NAME_TO_OPS = [
+  [/sweetened.*classic|classic.*sweet/i, "sweetened_classic"],
+  [/house blend mini/i, "house_blend_mini"],
+  [/classic mini/i, "classic_mini"],
+  [/vanilla mini/i, "vanilla_mini"],
+  [/original mini/i, "original_mini"],
+  [/caramel mini/i, "caramel_mini"],
+  [/jerry.*house|house.*jerry/i, "jerry_can_houseblend"],
+  [/jerry.*colombia|colombia.*jerry/i, "jerry_can_colombia"],
+  [/jerry.*decaf|decaf.*jerry/i, "jerry_can_decaf"],
+  [/jerry/i, "jerry_can"],
+  [/house blend/i, "house_blend"],
+  [/colombia/i, "colombia_liter"],
+  [/decaf/i, "decaf_liter"],
+  [/vanilla syrup/i, "vanilla_syrup"],
+  [/caramel syrup/i, "caramel_syrup"],
+  [/sugar syrup/i, "sugar_syrup"],
+  [/classic/i, "classic_liter"],
+];
+function mapWebsiteItemToOpsProduct(item) {
+  if (item?.product_id && PRODUCTS[item.product_id]) return item.product_id;
+  const name = String(item?.name_en || item?.name_he || "").toLowerCase();
+  for (const [re, pid] of WEBSITE_NAME_TO_OPS) {
+    if (re.test(name)) return pid;
+  }
+  return null;
+}
+function websiteItemsToQuantities(items) {
+  const qty = {};
+  (items || []).forEach((item) => {
+    const pid = mapWebsiteItemToOpsProduct(item);
+    if (!pid) return;
+    qty[pid] = (qty[pid] || 0) + (Number(item.qty) || 1);
+  });
+  return qty;
+}
+async function sbLoadPendingWebDeliveries() {
+  return sbFetch("pending_website_deliveries?status=eq.pending_schedule&select=*&order=created_at.asc");
+}
 const JERRY_PRODUCTS = ["jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"];
 function todayISO() {
   const d = new Date();
@@ -898,6 +937,10 @@ export default function App() {
   const alertsShownThisSession=React.useRef(false);
   const [waOpen,setWaOpen]=useState(false);
   const [billingOpen,setBillingOpen]=useState(false);
+  const [websiteScheduleOpen,setWebsiteScheduleOpen]=useState(false);
+  const [pendingWebDeliveries,setPendingWebDeliveries]=useState([]);
+  const [prefillWebsiteOrder,setPrefillWebsiteOrder]=useState(null);
+  const pendingWebsiteRef=React.useRef(null);
   const [selectedJob,setSelectedJob]=useState(null);
   const [editingJob,setEditingJob]=useState(null);
   const [scheduleMode,setScheduleMode]=useState(null);
@@ -967,6 +1010,22 @@ export default function App() {
       }
     }
   },[]);
+  const loadPendingWebDeliveries=useCallback(async()=>{
+    if (!ADMIN_EMAILS.includes(user?.email)) return;
+    try {
+      const rows=await sbLoadPendingWebDeliveries();
+      setPendingWebDeliveries(Array.isArray(rows)?rows:[]);
+    } catch(e) { console.error("pending web deliveries:", e); }
+  },[user?.email]);
+  useEffect(()=>{
+    if (!user) return;
+    loadPendingWebDeliveries();
+    const interval=setInterval(loadPendingWebDeliveries,30000);
+    const channel=supabase.channel("pending-web-deliveries")
+      .on("postgres_changes",{event:"*",schema:"public",table:"pending_website_deliveries"},()=>loadPendingWebDeliveries())
+      .subscribe();
+    return ()=>{ clearInterval(interval); supabase.removeChannel(channel); };
+  },[user,loadPendingWebDeliveries]);
   useEffect(()=>{
     if (!user) return;
     try {
@@ -1132,6 +1191,7 @@ export default function App() {
   // ─── ADD JOB (form Log Now / Schedule, and voice logger) ─────────────────
   async function addJob(jobInput) {
     if (!isAdmin) return;
+    const pendingRow=pendingWebsiteRef.current;
     const newJob = {
       ...jobInput,
       id: Date.now()+"_"+Math.random().toString(36).slice(2),
@@ -1171,10 +1231,30 @@ export default function App() {
     setJobs(prev=>[...prev, newJob]);
     setScreen("dashboard");
     await sbFetch("jobs", {method:"POST", prefer:"return=minimal", body:JSON.stringify(jobToRow(newJob))});
+    if (pendingRow && newJob.type==="delivery" && !newJob.done) {
+      await sbFetch(`pending_website_deliveries?id=eq.${pendingRow.id}`, {
+        method:"PATCH", prefer:"return=minimal",
+        body:JSON.stringify({
+          status:"scheduled",
+          scheduled_date:newJob.date,
+          scheduled_time:newJob.time||null,
+        }),
+      });
+      pendingWebsiteRef.current=null;
+      setPrefillWebsiteOrder(null);
+      loadPendingWebDeliveries();
+    }
     if (newJob.done) {
       await applyJobSideEffects(newJob, null);
     }
     loadData(true);
+  }
+  function openWebsiteSchedule(order) {
+    pendingWebsiteRef.current=order;
+    setPrefillWebsiteOrder(order);
+    setWebsiteScheduleOpen(false);
+    setScheduleMode("schedule");
+    setScreen("schedule");
   }
   async function updateJob(updatedJob) {
     if (!isAdmin) return;
@@ -1282,7 +1362,7 @@ export default function App() {
       {!isAdmin&&<div style={{background:"#1F4D7A",color:"#fff",textAlign:"center",fontSize:11,padding:"5px 0",letterSpacing:1.5,textTransform:"uppercase"}}>View Only</div>}
       {syncing&&<div style={S.syncBar}>Syncing...</div>}
       {screen==="dashboard"&&<Dashboard concentrate={concentrate} needed={needed} monthView={monthView} setMonthView={setMonthView} jobs={jobs} today={today} onCheckoff={isAdmin?handleCheckoff:null} onJobTap={setSelectedJob} onSchedule={()=>{setScheduleMode("schedule");setScreen("schedule");}} onLogNow={()=>{setScheduleMode("lognow");setScreen("schedule");}} setCalDay={setCalDay} onRefresh={loadData} onSignOut={signOut} isAdmin={isAdmin}/>}
-      {isAdmin&&screen==="schedule"&&<ScheduleScreen onSubmit={addJob} onBack={()=>setScreen("dashboard")} initialMode={scheduleMode} onRefresh={loadData}/>}
+      {isAdmin&&screen==="schedule"&&<ScheduleScreen onSubmit={addJob} onBack={()=>{pendingWebsiteRef.current=null;setPrefillWebsiteOrder(null);setScreen("dashboard");}} initialMode={scheduleMode} websiteOrder={prefillWebsiteOrder} onRefresh={loadData}/>}
       {isAdmin&&editingJob&&(<div style={{position:"fixed",inset:0,background:"#00000088",zIndex:150,overflowY:"auto"}}><div style={{background:"#FFFFFF",minHeight:"100%",maxWidth:480,margin:"0 auto",position:"relative"}}><ScheduleScreen onSubmit={updateJob} onBack={()=>setEditingJob(null)} existingJob={editingJob} onRefresh={loadData}/></div></div>)}
       {screen==="tasks"&&<TasksScreen jobs={jobs} pendingConfirms={isAdmin?pendingConfirms:[]} onCheckoff={isAdmin?handleCheckoff:null} onConfirm={isAdmin?setCheckoffJob:null} onJobTap={setSelectedJob} onBack={()=>setScreen("dashboard")} onDelete={isAdmin?deleteJob:null} onRefresh={loadData} isAdmin={isAdmin}/>}
       {screen==="stock"&&<StockScreen concentrate={concentrate} setConcentrate={setConcentrateItem} inventory={inventory} setInventory={setInventoryItem} needed={needed} jobs={jobs} beans={beans} setBeans={setBeansItem} setBeanOrdered={setBeanOrdered} deliverBeans={deliverBeans} onBack={()=>setScreen("dashboard")} onRefresh={loadData} isAdmin={isAdmin}/>}
@@ -1304,6 +1384,8 @@ export default function App() {
           ))}
         </div>
       )}
+      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:196,left:14,background:"#4A90D9",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040",maxWidth:"calc(100vw - 28px)"}} onClick={()=>{if(pendingWebDeliveries.length===1)openWebsiteSchedule(pendingWebDeliveries[0]);else setWebsiteScheduleOpen(true);}} title="Schedule new delivery">📦 {pendingWebDeliveries.length===1?"Schedule delivery":pendingWebDeliveries.length}</button>}
+      {isAdmin&&websiteScheduleOpen&&<WebsiteScheduleDrawer orders={pendingWebDeliveries} onSchedule={openWebsiteSchedule} onClose={()=>setWebsiteScheduleOpen(false)}/>}
       {(()=>{const waPending=jobs.filter(j=>j.waNeedsSend&&j.storeName);return isAdmin&&waPending.length>0&&!waOpen?(<button style={{position:"fixed",bottom:196,right:14,background:"#25D366",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>):null;})()}
       {isAdmin&&waOpen&&<WaDrawer jobs={jobs.filter(j=>j.waNeedsSend&&j.storeName)} onMarkSent={markWaSent} onClose={()=>setWaOpen(false)}/>}
       {isAdmin&&unbilledJobs.length>0&&!billingOpen&&<button style={{position:"fixed",bottom:158,right:14,background:"#C8860A",color:"#fff",border:"none",borderRadius:20,padding:"6px 9px",fontSize:13,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setBillingOpen(true)}>💰 {unbilledJobs.length}</button>}
@@ -1568,7 +1650,7 @@ function MiniJobRow({job,onCheckoff,onTap,onDelete}) {
     </div>
   );
 }
-function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,onRefresh}) {
+function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,onRefresh}) {
   const isEdit=!!existingJob;
   const [mode,setMode]=useState(isEdit?"schedule":(initialMode||null));
   const [jobType,setJobType]=useState(existingJob?.type==="delivery"?"delivery":"production");
@@ -1580,6 +1662,17 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,onRefresh}) {
   const [privateName,setPrivateName]=useState(existingJob?.privateName||"");
   const [privateAddress,setPrivateAddress]=useState(existingJob?.privateAddress||"");
   const [quantities,setQty]=useState(existingJob?.quantities||{});
+  const prefilledWebRef=React.useRef(null);
+  useEffect(()=>{
+    if (!websiteOrder || isEdit || prefilledWebRef.current===websiteOrder.id) return;
+    prefilledWebRef.current=websiteOrder.id;
+    setMode("schedule");
+    setJobType("delivery");
+    setSubType("private");
+    setPrivateName(websiteOrder.customer_name||"");
+    setPrivateAddress(websiteOrder.delivery_address||"");
+    setQty(websiteItemsToQuantities(websiteOrder.items));
+  },[websiteOrder,isEdit]);
   const [people,setPeople]=useState(existingJob?.people||25);
   const [product,setProduct]=useState(existingJob?.product||"classic_liter");
   const [liters,setLiters]=useState(existingJob?.liters||"");
@@ -1631,7 +1724,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,onRefresh}) {
   return (
     <div style={S.screen}>
       <div style={S.subHdr}><button style={S.backBtn} onClick={onBack}>‹</button><div style={S.subTitle}>{isEdit?"Edit Job":logNow?"✓ Log Now":"📅 Schedule"}</div><div style={{marginLeft:"auto"}}><RefreshBtn onRefresh={onRefresh}/></div></div>
-      {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":"📅 Scheduling for later"}</div>}
+      {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":websiteOrder?`📦 Website order #${websiteOrder.order_number||"—"} — schedule delivery`:"📅 Scheduling for later"}</div>}
       {isEdit&&existingJob?.type==="drain"?(
         <div style={S.card}>
           <div style={S.cardTitle}>Drain Job</div>
@@ -2224,6 +2317,33 @@ function CheckoffModal({job,onConfirm,onCancel}) {
         <div style={S.modalActions}>
           <button style={S.btnSecondary} onClick={onCancel}>Cancel</button>
           <button style={S.btnPrimary} onClick={()=>onConfirm(job,actual,null)}>Confirm</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function WebsiteScheduleDrawer({orders,onSchedule,onClose}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:90,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={onClose}>
+      <div style={{background:"#FFFFFF",borderRadius:"16px 16px 0 0",border:"1px solid #E0E0E0",maxHeight:"75vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:"18px 16px 10px",flexShrink:0,borderBottom:"1px solid #E0E0E0"}}>
+          <div style={S.alertDrawerHeader}><span style={{...S.alertDrawerTitle,color:"#4A90D9"}}>📦 Schedule new delivery</span><button style={S.alertClose} onClick={onClose}>✕</button></div>
+          <div style={{fontSize:12,color:"#666",marginTop:6}}>Paid website orders waiting to be scheduled</div>
+        </div>
+        <div style={{overflowY:"auto",flex:1,padding:"0 16px 100px"}}>
+          {orders.length===0&&<div style={{color:"#888",fontSize:13,padding:"12px 0"}}>Nothing to schedule!</div>}
+          {orders.map(o=>{
+            const itemsText=(o.items||[]).map(i=>`${i.name_en||i.name_he||"Item"} ×${i.qty||1}`).join(", ");
+            return (
+              <div key={o.id} style={{...S.alertRow,flexDirection:"column",alignItems:"flex-start",gap:6,marginTop:8}}>
+                <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A"}}>Order #{o.order_number||"—"} — {o.customer_name||"Customer"}</div>
+                <div style={{fontSize:11,color:"#888"}}>{itemsText}</div>
+                {o.delivery_address?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {o.delivery_address}</div>:null}
+                {o.customer_phone?<div style={{fontSize:11,color:"#555"}}>{o.customer_phone}</div>:null}
+                <button style={{background:"#4A90D9",color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",width:"100%",marginTop:4}} onClick={()=>onSchedule(o)}>Schedule now →</button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
