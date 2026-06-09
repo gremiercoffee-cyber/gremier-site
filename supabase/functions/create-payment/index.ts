@@ -17,6 +17,19 @@ type OrderRow = {
   delivery_info?: Record<string, unknown> | null;
 };
 
+function getServiceRoleKey(): string {
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacy) return legacy;
+  try {
+    const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+    if (!raw) return "";
+    const keys = JSON.parse(raw) as Record<string, string>;
+    return keys.default || keys.service_role || Object.values(keys)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -28,10 +41,12 @@ serve(async (req) => {
       throw new Error("Missing order_id");
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    const serviceKey = getServiceRoleKey();
+    if (!serviceKey) {
+      throw new Error("Server misconfigured: missing service role key");
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
 
     const sellerId = Deno.env.get("PAYME_SELLER_ID");
     if (!sellerId) {
@@ -74,6 +89,7 @@ serve(async (req) => {
       sale_return_url: `${siteUrl}/?payment=return&order_id=${encodeURIComponent(row.id)}`,
       sale_send_notification: true,
       language: lang,
+      capture_buyer: 0,
       buyer_name: row.customer_name || undefined,
       buyer_email: row.customer_email || undefined,
       buyer_phone: row.customer_phone || undefined,
@@ -89,8 +105,12 @@ serve(async (req) => {
     });
 
     const paymeData = await paymeRes.json();
+    console.log("PayMe generate-sale response:", paymeRes.status, paymeData);
+
     if (!paymeRes.ok || paymeData.status_code !== 0 || !paymeData.sale_url) {
-      const detail = paymeData.status_error_details || paymeData.message || "PayMe payment could not be created";
+      const detail = paymeData.status_error_details || paymeData.message
+        || JSON.stringify(paymeData).slice(0, 200)
+        || "PayMe payment could not be created";
       throw new Error(String(detail));
     }
 
