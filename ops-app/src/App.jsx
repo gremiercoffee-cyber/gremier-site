@@ -2338,7 +2338,7 @@ function WebsiteScheduleDrawer({orders,onSchedule,onClose}) {
               <div key={o.id} style={{...S.alertRow,flexDirection:"column",alignItems:"flex-start",gap:6,marginTop:8}}>
                 <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A"}}>Order #{o.order_number||"—"} — {o.customer_name||"Customer"}</div>
                 <div style={{fontSize:11,color:"#888"}}>{itemsText}</div>
-                {o.delivery_address?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {o.delivery_address}</div>:null}
+                {o.delivery_address?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {o.delivery_address}</div>:<div style={{fontSize:11,color:"#888",fontStyle:"italic"}}>Address — add when scheduling</div>}
                 {o.customer_phone?<div style={{fontSize:11,color:"#555"}}>{o.customer_phone}</div>:null}
                 <button style={{background:"#4A90D9",color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",width:"100%",marginTop:4}} onClick={()=>onSchedule(o)}>Schedule now →</button>
               </div>

@@ -445,7 +445,7 @@ async function fulfillPaymentLink(
 
       customer_email: null,
 
-      delivery_address: null,
+      delivery_address: link.delivery_address || null,
 
       items: link.items || [],
 

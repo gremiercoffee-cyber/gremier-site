@@ -80,6 +80,22 @@
 
     .pay-note { font-size: .74rem; color: #9a9a9a; margin-top: 14px; line-height: 1.5; }
 
+    .pay-field { text-align: left; margin-bottom: 18px; }
+
+    .pay-field label { display: block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: #9a9a9a; margin-bottom: 6px; }
+
+    .pay-field input, .pay-field textarea {
+
+      width: 100%; padding: 11px 12px; border-radius: 4px; border: 1px solid #454545;
+
+      background: #1a1a1a; color: #efefef; font-family: 'DM Sans', sans-serif; font-size: .88rem;
+
+    }
+
+    .pay-field input::placeholder, .pay-field textarea::placeholder { color: #666; }
+
+    .pay-field-hint { font-size: .72rem; color: #777; margin-top: 5px; line-height: 1.4; }
+
     .pay-status { font-size: 2.4rem; margin-bottom: 12px; }
 
     .pay-status-title { font-family: 'Playfair Display', serif; font-size: 1.4rem; margin-bottom: 8px; }
@@ -282,7 +298,7 @@
 
       customer_email: null,
 
-      delivery_address: null,
+      delivery_address: link.delivery_address || null,
 
       items: link.items || [],
 
@@ -313,6 +329,32 @@
     await sb.from('payment_links').update({ order_id: inserted.id }).eq('link_code', link.link_code);
 
     return inserted.id;
+
+  }
+
+
+
+  function getPayDeliveryAddress() {
+
+    const el = document.getElementById('payAddress');
+
+    return el ? el.value.trim() : '';
+
+  }
+
+
+
+  async function savePayDeliveryAddress(orderId, link) {
+
+    const addr = getPayDeliveryAddress() || link.delivery_address || '';
+
+    if (!addr) return;
+
+    await sb.from('orders').update({ delivery_address: addr }).eq('id', orderId);
+
+    await sb.from('payment_links').update({ delivery_address: addr }).eq('link_code', link.link_code);
+
+    link.delivery_address = addr;
 
   }
 
@@ -535,6 +577,16 @@
 
       </div>
 
+      <div class="pay-field">
+
+        <label for="payAddress">Delivery address <span style="text-transform:none;letter-spacing:0;color:#666">(optional)</span></label>
+
+        <input type="text" id="payAddress" placeholder="City, street, apartment…" value="${(link.delivery_address || '').replace(/"/g, '&quot;')}"/>
+
+        <div class="pay-field-hint">Add your address here if you know it — otherwise we'll confirm delivery details with you on WhatsApp.</div>
+
+      </div>
+
       <button class="pay-btn" id="payBtn" onclick="startPayment()">Pay with PayMe</button>
 
       <div class="pay-note">You'll be redirected to PayMe to pay securely by card.</div>
@@ -572,6 +624,8 @@
       orderId = await ensureOrderId(paymentLink);
 
       paymentLink.order_id = orderId;
+
+      await savePayDeliveryAddress(orderId, paymentLink);
 
       navPayReplace('checkout');
 

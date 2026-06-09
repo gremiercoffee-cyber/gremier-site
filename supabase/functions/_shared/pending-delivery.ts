@@ -15,9 +15,6 @@ export async function enqueuePendingWebsiteDelivery(
 
   if (!order || order.payment_status !== "paid") return "skipped";
 
-  const address = String(order.delivery_address || "").trim();
-  if (!address) return "skipped";
-
   const { data: existing } = await supabase
     .from("pending_website_deliveries")
     .select("id, status")
@@ -32,7 +29,7 @@ export async function enqueuePendingWebsiteDelivery(
     customer_name: order.customer_name || "",
     customer_phone: order.customer_phone || null,
     customer_email: order.customer_email || null,
-    delivery_address: address,
+    delivery_address: String(order.delivery_address || "").trim() || null,
     items: Array.isArray(order.items) ? order.items : [],
     order_total: Number(order.total) || 0,
     status: "pending_schedule",

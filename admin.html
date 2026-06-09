@@ -794,6 +794,7 @@
       <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
       <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
     </div>
+    <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
     <div class="form-group">
       <label class="form-label">Add Products</label>
       <input type="text" class="form-input" placeholder="Search product..." oninput="searchPayLinkProducts(this.value)" id="plProductSearch"/>
@@ -1432,7 +1433,7 @@ async function recreateOrderFromPaymentLink(linkCode) {
     customer_name: link.customer_name || 'Payment Link Customer',
     customer_phone: link.customer_phone || null,
     customer_email: null,
-    delivery_address: null,
+    delivery_address: link.delivery_address || null,
     items: link.items || [],
     subtotal: link.subtotal,
     discount: link.discount || 0,
@@ -1743,6 +1744,7 @@ function openNewLink() {
   plCartItems = [];
   document.getElementById('plCustomer').value = '';
   document.getElementById('plPhone').value = '';
+  document.getElementById('plAddress').value = '';
   document.getElementById('plProductSearch').value = '';
   document.getElementById('plFinalPrice').value = '';
   document.getElementById('plDiscountNote').value = '';
@@ -1810,12 +1812,14 @@ async function generatePayLink() {
   const linkCode = Math.random().toString(36).substr(2,10);
   const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
+  const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
 
   const linkItems = plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty }));
   const linkData = {
     link_code: linkCode,
     customer_name: customerName,
     customer_phone: customerPhone,
+    delivery_address: deliveryAddress,
     items: linkItems,
     subtotal, discount: discount > 0 ? discount : 0,
     discount_note: document.getElementById('plDiscountNote').value.trim() || null,
