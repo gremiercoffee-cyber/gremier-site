@@ -1616,7 +1616,6 @@ function openProductDrawerUI(productId) {
   pdQty = 1;
   pdActiveImg = 0;
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
-  const desc = lang === 'he' ? (p.description_he || p.description_en) : p.description_en;
   const imgWrap = document.getElementById('pdImgWrap');
   if (p.images && p.images.length > 0) {
     imgWrap.innerHTML = `<img id="pdMainImg" src="${p.images[0]}" alt="${name}"/>`;
@@ -1645,7 +1644,7 @@ function openProductDrawerUI(productId) {
     : p.original_price
       ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
       : `₪${p.price}`;
-  document.getElementById('pdDesc').textContent = desc || '';
+  document.getElementById('pdDesc').textContent = getProductDescription(p);
   const featList = document.getElementById('pdFeatures');
   const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
   if (features && features.length > 0) {
@@ -1783,15 +1782,37 @@ const CARD_DESC_FALLBACK = {
   coffeebars: { en: 'Premium cold brew bar for your next event.', he: 'בר קולד ברו פרימיום לאירוע הבא שלך.' },
   default: { en: 'Craft slow-steeped cold brew, delivered fresh.', he: 'קולד ברו מחושל לאט, נשלח טרי.' },
 };
-function productCardDesc(p) {
-  const raw = lang === 'he' ? (p.description_he || p.description_en) : (p.description_en || p.description_he);
-  if (raw && String(raw).trim()) return String(raw).trim();
+function sanitizeProductDesc(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/\(\s*500\s*ml\s*\)/gi, '')
+    .replace(/,?\s*500\s*ml\b/gi, '')
+    .replace(/,?\s*500\s*מ["']?ל/gi, '')
+    .replace(/,?\s*500מ["']?ל/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/^[,.\s–—-]+|[,.\s–—-]+$/g, '')
+    .trim();
+}
+function getProductDescription(p, langOverride) {
+  const L = langOverride || lang;
+  const adminDesc = L === 'he'
+    ? (p.description_he || '').trim()
+    : (p.description_en || '').trim();
+  const fallbackAdmin = L === 'he'
+    ? (p.description_en || '').trim()
+    : (p.description_he || '').trim();
+  const raw = adminDesc || fallbackAdmin;
+  if (raw) return sanitizeProductDesc(raw);
   if (isCoffeeBarProduct(p)) {
     const fb = CARD_DESC_FALLBACK.coffeebars;
-    return lang === 'he' ? fb.he : fb.en;
+    return L === 'he' ? fb.he : fb.en;
   }
   const fb = CARD_DESC_FALLBACK[p.category] || CARD_DESC_FALLBACK.default;
-  return lang === 'he' ? fb.he : fb.en;
+  return L === 'he' ? fb.he : fb.en;
+}
+function productCardDesc(p) {
+  return getProductDescription(p);
 }
 function productCardPriceHTML(p) {
   if (isCoffeeBarProduct(p)) {
@@ -2717,8 +2738,8 @@ function buildChatCatalog() {
     slug: slugifyProductName(p.name_en),
     name_en: p.name_en,
     name_he: p.name_he || '',
-    description_en: p.description_en || '',
-    description_he: p.description_he || '',
+    description_en: getProductDescription(p, 'en'),
+    description_he: getProductDescription(p, 'he'),
     price: p.price,
     original_price: p.original_price || null,
     category: p.category,
