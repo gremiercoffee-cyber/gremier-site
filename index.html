@@ -1742,7 +1742,7 @@ async function callCreatePayment(orderId) {
   });
   const payData = await res.json().catch(() => ({}));
   if (!res.ok || !payData?.sale_url) {
-    const msg = payData?.error || payData?.message || `Payment failed (${res.status})`;
+    const msg = payData?.error || `Payment failed (${res.status})`;
     throw new Error(msg);
   }
   return payData;
