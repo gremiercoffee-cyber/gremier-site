@@ -761,6 +761,31 @@
     <button class="btn btn-outline" onclick="closeOrderModal()" style="margin-top:16px">Close</button>
   </div>
 </div>
+<!-- MANUAL ORDER RESTORE -->
+<div class="modal-backdrop" id="restoreOrderModal">
+  <div class="modal-box" style="max-width:480px">
+    <h2 class="modal-title">Restore order manually</h2>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:16px;line-height:1.5">Use when a paid order was deleted and isn’t tied to a payment link. Fill in what you know from PayMe or the customer.</p>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Customer name</label><input class="form-input" id="roName"/></div>
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="roPhone"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="roEmail" type="email"/></div>
+    <div class="form-group"><label class="form-label">Delivery address</label><input class="form-input" id="roAddress"/></div>
+    <div class="form-group"><label class="form-label">Items (one per line: Name x qty @ price)</label><textarea class="form-input" id="roItems" rows="4" placeholder="Classic Dark Roast x2 @ 49"></textarea></div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Total (₪)</label><input class="form-input" id="roTotal" type="number"/></div>
+      <div class="form-group"><label class="form-label">Payment</label>
+        <select class="form-input" id="roPayment"><option value="paid">paid</option><option value="unpaid">unpaid</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes</label><input class="form-input" id="roNotes" placeholder="Restored manually"/></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" onclick="saveManualRestoredOrder()">Create order</button>
+      <button class="btn btn-outline" onclick="closeRestoreOrderModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 <!-- PAYMENT LINK MODAL -->
 <div class="modal-backdrop" id="payLinkModal">
   <div class="modal-box">
@@ -1393,7 +1418,6 @@ function showUndoToast(msg, archiveId) {
 async function recreateOrderFromPaymentLink(linkCode) {
   const { data: link, error } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
   if (error || !link) { showToast('Payment link not found'); return; }
-  if (link.status !== 'paid') { showToast('This link is not marked as paid'); return; }
   if (link.order_id) {
     const { data: existing } = await sb.from('orders').select('id, order_number').eq('id', link.order_id).maybeSingle();
     if (existing) {
@@ -1401,6 +1425,9 @@ async function recreateOrderFromPaymentLink(linkCode) {
       return;
     }
   }
+  const markPaid = link.status === 'paid' || !!link.payme_sale_id;
+  if (!markPaid && !confirm('This link is not marked paid in the system.\n\nRecreate the order anyway and mark it as PAID?')) return;
+  const paymentStatus = markPaid ? 'paid' : 'unpaid';
   const orderData = {
     customer_name: link.customer_name || 'Payment Link Customer',
     customer_phone: link.customer_phone || null,
@@ -1410,8 +1437,8 @@ async function recreateOrderFromPaymentLink(linkCode) {
     subtotal: link.subtotal,
     discount: link.discount || 0,
     total: link.total,
-    status: 'confirmed',
-    payment_status: 'paid',
+    status: paymentStatus === 'paid' ? 'confirmed' : 'awaiting_payment',
+    payment_status: paymentStatus,
     payment_method: 'payme',
     source: 'payment_link',
     delivery_info: {
@@ -1427,10 +1454,76 @@ async function recreateOrderFromPaymentLink(linkCode) {
     console.error(insertErr);
     return;
   }
-  await sb.from('payment_links').update({ order_id: inserted.id }).eq('link_code', link.link_code);
-  showToast(`Order #${inserted.order_number} recreated from payment link ✓`);
+  await sb.from('payment_links').update({
+    order_id: inserted.id,
+    status: paymentStatus === 'paid' ? 'paid' : link.status,
+  }).eq('link_code', link.link_code);
+  showToast(`Order #${inserted.order_number} recreated ✓`);
   await loadDashboard();
   await loadOrders();
+  if (document.getElementById('tab-paylinks').style.display !== 'none') await loadPayLinks();
+}
+
+function openManualOrderRestore() {
+  document.getElementById('restoreOrderModal').classList.add('open');
+}
+function closeRestoreOrderModal() {
+  document.getElementById('restoreOrderModal').classList.remove('open');
+}
+function parseManualOrderItems(text) {
+  return String(text || '').split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+    const m = line.match(/^(.+?)\s+x\s*(\d+)\s*@\s*(\d+(?:\.\d+)?)/i);
+    if (m) return { name_en: m[1].trim(), name_he: m[1].trim(), qty: parseInt(m[2], 10), price: parseFloat(m[3]) };
+    return { name_en: line, name_he: line, qty: 1, price: 0 };
+  });
+}
+async function saveManualRestoredOrder() {
+  const name = document.getElementById('roName').value.trim();
+  const total = parseFloat(document.getElementById('roTotal').value);
+  const paymentStatus = document.getElementById('roPayment').value;
+  if (!name || isNaN(total) || total <= 0) {
+    showToast('Name and total are required');
+    return;
+  }
+  const items = parseManualOrderItems(document.getElementById('roItems').value);
+  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0) || total;
+  const orderData = {
+    customer_name: name,
+    customer_phone: document.getElementById('roPhone').value.trim() || null,
+    customer_email: document.getElementById('roEmail').value.trim() || null,
+    delivery_address: document.getElementById('roAddress').value.trim() || null,
+    items,
+    subtotal,
+    discount: Math.max(0, subtotal - total),
+    total,
+    status: paymentStatus === 'paid' ? 'confirmed' : 'pending',
+    payment_status: paymentStatus,
+    payment_method: 'payme',
+    source: 'manual_restore',
+    notes: document.getElementById('roNotes').value.trim() || 'Restored manually',
+  };
+  const { data: inserted, error } = await sb.from('orders').insert(orderData).select('order_number').single();
+  if (error) {
+    showToast('Could not create order — ' + (error.message || 'check console'));
+    console.error(error);
+    return;
+  }
+  closeRestoreOrderModal();
+  showToast(`Order #${inserted.order_number} created ✓`);
+  await loadDashboard();
+  await loadOrders();
+}
+
+async function fetchExistingOrderIds(orderIds) {
+  const ids = [...new Set(orderIds.filter(Boolean))];
+  if (!ids.length) return new Set();
+  const { data: orders } = await sb.from('orders').select('id').in('id', ids);
+  return new Set((orders || []).map(o => o.id));
+}
+
+function paymentLinkMissingOrder(link, existingOrderIds) {
+  if (!link.order_id) return true;
+  return !existingOrderIds.has(link.order_id);
 }
 
 async function loadRecoverableOrdersUI() {
@@ -1438,43 +1531,50 @@ async function loadRecoverableOrdersUI() {
   if (!panel) return;
   const sections = [];
 
-  const { data: archives } = await sb.from('deleted_orders')
-    .select('id, order_data, deleted_at')
-    .is('restored_at', null)
-    .order('deleted_at', { ascending: false })
-    .limit(10);
-
-  if (archives?.length) {
-    sections.push(`<div class="recover-orders-card"><h3>Recently deleted — click Restore</h3>${archives.map(a => {
-      const o = a.order_data;
-      const when = new Date(a.deleted_at).toLocaleString('en-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      return `<div class="recover-row"><span>#${o.order_number || '—'} · ${o.customer_name || '—'} · ₪${o.total || 0} · ${when}</span><button class="btn btn-amber btn-sm" onclick="restoreDeletedOrder('${a.id}')">Restore</button></div>`;
-    }).join('')}</div>`);
-  }
-
-  const { data: links } = await sb.from('payment_links').select('*').eq('status', 'paid').order('created_at', { ascending: false }).limit(50);
-  const missing = [];
-  for (const link of links || []) {
-    if (link.order_id) {
-      const { data: order } = await sb.from('orders').select('id').eq('id', link.order_id).maybeSingle();
-      if (order) continue;
+  try {
+    const { data: archives, error: archErr } = await sb.from('deleted_orders')
+      .select('id, order_data, deleted_at')
+      .is('restored_at', null)
+      .order('deleted_at', { ascending: false })
+      .limit(10);
+    if (!archErr && archives?.length) {
+      sections.push(`<div class="recover-orders-card"><h3>Recently deleted — click Restore</h3>${archives.map(a => {
+        const o = a.order_data;
+        const when = new Date(a.deleted_at).toLocaleString('en-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        return `<div class="recover-row"><span>#${o.order_number || '—'} · ${o.customer_name || '—'} · ₪${o.total || 0} · ${when}</span><button class="btn btn-amber btn-sm" onclick="restoreDeletedOrder('${a.id}')">Restore</button></div>`;
+      }).join('')}</div>`);
     }
-    missing.push(link);
+  } catch (e) {
+    console.warn('deleted_orders:', e);
   }
+
+  const { data: links } = await sb.from('payment_links').select('*').order('created_at', { ascending: false }).limit(100);
+  const existingOrderIds = await fetchExistingOrderIds((links || []).map(l => l.order_id));
+  const missing = (links || []).filter(l => paymentLinkMissingOrder(l, existingOrderIds));
+
   if (missing.length) {
-    sections.push(`<div class="recover-orders-card"><h3>Paid payment links with no order — recreate from link data</h3>${missing.slice(0, 8).map(l => {
-      const items = (l.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
-      return `<div class="recover-row"><span>${l.customer_name || '—'} · ₪${l.total} · ${items || 'items'}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate order</button></div>`;
-    }).join('')}</div>`);
+    sections.push(`<div class="recover-orders-card"><h3>Payment links missing an order (${missing.length}) — click Recreate</h3>
+      <p style="font-size:.78rem;color:var(--text2);margin-bottom:10px">Includes links where the order was deleted, even if status still shows "pending".</p>
+      ${missing.slice(0, 12).map(l => {
+        const items = (l.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
+        const statusTag = `<span class="status-pill s-${l.status}">${l.status}</span>`;
+        return `<div class="recover-row"><span>${statusTag} ${l.customer_name || '—'} · ₪${l.total}${l.payme_sale_id ? ' · PayMe ✓' : ''} · ${items || 'items'}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate order</button></div>`;
+      }).join('')}</div>`);
   }
 
   if (sections.length) {
     panel.innerHTML = sections.join('');
-    panel.style.display = 'block';
   } else {
-    panel.innerHTML = '';
-    panel.style.display = 'none';
+    panel.innerHTML = `<div class="recover-orders-card">
+      <h3>Restore a deleted order</h3>
+      <p style="font-size:.82rem;color:var(--text2);line-height:1.55;margin-bottom:12px">No payment links with missing orders were found. The deleted order may have been a <strong>website checkout</strong> (not a payment link), or the payment link was deleted too.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="showTab('paylinks')">Check Payment Links tab</button>
+        <button class="btn btn-amber btn-sm" onclick="openManualOrderRestore()">Create order manually</button>
+      </div>
+    </div>`;
   }
+  panel.style.display = 'block';
 }
 
 async function loadOrders() {
@@ -1736,20 +1836,26 @@ async function loadPayLinks() {
   const { data } = await sb.from('payment_links').select('*').order('created_at',{ascending:false});
   const body = document.getElementById('payLinksBody');
   if (!data?.length) { body.innerHTML='<tr><td colspan="6" class="empty-state">No payment links yet.</td></tr>'; return; }
+  const existingOrderIds = await fetchExistingOrderIds(data.map(l => l.order_id));
   body.innerHTML = data.map(l=>{
     const items = (l.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
     const date = new Date(l.created_at).toLocaleDateString();
     const linkUrl = `${SITE_URL}/pay.html?code=${l.link_code}`;
     const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
     const waUrl = whatsAppHref(l.customer_phone, waMsg);
+    const missingOrder = paymentLinkMissingOrder(l, existingOrderIds);
+    const recreateBtn = missingOrder
+      ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
+      : '';
     return `<tr>
-      <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}</td>
+      <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
       <td class="cell-total" style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
       <td class="cell-status"><span class="status-pill s-${l.status}">${l.status}</span></td>
       <td class="cell-date hide-mobile">${date}</td>
       <td class="cell-actions">
         <div class="cell-actions-wrap">
+          ${recreateBtn}
           <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
           ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
           <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
