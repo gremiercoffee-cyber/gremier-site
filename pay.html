@@ -363,21 +363,123 @@
 
 
 
-  function renderPending() {
-
+  function renderPending(message) {
+    const sub = message || 'Please wait a moment while we verify your payment.';
     document.getElementById('payCard').innerHTML = `
-
       <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
-
       <div class="pay-status">⏳</div>
-
       <div class="pay-status-title">Confirming payment…</div>
-
-      <div class="pay-status-sub">Please wait a moment while we verify your payment.</div>`;
-
+      <div class="pay-status-sub" id="payPendingSub">${sub}</div>
+      <button class="pay-btn" style="margin-top:20px;background:transparent;border:1px solid #555;color:#c4c4c4" onclick="recheckPayment()">I paid — check again</button>`;
   }
 
+  function getReturnPayload() {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      order_id: p.get('order_id') || orderId || '',
+      link_code: linkCode || p.get('code') || '',
+      payme_status: p.get('payme_status') || p.get('payme_status_code') || '',
+      status: p.get('status') || '',
+      sale_status: p.get('sale_status') || p.get('payme_sale_status') || '',
+      payme_sale_id: p.get('payme_sale_id') || p.get('sale_id') || '',
+      payme_transaction_id: p.get('payme_transaction_id') || p.get('transaction_id') || '',
+    };
+  }
 
+  function isPaymentReturnUrl() {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('payment') === 'return') return true;
+    const paymeKeys = ['payme_status', 'payme_sale_status', 'sale_status', 'payme_sale_id', 'payme_transaction_id'];
+    return paymeKeys.some(k => p.has(k));
+  }
+
+  async function confirmPaymentReturn() {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(getReturnPayload()),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.order_id) orderId = data.order_id;
+    return data;
+  }
+
+  async function recheckPayment() {
+    renderPending('Checking payment status…');
+    const data = await confirmPaymentReturn();
+    if (data.paid) {
+      if (linkCode) {
+        const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+        if (link) paymentLink = link;
+      }
+      navPayPush('paid');
+      applyPayView('paid');
+    } else {
+      renderPending('Payment not confirmed yet. Wait a few seconds and tap check again, or contact us if you were charged.');
+    }
+  }
+
+  async function handleReturn() {
+
+    if (!isPaymentReturnUrl()) return false;
+
+    orderId = params.get('order_id');
+
+    if (linkCode) {
+      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      if (link) {
+        paymentLink = link;
+        if (!orderId && link.order_id) orderId = link.order_id;
+      }
+    }
+
+    navPayReplace('pending');
+    applyPayView('pending');
+
+    let paid = false;
+
+    try {
+      for (let i = 0; i < 20; i++) {
+        const data = await confirmPaymentReturn();
+        if (data.paid) { paid = true; break; }
+
+        const payload = getReturnPayload();
+        const paymeOk = ['success', 'completed', 'paid', '1'].includes(String(payload.payme_status || payload.status || payload.sale_status).toLowerCase());
+        if (paymeOk && i >= 1) {
+          await new Promise(r => setTimeout(r, 2000));
+          const retry = await confirmPaymentReturn();
+          if (retry.paid) { paid = true; break; }
+        }
+
+        const sub = document.getElementById('payPendingSub');
+        if (sub) sub.textContent = `Verifying… (${i + 1}/20)`;
+        await new Promise(r => setTimeout(r, 1500));
+      }
+
+      if (paid) {
+        if (linkCode && (!paymentLink || paymentLink.total == null)) {
+          const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+          if (link) paymentLink = link;
+        }
+        navPayPush('paid');
+        applyPayView('paid');
+      } else {
+        navPayPush('failed');
+        applyPayView('failed');
+      }
+    } catch (err) {
+      console.error('Payment return error:', err);
+      navPayPush('failed');
+      applyPayView('failed');
+    }
+
+    return true;
+
+  }
 
   function renderCheckout(link) {
 
@@ -470,71 +572,6 @@
       if (errEl) { errEl.textContent = e.message || 'Payment error'; errEl.style.display = 'block'; }
 
     }
-
-  }
-
-
-
-  async function handleReturn() {
-
-    if (params.get('payment') !== 'return') return false;
-
-    orderId = params.get('order_id');
-
-    if (linkCode) {
-      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
-      if (link) {
-        paymentLink = link;
-        if (!orderId && link.order_id) orderId = link.order_id;
-      }
-    }
-
-    navPayReplace('pending');
-    applyPayView('pending');
-
-    let paid = false;
-
-    try {
-      for (let i = 0; i < 24; i++) {
-        if (orderId) {
-          const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
-          if (order?.payment_status === 'paid') { paid = true; break; }
-        }
-        if (linkCode) {
-          const { data: link } = await sb.from('payment_links').select('status, order_id, total').eq('link_code', linkCode).maybeSingle();
-          if (link?.status === 'paid') {
-            paid = true;
-            if (link.order_id) orderId = link.order_id;
-            if (paymentLink) paymentLink = { ...paymentLink, ...link };
-            else paymentLink = link;
-            break;
-          }
-          if (!orderId && link?.order_id) orderId = link.order_id;
-        }
-        await new Promise(r => setTimeout(r, 1500));
-      }
-
-      const paymeStatus = String(params.get('payme_status') || params.get('status') || '').toLowerCase();
-      const paymeOk = paymeStatus === 'success' || paymeStatus === 'completed' || paymeStatus === 'paid';
-
-      if (paid || paymeOk) {
-        if (linkCode && (!paymentLink || paymentLink.total == null)) {
-          const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
-          if (link) paymentLink = link;
-        }
-        navPayPush('paid');
-        applyPayView('paid');
-      } else {
-        navPayPush('failed');
-        applyPayView('failed');
-      }
-    } catch (err) {
-      console.error('Payment return error:', err);
-      navPayPush('failed');
-      applyPayView('failed');
-    }
-
-    return true;
 
   }
 

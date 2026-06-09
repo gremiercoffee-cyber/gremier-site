@@ -2057,10 +2057,32 @@ function showCheckoutResult(kind) {
   openCheckoutUI('result', kind);
   navPush({ page: appPage, layer: 'checkout', checkoutView: 'result', resultKind: kind });
 }
+async function confirmPaymentReturnFromUrl(params, orderId) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      order_id: orderId || params.get('order_id') || '',
+      link_code: params.get('code') || '',
+      payme_status: params.get('payme_status') || params.get('payme_status_code') || '',
+      status: params.get('status') || '',
+      sale_status: params.get('sale_status') || params.get('payme_sale_status') || '',
+      payme_sale_id: params.get('payme_sale_id') || params.get('sale_id') || '',
+      payme_transaction_id: params.get('payme_transaction_id') || params.get('transaction_id') || '',
+    }),
+  });
+  return res.json().catch(() => ({}));
+}
 async function handlePaymentReturn() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('payment') !== 'return') return;
-  const orderId = params.get('order_id');
+  const isReturn = params.get('payment') === 'return'
+    || ['payme_status', 'payme_sale_status', 'sale_status', 'payme_sale_id'].some(k => params.has(k));
+  if (!isReturn) return;
+  const orderId = params.get('order_id') || sessionStorage.getItem('gremier_pending_order');
   appPage = 'home';
   history.replaceState({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind: 'pending', __app: 'gremier' }, '', window.location.pathname || '/');
   showPage('home', true);
@@ -2069,14 +2091,13 @@ async function handlePaymentReturn() {
   if (!orderId) return;
 
   let paid = false;
-  for (let i = 0; i < 8; i++) {
-    const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
-    if (order?.payment_status === 'paid') { paid = true; break; }
+  for (let i = 0; i < 20; i++) {
+    const data = await confirmPaymentReturnFromUrl(params, orderId);
+    if (data.paid) { paid = true; break; }
     await new Promise(r => setTimeout(r, 1500));
   }
 
-  const paymeStatus = String(params.get('payme_status') || '').toLowerCase();
-  const resultKind = (paid || paymeStatus === 'success') ? 'paid' : 'failed';
+  const resultKind = paid ? 'paid' : 'failed';
   if (resultKind === 'paid') {
     cart = [];
     updateCartCount();
