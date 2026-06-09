@@ -327,7 +327,7 @@
       <div class="nav-item" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
-      <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">🌐</span><span>Web Orders</span></div>
+      <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">📅</span><span>Schedule Deliveries</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery Zones</span></div>
       </div>
@@ -525,10 +525,10 @@
           </table></div>
         </div>
       </div>
-      <!-- WEB ORDERS TAB -->
+      <!-- SCHEDULE DELIVERIES TAB -->
       <div id="tab-weborders" class="tab-content" style="display:none">
         <div class="page-header">
-          <h1 class="page-title">Web Orders — Schedule Deliveries</h1>
+          <h1 class="page-title">Schedule Deliveries</h1>
           <p class="page-sub">Website orders waiting to be scheduled. Tap one to assign a delivery date.</p>
         </div>
         <div class="stat-grid" id="webOrderStats"></div>
@@ -580,7 +580,7 @@
       <span class="tab-icon">📈</span>Reports
     </button>
     <button class="tab-bar-btn" id="tbar-weborders" onclick="showTab('weborders')">
-      <span class="tab-icon">🌐</span>Web Orders
+      <span class="tab-icon">📅</span>Schedule
     </button>
     <button class="tab-bar-btn" id="tbar-siteimages" onclick="showTab('siteimages')">
       <span class="tab-icon">🖼️</span>Site Images
@@ -1130,10 +1130,19 @@ function openOrderDetail(id) {
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
 }
+async function deleteLinkedWebDelivery(order) {
+  if (!order) return;
+  const deletes = [];
+  if (order.id) deletes.push(sb.from('pending_website_deliveries').delete().eq('order_id', order.id));
+  if (order.order_number != null) deletes.push(sb.from('pending_website_deliveries').delete().eq('order_number', order.order_number));
+  const results = await Promise.allSettled(deletes);
+  results.forEach(r => { if (r.status === 'rejected') console.warn('pending_website_deliveries delete:', r.reason); });
+}
 async function deleteOrder(id) {
   const o = allOrders.find(x => x.id === id);
   const label = o ? `#${o.order_number} — ${o.customer_name}` : 'this order';
   if (!confirm(`Delete order ${label}?\n\nThis permanently removes it from stats and cannot be undone.`)) return;
+  await deleteLinkedWebDelivery(o);
   const { error } = await sb.from('orders').delete().eq('id', id);
   if (error) { showToast('Could not delete order'); console.error(error); return; }
   closeOrderModal();
@@ -1142,6 +1151,7 @@ async function deleteOrder(id) {
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
   if (document.getElementById('tab-members').style.display !== 'none') await loadMembers();
   if (document.getElementById('tab-reports').style.display !== 'none') await loadReports();
+  if (document.getElementById('tab-weborders').style.display !== 'none') await loadWebOrders();
 }
 async function updatePaymentStatus(id, status) {
   await sb.from('orders').update({ payment_status:status }).eq('id',id);
@@ -1663,10 +1673,30 @@ async function deleteZone(id) {
   closeZoneModal();
   loadZones();
 }
-// ══ WEB ORDERS ══
+// ══ SCHEDULE DELIVERIES ══
 async function loadWebOrders() {
-  const { data } = await sb.from('pending_website_deliveries').select('*').order('created_at',{ascending:false});
-  window._webOrders = data || [];
+  const [{ data: webRows }, { data: orderRows }] = await Promise.all([
+    sb.from('pending_website_deliveries').select('*').order('created_at', { ascending: false }),
+    sb.from('orders').select('id, order_number'),
+  ]);
+  const orderIds = new Set((orderRows || []).map(o => o.id));
+  const orderNumbers = new Set((orderRows || []).map(o => o.order_number));
+  const data = (webRows || []).filter(w => {
+    if (w.order_id) return orderIds.has(w.order_id);
+    if (w.order_number != null) return orderNumbers.has(w.order_number);
+    return true;
+  });
+  const orphaned = (webRows || []).filter(w => {
+    if (w.order_id) return !orderIds.has(w.order_id);
+    if (w.order_number != null) return !orderNumbers.has(w.order_number);
+    return false;
+  });
+  if (orphaned.length) {
+    Promise.allSettled(orphaned.map(w =>
+      sb.from('pending_website_deliveries').delete().eq('id', w.id)
+    )).then(() => console.log('Cleaned', orphaned.length, 'orphaned schedule entries'));
+  }
+  window._webOrders = data;
   const pending = (data||[]).filter(x=>x.status==='pending_schedule');
   const scheduled = (data||[]).filter(x=>x.status==='scheduled');
   document.getElementById('webOrderStats').innerHTML = `
@@ -1674,7 +1704,7 @@ async function loadWebOrders() {
     <div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value" style="color:#4caf72">${scheduled.length}</div></div>
     <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${(data||[]).length}</div></div>`;
   const body = document.getElementById('webOrdersBody');
-  if (!data?.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No web orders yet.</td></tr>'; return; }
+  if (!data.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No deliveries to schedule.</td></tr>'; return; }
   body.innerHTML = (data||[]).map(o=>{
     const itemsText = (o.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});

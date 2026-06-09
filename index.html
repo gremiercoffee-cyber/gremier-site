@@ -253,6 +253,23 @@
     .form-label { display:block; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:7px; }
     .form-input { width:100%; background:#f7f5f2; border:1px solid var(--border); color:#1a1a1a; padding:11px 14px; font-family:'DM Sans',sans-serif; font-size:.88rem; border-radius:2px; outline:none; transition:border-color .2s; }
     .form-input:focus { border-color:#1a1a1a; }
+    /* CITY AUTocomplete */
+    .city-ac { position:relative; }
+    .city-ac-input { width:100%; }
+    .city-ac-list {
+      position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:120;
+      max-height:220px; overflow-y:auto; margin:0; padding:4px 0; list-style:none;
+      background:#fff; border:1px solid var(--border); border-radius:3px;
+      box-shadow:0 8px 24px rgba(0,0,0,.12);
+    }
+    .city-ac-list li {
+      padding:10px 14px; font-size:.86rem; color:#1a1a1a; cursor:pointer;
+      border-bottom:1px solid #f0eeeb;
+    }
+    .city-ac-list li:last-child { border-bottom:none; }
+    .city-ac-list li:hover, .city-ac-list li.active { background:#f7f5f2; }
+    .city-ac-list li .city-sub { font-size:.72rem; color:#888; margin-top:2px; }
+    .city-ac-hint { font-size:.72rem; color:var(--text2); margin-top:6px; }
     .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     @media(max-width:500px){ .form-row{grid-template-columns:1fr;} }
     /* ORDER SUMMARY BOX */
@@ -937,10 +954,12 @@
         <div class="form-group"><label class="form-label" id="t-co-email">Email</label><input class="form-input" id="coEmail" type="email" placeholder="you@email.com"/></div>
       </div>
       <div class="form-group">
-        <label class="form-label" id="t-co-city">City / Zone</label>
-        <select class="form-input" id="coCity" onchange="updateDeliveryPrice()">
-          <option value="">Select your city...</option>
-        </select>
+        <label class="form-label" id="t-co-city">City</label>
+        <div class="city-ac" id="coCityWrap">
+          <input type="text" class="form-input city-ac-input" id="coCityInput" autocomplete="off" placeholder="Start typing your city…"/>
+          <ul class="city-ac-list" id="coCityList" style="display:none" role="listbox"></ul>
+        </div>
+        <div class="city-ac-hint" id="t-co-city-hint">Type to search — all Israeli cities &amp; towns</div>
       </div>
       <div class="form-group"><label class="form-label" id="t-co-addr">Street Address</label><input class="form-input" id="coAddr" type="text" placeholder="Street and apartment number"/></div>
       <div class="form-group">
@@ -1109,7 +1128,8 @@ const T = {
     'cart-title':'Your Cart','cart-total':'Total','cart-checkout':'Proceed to Checkout',
     'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure card payment.',
     'co-name':'Full Name','co-phone':'Phone','co-email':'Email',
-    'co-addr':'Delivery Address','co-notes':'Notes (optional)',
+    'co-city':'City','co-city-hint':'Type to search — all Israeli cities & towns','co-city-ph':'Start typing your city…',
+    'co-addr':'Street Address','co-notes':'Notes (optional)',
     'pay-title':'Secure Payment via PayMe',
     'pay-sub':'You\'ll be redirected to PayMe to pay securely by card. Your order is confirmed only after payment.',
     'co-submit':'Proceed to Payment','co-cancel':'Cancel',
@@ -1153,7 +1173,8 @@ const T = {
     'cart-title':'העגלה שלך','cart-total':'סה"כ','cart-checkout':'המשך לתשלום',
     'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח בכרטיס.',
     'co-name':'שם מלא','co-phone':'טלפון','co-email':'אימייל',
-    'co-addr':'כתובת למשלוח','co-notes':'הערות (אופציונלי)',
+    'co-city':'עיר','co-city-hint':'הקלידו לחיפוש — כל הישובים בישראל','co-city-ph':'הקלידו שם ישוב…',
+    'co-addr':'רחוב ומספר בית','co-notes':'הערות (אופציונלי)',
     'pay-title':'תשלום מאובטח דרך PayMe',
     'pay-sub':'תועברו לדף תשלום מאובטח של PayMe. ההזמנה תאושר רק לאחר התשלום.',
     'co-submit':'המשך לתשלום','co-cancel':'ביטול',
@@ -1198,7 +1219,7 @@ function applyTranslations() {
     't-mo-eye':'mo-eye','t-mo-title':'mo-title',
     't-cart-title':'cart-title','t-cart-total':'cart-total','t-cart-checkout':'cart-checkout',
     't-co-title':'co-title','t-co-sub':'co-sub','t-co-name':'co-name','t-co-phone':'co-phone',
-    't-co-email':'co-email','t-co-addr':'co-addr','t-co-notes':'co-notes',
+    't-co-email':'co-email','t-co-city':'co-city','t-co-city-hint':'co-city-hint','t-co-addr':'co-addr','t-co-notes':'co-notes',
     't-pay-title':'pay-title','t-pay-sub':'pay-sub',
     't-co-submit':'co-submit','t-co-cancel':'co-cancel',
     't-conf-title':'conf-title','t-conf-sub':'conf-sub','t-conf-btn':'conf-btn',
@@ -1217,6 +1238,11 @@ function applyTranslations() {
   if (waLabel) waLabel.textContent = tr('t-wa-label');
   const chatCta = document.getElementById('t-chat-cta');
   if (chatCta) chatCta.textContent = lang==='he' ? 'יודע מה אתה רוצה? בנה את ההזמנה שלך כאן →' : 'Know what you want? Build your order here →';
+  const cityInput = document.getElementById('coCityInput');
+  if (cityInput && document.activeElement !== cityInput) {
+    cityInput.placeholder = tr('co-city-ph');
+    if (selectedCheckoutCity) cityInput.value = lang === 'he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
+  }
   renderGrids();
 }
 function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); }
@@ -1727,6 +1753,10 @@ function openCheckout() {
   document.getElementById('checkoutFormView').style.display = 'block';
   document.getElementById('checkoutConfirmView').style.display = 'none';
   document.getElementById('checkoutOverlay').classList.add('open');
+  selectedCheckoutCity = null;
+  const cityInput = document.getElementById('coCityInput');
+  if (cityInput) cityInput.value = '';
+  hideCitySuggestions();
   setTimeout(()=>updateDeliveryPrice(), 50);
 }
 function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
@@ -1754,31 +1784,44 @@ async function submitOrder() {
   if (!name || !phone || !addr) {
     alert(lang==='he'?'אנא מלאו שם, טלפון וכתובת':'Please fill in name, phone and address'); return;
   }
+  if (!selectedCheckoutCity) {
+    alert(lang==='he'?'אנא בחרו ישוב מהרשימה':'Please select your city from the list'); return;
+  }
   const submitBtn = document.getElementById('t-co-submit');
   const prevLabel = submitBtn.textContent;
   submitBtn.disabled = true;
   submitBtn.textContent = lang==='he' ? 'מעביר לתשלום…' : 'Redirecting to payment…';
 
   try {
-    const deliveryFee = updateDeliveryPrice() || 0;
     const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+    const deliveryFee = updateDeliveryPrice() || 0;
     const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
     const total = cartTotal + deliveryFee - couponDiscount;
-    const cityId = document.getElementById('coCity')?.value;
-    const zone = deliveryZones.find(z=>z.id===cityId);
+    const pricing = resolveDeliveryPricing(selectedCheckoutCity);
     const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
+    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
     const orderData = {
       user_id: currentUser?.id || null,
       customer_name: name,
       customer_email: document.getElementById('coEmail').value.trim(),
       customer_phone: phone,
-      delivery_address: (zone ? (lang==='he'?zone.name_he:zone.name_en)+', ' : '') + addr,
+      delivery_address: cityLabel + ', ' + addr,
       notes: document.getElementById('coNotes').value.trim(),
       items: cart.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
       subtotal: cartTotal,
       discount: couponDiscount,
       total,
-      delivery_info: { delivery_type: shipType, delivery_fee: deliveryFee, zone_id: cityId, zone_name: zone?.name_en||'' },
+      delivery_info: {
+        delivery_type: shipType,
+        delivery_fee: deliveryFee,
+        city_en: selectedCheckoutCity.en,
+        city_he: selectedCheckoutCity.he,
+        city_code: selectedCheckoutCity.code || null,
+        region: selectedCheckoutCity.region,
+        zone_id: pricing.zone?.id || null,
+        zone_name: pricing.zone?.name_en || '',
+        pricing_source: pricing.source,
+      },
       status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
     };
     const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
@@ -1995,46 +2038,223 @@ document.addEventListener('click', function(e) {
   const card = e.target.closest('[data-product-id]');
   if (card) openProductDrawer(card.dataset.productId);
 });
-// ══ DELIVERY ZONES ══
+// ══ DELIVERY & CITY SEARCH ══
 let deliveryZones = [];
+let deliveryDefaults = { default_regular_price: 30, default_expedited_price: 50, expedited_surcharge: 20 };
+let israelCities = [];
+let selectedCheckoutCity = null;
+let cityAcActiveIndex = -1;
+const ISRAEL_CITIES_API = 'https://data.gov.il/api/3/action/datastore_search?resource_id=8f714b6f-c35c-4b40-a0e7-547b675eee0e&limit=1306';
+const ISRAEL_CITIES_CACHE_KEY = 'gremier_cities_v1';
+
+function normalizeCityName(s) {
+  return String(s || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function mapGovRegion(bureau, regionName) {
+  const b = String(bureau || '').trim();
+  const map = { 'ירושלים':'Jerusalem','תל אביב':'Center','חיפה':'North','עכו':'North','חדרה':'Center','נתניה':'Center','רמלה':'Center','אשקלון':'South','באר שבע':'South','אילת':'South','כרמיאל':'North','נצרת':'North','טבריה':'North','צפת':'North','עפולה':'North' };
+  if (map[b]) return map[b];
+  const r = String(regionName || '').trim();
+  if (/ירושלים|חברון|יהודה/.test(r)) return 'Jerusalem';
+  if (/באר שבע|אשקלון|אשדוד|אילת|נגב|ערד|שדרות|נתיבות/.test(r)) return 'South';
+  if (/חיפה|עכו|גליל|צפת|טבריה|נצרת|עפולה|קריות/.test(r)) return 'North';
+  if (/תל אביב|מרכז|רמלה|רחובות|פתח|ראשון|חולון|בת ים|מודיעין|לוד/.test(r)) return 'Center';
+  return 'Other';
+}
+
+function transformGovCities(records) {
+  const seen = new Set();
+  const list = [];
+  for (const rec of records || []) {
+    const he = String(rec.city_name_he || '').trim();
+    if (!he || seen.has(he)) continue;
+    seen.add(he);
+    let en = String(rec.city_name_en || '').trim();
+    if (!en || en.length <= 1) en = he;
+    list.push({ en, he, region: mapGovRegion(rec.PIBA_bureau_name, rec.region_name), code: rec.city_code });
+  }
+  list.sort((a, b) => a.he.localeCompare(b.he, 'he'));
+  return list;
+}
+
+async function loadIsraelCities() {
+  if (israelCities.length) return;
+  try {
+    const cached = sessionStorage.getItem(ISRAEL_CITIES_CACHE_KEY);
+    if (cached) { israelCities = JSON.parse(cached); return; }
+  } catch (_) {}
+  try {
+    const res = await fetch(ISRAEL_CITIES_API);
+    const raw = await res.json();
+    israelCities = transformGovCities(raw?.result?.records);
+    if (israelCities.length) sessionStorage.setItem(ISRAEL_CITIES_CACHE_KEY, JSON.stringify(israelCities));
+  } catch (e) {
+    console.warn('Israel cities API failed, using fallback list', e);
+    try {
+      const res = await fetch('israel-cities.json');
+      israelCities = await res.json();
+    } catch (_) { israelCities = []; }
+  }
+}
+
 async function loadDeliveryZones() {
   try {
-    const { data } = await sb.from('delivery_zones').select('*').order('name_en');
-    deliveryZones = data || [];
-  } catch(e) { deliveryZones = []; }
-  const sel = document.getElementById('coCity');
-  if (!sel || !deliveryZones.length) return;
-  const opts = deliveryZones.map(z =>
-    `<option value="${z.id}">${lang === 'he' ? z.name_he : z.name_en}</option>`
-  ).join('');
-  sel.innerHTML = `<option value="">${lang === 'he' ? 'בחר עיר...' : 'Select your city...'}</option>` + opts;
+    const [{ data: zones }, { data: settings }] = await Promise.all([
+      sb.from('delivery_zones').select('*').order('name_en'),
+      sb.from('delivery_settings').select('*').eq('id', 1).maybeSingle(),
+    ]);
+    deliveryZones = (zones || []).filter(z => z.is_active !== false);
+    if (settings) {
+      deliveryDefaults = {
+        default_regular_price: Number(settings.default_regular_price) || 30,
+        default_expedited_price: Number(settings.default_expedited_price) || 50,
+        expedited_surcharge: Number(settings.expedited_surcharge) || 20,
+      };
+    }
+  } catch (e) {
+    deliveryZones = [];
+  }
+  await loadIsraelCities();
+  initCityAutocomplete();
 }
+
+function findZoneForCity(city) {
+  if (!city) return null;
+  const cn = normalizeCityName(city.en);
+  const ch = city.he;
+  for (const z of deliveryZones) {
+    const zn = normalizeCityName(z.name_en);
+    if (zn === cn || z.name_he === ch) return z;
+    if (cn.includes(zn) || zn.includes(cn)) return z;
+  }
+  return null;
+}
+
+function resolveDeliveryPricing(city) {
+  const zone = findZoneForCity(city);
+  if (zone) return { zone, source: 'zone', regular: Number(zone.regular_price) || 0, expedited: Number(zone.expedited_price) || 0, freeAbove: zone.free_above ? Number(zone.free_above) : null };
+  return {
+    zone: null,
+    source: 'default',
+    regular: deliveryDefaults.default_regular_price,
+    expedited: deliveryDefaults.default_expedited_price,
+    freeAbove: null,
+  };
+}
+
+function filterIsraelCities(query) {
+  const q = normalizeCityName(query);
+  if (!q || q.length < 1) return [];
+  const qHe = query.trim();
+  const matches = israelCities.filter(c => {
+    return normalizeCityName(c.en).includes(q) || c.he.includes(qHe);
+  });
+  return matches.slice(0, 12);
+}
+
+function selectCheckoutCity(city) {
+  selectedCheckoutCity = city;
+  const input = document.getElementById('coCityInput');
+  if (input) input.value = lang === 'he' ? city.he : city.en;
+  hideCitySuggestions();
+  updateDeliveryPrice();
+}
+
+function hideCitySuggestions() {
+  const list = document.getElementById('coCityList');
+  if (list) list.style.display = 'none';
+  cityAcActiveIndex = -1;
+}
+
+function renderCitySuggestions(items) {
+  const list = document.getElementById('coCityList');
+  if (!list) return;
+  if (!items.length) { list.style.display = 'none'; return; }
+  list.innerHTML = items.map((c, i) => {
+    const label = lang === 'he' ? c.he : c.en;
+    const sub = lang === 'he' ? c.en : c.he;
+    return `<li role="option" data-idx="${i}" class="${i === cityAcActiveIndex ? 'active' : ''}">${label}<div class="city-sub">${sub}</div></li>`;
+  }).join('');
+  list.style.display = 'block';
+  list._items = items;
+  list.querySelectorAll('li').forEach(li => {
+    li.addEventListener('mousedown', e => {
+      e.preventDefault();
+      selectCheckoutCity(items[Number(li.dataset.idx)]);
+    });
+  });
+}
+
+function initCityAutocomplete() {
+  const input = document.getElementById('coCityInput');
+  const list = document.getElementById('coCityList');
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = '1';
+  input.placeholder = tr('co-city-ph');
+
+  input.addEventListener('input', () => {
+    selectedCheckoutCity = null;
+    const items = filterIsraelCities(input.value);
+    cityAcActiveIndex = -1;
+    renderCitySuggestions(items);
+    updateDeliveryPrice();
+  });
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim()) renderCitySuggestions(filterIsraelCities(input.value));
+  });
+
+  input.addEventListener('keydown', e => {
+    const items = list?._items || [];
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      cityAcActiveIndex = Math.min(cityAcActiveIndex + 1, items.length - 1);
+      renderCitySuggestions(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      cityAcActiveIndex = Math.max(cityAcActiveIndex - 1, 0);
+      renderCitySuggestions(items);
+    } else if (e.key === 'Enter' && cityAcActiveIndex >= 0) {
+      e.preventDefault();
+      selectCheckoutCity(items[cityAcActiveIndex]);
+    } else if (e.key === 'Escape') {
+      hideCitySuggestions();
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('coCityWrap')?.contains(e.target)) hideCitySuggestions();
+  });
+}
+
 function updateDeliveryPrice() {
-  const cityId = document.getElementById('coCity')?.value;
-  const zone = deliveryZones.find(z => z.id === cityId);
-  const isExpedited = document.getElementById('shipExpedited')?.checked;
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
   const feeRow = document.getElementById('deliveryFeeRow');
   const freeNote = document.getElementById('freeDeliveryNote');
-  if (!zone) {
+  const isExpedited = document.getElementById('shipExpedited')?.checked;
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  if (!selectedCheckoutCity) {
     if (feeRow) feeRow.style.display = 'none';
     if (freeNote) freeNote.style.display = 'none';
     document.getElementById('shipRegularPrice').textContent = '—';
     document.getElementById('shipExpeditedPrice').textContent = '—';
     return 0;
   }
-  const customFees = cart
-    .map(i => i.delivery_price)
-    .filter(v => v !== null && v !== undefined && !isNaN(v));
+
+  const pricing = resolveDeliveryPricing(selectedCheckoutCity);
+  const customFees = cart.map(i => i.delivery_price).filter(v => v !== null && v !== undefined && !isNaN(v));
   const hasProductFee = customFees.length > 0;
   const productFee = hasProductFee ? Math.max(...customFees) : null;
-  const isFree = !hasProductFee && zone.free_above && cartTotal >= zone.free_above;
-  const zoneRegular = isFree ? 0 : (zone.regular_price || 0);
-  const zoneExpedited = zone.expedited_price || 0;
+  const isFree = !hasProductFee && pricing.freeAbove && cartTotal >= pricing.freeAbove;
+  const zoneRegular = isFree ? 0 : pricing.regular;
+  const zoneExpedited = pricing.expedited;
   const regularFee = hasProductFee ? productFee : zoneRegular;
-  const expeditedSurcharge = Math.max(0, zoneExpedited - (zone.regular_price || 0));
+  const expeditedSurcharge = Math.max(0, zoneExpedited - pricing.regular);
   const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
   const fee = isExpedited ? expeditedFee : regularFee;
+
   document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : `₪${regularFee}`;
   document.getElementById('shipExpeditedPrice').textContent = `₪${expeditedFee}`;
   if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
