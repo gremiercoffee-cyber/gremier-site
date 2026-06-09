@@ -752,6 +752,41 @@ let allMembers = [];
 let memberFilter = { search:'', sort:'spent' };
 let editingImages = []; // array of Cloudinary URLs
 let plCartItems = [];
+
+/** wa.me digits: country code + number, no + or leading 0. */
+function whatsAppPhone(raw) {
+  if (!raw || !String(raw).trim()) return null;
+  let s = String(raw).trim().replace(/[\s\-().]/g, '');
+  if (!s) return null;
+  if (s.startsWith('+')) {
+    const digits = s.slice(1).replace(/\D/g, '');
+    return (digits.length >= 7 && digits.length <= 15) ? digits : null;
+  }
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return null;
+  const intl = [
+    ['972', 8, 9], ['1', 10, 10], ['44', 9, 10], ['49', 10, 11],
+    ['33', 9, 9], ['61', 9, 9], ['971', 8, 9],
+  ];
+  for (const [code, minLen, maxLen] of intl) {
+    if (digits.startsWith(code)) {
+      const rest = digits.slice(code.length);
+      if (rest.length >= minLen && rest.length <= maxLen && !rest.startsWith('0')) return digits;
+    }
+  }
+  if (digits.startsWith('0') && digits.length >= 9 && digits.length <= 10) return '972' + digits.slice(1);
+  if (digits.length === 10 && /^[2-9]/.test(digits)) return '1' + digits;
+  if (digits.length === 9 && /^5/.test(digits)) return '972' + digits;
+  if (digits.startsWith('07') && digits.length === 11) return '44' + digits.slice(1);
+  if (digits.length >= 10 && !digits.startsWith('0')) return digits;
+  return null;
+}
+function whatsAppHref(raw, encodedMessage) {
+  const phone = whatsAppPhone(raw);
+  if (!phone) return null;
+  return encodedMessage ? `https://wa.me/${phone}?text=${encodedMessage}` : `https://wa.me/${phone}`;
+}
+
 // ══ AUTH ══
 async function initAdmin() {
   const { data: { session } } = await sb.auth.getSession();
@@ -1241,57 +1276,30 @@ async function generatePayLink() {
   const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
 
-  const orderData = {
-    customer_name: customerName || 'Payment Link Customer',
-    customer_phone: customerPhone,
-    customer_email: null,
-    delivery_address: null,
-    items: plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
-    subtotal,
-    discount: discount > 0 ? discount : 0,
-    total,
-    status: 'awaiting_payment',
-    payment_status: 'unpaid',
-    payment_method: 'payme',
-    source: 'payment_link',
-    delivery_info: { payment_link_code: linkCode },
-    notes: document.getElementById('plDiscountNote').value.trim() || null,
-  };
-  const { data: order, error: orderErr } = await sb.from('orders').insert(orderData).select('id').single();
-  if (orderErr || !order?.id) {
-    showToast('Error creating order for link');
-    console.error(orderErr);
-    return;
-  }
-
+  const linkItems = plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty }));
   const linkData = {
     link_code: linkCode,
-    order_id: order.id,
     customer_name: customerName,
     customer_phone: customerPhone,
-    items: orderData.items,
+    items: linkItems,
     subtotal, discount: discount > 0 ? discount : 0,
     discount_note: document.getElementById('plDiscountNote').value.trim() || null,
     total, status: 'pending',
     created_by: adminUser?.id,
   };
-  let { error } = await sb.from('payment_links').insert(linkData);
-  if (error && String(error.message || '').includes('order_id')) {
-    delete linkData.order_id;
-    ({ error } = await sb.from('payment_links').insert(linkData));
-  }
+  const { error } = await sb.from('payment_links').insert(linkData);
   if (error) { showToast('Error creating link'); console.error(error); return; }
 
   const linkUrl = `${SITE_URL}/pay.html?code=${linkCode}`;
   const whatsappMsg = encodeURIComponent(`Hi! Here's your payment link for your Gremier Coffee order (₪${total}):\n${linkUrl}`);
-  const phone = (customerPhone || '').replace(/\D/g,'');
+  const waUrl = whatsAppHref(customerPhone, whatsappMsg);
   document.getElementById('plLinkResult').style.display = 'block';
   document.getElementById('plLinkResult').innerHTML = `
     <div class="link-result">
       <div class="link-url">${linkUrl}</div>
       <button class="copy-btn" onclick="copyLink('${linkUrl}')">Copy</button>
     </div>
-    ${phone ? `<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${whatsappMsg}" target="_blank" class="btn btn-green btn-full" style="margin-top:10px;text-decoration:none">📲 Send on WhatsApp</a>` : ''}
+    ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-green btn-full" style="margin-top:10px;text-decoration:none">📲 Send on WhatsApp</a>` : ''}
     <div style="font-size:.76rem;color:var(--text2);margin-top:8px;text-align:center">
       ${discount>0?`Discount: ₪${discount.toFixed(2)} — ${linkData.discount_note||''}`:''}<br/>
       💳 Customer pays via PayMe at this link
@@ -1303,7 +1311,7 @@ function copyLink(url) {
   navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
 }
 async function deletePayLink(id, orderId) {
-  if (!confirm('Delete this payment link? Unpaid orders linked to it will also be removed.')) return;
+  if (!confirm('Delete this payment link?')) return;
   if (orderId) {
     const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
     if (order && order.payment_status !== 'paid') {
@@ -1324,8 +1332,8 @@ async function loadPayLinks() {
     const items = (l.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
     const date = new Date(l.created_at).toLocaleDateString();
     const linkUrl = `${SITE_URL}/pay.html?code=${l.link_code}`;
-    const phone = (l.customer_phone||'').replace(/\D/g,'');
     const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
+    const waUrl = whatsAppHref(l.customer_phone, waMsg);
     return `<tr>
       <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
@@ -1335,7 +1343,7 @@ async function loadPayLinks() {
       <td class="cell-actions">
         <div class="cell-actions-wrap">
           <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
-          ${phone?`<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${waMsg}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
+          ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
           <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
         </div>
       </td>
@@ -1547,7 +1555,7 @@ function openMemberDetail(memberId) {
   const joined = m.joined ? new Date(m.joined).toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
   const lastDate = m.lastOrder ? new Date(m.lastOrder).toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
   const avgOrder = m.orderCount ? m.totalSpent / m.orderCount : 0;
-  const phoneWa = (m.phone || '').replace(/\D/g, '');
+  const memberWaUrl = whatsAppHref(m.phone !== '—' ? m.phone : '');
   const ordersHtml = m.orders.length
     ? m.orders.map(o => {
         const date = new Date(o.created_at).toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1570,7 +1578,7 @@ function openMemberDetail(memberId) {
     <div class="member-detail-grid">
       <div class="member-detail-item"><div class="form-label">Full Name</div><div class="member-detail-value">${m.name}</div></div>
       <div class="member-detail-item"><div class="form-label">Email</div><div class="member-detail-value">${m.email !== '—' ? `<a href="mailto:${m.email}" style="color:var(--cream)">${m.email}</a>` : '—'}</div></div>
-      <div class="member-detail-item"><div class="form-label">Phone</div><div class="member-detail-value">${m.phone !== '—' ? `<a href="tel:${m.phone}" style="color:var(--cream)">${m.phone}</a>` : '—'}${phoneWa ? ` · <a href="https://wa.me/972${phoneWa.replace(/^0/,'')}" target="_blank" style="color:#25d366;font-size:.82rem">WhatsApp</a>` : ''}</div></div>
+      <div class="member-detail-item"><div class="form-label">Phone</div><div class="member-detail-value">${m.phone !== '—' ? `<a href="tel:${m.phone}" style="color:var(--cream)">${m.phone}</a>` : '—'}${memberWaUrl ? ` · <a href="${memberWaUrl}" target="_blank" style="color:#25d366;font-size:.82rem">WhatsApp</a>` : ''}</div></div>
       <div class="member-detail-item"><div class="form-label">Default Address</div><div class="member-detail-value">${m.address}</div></div>
       <div class="member-detail-item"><div class="form-label">Loyalty Points</div><div class="member-detail-value">${m.points} pts${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">10% coupon ready</span>' : ''}</div></div>
       <div class="member-detail-item"><div class="form-label">Member Since</div><div class="member-detail-value">${joined}</div></div>
@@ -1753,12 +1761,12 @@ async function loadWebOrders() {
   body.innerHTML = (data||[]).map(o=>{
     const itemsText = (o.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
-    const phone = (o.customer_phone||'').replace(/\D/g,'');
     const waMsg = encodeURIComponent('Hi '+o.customer_name+'! Your Gremier Coffee order is confirmed.\n'+itemsText+'\nTotal: ₪'+o.order_total+'\nWe will be in touch about delivery.');
+    const waUrl = whatsAppHref(o.customer_phone, waMsg);
     return '<tr>'
       +'<td class="cell-num" style="color:var(--cream)">#'+(o.order_number||'—')+'</td>'
       +'<td class="cell-customer">'+o.customer_name+(o.customer_phone?'<br><small>'+o.customer_phone+'</small>':'')
-        +(phone?'<br><a href="https://wa.me/972'+phone.replace(/^0/,'')+'?text='+waMsg+'" target="_blank" style="font-size:.65rem;color:#25d366">WA</a>':'')
+        +(waUrl?'<br><a href="'+waUrl+'" target="_blank" style="font-size:.65rem;color:#25d366">WA</a>':'')
       +'</td>'
       +'<td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(o.delivery_address||'')+'">'+(o.delivery_address||'—')+'</td>'
       +'<td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+itemsText+'">'+itemsText+'</td>'
