@@ -199,8 +199,15 @@
     .spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--cream); border-radius:50%; animation:spin .7s linear infinite; }
     @keyframes spin { to{transform:rotate(360deg)} }
     /* TOAST */
-    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--silver); border:1px solid var(--silver); color:#121212; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; transition:transform .3s; white-space:nowrap; font-weight:500; }
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--silver); border:1px solid var(--silver); color:#121212; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; transition:transform .3s; font-weight:500; max-width:min(92vw,520px); }
     .toast.show { transform:translateX(-50%) translateY(0); }
+    .toast-inner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; }
+    .toast-undo-btn { background:#121212; color:#efefef; border:none; padding:5px 14px; border-radius:3px; cursor:pointer; font-weight:600; font-size:.8rem; font-family:'DM Sans',sans-serif; }
+    .toast-undo-btn:hover { background:#333; }
+    .recover-orders-card { background:var(--bg3); border:1px solid var(--amber,#c8873a); border-radius:6px; padding:14px 18px; margin-bottom:16px; }
+    .recover-orders-card h3 { font-size:.85rem; color:var(--cream); margin-bottom:8px; font-weight:500; }
+    .recover-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.82rem; flex-wrap:wrap; }
+    .recover-row:last-child { border-bottom:none; }
     /* RESPONSIVE */
     html, body { max-width:100vw; overflow-x:hidden; }
     @media(max-width:768px){
@@ -438,6 +445,7 @@
           </select>
           <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
         </div>
+        <div id="recoverOrdersPanel" style="display:none"></div>
         <div class="stat-grid" id="orderStats"></div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
@@ -1302,6 +1310,173 @@ async function toggleProductActive(id, current) {
   await loadAllProducts();
 }
 // ══ ORDERS ══
+let lastDeletedArchiveId = null;
+let undoDeleteTimer = null;
+
+function orderSnapshot(order) {
+  const copy = { ...order };
+  if (copy.items && typeof copy.items === 'object') copy.items = JSON.parse(JSON.stringify(copy.items));
+  if (copy.delivery_info && typeof copy.delivery_info === 'object') copy.delivery_info = JSON.parse(JSON.stringify(copy.delivery_info));
+  return copy;
+}
+
+async function archiveDeletedOrder(order) {
+  const { data, error } = await sb.from('deleted_orders').insert({
+    original_order_id: order.id,
+    order_data: orderSnapshot(order),
+  }).select('id').single();
+  if (error) {
+    console.warn('deleted_orders archive failed (run migration?):', error);
+    return null;
+  }
+  return data.id;
+}
+
+async function restoreDeletedOrder(archiveId) {
+  const { data: arch, error: fetchErr } = await sb.from('deleted_orders')
+    .select('*')
+    .eq('id', archiveId)
+    .is('restored_at', null)
+    .maybeSingle();
+  if (fetchErr || !arch) {
+    showToast('Could not find deleted order to restore');
+    return false;
+  }
+  const o = arch.order_data;
+  const { data: existing } = await sb.from('orders').select('id').eq('id', o.id).maybeSingle();
+  if (existing) {
+    await sb.from('deleted_orders').update({ restored_at: new Date().toISOString() }).eq('id', archiveId);
+    showToast(`Order #${o.order_number} is already in the system`);
+    return true;
+  }
+  const { error: insertErr } = await sb.from('orders').insert(o);
+  if (insertErr) {
+    showToast('Restore failed — ' + (insertErr.message || 'check console'));
+    console.error(insertErr);
+    return false;
+  }
+  await sb.from('deleted_orders').update({ restored_at: new Date().toISOString() }).eq('id', archiveId);
+  const linkCode = o.delivery_info?.payment_link_code;
+  if (linkCode) {
+    await sb.from('payment_links').update({ order_id: o.id }).eq('link_code', linkCode);
+  }
+  showToast(`Order #${o.order_number} restored ✓`);
+  await loadDashboard();
+  if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
+  return true;
+}
+
+async function undoDeleteOrder() {
+  if (!lastDeletedArchiveId) return;
+  const archiveId = lastDeletedArchiveId;
+  lastDeletedArchiveId = null;
+  clearTimeout(undoDeleteTimer);
+  const t = document.getElementById('toast');
+  t.classList.remove('show');
+  await restoreDeletedOrder(archiveId);
+  await loadRecoverableOrdersUI();
+}
+
+function showUndoToast(msg, archiveId) {
+  lastDeletedArchiveId = archiveId;
+  clearTimeout(undoDeleteTimer);
+  const t = document.getElementById('toast');
+  t.innerHTML = `<span class="toast-inner"><span>${msg}</span><button type="button" class="toast-undo-btn" onclick="undoDeleteOrder()">Undo</button></span>`;
+  t.classList.add('show');
+  undoDeleteTimer = setTimeout(() => {
+    t.classList.remove('show');
+    lastDeletedArchiveId = null;
+    setTimeout(() => { t.textContent = ''; }, 300);
+  }, 30000);
+}
+
+async function recreateOrderFromPaymentLink(linkCode) {
+  const { data: link, error } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+  if (error || !link) { showToast('Payment link not found'); return; }
+  if (link.status !== 'paid') { showToast('This link is not marked as paid'); return; }
+  if (link.order_id) {
+    const { data: existing } = await sb.from('orders').select('id, order_number').eq('id', link.order_id).maybeSingle();
+    if (existing) {
+      showToast(`Order #${existing.order_number} already exists`);
+      return;
+    }
+  }
+  const orderData = {
+    customer_name: link.customer_name || 'Payment Link Customer',
+    customer_phone: link.customer_phone || null,
+    customer_email: null,
+    delivery_address: null,
+    items: link.items || [],
+    subtotal: link.subtotal,
+    discount: link.discount || 0,
+    total: link.total,
+    status: 'confirmed',
+    payment_status: 'paid',
+    payment_method: 'payme',
+    source: 'payment_link',
+    delivery_info: {
+      payment_link_code: link.link_code,
+      payme_sale_id: link.payme_sale_id || null,
+      restored_from_payment_link: true,
+    },
+    notes: link.discount_note || null,
+  };
+  const { data: inserted, error: insertErr } = await sb.from('orders').insert(orderData).select('id, order_number').single();
+  if (insertErr) {
+    showToast('Could not recreate order — ' + (insertErr.message || 'check console'));
+    console.error(insertErr);
+    return;
+  }
+  await sb.from('payment_links').update({ order_id: inserted.id }).eq('link_code', link.link_code);
+  showToast(`Order #${inserted.order_number} recreated from payment link ✓`);
+  await loadDashboard();
+  await loadOrders();
+}
+
+async function loadRecoverableOrdersUI() {
+  const panel = document.getElementById('recoverOrdersPanel');
+  if (!panel) return;
+  const sections = [];
+
+  const { data: archives } = await sb.from('deleted_orders')
+    .select('id, order_data, deleted_at')
+    .is('restored_at', null)
+    .order('deleted_at', { ascending: false })
+    .limit(10);
+
+  if (archives?.length) {
+    sections.push(`<div class="recover-orders-card"><h3>Recently deleted — click Restore</h3>${archives.map(a => {
+      const o = a.order_data;
+      const when = new Date(a.deleted_at).toLocaleString('en-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return `<div class="recover-row"><span>#${o.order_number || '—'} · ${o.customer_name || '—'} · ₪${o.total || 0} · ${when}</span><button class="btn btn-amber btn-sm" onclick="restoreDeletedOrder('${a.id}')">Restore</button></div>`;
+    }).join('')}</div>`);
+  }
+
+  const { data: links } = await sb.from('payment_links').select('*').eq('status', 'paid').order('created_at', { ascending: false }).limit(50);
+  const missing = [];
+  for (const link of links || []) {
+    if (link.order_id) {
+      const { data: order } = await sb.from('orders').select('id').eq('id', link.order_id).maybeSingle();
+      if (order) continue;
+    }
+    missing.push(link);
+  }
+  if (missing.length) {
+    sections.push(`<div class="recover-orders-card"><h3>Paid payment links with no order — recreate from link data</h3>${missing.slice(0, 8).map(l => {
+      const items = (l.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
+      return `<div class="recover-row"><span>${l.customer_name || '—'} · ₪${l.total} · ${items || 'items'}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate order</button></div>`;
+    }).join('')}</div>`);
+  }
+
+  if (sections.length) {
+    panel.innerHTML = sections.join('');
+    panel.style.display = 'block';
+  } else {
+    panel.innerHTML = '';
+    panel.style.display = 'none';
+  }
+}
+
 async function loadOrders() {
   const period = document.getElementById('orderPeriod').value;
   const status = document.getElementById('orderStatus').value;
@@ -1316,6 +1491,7 @@ async function loadOrders() {
   allOrders = data || [];
   renderOrdersTable(allOrders);
   renderOrderStats(allOrders);
+  await loadRecoverableOrdersUI();
 }
 function filterOrders() { loadOrders(); }
 function renderOrderStats(orders) {
@@ -1404,14 +1580,18 @@ async function deleteLinkedWebDelivery(order) {
 async function deleteOrder(id) {
   const o = allOrders.find(x => x.id === id);
   const label = o ? `#${o.order_number} — ${o.customer_name}` : 'this order';
-  if (!confirm(`Delete order ${label}?\n\nThis permanently removes it from stats and cannot be undone.`)) return;
+  if (!confirm(`Delete order ${label}?\n\nYou can undo within 30 seconds after deleting.`)) return;
+  let archiveId = null;
+  if (o) archiveId = await archiveDeletedOrder(o);
   await deleteLinkedWebDelivery(o);
   const { error } = await sb.from('orders').delete().eq('id', id);
   if (error) { showToast('Could not delete order'); console.error(error); return; }
   closeOrderModal();
-  showToast('Order deleted ✓');
+  if (archiveId) showUndoToast('Order deleted —', archiveId);
+  else showToast('Order deleted ✓ (archive unavailable — run deleted_orders migration to enable undo)');
   await loadDashboard();
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
+  else await loadRecoverableOrdersUI();
   if (document.getElementById('tab-members').style.display !== 'none') await loadMembers();
   if (document.getElementById('tab-reports').style.display !== 'none') await loadReports();
   if (document.getElementById('tab-weborders').style.display !== 'none') await loadWebOrders();
@@ -1845,6 +2025,8 @@ function downloadCSV(rows, filename) {
   a.download = filename; a.click();
 }
 function showToast(msg) {
+  clearTimeout(undoDeleteTimer);
+  lastDeletedArchiveId = null;
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2400);
