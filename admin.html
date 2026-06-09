@@ -104,6 +104,13 @@
     select.form-input { cursor:pointer; }
     .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     .form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+    .variation-group-card { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:14px 16px; margin-bottom:12px; }
+    .variation-group-head { display:flex; gap:10px; align-items:flex-end; margin-bottom:12px; }
+    .variation-group-head .form-group { flex:1; margin-bottom:0; }
+    .variation-option-row { display:grid; grid-template-columns:1fr 110px 32px; gap:8px; align-items:center; margin-bottom:8px; }
+    .variation-option-row .form-input { margin-bottom:0; }
+    .variation-opt-remove { background:none; border:1px solid var(--border); color:var(--text2); width:32px; height:36px; border-radius:3px; cursor:pointer; font-size:1rem; line-height:1; }
+    .variation-opt-remove:hover { border-color:var(--red); color:var(--red); }
     .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); }
     .toggle-label { font-size:.85rem; color:var(--cream2); }
     .toggle { position:relative; width:40px; height:22px; }
@@ -722,8 +729,9 @@
     </div>
     <div class="form-group">
       <label class="form-label">Variations (optional)</label>
-      <input class="form-input" id="pVariations" placeholder='e.g. Size: 500ml, 1L | Flavor: Classic, Colombia'/>
-      <small style="color:var(--text2);font-size:.72rem;display:block;margin-top:4px">Format: Name: Option1, Option2 | Name2: Option1, Option2</small>
+      <small style="color:var(--text2);font-size:.72rem;display:block;margin-bottom:10px">Add a variation name (e.g. Size), then one row per option. Optional price overrides the base price when selected.</small>
+      <div id="variationGroupsEditor"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addVariationGroup()" style="margin-top:4px">+ Add variation group</button>
     </div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-amber" onclick="saveProduct()" id="saveProductBtn">Save Product</button>
@@ -982,6 +990,99 @@ function buildGuestPricingVariation() {
   if (!options.length) return null;
   return { name:'Number of Guests', type:'guest_count', options };
 }
+function isSystemVariation(v) {
+  return v && (v.type === 'guest_count' || v.type === 'delivery_price');
+}
+function isChoiceVariation(v) {
+  return v && !isSystemVariation(v) && v.name && Array.isArray(v.options) && v.options.length;
+}
+function normalizeVariationOption(o) {
+  if (typeof o === 'string') return { label: o, price: '' };
+  return { label: o?.label || '', price: o?.price ?? '' };
+}
+function renderVariationGroupsEditor(groups) {
+  const el = document.getElementById('variationGroupsEditor');
+  if (!el) return;
+  if (!groups.length) { el.innerHTML = ''; return; }
+  el.innerHTML = groups.map((g, gi) => {
+    const opts = (g.options && g.options.length) ? g.options : [{ label: '', price: '' }];
+    return `<div class="variation-group-card" data-group="${gi}">
+      <div class="variation-group-head">
+        <div class="form-group">
+          <label class="form-label">Variation name</label>
+          <input class="form-input variation-group-name" value="${escAttr(g.name || '')}" placeholder="e.g. Size, Flavor"/>
+        </div>
+        <button type="button" class="variation-opt-remove" onclick="removeVariationGroup(${gi})" title="Remove group">×</button>
+      </div>
+      <div class="variation-options-list">
+        ${opts.map((o, oi) => `<div class="variation-option-row">
+          <input class="form-input variation-opt-label" value="${escAttr(o.label || '')}" placeholder="Option label (e.g. 500ml)"/>
+          <input class="form-input variation-opt-price" type="number" min="0" step="1" value="${o.price !== '' && o.price != null ? o.price : ''}" placeholder="₪ opt."/>
+          <button type="button" class="variation-opt-remove" onclick="removeVariationOption(${gi},${oi})" title="Remove option">×</button>
+        </div>`).join('')}
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addVariationOption(${gi})">+ Add option</button>
+    </div>`;
+  }).join('');
+}
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+function collectVariationGroupsFromEditor() {
+  const cards = document.querySelectorAll('#variationGroupsEditor .variation-group-card');
+  return Array.from(cards).map(card => ({
+    name: card.querySelector('.variation-group-name')?.value || '',
+    options: Array.from(card.querySelectorAll('.variation-option-row')).map(row => ({
+      label: row.querySelector('.variation-opt-label')?.value || '',
+      price: row.querySelector('.variation-opt-price')?.value ?? '',
+    })),
+  }));
+}
+function addVariationGroup() {
+  const groups = collectVariationGroupsFromEditor();
+  groups.push({ name: '', options: [{ label: '', price: '' }] });
+  renderVariationGroupsEditor(groups);
+}
+function removeVariationGroup(gi) {
+  const groups = collectVariationGroupsFromEditor();
+  groups.splice(gi, 1);
+  renderVariationGroupsEditor(groups);
+}
+function addVariationOption(gi) {
+  const groups = collectVariationGroupsFromEditor();
+  if (!groups[gi]) return;
+  groups[gi].options.push({ label: '', price: '' });
+  renderVariationGroupsEditor(groups);
+}
+function removeVariationOption(gi, oi) {
+  const groups = collectVariationGroupsFromEditor();
+  if (!groups[gi]) return;
+  groups[gi].options.splice(oi, 1);
+  if (!groups[gi].options.length) groups[gi].options.push({ label: '', price: '' });
+  renderVariationGroupsEditor(groups);
+}
+function loadVariationGroupsFromProduct(variations) {
+  return (variations || []).filter(isChoiceVariation).map(v => ({
+    name: v.name,
+    options: v.options.map(normalizeVariationOption),
+  }));
+}
+function collectChoiceVariationsForSave() {
+  return collectVariationGroupsFromEditor()
+    .filter(g => g.name.trim() && g.options.some(o => o.label.trim()))
+    .map(g => ({
+      name: g.name.trim(),
+      type: 'choice',
+      options: g.options
+        .filter(o => o.label.trim())
+        .map(o => {
+          const opt = { label: o.label.trim() };
+          const price = parseFloat(o.price);
+          if (!isNaN(price) && price > 0) opt.price = price;
+          return opt;
+        }),
+    }));
+}
 function readDeliveryPriceInput() {
   const v = document.getElementById('pDeliveryPrice').value.trim();
   if (v === '') return null;
@@ -1001,7 +1102,7 @@ function normalizeProduct(p) {
   return { ...p, delivery_price: getProductDeliveryPrice(p) };
 }
 function buildProductVariations() {
-  const base = parseVariations(document.getElementById('pVariations').value);
+  const base = collectChoiceVariationsForSave();
   const gp = buildGuestPricingVariation();
   let vars = gp ? [...base, gp] : base;
   vars = vars.filter(v => v.type !== 'delivery_price');
@@ -1031,18 +1132,14 @@ function openProductModal(productId) {
     document.getElementById('pActive').checked = p.is_active;
     document.getElementById('pSubscription').checked = p.is_subscription;
     document.getElementById('pCoffeeBar').checked = !!p.is_coffee_bar;
-    const nonGuestVars = (p.variations||[]).filter(v=>v.type!=='guest_count' && v.type!=='delivery_price');
-    if (nonGuestVars.length) {
-      document.getElementById('pVariations').value = nonGuestVars.map(v=>`${v.name}: ${v.options.join(', ')}`).join(' | ');
-    } else {
-      document.getElementById('pVariations').value = '';
-    }
+    renderVariationGroupsEditor(loadVariationGroupsFromProduct(p.variations));
     loadGuestPricing(p.variations);
     onCategoryChange(p.category || 'bottles');
     editingImages = [...(p.images || [])];
     renderImgPreviews();
   } else {
-    ['pNameEn','pNameHe','pDescEn','pDescHe','pPrice','pOrigPrice','pDeliveryPrice','pBadge','pVariations'].forEach(id=>document.getElementById(id).value='');
+    ['pNameEn','pNameHe','pDescEn','pDescHe','pPrice','pOrigPrice','pDeliveryPrice','pBadge'].forEach(id=>document.getElementById(id).value='');
+    renderVariationGroupsEditor([]);
     [25,50,75,100,125].forEach(t=>document.getElementById('gp'+t).value='');
     document.getElementById('pCategory').value='bottles';
     document.getElementById('pBadgeType').value='';
@@ -1083,14 +1180,6 @@ async function uploadToCloudinary(file) {
     const data = await res.json();
     return data.secure_url;
   } catch(e) { showToast('Image upload failed'); return null; }
-}
-function parseVariations(str) {
-  if (!str.trim()) return [];
-  return str.split('|').map(part=>{
-    const [name, opts] = part.split(':');
-    if (!name || !opts) return null;
-    return { name: name.trim(), options: opts.split(',').map(o=>o.trim()).filter(Boolean) };
-  }).filter(Boolean);
 }
 async function saveProduct() {
   const id = document.getElementById('editProductId').value;

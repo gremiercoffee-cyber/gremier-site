@@ -848,6 +848,7 @@
     <div class="pd-price" id="pdPrice"></div>
     <div class="pd-desc" id="pdDesc"></div>
     <ul class="pd-features" id="pdFeatures" style="display:none"></ul>
+    <div id="pdVariationsSection" style="display:none"></div>
     <!-- Guest count dropdown — only shown for coffeebars products -->
     <div id="pdGuestSection" style="display:none;margin-bottom:16px">
       <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px" id="pdGuestLabel">Number of Guests</label>
@@ -1484,6 +1485,76 @@ let pdQty = 1;
 let pdActiveImg = 0;
 let pdScrollY = 0;
 let pdSelectedPrice = null;
+let pdSelectedVariations = {};
+const pdSelectStyle = "width:100%;background:var(--bg3);border:1px solid var(--border);color:#1a1a1a;padding:10px 13px;font-family:'DM Sans',sans-serif;font-size:.87rem;border-radius:3px;outline:none";
+function isChoiceVariation(v) {
+  return v && v.type !== 'guest_count' && v.type !== 'delivery_price' && v.name && Array.isArray(v.options) && v.options.length;
+}
+function getChoiceVariations(p) {
+  return (p?.variations || []).filter(isChoiceVariation);
+}
+function normalizeVariationOption(o) {
+  if (typeof o === 'string') return { label: o, price: null };
+  return { label: o?.label || String(o), price: o?.price != null ? parseFloat(o.price) : null };
+}
+function pdGetVariationPrice(p) {
+  const base = parseFloat(p.price) || 0;
+  for (const v of Object.values(pdSelectedVariations)) {
+    if (v.price != null && !isNaN(v.price)) return v.price;
+  }
+  return base;
+}
+function pdGetVariationSuffix() {
+  const labels = Object.values(pdSelectedVariations).map(v => v.label).filter(Boolean);
+  return labels.length ? ' · ' + labels.join(' · ') : '';
+}
+function pdOnVariationChange() {
+  pdSelectedVariations = {};
+  document.querySelectorAll('#pdVariationsSection select[data-variation]').forEach(sel => {
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt) return;
+    const priceRaw = opt.dataset.price;
+    pdSelectedVariations[sel.dataset.variation] = {
+      label: opt.dataset.label || opt.textContent.split('—')[0].trim(),
+      price: priceRaw !== '' && priceRaw != null ? parseFloat(priceRaw) : null,
+    };
+  });
+  if (pdCurrentProduct && !isCoffeeBarProduct(pdCurrentProduct)) {
+    const price = pdGetVariationPrice(pdCurrentProduct);
+    const p = pdCurrentProduct;
+    document.getElementById('pdPrice').innerHTML = p.original_price
+      ? `<span class="orig">₪${p.original_price}</span>₪${price}`
+      : `₪${price}`;
+  }
+}
+function renderPdVariationDropdowns(p) {
+  const section = document.getElementById('pdVariationsSection');
+  const groups = getChoiceVariations(p);
+  pdSelectedVariations = {};
+  if (!groups.length) {
+    section.innerHTML = '';
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  section.innerHTML = groups.map(g => {
+    const opts = g.options.map(normalizeVariationOption).filter(o => o.label);
+    if (!opts.length) return '';
+    const optionsHtml = opts.map(o => {
+      const priceLabel = o.price != null && !isNaN(o.price) ? ` — ₪${o.price}` : '';
+      const priceAttr = o.price != null && !isNaN(o.price) ? o.price : '';
+      return `<option data-label="${escHtml(o.label)}" data-price="${priceAttr}">${escHtml(o.label)}${priceLabel}</option>`;
+    }).join('');
+    return `<div style="margin-bottom:14px">
+      <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px">${escHtml(g.name)}</label>
+      <select data-variation="${escHtml(g.name)}" style="${pdSelectStyle}" onchange="pdOnVariationChange()">${optionsHtml}</select>
+    </div>`;
+  }).join('');
+  pdOnVariationChange();
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
 function pdOnGuestChange(select) {
   pdSelectedPrice = parseFloat(select.value);
   const label = select.options[select.selectedIndex]?.text.split('—')[0]?.trim() || '';
@@ -1536,6 +1607,8 @@ function openProductDrawerUI(productId) {
     featList.style.display = 'none';
   }
   pdSelectedPrice = null;
+  pdSelectedVariations = {};
+  renderPdVariationDropdowns(p);
   const guestSection = document.getElementById('pdGuestSection');
   const guestSelect = document.getElementById('pdGuestSelect');
   const guestTierVar = (p.variations || []).find(v => v.type === 'guest_count');
@@ -1624,7 +1697,24 @@ function pdAddToCart() {
     openCartUI();
     navReplace({ page: appPage, layer: 'cart' });
   } else {
-    for (let i = 0; i < pdQty; i++) addToCart(pdCurrentProduct.id);
+    const p = pdCurrentProduct;
+    const suffix = pdGetVariationSuffix();
+    const price = pdGetVariationPrice(p);
+    const cartId = suffix ? p.id + '_' + Object.values(pdSelectedVariations).map(v => v.label).join('_') : p.id;
+    const existing = cart.find(x => x.id === cartId);
+    if (existing) existing.qty += pdQty;
+    else cart.push({
+      id: cartId,
+      name_en: p.name_en + suffix,
+      name_he: (p.name_he || p.name_en) + suffix,
+      price,
+      images: p.images,
+      category: p.category,
+      delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,
+      qty: pdQty,
+    });
+    updateCartCount();
+    showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
     closeProductDrawer(true);
     openCartUI();
     navReplace({ page: appPage, layer: 'cart' });
@@ -2262,7 +2352,12 @@ document.addEventListener('click', function(e) {
   if (addBtn) {
     e.preventDefault();
     e.stopPropagation();
-    addToCart(addBtn.dataset.id);
+    const p = products.find(x => String(x.id) === String(addBtn.dataset.id));
+    if (p && getChoiceVariations(p).length) {
+      openProductDrawer(addBtn.dataset.id);
+    } else {
+      addToCart(addBtn.dataset.id);
+    }
     return;
   }
   const card = e.target.closest('.product-card[data-product-id]');
