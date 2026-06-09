@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pay — Gremier Coffee Co.</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="icon" type="image/png" href="logo.png"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh; background: #141414; color: #efefef;
+      font-family: 'DM Sans', sans-serif; font-weight: 300;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .pay-card {
+      background: #252525; border: 1px solid #454545; border-radius: 8px;
+      width: 100%; max-width: 440px; padding: 36px 32px; text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,.35);
+    }
+    .pay-logo { width: 88px; height: 88px; object-fit: contain; margin: 0 auto 16px; display: block; }
+    .pay-brand { font-family: 'Playfair Display', serif; font-size: 1.2rem; margin-bottom: 4px; }
+    .pay-sub { font-size: .78rem; color: #9a9a9a; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 28px; }
+    .pay-customer { font-size: .9rem; color: #c4c4c4; margin-bottom: 20px; }
+    .pay-items { text-align: left; margin-bottom: 20px; border-top: 1px solid #454545; border-bottom: 1px solid #454545; padding: 12px 0; }
+    .pay-line { display: flex; justify-content: space-between; gap: 12px; font-size: .85rem; padding: 6px 0; color: #c4c4c4; }
+    .pay-line span:last-child { color: #efefef; white-space: nowrap; }
+    .pay-discount { color: #4caf72; }
+    .pay-total { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 0 24px; }
+    .pay-total-label { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: #9a9a9a; }
+    .pay-total-amt { font-family: 'Playfair Display', serif; font-size: 2rem; color: #efefef; }
+    .pay-btn {
+      width: 100%; padding: 14px; border: none; border-radius: 4px; cursor: pointer;
+      background: #d0d0d0; color: #121212; font-family: 'DM Sans', sans-serif;
+      font-size: .88rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+      transition: background .2s;
+    }
+    .pay-btn:hover:not(:disabled) { background: #efefef; }
+    .pay-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .pay-note { font-size: .74rem; color: #9a9a9a; margin-top: 14px; line-height: 1.5; }
+    .pay-status { font-size: 2.4rem; margin-bottom: 12px; }
+    .pay-status-title { font-family: 'Playfair Display', serif; font-size: 1.4rem; margin-bottom: 8px; }
+    .pay-status-sub { font-size: .88rem; color: #9a9a9a; line-height: 1.55; }
+    .pay-error { color: #e57368; font-size: .88rem; margin-top: 16px; }
+    .spinner-wrap { padding: 40px 0; color: #9a9a9a; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <div class="pay-card" id="payCard">
+    <div class="spinner-wrap" id="payLoading">Loading payment link…</div>
+  </div>
+<script>
+  const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const params = new URLSearchParams(window.location.search);
+  const linkCode = params.get('code');
+  let orderId = null;
+  let paymentLink = null;
+
+  async function callCreatePayment(id) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ order_id: id, language: 'en' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.sale_url) {
+      throw new Error(data.error || 'Could not start PayMe payment');
+    }
+    return data.sale_url;
+  }
+
+  async function resolveOrderId(link) {
+    if (link.order_id) return link.order_id;
+    const { data: orders } = await sb.from('orders')
+      .select('id, payment_status, delivery_info')
+      .eq('source', 'payment_link')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    const existing = (orders || []).find(o => o.delivery_info?.payment_link_code === link.link_code);
+    if (existing) return existing.id;
+    const orderData = {
+      customer_name: link.customer_name || 'Payment Link Customer',
+      customer_phone: link.customer_phone || null,
+      customer_email: null,
+      delivery_address: null,
+      items: link.items || [],
+      subtotal: link.subtotal,
+      discount: link.discount || 0,
+      total: link.total,
+      status: 'awaiting_payment',
+      payment_status: 'unpaid',
+      payment_method: 'payme',
+      source: 'payment_link',
+      delivery_info: { payment_link_code: link.link_code },
+      notes: link.discount_note || null,
+    };
+    const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
+    if (error || !inserted?.id) throw new Error('Could not create order');
+    await sb.from('payment_links').update({ order_id: inserted.id }).eq('link_code', link.link_code);
+    return inserted.id;
+  }
+
+  function renderPaid() {
+    document.getElementById('payCard').innerHTML = `
+      <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
+      <div class="pay-status">✓</div>
+      <div class="pay-status-title">Payment received</div>
+      <div class="pay-status-sub">Thank you! Your payment of ₪${paymentLink.total} was successful.<br/>We'll be in touch shortly.</div>
+      <a href="index.html" class="pay-btn" style="display:inline-block;margin-top:24px;text-decoration:none;line-height:1">Back to Gremier</a>`;
+  }
+
+  function renderFailed() {
+    document.getElementById('payCard').innerHTML = `
+      <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
+      <div class="pay-status">⚠️</div>
+      <div class="pay-status-title">Payment not completed</div>
+      <div class="pay-status-sub">Your payment was not finished. You can try again below.</div>
+      <button class="pay-btn" style="margin-top:24px" onclick="startPayment()">Try again</button>`;
+  }
+
+  function renderPending() {
+    document.getElementById('payCard').innerHTML = `
+      <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
+      <div class="pay-status">⏳</div>
+      <div class="pay-status-title">Confirming payment…</div>
+      <div class="pay-status-sub">Please wait a moment while we verify your payment.</div>`;
+  }
+
+  function renderCheckout(link) {
+    const items = (link.items || []).map(i =>
+      `<div class="pay-line"><span>${i.name_en} ×${i.qty}</span><span>₪${i.price * i.qty}</span></div>`
+    ).join('');
+    const discountLine = link.discount > 0
+      ? `<div class="pay-line pay-discount"><span>Discount${link.discount_note ? ' — ' + link.discount_note : ''}</span><span>-₪${link.discount}</span></div>`
+      : '';
+    const customer = link.customer_name
+      ? `<div class="pay-customer">For ${link.customer_name}${link.customer_phone ? ' · ' + link.customer_phone : ''}</div>`
+      : '';
+    document.getElementById('payCard').innerHTML = `
+      <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
+      <div class="pay-brand">Gremier Coffee Co.</div>
+      <div class="pay-sub">Secure payment</div>
+      ${customer}
+      <div class="pay-items">${items}${discountLine}</div>
+      <div class="pay-total">
+        <span class="pay-total-label">Total</span>
+        <span class="pay-total-amt">₪${link.total}</span>
+      </div>
+      <button class="pay-btn" id="payBtn" onclick="startPayment()">Pay with PayMe</button>
+      <div class="pay-note">You'll be redirected to PayMe to pay securely by card.</div>
+      <div class="pay-error" id="payError" style="display:none"></div>`;
+  }
+
+  async function startPayment() {
+    const btn = document.getElementById('payBtn');
+    const errEl = document.getElementById('payError');
+    if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+    if (errEl) errEl.style.display = 'none';
+    try {
+      if (!orderId) orderId = await resolveOrderId(paymentLink);
+      const saleUrl = await callCreatePayment(orderId);
+      window.location.href = saleUrl;
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
+      if (errEl) { errEl.textContent = e.message || 'Payment error'; errEl.style.display = 'block'; }
+    }
+  }
+
+  async function handleReturn() {
+    if (params.get('payment') !== 'return') return false;
+    orderId = params.get('order_id');
+    renderPending();
+    history.replaceState({}, '', `pay.html?code=${encodeURIComponent(linkCode || '')}`);
+    let paid = false;
+    for (let i = 0; i < 8; i++) {
+      const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+      if (order?.payment_status === 'paid') { paid = true; break; }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (paid || String(params.get('payme_status')).toLowerCase() === 'success') {
+      if (linkCode) await sb.from('payment_links').update({ status: 'paid' }).eq('link_code', linkCode);
+      renderPaid();
+    } else {
+      renderFailed();
+    }
+    return true;
+  }
+
+  async function init() {
+    if (!linkCode) {
+      document.getElementById('payCard').innerHTML = '<div class="pay-error">Invalid payment link.</div>';
+      return;
+    }
+    if (await handleReturn()) return;
+
+    const { data: link, error } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+    if (error || !link) {
+      document.getElementById('payCard').innerHTML = '<div class="pay-error">Payment link not found or expired.</div>';
+      return;
+    }
+    paymentLink = link;
+
+    if (link.status === 'paid') {
+      renderPaid();
+      return;
+    }
+
+    try {
+      orderId = await resolveOrderId(link);
+      const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+      if (order?.payment_status === 'paid') {
+        renderPaid();
+        return;
+      }
+    } catch (e) {
+      document.getElementById('payCard').innerHTML = `<div class="pay-error">${e.message || 'Could not load order'}</div>`;
+      return;
+    }
+
+    renderCheckout(link);
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -175,6 +175,14 @@ serve(async (req) => {
       })
       .eq("id", order.id);
 
+    const linkCode = String(deliveryInfo.payment_link_code || "");
+    if (linkCode) {
+      await supabase
+        .from("payment_links")
+        .update({ status: "paid", updated_at: new Date().toISOString() })
+        .eq("link_code", linkCode);
+    }
+
     if (order.user_id) {
       await awardPoints(supabase, order.user_id, Number(order.subtotal) || 0);
       await redeemCouponIfUsed(supabase, order.user_id, Number(order.discount) || 0);

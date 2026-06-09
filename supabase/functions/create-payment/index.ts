@@ -14,6 +14,7 @@ type OrderRow = {
   customer_phone?: string | null;
   total?: number | null;
   payment_status?: string | null;
+  source?: string | null;
   delivery_info?: Record<string, unknown> | null;
 };
 
@@ -55,7 +56,7 @@ serve(async (req) => {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, order_number, customer_name, customer_email, customer_phone, total, payment_status, delivery_info")
+      .select("id, order_number, customer_name, customer_email, customer_phone, total, payment_status, source, delivery_info")
       .eq("id", order_id)
       .single();
 
@@ -78,15 +79,23 @@ serve(async (req) => {
     const paymeBase = (Deno.env.get("PAYME_API_URL") || "https://live.payme.io/").replace(/\/?$/, "/");
     const lang = String(language || "he").toUpperCase() === "EN" ? "EN" : "HE";
 
+    const info = row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {};
+    const linkCode = String(info.payment_link_code || "");
+    const returnUrl = row.source === "payment_link" && linkCode
+      ? `${siteUrl}/pay.html?payment=return&order_id=${encodeURIComponent(row.id)}&code=${encodeURIComponent(linkCode)}`
+      : `${siteUrl}/?payment=return&order_id=${encodeURIComponent(row.id)}`;
+
     const payload: Record<string, unknown> = {
       seller_payme_id: sellerId,
       sale_price: Math.round(totalShekels * 100),
       currency: "ILS",
-      product_name: `Gremier Coffee Order #${row.order_number ?? row.id.slice(0, 8)}`,
+      product_name: row.source === "payment_link"
+        ? `Gremier Coffee — Payment Link`
+        : `Gremier Coffee Order #${row.order_number ?? row.id.slice(0, 8)}`,
       installments: 1,
       transaction_id: row.id,
       sale_callback_url: `${supabaseUrl}/functions/v1/payme-webhook`,
-      sale_return_url: `${siteUrl}/?payment=return&order_id=${encodeURIComponent(row.id)}`,
+      sale_return_url: returnUrl,
       sale_send_notification: true,
       language: lang,
       capture_buyer: 0,

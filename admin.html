@@ -417,7 +417,7 @@
       <div id="tab-paylinks" class="tab-content" style="display:none">
         <div class="page-header">
           <div class="flex-between">
-            <div><h1 class="page-title">Payment Links</h1><p class="page-sub">Generate and send payment links via WhatsApp</p></div>
+            <div><h1 class="page-title">Payment Links</h1><p class="page-sub">Generate PayMe payment links and send via WhatsApp</p></div>
             <button class="btn btn-amber" onclick="openNewLink()">+ New Link</button>
           </div>
         </div>
@@ -1238,23 +1238,53 @@ async function generatePayLink() {
   const total = isNaN(override) ? subtotal : override;
   const discount = subtotal - total;
   const linkCode = Math.random().toString(36).substr(2,10);
+  const customerName = document.getElementById('plCustomer').value.trim() || null;
+  const customerPhone = document.getElementById('plPhone').value.trim() || null;
+
+  const orderData = {
+    customer_name: customerName || 'Payment Link Customer',
+    customer_phone: customerPhone,
+    customer_email: null,
+    delivery_address: null,
+    items: plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
+    subtotal,
+    discount: discount > 0 ? discount : 0,
+    total,
+    status: 'awaiting_payment',
+    payment_status: 'unpaid',
+    payment_method: 'payme',
+    source: 'payment_link',
+    delivery_info: { payment_link_code: linkCode },
+    notes: document.getElementById('plDiscountNote').value.trim() || null,
+  };
+  const { data: order, error: orderErr } = await sb.from('orders').insert(orderData).select('id').single();
+  if (orderErr || !order?.id) {
+    showToast('Error creating order for link');
+    console.error(orderErr);
+    return;
+  }
+
   const linkData = {
     link_code: linkCode,
-    customer_name: document.getElementById('plCustomer').value.trim() || null,
-    customer_phone: document.getElementById('plPhone').value.trim() || null,
-    items: plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
+    order_id: order.id,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    items: orderData.items,
     subtotal, discount: discount > 0 ? discount : 0,
     discount_note: document.getElementById('plDiscountNote').value.trim() || null,
     total, status: 'pending',
     created_by: adminUser?.id,
-    // Tranzila URL will go here once connected:
-    tranzila_url: null,
   };
-  const { error } = await sb.from('payment_links').insert(linkData);
+  let { error } = await sb.from('payment_links').insert(linkData);
+  if (error && String(error.message || '').includes('order_id')) {
+    delete linkData.order_id;
+    ({ error } = await sb.from('payment_links').insert(linkData));
+  }
   if (error) { showToast('Error creating link'); console.error(error); return; }
+
   const linkUrl = `${SITE_URL}/pay.html?code=${linkCode}`;
   const whatsappMsg = encodeURIComponent(`Hi! Here's your payment link for your Gremier Coffee order (₪${total}):\n${linkUrl}`);
-  const phone = document.getElementById('plPhone').value.replace(/\D/g,'');
+  const phone = (customerPhone || '').replace(/\D/g,'');
   document.getElementById('plLinkResult').style.display = 'block';
   document.getElementById('plLinkResult').innerHTML = `
     <div class="link-result">
@@ -1264,13 +1294,27 @@ async function generatePayLink() {
     ${phone ? `<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${whatsappMsg}" target="_blank" class="btn btn-green btn-full" style="margin-top:10px;text-decoration:none">📲 Send on WhatsApp</a>` : ''}
     <div style="font-size:.76rem;color:var(--text2);margin-top:8px;text-align:center">
       ${discount>0?`Discount: ₪${discount.toFixed(2)} — ${linkData.discount_note||''}`:''}<br/>
-      💳 Tranzila payment will activate here once connected.
+      💳 Customer pays via PayMe at this link
     </div>`;
   showToast('Payment link created ✓');
   loadPayLinks();
 }
 function copyLink(url) {
   navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
+}
+async function deletePayLink(id, orderId) {
+  if (!confirm('Delete this payment link? Unpaid orders linked to it will also be removed.')) return;
+  if (orderId) {
+    const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+    if (order && order.payment_status !== 'paid') {
+      await sb.from('orders').delete().eq('id', orderId);
+    }
+  }
+  const { error } = await sb.from('payment_links').delete().eq('id', id);
+  if (error) { showToast('Could not delete link'); console.error(error); return; }
+  showToast('Payment link deleted ✓');
+  loadPayLinks();
+  loadDashboard();
 }
 async function loadPayLinks() {
   const { data } = await sb.from('payment_links').select('*').order('created_at',{ascending:false});
@@ -1292,6 +1336,7 @@ async function loadPayLinks() {
         <div class="cell-actions-wrap">
           <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
           ${phone?`<a href="https://wa.me/972${phone.replace(/^0/,'')}?text=${waMsg}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
+          <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
         </div>
       </td>
     </tr>`;
