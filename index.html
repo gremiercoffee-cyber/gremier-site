@@ -122,8 +122,9 @@
     .btn-green:hover { background:#36a35d; }
     .btn-red { background:var(--red); color:#fff; }
     /* PAGES */
-    .page { display:none; }
+    .page { display:none; padding-top:64px; }
     .page.active { display:block; animation:fadeIn .3s ease; }
+    @media(max-width:640px){ .page { padding-top:56px; } }
     @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
     /* HERO */
     .hero { display:flex; align-items:flex-start; justify-content:center; position:relative; overflow:hidden; padding:20px 24px 12px; }
