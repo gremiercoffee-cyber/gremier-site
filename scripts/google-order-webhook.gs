@@ -17,7 +17,7 @@
 
 var NOTIFY_EMAIL = 'gremiercoffee@gmail.com';
 var WEBHOOK_SECRET = 'change-me-to-a-long-random-string';
-var SHEET_NAME = 'Orders';
+var SHEET_NAME = 'Web Orders';
 
 function setupSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
