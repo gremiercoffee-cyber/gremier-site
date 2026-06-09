@@ -1535,6 +1535,7 @@ function pdAddToCart() {
       price: pdSelectedPrice,
       images: pdCurrentProduct.images,
       category: pdCurrentProduct.category,
+      delivery_price: pdCurrentProduct.delivery_price != null ? parseFloat(pdCurrentProduct.delivery_price) : null,
       qty: 1,
     });
     updateCartCount();
@@ -1650,7 +1651,7 @@ function addToCart(productId) {
   if (!p) return;
   const existing = cart.find(x => x.id === productId);
   if (existing) existing.qty++;
-  else cart.push({ id:p.id, name_en:p.name_en, name_he:p.name_he, price:p.price, images:p.images, category:p.category, qty:1 });
+  else cart.push({ id:p.id, name_en:p.name_en, name_he:p.name_he, price:p.price, images:p.images, category:p.category, delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null, qty:1 });
   updateCartCount();
   const btn = document.querySelector(`[data-id="${productId}"]`);
   if (btn) { btn.textContent='✓'; btn.style.background='var(--green)'; setTimeout(()=>{btn.textContent='+';btn.style.background='';},800); }
@@ -1765,15 +1766,14 @@ async function submitOrder() {
       return;
     }
 
-    const payRes = await fetch(CREATE_PAYMENT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-      body: JSON.stringify({ order_id: inserted.id, language: lang }),
+    const { data: payData, error: payFnError } = await sb.functions.invoke('create-payment', {
+      body: { order_id: inserted.id, language: lang },
     });
-    const payData = await payRes.json();
-    if (!payRes.ok || !payData.sale_url) {
-      console.error(payData);
-      alert(payData.error || (lang==='he'?'לא ניתן לפתוח תשלום':'Could not start payment'));
+    if (payFnError || !payData?.sale_url) {
+      console.error(payFnError, payData);
+      const msg = payData?.error || payFnError?.message
+        || (lang==='he' ? 'לא ניתן לפתוח תשלום' : 'Could not start payment');
+      alert(msg);
       return;
     }
 
@@ -2000,14 +2000,22 @@ function updateDeliveryPrice() {
     document.getElementById('shipExpeditedPrice').textContent = '—';
     return 0;
   }
-  const isFree = zone.free_threshold && cartTotal >= zone.free_threshold;
-  const regularFee = isFree ? 0 : (zone.regular_price || 0);
-  const expeditedFee = zone.expedited_price || 0;
+  const customFees = cart
+    .map(i => i.delivery_price)
+    .filter(v => v !== null && v !== undefined && !isNaN(v));
+  const hasProductFee = customFees.length > 0;
+  const productFee = hasProductFee ? Math.max(...customFees) : null;
+  const isFree = !hasProductFee && zone.free_threshold && cartTotal >= zone.free_threshold;
+  const zoneRegular = isFree ? 0 : (zone.regular_price || 0);
+  const zoneExpedited = zone.expedited_price || 0;
+  const regularFee = hasProductFee ? productFee : zoneRegular;
+  const expeditedSurcharge = Math.max(0, zoneExpedited - (zone.regular_price || 0));
+  const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
   const fee = isExpedited ? expeditedFee : regularFee;
-  document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : `₪${zone.regular_price}`;
+  document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : `₪${regularFee}`;
   document.getElementById('shipExpeditedPrice').textContent = `₪${expeditedFee}`;
   if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
-  if (freeNote) freeNote.style.display = (isFree && !isExpedited) ? 'block' : 'none';
+  if (freeNote) freeNote.style.display = (!hasProductFee && isFree && !isExpedited) ? 'block' : 'none';
   return fee;
 }
 // ══ INIT ══
@@ -2038,7 +2046,6 @@ window.addEventListener('popstate', function(e) {
 });
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
-const CREATE_PAYMENT_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/create-payment';
 let chatHistory = [];
 let chatOpen = false;
 let chatCatalogVersion = 0;
