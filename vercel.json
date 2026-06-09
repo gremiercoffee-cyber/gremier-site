@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".",
+  "rewrites": [
+    { "source": "/ops", "destination": "/ops/index.html" },
+    { "source": "/ops/", "destination": "/ops/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/ops/sw.js",
+      "headers": [
+        { "key": "Service-Worker-Allowed", "value": "/ops/" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
+  ]
+}

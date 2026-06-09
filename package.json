@@ -1,0 +1,7 @@
+{
+  "name": "gremier-site",
+  "private": true,
+  "scripts": {
+    "build": "npm install --prefix ops-app && npm run build --prefix ops-app"
+  }
+}

@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v17';
+const CACHE = 'gremier-v19';
 const PRECACHE = [
   '/index.html',
   '/admin.html',
@@ -35,6 +35,12 @@ self.addEventListener('activate', e => {
 // - Fonts/static assets: cache-first
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // Ops app — let its own service worker handle /ops/
+  if (url.pathname.startsWith('/ops/')) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
 
   // Never cache Supabase or Cloudinary API calls
   if (url.hostname.includes('supabase.co') || url.hostname.includes('cloudinary.com')) {

@@ -1408,15 +1408,43 @@ const coffeeBarProducts = [
     featuresHe:['מתקן כלול — רק לשפוך ולהגיש','קולד ברו וחלב כלולים','כוסות וקשיות כלולות','3 סירופים: קרמל, וניל וסוכר','משלוח אליך או ישירות לאירוע'],
   },
 ];
-const featuredOrder = ['Classic Dark Roast','Caramel Cremier','House Blend Medium Roast','Colombia Light Roast'];
-const FEATURED_ALIASES = {
-  'Caramel Cremier': 'Caramel Cremier 4 Pack',
-};
+// Home "Most Popular" — IDs are stable; names are fallback if a product is recreated.
+const FEATURED_PRODUCT_IDS = [
+  '5553dae1-d35d-4d02-b3a1-3633e9ca6bfc', // Classic Dark Roast
+  '1c28055f-79b8-4d99-b7f2-38c270b47af7', // Caramel Cremier 4 Pack
+  'd14c3808-0f14-439d-b978-69bf6e35e9b4', // House Blend Medium Roast
+  'd59ad233-5090-40bc-b984-ed326ca8460d', // Colombia Light Roast
+];
+const featuredOrder = ['Classic Dark Roast','Caramel Cremier 4 Pack','House Blend Medium Roast','Colombia Light Roast'];
+function normProductName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
 function findFeaturedProduct(name) {
-  const key = FEATURED_ALIASES[name] || name;
-  return products.find(p => p.name_en === key)
-    || products.find(p => p.name_en.toLowerCase() === name.toLowerCase())
-    || products.find(p => p.name_en.toLowerCase().includes(name.toLowerCase()));
+  const exact = products.find(p => p.name_en === name);
+  if (exact) return exact;
+  const target = normProductName(name);
+  if (target.includes('caramel') && target.includes('cremier')) {
+    const cremier = products.find(p => {
+      const n = normProductName(p.name_en);
+      return n.includes('caramel') && n.includes('cremier');
+    });
+    if (cremier) return cremier;
+  }
+  return products.find(p => {
+    const n = normProductName(p.name_en);
+    return n === target || n.includes(target) || target.includes(n);
+  });
+}
+function getFeaturedProducts() {
+  const byId = FEATURED_PRODUCT_IDS.map(id => products.find(p => String(p.id) === id)).filter(Boolean);
+  if (byId.length >= 4) return byId.slice(0, 4);
+  const byName = featuredOrder.map(n => findFeaturedProduct(n)).filter(Boolean);
+  const seen = new Set();
+  return [...byId, ...byName].filter(p => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  }).slice(0, 4);
 }
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
@@ -1645,7 +1673,7 @@ function productCardHTML(p) {
 function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
   if (!grid) return;
-  const featured = featuredOrder.map(n => findFeaturedProduct(n)).filter(Boolean).slice(0, 4);
+  const featured = getFeaturedProducts();
   grid.innerHTML = featured.length ? featured.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center">No products yet.</p>';
 }
 const categories = [
@@ -2422,16 +2450,12 @@ const CHAT_QUICK_REPLIES = {
 };
 // Product suggestions — always from live catalog
 function getChatSuggestedProducts() {
-  const picks = [];
-  featuredOrder.forEach(n => {
-    const p = findFeaturedProduct(n);
-    if (p && !picks.includes(p)) picks.push(p);
-  });
+  const picks = getFeaturedProducts().slice();
   products.forEach(p => {
     if (picks.length >= 3) return;
     if (p.category === 'coffeebars') return;
     if (p.is_active === false) return;
-    if (!picks.includes(p)) picks.push(p);
+    if (!picks.some(x => x.id === p.id)) picks.push(p);
   });
   return picks.slice(0, 3);
 }

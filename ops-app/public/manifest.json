@@ -1,0 +1,24 @@
+{
+  "name": "Gremier Coffee Ops",
+  "short_name": "Gremier Ops",
+  "start_url": "/ops/",
+  "scope": "/ops/",
+  "display": "standalone",
+  "background_color": "#101010",
+  "theme_color": "#101010",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/ops/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/ops/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

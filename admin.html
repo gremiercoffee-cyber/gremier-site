@@ -43,6 +43,25 @@
     .sidebar-logo { padding:0 20px 24px; border-bottom:1px solid var(--border); margin-bottom:16px; text-align:center; }
     .sidebar-logo img { width:72px; height:72px; object-fit:contain; display:block; margin:0 auto 8px; }
     .sidebar-logo small { display:block; font-family:'DM Sans',sans-serif; font-size:.65rem; letter-spacing:.2em; text-transform:uppercase; color:var(--silver-dim); margin-top:4px; }
+    .hub-switch { display:flex; margin:0 14px 14px; border:1px solid var(--border); border-radius:4px; overflow:hidden; flex-shrink:0; }
+    .hub-btn { flex:1; padding:9px 6px; font-family:'DM Sans',sans-serif; font-size:.68rem; font-weight:500; letter-spacing:.06em; text-transform:uppercase; background:transparent; border:none; color:var(--text2); cursor:pointer; transition:all .2s; }
+    .hub-btn:hover { color:var(--cream); background:var(--highlight); }
+    .hub-btn.active { color:var(--cream); background:rgba(208,208,208,.12); }
+    .hub-switch-mobile { display:none; margin:0 0 0 auto; flex-shrink:0; }
+    #opsPanel { display:none; width:100%; }
+    #opsPanel .ops-frame { width:100%; border:none; background:#101010; display:block; }
+    body.hub-ops-mode .main { padding:0; max-width:none; }
+    body.hub-ops-mode #opsPanel .ops-frame { height:calc(100vh - 0px); min-height:100vh; }
+    body.hub-ops-mode .mobile-header { margin:0; border-radius:0; }
+    @media(max-width:768px){
+      body.hub-ops-mode .main { padding:0; padding-bottom:0; }
+      body.hub-ops-mode #opsPanel .ops-frame { height:calc(100vh - 52px); min-height:calc(100vh - 52px); }
+      .hub-switch-sidebar { display:none; }
+      .hub-switch-mobile { display:flex; }
+    }
+    @media(min-width:769px){
+      body.hub-ops-mode #opsPanel .ops-frame { height:100vh; min-height:100vh; }
+    }
     .nav-item { display:flex; align-items:center; gap:10px; padding:11px 20px; color:var(--text2); font-size:.85rem; cursor:pointer; transition:all .2s; border-left:3px solid transparent; }
     .nav-item:hover { color:var(--cream); background:var(--highlight); }
     .nav-item.active { color:var(--cream); border-left-color:var(--silver); background:rgba(208,208,208,.1); }
@@ -319,8 +338,12 @@
   <div class="admin-layout">
     <!-- SIDEBAR -->
     <div class="sidebar">
-      <div class="sidebar-logo"><img src="logo.png" alt="Gremier Coffee Co."/><small>Admin</small></div>
-      <div class="sidebar-nav">
+      <div class="sidebar-logo"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></div>
+      <div class="hub-switch hub-switch-sidebar" id="hubSwitchSidebar">
+        <button type="button" class="hub-btn active" data-mode="website" onclick="setHubMode('website')">Website</button>
+        <button type="button" class="hub-btn" data-mode="ops" onclick="setHubMode('ops')">Operations</button>
+      </div>
+      <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item active" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
       <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
@@ -341,8 +364,14 @@
     <div class="main">
       <div class="mobile-header">
         <img src="logo.png" alt="Gremier Coffee Co."/>
-        <span>Gremier Coffee Co.</span>
+        <span>Gremier Hub</span>
+        <div class="hub-switch hub-switch-mobile" id="hubSwitchMobile">
+          <button type="button" class="hub-btn active" data-mode="website" onclick="setHubMode('website')">Website</button>
+          <button type="button" class="hub-btn" data-mode="ops" onclick="setHubMode('ops')">Ops</button>
+        </div>
       </div>
+      <div id="opsPanel"><iframe id="opsFrame" class="ops-frame" src="about:blank" title="Gremier Operations"></iframe></div>
+      <div id="websiteMain">
       <!-- DASHBOARD -->
       <div id="tab-dashboard" class="tab-content">
         <div class="page-header">
@@ -557,6 +586,7 @@
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px" id="siteImagesCB"></div>
         </div>
       </div>
+    </div><!-- /websiteMain -->
     </div><!-- /main -->
   </div>
   <!-- MOBILE BOTTOM TAB BAR -->
@@ -815,6 +845,7 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
+  setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
   loadDashboard();
   loadAllProducts();
 }
@@ -822,6 +853,28 @@ async function signInAdmin() {
   await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.href } });
 }
 async function signOut() { await sb.auth.signOut(); location.reload(); }
+
+function setHubMode(mode) {
+  const isOps = mode === 'ops';
+  localStorage.setItem('gremier_hub_mode', mode);
+  document.body.classList.toggle('hub-ops-mode', isOps);
+  const websiteNav = document.getElementById('websiteNav');
+  const websiteMain = document.getElementById('websiteMain');
+  const opsPanel = document.getElementById('opsPanel');
+  const bottomBar = document.getElementById('bottomTabBar');
+  if (websiteNav) websiteNav.style.display = isOps ? 'none' : '';
+  if (websiteMain) websiteMain.style.display = isOps ? 'none' : '';
+  if (opsPanel) opsPanel.style.display = isOps ? 'block' : 'none';
+  if (bottomBar) bottomBar.style.display = isOps ? 'none' : '';
+  document.querySelectorAll('.hub-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  if (isOps) {
+    const frame = document.getElementById('opsFrame');
+    if (frame && (!frame.src || frame.src === 'about:blank')) frame.src = '/ops/';
+  }
+}
+
 // ══ TABS ══
 function showTab(tab) {
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gremier Coffee</title>
+    <link rel="manifest" href="/ops/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Gremier Coffee">
+    <meta name="theme-color" content="#your-color-here">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #root { width: 100%; min-height: 100vh; overflow-x: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/ops/sw.js', { scope: '/ops/' });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+ops-app/node_modules/
+ops-app/dist/
+ops-app/.env
+ops-app/.env.local
+ops/

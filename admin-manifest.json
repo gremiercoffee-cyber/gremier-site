@@ -1,7 +1,7 @@
 {
-  "name": "Gremier Admin",
-  "short_name": "Gremier Admin",
-  "description": "Gremier Coffee Co. admin panel.",
+  "name": "Gremier Hub",
+  "short_name": "Gremier Hub",
+  "description": "Gremier Coffee — website admin and operations.",
   "start_url": "/admin.html",
   "display": "standalone",
   "orientation": "portrait",
