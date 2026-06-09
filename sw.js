@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v13';
+const CACHE = 'gremier-v16';
 const PRECACHE = [
   '/index.html',
   '/admin.html',

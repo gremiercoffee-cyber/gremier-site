@@ -597,7 +597,7 @@
   #chatTooltip.fade-out { animation:tooltipOut .4s ease forwards; }
   @keyframes tooltipOut { to{opacity:0} }
   /* TOAST */
-    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; color:var(--cream); padding:12px 24px; border-radius:4px; font-size:.85rem; z-index:500; transition:transform .3s; white-space:nowrap; }
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; padding:12px 24px; border-radius:4px; font-size:.85rem; font-weight:500; z-index:500; transition:transform .3s; white-space:nowrap; box-shadow:0 4px 20px rgba(0,0,0,.25); }
     .toast.show { transform:translateX(-50%) translateY(0); }
   </style>
 </head>
@@ -1408,7 +1408,7 @@ const coffeeBarProducts = [
     featuresHe:['מתקן כלול — רק לשפוך ולהגיש','קולד ברו וחלב כלולים','כוסות וקשיות כלולות','3 סירופים: קרמל, וניל וסוכר','משלוח אליך או ישירות לאירוע'],
   },
 ];
-const featuredOrder = ['Classic Dark Roast','House Blend Medium Roast','Colombia Light Roast','Caramel Cremier','5L Classic Dark Roast','Combo Subscription'];
+const featuredOrder = ['Classic Dark Roast','Caramel Cremier','House Blend Medium Roast','Colombia Light Roast'];
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
   if (error || !data) { products = []; return; }
@@ -1636,7 +1636,7 @@ function productCardHTML(p) {
 function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
   if (!grid) return;
-  const featured = featuredOrder.map(n => products.find(p => p.name_en === n)).filter(Boolean);
+  const featured = featuredOrder.map(n => products.find(p => p.name_en === n)).filter(Boolean).slice(0, 4);
   grid.innerHTML = featured.length ? featured.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center">No products yet.</p>';
 }
 const categories = [
