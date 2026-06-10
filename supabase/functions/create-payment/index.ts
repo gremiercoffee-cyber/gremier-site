@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildPayMeSaleUrl,
+  getPayMeBase,
+  queryPayMeSale,
+} from "../_shared/payme-query.ts";
 
 
 
@@ -49,6 +54,10 @@ type PaymentLinkRow = {
   total?: number | null;
 
   status?: string | null;
+
+  payme_sale_id?: string | null;
+
+  sale_url?: string | null;
 
 };
 
@@ -154,6 +163,36 @@ async function generatePayMeSale(
 
 
 
+async function tryReuseExistingPayMeSale(
+  paymeBase: string,
+  paymeSaleId: string,
+  storedUrl?: string | null,
+): Promise<{ saleUrl: string; paymeSaleId: string } | null> {
+  const existing = await queryPayMeSale(paymeSaleId);
+  if (!existing) {
+    // Can't verify — reuse stored URL to avoid duplicate charges.
+    if (storedUrl || paymeSaleId) {
+      return {
+        saleUrl: buildPayMeSaleUrl(paymeBase, paymeSaleId, storedUrl),
+        paymeSaleId,
+      };
+    }
+    return null;
+  }
+  if (existing.isCompleted) {
+    throw new Error("Payment link is already paid");
+  }
+  if (existing.isReusable) {
+    return {
+      saleUrl: buildPayMeSaleUrl(paymeBase, paymeSaleId, storedUrl || existing.saleUrl),
+      paymeSaleId,
+    };
+  }
+  return null;
+}
+
+
+
 serve(async (req) => {
 
   if (req.method === "OPTIONS") {
@@ -200,7 +239,7 @@ serve(async (req) => {
 
     const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
 
-    const paymeBase = (Deno.env.get("PAYME_API_URL") || "https://live.payme.io/").replace(/\/?$/, "/");
+    const paymeBase = getPayMeBase();
 
     const lang = String(language || "he").toUpperCase() === "EN" ? "EN" : "HE";
 
@@ -212,7 +251,7 @@ serve(async (req) => {
 
         .from("payment_links")
 
-        .select("link_code, customer_name, customer_phone, total, status")
+        .select("link_code, customer_name, customer_phone, total, status, payme_sale_id, sale_url")
 
         .eq("link_code", String(payment_link_code))
 
@@ -252,6 +291,22 @@ serve(async (req) => {
 
       }
 
+      // Reuse an open PayMe sale — never create a second charge for the same link attempt.
+      if (row.payme_sale_id) {
+        const reused = await tryReuseExistingPayMeSale(paymeBase, row.payme_sale_id, row.sale_url);
+        if (reused) {
+          console.log("Reusing existing PayMe sale for link", row.link_code, reused.paymeSaleId);
+          return new Response(JSON.stringify({
+            sale_url: reused.saleUrl,
+            payme_sale_id: reused.paymeSaleId,
+            ok: true,
+            reused: true,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
 
 
       const returnUrl = `${siteUrl}/pay.html?payment=return&code=${encodeURIComponent(row.link_code)}`;
@@ -268,7 +323,9 @@ serve(async (req) => {
 
         installments: 1,
 
-        transaction_id: `pl_${row.link_code}`,
+        transaction_id: row.payme_sale_id
+          ? `pl_${row.link_code}_${Date.now()}`
+          : `pl_${row.link_code}`,
 
         sale_callback_url: `${supabaseUrl}/functions/v1/payme-webhook`,
 
@@ -294,7 +351,11 @@ serve(async (req) => {
 
       const { error: plUpdateErr } = await supabase
         .from("payment_links")
-        .update({ payme_sale_id: paymeSaleId, updated_at: new Date().toISOString() })
+        .update({
+          payme_sale_id: paymeSaleId,
+          sale_url: saleUrl,
+          updated_at: new Date().toISOString(),
+        })
         .eq("link_code", row.link_code);
       if (plUpdateErr) {
         console.warn("payment_links payme_sale_id update skipped:", plUpdateErr.message);
@@ -360,6 +421,28 @@ serve(async (req) => {
 
     const info = row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {};
 
+    const storedSaleId = String(info.payme_sale_id || "");
+    const storedSaleUrl = String(info.sale_url || "");
+
+    if (storedSaleId) {
+      const reused = await tryReuseExistingPayMeSale(
+        paymeBase,
+        storedSaleId,
+        storedSaleUrl || null,
+      );
+      if (reused) {
+        console.log("Reusing existing PayMe sale for order", row.id, reused.paymeSaleId);
+        return new Response(JSON.stringify({
+          sale_url: reused.saleUrl,
+          payme_sale_id: reused.paymeSaleId,
+          ok: true,
+          reused: true,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const linkCode = String(info.payment_link_code || "");
 
     const returnUrl = row.source === "payment_link" && linkCode
@@ -386,7 +469,7 @@ serve(async (req) => {
 
       installments: 1,
 
-      transaction_id: row.id,
+      transaction_id: storedSaleId ? `${row.id}_${Date.now()}` : row.id,
 
       sale_callback_url: `${supabaseUrl}/functions/v1/payme-webhook`,
 
@@ -423,6 +506,8 @@ serve(async (req) => {
       ...(row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {}),
 
       payme_sale_id: paymeSaleId,
+
+      sale_url: saleUrl,
 
     };
 

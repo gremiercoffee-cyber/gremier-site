@@ -142,6 +142,8 @@
 
   let navSkipPush = false;
 
+  let paymentStarting = false;
+
 
 
   function payUrl() {
@@ -397,9 +399,11 @@
 
       <div class="pay-status-title">Payment not completed</div>
 
-      <div class="pay-status-sub">Your payment was not finished. You can try again below.</div>
+      <div class="pay-status-sub">If you already paid, tap <strong>Check payment</strong> first — don't pay again.<br/><br/>Only use Try again if the charge did not go through.</div>
 
-      <button class="pay-btn" style="margin-top:24px" onclick="retryPayment()">Try again</button>`;
+      <button class="pay-btn" style="margin-top:16px;background:transparent;border:1px solid #555;color:#c4c4c4" onclick="recheckPayment()">Check payment</button>
+
+      <button class="pay-btn" style="margin-top:12px" onclick="retryPayment()">Try again</button>`;
 
   }
 
@@ -659,7 +663,18 @@
 
 
 
-  function retryPayment() {
+  async function retryPayment() {
+
+    if (await checkPaidLocally()) {
+      navPayPush('paid');
+      applyPayView('paid');
+      return;
+    }
+
+    if (linkCode) {
+      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      if (link) paymentLink = link;
+    }
 
     if (!paymentLink) return;
 
@@ -672,8 +687,18 @@
 
 
   async function startPayment() {
+    if (paymentStarting) return;
+
     const btn = document.getElementById('payBtn');
     const errEl = document.getElementById('payError');
+
+    if (await checkPaidLocally()) {
+      navPayPush('paid');
+      applyPayView('paid');
+      return;
+    }
+
+    paymentStarting = true;
     if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
     if (errEl) errEl.style.display = 'none';
 
@@ -691,6 +716,12 @@
         });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
+        if (msg.includes('already paid')) {
+          try { await confirmPaymentReturn(); await queuePaidOrderForOps(orderId); } catch (_) {}
+          navPayPush('paid');
+          applyPayView('paid');
+          return;
+        }
         const needsOrderFallback = msg.includes('missing order') || msg.includes('order_id or payment_link');
         if (!needsOrderFallback) throw e;
 
@@ -706,6 +737,7 @@
 
       window.location.href = saleUrl;
     } catch (e) {
+      paymentStarting = false;
       if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
       if (errEl) { errEl.textContent = e.message || 'Payment error'; errEl.style.display = 'block'; }
     }
