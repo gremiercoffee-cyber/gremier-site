@@ -267,18 +267,20 @@ serve(async (req) => {
 
         .from("payment_links")
 
-        .select("*")
+        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, order_id, tranzila_url")
 
         .eq("link_code", String(payment_link_code))
 
-        .single();
+        .maybeSingle();
 
 
 
-      if (linkError || !link) {
-
+      if (linkError) {
+        console.error("payment_links lookup error:", linkError.message);
+        throw new Error(`Payment link lookup failed: ${linkError.message}`);
+      }
+      if (!link) {
         throw new Error("Payment link not found");
-
       }
 
 

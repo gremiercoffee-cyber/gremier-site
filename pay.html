@@ -237,12 +237,12 @@
 
 
   async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail } = {}) {
-    const body = linkCode
-      ? { payment_link_code: linkCode, language: 'en' }
-      : { order_id: orderId, language: 'en' };
+    const body = { language: 'en' };
+    if (orderId) body.order_id = orderId;
+    else if (linkCode) body.payment_link_code = linkCode;
+    else throw new Error('Payment setup error');
     if (deliveryAddress) body.delivery_address = deliveryAddress;
     if (customerEmail) body.customer_email = customerEmail;
-    if (!linkCode && !orderId) throw new Error('Payment setup error');
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
       method: 'POST',
@@ -759,14 +759,18 @@
       await savePayLinkCustomerEmail(paymentLink);
       navPayReplace('checkout');
 
+      if (paymentLink.order_id) {
+        orderId = paymentLink.order_id;
+      } else {
+        orderId = await ensureOrderId(paymentLink);
+        paymentLink.order_id = orderId;
+      }
+      await savePayDeliveryAddress(orderId, paymentLink);
+      await savePayCustomerEmail(orderId, paymentLink);
+
       let saleUrl;
       try {
-        // Preferred: no order needed — edge function reads payment_links directly
-        saleUrl = await callCreatePayment({
-          linkCode: paymentLink.link_code,
-          deliveryAddress: deliveryAddress || undefined,
-          customerEmail: customerEmail || undefined,
-        });
+        saleUrl = await callCreatePayment({ orderId });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
         if (msg.includes('already paid')) {
@@ -775,18 +779,16 @@
           applyPayView('paid');
           return;
         }
-        const needsOrderFallback = msg.includes('missing order') || msg.includes('order_id or payment_link');
-        if (!needsOrderFallback) throw e;
-
-        if (paymentLink.order_id) {
-          orderId = paymentLink.order_id;
+        const tryLinkCode = msg.includes('not found') || msg.includes('missing order') || msg.includes('order_id');
+        if (tryLinkCode) {
+          saleUrl = await callCreatePayment({
+            linkCode: paymentLink.link_code,
+            deliveryAddress: deliveryAddress || undefined,
+            customerEmail: customerEmail || undefined,
+          });
         } else {
-          orderId = await ensureOrderId(paymentLink);
-          paymentLink.order_id = orderId;
+          throw e;
         }
-        await savePayDeliveryAddress(orderId, paymentLink);
-        await savePayCustomerEmail(orderId, paymentLink);
-        saleUrl = await callCreatePayment({ orderId });
       }
 
       window.location.href = saleUrl;
