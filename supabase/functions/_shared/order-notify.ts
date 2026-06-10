@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
 
 export type OrderNotifyRow = {
   id: string;
@@ -170,23 +171,51 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
   return true;
 }
 
-/** Notify when an order is paid. Google Sheet webhook first, Pushover fallback. */
+/** Notify when an order is paid. Sheet + Supabase email (Resend) + Pushover fallback. */
 export async function sendOrderPaidNotification(
   order: OrderNotifyRow,
   options?: { force?: boolean },
 ): Promise<{ ok: boolean; detail?: string }> {
-  const { payload } = buildOrderMessage(order);
-  try {
-    const sheet = await sendViaGoogleSheet(payload, options);
-    if (sheet.ok) return { ok: true };
-    const { subject, text } = buildOrderMessage(order);
-    const pushed = await sendViaPushover(`💳 ${subject}`, text);
-    if (pushed) return { ok: true };
-    return { ok: false, detail: sheet.detail || "Google webhook and Pushover both failed" };
-  } catch (err) {
-    console.error("Order notification error:", err);
-    return { ok: false, detail: String(err) };
-  }
+  const { subject, text, payload } = buildOrderMessage(order);
+  const itemsSummary = String(payload.items_summary || "—");
+
+  let sheetOk = false;
+  let emailOk = false;
+  let detail = "";
+
+  const sheet = await sendViaGoogleSheet(payload, options);
+  if (sheet.ok) sheetOk = true;
+  else detail = sheet.detail || detail;
+
+  const customerReceipt = buildCustomerReceiptText({
+    order_number: order.order_number,
+    customer_name: order.customer_name,
+    items_summary: itemsSummary,
+    subtotal: Number(order.subtotal) || 0,
+    discount: Number(order.discount) || 0,
+    total: Number(order.total) || 0,
+    delivery_address: order.delivery_address,
+    notes: order.notes,
+  });
+
+  const resend = await sendOrderEmails({
+    ownerSubject: subject,
+    ownerText: text,
+    customerEmail: order.customer_email,
+    customerName: order.customer_name,
+    customerSubject: customerReceipt.subject,
+    customerText: customerReceipt.text,
+    force: options?.force,
+  });
+  if (resend.ok) emailOk = true;
+  else if (!detail) detail = resend.detail;
+
+  if (sheetOk || emailOk) return { ok: true };
+
+  const pushed = await sendViaPushover(`💳 ${subject}`, text);
+  if (pushed) return { ok: true };
+
+  return { ok: false, detail: detail || "Sheet, email, and Pushover all failed" };
 }
 
 type SupabaseClient = ReturnType<typeof createClient>;

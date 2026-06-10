@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
-import { notifyPaidOrderOnce } from "../_shared/order-notify.ts";
+import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { resolvePayMePaymentStatus } from "../_shared/payme-query.ts";
 
 const corsHeaders = {
@@ -320,7 +320,7 @@ async function notifyPaidOrderOnceLocal(
   supabase: ReturnType<typeof createClient>,
   orderId: string,
 ): Promise<void> {
-  await notifyPaidOrderOnce(supabase, orderId);
+  await fulfillPaidOrder(supabase, orderId, { skip_payme_check: true });
 }
 
 async function resolveOrderId(
@@ -538,6 +538,24 @@ Deno.serve(async (req) => {
     }
 
     const paymePending = await checkPaymePaid(orderDeliveryInfo, linkRow);
+
+    // PayMe return URL hit — last chance: verify with PayMe API, mark paid, sheet + email.
+    if (paymentReturn && resolvedOrderId) {
+      const saleId = String(body.payme_sale_id || "").trim();
+      const fulfilled = await fulfillPaidOrder(supabase, resolvedOrderId, {
+        payme_sale_id: saleId || undefined,
+      });
+      if (fulfilled.paid) {
+        return new Response(JSON.stringify({
+          paid: true,
+          order_id: resolvedOrderId,
+          fulfilled: true,
+          notified: fulfilled.notified,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     return new Response(JSON.stringify({
       paid: false,

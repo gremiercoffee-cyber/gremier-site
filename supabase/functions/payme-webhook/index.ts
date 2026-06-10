@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHash } from "node:crypto";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
+import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -264,11 +265,11 @@ function isPaidEvent(payload: PaymePayload): boolean {
 
 
 
-  if (notifyType === "sale-complete" || notifyType === "sale_complete") return true;
+  if (notifyType === "sale-complete" || notifyType === "sale_complete" || notifyType.includes("complete")) return true;
 
-  if (saleStatus === "completed") return true;
+  if (saleStatus === "completed" || saleStatus === "paid" || saleStatus === "success") return true;
 
-  if (paymeStatus === "success" || paymeStatus === "completed") return true;
+  if (paymeStatus === "success" || paymeStatus === "completed" || paymeStatus === "paid") return true;
 
   return false;
 
@@ -766,9 +767,7 @@ Deno.serve(async (req) => {
 
         if (result.alreadyPaid) {
 
-          await ensurePendingWebsiteDelivery(supabase, result.orderId);
-
-          await notifyPaidOrder(supabase, result.orderId);
+          await fulfillPaidOrder(supabase, result.orderId, { skip_payme_check: true });
 
           return new Response(JSON.stringify({ ok: true, already_paid: true }), {
 
@@ -778,9 +777,7 @@ Deno.serve(async (req) => {
 
         }
 
-        await ensurePendingWebsiteDelivery(supabase, result.orderId);
-
-        await notifyPaidOrder(supabase, result.orderId);
+        await fulfillPaidOrder(supabase, result.orderId, { skip_payme_check: true });
 
         return new Response(JSON.stringify({ ok: true, order_id: result.orderId }), {
 
@@ -806,9 +803,7 @@ Deno.serve(async (req) => {
 
     if (order.payment_status === "paid") {
 
-      await ensurePendingWebsiteDelivery(supabase, order.id);
-
-      await notifyPaidOrder(supabase, order.id);
+      await fulfillPaidOrder(supabase, order.id, { skip_payme_check: true });
 
       return new Response(JSON.stringify({ ok: true, already_paid: true }), {
 
@@ -883,9 +878,7 @@ Deno.serve(async (req) => {
 
     }
 
-    await ensurePendingWebsiteDelivery(supabase, order.id);
-
-    await notifyPaidOrder(supabase, order.id);
+    await fulfillPaidOrder(supabase, order.id, { skip_payme_check: true });
 
     return new Response(JSON.stringify({ ok: true }), {
 

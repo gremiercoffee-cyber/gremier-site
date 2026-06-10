@@ -25,10 +25,11 @@ export async function ensureOrderPaidFromPayMe(
   const saleId = String(paymeSaleIdHint || info.payme_sale_id || "").trim();
   if (!saleId) return "unpaid";
 
-  let payme = await resolvePayMePaymentStatus(saleId, orderId);
-  if (!payme?.isCompleted) {
-    await new Promise((r) => setTimeout(r, 600));
+  let payme = null;
+  for (let i = 0; i < 8; i++) {
     payme = await resolvePayMePaymentStatus(saleId, orderId);
+    if (payme?.isCompleted) break;
+    if (i < 7) await new Promise((r) => setTimeout(r, i < 2 ? 400 : 900));
   }
   if (!payme?.isCompleted) return "unpaid";
 

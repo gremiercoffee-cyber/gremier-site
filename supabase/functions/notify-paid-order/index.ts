@@ -1,7 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ensureOrderPaidFromPayMe } from "../_shared/ensure-order-paid.ts";
-import { notifyPaidOrderOnce } from "../_shared/order-notify.ts";
-import { enqueuePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
+import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,22 +43,20 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
-    const paymeSaleId = String(body.payme_sale_id || "").trim();
+    const result = await fulfillPaidOrder(supabase, orderId, {
+      force: body.force === true,
+      payme_sale_id: String(body.payme_sale_id || "").trim() || undefined,
+    });
 
-    const ensured = await ensureOrderPaidFromPayMe(supabase, orderId, paymeSaleId || undefined);
-
-    const queueResult = await enqueuePendingWebsiteDelivery(supabase, orderId);
-    const opsQueued = queueResult === "queued" || queueResult === "exists";
-    const result = await notifyPaidOrderOnce(supabase, orderId, { force: body.force === true });
-
-    const ok = result.sent || result.skipped === "already_notified" || opsQueued;
+    const ok = result.notified || (result.paid && result.skipped === "already_notified");
     return new Response(JSON.stringify({
-      ...result,
-      ops_queued: opsQueued,
-      queue_result: queueResult,
-      marked_paid: ensured,
+      sent: result.notified,
+      paid: result.paid,
+      skipped: result.skipped,
+      error: result.error,
+      detail: result.detail,
     }), {
-      status: ok ? 200 : 400,
+      status: ok ? 200 : (result.paid ? 200 : 400),
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
