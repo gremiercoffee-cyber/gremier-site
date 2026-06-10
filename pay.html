@@ -352,9 +352,9 @@
 
     await sb.from('orders').update({ delivery_address: addr }).eq('id', orderId);
 
-    await sb.from('payment_links').update({ delivery_address: addr }).eq('link_code', link.link_code);
+    const { error } = await sb.from('payment_links').update({ delivery_address: addr }).eq('link_code', link.link_code);
 
-    link.delivery_address = addr;
+    if (!error) link.delivery_address = addr;
 
   }
 
@@ -695,7 +695,7 @@
 
     if (link.order_id) {
 
-      const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
+      const { data: order } = await sb.from('orders').select('payment_status, delivery_address').eq('id', link.order_id).maybeSingle();
 
       if (order?.payment_status === 'paid') {
 
@@ -706,6 +706,8 @@
         return;
 
       }
+
+      if (order?.delivery_address && !link.delivery_address) link.delivery_address = order.delivery_address;
 
     }
 

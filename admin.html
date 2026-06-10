@@ -1869,6 +1869,16 @@ function updatePlTotal() {
   const final = isNaN(override) ? subtotal : override;
   document.getElementById('plFinalTotal').textContent = `₪${final}`;
 }
+async function insertPaymentLink(linkData, deliveryAddress) {
+  const payload = { ...linkData };
+  if (deliveryAddress) payload.delivery_address = deliveryAddress;
+  let result = await sb.from('payment_links').insert(payload);
+  if (result.error && deliveryAddress && /delivery_address/i.test(result.error.message || '')) {
+    delete payload.delivery_address;
+    result = await sb.from('payment_links').insert(payload);
+  }
+  return result;
+}
 async function generatePayLink() {
   if (!plCartItems.length) { showToast('Add at least one product'); return; }
   const subtotal = plCartItems.reduce((s,i)=>s+i.price*i.qty,0);
@@ -1886,15 +1896,18 @@ async function generatePayLink() {
     link_code: linkCode,
     customer_name: customerName,
     customer_phone: customerPhone,
-    delivery_address: deliveryAddress,
     items: linkItems,
     subtotal, discount: discount > 0 ? discount : 0,
     discount_note: document.getElementById('plDiscountNote').value.trim() || null,
     total, status: 'pending',
     created_by: adminUser?.id,
   };
-  const { error } = await sb.from('payment_links').insert(linkData);
-  if (error) { showToast('Error creating link'); console.error(error); return; }
+  const { error } = await insertPaymentLink(linkData, deliveryAddress);
+  if (error) {
+    showToast('Error creating link: ' + (error.message || 'check console'));
+    console.error(error);
+    return;
+  }
 
   let createdOrderNumber = null;
   if (createOrderNow) {
