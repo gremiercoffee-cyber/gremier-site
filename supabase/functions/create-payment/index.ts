@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  appendPayMeBuyerParams,
   buildPayMeSaleUrl,
   getPayMeBase,
   queryPayMeSale,
@@ -177,7 +178,12 @@ async function generatePayMeSale(
 
 }
 
-
+function withPayMeBuyerOnUrl(
+  saleUrl: string,
+  opts: { email?: string | null; phone?: string | null; name?: string | null },
+): string {
+  return appendPayMeBuyerParams(saleUrl, opts);
+}
 
 async function tryReuseExistingPayMeSale(
   paymeBase: string,
@@ -384,18 +390,20 @@ serve(async (req) => {
 
       if (email) {
         payload.buyer_email = email;
-        payload.sale_email = email;
       }
 
 
 
       const { saleUrl, paymeSaleId } = await generatePayMeSale(payload, paymeBase);
+      const checkoutUrl = withPayMeBuyerOnUrl(saleUrl, {
+        email,
+        phone: row.customer_phone,
+        name: row.customer_name,
+      });
 
+      await updatePaymentLinkAfterSale(supabase, row.link_code, paymeSaleId, checkoutUrl);
 
-
-      await updatePaymentLinkAfterSale(supabase, row.link_code, paymeSaleId, saleUrl);
-
-      return new Response(JSON.stringify({ sale_url: saleUrl, payme_sale_id: paymeSaleId, ok: true }), {
+      return new Response(JSON.stringify({ sale_url: checkoutUrl, payme_sale_id: paymeSaleId, ok: true }), {
 
         headers: { ...corsHeaders, "Content-Type": "application/json" },
 
@@ -479,6 +487,22 @@ serve(async (req) => {
 
     const linkCode = String(info.payment_link_code || "");
 
+    let buyerEmail = String(row.customer_email || "").trim();
+    let buyerPhone = String(row.customer_phone || "").trim();
+    let buyerName = String(row.customer_name || "").trim();
+    if (linkCode && (!buyerEmail || !buyerPhone)) {
+      const { data: plink } = await supabase
+        .from("payment_links")
+        .select("customer_email, customer_phone, customer_name")
+        .eq("link_code", linkCode)
+        .maybeSingle();
+      if (plink) {
+        if (!buyerEmail) buyerEmail = String(plink.customer_email || "").trim();
+        if (!buyerPhone) buyerPhone = String(plink.customer_phone || "").trim();
+        if (!buyerName) buyerName = String(plink.customer_name || "").trim();
+      }
+    }
+
     const returnUrl = row.source === "payment_link" && linkCode
 
       ? `${siteUrl}/pay.html?payment=return&code=${encodeURIComponent(linkCode)}&order_id=${encodeURIComponent(row.id)}`
@@ -515,25 +539,20 @@ serve(async (req) => {
 
       capture_buyer: 0,
 
-      buyer_name: row.customer_name || undefined,
+      buyer_name: buyerName || undefined,
 
-      buyer_email: row.customer_email || undefined,
+      buyer_email: buyerEmail || undefined,
 
-      buyer_phone: row.customer_phone || undefined,
+      buyer_phone: buyerPhone || undefined,
 
     };
 
-    if (row.customer_email) {
-
-      payload.sale_email = row.customer_email;
-
-    }
-
-
-
     const { saleUrl, paymeSaleId } = await generatePayMeSale(payload, paymeBase);
-
-
+    const checkoutUrl = withPayMeBuyerOnUrl(saleUrl, {
+      email: buyerEmail,
+      phone: buyerPhone,
+      name: buyerName,
+    });
 
     const deliveryInfo = {
 
@@ -541,7 +560,7 @@ serve(async (req) => {
 
       payme_sale_id: paymeSaleId,
 
-      sale_url: saleUrl,
+      sale_url: checkoutUrl,
 
     };
 
@@ -567,7 +586,11 @@ serve(async (req) => {
 
 
 
-    return new Response(JSON.stringify({ sale_url: saleUrl, payme_sale_id: paymeSaleId, ok: true }), {
+    if (buyerEmail && !row.customer_email) {
+      await supabase.from("orders").update({ customer_email: buyerEmail, updated_at: new Date().toISOString() }).eq("id", row.id);
+    }
+
+    return new Response(JSON.stringify({ sale_url: checkoutUrl, payme_sale_id: paymeSaleId, ok: true }), {
 
       headers: { ...corsHeaders, "Content-Type": "application/json" },
 

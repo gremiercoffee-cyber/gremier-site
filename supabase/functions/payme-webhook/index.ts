@@ -536,9 +536,12 @@ async function findOrder(
 
 ): Promise<OrderRow | null> {
 
-  const orderId = String(payload.transaction_id || "");
+  const txn = String(payload.transaction_id || "");
 
-  if (orderId && !orderId.startsWith("pl_")) {
+  if (txn && !txn.startsWith("pl_")) {
+    const directId = txn.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    )?.[0] || txn;
 
     const { data } = await supabase
 
@@ -546,7 +549,7 @@ async function findOrder(
 
       .select("id, user_id, subtotal, discount, payment_status, delivery_info")
 
-      .eq("id", orderId)
+      .eq("id", directId)
 
       .maybeSingle();
 

@@ -24,6 +24,38 @@ export function buildPayMeSaleUrl(
   return `${paymeBase}sale/generate/${paymeSaleId}`;
 }
 
+/** Pre-fill PayMe checkout so the receipt can go to the buyer (requires PayMe Invoices app). */
+export function appendPayMeBuyerParams(
+  saleUrl: string,
+  opts: { email?: string | null; phone?: string | null; name?: string | null },
+): string {
+  const base = String(saleUrl || "").trim();
+  if (!base) return base;
+
+  const email = String(opts.email || "").trim();
+  const phone = String(opts.phone || "").trim();
+  const name = String(opts.name || "").trim();
+  if (!email && !phone && !name) return base;
+
+  try {
+    const url = new URL(base);
+    if (email) url.searchParams.set("email", email);
+    if (phone) url.searchParams.set("phone", phone);
+    if (name) {
+      const parts = name.split(/\s+/).filter(Boolean);
+      if (parts[0]) url.searchParams.set("first_name", parts[0]);
+      if (parts.length > 1) url.searchParams.set("last_name", parts.slice(1).join(" "));
+    }
+    return url.toString();
+  } catch {
+    const params = new URLSearchParams();
+    if (email) params.set("email", email);
+    if (phone) params.set("phone", phone);
+    const qs = params.toString();
+    return qs ? `${base}${base.includes("?") ? "&" : "?"}${qs}` : base;
+  }
+}
+
 function normalizeStatus(raw: string): string {
   return String(raw || "").toLowerCase().trim();
 }

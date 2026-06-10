@@ -476,7 +476,27 @@
       const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
       if (link) paymentLink = link;
     }
-    await queuePaidOrderForOps(oid || orderId);
+
+    let targetId = oid || orderId;
+    if (!(await checkPaidLocally())) {
+      const data = await confirmPaymentReturn();
+      if (data.order_id) {
+        orderId = data.order_id;
+        targetId = data.order_id;
+      }
+    }
+
+    for (let i = 0; i < 4; i++) {
+      await queuePaidOrderForOps(targetId);
+      if (!targetId) break;
+      const { data: order } = await sb.from('orders')
+        .select('payment_status, delivery_info')
+        .eq('id', targetId)
+        .maybeSingle();
+      if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) break;
+      if (i < 3) await new Promise(r => setTimeout(r, 1200));
+    }
+
     navPayPush('paid');
     applyPayView('paid');
   }
@@ -509,7 +529,7 @@
       const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
       if (link) {
         paymentLink = { ...(paymentLink || {}), ...link };
-        if (link.order_id) orderId = link.order_id;
+        if (link.order_id && !isReusableLink(link)) orderId = link.order_id;
         if (link.status === 'paid' && !isReusableLink(link)) return true;
         if (link.order_id && !isReusableLink(link)) {
           const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
