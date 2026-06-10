@@ -8,14 +8,40 @@ const ADMIN_EMAILS = ["gremiercoffee@gmail.com", "yonigrey@gmail.com"];
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || "";
 const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-async function writeDeliveryToSheet(storeName, large, mini, syrup) {
+async function writeDeliveryToSheet(storeName, large, mini, syrup, deliveryDate) {
+  const store = STORES.find(s => s.name === storeName);
+  const sheetStoreName = store?.sheetName || storeName;
+  const phone = store?.phone || "";
+  const params = new URLSearchParams({
+    storeName: sheetStoreName,
+    phone,
+    large: String(large || 0),
+    mini: String(mini || 0),
+    syrup: String(syrup || 0),
+    date: String(deliveryDate || todayISO()).slice(0, 10),
+  });
   try {
-    const phone = STORES.find(s => s.name === storeName)?.phone || "";
-    const params = new URLSearchParams({ storeName, phone, large, mini, syrup });
     await fetch(DELIVERY_SHEET_URL + "?" + params.toString(), {
-      method: "GET", mode: "no-cors",
+      method: "GET",
+      mode: "no-cors",
     });
-  } catch(e) { console.error("Delivery sheet write failed:", e); }
+  } catch (e) {
+    console.error("Delivery sheet write failed:", storeName, e);
+    throw e;
+  }
+}
+function storeDeliveryCounts(qtys) {
+  const q = qtys || {};
+  return {
+    large: Object.entries(q).filter(([p]) => PRODUCTS[p]?.category === "liter").reduce((s, [, n]) => s + (n || 0), 0),
+    mini: Object.entries(q).filter(([p]) => PRODUCTS[p]?.category === "mini").reduce((s, [, n]) => s + (n || 0), 0),
+    syrup: Object.entries(q).filter(([p]) => PRODUCTS[p]?.category === "syrup").reduce((s, [, n]) => s + (n || 0), 0),
+  };
+}
+async function logStoreDeliveryToSheet(job, qtys) {
+  if (!isStoreWaDelivery(job)) return;
+  const { large, mini, syrup } = storeDeliveryCounts(qtys);
+  await writeDeliveryToSheet(job.storeName, large, mini, syrup, job.date);
 }
 async function sbFetch(path, options = {}) {
   try {
@@ -1549,30 +1575,43 @@ export default function App() {
     }
     if (job.type==="delivery") {
       const qtys = confirmedQtys || job.quantities || {};
-      // Deduct inventory sequentially to avoid race conditions
-      for (const [pid,qty] of Object.entries(qtys)) {
-        if (qty>0) await sbIncrementInventory(pid, -qty);
+      if (isStoreWaDelivery(job)) {
+        try {
+          await logStoreDeliveryToSheet(job, qtys);
+        } catch (e) {
+          console.error("Store delivery sheet log failed:", job.storeName, e);
+        }
       }
-      if (job.deliveryType==="coffeebar") {
-        if (job.dispensers) await sbIncrementInventory("dispenser", -job.dispensers);
-        for (const [pid,qty] of Object.entries(job.cbSyrups||{})) {
+      try {
+        for (const [pid,qty] of Object.entries(qtys)) {
           if (qty>0) await sbIncrementInventory(pid, -qty);
         }
-        const jd={};
-        (job.jerryCans||[]).forEach(ct=>{const pid=jerryMap[ct]||"jerry_can";jd[pid]=(jd[pid]||0)+1;});
-        for (const [pid,qty] of Object.entries(jd)) {
-          await sbIncrementInventory(pid, -qty);
+        if (job.deliveryType==="coffeebar") {
+          if (job.dispensers) await sbIncrementInventory("dispenser", -job.dispensers);
+          for (const [pid,qty] of Object.entries(job.cbSyrups||{})) {
+            if (qty>0) await sbIncrementInventory(pid, -qty);
+          }
+          const jd={};
+          (job.jerryCans||[]).forEach(ct=>{const pid=jerryMap[ct]||"jerry_can";jd[pid]=(jd[pid]||0)+1;});
+          for (const [pid,qty] of Object.entries(jd)) {
+            await sbIncrementInventory(pid, -qty);
+          }
         }
+      } catch (e) {
+        console.error("Delivery inventory update failed:", e);
       }
       if (isStoreWaDelivery(job)) {
-        const large = Object.entries(qtys).filter(([p])=>PRODUCTS[p]?.category==="liter").reduce((s,[,q])=>s+(q||0),0);
-        const mini  = Object.entries(qtys).filter(([p])=>PRODUCTS[p]?.category==="mini" ).reduce((s,[,q])=>s+(q||0),0);
-        const syrup = Object.entries(qtys).filter(([p])=>PRODUCTS[p]?.category==="syrup").reduce((s,[,q])=>s+(q||0),0);
-        writeDeliveryToSheet(job.storeName, large, mini, syrup);
         try {
-          await flagStoreWaNeedsSend(job.id);
-          setJobs(prev=>prev.map(j=>j.id===job.id?{...j,waNeedsSend:true}:j));
-        } catch (e) { console.error("Store WA queue flag failed:", e); }
+          await sbFetch(`jobs?id=eq.${job.id}`, {
+            method: "PATCH",
+            prefer: "return=minimal",
+            body: JSON.stringify({ wa_needs_send: true, wa_sent_at: null }),
+          });
+          setJobs(prev => prev.map(j => j.id === job.id ? { ...j, waNeedsSend: true, waSentAt: null } : j));
+        } catch (e) {
+          console.error("Store WA queue flag failed:", e);
+          setJobs(prev => prev.map(j => j.id === job.id ? { ...j, waSentAt: null } : j));
+        }
       }
     }
   }
@@ -1634,10 +1673,12 @@ export default function App() {
       done: true,
       actualQty: actual,
       needsConfirmation: false,
+      waSentAt: null,
+      waNeedsSend: isStoreWaDelivery({ ...job, done: true }) ? true : job.waNeedsSend,
       ...(confirmedQtys ? {quantities: confirmedQtys} : {}),
     };
     setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
-    const patchBody = { done: true, actual_qty: actual };
+    const patchBody = { done: true, actual_qty: actual, wa_sent_at: null };
     if (isStoreWaDelivery(finalJob)) patchBody.wa_needs_send = true;
     await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify(patchBody)});
     await applyJobSideEffects(finalJob, confirmedQtys);
@@ -1793,6 +1834,24 @@ export default function App() {
       await sbFetch(`jobs?id=eq.${jobId}`,{method:"PATCH",prefer:"return=minimal",body:JSON.stringify({wa_needs_send:false})});
     }
   }
+  async function requeueStoreWa(jobId) {
+    if (!isAdmin) return;
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, waSentAt: null, waNeedsSend: true } : j));
+    try {
+      await sbFetch(`jobs?id=eq.${jobId}`, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ wa_sent_at: null, wa_needs_send: true }) });
+    } catch (e) {
+      console.error("Re-queue WhatsApp failed:", e);
+    }
+  }
+  async function retryStoreSheetLog(job) {
+    if (!isAdmin || !isStoreWaDelivery(job)) return;
+    try {
+      await logStoreDeliveryToSheet(job, job.quantities);
+      alert(`Google Sheet updated for ${job.storeName}`);
+    } catch (e) {
+      alert(`Sheet log failed for ${job.storeName} — check console`);
+    }
+  }
   async function deleteJob(jobId) {
     if (!isAdmin) return;
     const job=jobs.find(j=>j.id===jobId);
@@ -1890,7 +1949,7 @@ export default function App() {
       {screen==="stock"&&<StockScreen concentrate={concentrate} setConcentrate={setConcentrateItem} inventory={inventory} setInventory={setInventoryItem} needed={needed} jobs={jobs} beans={beans} setBeans={setBeansItem} setBeanOrdered={setBeanOrdered} deliverBeans={deliverBeans} onBack={()=>setScreen("dashboard")} onRefresh={loadData} isAdmin={isAdmin}/>}
       {screen==="labels"&&<LabeledStockScreen labeledStock={labeledStock} setLabeledStock={setLabeledStockItem} onBack={()=>setScreen("dashboard")} onRefresh={loadData} isAdmin={isAdmin}/>}
       {screen==="needtomake"&&<NeedToMakeScreen jobs={jobs} inventory={inventory} concentrate={concentrate} onBack={()=>setScreen("dashboard")} onRefresh={loadData}/>}
-      {selectedJob&&selectedJob.type==="delivery"&&<DeliveryDetail job={selectedJob} onClose={()=>setSelectedJob(null)} onCheckoff={isAdmin?()=>{handleCheckoff(selectedJob);setSelectedJob(null);}:null} onDelete={isAdmin?()=>{deleteJob(selectedJob.id);setSelectedJob(null);}:null} onEdit={isAdmin?()=>{setEditingJob(selectedJob);setSelectedJob(null);}:null} isAdmin={isAdmin}/>}
+      {selectedJob&&selectedJob.type==="delivery"&&<DeliveryDetail job={selectedJob} onClose={()=>setSelectedJob(null)} onCheckoff={isAdmin?()=>{handleCheckoff(selectedJob);setSelectedJob(null);}:null} onDelete={isAdmin?()=>{deleteJob(selectedJob.id);setSelectedJob(null);}:null} onEdit={isAdmin?()=>{setEditingJob(selectedJob);setSelectedJob(null);}:null} onRequeueWa={isAdmin?requeueStoreWa:null} onRetrySheet={isAdmin?retryStoreSheetLog:null} isAdmin={isAdmin}/>}
       {selectedJob&&selectedJob.type!=="delivery"&&<ProductionDetail job={selectedJob} onClose={()=>setSelectedJob(null)} onCheckoff={isAdmin?()=>{handleCheckoff(selectedJob);setSelectedJob(null);}:null} onDelete={isAdmin?()=>{deleteJob(selectedJob.id);setSelectedJob(null);}:null} onEdit={isAdmin?()=>{setEditingJob(selectedJob);setSelectedJob(null);}:null} isAdmin={isAdmin}/>}
       {isAdmin&&checkoffJob&&<CheckoffModal job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
       {calDay&&<DayPopup date={calDay} jobs={jobs.filter(j=>j.date===calDay&&!j.done&&!j.brewStarted)} onClose={()=>setCalDay(null)} onJobTap={j=>{setSelectedJob(j);setCalDay(null);}} onCheckoff={isAdmin?handleCheckoff:null}/>}
@@ -2732,8 +2791,10 @@ function ProductionDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
     </div>
   );
 }
-function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
-  const waLink=(job.done&&isStoreWaDelivery(job)&&!job.waSentAt)?buildStoreWaLink(job):null;
+function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,onRequeueWa,onRetrySheet,isAdmin}) {
+  const canStoreWa = job.done && isStoreWaDelivery(job);
+  const waLink = canStoreWa && !job.waSentAt ? buildStoreWaLink(job) : null;
+  const showRequeue = canStoreWa && job.waSentAt && onRequeueWa;
   return (
     <div style={S.modal} onClick={onClose}>
       <div style={S.modalBox} onClick={e=>e.stopPropagation()}>
@@ -2745,10 +2806,12 @@ function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
           {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(<div key={pid} style={{...S.qtyListRow,gap:10}}><ProductThumb pid={pid} size={28} /><span style={{color:"#222222",flex:1}}>{PRODUCTS[pid]?.label}</span><span style={{color:"#101010",fontWeight:700}}>{qty}</span></div>))}
           {job.deliveryType==="coffeebar"&&<div style={S.qtyListRow}><span style={{color:"#222222"}}>Coffee Bar</span><span style={{color:"#101010",fontWeight:700}}>{job.people} people · {(job.people/25)*5}L Classic</span></div>}
         </div>
-        {waLink&&isAdmin&&job.done&&<a href={waLink} target="_blank" rel="noreferrer" style={S.waBtn}>💬 Send WhatsApp</a>}
+        {waLink&&isAdmin&&<a href={waLink} target="_blank" rel="noreferrer" style={S.waBtn}>💬 Send WhatsApp</a>}
+        {showRequeue&&<button style={{...S.btnSecondary,width:"100%",marginBottom:10}} onClick={()=>onRequeueWa(job.id)}>↩ Re-queue for WhatsApp drawer</button>}
+        {canStoreWa&&onRetrySheet&&<button style={{...S.btnSecondary,width:"100%",marginBottom:10}} onClick={()=>onRetrySheet(job)}>📊 Retry Google Sheet log</button>}
         <div style={S.modalActions}>
           <button style={S.btnSecondary} onClick={onClose}>Close</button>
-          {isAdmin&&<button style={S.btnPrimary} onClick={onCheckoff}>Mark Delivered ✓</button>}
+          {isAdmin&&onCheckoff&&<button style={S.btnPrimary} onClick={onCheckoff}>{job.done?"Edit delivery ✓":"Mark Delivered ✓"}</button>}
         </div>
         {isAdmin&&<div style={{display:"flex",gap:8,marginTop:8}}>
           <button style={{...S.btnSecondary,flex:1}} onClick={onEdit}>✏️ Edit</button>
