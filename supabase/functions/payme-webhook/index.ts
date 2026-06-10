@@ -687,14 +687,10 @@ Deno.serve(async (req) => {
 
 
 
-    const secret = Deno.env.get("PAYME_SELLER_ID") || "";
-
-    if (secret && !verifySignature(payload, secret)) {
-
+const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
+    if (sigSecret && !verifySignature(payload, sigSecret)) {
       console.error("PayMe webhook signature mismatch");
-
       return new Response("Invalid signature", { status: 401 });
-
     }
 
 
