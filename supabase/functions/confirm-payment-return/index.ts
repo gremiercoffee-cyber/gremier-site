@@ -66,14 +66,14 @@ async function queryPaymeSaleCompleted(
 async function queryPaymeSaleCompletedWithRetries(
   paymeSaleId: string,
   transactionId: string,
-  attempts = 8,
+  attempts = 4,
 ): Promise<{ completed: boolean; paymeSaleId: string }> {
   let last = { completed: false, paymeSaleId: paymeSaleId };
   for (let i = 0; i < attempts; i++) {
     last = await queryPaymeSaleCompleted(paymeSaleId, transactionId);
     if (last.completed) return last;
     if (i < attempts - 1) {
-      await new Promise((r) => setTimeout(r, i < 2 ? 350 : 900));
+      await new Promise((r) => setTimeout(r, i === 0 ? 200 : 500));
     }
   }
   return last;

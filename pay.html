@@ -245,6 +245,7 @@
     try {
       if (paymeSaleId) sessionStorage.setItem(payStorageKey(orderId, 'sale'), paymeSaleId);
       if (code) sessionStorage.setItem(payStorageKey(orderId, 'code'), code);
+      sessionStorage.setItem('gremier_pay_last_order', orderId);
       sessionStorage.setItem(payStorageKey(orderId, 'started'), String(Date.now()));
     } catch (_) {}
   }
@@ -493,11 +494,20 @@
       <div class="pay-status-sub">Confirming your payment.</div>`;
   }
 
+  function showPaymentConfirmed(targetId) {
+    navPayPush('paid');
+    applyPayView('paid');
+    if (targetId) clearCheckoutSession(targetId);
+  }
+
   async function syncPaidOrderToSheet(targetId, maxAttempts) {
     for (let i = 0; i < maxAttempts; i++) {
       if (!targetId) return;
-      if (!(await checkPaidLocally())) {
-        await confirmPaymentReturn();
+      try {
+        const data = await confirmPaymentReturn();
+        if (data.order_id) orderId = data.order_id;
+      } catch (e) {
+        console.warn('confirm during sync:', e);
       }
       await queuePaidOrderForOps(targetId, i > 0);
       const { data: order } = await sb.from('orders')
@@ -505,7 +515,7 @@
         .eq('id', targetId)
         .maybeSingle();
       if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) return;
-      await new Promise(r => setTimeout(r, i < 2 ? 800 : 2000));
+      await new Promise(r => setTimeout(r, i < 2 ? 600 : 1500));
     }
   }
 
@@ -517,45 +527,51 @@
     }
 
     let targetId = oid || orderId;
-    let confirmPaid = false;
+    const trustPayMeReturn = opts.trustPayMeReturn === true;
 
-    for (let i = 0; i < 15; i++) {
-      if (await checkPaidLocally()) {
-        confirmPaid = true;
-        break;
-      }
+    if (await checkPaidLocally()) {
+      showPaymentConfirmed(targetId);
+      syncPaidOrderToSheet(targetId, 20).catch(function (e) {
+        console.warn('Background sheet sync:', e);
+      });
+      return;
+    }
+
+    // PayMe sent the customer back — show confirmed now, mark paid + sheet in background.
+    if (trustPayMeReturn) {
+      showPaymentConfirmed(targetId);
+      syncPaidOrderToSheet(targetId, 20).catch(function (e) {
+        console.warn('Background sheet sync:', e);
+      });
+      return;
+    }
+
+    for (let i = 0; i < 4; i++) {
       const data = await confirmPaymentReturn();
       if (data.order_id) {
         orderId = data.order_id;
         targetId = data.order_id;
       }
-      if (data.paid) {
-        confirmPaid = true;
-        break;
+      if (data.paid || await checkPaidLocally()) {
+        showPaymentConfirmed(targetId);
+        syncPaidOrderToSheet(targetId, 20).catch(function (e) {
+          console.warn('Background sheet sync:', e);
+        });
+        return;
       }
-      if (i < 14) await new Promise(r => setTimeout(r, i < 3 ? 500 : 1200));
+      if (i < 3) await new Promise(r => setTimeout(r, 800));
     }
 
-    const paidLocally = await checkPaidLocally();
-    const trustPayMeReturn = opts.trustPayMeReturn === true;
-
-    if (paidLocally || confirmPaid || trustPayMeReturn) {
-      navPayPush('paid');
-      applyPayView('paid');
-      if (targetId) clearCheckoutSession(targetId);
-      syncPaidOrderToSheet(targetId, 15).catch(function (e) {
-        console.warn('Background sheet sync:', e);
-      });
-    } else {
-      renderFailed();
-      navPayReplace('failed');
-    }
+    renderFailed();
+    navPayReplace('failed');
   }
 
   async function getReturnPayload() {
     const p = new URLSearchParams(window.location.search);
     const txn = p.get('transaction_id') || (linkCode ? `pl_${linkCode}` : '');
-    const resolvedOrderId = p.get('order_id') || orderId || (txn && !txn.startsWith('pl_') ? txn.split('_')[0] : '');
+    const resolvedOrderId = p.get('order_id') || orderId
+      || (function () { try { return sessionStorage.getItem('gremier_pay_last_order') || ''; } catch (_) { return ''; } })()
+      || (txn && !txn.startsWith('pl_') ? txn.split('_')[0] : '');
 
     let paymeSaleId = p.get('payme_sale_id') || p.get('sale_id') || '';
     if (!paymeSaleId && resolvedOrderId) {
@@ -614,19 +630,29 @@
   }
 
   async function confirmPaymentReturn() {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify(await getReturnPayload()),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok && !data.error) data.error = `HTTP ${res.status}`;
-    if (data.order_id) orderId = data.order_id;
-    return data;
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, 22000);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(await getReturnPayload()),
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok && !data.error) data.error = 'HTTP ' + res.status;
+      if (data.order_id) orderId = data.order_id;
+      return data;
+    } catch (e) {
+      console.warn('confirmPaymentReturn:', e);
+      return { paid: false, error: String(e) };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Queue paid order for Ops scheduling (idempotent safety net). */
@@ -656,21 +682,35 @@
       await finishPaidReturn(orderId);
       return;
     }
-    const data = await confirmPaymentReturn();
-    if (data.paid) {
-      orderId = data.order_id || orderId;
-      await finishPaidReturn(orderId);
-    } else if (await checkPaidLocally()) {
-      await finishPaidReturn(orderId);
-    } else {
-      renderFailed();
+    const trustReturn = params.get('payment') === 'return' && !hasExplicitPaymentFailure();
+    for (let i = 0; i < 5; i++) {
+      const data = await confirmPaymentReturn();
+      if (data.paid || await checkPaidLocally()) {
+        orderId = data.order_id || orderId;
+        await finishPaidReturn(orderId);
+        return;
+      }
+      if (i < 4) await new Promise(r => setTimeout(r, 1000));
     }
+    if (trustReturn) {
+      await finishPaidReturn(orderId, { trustPayMeReturn: true });
+      return;
+    }
+    renderFailed();
   }
 
   async function handleReturn() {
     if (!isPaymentReturnUrl()) return false;
 
-    orderId = params.get('order_id') || params.get('transaction_id');
+    const p = params;
+    orderId = p.get('order_id') || p.get('transaction_id');
+    if (orderId && orderId.includes('_') && !orderId.startsWith('pl_')) {
+      const uuid = orderId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+      if (uuid) orderId = uuid[0];
+    }
+    if (!orderId) {
+      try { orderId = sessionStorage.getItem('gremier_pay_last_order') || ''; } catch (_) {}
+    }
 
     if (linkCode) {
       const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
@@ -688,10 +728,14 @@
     renderProcessing();
     navPayReplace('pending');
 
-    const fromPayMe = params.get('payment') === 'return';
-    const trustReturn = fromPayMe && !hasExplicitPaymentFailure();
+    const trustReturn = p.get('payment') === 'return' && !hasExplicitPaymentFailure();
 
-    for (let attempt = 0; attempt < 6; attempt++) {
+    if (trustReturn) {
+      await finishPaidReturn(orderId, { trustPayMeReturn: true });
+      return true;
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const data = await confirmPaymentReturn();
         if (data.paid) {
@@ -706,13 +750,7 @@
       } catch (err) {
         console.warn('Payment confirm attempt failed:', err);
       }
-      if (attempt < 5) await new Promise(r => setTimeout(r, attempt === 0 ? 400 : 1500));
-    }
-
-    if (trustReturn) {
-      renderProcessing();
-      await finishPaidReturn(orderId, { trustPayMeReturn: true });
-      return true;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
     }
 
     if (hasExplicitPaymentFailure()) {
