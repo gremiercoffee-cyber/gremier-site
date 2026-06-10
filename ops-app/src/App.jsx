@@ -49,6 +49,7 @@ function jobToRow(job) {
     dispensers: job.dispensers || null, wa_needs_send: job.waNeedsSend || false,
     cb_syrups: job.cbSyrups || null, billed: job.billed || false, paid: job.paid || false,
     website_order_id: job.websiteOrderId || null,
+    customer_phone: job.customerPhone || null,
   };
 }
 function rowToJob(r) {
@@ -61,8 +62,73 @@ function rowToJob(r) {
     needsConfirmation: r.needs_confirmation, jerryCans: r.jerry_cans || [],
     qty: r.qty, cbName: r.cb_name, cbAddress: r.cb_address, dispensers: r.dispensers,
     waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups || {}, billed: r.billed, paid: r.paid || false,
-    websiteOrderId: r.website_order_id || null,
+    websiteOrderId: r.website_order_id || null, customerPhone: r.customer_phone || null,
   };
+}
+function whatsAppPhone(raw) {
+  if (!raw || !String(raw).trim()) return null;
+  let s = String(raw).trim().replace(/[\s\-().]/g, "");
+  if (!s) return null;
+  if (s.startsWith("+")) {
+    const digits = s.slice(1).replace(/\D/g, "");
+    return (digits.length >= 7 && digits.length <= 15) ? digits : null;
+  }
+  const digits = s.replace(/\D/g, "");
+  if (!digits) return null;
+  const intl = [
+    ["972", 8, 9], ["1", 10, 10], ["44", 9, 10], ["49", 10, 11],
+    ["33", 9, 9], ["61", 9, 9], ["971", 8, 9],
+  ];
+  for (const [code, minLen, maxLen] of intl) {
+    if (digits.startsWith(code) && digits.length >= code.length + minLen && digits.length <= code.length + maxLen) {
+      return digits;
+    }
+  }
+  if (digits.startsWith("0") && digits.length === 10) return "972" + digits.slice(1);
+  if (digits.length === 9 && digits.startsWith("5")) return "972" + digits;
+  if (digits.length === 10 && digits.startsWith("05")) return "972" + digits.slice(1);
+  if (digits.length === 10) return "1" + digits;
+  return (digits.length >= 7 && digits.length <= 15) ? digits : null;
+}
+function getStoreWaPhone(storeName) {
+  const store = STORES.find(s => s.name === storeName);
+  if (!store?.phone) return null;
+  return whatsAppPhone(store.phone) || String(store.phone).replace(/\D/g, "") || null;
+}
+function isStoreWaDelivery(job) {
+  if (!job || job.type !== "delivery" || !job.storeName) return false;
+  const kind = job.deliveryType || "store";
+  if (kind !== "store") return false;
+  return !!getStoreWaPhone(job.storeName);
+}
+function jobWaDrawerEligible(job) {
+  return !!(job?.waNeedsSend && isStoreWaDelivery(job));
+}
+async function flagStoreWaNeedsSend(jobId) {
+  await sbFetch(`jobs?id=eq.${jobId}`, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ wa_needs_send: true }) });
+}
+async function backfillMissingStoreWaFlags(jobs) {
+  try {
+    if (localStorage.getItem("gremier_store_wa_backfill_v1")) return jobs;
+  } catch (e) { /* ignore */ }
+  const candidates = (jobs || [])
+    .filter(j => isStoreWaDelivery(j) && j.done && !j.waNeedsSend)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+    .slice(0, 2);
+  if (!candidates.length) {
+    try { localStorage.setItem("gremier_store_wa_backfill_v1", "1"); } catch (e) { /* ignore */ }
+    return jobs;
+  }
+  const updated = jobs.map(j => ({ ...j }));
+  for (const job of candidates) {
+    try {
+      await flagStoreWaNeedsSend(job.id);
+      const idx = updated.findIndex(j => j.id === job.id);
+      if (idx >= 0) updated[idx] = { ...updated[idx], waNeedsSend: true };
+    } catch (e) { console.warn("Store WA backfill failed:", job.id, e); }
+  }
+  try { localStorage.setItem("gremier_store_wa_backfill_v1", "1"); } catch (e) { /* ignore */ }
+  return updated;
 }
 async function sbLoadAll() {
   const [jobs, inventory, concentrate, beans, labeledStock] = await Promise.all([
@@ -587,6 +653,15 @@ function generateWAMessage(store, job) {
   if (syrup>0) lines.push(`סירופ: ${syrup} יחידות`);
   lines.push(`----------------------------`,`סה"כ: ${total} יחידות`,`תודה! גרמיר קפה`);
   return lines.join("\n");
+}
+function buildStoreWaLink(job) {
+  if (!isStoreWaDelivery(job)) return null;
+  const store = STORES.find(s => s.name === job.storeName);
+  if (!store) return null;
+  const phone = getStoreWaPhone(job.storeName);
+  if (!phone) return null;
+  const msg = generateWAMessage(store, job);
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 async function fetchSmartAlerts(jobs, inventory, concentrate, beans, labeledStock) {
   const today = todayISO();
@@ -1370,7 +1445,8 @@ export default function App() {
       const [allData, catalog] = await Promise.all([sbLoadAll(), sbLoadWebProductCatalog()]);
       loaded = allData;
       const syncedJobs = await syncWebsiteOrderPaymentStatus(allData.jobs);
-      setJobs(syncedJobs);
+      const repairedJobs = await backfillMissingStoreWaFlags(syncedJobs);
+      setJobs(repairedJobs);
       setProductThumbs(catalog.thumbs);
       setWebProductIdToOps(catalog.idToOps);
       setInventory(allData.inventory);
@@ -1378,7 +1454,7 @@ export default function App() {
       setBeans(allData.beans);
       setLabeledStock(allData.labeledStock||{});
       setError(null);
-      try { localStorage.setItem("gremier_cache",JSON.stringify({...allData,jobs:syncedJobs,cachedAt:Date.now()})); } catch(e){}
+      try { localStorage.setItem("gremier_cache",JSON.stringify({...allData,jobs:repairedJobs,cachedAt:Date.now()})); } catch(e){}
     } catch(err) { if (!background) setError(err.message); }
     setLoading(false);
     setSyncing(false);
@@ -1505,16 +1581,15 @@ export default function App() {
           await sbIncrementInventory(pid, -qty);
         }
       }
-      if (job.deliveryType==="store" && job.storeName) {
+      if (isStoreWaDelivery(job)) {
         const large = Object.entries(qtys).filter(([p])=>PRODUCTS[p]?.category==="liter").reduce((s,[,q])=>s+(q||0),0);
         const mini  = Object.entries(qtys).filter(([p])=>PRODUCTS[p]?.category==="mini" ).reduce((s,[,q])=>s+(q||0),0);
         const syrup = Object.entries(qtys).filter(([p])=>PRODUCTS[p]?.category==="syrup").reduce((s,[,q])=>s+(q||0),0);
         writeDeliveryToSheet(job.storeName, large, mini, syrup);
-        const store = STORES.find(s=>s.name===job.storeName);
-        if (store?.phone) {
-          await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify({wa_needs_send:true})});
+        try {
+          await flagStoreWaNeedsSend(job.id);
           setJobs(prev=>prev.map(j=>j.id===job.id?{...j,waNeedsSend:true}:j));
-        }
+        } catch (e) { console.error("Store WA queue flag failed:", e); }
       }
     }
   }
@@ -1581,6 +1656,14 @@ export default function App() {
     setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
     await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify({done:true, actual_qty:actual})});
     await applyJobSideEffects(finalJob, confirmedQtys);
+    if (finalJob.type === "delivery" && finalJob.websiteOrderId) {
+      const pendingRow = pendingWebDeliveries.find(p => p.order_id === finalJob.websiteOrderId)
+        || (pendingWebsiteRef.current?.order_id === finalJob.websiteOrderId ? pendingWebsiteRef.current : null);
+      await markPendingWebsiteScheduled(pendingRow || { order_id: finalJob.websiteOrderId }, finalJob);
+      pendingWebsiteRef.current = null;
+      setPrefillWebsiteOrder(null);
+      loadPendingWebDeliveries();
+    }
     loadData();
   }
   // ─── ADD JOB (form Log Now / Schedule, and voice logger) ─────────────────
@@ -1597,6 +1680,9 @@ export default function App() {
       newJob.websiteOrderId = pendingRow.order_id;
       newJob.paid = pendingRow.payment_status === "paid";
       newJob.billed = false;
+      if (pendingRow.customer_phone && !newJob.customerPhone) {
+        newJob.customerPhone = pendingRow.customer_phone;
+      }
     }
     if (newJob.type==="brew") {
       // Brew always saves as brewStarted=true, done=false regardless of Log/Schedule.
@@ -1646,12 +1732,13 @@ export default function App() {
     let enriched = { ...order };
     try {
       if (order.order_id) {
-        const rows = await sbFetch(`orders?id=eq.${order.order_id}&select=items,customer_name,delivery_address,payment_status`);
+        const rows = await sbFetch(`orders?id=eq.${order.order_id}&select=items,customer_name,customer_phone,delivery_address,payment_status`);
         if (rows?.[0]) {
           enriched = {
             ...order,
             items: rows[0].items ?? order.items,
             customer_name: rows[0].customer_name ?? order.customer_name,
+            customer_phone: rows[0].customer_phone ?? order.customer_phone,
             delivery_address: rows[0].delivery_address ?? order.delivery_address,
             payment_status: rows[0].payment_status ?? order.payment_status,
           };
@@ -1663,6 +1750,36 @@ export default function App() {
     setWebsiteScheduleOpen(false);
     setScheduleMode("schedule");
     setScreen("schedule");
+  }
+  async function openWebsiteDeliverNow(order) {
+    let enriched = { ...order };
+    try {
+      if (order.order_id) {
+        const rows = await sbFetch(`orders?id=eq.${order.order_id}&select=items,customer_name,customer_phone,delivery_address,payment_status`);
+        if (rows?.[0]) {
+          enriched = {
+            ...order,
+            items: rows[0].items ?? order.items,
+            customer_name: rows[0].customer_name ?? order.customer_name,
+            customer_phone: rows[0].customer_phone ?? order.customer_phone,
+            delivery_address: rows[0].delivery_address ?? order.delivery_address,
+            payment_status: rows[0].payment_status ?? order.payment_status,
+          };
+        }
+      }
+    } catch (e) { console.warn("openWebsiteDeliverNow order fetch:", e); }
+    pendingWebsiteRef.current = enriched;
+    setPrefillWebsiteOrder(enriched);
+    setWebsiteScheduleOpen(false);
+    setScheduleMode("lognow");
+    setScreen("schedule");
+  }
+  async function dismissWebsiteOrder(order) {
+    if (!isAdmin) return;
+    const label = websiteOrderDisplayLabel(order);
+    if (!window.confirm(`Remove "${label}" from the delivery queue?\n\nThe website order stays — it just won't show in Ops until re-queued.`)) return;
+    await dismissPendingWebsiteDelivery(order.order_id, order.id);
+    loadPendingWebDeliveries();
   }
   async function updateJob(updatedJob) {
     if (!isAdmin) return;
@@ -1799,10 +1916,10 @@ export default function App() {
           ))}
         </div>
       )}
-      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:108,left:14,width:44,height:44,borderRadius:"50%",background:"#101010",color:"#fff",border:"none",fontSize:pendingWebDeliveries.length===1?18:15,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 4px 16px #00000044",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(pendingWebDeliveries.length===1)openWebsiteSchedule(pendingWebDeliveries[0]);else setWebsiteScheduleOpen(true);}} title={schedulePillLabel?`Schedule: ${schedulePillLabel}`:"Schedule new deliveries"}>{pendingWebDeliveries.length===1?"📦":pendingWebDeliveries.length}</button>}
-      {isAdmin&&websiteScheduleOpen&&<WebsiteScheduleDrawer orders={pendingWebDeliveries} onSchedule={openWebsiteSchedule} onClose={()=>setWebsiteScheduleOpen(false)}/>}
-      {(()=>{const waPending=jobs.filter(j=>j.waNeedsSend&&j.storeName);return isAdmin&&waPending.length>0&&!waOpen?(<button style={{position:"fixed",bottom:196,right:14,background:"#25D366",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>):null;})()}
-      {isAdmin&&waOpen&&<WaDrawer jobs={jobs.filter(j=>j.waNeedsSend&&j.storeName)} onMarkSent={markWaSent} onClose={()=>setWaOpen(false)}/>}
+      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:108,left:14,width:44,height:44,borderRadius:"50%",background:"#101010",color:"#fff",border:"none",fontSize:pendingWebDeliveries.length===1?18:15,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 4px 16px #00000044",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setWebsiteScheduleOpen(true)} title={schedulePillLabel?`Schedule: ${schedulePillLabel}`:"Schedule new deliveries"}>{pendingWebDeliveries.length===1?"📦":pendingWebDeliveries.length}</button>}
+      {isAdmin&&websiteScheduleOpen&&<WebsiteScheduleDrawer orders={pendingWebDeliveries} onSchedule={openWebsiteSchedule} onDeliverNow={openWebsiteDeliverNow} onDismiss={dismissWebsiteOrder} onClose={()=>setWebsiteScheduleOpen(false)}/>}
+      {(()=>{const waPending=jobs.filter(jobWaDrawerEligible);return isAdmin&&waPending.length>0&&!waOpen?(<button style={{position:"fixed",bottom:196,right:14,background:"#25D366",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>):null;})()}
+      {isAdmin&&waOpen&&<WaDrawer jobs={jobs.filter(jobWaDrawerEligible)} onMarkSent={markWaSent} onClose={()=>setWaOpen(false)}/>}
       {isAdmin&&unbilledJobs.length>0&&!billingOpen&&<button style={{position:"fixed",bottom:158,right:14,background:"#C8860A",color:"#fff",border:"none",borderRadius:20,padding:"6px 9px",fontSize:13,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setBillingOpen(true)}>💰 {unbilledJobs.length}</button>}
       {isAdmin&&billingOpen&&<BillingDrawer jobs={unbilledJobs} onMarkBilled={markBilled} onMarkPaid={markPaid} onClose={()=>setBillingOpen(false)}/>}
       <VoiceLogger
@@ -1988,7 +2105,7 @@ function DayPopup({date,jobs,onClose,onJobTap,onCheckoff}) {
 function JobRow({job,onCheckoff,onTap,pending}) {
   const color=job.type==="drain"?"#9B6FC8":job.type==="brew"?"#4A90D9":job.type==="bottling"?"#E8821A":job.type==="labeling"?"#3A2A1A":job.deliveryType==="store"?"#101010":"#2E8B57";
   const label=job.type==="delivery"?job.deliveryType==="store"?(job.storeName||"Store"):job.deliveryType==="coffeebar"?(job.cbName||"Coffee Bar"):(job.privateName||"Private"):job.label||(job.type==="bottling"?`Bottle ${job.liters}L ${PRODUCTS[job.product]?.label||""}`:job.type==="brew"?`Brew ${CONCENTRATE_TYPES[job.product]?.label||""} (${job.kg}kg)`:job.type==="drain"?`Drain ${CONCENTRATE_TYPES[job.product]?.label||""}`:job.type==="labeling"?`Label ${job.qty} ${PRODUCTS[job.product]?.label||""}`:job.type);
-  const hasWA=job.type==="delivery"&&job.done&&job.storeName&&STORES.find(s=>s.name===job.storeName)?.phone;
+  const hasWA=isStoreWaDelivery(job)&&job.done;
   const prodThumb = job.type==="brew"||job.type==="drain" ? { concType: job.product }
     : job.type==="bottling"||job.type==="labeling" ? { pid: job.product } : null;
   return (
@@ -2086,20 +2203,23 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
   const [storeName,setStore]=useState(existingJob?.storeName||"");
   const [privateName,setPrivateName]=useState(existingJob?.privateName||"");
   const [privateAddress,setPrivateAddress]=useState(existingJob?.privateAddress||"");
+  const [customerPhone,setCustomerPhone]=useState(existingJob?.customerPhone||"");
   const [quantities,setQty]=useState(existingJob?.quantities||{});
   const [webUnmapped,setWebUnmapped]=useState([]);
   const prefilledWebRef=React.useRef(null);
   useEffect(()=>{
     if (!websiteOrder || isEdit || prefilledWebRef.current===websiteOrder.id) return;
     prefilledWebRef.current=websiteOrder.id;
-    setMode("schedule");
+    if (initialMode) setMode(initialMode);
+    else setMode("schedule");
     setJobType("delivery");
     setSubType("private");
     setPrivateName(websiteOrder.customer_name||"");
     setPrivateAddress(websiteOrder.delivery_address||"");
+    setCustomerPhone(websiteOrder.customer_phone||"");
     setQty(websiteItemsToQuantities(websiteOrder.items, webIdToOps));
     setWebUnmapped(websiteUnmappedItems(websiteOrder.items, webIdToOps));
-  },[websiteOrder,isEdit,webIdToOps]);
+  },[websiteOrder,isEdit,webIdToOps,initialMode]);
   const [people,setPeople]=useState(existingJob?.people||25);
   const [product,setProduct]=useState(existingJob?.product||"classic_liter");
   const [liters,setLiters]=useState(existingJob?.liters||"");
@@ -2119,7 +2239,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
     if (jobType==="delivery") {
       if (subType==="coffeebar") return {...base,type:"delivery",deliveryType:"coffeebar",people,jerryCans,cbName,cbAddress,dispensers,cbSyrups,label:`Coffee Bar${cbName?" — "+cbName:""} (${people}p)`};
       const total=Object.values(quantities).reduce((s,v)=>s+(v||0),0);
-      return {...base,type:"delivery",deliveryType:subType,storeName:subType==="store"?storeName:undefined,privateName:subType==="private"?privateName:undefined,privateAddress:subType==="private"?privateAddress:undefined,quantities,plannedTotal:total};
+      return {...base,type:"delivery",deliveryType:subType,storeName:subType==="store"?storeName:undefined,privateName:subType==="private"?privateName:undefined,privateAddress:subType==="private"?privateAddress:undefined,customerPhone:subType==="private"?(customerPhone||undefined):undefined,quantities,plannedTotal:total};
     } else {
       if (prodType==="brew") return {...base,type:"brew",product:brewConc,kg,label:`Brew ${CONCENTRATE_TYPES[brewConc].label} (${kg}kg)`};
       if (prodType==="labeling") return {...base,type:"labeling",product:labelProduct,qty:Number(labelQty),label:`Label ${labelQty} ${PRODUCTS[labelProduct]?.label||""}`};
@@ -2186,6 +2306,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
               {subType==="store"&&<div style={S.field}><div style={S.lbl}>Store</div><select style={S.sel} value={storeName} onChange={e=>setStore(e.target.value)}><option value="">Select store...</option>{STORES.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}</select></div>}
               {subType==="private"&&<div style={S.field}><div style={S.lbl}>Recipient Name</div><input type="text" style={S.inp} value={privateName} onChange={e=>setPrivateName(e.target.value)} placeholder="Who is this for?"/></div>}
               {subType==="private"&&<div style={S.field}><div style={S.lbl}>Address</div><input type="text" style={S.inp} value={privateAddress} onChange={e=>setPrivateAddress(e.target.value)} placeholder="Delivery address"/></div>}
+              {subType==="private"&&<div style={S.field}><div style={S.lbl}>Phone</div><input type="tel" style={S.inp} value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)} placeholder="05X-XXXXXXX"/></div>}
               {subType!=="coffeebar"&&(
                 <div>
                   {subType==="store"&&<div style={{...S.field,marginBottom:10}}><div style={S.lbl}>Quick Case</div><select style={S.sel} onChange={e=>{if(!e.target.value)return;const caseQtys=CASES[e.target.value]?.qtys||{};setQty(q=>({...q,...caseQtys}));e.target.value="";}}><option value="">Add a case...</option>{Object.entries(CASES).map(([k,c])=><option key={k} value={k}>{c.label}</option>)}</select></div>}
@@ -2622,9 +2743,7 @@ function ProductionDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
   );
 }
 function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
-  const store=STORES.find(s=>s.name===job.storeName);
-  const msg=(store&&job.done)?generateWAMessage(store,job):"";
-  const waLink=(store?.phone&&job.done)?`https://wa.me/${store.phone}?text=${encodeURIComponent(msg)}`:null;
+  const waLink=(job.done&&isStoreWaDelivery(job))?buildStoreWaLink(job):null;
   return (
     <div style={S.modal} onClick={onClose}>
       <div style={S.modalBox} onClick={e=>e.stopPropagation()}>
@@ -2636,7 +2755,7 @@ function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
           {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(<div key={pid} style={{...S.qtyListRow,gap:10}}><ProductThumb pid={pid} size={28} /><span style={{color:"#222222",flex:1}}>{PRODUCTS[pid]?.label}</span><span style={{color:"#101010",fontWeight:700}}>{qty}</span></div>))}
           {job.deliveryType==="coffeebar"&&<div style={S.qtyListRow}><span style={{color:"#222222"}}>Coffee Bar</span><span style={{color:"#101010",fontWeight:700}}>{job.people} people · {(job.people/25)*5}L Classic</span></div>}
         </div>
-        {waLink&&isAdmin&&<a href={waLink} target="_blank" rel="noreferrer" style={S.waBtn}>💬 Send WhatsApp</a>}
+        {waLink&&isAdmin&&job.done&&<a href={waLink} target="_blank" rel="noreferrer" style={S.waBtn}>💬 Send WhatsApp</a>}
         <div style={S.modalActions}>
           <button style={S.btnSecondary} onClick={onClose}>Close</button>
           {isAdmin&&<button style={S.btnPrimary} onClick={onCheckoff}>Mark Delivered ✓</button>}
@@ -2798,7 +2917,7 @@ function CheckoffModal({job,onConfirm,onCancel}) {
     </div>
   );
 }
-function WebsiteScheduleDrawer({orders,onSchedule,onClose}) {
+function WebsiteScheduleDrawer({orders,onSchedule,onDeliverNow,onDismiss,onClose}) {
   return (
     <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:90,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={onClose}>
       <div style={{background:"#FFFFFF",borderRadius:"16px 16px 0 0",border:"1px solid #E0E0E0",maxHeight:"75vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
@@ -2822,7 +2941,11 @@ function WebsiteScheduleDrawer({orders,onSchedule,onClose}) {
                 <div style={{fontSize:11,color:"#888"}}>{itemsText}</div>
                 {o.delivery_address?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {o.delivery_address}</div>:<div style={{fontSize:11,color:"#888",fontStyle:"italic"}}>Address — add when scheduling</div>}
                 {o.customer_phone?<div style={{fontSize:11,color:"#555"}}>{o.customer_phone}</div>:null}
-                <button style={{background:"#4A90D9",color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",width:"100%",marginTop:4}} onClick={()=>onSchedule(o)}>Schedule now →</button>
+                <button style={{background:"#4A90D9",color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",width:"100%",marginTop:4}} onClick={()=>onSchedule(o)}>Schedule for later →</button>
+                <div style={{display:"flex",gap:8,width:"100%",marginTop:4}}>
+                  <button style={{flex:1,background:"#2E8B57",color:"#fff",border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer"}} onClick={()=>onDeliverNow(o)}>✓ Mark delivered</button>
+                  <button style={{flex:1,background:"#F5F5F5",color:"#C0392B",border:"1px solid #E0C0C0",borderRadius:8,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer"}} onClick={()=>onDismiss(o)}>Remove</button>
+                </div>
               </div>
             );
           })}
@@ -2876,9 +2999,7 @@ function WaDrawer({jobs,onMarkSent,onClose}) {
         <div style={S.alertDrawerHeader}><span style={{...S.alertDrawerTitle,color:"#25D366"}}>💬 WhatsApp Delivery Notes</span><button style={S.alertClose} onClick={onClose}>✕</button></div>
         {jobs.length===0&&<div style={{color:"#888",fontSize:13,padding:"12px 0"}}>All sent!</div>}
         {jobs.map(job=>{
-          const store=STORES.find(s=>s.name===job.storeName);
-          const msg=store?generateWAMessage(store,job):"";
-          const waLink=store?.phone?`https://wa.me/${store.phone}?text=${encodeURIComponent(msg)}`:null;
+          const waLink=buildStoreWaLink(job);
           return (
             <div key={job.id} style={{...S.alertRow,flexDirection:"column",alignItems:"flex-start",gap:8}}>
               <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A"}}>{job.storeName}</div>

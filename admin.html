@@ -2635,6 +2635,7 @@ async function confirmSchedule() {
       delivery_type: 'private',
       private_name: o.customer_name || 'Website Order',
       private_address: o.delivery_address || '',
+      customer_phone: o.customer_phone || null,
       date: date,
       time: time || null,
       done: false,

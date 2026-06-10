@@ -15,6 +15,8 @@ echo.
 if errorlevel 1 (
   echo.
   echo Migration failed. You can also run this SQL in Supabase Dashboard ^> SQL Editor:
+  echo   ALTER TABLE jobs ADD COLUMN IF NOT EXISTS wa_needs_send boolean NOT NULL DEFAULT false;
+  echo   ALTER TABLE jobs ADD COLUMN IF NOT EXISTS customer_phone text;
   echo   ALTER TABLE payment_links ADD COLUMN IF NOT EXISTS delivery_address text;
   echo.
   pause

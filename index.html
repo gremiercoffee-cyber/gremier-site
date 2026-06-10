@@ -657,7 +657,7 @@
   <a onclick="showPage('home');closeMobileMenu()" id="mm-home">Home</a>
   <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
   <a onclick="showPage('coffeebars');closeMobileMenu()" id="mm-bars">Coffee Bars</a>
-  <a onclick="showPage('home');setTimeout(()=>scrollToSection('aboutSection'),120);closeMobileMenu()" id="mm-about">About</a>
+  <a onclick="goToAbout();closeMobileMenu()" id="mm-about">About</a>
   <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Account</a>
 </div>
 <nav>
@@ -669,7 +669,7 @@
     <li><a onclick="showPage('home')">Home</a></li>
     <li><a onclick="showPage('shop')">Shop</a></li>
     <li><a onclick="showPage('coffeebars')">Coffee Bars</a></li>
-    <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('aboutSection'),120)">About</a></li>
+    <li><a onclick="goToAbout()">About</a></li>
     <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Account</a></li>
   </ul>
   <div class="nav-right">
@@ -1055,7 +1055,7 @@
     <div>
       <div class="footer-col-title" id="t-ft-info">Info</div>
       <ul class="footer-links">
-        <li><a onclick="showPage('home'); setTimeout(()=>scrollToSection('aboutSection'),120)">About Us</a></li>
+        <li><a onclick="goToAbout()">About Us</a></li>
         <li><a href="#">Shipping Policy</a></li>
         <li><a href="#">Refund Policy</a></li>
         <li><a href="#">Privacy Policy</a></li>
@@ -2108,14 +2108,14 @@ async function handlePaymentReturn() {
   );
 
   appPage = 'home';
-  history.replaceState({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind: 'pending', __app: 'gremier' }, '', window.location.pathname || '/');
+  navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind: 'pending' }, true);
   showPage('home', true);
   closeAllLayersUI();
   openCheckoutUI('result', 'pending');
 
   if (!orderId) {
     const resultKind = paymeOk ? 'paid' : 'failed';
-    navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind });
+    navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind }, true);
     openCheckoutUI('result', resultKind);
     return;
   }
@@ -2134,7 +2134,7 @@ async function handlePaymentReturn() {
     sessionStorage.removeItem('gremier_pending_order');
     if (currentUser) await refreshUserProfile();
   }
-  navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind });
+  navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind }, true);
   openCheckoutUI('result', resultKind);
 }
 async function refreshUserProfile() {
@@ -2234,14 +2234,35 @@ async function loadMyOrders() {
 // ══ APP NAVIGATION (browser / backspace back) ══
 let appPage = 'home';
 let navSkipPush = false;
+const APP_PAGES = new Set(['home', 'shop', 'coffeebars', 'myorders']);
+
+function parsePageFromUrl() {
+  const raw = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase();
+  if (raw === 'about') return { page: 'home', scrollTo: 'aboutSection' };
+  if (APP_PAGES.has(raw)) return { page: raw };
+  return { page: 'home' };
+}
+
+function buildPageUrl(pageOrHash, stripSearch = false) {
+  const base = window.location.pathname || '/';
+  const search = stripSearch ? '' : window.location.search;
+  if (!pageOrHash || pageOrHash === 'home') return base + search;
+  return `${base}${search}#${pageOrHash}`;
+}
+
+function buildNavUrl(state, stripSearch = false) {
+  if (state.scrollTo === 'aboutSection') return buildPageUrl('about', stripSearch);
+  const page = state.page || 'home';
+  return buildPageUrl(page, stripSearch);
+}
 
 function navPush(state) {
   if (navSkipPush) return;
-  history.pushState({ ...state, __app: 'gremier' }, '');
+  history.pushState({ ...state, __app: 'gremier' }, '', buildNavUrl(state));
 }
-function navReplace(state) {
+function navReplace(state, stripSearch = false) {
   if (navSkipPush) return;
-  history.replaceState({ ...state, __app: 'gremier' }, '');
+  history.replaceState({ ...state, __app: 'gremier' }, '', buildNavUrl(state, stripSearch));
 }
 function navBack() {
   if (!navSkipPush) history.back();
@@ -2371,6 +2392,7 @@ function applyNavState(state) {
   closeAllLayersUI();
   if (targetPage !== appPage) showPage(targetPage, true);
   else appPage = targetPage;
+  if (state.scrollTo) setTimeout(() => scrollToSection(state.scrollTo), 120);
   switch (state.layer) {
     case 'product':
       if (state.productId) openProductDrawerUI(state.productId);
@@ -2402,14 +2424,32 @@ function handleAppPopState(e) {
   navSkipPush = true;
   try {
     if (!e.state || e.state.__app !== 'gremier') {
-      applyNavState({ page: appPage || 'home', layer: null });
-      navReplace({ page: appPage || 'home', layer: null });
+      const { page, scrollTo } = parsePageFromUrl();
+      applyNavState({ page, layer: null, scrollTo: scrollTo || null });
+      navReplace({ page, layer: null, scrollTo: scrollTo || null });
       return;
     }
     applyNavState(e.state);
   } finally {
     navSkipPush = false;
   }
+}
+function restorePageFromUrl() {
+  const { page, scrollTo } = parsePageFromUrl();
+  appPage = page;
+  showPage(page, true);
+  navReplace({ page, layer: null, scrollTo: scrollTo || null });
+  if (scrollTo) setTimeout(() => scrollToSection(scrollTo), 120);
+}
+function goToAbout(fromHistory) {
+  showPage('home', true);
+  if (!fromHistory) navPush({ page: 'home', layer: null, scrollTo: 'aboutSection' });
+  setTimeout(() => scrollToSection('aboutSection'), 120);
+}
+function isPaymentReturnUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('payment') === 'return'
+    || ['payme_status', 'payme_sale_status', 'sale_status', 'payme_sale_id'].some(k => params.has(k));
 }
 function exitCheckoutToHome() {
   closeAllLayersUI();
@@ -2700,11 +2740,13 @@ async function init() {
   loadSiteSettings();
   applyTranslations();
   updateCartCount();
-  handlePaymentReturn();
+  if (isPaymentReturnUrl()) {
+    await handlePaymentReturn();
+  } else {
+    restorePageFromUrl();
+  }
 }
 init();
-appPage = 'home';
-navReplace({ page: 'home', layer: null });
 window.addEventListener('popstate', handleAppPopState);
 // ══ CHATBOT ══
 const CHAT_EDGE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/chat-assistant';
