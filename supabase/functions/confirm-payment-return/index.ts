@@ -44,6 +44,10 @@ function resolveOrderIdFromBody(body: Record<string, unknown>): string {
 
   const txn = String(body.transaction_id || "").trim();
   if (looksLikeUuid(txn)) return txn;
+  const uuidPrefix = txn.match(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  )?.[0];
+  if (uuidPrefix) return uuidPrefix;
 
   return "";
 }
@@ -79,6 +83,11 @@ async function resolvePaymeSaleId(
   const fromBody = String(body.payme_sale_id || "").trim();
   if (fromBody) return fromBody;
 
+  if (orderDeliveryInfo) {
+    const stored = String(orderDeliveryInfo.payme_sale_id || "").trim();
+    if (stored) return stored;
+  }
+
   if (linkCode) {
     const { data: link } = await supabase
       .from("payment_links")
@@ -86,11 +95,6 @@ async function resolvePaymeSaleId(
       .eq("link_code", linkCode)
       .maybeSingle();
     if (link?.payme_sale_id) return String(link.payme_sale_id);
-  }
-
-  if (orderDeliveryInfo) {
-    const stored = String(orderDeliveryInfo.payme_sale_id || "").trim();
-    if (stored) return stored;
   }
 
   return "";

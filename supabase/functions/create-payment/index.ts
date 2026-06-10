@@ -590,6 +590,10 @@ serve(async (req) => {
       await supabase.from("orders").update({ customer_email: buyerEmail, updated_at: new Date().toISOString() }).eq("id", row.id);
     }
 
+    if (linkCode) {
+      await updatePaymentLinkAfterSale(supabase, linkCode, paymeSaleId, checkoutUrl);
+    }
+
     return new Response(JSON.stringify({ sale_url: checkoutUrl, payme_sale_id: paymeSaleId, ok: true }), {
 
       headers: { ...corsHeaders, "Content-Type": "application/json" },

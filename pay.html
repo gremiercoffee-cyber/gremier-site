@@ -486,15 +486,15 @@
       }
     }
 
-    for (let i = 0; i < 4; i++) {
-      await queuePaidOrderForOps(targetId);
+    for (let i = 0; i < 6; i++) {
+      await queuePaidOrderForOps(targetId, i > 0);
       if (!targetId) break;
       const { data: order } = await sb.from('orders')
         .select('payment_status, delivery_info')
         .eq('id', targetId)
         .maybeSingle();
       if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) break;
-      if (i < 3) await new Promise(r => setTimeout(r, 1200));
+      if (i < 5) await new Promise(r => setTimeout(r, 1500));
     }
 
     navPayPush('paid');
@@ -568,10 +568,12 @@
   }
 
   /** Queue paid order for Ops scheduling (idempotent safety net). */
-  async function queuePaidOrderForOps(oid) {
+  async function queuePaidOrderForOps(oid, force) {
     const id = oid || orderId;
     if (!id) return;
     try {
+      const payload = { order_id: id };
+      if (force) payload.force = true;
       await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
         method: 'POST',
         headers: {
@@ -579,7 +581,7 @@
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ order_id: id }),
+        body: JSON.stringify(payload),
       });
     } catch (e) {
       console.warn('Ops schedule queue:', e);

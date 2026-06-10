@@ -411,7 +411,33 @@ async function fulfillPaymentLink(
 
   let orderId = isReusablePaymentLink(link) ? null : (link.order_id || null);
 
-
+  if (!orderId) {
+    const txnId = String(payload.transaction_id || "");
+    const txnOrderId = txnId.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    )?.[0];
+    if (txnOrderId) {
+      orderId = txnOrderId;
+    } else {
+      const saleId = String(payload.payme_sale_id || "");
+      if (saleId) {
+        const { data: orders } = await supabase
+          .from("orders")
+          .select("id, delivery_info")
+          .eq("payment_method", "payme")
+          .order("created_at", { ascending: false })
+          .limit(50);
+        const match = (orders || []).find((o) => {
+          const info = o.delivery_info && typeof o.delivery_info === "object"
+            ? o.delivery_info as Record<string, unknown>
+            : {};
+          return String(info.payme_sale_id || "") === saleId
+            || String(info.payment_link_code || "") === link.link_code;
+        });
+        if (match?.id) orderId = String(match.id);
+      }
+    }
+  }
 
   if (orderId) {
 
@@ -721,43 +747,43 @@ Deno.serve(async (req) => {
 
 
 
-    const paymentLink = await findPaymentLink(supabase, payload);
+    // Prefer matching an existing checkout order (pay.html uses order UUID as transaction_id).
+    // Checking payment_links first caused reusable links to create duplicate unpaid orders.
+    const order = await findOrder(supabase, payload);
 
-    if (paymentLink) {
+    if (!order) {
 
-      const result = await fulfillPaymentLink(supabase, paymentLink, payload);
+      const paymentLink = await findPaymentLink(supabase, payload);
 
-      if (result.alreadyPaid) {
+      if (paymentLink) {
+
+        const result = await fulfillPaymentLink(supabase, paymentLink, payload);
+
+        if (result.alreadyPaid) {
+
+          await ensurePendingWebsiteDelivery(supabase, result.orderId);
+
+          await notifyPaidOrder(supabase, result.orderId);
+
+          return new Response(JSON.stringify({ ok: true, already_paid: true }), {
+
+            headers: { "Content-Type": "application/json" },
+
+          });
+
+        }
 
         await ensurePendingWebsiteDelivery(supabase, result.orderId);
 
         await notifyPaidOrder(supabase, result.orderId);
 
-        return new Response(JSON.stringify({ ok: true, already_paid: true }), {
+        return new Response(JSON.stringify({ ok: true, order_id: result.orderId }), {
 
           headers: { "Content-Type": "application/json" },
 
         });
 
       }
-
-      await ensurePendingWebsiteDelivery(supabase, result.orderId);
-
-      await notifyPaidOrder(supabase, result.orderId);
-
-      return new Response(JSON.stringify({ ok: true, order_id: result.orderId }), {
-
-        headers: { "Content-Type": "application/json" },
-
-      });
-
-    }
-
-
-
-    const order = await findOrder(supabase, payload);
-
-    if (!order) {
 
       console.error("PayMe webhook: order not found", payload);
 
