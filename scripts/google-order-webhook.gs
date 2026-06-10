@@ -25,7 +25,10 @@
  *    GOOGLE_ORDER_WEBHOOK_SECRET = same as WEBHOOK_SECRET below
 
  * 6. Redeploy confirm-payment-return and payme-webhook edge functions
-
+ *
+ * Emails on each paid order:
+ *   - Owner (NOTIFY_EMAIL): new-order alert
+ *   - Customer (customer_email): receipt/confirmation (skipped on admin force re-sync)
  */
 
 
@@ -112,11 +115,104 @@ function setupSheet() {
 
 
 
+function buildOwnerEmail(data) {
+  var label = data.order_number ? ('#' + data.order_number) : (data.order_label || data.order_id || 'New');
+  var subject = 'Gremier — paid order ' + label + ' — ₪' + (data.total || 0);
+  var body = [
+    'New payment received!',
+    '',
+    'Order: ' + label,
+    'Customer: ' + (data.customer_name || '—'),
+    'Phone: ' + (data.customer_phone || '—'),
+    'Email: ' + (data.customer_email || '—'),
+    'Address: ' + (data.delivery_address || '—'),
+    '',
+    'Items:',
+    data.items_summary || '—',
+    '',
+    'Subtotal: ₪' + (data.subtotal || 0),
+    (data.discount > 0 ? ('Discount: -₪' + data.discount) : null),
+    'Total: ₪' + (data.total || 0),
+    data.notes ? ('Notes: ' + data.notes) : null,
+    data.source ? ('Source: ' + data.source) : null,
+    '',
+    'Admin: ' + (data.admin_url || ''),
+  ].filter(function (line) { return line !== null; }).join('\n');
+  return { subject: subject, body: body };
+}
+
+function isValidCustomerEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  var trimmed = email.trim();
+  if (!trimmed) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+/** Customer receipt — sent from your Google account when the order syncs. */
+function sendCustomerReceipt(data) {
+  var email = String(data.customer_email || '').trim();
+  if (!isValidCustomerEmail(email)) return false;
+  if (data.force === true) return false;
+  if (email.toLowerCase() === String(NOTIFY_EMAIL || '').trim().toLowerCase()) return false;
+
+  var label = data.order_number ? ('#' + data.order_number) : (data.order_label || 'your order');
+  var name = data.customer_name || 'there';
+  var subject = 'Gremier Coffee — order ' + label + ' confirmed — ₪' + (data.total || 0);
+  var body = [
+    'Hi ' + name + ',',
+    '',
+    'Thank you! We received your payment.',
+    '',
+    'Order: ' + label,
+    '',
+    'Items:',
+    data.items_summary || '—',
+    '',
+    'Subtotal: ₪' + (data.subtotal || 0),
+    (data.discount > 0 ? ('Discount: -₪' + data.discount) : null),
+    'Total: ₪' + (data.total || 0),
+    data.delivery_address ? ('Delivery: ' + data.delivery_address) : null,
+    data.notes ? ('Notes: ' + data.notes) : null,
+    '',
+    "We'll be in touch shortly about delivery.",
+    '',
+    '— Gremier Coffee Co.',
+    'https://gremier-site.vercel.app',
+  ].filter(function (line) { return line !== null; }).join('\n');
+
+  MailApp.sendEmail({
+    to: email,
+    subject: subject,
+    body: body,
+  });
+  return true;
+}
+
+function sendOwnerNotification(data) {
+  var mail = buildOwnerEmail(data);
+  MailApp.sendEmail({
+    to: NOTIFY_EMAIL,
+    subject: mail.subject,
+    body: mail.body,
+  });
+}
 function doGet() {
 
   setupSheet();
 
   return jsonResponse({ ok: true, message: 'Gremier order webhook is running' });
+
+}
+
+
+
+function jsonResponse(obj, code) {
+
+  var out = ContentService.createTextOutput(JSON.stringify(obj));
+
+  out.setMimeType(ContentService.MimeType.JSON);
+
+  return out;
 
 }
 
@@ -180,85 +276,16 @@ function doPost(e) {
 
     ]);
 
+    sendOwnerNotification(data);
+    var customerEmailed = sendCustomerReceipt(data);
 
-
-    var label = data.order_number ? ('#' + data.order_number) : (data.order_label || data.order_id || 'New');
-
-    var subject = 'Gremier — paid order ' + label + ' — ₪' + (data.total || 0);
-
-    var body = [
-
-      'New payment received!',
-
-      '',
-
-      'Order: ' + label,
-
-      'Customer: ' + (data.customer_name || '—'),
-
-      'Phone: ' + (data.customer_phone || '—'),
-
-      'Email: ' + (data.customer_email || '—'),
-
-      'Address: ' + (data.delivery_address || '—'),
-
-      '',
-
-      'Items:',
-
-      data.items_summary || '—',
-
-      '',
-
-      'Subtotal: ₪' + (data.subtotal || 0),
-
-      (data.discount > 0 ? ('Discount: -₪' + data.discount) : null),
-
-      'Total: ₪' + (data.total || 0),
-
-      data.notes ? ('Notes: ' + data.notes) : null,
-
-      data.source ? ('Source: ' + data.source) : null,
-
-      '',
-
-      'Admin: ' + (data.admin_url || ''),
-
-    ].filter(function (line) { return line !== null; }).join('\n');
-
-
-
-    MailApp.sendEmail({
-
-      to: NOTIFY_EMAIL,
-
-      subject: subject,
-
-      body: body,
-
-    });
-
-
-
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, customer_emailed: customerEmailed });
 
   } catch (err) {
 
     return jsonResponse({ ok: false, error: String(err) }, 500);
 
   }
-
-}
-
-
-
-function jsonResponse(obj, code) {
-
-  var out = ContentService.createTextOutput(JSON.stringify(obj));
-
-  out.setMimeType(ContentService.MimeType.JSON);
-
-  return out;
 
 }
 

@@ -1857,7 +1857,7 @@ function openOrderDetail(id) {
       </select>
     </div>
     ${o.payment_status === 'paid' ? `<div style="margin-top:12px">
-      <div style="font-size:.78rem;color:var(--text2);margin-bottom:8px">${(o.delivery_info && o.delivery_info.order_notified_at) ? '✓ Synced to Google Sheet' + (o.customer_email ? ' + customer email sent' : '') : '⚠ Not synced to Google Sheet yet'}</div>
+      <div style="font-size:.78rem;color:var(--text2);margin-bottom:8px">${(o.delivery_info && o.delivery_info.order_notified_at) ? '✓ Synced to Google Sheet' + (o.customer_email ? ' — owner + customer emailed' : ' — owner emailed') : '⚠ Not synced to Google Sheet yet'}</div>
       <button class="btn btn-sm" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-sync to Sheet' : 'Sync to Sheet + email'}</button>
     </div>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;

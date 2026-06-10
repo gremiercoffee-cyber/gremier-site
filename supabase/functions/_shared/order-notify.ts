@@ -111,6 +111,7 @@ async function postToGoogleAppsScript(
 /** POST order to Google Apps Script web app → sheet row + email via MailApp. */
 async function sendViaGoogleSheet(
   payload: Record<string, unknown>,
+  options?: { force?: boolean },
 ): Promise<{ ok: boolean; detail?: string }> {
   const url = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL") || "").trim().replace(/^["']+|["']+$/g, "");
   if (!url) {
@@ -119,7 +120,11 @@ async function sendViaGoogleSheet(
   }
 
   const secret = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_SECRET") || "").trim().replace(/^["']+|["']+$/g, "");
-  const body = secret ? { ...payload, secret } : payload;
+  const body = {
+    ...payload,
+    ...(secret ? { secret } : {}),
+    ...(options?.force ? { force: true } : {}),
+  };
   const { ok, text } = await postToGoogleAppsScript(url, body);
   if (!ok) {
     console.error("Google Sheet webhook failed:", text);
@@ -166,11 +171,15 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
 }
 
 /** Notify when an order is paid. Google Sheet webhook first, Pushover fallback. */
-export async function sendOrderPaidNotification(order: OrderNotifyRow): Promise<{ ok: boolean; detail?: string }> {
-  const { subject, text, payload } = buildOrderMessage(order);
+export async function sendOrderPaidNotification(
+  order: OrderNotifyRow,
+  options?: { force?: boolean },
+): Promise<{ ok: boolean; detail?: string }> {
+  const { payload } = buildOrderMessage(order);
   try {
-    const sheet = await sendViaGoogleSheet(payload);
+    const sheet = await sendViaGoogleSheet(payload, options);
     if (sheet.ok) return { ok: true };
+    const { subject, text } = buildOrderMessage(order);
     const pushed = await sendViaPushover(`💳 ${subject}`, text);
     if (pushed) return { ok: true };
     return { ok: false, detail: sheet.detail || "Google webhook and Pushover both failed" };
@@ -202,7 +211,7 @@ export async function notifyPaidOrderOnce(
     : {};
   if (info.order_notified_at && !options?.force) return { sent: true, skipped: "already_notified" };
 
-  const result = await sendOrderPaidNotification(order as OrderNotifyRow);
+  const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
   if (!result.ok) {
     const hasUrl = !!Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
     return {
