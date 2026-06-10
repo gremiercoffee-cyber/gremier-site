@@ -197,6 +197,117 @@ function mapWebsiteItemToOpsProduct(item) {
   }
   return null;
 }
+const CONCENTRATE_TO_LITER = { classic: "classic_liter", houseBlend: "house_blend", colombia: "colombia_liter", decaf: "decaf_liter" };
+const OPS_PRODUCT_MATCH_ORDER = [
+  "sweetened_classic", "house_blend_mini", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini",
+  "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf", "jerry_can",
+  "house_blend", "colombia_liter", "decaf_liter",
+  "vanilla_syrup", "caramel_syrup", "sugar_syrup", "dispenser", "classic_liter",
+];
+const OPS_PRODUCT_NAME_MATCHES = {
+  sweetened_classic: [/sweetened/i, /classic sweet/i],
+  house_blend_mini: [/house blend mini/i],
+  classic_mini: [/classic mini/i],
+  vanilla_mini: [/vanilla mini/i],
+  original_mini: [/original mini/i, /sea salt/i],
+  caramel_mini: [/caramel mini/i],
+  jerry_can_houseblend: [/jerry.*house|house.*jerry/i],
+  jerry_can_colombia: [/jerry.*colombia|colombia.*jerry/i],
+  jerry_can_decaf: [/jerry.*decaf|decaf.*jerry/i],
+  jerry_can: [/jerry/i],
+  house_blend: [/house blend/i],
+  colombia_liter: [/colombia/i],
+  decaf_liter: [/decaf/i],
+  vanilla_syrup: [/vanilla syrup/i],
+  caramel_syrup: [/caramel syrup/i],
+  sugar_syrup: [/sugar syrup/i, /simple syrup/i],
+  dispenser: [/dispenser/i],
+  classic_liter: [/classic dark/i, /classic liter/i, /classic 1/i, /classic glass/i, /unsweetened classic/i, /^classic/i],
+};
+function normProductName(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function webProductMatchesOpsKey(nameEn, opsKey) {
+  const patterns = OPS_PRODUCT_NAME_MATCHES[opsKey];
+  if (!patterns) return false;
+  const name = normProductName(nameEn);
+  return patterns.some(pt => pt.test(nameEn) || pt.test(name));
+}
+function buildProductThumbMap(webProducts) {
+  const map = {};
+  const used = new Set();
+  const list = [...(webProducts || [])].filter(p => p.images?.[0]);
+  for (const opsKey of OPS_PRODUCT_MATCH_ORDER) {
+    const match = list.find(p => !used.has(p.id) && webProductMatchesOpsKey(p.name_en, opsKey));
+    if (match) {
+      map[opsKey] = match.images[0];
+      used.add(match.id);
+    }
+  }
+  for (const [conc, literPid] of Object.entries(CONCENTRATE_TO_LITER)) {
+    if (map[literPid]) map[`__conc_${conc}`] = map[literPid];
+  }
+  return map;
+}
+async function sbLoadProductThumbnails() {
+  try {
+    const rows = await sbFetch("products?select=id,name_en,images&order=sort_order.asc");
+    return buildProductThumbMap(Array.isArray(rows) ? rows : []);
+  } catch (e) {
+    console.warn("product thumbnails:", e);
+    return {};
+  }
+}
+const ProductThumbsContext = React.createContext({});
+function ProductThumb({ pid, concType, size = 34 }) {
+  const thumbs = React.useContext(ProductThumbsContext);
+  let url = null;
+  if (concType) url = thumbs[`__conc_${concType}`] || thumbs[CONCENTRATE_TO_LITER[concType]];
+  else if (pid) url = thumbs[pid];
+  const box = {
+    width: size, height: size, minWidth: size, borderRadius: 8, flexShrink: 0,
+    overflow: "hidden", background: "#ECECEC", display: "flex", alignItems: "center",
+    justifyContent: "center", border: "1px solid #E0E0E0",
+  };
+  if (url) return <img src={url} alt="" style={{ ...box, objectFit: "cover" }} loading="lazy" />;
+  const letter = (concType ? CONCENTRATE_TYPES[concType]?.label : PRODUCTS[pid]?.label)?.[0] || "?";
+  return <div style={{ ...box, fontSize: Math.round(size * 0.38), color: "#999", fontWeight: 700 }}>{letter}</div>;
+}
+function ProductQtyRow({ pid, value, onDec, onInc, onChange }) {
+  const p = PRODUCTS[pid];
+  if (!p) return null;
+  return (
+    <div style={{ ...S.qRow, gap: 8 }}>
+      <ProductThumb pid={pid} />
+      <span style={{ ...S.qLabel, flex: 1 }}>{p.label}</span>
+      <button type="button" style={{ ...S.editBtn, width: 26, height: 26, fontSize: 16 }} onClick={onDec}>−</button>
+      <input type="number" min="0" style={{ ...S.qInput, width: 44 }} placeholder="" value={value || ""} onChange={onChange} />
+      <button type="button" style={{ ...S.editBtn, width: 26, height: 26, fontSize: 16 }} onClick={onInc}>+</button>
+    </div>
+  );
+}
+function ProductStockRow({ pid, concType, label, labelColor, suffix, value, readOnly, onDec, onInc, onChange, step }) {
+  return (
+    <div style={S.editRow}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+        <ProductThumb pid={pid} concType={concType} />
+        <span style={{ ...S.editLbl, color: labelColor || "#444", flex: 1, minWidth: 0 }}>{label}{suffix}</span>
+      </div>
+      <div style={S.editCtrl}>
+        {!readOnly && onDec && <button type="button" style={S.editBtn} onClick={onDec}>−</button>}
+        <input
+          type="number"
+          step={step}
+          style={{ ...S.editVal, background: "#FAFAFA", border: "1px solid #D0D0D0", borderRadius: 6, padding: "4px 6px", width: 64, textAlign: "center", color: "#1A1A1A" }}
+          value={value ?? ""}
+          readOnly={readOnly}
+          onChange={readOnly ? undefined : onChange}
+        />
+        {!readOnly && onInc && <button type="button" style={S.editBtn} onClick={onInc}>+</button>}
+      </div>
+    </div>
+  );
+}
 function websiteItemsToQuantities(items) {
   const qty = {};
   (items || []).forEach((item) => {
@@ -1070,6 +1181,7 @@ export default function App() {
   const [concentrate,setConcentrate]=useState({classic:0,houseBlend:0,colombia:0,decaf:0});
   const [beans,setBeans]=useState({classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
   const [labeledStock,setLabeledStock]=useState({});
+  const [productThumbs,setProductThumbs]=useState({});
   const [smartAlerts,setSmartAlerts]=useState([]);
   const [alertDismissed,setAlertDismissed]=useState(false);
   const alertsChecked=React.useRef(false);
@@ -1116,21 +1228,23 @@ export default function App() {
   }
   const loadData=useCallback(async(background=false)=>{
     if (!background) setSyncing(true);
-    let data = null;
+    let loaded = null;
     try {
-      data=await sbLoadAll();
-      const syncedJobs = await syncWebsiteOrderPaymentStatus(data.jobs);
+      const [allData, thumbs] = await Promise.all([sbLoadAll(), sbLoadProductThumbnails()]);
+      loaded = allData;
+      const syncedJobs = await syncWebsiteOrderPaymentStatus(allData.jobs);
       setJobs(syncedJobs);
-      setInventory(data.inventory);
-      setConcentrate(data.concentrate);
-      setBeans(data.beans);
-      setLabeledStock(data.labeledStock||{});
+      setProductThumbs(thumbs);
+      setInventory(allData.inventory);
+      setConcentrate(allData.concentrate);
+      setBeans(allData.beans);
+      setLabeledStock(allData.labeledStock||{});
       setError(null);
-      try { localStorage.setItem("gremier_cache",JSON.stringify({...data,jobs:syncedJobs,cachedAt:Date.now()})); } catch(e){}
+      try { localStorage.setItem("gremier_cache",JSON.stringify({...allData,jobs:syncedJobs,cachedAt:Date.now()})); } catch(e){}
     } catch(err) { if (!background) setError(err.message); }
     setLoading(false);
     setSyncing(false);
-    if (!background&&!alertsChecked.current&&data&&!sessionStorage.getItem("alerts_dismissed")) {
+    if (!background&&!alertsChecked.current&&loaded&&!sessionStorage.getItem("alerts_dismissed")) {
       alertsChecked.current = true;
       const lastCheck = localStorage.getItem("gremier_alert_date");
       const today = todayISO();
@@ -1140,7 +1254,7 @@ export default function App() {
       } else {
         localStorage.setItem("gremier_alert_date", today);
         localStorage.setItem("gremier_alert_cache", "[]");
-        fetchSmartAlerts(data.jobs,data.inventory,data.concentrate,data.beans,data.labeledStock).then(alerts=>{
+        fetchSmartAlerts(loaded.jobs,loaded.inventory,loaded.concentrate,loaded.beans,loaded.labeledStock).then(alerts=>{
           if (alerts.length>0) {
             setSmartAlerts(alerts);
             setAlertDismissed(false);
@@ -1507,6 +1621,7 @@ export default function App() {
   if (loading) return (<div style={S.app}><div style={S.container}><div style={S.loading}><GremierLogo/><div style={{color:"#333333",fontSize:12,letterSpacing:2,marginTop:20}}>Loading...</div></div></div></div>);
   if (error) return (<div style={S.app}><div style={S.container}><div style={S.loading}><div style={{color:"#E53935",fontSize:14,padding:20,textAlign:"center"}}>Connection error:<br/><br/>{error}<br/><br/><button style={S.btnPrimary} onClick={loadData}>Retry</button></div></div></div></div>);
   return (
+    <ProductThumbsContext.Provider value={productThumbs}>
     <div style={S.app}><div style={S.container}>
       {!isAdmin&&<div style={{background:"#1F4D7A",color:"#fff",textAlign:"center",fontSize:11,padding:"5px 0",letterSpacing:1.5,textTransform:"uppercase"}}>View Only</div>}
       {syncing&&<div style={S.syncBar}>Syncing...</div>}
@@ -1554,6 +1669,7 @@ export default function App() {
       />
       <BottomNav screen={screen} setScreen={s=>{setScreen(s);}} pendingCount={isAdmin?pendingConfirms.length:0} labeledLowCount={Object.entries(LABELED_WARN).filter(([pid,warn])=>warn!==null&&(labeledStock[pid]||0)<warn).length}/>
     </div></div>
+    </ProductThumbsContext.Provider>
   );
 }
 function Dashboard({concentrate,needed,monthView,setMonthView,jobs,today,onCheckoff,onJobTap,onSchedule,onLogNow,setCalDay,onRefresh,onSignOut,isAdmin}) {
@@ -1759,7 +1875,8 @@ function CoffeeBarSelector({people,setPeople,jerryCans,setJerryCans,cbName,setCb
       </div>
       <div style={S.field}><div style={S.lbl}>Syrups</div>
         {["vanilla_syrup","caramel_syrup","sugar_syrup"].map(pid=>(
-          <div key={pid} style={{...S.qRow,gap:6}}>
+          <div key={pid} style={{...S.qRow,gap:8}}>
+            <ProductThumb pid={pid} size={32} />
             <span style={{...S.qLabel,flex:1}}>{PRODUCTS[pid]?.label}</span>
             <button style={{...S.editBtn,width:26,height:26,fontSize:16}} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]??1)-1)}))}>−</button>
             <input type="number" min="0" style={{...S.qInput,width:44}} value={cbSyrups[pid]??1} onChange={e=>setCbSyrups(s=>({...s,[pid]:Number(e.target.value)||0}))}/>
@@ -1909,13 +2026,15 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
                   {[{label:"Liter Bottles",cat:"liter"},{label:"Mini Bottles",cat:"mini"},{label:"Jerry Cans",cat:"jerry"},{label:"Syrups",cat:"syrup"}].map(({label,cat})=>(
                     <div key={cat}>
                       <div style={{fontSize:9,color:"#101010",letterSpacing:1.5,textTransform:"uppercase",fontWeight:700,marginTop:10,marginBottom:4,borderBottom:"1px solid #E0E0E0",paddingBottom:3}}>{label}</div>
-                      {Object.entries(PRODUCTS).filter(([,p])=>p.category===cat).map(([pid,p])=>(
-                        <div key={pid} style={{...S.qRow,gap:6}}>
-                          <span style={{...S.qLabel,flex:1}}>{p.label}</span>
-                          <button style={{...S.editBtn,width:26,height:26,fontSize:16}} onClick={()=>setQty(q=>({...q,[pid]:Math.max(0,(q[pid]||0)-1)}))}>−</button>
-                          <input type="number" min="0" style={{...S.qInput,width:44}} placeholder="" value={quantities[pid]||""} onChange={e=>setQty(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
-                          <button style={{...S.editBtn,width:26,height:26,fontSize:16}} onClick={()=>setQty(q=>({...q,[pid]:(q[pid]||0)+1}))}>+</button>
-                        </div>
+                      {Object.entries(PRODUCTS).filter(([,p])=>p.category===cat).map(([pid])=>(
+                        <ProductQtyRow
+                          key={pid}
+                          pid={pid}
+                          value={quantities[pid]}
+                          onDec={()=>setQty(q=>({...q,[pid]:Math.max(0,(q[pid]||0)-1)}))}
+                          onInc={()=>setQty(q=>({...q,[pid]:(q[pid]||0)+1}))}
+                          onChange={e=>setQty(q=>({...q,[pid]:Number(e.target.value)||0}))}
+                        />
                       ))}
                     </div>
                   ))}
@@ -2094,14 +2213,19 @@ function StockScreen({concentrate,setConcentrate,inventory,setInventory,needed,j
       <div style={S.card}>
         <div style={{...S.cardTitle,...HDR}}>Concentrate (Liters)</div>
         {Object.entries(CONCENTRATE_TYPES).map(([k,ct])=>(
-          <div key={k} style={S.editRow}>
-            <span style={{...S.editLbl,color:ct.color}}>{ct.label}{savingKey==="conc_"+k&&<span style={{fontSize:10,color:"#4A90D9",marginLeft:6}}>saving…</span>}</span>
-            <div style={S.editCtrl}>
-              {isAdmin&&<button style={S.editBtn} onClick={()=>saveConc(k, Math.max(0,parseFloat(((concentrate[k]||0)-0.5).toFixed(1))))}>−</button>}
-              <input type="number" step="0.5" style={{...S.editVal,background:"#FAFAFA",border:"1px solid #D0D0D0",borderRadius:6,padding:"4px 6px",width:64,textAlign:"center",color:"#1A1A1A"}} value={concentrate[k]||""} readOnly={!isAdmin} onChange={isAdmin?e=>saveConc(k, e.target.value===""?0:parseFloat(e.target.value)||0):undefined}/>
-              {isAdmin&&<button style={S.editBtn} onClick={()=>saveConc(k, parseFloat(((concentrate[k]||0)+0.5).toFixed(1)))}>+</button>}
-            </div>
-          </div>
+          <ProductStockRow
+            key={k}
+            concType={k}
+            label={ct.label}
+            labelColor={ct.color}
+            suffix={savingKey==="conc_"+k?<span style={{fontSize:10,color:"#4A90D9",marginLeft:6}}>saving…</span>:null}
+            value={concentrate[k]||""}
+            readOnly={!isAdmin}
+            step="0.5"
+            onDec={isAdmin?()=>saveConc(k, Math.max(0,parseFloat(((concentrate[k]||0)-0.5).toFixed(1)))):null}
+            onInc={isAdmin?()=>saveConc(k, parseFloat(((concentrate[k]||0)+0.5).toFixed(1))):null}
+            onChange={isAdmin?e=>saveConc(k, e.target.value===""?0:parseFloat(e.target.value)||0):undefined}
+          />
         ))}
       </div>
       <div style={S.card}>
@@ -2114,7 +2238,7 @@ function StockScreen({concentrate,setConcentrate,inventory,setInventory,needed,j
             {Object.keys(CONCENTRATE_TYPES).map(k=>{
               const n=needed[k]||0; const effectiveNeed=Math.max(0,n-(inProgress[k]||0)-(concentrate[k]||0)); const brewing=inProgress[k]||0;
               if (n===0&&brewing===0) return null;
-              return (<div key={k} style={S.needRow}><div><div style={S.editLbl}>{CONCENTRATE_TYPES[k].label}</div>{brewing>0&&<div style={{fontSize:10,color:"#4A90D9"}}>🧪 {brewing.toFixed(1)}L brewing</div>}</div><span style={{color:effectiveNeed===0?"#27AE60":"#E53935",fontWeight:600}}>{effectiveNeed===0?"✓ Covered":`Need ${effectiveNeed.toFixed(1)}L more`}</span></div>);
+              return (<div key={k} style={S.needRow}><ProductThumb concType={k} size={28} /><div style={{flex:1}}><div style={S.editLbl}>{CONCENTRATE_TYPES[k].label}</div>{brewing>0&&<div style={{fontSize:10,color:"#4A90D9"}}>🧪 {brewing.toFixed(1)}L brewing</div>}</div><span style={{color:effectiveNeed===0?"#27AE60":"#E53935",fontWeight:600}}>{effectiveNeed===0?"✓ Covered":`Need ${effectiveNeed.toFixed(1)}L more`}</span></div>);
             })}
             {allCovered&&<div style={S.empty}>All concentrate needs covered</div>}
           </>);
@@ -2127,14 +2251,17 @@ function StockScreen({concentrate,setConcentrate,inventory,setInventory,needed,j
           <div key={title} style={S.card}>
             <div style={{...S.cardTitle,...HDR}}>{title}</div>
             {items.map(([pid,p])=>(
-              <div key={pid} style={S.editRow}>
-                <span style={S.editLbl}>{p.label}{savingKey==="inv_"+pid&&<span style={{fontSize:10,color:"#4A90D9",marginLeft:6}}>saving…</span>}</span>
-                <div style={S.editCtrl}>
-                  {isAdmin&&<button style={S.editBtn} onClick={()=>saveInv(pid,Math.max(0,(inventory[pid]||0)-1))}>−</button>}
-                  <input type="number" style={{...S.editVal,background:"#FAFAFA",border:"1px solid #D0D0D0",borderRadius:6,padding:"4px 6px",width:64,textAlign:"center",color:"#1A1A1A"}} value={inventory[pid]||""} readOnly={!isAdmin} onChange={isAdmin?e=>saveInv(pid,Math.max(0,parseInt(e.target.value)||0)):undefined}/>
-                  {isAdmin&&<button style={S.editBtn} onClick={()=>saveInv(pid,(inventory[pid]||0)+1)}>+</button>}
-                </div>
-              </div>
+              <ProductStockRow
+                key={pid}
+                pid={pid}
+                label={p.label}
+                suffix={savingKey==="inv_"+pid?<span style={{fontSize:10,color:"#4A90D9",marginLeft:6}}>saving…</span>:null}
+                value={inventory[pid]||""}
+                readOnly={!isAdmin}
+                onDec={isAdmin?()=>saveInv(pid,Math.max(0,(inventory[pid]||0)-1)):null}
+                onInc={isAdmin?()=>saveInv(pid,(inventory[pid]||0)+1):null}
+                onChange={isAdmin?e=>saveInv(pid,Math.max(0,parseInt(e.target.value)||0)):undefined}
+              />
             ))}
           </div>
         );
@@ -2237,7 +2364,7 @@ function NeedToMakeScreen({jobs,inventory,concentrate,onBack,onRefresh}) {
               const items=urgentGaps.filter(g=>PRODUCTS[g.pid]?.category===cat);
               if (items.length===0) return null;
               return (<div key={cat}><div style={{fontSize:9,color:"#E53935",letterSpacing:1.5,textTransform:"uppercase",fontWeight:700,marginTop:8,marginBottom:3,borderBottom:"1px solid #E5393522",paddingBottom:2}}>{label}</div>
-                {items.map(({pid,totalNeeded,inStock,gap})=>(<div key={pid} style={S.needRow}><div><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{PRODUCTS[pid]?.label}</div><div style={{fontSize:11,color:"#333"}}>Need {totalNeeded} · Have {inStock}</div></div><div style={{color:"#E53935",fontWeight:700,fontSize:15}}>Make {gap} more</div></div>))}
+                {items.map(({pid,totalNeeded,inStock,gap})=>(<div key={pid} style={{...S.needRow,gap:10}}><ProductThumb pid={pid} size={32} /><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{PRODUCTS[pid]?.label}</div><div style={{fontSize:11,color:"#333"}}>Need {totalNeeded} · Have {inStock}</div></div><div style={{color:"#E53935",fontWeight:700,fontSize:15}}>Make {gap} more</div></div>))}
               </div>);
             })}
             {urgentConcShortfalls.length>0&&(<div><div style={{fontSize:9,color:"#E53935",letterSpacing:1.5,textTransform:"uppercase",fontWeight:700,marginTop:8,marginBottom:3,borderBottom:"1px solid #E5393522",paddingBottom:2}}>Concentrate</div>
@@ -2249,12 +2376,12 @@ function NeedToMakeScreen({jobs,inventory,concentrate,onBack,onRefresh}) {
       {(bottleShortfalls.length>0||concShortfalls.length>0)&&<div style={{...S.cardTitle,fontSize:13,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:"#101010",borderBottom:"2px solid #10101022",paddingBottom:6,marginBottom:8,margin:"14px 12px 4px"}}>Upcoming</div>}
       {bottleShortfalls.filter(g=>PRODUCTS[g.pid]?.category!=="jerry").length>0&&(
         <div style={S.card}><div style={{...S.cardTitle,...RHDR}}>⚠ Bottles to Produce</div>
-          {bottleShortfalls.filter(g=>PRODUCTS[g.pid]?.category!=="jerry").map(({pid,totalNeeded,inStock,gap})=>(<div key={pid} style={S.needRow}><div><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{PRODUCTS[pid]?.label}</div><div style={{fontSize:11,color:"#333333"}}>Need {totalNeeded} · Have {inStock} in stock</div></div><div style={{color:"#E53935",fontWeight:700,fontSize:15}}>Make {gap} more</div></div>))}
+          {bottleShortfalls.filter(g=>PRODUCTS[g.pid]?.category!=="jerry").map(({pid,totalNeeded,inStock,gap})=>(<div key={pid} style={{...S.needRow,gap:10}}><ProductThumb pid={pid} size={32} /><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{PRODUCTS[pid]?.label}</div><div style={{fontSize:11,color:"#333333"}}>Need {totalNeeded} · Have {inStock} in stock</div></div><div style={{color:"#E53935",fontWeight:700,fontSize:15}}>Make {gap} more</div></div>))}
         </div>
       )}
       {bottleShortfalls.filter(g=>PRODUCTS[g.pid]?.category==="jerry").length>0&&(
         <div style={S.card}><div style={{...S.cardTitle,...RHDR}}>⚠ Jerry Cans to Make</div>
-          {bottleShortfalls.filter(g=>PRODUCTS[g.pid]?.category==="jerry").map(({pid,totalNeeded,inStock,gap})=>(<div key={pid} style={S.needRow}><div><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{PRODUCTS[pid]?.label}</div><div style={{fontSize:11,color:"#333333"}}>Need {totalNeeded} · Have {inStock} in stock</div></div><div style={{color:"#E53935",fontWeight:700,fontSize:15}}>Make {gap} more</div></div>))}
+          {bottleShortfalls.filter(g=>PRODUCTS[g.pid]?.category==="jerry").map(({pid,totalNeeded,inStock,gap})=>(<div key={pid} style={{...S.needRow,gap:10}}><ProductThumb pid={pid} size={32} /><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{PRODUCTS[pid]?.label}</div><div style={{fontSize:11,color:"#333333"}}>Need {totalNeeded} · Have {inStock} in stock</div></div><div style={{color:"#E53935",fontWeight:700,fontSize:15}}>Make {gap} more</div></div>))}
         </div>
       )}
       {concShortfalls.length>0&&(
@@ -2264,7 +2391,7 @@ function NeedToMakeScreen({jobs,inventory,concentrate,onBack,onRefresh}) {
       )}
       {bottleCovered.length>0&&(
         <div style={S.card}><div style={{...S.cardTitle,...GHDR}}>✓ Bottles Covered by Stock</div>
-          {bottleCovered.map(({pid,totalNeeded,inStock})=>(<div key={pid} style={S.needRow}><div style={{fontSize:14,color:"#222222"}}>{PRODUCTS[pid]?.label}</div><div style={{color:"#27AE60",fontSize:13}}>✓ {inStock} in stock (need {totalNeeded})</div></div>))}
+          {bottleCovered.map(({pid,totalNeeded,inStock})=>(<div key={pid} style={{...S.needRow,gap:10}}><ProductThumb pid={pid} size={32} /><div style={{fontSize:14,color:"#222222",flex:1}}>{PRODUCTS[pid]?.label}</div><div style={{color:"#27AE60",fontSize:13}}>✓ {inStock} in stock (need {totalNeeded})</div></div>))}
         </div>
       )}
       {concCovered.length>0&&(
@@ -2314,7 +2441,7 @@ function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
         {job.privateName&&<div style={{fontSize:13,color:"#222222",marginBottom:4}}>👤 {job.privateName}</div>}
         {job.privateAddress&&<div style={{fontSize:13,color:"#222222",marginBottom:10}}>📍 {job.privateAddress}</div>}
         <div style={{marginBottom:14}}>
-          {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(<div key={pid} style={S.qtyListRow}><span style={{color:"#222222"}}>{PRODUCTS[pid]?.label}</span><span style={{color:"#101010",fontWeight:700}}>{qty}</span></div>))}
+          {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(<div key={pid} style={{...S.qtyListRow,gap:10}}><ProductThumb pid={pid} size={28} /><span style={{color:"#222222",flex:1}}>{PRODUCTS[pid]?.label}</span><span style={{color:"#101010",fontWeight:700}}>{qty}</span></div>))}
           {job.deliveryType==="coffeebar"&&<div style={S.qtyListRow}><span style={{color:"#222222"}}>Coffee Bar</span><span style={{color:"#101010",fontWeight:700}}>{job.people} people · {(job.people/25)*5}L Classic</span></div>}
         </div>
         {waLink&&isAdmin&&<a href={waLink} target="_blank" rel="noreferrer" style={S.waBtn}>💬 Send WhatsApp</a>}
@@ -2366,9 +2493,9 @@ function CheckoffModal({job,onConfirm,onCancel}) {
             <div style={S.modalTitle}>What did you actually deliver?</div>
             <div style={{marginBottom:16}}>
               <div style={S.qRow}><span style={S.qLabel}>Jerry Cans ({Math.floor(cbPeople/25)})</span><div style={{display:"flex",alignItems:"center",gap:8}}><button style={S.editBtn} onClick={()=>setCbPeople(p=>Math.max(25,p-25))}>−</button><span style={{minWidth:30,textAlign:"center"}}>{Math.floor(cbPeople/25)}</span><button style={S.editBtn} onClick={()=>setCbPeople(p=>p+25)}>+</button></div></div>
-              <div style={S.qRow}><span style={S.qLabel}>Dispensers</span><div style={{display:"flex",alignItems:"center",gap:8}}><button style={S.editBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:"center"}}>{cbDispensers}</span><button style={S.editBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
+              <div style={{...S.qRow,gap:8}}><ProductThumb pid="dispenser" size={32} /><span style={{...S.qLabel,flex:1}}>Dispensers</span><div style={{display:"flex",alignItems:"center",gap:8}}><button style={S.editBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:"center"}}>{cbDispensers}</span><button style={S.editBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
               {["vanilla_syrup","caramel_syrup","sugar_syrup"].map(pid=>(
-                <div key={pid} style={S.qRow}><span style={S.qLabel}>{PRODUCTS[pid]?.label}</span><div style={{display:"flex",alignItems:"center",gap:8}}><button style={S.editBtn} onClick={()=>setCbSyrups2(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:"center"}}>{cbSyrups2[pid]||0}</span><button style={S.editBtn} onClick={()=>setCbSyrups2(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
+                <div key={pid} style={{...S.qRow,gap:8}}><ProductThumb pid={pid} size={32} /><span style={{...S.qLabel,flex:1}}>{PRODUCTS[pid]?.label}</span><div style={{display:"flex",alignItems:"center",gap:8}}><button style={S.editBtn} onClick={()=>setCbSyrups2(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:"center"}}>{cbSyrups2[pid]||0}</span><button style={S.editBtn} onClick={()=>setCbSyrups2(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
               ))}
             </div>
             <div style={S.modalActions}>
@@ -2385,12 +2512,14 @@ function CheckoffModal({job,onConfirm,onCancel}) {
           <div style={S.modalTitle}>What did you actually deliver?</div>
           <div style={{marginBottom:16}}>
             {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(
-              <div key={pid} style={{...S.qRow,gap:8}}>
-                <span style={{...S.qLabel,flex:1}}>{PRODUCTS[pid]?.label}</span>
-                <button style={{...S.editBtn,width:28,height:28}} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,(q[pid]??qty)-1)}))}>−</button>
-                <input type="number" min="0" style={{...S.qInput,width:48}} value={confirmedQtys[pid]??qty} onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
-                <button style={{...S.editBtn,width:28,height:28}} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:(q[pid]??qty)+1}))}>+</button>
-              </div>
+              <ProductQtyRow
+                key={pid}
+                pid={pid}
+                value={confirmedQtys[pid] ?? qty}
+                onDec={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,(q[pid]??qty)-1)}))}
+                onInc={()=>setConfirmedQtys(q=>({...q,[pid]:(q[pid]??qty)+1}))}
+                onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}
+              />
             ))}
           </div>
           <div style={S.modalActions}>
@@ -2580,18 +2709,17 @@ function LabeledStockScreen({labeledStock,setLabeledStock,onBack,onRefresh,isAdm
     const qty=labeledStock[pid]||0;
     const isLow=warn!==null&&qty<warn;
     return (
-      <div style={S.editRow}>
-        <span style={{...S.editLbl,color:isLow?"#E53935":"#222222"}}>
-          {PRODUCTS[pid]?.label}
-          {isLow&&<span style={{fontSize:10,color:"#E53935",marginLeft:6}}>● Low</span>}
-          {savingKey===pid&&<span style={{fontSize:10,color:"#4A90D9",marginLeft:6}}>saving…</span>}
-        </span>
-        <div style={S.editCtrl}>
-          {isAdmin&&<button style={S.editBtn} onClick={()=>saveLabeledItem(pid,Math.max(0,qty-1))}>−</button>}
-          <input type="number" style={{...S.editVal,background:"#FAFAFA",border:"1px solid #D0D0D0",borderRadius:6,padding:"4px 6px",width:64,textAlign:"center",color:"#1A1A1A"}} value={qty||""} readOnly={!isAdmin} onChange={isAdmin?e=>saveLabeledItem(pid,Math.max(0,parseInt(e.target.value)||0)):undefined}/>
-          {isAdmin&&<button style={S.editBtn} onClick={()=>saveLabeledItem(pid,qty+1)}>+</button>}
-        </div>
-      </div>
+      <ProductStockRow
+        pid={pid}
+        label={PRODUCTS[pid]?.label}
+        labelColor={isLow?"#E53935":"#222222"}
+        suffix={<>{isLow&&<span style={{fontSize:10,color:"#E53935",marginLeft:6}}>● Low</span>}{savingKey===pid&&<span style={{fontSize:10,color:"#4A90D9",marginLeft:6}}>saving…</span>}</>}
+        value={qty||""}
+        readOnly={!isAdmin}
+        onDec={isAdmin?()=>saveLabeledItem(pid,Math.max(0,qty-1)):null}
+        onInc={isAdmin?()=>saveLabeledItem(pid,qty+1):null}
+        onChange={isAdmin?e=>saveLabeledItem(pid,Math.max(0,parseInt(e.target.value)||0)):undefined}
+      />
     );
   }
   return (
