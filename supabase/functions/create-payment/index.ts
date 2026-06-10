@@ -9,6 +9,8 @@ import {
 
 
 
+import { isReusablePaymentLink } from "../_shared/payment-link.ts";
+
 const corsHeaders = {
 
   "Access-Control-Allow-Origin": "*",
@@ -41,33 +43,41 @@ type OrderRow = {
 
 };
 
-
-
 type PaymentLinkRow = {
-
   link_code: string;
-
   customer_name?: string | null;
-
   customer_phone?: string | null;
-
   customer_email?: string | null;
-
   order_id?: string | null;
-
   total?: number | null;
-
   status?: string | null;
-
   payme_sale_id?: string | null;
-
   sale_url?: string | null;
-
   reusable?: boolean | null;
-
+  tranzila_url?: string | null;
 };
 
 
+
+async function updatePaymentLinkAfterSale(
+  supabase: ReturnType<typeof createClient>,
+  linkCode: string,
+  paymeSaleId: string,
+  saleUrl: string,
+): Promise<void> {
+  const base = {
+    payme_sale_id: paymeSaleId,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase
+    .from("payment_links")
+    .update({ ...base, sale_url: saleUrl })
+    .eq("link_code", linkCode);
+  if (error) {
+    console.warn("payment_links sale_url update skipped:", error.message);
+    await supabase.from("payment_links").update(base).eq("link_code", linkCode);
+  }
+}
 
 function getServiceRoleKey(): string {
 
@@ -257,7 +267,7 @@ serve(async (req) => {
 
         .from("payment_links")
 
-        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, sale_url, reusable, order_id")
+        .select("*")
 
         .eq("link_code", String(payment_link_code))
 
@@ -275,7 +285,7 @@ serve(async (req) => {
 
       const row = link as PaymentLinkRow;
 
-      if (row.status === "paid" && !row.reusable) {
+      if (row.status === "paid" && !isReusablePaymentLink(row)) {
 
         throw new Error("Payment link is already paid");
 
@@ -305,17 +315,32 @@ serve(async (req) => {
 
       // Reuse an open PayMe sale — never create a second charge for the same link attempt.
       if (row.payme_sale_id) {
-        const reused = await tryReuseExistingPayMeSale(paymeBase, row.payme_sale_id, row.sale_url);
-        if (reused) {
-          console.log("Reusing existing PayMe sale for link", row.link_code, reused.paymeSaleId);
-          return new Response(JSON.stringify({
-            sale_url: reused.saleUrl,
-            payme_sale_id: reused.paymeSaleId,
-            ok: true,
-            reused: true,
-          }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+        try {
+          const reused = await tryReuseExistingPayMeSale(paymeBase, row.payme_sale_id, row.sale_url);
+          if (reused) {
+            console.log("Reusing existing PayMe sale for link", row.link_code, reused.paymeSaleId);
+            return new Response(JSON.stringify({
+              sale_url: reused.saleUrl,
+              payme_sale_id: reused.paymeSaleId,
+              ok: true,
+              reused: true,
+            }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        } catch (reuseErr) {
+          const msg = String(reuseErr instanceof Error ? reuseErr.message : reuseErr);
+          if (isReusablePaymentLink(row) && /already paid/i.test(msg)) {
+            await supabase.from("payment_links").update({
+              payme_sale_id: null,
+              status: "pending",
+              order_id: null,
+              updated_at: new Date().toISOString(),
+            }).eq("link_code", row.link_code);
+            row.payme_sale_id = null;
+          } else {
+            throw reuseErr;
+          }
         }
       }
 
@@ -366,17 +391,7 @@ serve(async (req) => {
 
 
 
-      const { error: plUpdateErr } = await supabase
-        .from("payment_links")
-        .update({
-          payme_sale_id: paymeSaleId,
-          sale_url: saleUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("link_code", row.link_code);
-      if (plUpdateErr) {
-        console.warn("payment_links payme_sale_id update skipped:", plUpdateErr.message);
-      }
+      await updatePaymentLinkAfterSale(supabase, row.link_code, paymeSaleId, saleUrl);
 
       return new Response(JSON.stringify({ sale_url: saleUrl, payme_sale_id: paymeSaleId, ok: true }), {
 

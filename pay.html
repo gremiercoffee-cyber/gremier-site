@@ -132,6 +132,14 @@
 
   const params = new URLSearchParams(window.location.search);
 
+  const REUSABLE_MARKER = 'gremier:reusable';
+
+  function isReusableLink(link) {
+    if (!link) return false;
+    if (link.reusable === true) return true;
+    return link.tranzila_url === REUSABLE_MARKER;
+  }
+
   const linkCode = params.get('code');
 
   let orderId = null;
@@ -260,7 +268,7 @@
 
   async function ensureOrderId(link) {
 
-    if (link.reusable) {
+    if (isReusableLink(link)) {
       const orderData = {
         customer_name: link.customer_name || 'Payment Link Customer',
         customer_phone: link.customer_phone || null,
@@ -502,8 +510,8 @@
       if (link) {
         paymentLink = { ...(paymentLink || {}), ...link };
         if (link.order_id) orderId = link.order_id;
-        if (link.status === 'paid' && !link.reusable) return true;
-        if (link.order_id && !link.reusable) {
+        if (link.status === 'paid' && !isReusableLink(link)) return true;
+        if (link.order_id && !isReusableLink(link)) {
           const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
           if (order?.payment_status === 'paid') return true;
         }
@@ -827,7 +835,7 @@
 
 
 
-    if (link.status === 'paid' && !link.reusable) {
+    if (link.status === 'paid' && !isReusableLink(link)) {
 
       applyPayView('paid');
 
@@ -839,7 +847,7 @@
 
 
 
-    if (link.order_id && !link.reusable) {
+    if (link.order_id && !isReusableLink(link)) {
 
       const { data: order } = await sb.from('orders').select('payment_status, delivery_address').eq('id', link.order_id).maybeSingle();
 

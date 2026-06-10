@@ -824,7 +824,7 @@ Deno.serve(async (req) => {
 
       const { data: plink } = await supabase
         .from("payment_links")
-        .select("reusable")
+        .select("*")
         .eq("link_code", linkCode)
         .maybeSingle();
 

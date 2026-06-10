@@ -888,6 +888,12 @@ let allMembers = [];
 let memberFilter = { search:'', sort:'spent' };
 let editingImages = []; // array of Cloudinary URLs
 let plCartItems = [];
+const REUSABLE_LINK_MARKER = 'gremier:reusable';
+function isReusablePayLink(link) {
+  if (!link) return false;
+  if (link.reusable === true) return true;
+  return link.tranzila_url === REUSABLE_LINK_MARKER;
+}
 
 /** wa.me digits: country code + number, no + or leading 0. */
 function whatsAppPhone(raw) {
@@ -1577,7 +1583,7 @@ async function fetchExistingOrderIds(orderIds) {
 }
 
 function paymentLinkMissingOrder(link, existingOrderIds) {
-  if (link.reusable) return false;
+  if (isReusablePayLink(link)) return false;
   if (!link.order_id) return true;
   return !existingOrderIds.has(link.order_id);
 }
@@ -2018,10 +2024,18 @@ async function insertPaymentLink(linkData, deliveryAddress) {
   if (deliveryAddress) extras.delivery_address = deliveryAddress;
   if (linkData.customer_email) extras.customer_email = linkData.customer_email;
   if (linkData.created_by) extras.created_by = linkData.created_by;
-  if (linkData.reusable) extras.reusable = true;
+  if (linkData.reusable) {
+    extras.reusable = true;
+    extras.tranzila_url = REUSABLE_LINK_MARKER;
+  }
   if (Object.keys(extras).length && result.data?.id) {
     const { error: updateErr } = await sb.from('payment_links').update(extras).eq('id', result.data.id);
-    if (updateErr) console.warn('payment_links optional fields:', updateErr.message);
+    if (updateErr) {
+      console.warn('payment_links optional fields:', updateErr.message);
+      if (linkData.reusable) {
+        await sb.from('payment_links').update({ tranzila_url: REUSABLE_LINK_MARKER }).eq('id', result.data.id);
+      }
+    }
   }
   return result;
 }
@@ -2148,10 +2162,11 @@ async function togglePayLinkReusable(id, enable) {
     ? 'Make this link reusable? It will stay active after payment (resets to accept new payments).'
     : 'Turn off reusable? After the next payment the link will close like a normal one-time link.';
   if (!confirm(msg)) return;
-  const patch = enable
-    ? { reusable: true, status: 'pending', order_id: null, payme_sale_id: null, sale_url: null }
-    : { reusable: false };
-  const { error } = await sb.from('payment_links').update(patch).eq('id', id);
+  const base = enable
+    ? { tranzila_url: REUSABLE_LINK_MARKER, status: 'pending', order_id: null, payme_sale_id: null }
+    : { tranzila_url: null };
+  let { error } = await sb.from('payment_links').update({ ...base, reusable: enable, sale_url: null }).eq('id', id);
+  if (error) ({ error } = await sb.from('payment_links').update(base).eq('id', id));
   if (error) { showToast('Could not update link'); console.error(error); return; }
   showToast(enable ? 'Link is now reusable ♻️' : 'Reusable turned off');
   loadPayLinks();
@@ -2186,14 +2201,14 @@ async function loadPayLinks() {
     const recreateBtn = missingOrder
       ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
       : '';
-    const statusLabel = l.reusable
+    const statusLabel = isReusablePayLink(l)
       ? (l.status === 'pending' ? 'active' : l.status)
       : l.status;
-    const reusableBadge = l.reusable ? '<span class="status-pill s-pending" style="margin-left:6px" title="Reusable link">♻️</span>' : '';
-    const reusableBtn = l.reusable
+    const reusableBadge = isReusablePayLink(l) ? '<span class="status-pill s-pending" style="margin-left:6px" title="Reusable link">♻️</span>' : '';
+    const reusableBtn = isReusablePayLink(l)
       ? `<button class="btn btn-outline btn-sm" onclick="togglePayLinkReusable('${l.id}',false)" title="Stop reusing after payment">One-time</button>`
       : `<button class="btn btn-outline btn-sm" onclick="togglePayLinkReusable('${l.id}',true)" title="Keep link open after payment">♻️ Save</button>`;
-    const opsBtn = (l.status === 'pending' || l.status === 'paid' || l.reusable)
+    const opsBtn = (l.status === 'pending' || l.status === 'paid' || isReusablePayLink(l))
       ? `<button class="btn btn-blue btn-sm" onclick="queuePaymentLinkForOps('${l.link_code}')" title="${l.status === 'paid' ? 'Send to Ops for scheduling' : 'Queue in Ops before customer pays'}">📦 Ops</button>`
       : '';
     return `<tr>

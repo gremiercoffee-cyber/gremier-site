@@ -110,6 +110,7 @@ type PaymentLinkFulfillRow = {
   total?: number | null;
   discount_note?: string | null;
   reusable?: boolean | null;
+  tranzila_url?: string | null;
   payme_sale_id?: string | null;
 };
 
@@ -218,7 +219,7 @@ async function markOrderPaid(
   if (linkCode) {
     const { data: link } = await supabase
       .from("payment_links")
-      .select("reusable")
+      .select("*")
       .eq("link_code", linkCode)
       .maybeSingle();
     if (isReusablePaymentLink(link)) {
