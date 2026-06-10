@@ -178,6 +178,33 @@
     .pl-item-price { font-size:.85rem; color:var(--cream); white-space:nowrap; }
     .pl-item-rm { background:none; border:none; color:var(--text2); cursor:pointer; font-size:.9rem; transition:color .2s; }
     .pl-item-rm:hover { color:var(--red); }
+    .pl-product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:10px; margin-top:10px; max-height:300px; overflow-y:auto; padding:4px 2px 8px; }
+    .pl-product-grid::-webkit-scrollbar { width:5px; }
+    .pl-product-grid::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    .pl-product-card { background:var(--highlight); border:1px solid var(--border); border-radius:6px; padding:8px 6px 10px; cursor:pointer; text-align:center; transition:border-color .2s,background .2s; display:flex; flex-direction:column; align-items:center; gap:6px; font-family:inherit; color:inherit; width:100%; }
+    .pl-product-card:hover { border-color:var(--cream); background:var(--bg3); }
+    .pl-product-card.inactive { opacity:.55; }
+    .pl-product-thumb { width:56px; height:56px; border-radius:4px; overflow:hidden; background:var(--bg3); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .pl-product-thumb img { width:100%; height:100%; object-fit:cover; }
+    .pl-product-icon { font-size:1.5rem; line-height:1; }
+    .pl-product-name { font-size:.68rem; color:var(--cream); line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; width:100%; }
+    .pl-product-price { font-size:.68rem; color:var(--text2); }
+    .pl-item-thumb { width:40px; height:40px; border-radius:4px; overflow:hidden; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+    .pl-item-thumb img { width:100%; height:100%; object-fit:cover; }
+    .modal-box.modal-paylink { max-width:720px; }
+    .pl-order-now-toggle { display:block; margin:20px 0 8px; cursor:pointer; position:relative; }
+    .pl-order-now-toggle input { position:absolute; opacity:0; width:0; height:0; }
+    .pl-order-now-box { display:flex; align-items:center; gap:16px; padding:18px; border:2px solid var(--border); border-radius:8px; background:var(--bg3); transition:border-color .25s,background .25s,box-shadow .25s; }
+    .pl-order-now-toggle input:checked + .pl-order-now-box { border-color:var(--blue); background:rgba(106,168,232,.1); box-shadow:0 0 0 1px rgba(106,168,232,.35); }
+    .pl-order-now-toggle input:focus-visible + .pl-order-now-box { outline:2px solid var(--blue); outline-offset:2px; }
+    .pl-order-now-icon { font-size:2rem; flex-shrink:0; line-height:1; }
+    .pl-order-now-text { flex:1; min-width:0; }
+    .pl-order-now-text strong { display:block; font-size:1.02rem; color:var(--cream); margin-bottom:5px; }
+    .pl-order-now-text span { display:block; font-size:.78rem; color:var(--text2); line-height:1.45; }
+    .pl-order-now-switch { width:52px; height:30px; border-radius:15px; background:var(--border); position:relative; flex-shrink:0; transition:background .25s; }
+    .pl-order-now-switch::after { content:''; position:absolute; width:24px; height:24px; border-radius:50%; background:var(--text2); top:3px; left:3px; transition:transform .25s,background .25s; }
+    .pl-order-now-toggle input:checked + .pl-order-now-box .pl-order-now-switch { background:var(--blue); }
+    .pl-order-now-toggle input:checked + .pl-order-now-box .pl-order-now-switch::after { transform:translateX(22px); background:#fff; }
     .qty-inline { display:flex; align-items:center; gap:6px; }
     .qty-inline-btn { background:var(--bg); border:1px solid var(--border); color:var(--cream); width:22px; height:22px; border-radius:3px; cursor:pointer; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
     .pl-total-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-top:1px solid var(--border); font-size:.9rem; }
@@ -788,7 +815,7 @@
 </div>
 <!-- PAYMENT LINK MODAL -->
 <div class="modal-backdrop" id="payLinkModal">
-  <div class="modal-box">
+  <div class="modal-box modal-paylink">
     <h2 class="modal-title">New Payment Link</h2>
     <div class="form-row-2">
       <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
@@ -797,8 +824,8 @@
     <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
     <div class="form-group">
       <label class="form-label">Add Products</label>
-      <input type="text" class="form-input" placeholder="Search product..." oninput="searchPayLinkProducts(this.value)" id="plProductSearch"/>
-      <div id="plProductResults" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px"></div>
+      <input type="text" class="form-input" placeholder="Search products…" oninput="searchPayLinkProducts(this.value)" id="plProductSearch"/>
+      <div id="plProductResults" class="pl-product-grid"></div>
     </div>
     <div class="pl-items" id="plItems"></div>
     <div class="pl-total-row">
@@ -819,6 +846,17 @@
       <span style="font-size:.88rem;color:var(--cream);text-transform:uppercase;letter-spacing:.08em">Total</span>
       <span class="pl-total-amt" id="plFinalTotal">₪0</span>
     </div>
+    <label class="pl-order-now-toggle" for="plCreateOrderNow">
+      <input type="checkbox" id="plCreateOrderNow"/>
+      <div class="pl-order-now-box">
+        <div class="pl-order-now-icon">📦</div>
+        <div class="pl-order-now-text">
+          <strong>Create an order now?</strong>
+          <span>Yes — add to Ops for scheduling right away. Customer still pays via the link later.</span>
+        </div>
+        <div class="pl-order-now-switch" aria-hidden="true"></div>
+      </div>
+    </label>
     <button class="btn btn-amber btn-full" style="margin-top:16px" onclick="generatePayLink()">Generate Payment Link</button>
     <div id="plLinkResult" style="display:none"></div>
     <button class="btn btn-outline" onclick="closePayLinkModal()" style="margin-top:10px;width:100%">Close</button>
@@ -1740,7 +1778,7 @@ function exportOrdersCSV() {
 }
 // ══ PAYMENT LINKS ══
 plCartItems = [];
-function openNewLink() {
+async function openNewLink() {
   plCartItems = [];
   document.getElementById('plCustomer').value = '';
   document.getElementById('plPhone').value = '';
@@ -1748,28 +1786,55 @@ function openNewLink() {
   document.getElementById('plProductSearch').value = '';
   document.getElementById('plFinalPrice').value = '';
   document.getElementById('plDiscountNote').value = '';
+  document.getElementById('plCreateOrderNow').checked = false;
   document.getElementById('plProductResults').innerHTML = '';
   document.getElementById('plLinkResult').style.display = 'none';
   renderPlItems();
+  if (!allProducts.length) await loadAllProducts();
   searchPayLinkProducts('');
   document.getElementById('payLinkModal').classList.add('open');
 }
 function closePayLinkModal() { document.getElementById('payLinkModal').classList.remove('open'); }
+function renderPayLinkProductThumb(p) {
+  if (p.images?.length) return `<img src="${escAttr(p.images[0])}" alt=""/>`;
+  return `<span class="pl-product-icon">${productIcon(p.category)}</span>`;
+}
+function renderPlItemThumb(item) {
+  if (item.image) return `<img src="${escAttr(item.image)}" alt=""/>`;
+  return productIcon(item.category || 'bottles');
+}
 function searchPayLinkProducts(query) {
-  const q = query.toLowerCase();
-  const results = q
-    ? allProducts.filter(p=>p.is_active && (p.name_en.toLowerCase().includes(q)||(p.name_he||'').includes(q)))
-    : allProducts.filter(p=>p.is_active).slice(0,8);
-  document.getElementById('plProductResults').innerHTML = results.map(p=>
-    `<button class="btn btn-outline btn-sm" onclick="addPlItem('${p.id}')">${p.name_en} — ₪${p.price}</button>`
-  ).join('');
+  const q = (query || '').trim().toLowerCase();
+  let list = [...allProducts].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  if (q) {
+    list = list.filter(p =>
+      p.name_en.toLowerCase().includes(q) ||
+      (p.name_he || '').toLowerCase().includes(q) ||
+      (p.category || '').toLowerCase().includes(q)
+    );
+  }
+  const el = document.getElementById('plProductResults');
+  if (!list.length) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:.83rem;padding:8px 0;grid-column:1/-1">No products found.</div>';
+    return;
+  }
+  el.innerHTML = list.map(p => `
+    <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlItem('${p.id}')" title="${escAttr(p.name_en)}">
+      <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
+      <div class="pl-product-name">${p.name_en}</div>
+      <div class="pl-product-price">₪${p.price}</div>
+    </button>
+  `).join('');
 }
 function addPlItem(productId) {
   const p = allProducts.find(x=>x.id===productId);
   if (!p) return;
   const existing = plCartItems.find(x=>x.id===productId);
   if (existing) existing.qty++;
-  else plCartItems.push({ id:p.id, name_en:p.name_en, name_he:p.name_he, price:p.price, qty:1 });
+  else plCartItems.push({
+    id: p.id, name_en: p.name_en, name_he: p.name_he, price: p.price, qty: 1,
+    image: p.images?.[0] || null, category: p.category || 'bottles',
+  });
   renderPlItems();
 }
 function renderPlItems() {
@@ -1777,6 +1842,7 @@ function renderPlItems() {
   if (!plCartItems.length) { container.innerHTML='<div style="color:var(--text2);font-size:.83rem;padding:8px 0">No products added yet.</div>'; }
   else container.innerHTML = plCartItems.map(item=>`
     <div class="pl-item">
+      <div class="pl-item-thumb">${renderPlItemThumb(item)}</div>
       <div class="pl-item-name">${item.name_en}</div>
       <div class="qty-inline">
         <button class="qty-inline-btn" onclick="plChangeQty('${item.id}',-1)">−</button>
@@ -1815,6 +1881,7 @@ async function generatePayLink() {
   const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
 
   const linkItems = plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty }));
+  const createOrderNow = document.getElementById('plCreateOrderNow').checked;
   const linkData = {
     link_code: linkCode,
     customer_name: customerName,
@@ -1829,6 +1896,51 @@ async function generatePayLink() {
   const { error } = await sb.from('payment_links').insert(linkData);
   if (error) { showToast('Error creating link'); console.error(error); return; }
 
+  let createdOrderNumber = null;
+  if (createOrderNow) {
+    const orderData = {
+      customer_name: customerName || 'Payment Link Customer',
+      customer_phone: customerPhone,
+      customer_email: null,
+      delivery_address: deliveryAddress,
+      items: linkItems,
+      subtotal,
+      discount: discount > 0 ? discount : 0,
+      total,
+      status: 'awaiting_payment',
+      payment_status: 'unpaid',
+      payment_method: 'payme',
+      source: 'payment_link',
+      delivery_info: { payment_link_code: linkCode, created_from_admin: true },
+      notes: linkData.discount_note,
+    };
+    const { data: order, error: orderErr } = await sb.from('orders').insert(orderData).select('id, order_number').single();
+    if (orderErr || !order?.id) {
+      showToast('Link created but order failed — check console');
+      console.error(orderErr);
+    } else {
+      createdOrderNumber = order.order_number;
+      await sb.from('payment_links').update({ order_id: order.id }).eq('link_code', linkCode);
+      const { error: pendingErr } = await sb.from('pending_website_deliveries').insert({
+        order_id: order.id,
+        order_number: order.order_number,
+        customer_name: customerName || 'Payment Link Customer',
+        customer_phone: customerPhone,
+        delivery_address: deliveryAddress,
+        items: linkItems,
+        order_total: total,
+        status: 'pending_schedule',
+      });
+      if (pendingErr) {
+        console.error('pending_website_deliveries insert:', pendingErr);
+        showToast(`Order #${order.order_number} created — Ops queue failed, check console`);
+      } else {
+        showToast(`Order #${order.order_number} created — in Ops for scheduling ✓`);
+      }
+      loadDashboard();
+    }
+  }
+
   const linkUrl = `${SITE_URL}/pay.html?code=${linkCode}`;
   const whatsappMsg = encodeURIComponent(`Hi! Here's your payment link for your Gremier Coffee order (₪${total}):\n${linkUrl}`);
   const waUrl = whatsAppHref(customerPhone, whatsappMsg);
@@ -1841,9 +1953,10 @@ async function generatePayLink() {
     ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-green btn-full" style="margin-top:10px;text-decoration:none">📲 Send on WhatsApp</a>` : ''}
     <div style="font-size:.76rem;color:var(--text2);margin-top:8px;text-align:center">
       ${discount>0?`Discount: ₪${discount.toFixed(2)} — ${linkData.discount_note||''}`:''}<br/>
+      ${createOrderNow && createdOrderNumber ? `📦 Order #${createdOrderNumber} is in Ops — schedule delivery now<br/>` : ''}
       💳 Customer pays via PayMe at this link
     </div>`;
-  showToast('Payment link created ✓');
+  if (!createOrderNow || !createdOrderNumber) showToast('Payment link created ✓');
   loadPayLinks();
 }
 function copyLink(url) {
@@ -1852,6 +1965,7 @@ function copyLink(url) {
 async function deletePayLink(id, orderId) {
   if (!confirm('Delete this payment link?')) return;
   if (orderId) {
+    await sb.from('pending_website_deliveries').delete().eq('order_id', orderId);
     const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
     if (order && order.payment_status !== 'paid') {
       await sb.from('orders').delete().eq('id', orderId);

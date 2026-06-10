@@ -205,7 +205,14 @@ function websiteItemsToQuantities(items) {
   return qty;
 }
 async function sbLoadPendingWebDeliveries() {
-  return sbFetch("pending_website_deliveries?status=eq.pending_schedule&select=*&order=created_at.asc");
+  const rows = await sbFetch("pending_website_deliveries?status=eq.pending_schedule&select=*&order=created_at.asc");
+  if (!Array.isArray(rows) || !rows.length) return rows || [];
+  const ids = [...new Set(rows.map(r => r.order_id).filter(Boolean))];
+  if (!ids.length) return rows;
+  const orders = await sbFetch(`orders?id=in.(${ids.join(",")})&select=id,payment_status`);
+  const payMap = {};
+  (orders || []).forEach(o => { payMap[o.id] = o.payment_status; });
+  return rows.map(r => ({ ...r, payment_status: payMap[r.order_id] || null }));
 }
 const JERRY_PRODUCTS = ["jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"];
 function todayISO() {
@@ -1724,7 +1731,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
   return (
     <div style={S.screen}>
       <div style={S.subHdr}><button style={S.backBtn} onClick={onBack}>‹</button><div style={S.subTitle}>{isEdit?"Edit Job":logNow?"✓ Log Now":"📅 Schedule"}</div><div style={{marginLeft:"auto"}}><RefreshBtn onRefresh={onRefresh}/></div></div>
-      {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":websiteOrder?`📦 Website order #${websiteOrder.order_number||"—"} — schedule delivery`:"📅 Scheduling for later"}</div>}
+      {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":websiteOrder?`📦 Order #${websiteOrder.order_number||"—"} — schedule delivery${websiteOrder.payment_status&&websiteOrder.payment_status!=="paid"?" (payment pending)":""}`:"📅 Scheduling for later"}</div>}
       {isEdit&&existingJob?.type==="drain"?(
         <div style={S.card}>
           <div style={S.cardTitle}>Drain Job</div>
@@ -2328,15 +2335,19 @@ function WebsiteScheduleDrawer({orders,onSchedule,onClose}) {
       <div style={{background:"#FFFFFF",borderRadius:"16px 16px 0 0",border:"1px solid #E0E0E0",maxHeight:"75vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:"18px 16px 10px",flexShrink:0,borderBottom:"1px solid #E0E0E0"}}>
           <div style={S.alertDrawerHeader}><span style={{...S.alertDrawerTitle,color:"#4A90D9"}}>📦 Schedule new delivery</span><button style={S.alertClose} onClick={onClose}>✕</button></div>
-          <div style={{fontSize:12,color:"#666",marginTop:6}}>Paid website orders waiting to be scheduled</div>
+          <div style={{fontSize:12,color:"#666",marginTop:6}}>Orders waiting to be scheduled</div>
         </div>
         <div style={{overflowY:"auto",flex:1,padding:"0 16px 100px"}}>
           {orders.length===0&&<div style={{color:"#888",fontSize:13,padding:"12px 0"}}>Nothing to schedule!</div>}
           {orders.map(o=>{
             const itemsText=(o.items||[]).map(i=>`${i.name_en||i.name_he||"Item"} ×${i.qty||1}`).join(", ");
+            const unpaid=o.payment_status&&o.payment_status!=="paid";
             return (
               <div key={o.id} style={{...S.alertRow,flexDirection:"column",alignItems:"flex-start",gap:6,marginTop:8}}>
-                <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A"}}>Order #{o.order_number||"—"} — {o.customer_name||"Customer"}</div>
+                <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  Order #{o.order_number||"—"} — {o.customer_name||"Customer"}
+                  {unpaid?<span style={{fontSize:10,fontWeight:700,color:"#C8860A",background:"#FFF8E8",border:"1px solid #E8C878",borderRadius:6,padding:"2px 7px"}}>Awaiting payment</span>:null}
+                </div>
                 <div style={{fontSize:11,color:"#888"}}>{itemsText}</div>
                 {o.delivery_address?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {o.delivery_address}</div>:<div style={{fontSize:11,color:"#888",fontStyle:"italic"}}>Address — add when scheduling</div>}
                 {o.customer_phone?<div style={{fontSize:11,color:"#555"}}>{o.customer_phone}</div>:null}
