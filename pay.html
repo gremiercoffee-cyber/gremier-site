@@ -603,8 +603,26 @@
       || (txn && !txn.startsWith('pl_') ? txn.split('_')[0] : '');
 
     let resolvedLinkCode = linkCode || p.get('code') || '';
-    if (!resolvedLinkCode && resolvedOrderId) {
+if (!resolvedLinkCode && resolvedOrderId) {
       try { resolvedLinkCode = sessionStorage.getItem(payStorageKey(resolvedOrderId, 'code')) || ''; } catch (_) {}
+    }
+
+    if (!resolvedOrderId && resolvedLinkCode) {
+      const { data: lnk } = await sb.from('payment_links')
+        .select('last_order_id, order_id')
+        .eq('link_code', resolvedLinkCode)
+        .maybeSingle();
+      resolvedOrderId = lnk?.last_order_id || (!isReusableLink(lnk) && lnk?.order_id) || '';
+    }
+
+    if (!resolvedOrderId && resolvedLinkCode) {
+      const { data: rows } = await sb.from('orders')
+        .select('id')
+        .filter('delivery_info->>payment_link_code', 'eq', resolvedLinkCode)
+        .eq('payment_status', 'unpaid')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (rows?.[0]?.id) resolvedOrderId = rows[0].id;
     }
 
     let paymeSaleId = p.get('payme_sale_id') || p.get('sale_id') || '';
@@ -924,8 +942,11 @@
       if (paymentLink.order_id && !isReusableLink(paymentLink)) {
         orderId = paymentLink.order_id;
       } else {
-        orderId = await ensureOrderId(paymentLink);
+      orderId = await ensureOrderId(paymentLink);
         if (!isReusableLink(paymentLink)) paymentLink.order_id = orderId;
+        if (isReusableLink(paymentLink)) {
+          await sb.from('payment_links').update({ last_order_id: orderId }).eq('link_code', paymentLink.link_code);
+        }
       }
       await savePayDeliveryAddress(orderId, paymentLink);
       await savePayCustomerEmail(orderId, paymentLink);
