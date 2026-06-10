@@ -186,7 +186,8 @@ type SupabaseClient = ReturnType<typeof createClient>;
 export async function notifyPaidOrderOnce(
   supabase: SupabaseClient,
   orderId: string,
-): Promise<{ sent: boolean; skipped?: string; error?: string }> {
+  options?: { force?: boolean },
+): Promise<{ sent: boolean; skipped?: string; error?: string; detail?: string }> {
   const { data: order } = await supabase
     .from("orders")
     .select("id, order_number, customer_name, customer_email, customer_phone, delivery_address, items, subtotal, discount, total, source, notes, payment_status, delivery_info")
@@ -199,7 +200,7 @@ export async function notifyPaidOrderOnce(
   const info = order.delivery_info && typeof order.delivery_info === "object"
     ? order.delivery_info as Record<string, unknown>
     : {};
-  if (info.order_notified_at) return { sent: true, skipped: "already_notified" };
+  if (info.order_notified_at && !options?.force) return { sent: true, skipped: "already_notified" };
 
   const result = await sendOrderPaidNotification(order as OrderNotifyRow);
   if (!result.ok) {

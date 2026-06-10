@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json() as { order_id?: string };
+    const body = await req.json() as { order_id?: string; force?: boolean };
     const orderId = String(body.order_id || "").trim();
     if (!orderId) {
       return new Response(JSON.stringify({ sent: false, error: "missing order_id" }), {
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
     const queueResult = await enqueuePendingWebsiteDelivery(supabase, orderId);
     const opsQueued = queueResult === "queued" || queueResult === "exists";
-    const result = await notifyPaidOrderOnce(supabase, orderId);
+    const result = await notifyPaidOrderOnce(supabase, orderId, { force: body.force === true });
 
     const ok = result.sent || result.skipped === "already_notified" || opsQueued;
     return new Response(JSON.stringify({ ...result, ops_queued: opsQueued, queue_result: queueResult }), {

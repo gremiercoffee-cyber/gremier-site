@@ -58,19 +58,54 @@ export function classifyPayMeStatus(status: string): {
   return { isCompleted, isPending, isTerminalUnpaid };
 }
 
-export async function queryPayMeSale(paymeSaleId: string): Promise<PayMeSaleInfo | null> {
+function parsePayMeGetSalesResponse(
+  data: Record<string, unknown>,
+  fallbackSaleId: string,
+): PayMeSaleInfo | null {
+  const statusCode = Number(data.status_code);
+  if (statusCode === 1) {
+    console.warn("PayMe get-sales error:", data.status_error_details || data.status_error_code);
+    return null;
+  }
+
+  const sale = extractSaleRecord(data);
+  const paymeSaleId = String(
+    sale?.payme_sale_id || data.payme_sale_id || fallbackSaleId || "",
+  ).trim();
+  if (!paymeSaleId) return null;
+
+  const status = normalizeStatus(
+    String(sale?.sale_status || sale?.status || data.sale_status || data.status || ""),
+  );
+  const { isCompleted, isPending, isTerminalUnpaid } = classifyPayMeStatus(status);
+  const saleUrl = String(
+    sale?.sale_url || sale?.sale_url_full || data.sale_url || data.sale_url_full || "",
+  ).trim() || null;
+
+  // Unknown status from API → reuse existing sale (safer than creating duplicates).
+  const isReusable = !isCompleted && !isTerminalUnpaid && (isPending || !status);
+
+  return {
+    paymeSaleId,
+    status: status || "unknown",
+    isCompleted,
+    isPending,
+    isReusable,
+    saleUrl,
+  };
+}
+
+async function fetchPayMeGetSales(body: Record<string, unknown>): Promise<PayMeSaleInfo | null> {
   const sellerId = Deno.env.get("PAYME_SELLER_ID");
-  if (!sellerId || !paymeSaleId) return null;
+  if (!sellerId) return null;
 
   const paymeBase = getPayMeBase();
+  const fallbackSaleId = String(body.payme_sale_id || "");
   try {
     const res = await fetch(`${paymeBase}api/get-sales`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        seller_payme_id: sellerId,
-        payme_sale_id: paymeSaleId,
-      }),
+      body: JSON.stringify({ seller_payme_id: sellerId, ...body }),
     });
     const text = await res.text();
     let data: Record<string, unknown> = {};
@@ -79,29 +114,37 @@ export async function queryPayMeSale(paymeSaleId: string): Promise<PayMeSaleInfo
     } catch {
       return null;
     }
-
-    const sale = extractSaleRecord(data);
-    const status = normalizeStatus(
-      String(sale?.sale_status || sale?.status || data.sale_status || data.status || ""),
-    );
-    const { isCompleted, isPending, isTerminalUnpaid } = classifyPayMeStatus(status);
-    const saleUrl = String(
-      sale?.sale_url || sale?.sale_url_full || data.sale_url || data.sale_url_full || "",
-    ).trim() || null;
-
-    // Unknown status from API → reuse existing sale (safer than creating duplicates).
-    const isReusable = !isCompleted && !isTerminalUnpaid && (isPending || !status);
-
-    return {
-      paymeSaleId,
-      status: status || "unknown",
-      isCompleted,
-      isPending,
-      isReusable,
-      saleUrl,
-    };
+    return parsePayMeGetSalesResponse(data, fallbackSaleId);
   } catch (err) {
     console.error("PayMe get-sales error:", err);
     return null;
   }
+}
+
+export async function queryPayMeSale(paymeSaleId: string): Promise<PayMeSaleInfo | null> {
+  if (!paymeSaleId) return null;
+  return fetchPayMeGetSales({ payme_sale_id: paymeSaleId });
+}
+
+/** Look up a sale by our transaction_id (e.g. pl_abc123) when payme_sale_id was not stored. */
+export async function queryPayMeSaleByTransaction(transactionId: string): Promise<PayMeSaleInfo | null> {
+  if (!transactionId) return null;
+  return fetchPayMeGetSales({ transaction_id: transactionId });
+}
+
+/** Resolve PayMe sale status using sale id and/or transaction id fallbacks. */
+export async function resolvePayMePaymentStatus(
+  paymeSaleId: string,
+  transactionId: string,
+): Promise<PayMeSaleInfo | null> {
+  if (paymeSaleId) {
+    const bySale = await queryPayMeSale(paymeSaleId);
+    if (bySale?.isCompleted) return bySale;
+  }
+  if (transactionId) {
+    const byTxn = await queryPayMeSaleByTransaction(transactionId);
+    if (byTxn) return byTxn;
+  }
+  if (paymeSaleId) return queryPayMeSale(paymeSaleId);
+  return null;
 }

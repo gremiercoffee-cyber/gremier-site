@@ -51,6 +51,10 @@ type PaymentLinkRow = {
 
   customer_phone?: string | null;
 
+  customer_email?: string | null;
+
+  order_id?: string | null;
+
   total?: number | null;
 
   status?: string | null;
@@ -58,6 +62,8 @@ type PaymentLinkRow = {
   payme_sale_id?: string | null;
 
   sale_url?: string | null;
+
+  reusable?: boolean | null;
 
 };
 
@@ -207,7 +213,7 @@ serve(async (req) => {
 
     const body = await req.json();
 
-    const { order_id, payment_link_code, language, delivery_address } = body;
+    const { order_id, payment_link_code, language, delivery_address, customer_email } = body;
 
 
 
@@ -251,7 +257,7 @@ serve(async (req) => {
 
         .from("payment_links")
 
-        .select("link_code, customer_name, customer_phone, total, status, payme_sale_id, sale_url")
+        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, sale_url, reusable, order_id")
 
         .eq("link_code", String(payment_link_code))
 
@@ -269,18 +275,24 @@ serve(async (req) => {
 
       const row = link as PaymentLinkRow;
 
-      if (row.status === "paid") {
+      if (row.status === "paid" && !row.reusable) {
 
         throw new Error("Payment link is already paid");
 
       }
 
       const addr = String(delivery_address || "").trim();
-      if (addr) {
-        await supabase
-          .from("payment_links")
-          .update({ delivery_address: addr, updated_at: new Date().toISOString() })
-          .eq("link_code", row.link_code);
+      const email = String(customer_email || row.customer_email || "").trim();
+      const linkPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (addr) linkPatch.delivery_address = addr;
+      if (email) linkPatch.customer_email = email;
+      if (Object.keys(linkPatch).length > 1) {
+        await supabase.from("payment_links").update(linkPatch).eq("link_code", row.link_code);
+        if (email) row.customer_email = email;
+        if (addr) (row as Record<string, unknown>).delivery_address = addr;
+      }
+      if (email && row.order_id) {
+        await supabase.from("orders").update({ customer_email: email, updated_at: new Date().toISOString() }).eq("id", row.order_id);
       }
 
       const totalShekels = Number(row.total) || 0;
@@ -342,6 +354,11 @@ serve(async (req) => {
         buyer_phone: row.customer_phone || undefined,
 
       };
+
+      if (email) {
+        payload.buyer_email = email;
+        payload.sale_email = email;
+      }
 
 
 

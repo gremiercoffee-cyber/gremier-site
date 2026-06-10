@@ -823,6 +823,7 @@
       <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
       <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
     </div>
+    <div class="form-group"><label class="form-label">Email <span style="font-weight:400;color:var(--text2)">(for order confirmation)</span></label><input class="form-input" id="plEmail" type="email" placeholder="customer@example.com"/></div>
     <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
     <div class="form-group">
       <label class="form-label">Add Products</label>
@@ -855,6 +856,17 @@
         <div class="pl-order-now-text">
           <strong>Create an order now?</strong>
           <span>Yes — add to Ops for scheduling right away. Customer still pays via the link later.</span>
+        </div>
+        <div class="pl-order-now-switch" aria-hidden="true"></div>
+      </div>
+    </label>
+    <label class="pl-order-now-toggle" for="plReusable" style="margin-top:10px">
+      <input type="checkbox" id="plReusable"/>
+      <div class="pl-order-now-box">
+        <div class="pl-order-now-icon">♻️</div>
+        <div class="pl-order-now-text">
+          <strong>Reusable link</strong>
+          <span>Stays active after payment — same URL works again for repeat orders (creates a new order each time).</span>
         </div>
         <div class="pl-order-now-switch" aria-hidden="true"></div>
       </div>
@@ -1473,7 +1485,7 @@ async function recreateOrderFromPaymentLink(linkCode) {
   const orderData = {
     customer_name: link.customer_name || 'Payment Link Customer',
     customer_phone: link.customer_phone || null,
-    customer_email: null,
+    customer_email: link.customer_email || null,
     delivery_address: link.delivery_address || null,
     items: link.items || [],
     subtotal: link.subtotal,
@@ -1501,6 +1513,7 @@ async function recreateOrderFromPaymentLink(linkCode) {
     status: paymentStatus === 'paid' ? 'paid' : link.status,
   }).eq('link_code', link.link_code);
   showToast(`Order #${inserted.order_number} recreated ✓`);
+  if (paymentStatus === 'paid') await sendOrderToGoogleSheet(inserted.id, false);
   await loadDashboard();
   await loadOrders();
   if (document.getElementById('tab-paylinks').style.display !== 'none') await loadPayLinks();
@@ -1564,6 +1577,7 @@ async function fetchExistingOrderIds(orderIds) {
 }
 
 function paymentLinkMissingOrder(link, existingOrderIds) {
+  if (link.reusable) return false;
   if (!link.order_id) return true;
   return !existingOrderIds.has(link.order_id);
 }
@@ -1679,7 +1693,7 @@ async function updateOrderStatus(id, status) {
   showToast('Status updated ✓');
   loadOrders();
 }
-async function sendOrderToGoogleSheet(orderId) {
+async function sendOrderToGoogleSheet(orderId, force) {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
       method: 'POST',
@@ -1688,21 +1702,28 @@ async function sendOrderToGoogleSheet(orderId) {
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({ order_id: orderId }),
+      body: JSON.stringify({ order_id: orderId, force: !!force }),
     });
     const data = await res.json().catch(() => ({}));
     if (data.sent || data.skipped === 'already_notified') {
-      showToast(data.skipped === 'already_notified' ? 'Already synced (Sheet + Ops) ✓' : 'Sent to Google Sheet + Ops queue ✓');
+      const msg = data.skipped === 'already_notified' && !force
+        ? 'Already synced (Sheet + Ops) ✓'
+        : 'Sent to Google Sheet + email ✓';
+      showToast(msg);
+      await loadOrders();
+      if (document.getElementById('orderModal').classList.contains('open')) openOrderDetail(orderId);
     } else if (data.error === 'webhook_failed') {
-      showToast('Ops queue updated — Sheet sync may need a retry');
+      showToast(data.detail || 'Sheet sync failed — check Google webhook secrets', 8000);
       console.warn('notify-paid-order:', data);
     } else {
-      showToast(data.detail || data.error || data.skipped || 'Sync failed');
+      showToast(data.detail || data.error || data.skipped || 'Sync failed', 8000);
       console.warn('notify-paid-order:', data);
     }
+    return data;
   } catch (err) {
     console.error(err);
     showToast('Could not reach notify-paid-order function');
+    return null;
   }
 }
 async function insertPendingForPaymentLink(link, order) {
@@ -1766,7 +1787,7 @@ async function queuePaymentLinkForOps(linkCode) {
     const { data: inserted, error: orderErr } = await sb.from('orders').insert({
       customer_name: link.customer_name || 'Payment Link Customer',
       customer_phone: link.customer_phone || null,
-      customer_email: null,
+      customer_email: link.customer_email || null,
       delivery_address: link.delivery_address || null,
       items: link.items || [],
       subtotal: link.subtotal,
@@ -1829,7 +1850,10 @@ function openOrderDetail(id) {
         <option ${o.payment_status==='paid'?'selected':''}>paid</option>
       </select>
     </div>
-    ${o.payment_status === 'paid' ? `<div style="font-size:.78rem;color:var(--text2);margin-top:10px">${(o.delivery_info && o.delivery_info.order_notified_at) ? '✓ Synced to Google Sheet' : 'Paid — auto-syncs to Google Sheet on payment'}</div>` : ''}
+    ${o.payment_status === 'paid' ? `<div style="margin-top:12px">
+      <div style="font-size:.78rem;color:var(--text2);margin-bottom:8px">${(o.delivery_info && o.delivery_info.order_notified_at) ? '✓ Synced to Google Sheet' + (o.customer_email ? ' + customer email sent' : '') : '⚠ Not synced to Google Sheet yet'}</div>
+      <button class="btn btn-sm" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-sync to Sheet' : 'Sync to Sheet + email'}</button>
+    </div>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
 }
@@ -1862,7 +1886,8 @@ async function deleteOrder(id) {
 }
 async function updatePaymentStatus(id, status) {
   await sb.from('orders').update({ payment_status:status }).eq('id',id);
-  showToast('Payment status updated ✓');
+  if (status === 'paid') await sendOrderToGoogleSheet(id, false);
+  else showToast('Payment status updated ✓');
   loadOrders();
 }
 function closeOrderModal() { document.getElementById('orderModal').classList.remove('open'); }
@@ -1880,6 +1905,7 @@ async function openNewLink() {
   plCartItems = [];
   document.getElementById('plCustomer').value = '';
   document.getElementById('plPhone').value = '';
+  document.getElementById('plEmail').value = '';
   document.getElementById('plAddress').value = '';
   document.getElementById('plProductSearch').value = '';
   document.getElementById('plFinalPrice').value = '';
@@ -1990,7 +2016,9 @@ async function insertPaymentLink(linkData, deliveryAddress) {
   if (result.error) return result;
   const extras = {};
   if (deliveryAddress) extras.delivery_address = deliveryAddress;
+  if (linkData.customer_email) extras.customer_email = linkData.customer_email;
   if (linkData.created_by) extras.created_by = linkData.created_by;
+  if (linkData.reusable) extras.reusable = true;
   if (Object.keys(extras).length && result.data?.id) {
     const { error: updateErr } = await sb.from('payment_links').update(extras).eq('id', result.data.id);
     if (updateErr) console.warn('payment_links optional fields:', updateErr.message);
@@ -2021,6 +2049,7 @@ async function generatePayLink() {
   const linkCode = Math.random().toString(36).substr(2,10);
   const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
+  const customerEmail = document.getElementById('plEmail').value.trim() || null;
   const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
 
   const linkItems = plCartItems.map(i=>({
@@ -2028,15 +2057,18 @@ async function generatePayLink() {
     price: Number(i.price) || 0, qty: Number(i.qty) || 1,
   }));
   const createOrderNow = document.getElementById('plCreateOrderNow')?.checked === true;
+  const reusable = document.getElementById('plReusable')?.checked === true;
   const linkData = {
     link_code: linkCode,
     customer_name: customerName,
     customer_phone: customerPhone,
+    customer_email: customerEmail,
     items: linkItems,
     subtotal: Number(subtotal), discount,
     discount_note: document.getElementById('plDiscountNote').value.trim() || null,
     total: Number(total), status: 'pending',
     created_by: adminUser?.id || session.user?.id || null,
+    reusable,
   };
   const { error } = await insertPaymentLink(linkData, deliveryAddress);
   if (error) {
@@ -2052,7 +2084,7 @@ async function generatePayLink() {
     const orderData = {
       customer_name: customerName || 'Payment Link Customer',
       customer_phone: customerPhone,
-      customer_email: null,
+      customer_email: customerEmail,
       delivery_address: deliveryAddress,
       items: linkItems,
       subtotal,
@@ -2095,6 +2127,7 @@ async function generatePayLink() {
     <div style="font-size:.76rem;color:var(--text2);margin-top:8px;text-align:center">
       ${discount>0?`Discount: ₪${discount.toFixed(2)} — ${linkData.discount_note||''}`:''}<br/>
       ${createOrderNow && createdOrderNumber ? `📦 Order #${createdOrderNumber} is in Ops — schedule delivery now<br/>` : ''}
+      ${reusable ? '♻️ Reusable — this link stays open after payment<br/>' : ''}
       💳 Customer pays via PayMe at this link
     </div>`;
   if (!createOrderNow || !createdOrderNumber) showToast('Payment link created ✓');
@@ -2109,6 +2142,19 @@ async function generatePayLink() {
 }
 function copyLink(url) {
   navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
+}
+async function togglePayLinkReusable(id, enable) {
+  const msg = enable
+    ? 'Make this link reusable? It will stay active after payment (resets to accept new payments).'
+    : 'Turn off reusable? After the next payment the link will close like a normal one-time link.';
+  if (!confirm(msg)) return;
+  const patch = enable
+    ? { reusable: true, status: 'pending', order_id: null, payme_sale_id: null, sale_url: null }
+    : { reusable: false };
+  const { error } = await sb.from('payment_links').update(patch).eq('id', id);
+  if (error) { showToast('Could not update link'); console.error(error); return; }
+  showToast(enable ? 'Link is now reusable ♻️' : 'Reusable turned off');
+  loadPayLinks();
 }
 async function deletePayLink(id, orderId) {
   if (!confirm('Delete this payment link?')) return;
@@ -2140,18 +2186,26 @@ async function loadPayLinks() {
     const recreateBtn = missingOrder
       ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
       : '';
-    const opsBtn = (l.status === 'pending' || l.status === 'paid')
+    const statusLabel = l.reusable
+      ? (l.status === 'pending' ? 'active' : l.status)
+      : l.status;
+    const reusableBadge = l.reusable ? '<span class="status-pill s-pending" style="margin-left:6px" title="Reusable link">♻️</span>' : '';
+    const reusableBtn = l.reusable
+      ? `<button class="btn btn-outline btn-sm" onclick="togglePayLinkReusable('${l.id}',false)" title="Stop reusing after payment">One-time</button>`
+      : `<button class="btn btn-outline btn-sm" onclick="togglePayLinkReusable('${l.id}',true)" title="Keep link open after payment">♻️ Save</button>`;
+    const opsBtn = (l.status === 'pending' || l.status === 'paid' || l.reusable)
       ? `<button class="btn btn-blue btn-sm" onclick="queuePaymentLinkForOps('${l.link_code}')" title="${l.status === 'paid' ? 'Send to Ops for scheduling' : 'Queue in Ops before customer pays'}">📦 Ops</button>`
       : '';
     return `<tr>
-      <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}</td>
+      <td class="cell-customer">${l.customer_name||'—'}${reusableBadge}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
       <td class="cell-total" style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
-      <td class="cell-status"><span class="status-pill s-${l.status}">${l.status}</span></td>
+      <td class="cell-status"><span class="status-pill s-${l.status}">${statusLabel}</span></td>
       <td class="cell-date hide-mobile">${date}</td>
       <td class="cell-actions">
         <div class="cell-actions-wrap">
           ${opsBtn}
+          ${reusableBtn}
           ${recreateBtn}
           <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
           ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}

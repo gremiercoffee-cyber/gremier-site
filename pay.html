@@ -184,7 +184,7 @@
 
     if (view === 'checkout' && paymentLink) renderCheckout(paymentLink);
 
-    else if (view === 'pending') renderPending();
+    else if (view === 'pending') renderProcessing();
 
     else if (view === 'paid') renderPaid();
 
@@ -228,11 +228,12 @@
 
 
 
-  async function callCreatePayment({ linkCode, orderId, deliveryAddress } = {}) {
+  async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail } = {}) {
     const body = linkCode
       ? { payment_link_code: linkCode, language: 'en' }
       : { order_id: orderId, language: 'en' };
     if (deliveryAddress) body.delivery_address = deliveryAddress;
+    if (customerEmail) body.customer_email = customerEmail;
     if (!linkCode && !orderId) throw new Error('Payment setup error');
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
@@ -258,6 +259,28 @@
 
 
   async function ensureOrderId(link) {
+
+    if (link.reusable) {
+      const orderData = {
+        customer_name: link.customer_name || 'Payment Link Customer',
+        customer_phone: link.customer_phone || null,
+        customer_email: link.customer_email || getPayEmail() || null,
+        delivery_address: link.delivery_address || null,
+        items: link.items || [],
+        subtotal: link.subtotal,
+        discount: link.discount || 0,
+        total: link.total,
+        status: 'awaiting_payment',
+        payment_status: 'unpaid',
+        payment_method: 'payme',
+        source: 'payment_link',
+        delivery_info: { payment_link_code: link.link_code, reusable_checkout: true },
+        notes: link.discount_note || null,
+      };
+      const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
+      if (error || !inserted?.id) throw new Error('Could not start payment');
+      return inserted.id;
+    }
 
     if (link.order_id) return link.order_id;
 
@@ -293,7 +316,7 @@
 
       customer_phone: link.customer_phone || null,
 
-      customer_email: null,
+      customer_email: link.customer_email || getPayEmail() || null,
 
       delivery_address: link.delivery_address || null,
 
@@ -330,6 +353,30 @@
   }
 
 
+
+  function getPayEmail() {
+    const el = document.getElementById('payEmail');
+    return el ? el.value.trim() : '';
+  }
+
+  function getPayEmailForCheckout(link) {
+    return getPayEmail() || link.customer_email || '';
+  }
+
+  async function savePayLinkCustomerEmail(link) {
+    const email = getPayEmailForCheckout(link);
+    if (!email) return '';
+    const { error } = await sb.from('payment_links').update({ customer_email: email }).eq('link_code', link.link_code);
+    if (!error) link.customer_email = email;
+    return email;
+  }
+
+  async function savePayCustomerEmail(orderId, link) {
+    const email = getPayEmailForCheckout(link);
+    if (!email) return;
+    await sb.from('orders').update({ customer_email: email }).eq('id', orderId);
+    await savePayLinkCustomerEmail(link);
+  }
 
   function getPayDeliveryAddress() {
 
@@ -409,14 +456,21 @@
 
 
 
-  function renderPending(message) {
-    const sub = message || 'Please wait a moment while we verify your payment.';
+  function renderProcessing() {
     document.getElementById('payCard').innerHTML = `
       <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
-      <div class="pay-status">⏳</div>
-      <div class="pay-status-title">Confirming payment…</div>
-      <div class="pay-status-sub" id="payPendingSub">${sub}</div>
-      <button class="pay-btn" style="margin-top:20px;background:transparent;border:1px solid #555;color:#c4c4c4" onclick="recheckPayment()">I paid — check again</button>`;
+      <div class="pay-status-title" style="margin-top:12px">One moment…</div>
+      <div class="pay-status-sub">Confirming your payment.</div>`;
+  }
+
+  async function finishPaidReturn(oid) {
+    if (linkCode) {
+      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      if (link) paymentLink = link;
+    }
+    await queuePaidOrderForOps(oid || orderId);
+    navPayPush('paid');
+    applyPayView('paid');
   }
 
   function getReturnPayload() {
@@ -448,8 +502,8 @@
       if (link) {
         paymentLink = { ...(paymentLink || {}), ...link };
         if (link.order_id) orderId = link.order_id;
-        if (link.status === 'paid') return true;
-        if (link.order_id) {
+        if (link.status === 'paid' && !link.reusable) return true;
+        if (link.order_id && !link.reusable) {
           const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
           if (order?.payment_status === 'paid') return true;
         }
@@ -505,34 +559,23 @@
   }
 
   async function recheckPayment() {
-    renderPending('Checking payment status…');
+    renderProcessing();
     if (await checkPaidLocally()) {
-      await queuePaidOrderForOps(orderId);
-      navPayPush('paid');
-      applyPayView('paid');
+      await finishPaidReturn(orderId);
       return;
     }
     const data = await confirmPaymentReturn();
     if (data.paid) {
-      if (data.order_id) orderId = data.order_id;
-      if (linkCode) {
-        const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
-        if (link) paymentLink = link;
-      }
-      await queuePaidOrderForOps(data.order_id || orderId);
-      navPayPush('paid');
-      applyPayView('paid');
+      orderId = data.order_id || orderId;
+      await finishPaidReturn(orderId);
     } else if (await checkPaidLocally()) {
-      await queuePaidOrderForOps(orderId);
-      navPayPush('paid');
-      applyPayView('paid');
+      await finishPaidReturn(orderId);
     } else {
-      renderPending('Payment not confirmed yet. Wait a few seconds and tap check again, or contact us if you were charged.');
+      renderFailed();
     }
   }
 
   async function handleReturn() {
-
     if (!isPaymentReturnUrl()) return false;
 
     orderId = params.get('order_id') || params.get('transaction_id');
@@ -546,61 +589,50 @@
     }
 
     if (await checkPaidLocally()) {
-      await queuePaidOrderForOps(orderId);
-      navPayPush('paid');
-      applyPayView('paid');
+      await finishPaidReturn(orderId);
       return true;
     }
 
+    renderProcessing();
     navPayReplace('pending');
-    applyPayView('pending');
 
-    let paid = false;
+    const fromPayMe = params.get('payment') === 'return';
 
-    try {
-      for (let i = 0; i < 24; i++) {
-        if (await checkPaidLocally()) { paid = true; break; }
-
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
         const data = await confirmPaymentReturn();
-        if (data.paid) { paid = true; if (data.order_id) orderId = data.order_id; break; }
-
-        const sub = document.getElementById('payPendingSub');
-        if (sub) sub.textContent = `Verifying with PayMe… (${i + 1}/24)`;
-        await new Promise(r => setTimeout(r, 1500));
-      }
-
-      if (paid) {
-        if (linkCode && (!paymentLink || paymentLink.total == null)) {
-          const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
-          if (link) paymentLink = link;
+        if (data.paid) {
+          orderId = data.order_id || orderId;
+          await finishPaidReturn(orderId);
+          return true;
         }
-        await queuePaidOrderForOps(orderId);
-        navPayPush('paid');
-        applyPayView('paid');
-      } else if (await checkPaidLocally()) {
-        await queuePaidOrderForOps(orderId);
-        navPayPush('paid');
-        applyPayView('paid');
-      } else if (hasExplicitPaymentFailure()) {
-        navPayPush('failed');
-        applyPayView('failed');
-      } else {
-        navPayPush('pending');
-        renderPending('Your payment may still be processing. If you were charged, tap below — we\'ll confirm with PayMe.');
+        if (await checkPaidLocally()) {
+          await finishPaidReturn(orderId);
+          return true;
+        }
+      } catch (err) {
+        console.warn('Payment confirm attempt failed:', err);
       }
-    } catch (err) {
-      console.error('Payment return error:', err);
-      if (await checkPaidLocally()) {
-        await queuePaidOrderForOps(orderId);
-        navPayPush('paid');
-        applyPayView('paid');
-      } else {
-        renderPending('Could not verify yet. If you were charged, tap "I paid — check again".');
-      }
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 0 ? 400 : 1500));
     }
 
-    return true;
+    if (fromPayMe && !hasExplicitPaymentFailure()) {
+      renderPaid();
+      navPayPush('paid');
+      confirmPaymentReturn()
+        .then(d => queuePaidOrderForOps(d.order_id || orderId))
+        .catch(() => queuePaidOrderForOps(orderId));
+      return true;
+    }
 
+    if (hasExplicitPaymentFailure()) {
+      navPayPush('failed');
+      applyPayView('failed');
+    } else {
+      renderFailed();
+      navPayReplace('failed');
+    }
+    return true;
   }
 
   function renderCheckout(link) {
@@ -640,6 +672,16 @@
         <span class="pay-total-label">Total</span>
 
         <span class="pay-total-amt">₪${link.total}</span>
+
+      </div>
+
+      <div class="pay-field">
+
+        <label for="payEmail">Email <span style="text-transform:none;letter-spacing:0;color:#666">(for receipt)</span></label>
+
+        <input type="email" id="payEmail" placeholder="you@example.com" value="${(link.customer_email || '').replace(/"/g, '&quot;')}"/>
+
+        <div class="pay-field-hint">We'll send your order confirmation here after payment.</div>
 
       </div>
 
@@ -704,7 +746,9 @@
 
     try {
       const deliveryAddress = getPayAddressForCheckout(paymentLink);
+      const customerEmail = getPayEmailForCheckout(paymentLink);
       await savePayLinkDeliveryAddress(paymentLink);
+      await savePayLinkCustomerEmail(paymentLink);
       navPayReplace('checkout');
 
       let saleUrl;
@@ -713,6 +757,7 @@
         saleUrl = await callCreatePayment({
           linkCode: paymentLink.link_code,
           deliveryAddress: deliveryAddress || undefined,
+          customerEmail: customerEmail || undefined,
         });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
@@ -732,6 +777,7 @@
           paymentLink.order_id = orderId;
         }
         await savePayDeliveryAddress(orderId, paymentLink);
+        await savePayCustomerEmail(orderId, paymentLink);
         saleUrl = await callCreatePayment({ orderId });
       }
 
@@ -781,7 +827,7 @@
 
 
 
-    if (link.status === 'paid') {
+    if (link.status === 'paid' && !link.reusable) {
 
       applyPayView('paid');
 
@@ -793,7 +839,7 @@
 
 
 
-    if (link.order_id) {
+    if (link.order_id && !link.reusable) {
 
       const { data: order } = await sb.from('orders').select('payment_status, delivery_address').eq('id', link.order_id).maybeSingle();
 

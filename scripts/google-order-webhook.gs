@@ -240,7 +240,9 @@ function doPost(e) {
 
 
 
-    return jsonResponse({ ok: true });
+    var customerReceipt = sendCustomerReceipt(data);
+
+    return jsonResponse({ ok: true, customer_receipt: customerReceipt });
 
   } catch (err) {
 
@@ -251,6 +253,47 @@ function doPost(e) {
 }
 
 
+
+/** Order confirmation to the customer (when email is on the order). */
+function sendCustomerReceipt(data) {
+  var email = String(data.customer_email || '').trim();
+  if (!email || email.indexOf('@') < 1) {
+    return { sent: false, reason: 'no_email' };
+  }
+
+  var label = data.order_number ? ('#' + data.order_number) : (data.order_label || data.order_id || '');
+  var greeting = data.customer_name ? ('Hi ' + data.customer_name + ',') : 'Hi,';
+  var subject = 'Gremier Coffee — order confirmation ' + label;
+  var body = [
+    greeting,
+    '',
+    'Thank you for your order! We received your payment of ₪' + (data.total || 0) + '.',
+    '',
+    'Order: ' + label,
+    data.delivery_address ? ('Delivery: ' + data.delivery_address) : null,
+    '',
+    'Items:',
+    data.items_summary || '—',
+    '',
+    data.discount > 0 ? ('Discount: -₪' + data.discount) : null,
+    'Total paid: ₪' + (data.total || 0),
+    '',
+    'We will contact you about delivery details if we have not already.',
+    'Questions? Reply to this email or message us on WhatsApp.',
+    '',
+    '— Gremier Coffee Co.',
+    'https://gremier-site.vercel.app',
+  ].filter(function (line) { return line !== null; }).join('\n');
+
+  MailApp.sendEmail({
+    to: email,
+    replyTo: NOTIFY_EMAIL,
+    subject: subject,
+    body: body,
+  });
+
+  return { sent: true, to: email };
+}
 
 function jsonResponse(obj, code) {
 

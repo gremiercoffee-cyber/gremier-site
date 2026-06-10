@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHash } from "node:crypto";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
+import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -195,6 +196,8 @@ type PaymentLinkRow = {
 
   status?: string | null;
 
+  reusable?: boolean | null;
+
 };
 
 
@@ -333,7 +336,8 @@ async function findPaymentLink(
 
   if (txnId.startsWith("pl_")) {
 
-    const linkCode = txnId.slice(3);
+    const rest = txnId.slice(3);
+    const linkCode = rest.includes("_") ? rest.slice(0, rest.indexOf("_")) : rest;
 
     const { data } = await supabase
 
@@ -387,7 +391,7 @@ async function fulfillPaymentLink(
 
 ): Promise<{ orderId: string; alreadyPaid: boolean }> {
 
-  if (link.status === "paid" && link.order_id) {
+  if (link.status === "paid" && link.order_id && !isReusablePaymentLink(link)) {
 
     return { orderId: link.order_id, alreadyPaid: true };
 
@@ -405,7 +409,7 @@ async function fulfillPaymentLink(
 
 
 
-  let orderId = link.order_id || null;
+  let orderId = isReusablePaymentLink(link) ? null : (link.order_id || null);
 
 
 
@@ -443,7 +447,7 @@ async function fulfillPaymentLink(
 
       customer_phone: link.customer_phone || null,
 
-      customer_email: null,
+      customer_email: link.customer_email || null,
 
       delivery_address: link.delivery_address || null,
 
@@ -503,21 +507,18 @@ async function fulfillPaymentLink(
 
 
 
-  await supabase
-
-    .from("payment_links")
-
-    .update({
-
-      status: "paid",
-
-      order_id: orderId,
-
-      updated_at: new Date().toISOString(),
-
-    })
-
-    .eq("link_code", link.link_code);
+  if (isReusablePaymentLink(link)) {
+    await resetReusablePaymentLink(supabase, link.link_code);
+  } else {
+    await supabase
+      .from("payment_links")
+      .update({
+        status: "paid",
+        order_id: orderId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("link_code", link.link_code);
+  }
 
 
 
@@ -821,13 +822,20 @@ Deno.serve(async (req) => {
 
     if (linkCode) {
 
-      await supabase
-
+      const { data: plink } = await supabase
         .from("payment_links")
+        .select("reusable")
+        .eq("link_code", linkCode)
+        .maybeSingle();
 
-        .update({ status: "paid", order_id: order.id, updated_at: new Date().toISOString() })
-
-        .eq("link_code", linkCode);
+      if (isReusablePaymentLink(plink)) {
+        await resetReusablePaymentLink(supabase, linkCode);
+      } else {
+        await supabase
+          .from("payment_links")
+          .update({ status: "paid", order_id: order.id, updated_at: new Date().toISOString() })
+          .eq("link_code", linkCode);
+      }
 
     }
 
