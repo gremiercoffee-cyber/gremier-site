@@ -48,6 +48,7 @@ function jobToRow(job) {
     qty: job.qty || null, cb_name: job.cbName || null, cb_address: job.cbAddress || null,
     dispensers: job.dispensers || null, wa_needs_send: job.waNeedsSend || false,
     cb_syrups: job.cbSyrups || null, billed: job.billed || false, paid: job.paid || false,
+    website_order_id: job.websiteOrderId || null,
   };
 }
 function rowToJob(r) {
@@ -60,6 +61,7 @@ function rowToJob(r) {
     needsConfirmation: r.needs_confirmation, jerryCans: r.jerry_cans || [],
     qty: r.qty, cbName: r.cb_name, cbAddress: r.cb_address, dispensers: r.dispensers,
     waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups || {}, billed: r.billed, paid: r.paid || false,
+    websiteOrderId: r.website_order_id || null,
   };
 }
 async function sbLoadAll() {
@@ -213,6 +215,29 @@ async function sbLoadPendingWebDeliveries() {
   const payMap = {};
   (orders || []).forEach(o => { payMap[o.id] = o.payment_status; });
   return rows.map(r => ({ ...r, payment_status: payMap[r.order_id] || null }));
+}
+/** Name → address → order # for website / pay-link orders. */
+function websiteOrderDisplayLabel(order) {
+  const name = String(order?.customer_name || "").trim();
+  if (name) return name;
+  const addr = String(order?.delivery_address || "").trim();
+  if (addr) return addr;
+  if (order?.order_number != null) return `Order #${order.order_number}`;
+  return "Delivery";
+}
+async function syncWebsiteOrderPaymentStatus(jobs) {
+  const linked = (jobs || []).filter(j => j.websiteOrderId && !j.paid);
+  if (!linked.length) return jobs;
+  const ids = [...new Set(linked.map(j => j.websiteOrderId))];
+  const orders = await sbFetch(`orders?id=in.(${ids.join(",")})&select=id,payment_status`);
+  const paidIds = new Set((orders || []).filter(o => o.payment_status === "paid").map(o => o.id));
+  if (!paidIds.size) return jobs;
+  await Promise.all(
+    linked.filter(j => paidIds.has(j.websiteOrderId)).map(j =>
+      sbFetch(`jobs?id=eq.${j.id}`, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ paid: true }) })
+    ),
+  );
+  return jobs.map(j => (j.websiteOrderId && paidIds.has(j.websiteOrderId) ? { ...j, paid: true } : j));
 }
 const JERRY_PRODUCTS = ["jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"];
 function todayISO() {
@@ -1094,13 +1119,14 @@ export default function App() {
     let data = null;
     try {
       data=await sbLoadAll();
-      setJobs(data.jobs);
+      const syncedJobs = await syncWebsiteOrderPaymentStatus(data.jobs);
+      setJobs(syncedJobs);
       setInventory(data.inventory);
       setConcentrate(data.concentrate);
       setBeans(data.beans);
       setLabeledStock(data.labeledStock||{});
       setError(null);
-      try { localStorage.setItem("gremier_cache",JSON.stringify({...data,cachedAt:Date.now()})); } catch(e){}
+      try { localStorage.setItem("gremier_cache",JSON.stringify({...data,jobs:syncedJobs,cachedAt:Date.now()})); } catch(e){}
     } catch(err) { if (!background) setError(err.message); }
     setLoading(false);
     setSyncing(false);
@@ -1135,11 +1161,14 @@ export default function App() {
     if (!user) return;
     loadPendingWebDeliveries();
     const interval=setInterval(loadPendingWebDeliveries,30000);
-    const channel=supabase.channel("pending-web-deliveries")
+    const pendingCh=supabase.channel("pending-web-deliveries")
       .on("postgres_changes",{event:"*",schema:"public",table:"pending_website_deliveries"},()=>loadPendingWebDeliveries())
       .subscribe();
-    return ()=>{ clearInterval(interval); supabase.removeChannel(channel); };
-  },[user,loadPendingWebDeliveries]);
+    const ordersCh=supabase.channel("orders-payment-sync")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"orders"},()=>loadData(true))
+      .subscribe();
+    return ()=>{ clearInterval(interval); supabase.removeChannel(pendingCh); supabase.removeChannel(ordersCh); };
+  },[user,loadPendingWebDeliveries,loadData]);
   useEffect(()=>{
     if (!user) return;
     try {
@@ -1312,6 +1341,11 @@ export default function App() {
       brewStarted: false,
       done: jobInput.done || false,
     };
+    if (pendingRow?.order_id && newJob.type === "delivery") {
+      newJob.websiteOrderId = pendingRow.order_id;
+      newJob.paid = pendingRow.payment_status === "paid";
+      newJob.billed = false;
+    }
     if (newJob.type==="brew") {
       // Brew always saves as brewStarted=true, done=false regardless of Log/Schedule.
       // "Logging" a brew means you're starting it now — the drain is still pending.
@@ -1466,6 +1500,7 @@ export default function App() {
   const pendingConfirms=jobs.filter(j=>j.needsConfirmation&&!j.done);
   const needed=concentrateNeeded(upcomingJobs,inventory,concentrate);
   const unbilledJobs=jobs.filter(j=>j.type==="delivery"&&(j.deliveryType==="private"||j.deliveryType==="coffeebar")&&!j.paid);
+  const schedulePillLabel=pendingWebDeliveries.length===1?websiteOrderDisplayLabel(pendingWebDeliveries[0]):null;
   function goToStock(){setScreen("stock");}
   if (authLoading) return (<div style={S.app}><div style={S.container}><div style={S.loading}><GremierLogo/><div style={{color:"#333333",fontSize:12,letterSpacing:2,marginTop:20}}>Loading...</div></div></div></div>);
   if (!user) return (<LoginScreen onSignIn={signInWithGoogle}/>);
@@ -1498,7 +1533,7 @@ export default function App() {
           ))}
         </div>
       )}
-      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:196,left:14,background:"#4A90D9",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040",maxWidth:"calc(100vw - 28px)"}} onClick={()=>{if(pendingWebDeliveries.length===1)openWebsiteSchedule(pendingWebDeliveries[0]);else setWebsiteScheduleOpen(true);}} title="Schedule new delivery">📦 {pendingWebDeliveries.length===1?"Schedule delivery":pendingWebDeliveries.length}</button>}
+      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:108,left:14,width:44,height:44,borderRadius:"50%",background:"#4A90D9",color:"#fff",border:"none",fontSize:pendingWebDeliveries.length===1?20:15,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 4px 16px #00000044",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(pendingWebDeliveries.length===1)openWebsiteSchedule(pendingWebDeliveries[0]);else setWebsiteScheduleOpen(true);}} title={schedulePillLabel?`Schedule: ${schedulePillLabel}`:"Schedule new deliveries"}>{pendingWebDeliveries.length===1?"📦":pendingWebDeliveries.length}</button>}
       {isAdmin&&websiteScheduleOpen&&<WebsiteScheduleDrawer orders={pendingWebDeliveries} onSchedule={openWebsiteSchedule} onClose={()=>setWebsiteScheduleOpen(false)}/>}
       {(()=>{const waPending=jobs.filter(j=>j.waNeedsSend&&j.storeName);return isAdmin&&waPending.length>0&&!waOpen?(<button style={{position:"fixed",bottom:196,right:14,background:"#25D366",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>):null;})()}
       {isAdmin&&waOpen&&<WaDrawer jobs={jobs.filter(j=>j.waNeedsSend&&j.storeName)} onMarkSent={markWaSent} onClose={()=>setWaOpen(false)}/>}
@@ -1838,7 +1873,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
   return (
     <div style={S.screen}>
       <div style={S.subHdr}><button style={S.backBtn} onClick={onBack}>‹</button><div style={S.subTitle}>{isEdit?"Edit Job":logNow?"✓ Log Now":"📅 Schedule"}</div><div style={{marginLeft:"auto"}}><RefreshBtn onRefresh={onRefresh}/></div></div>
-      {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":websiteOrder?`📦 Order #${websiteOrder.order_number||"—"} — schedule delivery${websiteOrder.payment_status&&websiteOrder.payment_status!=="paid"?" (payment pending)":""}`:"📅 Scheduling for later"}</div>}
+      {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":websiteOrder?`📦 ${websiteOrderDisplayLabel(websiteOrder)} — schedule delivery${websiteOrder.payment_status&&websiteOrder.payment_status!=="paid"?" (payment pending)":""}`:"📅 Scheduling for later"}</div>}
       {isEdit&&existingJob?.type==="drain"?(
         <div style={S.card}>
           <div style={S.cardTitle}>Drain Job</div>
@@ -2449,12 +2484,14 @@ function WebsiteScheduleDrawer({orders,onSchedule,onClose}) {
           {orders.map(o=>{
             const itemsText=(o.items||[]).map(i=>`${i.name_en||i.name_he||"Item"} ×${i.qty||1}`).join(", ");
             const unpaid=o.payment_status&&o.payment_status!=="paid";
+            const label=websiteOrderDisplayLabel(o);
             return (
               <div key={o.id} style={{...S.alertRow,flexDirection:"column",alignItems:"flex-start",gap:6,marginTop:8}}>
                 <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  Order #{o.order_number||"—"} — {o.customer_name||"Customer"}
+                  {label}
                   {unpaid?<span style={{fontSize:10,fontWeight:700,color:"#C8860A",background:"#FFF8E8",border:"1px solid #E8C878",borderRadius:6,padding:"2px 7px"}}>Awaiting payment</span>:null}
                 </div>
+                {o.order_number!=null&&label!==`Order #${o.order_number}`?<div style={{fontSize:11,color:"#888"}}>Order #{o.order_number}</div>:null}
                 <div style={{fontSize:11,color:"#888"}}>{itemsText}</div>
                 {o.delivery_address?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {o.delivery_address}</div>:<div style={{fontSize:11,color:"#888",fontStyle:"italic"}}>Address — add when scheduling</div>}
                 {o.customer_phone?<div style={{fontSize:11,color:"#555"}}>{o.customer_phone}</div>:null}
@@ -2477,11 +2514,15 @@ function BillingDrawer({jobs,onMarkBilled,onMarkPaid,onClose}) {
         <div style={{overflowY:"auto",flex:1,padding:"0 16px 100px"}}>
           {jobs.length===0&&<div style={{color:"#888",fontSize:13,padding:"12px 0"}}>All billed!</div>}
           {jobs.map(job=>{
-            const name=job.deliveryType==="coffeebar"?`Coffee Bar${job.cbName?" — "+job.cbName:""}` :(job.privateName||"Private Delivery");
+            const name=job.deliveryType==="coffeebar"?`Coffee Bar${job.cbName?" — "+job.cbName:""}` :(job.privateName||job.privateAddress||"Private Delivery");
             const detail=Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>qty+" "+(PRODUCTS[pid]?.label||pid)).join(", ");
+            const awaitingPay=job.websiteOrderId&&!job.paid;
             return (
               <div key={job.id} style={{...S.alertRow,flexDirection:"column",alignItems:"flex-start",gap:6,marginTop:8}}>
-                <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A"}}>{name}</div>
+                <div style={{fontWeight:600,fontSize:14,color:"#1A1A1A",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  {name}
+                  {awaitingPay?<span style={{fontSize:10,fontWeight:700,color:"#C8860A",background:"#FFF8E8",border:"1px solid #E8C878",borderRadius:6,padding:"2px 7px"}}>Awaiting payment</span>:null}
+                </div>
                 <div style={{fontSize:11,color:"#888"}}>{formatDate(job.date)}{job.time?" · "+formatTime(job.time):""}</div>
                 {detail?<div style={{fontSize:11,color:"#555"}}>{detail}</div>:null}
                 {(job.privateAddress||job.cbAddress)?<div style={{fontSize:11,color:"#4A90D9"}}>📍 {job.privateAddress||job.cbAddress}</div>:null}

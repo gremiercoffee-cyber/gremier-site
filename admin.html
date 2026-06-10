@@ -1705,6 +1705,26 @@ async function sendOrderToGoogleSheet(orderId) {
     showToast('Could not reach notify-paid-order function');
   }
 }
+async function insertPendingForPaymentLink(link, order) {
+  const { data: existing } = await sb.from('pending_website_deliveries')
+    .select('id, status').eq('order_id', order.id).maybeSingle();
+  if (existing?.status === 'pending_schedule') return { ok: true, already: true };
+  const { error } = await sb.from('pending_website_deliveries').insert({
+    order_id: order.id,
+    order_number: order.order_number ?? null,
+    customer_name: link.customer_name || order.customer_name || 'Payment Link Customer',
+    customer_phone: link.customer_phone || order.customer_phone || null,
+    delivery_address: link.delivery_address || order.delivery_address || null,
+    items: link.items || order.items || [],
+    order_total: Number(link.total ?? order.total) || 0,
+    status: 'pending_schedule',
+  });
+  if (error) {
+    console.error('pending_website_deliveries insert:', error);
+    return { ok: false, error };
+  }
+  return { ok: true };
+}
 async function queuePaidLinkForOps(orderId) {
   if (!orderId) { showToast('No order linked to this payment link'); return; }
   try {
@@ -1728,6 +1748,57 @@ async function queuePaidLinkForOps(orderId) {
     console.error(err);
     showToast('Could not reach server — run deploy-functions.bat');
   }
+}
+/** Queue any payment link for Ops — works unpaid (schedule before pay) or paid. */
+async function queuePaymentLinkForOps(linkCode) {
+  const { data: link, error: linkErr } = await sb.from('payment_links').select('*').eq('link_code', linkCode).single();
+  if (linkErr || !link) { showToast('Payment link not found'); return; }
+
+  let order = null;
+  if (link.order_id) {
+    const { data: o } = await sb.from('orders')
+      .select('id, order_number, customer_name, customer_phone, delivery_address, items, total, payment_status')
+      .eq('id', link.order_id).maybeSingle();
+    order = o;
+  }
+
+  if (!order) {
+    const { data: inserted, error: orderErr } = await sb.from('orders').insert({
+      customer_name: link.customer_name || 'Payment Link Customer',
+      customer_phone: link.customer_phone || null,
+      customer_email: null,
+      delivery_address: link.delivery_address || null,
+      items: link.items || [],
+      subtotal: link.subtotal,
+      discount: link.discount || 0,
+      total: link.total,
+      status: link.status === 'paid' ? 'confirmed' : 'awaiting_payment',
+      payment_status: link.status === 'paid' ? 'paid' : 'unpaid',
+      payment_method: 'payme',
+      source: 'payment_link',
+      delivery_info: { payment_link_code: link.link_code, queued_from_admin: true },
+      notes: link.discount_note || null,
+    }).select('id, order_number, customer_name, customer_phone, delivery_address, items, total, payment_status').single();
+    if (orderErr || !inserted?.id) {
+      showToast('Could not create order — ' + (orderErr?.message || 'see console'));
+      console.error(orderErr);
+      return;
+    }
+    order = inserted;
+    await sb.from('payment_links').update({ order_id: order.id }).eq('link_code', linkCode);
+  }
+
+  if (link.status === 'paid' || order.payment_status === 'paid') {
+    await queuePaidLinkForOps(order.id);
+    loadPayLinks();
+    return;
+  }
+
+  const result = await insertPendingForPaymentLink(link, order);
+  if (result.already) showToast('Already in Ops queue ✓ — refresh Ops app');
+  else if (result.ok) showToast(`Order #${order.order_number} in Ops (awaiting payment) ✓`);
+  else showToast('Ops queue failed — run apply-db-migrations.bat if you have not yet');
+  loadPayLinks();
 }
 function openOrderDetail(id) {
   const o = allOrders.find(x=>x.id===id);
@@ -2001,18 +2072,8 @@ async function generatePayLink() {
     } else {
       createdOrderNumber = order.order_number;
       await sb.from('payment_links').update({ order_id: order.id }).eq('link_code', linkCode);
-      const { error: pendingErr } = await sb.from('pending_website_deliveries').insert({
-        order_id: order.id,
-        order_number: order.order_number,
-        customer_name: customerName || 'Payment Link Customer',
-        customer_phone: customerPhone,
-        delivery_address: deliveryAddress,
-        items: linkItems,
-        order_total: total,
-        status: 'pending_schedule',
-      });
-      if (pendingErr) {
-        console.error('pending_website_deliveries insert:', pendingErr);
+      const pendingResult = await insertPendingForPaymentLink({ ...linkData, customer_phone: customerPhone, delivery_address: deliveryAddress, total }, order);
+      if (!pendingResult.ok && !pendingResult.already) {
         showToast(`Order #${order.order_number} created — Ops queue failed, check console`);
       } else {
         showToast(`Order #${order.order_number} created — in Ops for scheduling ✓`);
@@ -2079,8 +2140,8 @@ async function loadPayLinks() {
     const recreateBtn = missingOrder
       ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
       : '';
-    const opsBtn = (l.status === 'paid' && l.order_id)
-      ? `<button class="btn btn-blue btn-sm" onclick="queuePaidLinkForOps('${l.order_id}')" title="Send to Ops for scheduling">📦 Ops</button>`
+    const opsBtn = (l.status === 'pending' || l.status === 'paid')
+      ? `<button class="btn btn-blue btn-sm" onclick="queuePaymentLinkForOps('${l.link_code}')" title="${l.status === 'paid' ? 'Send to Ops for scheduling' : 'Queue in Ops before customer pays'}">📦 Ops</button>`
       : '';
     return `<tr>
       <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}</td>
