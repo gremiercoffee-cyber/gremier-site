@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
+import { findCheckoutOrder } from "../_shared/find-checkout-order.ts";
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -413,64 +414,37 @@ async function fulfillPaymentLink(
   let orderId = isReusablePaymentLink(link) ? null : (link.order_id || null);
 
   if (!orderId) {
-    const txnId = String(payload.transaction_id || "");
-    const txnOrderId = txnId.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
-    )?.[0];
-    if (txnOrderId) {
-      orderId = txnOrderId;
-    } else {
-      const saleId = String(payload.payme_sale_id || "");
-      if (saleId) {
-        const { data: orders } = await supabase
-          .from("orders")
-          .select("id, payment_status, delivery_info")
-          .eq("payment_method", "payme")
-          .order("created_at", { ascending: false })
-          .limit(50);
-        const match = (orders || []).find((o) => {
-          const info = o.delivery_info && typeof o.delivery_info === "object"
-            ? o.delivery_info as Record<string, unknown>
-            : {};
-          return String(info.payme_sale_id || "") === saleId;
-        }) ?? (orders || []).find((o) => {
-          if (o.payment_status === "paid") return false;
-          const info = o.delivery_info && typeof o.delivery_info === "object"
-            ? o.delivery_info as Record<string, unknown>
-            : {};
-          return String(info.payment_link_code || "") === link.link_code;
-        });
-        if (match?.id) orderId = String(match.id);
-      }
-    }
+    orderId = await findCheckoutOrder(supabase, {
+      orderId,
+      linkCode: link.link_code,
+      paymeSaleId: String(payload.payme_sale_id || ""),
+      transactionId: String(payload.transaction_id || ""),
+    });
   }
 
   if (orderId) {
+    const { data: existing } = await supabase
+      .from("orders")
+      .select("delivery_info")
+      .eq("id", orderId)
+      .maybeSingle();
+    const prev = existing?.delivery_info && typeof existing.delivery_info === "object"
+      ? existing.delivery_info as Record<string, unknown>
+      : {};
 
     await supabase
-
       .from("orders")
-
       .update({
-
         payment_status: "paid",
-
         status: "confirmed",
-
         delivery_info: {
-
+          ...prev,
           payment_link_code: link.link_code,
-
           ...paymeInfo,
-
         },
-
         updated_at: new Date().toISOString(),
-
       })
-
       .eq("id", orderId);
-
   } else {
 
     const orderData = {
