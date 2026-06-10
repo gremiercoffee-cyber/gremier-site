@@ -233,10 +233,25 @@ export async function notifyPaidOrderOnce(
   if (!order) return { sent: false, skipped: "order_not_found" };
   if (order.payment_status !== "paid") return { sent: false, skipped: "not_paid" };
 
-  const info = order.delivery_info && typeof order.delivery_info === "object"
+const info = order.delivery_info && typeof order.delivery_info === "object"
     ? order.delivery_info as Record<string, unknown>
     : {};
   if (info.order_notified_at && !options?.force) return { sent: true, skipped: "already_notified" };
+
+  // Atomically claim the notification BEFORE sending, so concurrent webhook
+  // calls can't both pass the check and send duplicate emails.
+  if (!options?.force) {
+    const claimedAt = new Date().toISOString();
+    const { data: claimed } = await supabase
+      .from("orders")
+      .update({ delivery_info: { ...info, order_notified_at: claimedAt } })
+      .eq("id", orderId)
+      .is("delivery_info->>order_notified_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) {
+      return { sent: true, skipped: "already_notified" };
+    }
+  }
 
   const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
   if (!result.ok) {
