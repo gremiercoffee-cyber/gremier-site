@@ -50,6 +50,7 @@ function jobToRow(job) {
     cb_syrups: job.cbSyrups || null, billed: job.billed || false, paid: job.paid || false,
     website_order_id: job.websiteOrderId || null,
     customer_phone: job.customerPhone || null,
+    wa_sent_at: job.waSentAt || null,
   };
 }
 function rowToJob(r) {
@@ -63,6 +64,7 @@ function rowToJob(r) {
     qty: r.qty, cbName: r.cb_name, cbAddress: r.cb_address, dispensers: r.dispensers,
     waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups || {}, billed: r.billed, paid: r.paid || false,
     websiteOrderId: r.website_order_id || null, customerPhone: r.customer_phone || null,
+    waSentAt: r.wa_sent_at || null,
   };
 }
 function whatsAppPhone(raw) {
@@ -97,38 +99,20 @@ function getStoreWaPhone(storeName) {
 }
 function isStoreWaDelivery(job) {
   if (!job || job.type !== "delivery" || !job.storeName) return false;
-  const kind = job.deliveryType || "store";
-  if (kind !== "store") return false;
+  if (job.deliveryType === "private" || job.deliveryType === "coffeebar") return false;
   return !!getStoreWaPhone(job.storeName);
 }
+const STORE_WA_LOOKBACK_DAYS = 45;
 function jobWaDrawerEligible(job) {
-  return !!(job?.waNeedsSend && isStoreWaDelivery(job));
+  if (!isStoreWaDelivery(job) || !job.done || job.waSentAt) return false;
+  const d = String(job.date || "").slice(0, 10);
+  if (!d) return false;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - STORE_WA_LOOKBACK_DAYS);
+  return d >= cutoff.toISOString().slice(0, 10);
 }
 async function flagStoreWaNeedsSend(jobId) {
   await sbFetch(`jobs?id=eq.${jobId}`, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ wa_needs_send: true }) });
-}
-async function backfillMissingStoreWaFlags(jobs) {
-  try {
-    if (localStorage.getItem("gremier_store_wa_backfill_v1")) return jobs;
-  } catch (e) { /* ignore */ }
-  const candidates = (jobs || [])
-    .filter(j => isStoreWaDelivery(j) && j.done && !j.waNeedsSend)
-    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
-    .slice(0, 2);
-  if (!candidates.length) {
-    try { localStorage.setItem("gremier_store_wa_backfill_v1", "1"); } catch (e) { /* ignore */ }
-    return jobs;
-  }
-  const updated = jobs.map(j => ({ ...j }));
-  for (const job of candidates) {
-    try {
-      await flagStoreWaNeedsSend(job.id);
-      const idx = updated.findIndex(j => j.id === job.id);
-      if (idx >= 0) updated[idx] = { ...updated[idx], waNeedsSend: true };
-    } catch (e) { console.warn("Store WA backfill failed:", job.id, e); }
-  }
-  try { localStorage.setItem("gremier_store_wa_backfill_v1", "1"); } catch (e) { /* ignore */ }
-  return updated;
 }
 async function sbLoadAll() {
   const [jobs, inventory, concentrate, beans, labeledStock] = await Promise.all([
@@ -1445,8 +1429,7 @@ export default function App() {
       const [allData, catalog] = await Promise.all([sbLoadAll(), sbLoadWebProductCatalog()]);
       loaded = allData;
       const syncedJobs = await syncWebsiteOrderPaymentStatus(allData.jobs);
-      const repairedJobs = await backfillMissingStoreWaFlags(syncedJobs);
-      setJobs(repairedJobs);
+      setJobs(syncedJobs);
       setProductThumbs(catalog.thumbs);
       setWebProductIdToOps(catalog.idToOps);
       setInventory(allData.inventory);
@@ -1454,7 +1437,7 @@ export default function App() {
       setBeans(allData.beans);
       setLabeledStock(allData.labeledStock||{});
       setError(null);
-      try { localStorage.setItem("gremier_cache",JSON.stringify({...allData,jobs:repairedJobs,cachedAt:Date.now()})); } catch(e){}
+      try { localStorage.setItem("gremier_cache",JSON.stringify({...allData,jobs:syncedJobs,cachedAt:Date.now()})); } catch(e){}
     } catch(err) { if (!background) setError(err.message); }
     setLoading(false);
     setSyncing(false);
@@ -1654,7 +1637,9 @@ export default function App() {
       ...(confirmedQtys ? {quantities: confirmedQtys} : {}),
     };
     setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
-    await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify({done:true, actual_qty:actual})});
+    const patchBody = { done: true, actual_qty: actual };
+    if (isStoreWaDelivery(finalJob)) patchBody.wa_needs_send = true;
+    await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify(patchBody)});
     await applyJobSideEffects(finalJob, confirmedQtys);
     if (finalJob.type === "delivery" && finalJob.websiteOrderId) {
       const pendingRow = pendingWebDeliveries.find(p => p.order_id === finalJob.websiteOrderId)
@@ -1800,8 +1785,13 @@ export default function App() {
   }
   async function markWaSent(jobId) {
     if (!isAdmin) return;
-    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false}:j));
-    await sbFetch(`jobs?id=eq.${jobId}`,{method:"PATCH",prefer:"return=minimal",body:JSON.stringify({wa_needs_send:false})});
+    const sentAt = new Date().toISOString();
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:sentAt}:j));
+    try {
+      await sbFetch(`jobs?id=eq.${jobId}`,{method:"PATCH",prefer:"return=minimal",body:JSON.stringify({wa_needs_send:false,wa_sent_at:sentAt})});
+    } catch (e) {
+      await sbFetch(`jobs?id=eq.${jobId}`,{method:"PATCH",prefer:"return=minimal",body:JSON.stringify({wa_needs_send:false})});
+    }
   }
   async function deleteJob(jobId) {
     if (!isAdmin) return;
@@ -2105,7 +2095,7 @@ function DayPopup({date,jobs,onClose,onJobTap,onCheckoff}) {
 function JobRow({job,onCheckoff,onTap,pending}) {
   const color=job.type==="drain"?"#9B6FC8":job.type==="brew"?"#4A90D9":job.type==="bottling"?"#E8821A":job.type==="labeling"?"#3A2A1A":job.deliveryType==="store"?"#101010":"#2E8B57";
   const label=job.type==="delivery"?job.deliveryType==="store"?(job.storeName||"Store"):job.deliveryType==="coffeebar"?(job.cbName||"Coffee Bar"):(job.privateName||"Private"):job.label||(job.type==="bottling"?`Bottle ${job.liters}L ${PRODUCTS[job.product]?.label||""}`:job.type==="brew"?`Brew ${CONCENTRATE_TYPES[job.product]?.label||""} (${job.kg}kg)`:job.type==="drain"?`Drain ${CONCENTRATE_TYPES[job.product]?.label||""}`:job.type==="labeling"?`Label ${job.qty} ${PRODUCTS[job.product]?.label||""}`:job.type);
-  const hasWA=isStoreWaDelivery(job)&&job.done;
+  const hasWA=jobWaDrawerEligible(job);
   const prodThumb = job.type==="brew"||job.type==="drain" ? { concType: job.product }
     : job.type==="bottling"||job.type==="labeling" ? { pid: job.product } : null;
   return (
@@ -2743,7 +2733,7 @@ function ProductionDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
   );
 }
 function DeliveryDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
-  const waLink=(job.done&&isStoreWaDelivery(job))?buildStoreWaLink(job):null;
+  const waLink=(job.done&&isStoreWaDelivery(job)&&!job.waSentAt)?buildStoreWaLink(job):null;
   return (
     <div style={S.modal} onClick={onClose}>
       <div style={S.modalBox} onClick={e=>e.stopPropagation()}>
