@@ -77,7 +77,8 @@ export function classifyPayMeStatus(status: string): {
   isTerminalUnpaid: boolean;
 } {
   const s = normalizeStatus(status);
-  const isCompleted = s === "completed" || s === "paid" || s === "success";
+  const isCompleted = s === "completed" || s === "paid" || s === "success"
+    || s === "1" || s === "approved" || s === "captured" || s === "chargeable";
   const isPending = s === "initial" || s === "authorized";
   const isTerminalUnpaid = [
     "failed",

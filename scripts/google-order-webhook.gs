@@ -277,9 +277,13 @@ function doPost(e) {
     ]);
 
     sendOwnerNotification(data);
-    var customerEmailed = sendCustomerReceipt(data);
+    try {
+      sendCustomerReceipt(data);
+    } catch (customerErr) {
+      console.warn('Customer receipt email failed:', customerErr);
+    }
 
-    return jsonResponse({ ok: true, customer_emailed: customerEmailed });
+    return jsonResponse({ ok: true, customer_emailed: isValidCustomerEmail(String(data.customer_email || '')) });
 
   } catch (err) {
 

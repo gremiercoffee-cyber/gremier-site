@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ensureOrderPaidFromPayMe } from "../_shared/ensure-order-paid.ts";
 import { notifyPaidOrderOnce } from "../_shared/order-notify.ts";
 import { enqueuePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 
@@ -26,7 +27,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json() as { order_id?: string; force?: boolean };
+    const body = await req.json() as { order_id?: string; force?: boolean; payme_sale_id?: string };
     const orderId = String(body.order_id || "").trim();
     if (!orderId) {
       return new Response(JSON.stringify({ sent: false, error: "missing order_id" }), {
@@ -44,12 +45,21 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
+    const paymeSaleId = String(body.payme_sale_id || "").trim();
+
+    const ensured = await ensureOrderPaidFromPayMe(supabase, orderId, paymeSaleId || undefined);
+
     const queueResult = await enqueuePendingWebsiteDelivery(supabase, orderId);
     const opsQueued = queueResult === "queued" || queueResult === "exists";
     const result = await notifyPaidOrderOnce(supabase, orderId, { force: body.force === true });
 
     const ok = result.sent || result.skipped === "already_notified" || opsQueued;
-    return new Response(JSON.stringify({ ...result, ops_queued: opsQueued, queue_result: queueResult }), {
+    return new Response(JSON.stringify({
+      ...result,
+      ops_queued: opsQueued,
+      queue_result: queueResult,
+      marked_paid: ensured,
+    }), {
       status: ok ? 200 : 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

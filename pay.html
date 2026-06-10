@@ -500,21 +500,42 @@
     if (targetId) clearCheckoutSession(targetId);
   }
 
+  function paymeSaleIdForOrder(id) {
+    if (!id) return '';
+    try {
+      return sessionStorage.getItem(payStorageKey(id, 'sale')) || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   async function syncPaidOrderToSheet(targetId, maxAttempts) {
+    let id = targetId || orderId;
     for (let i = 0; i < maxAttempts; i++) {
-      if (!targetId) return;
+      if (!id) {
+        try { id = sessionStorage.getItem('gremier_pay_last_order') || ''; } catch (_) {}
+      }
+      if (!id) return;
+
       try {
         const data = await confirmPaymentReturn();
-        if (data.order_id) orderId = data.order_id;
+        if (data.order_id) {
+          orderId = data.order_id;
+          id = data.order_id;
+        }
       } catch (e) {
         console.warn('confirm during sync:', e);
       }
-      await queuePaidOrderForOps(targetId, i > 0);
+
+      const notifyResult = await queuePaidOrderForOps(id, i > 0);
+      if (notifyResult?.sent || notifyResult?.skipped === 'already_notified') return;
+
       const { data: order } = await sb.from('orders')
         .select('payment_status, delivery_info')
-        .eq('id', targetId)
+        .eq('id', id)
         .maybeSingle();
       if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) return;
+
       await new Promise(r => setTimeout(r, i < 2 ? 600 : 1500));
     }
   }
@@ -658,11 +679,13 @@
   /** Queue paid order for Ops scheduling (idempotent safety net). */
   async function queuePaidOrderForOps(oid, force) {
     const id = oid || orderId;
-    if (!id) return;
+    if (!id) return null;
     try {
       const payload = { order_id: id };
       if (force) payload.force = true;
-      await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
+      const saleId = paymeSaleIdForOrder(id);
+      if (saleId) payload.payme_sale_id = saleId;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -671,8 +694,12 @@
         },
         body: JSON.stringify(payload),
       });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) console.warn('notify-paid-order:', data);
+      return data;
     } catch (e) {
       console.warn('Ops schedule queue:', e);
+      return null;
     }
   }
 
