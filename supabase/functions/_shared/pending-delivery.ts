@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-/** Queue a paid website order for ops scheduling (idempotent). */
+/** Queue a paid website order for ops scheduling (idempotent — safe to call repeatedly). */
 export async function enqueuePendingWebsiteDelivery(
   supabase: SupabaseClient,
   orderId: string,
-): Promise<"queued" | "skipped" | "exists"> {
+): Promise<"queued" | "skipped" | "exists" | "error"> {
   const { data: order } = await supabase
     .from("orders")
     .select(
@@ -36,9 +36,22 @@ export async function enqueuePendingWebsiteDelivery(
   });
 
   if (error) {
-    console.error("enqueuePendingWebsiteDelivery failed:", error.message);
-    return "skipped";
+    console.error("enqueuePendingWebsiteDelivery failed:", error.message, error);
+    return "error";
   }
 
   return "queued";
+}
+
+/** Always attempt to queue — call on every paid confirmation path (return URL, webhook retries, etc.). */
+export async function ensurePendingWebsiteDelivery(
+  supabase: SupabaseClient,
+  orderId: string | null | undefined,
+): Promise<void> {
+  const id = String(orderId || "").trim();
+  if (!id) return;
+  const result = await enqueuePendingWebsiteDelivery(supabase, id);
+  if (result === "error") {
+    console.error("ensurePendingWebsiteDelivery: insert failed for order", id);
+  }
 }

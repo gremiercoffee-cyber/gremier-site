@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHash } from "node:crypto";
-import { enqueuePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
+import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -725,6 +725,8 @@ Deno.serve(async (req) => {
 
       if (result.alreadyPaid) {
 
+        await ensurePendingWebsiteDelivery(supabase, result.orderId);
+
         await notifyPaidOrder(supabase, result.orderId);
 
         return new Response(JSON.stringify({ ok: true, already_paid: true }), {
@@ -735,7 +737,7 @@ Deno.serve(async (req) => {
 
       }
 
-      await enqueuePendingWebsiteDelivery(supabase, result.orderId);
+      await ensurePendingWebsiteDelivery(supabase, result.orderId);
 
       await notifyPaidOrder(supabase, result.orderId);
 
@@ -768,6 +770,8 @@ Deno.serve(async (req) => {
 
 
     if (order.payment_status === "paid") {
+
+      await ensurePendingWebsiteDelivery(supabase, order.id);
 
       await notifyPaidOrder(supabase, order.id);
 
@@ -837,7 +841,7 @@ Deno.serve(async (req) => {
 
     }
 
-    await enqueuePendingWebsiteDelivery(supabase, order.id);
+    await ensurePendingWebsiteDelivery(supabase, order.id);
 
     await notifyPaidOrder(supabase, order.id);
 

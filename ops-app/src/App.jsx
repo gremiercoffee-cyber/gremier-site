@@ -372,7 +372,7 @@ No explanation, no markdown.`,
   }
 }
 // ─── TEXT INPUT FOR CHAT ──────────────────────────────────────────────────
-function TextInput({ onSend, disabled, onFocus }) {
+function TextInput({ onSend, disabled, onFocus, inputRef }) {
   const [value, setValue] = React.useState("");
   function submit() {
     const t = value.trim();
@@ -383,13 +383,17 @@ function TextInput({ onSend, disabled, onFocus }) {
   return (
     <div style={{ display:"flex", flex:1, alignItems:"center", background:"#F2F2F2", borderRadius:22, padding:"0 6px 0 14px", gap:4 }}>
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter") submit(); }}
         onFocus={() => onFocus?.()}
         placeholder="Type a message..."
-        style={{ flex:1, background:"none", border:"none", outline:"none", fontSize:14, color:"#1A1A1A", padding:"10px 0" }}
+        inputMode="text"
+        enterKeyHint="send"
+        autoComplete="off"
+        style={{ flex:1, background:"none", border:"none", outline:"none", fontSize:16, color:"#1A1A1A", padding:"10px 0" }}
       />
       <button onClick={submit} disabled={disabled || !value.trim()} style={{
         width:32, height:32, borderRadius:"50%", background: value.trim() && !disabled ? "#101010" : "#D0D0D0",
@@ -397,6 +401,32 @@ function TextInput({ onSend, disabled, onFocus }) {
         display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"background 0.15s",
       }}>↑</button>
     </div>
+  );
+}
+const PENDING_FIELD = {
+  width:"100%", padding:"10px 12px", fontSize:16, color:"#1A1A1A",
+  background:"#FAFAFA", border:"1.5px solid #D0D0D0", borderRadius:10,
+  outline:"none", boxSizing:"border-box", WebkitAppearance:"none",
+};
+function PendingField({ label, value, onChange, onActivate, placeholder, inputMode = "text" }) {
+  return (
+    <label style={{ display:"block", marginTop:8 }}>
+      <span style={{ fontSize:11, fontWeight:600, color:"#666", textTransform:"uppercase", letterSpacing:"0.04em" }}>{label}</span>
+      <input
+        type="text"
+        value={value || ""}
+        onChange={e => onChange(e.target.value)}
+        onFocus={onActivate}
+        onClick={onActivate}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        enterKeyHint="done"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        style={PENDING_FIELD}
+      />
+    </label>
   );
 }
 // ─── VOICE LOGGER COMPONENT ───────────────────────────────────────────────
@@ -409,10 +439,48 @@ function VoiceLogger({ onAddJob, jobs, beans, inventory, concentrate, labeledSto
   const mediaRecorderRef = React.useRef(null);
   const audioChunksRef = React.useRef([]);
   const messagesEndRef = React.useRef(null);
+  const chatInputRef = React.useRef(null);
   if (!onAddJob) return null;
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, pendingOption]);
+  React.useEffect(() => {
+    if (!pendingOption) return;
+    window.speechSynthesis?.cancel();
+    stopListening();
+    setPhase("done");
+    chatInputRef.current?.blur();
+  }, [pendingOption]);
+  function activatePendingEdit() {
+    window.speechSynthesis?.cancel();
+    stopListening();
+    setPhase("done");
+    chatInputRef.current?.blur();
+  }
+  function patchPendingOption(fn) {
+    setPendingOption(prev => (prev ? fn(prev) : prev));
+  }
+  function setPendingLabel(val) {
+    patchPendingOption(p => ({ ...p, option: { ...p.option, label: val } }));
+  }
+  function setPendingJobField(field, val) {
+    patchPendingOption(p => ({
+      ...p,
+      option: {
+        ...p.option,
+        job: p.option.job ? { ...p.option.job, [field]: val } : p.option.job,
+      },
+    }));
+  }
+  function setPendingPatchField(field, val) {
+    patchPendingOption(p => ({
+      ...p,
+      option: {
+        ...p.option,
+        patch: { ...(p.option.patch || {}), [field]: val },
+      },
+    }));
+  }
   function openChat() {
     setIsOpen(true);
     setMessages([]);
@@ -434,6 +502,7 @@ function VoiceLogger({ onAddJob, jobs, beans, inventory, concentrate, labeledSto
     try { mediaRecorderRef.current?.stop(); } catch (e) {}
   }
   function handleMicTap() {
+    if (pendingOption) return;
     if (phase === "listening") {
       stopListening();
     } else if (phase === "idle" || phase === "done") {
@@ -593,6 +662,7 @@ Keep replies short — 1-2 sentences, conversational, not robotic.`;
       } else if (obj.option) {
         setMessages(prev => [...prev, { role: "assistant", text: reply, option: obj.option, intent: obj.intent, choices }]);
         setPendingOption({ option: obj.option, intent: obj.intent });
+        stopListening();
         setPhase("done");
         // For edit: also show confirm/cancel (handled by existing pendingOption UI)
       } else {
@@ -692,10 +762,11 @@ Keep replies short — 1-2 sentences, conversational, not robotic.`;
     // log or schedule — route through addJob
     const job = option.job;
     if (!job) return;
-    if (job.type === "brew") {
-      onAddJob({ ...job, done: false, brewStarted: false });
+    const withLabel = option.label ? { ...job, label: option.label } : job;
+    if (withLabel.type === "brew") {
+      onAddJob({ ...withLabel, done: false, brewStarted: false });
     } else {
-      onAddJob(job);
+      onAddJob(withLabel);
     }
     setMessages(prev => [...prev, { role: "assistant", text: "✓ Saved!" }]);
   }
@@ -806,27 +877,9 @@ Keep replies short — 1-2 sentences, conversational, not robotic.`;
                     ))}
                   </div>
                 )}
-                {/* Confirm/cancel buttons for actionable messages */}
-                {msg.option && pendingOption && i === messages.length - 1 && !msg.choices && (
-                  <div style={{ display:"flex", gap:8, marginTop:8, width:"100%" }}>
-                    <button onClick={cancelOption} style={{
-                      flex:1, background:"#F0F0F0", border:"1px solid #D0D0D0", borderRadius:10,
-                      padding:"10px", fontSize:13, fontWeight:600, cursor:"pointer", color:"#555"
-                    }}>Cancel</button>
-                    <button onClick={confirmOption} style={{
-                      flex:2, background:intentColor(msg.intent), border:"none", borderRadius:10,
-                      padding:"10px", fontSize:13, fontWeight:700, cursor:"pointer", color:"#fff"
-                    }}>{intentLabel(msg.intent)} ✓</button>
-                  </div>
-                )}
-                {/* Confirm/cancel when choices AND an option exist (e.g. "did you mean X?") */}
-                {msg.option && pendingOption && i === messages.length - 1 && msg.choices && (
-                  <div style={{ display:"flex", gap:8, marginTop:4, width:"100%" }}>
-                    <button onClick={cancelOption} style={{
-                      flex:1, background:"#F0F0F0", border:"1px solid #D0D0D0", borderRadius:10,
-                      padding:"8px", fontSize:12, fontWeight:600, cursor:"pointer", color:"#555"
-                    }}>Cancel</button>
-                  </div>
+                {/* Pending action — edit + confirm live in the pinned bottom panel */}
+                {msg.option && pendingOption && i === messages.length - 1 && (
+                  <div style={{ fontSize:11, color:"#888", marginTop:6 }}>Tap a field below to edit before confirming</div>
                 )}
               </div>
             ))}
@@ -841,27 +894,81 @@ Keep replies short — 1-2 sentences, conversational, not robotic.`;
           {errorMsg && (
             <div style={{ padding:"6px 16px", fontSize:12, color:"#E53935", textAlign:"center", flexShrink:0 }}>{errorMsg}</div>
           )}
-          {/* Bottom input bar — text input + mic on right */}
-          <div style={{ padding:"10px 12px 28px", flexShrink:0, borderTop:"1px solid #F0F0F0", display:"flex", alignItems:"center", gap:10 }}>
-            <TextInput onSend={text => {
-              if (!text.trim()) return;
-              setMessages(prev => [...prev, { role:"user", text }]);
-              setPhase("thinking");
-              parseIntent(text);
-            }} onFocus={() => {
-              if (phase === "listening") stopListening();
-            }} disabled={phase==="thinking"} />
-            <button onClick={handleMicTap} style={{
-              width:46, height:46, borderRadius:"50%", flexShrink:0,
-              background: phase==="listening" ? "#E53935" : phase==="thinking" ? "#4A90D9" : "#101010",
-              color:"#fff", border:"none", fontSize:20, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              animation: phase==="listening" ? "micPulse 1s infinite" : phase==="thinking" ? "micThink 1s infinite" : "none",
-              transition:"background 0.2s ease",
-              boxShadow:"0 2px 10px #00000033",
-            }}>
-              {phase==="thinking" ? "⋯" : phase==="listening" ? "■" : "🎙"}
-            </button>
+          {/* Bottom bar — pinned confirmation replaces chat input while pending */}
+          <div style={{ padding:"10px 12px 28px", flexShrink:0, borderTop:"1px solid #F0F0F0", display:"flex", alignItems:"stretch", gap:10, background:"#fff" }}>
+            {pendingOption ? (
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:intentColor(pendingOption.intent), marginBottom:2 }}>
+                  {intentLabel(pendingOption.intent)}
+                </div>
+                <PendingField
+                  label="Summary"
+                  value={pendingOption.option.label}
+                  onChange={setPendingLabel}
+                  onActivate={activatePendingEdit}
+                  placeholder="Label / summary"
+                />
+                {pendingOption.option.job?.type === "delivery" && pendingOption.option.job.deliveryType === "private" && (
+                  <>
+                    <PendingField label="Recipient" value={pendingOption.option.job.privateName} onChange={v => setPendingJobField("privateName", v)} onActivate={activatePendingEdit} placeholder="Name" />
+                    <PendingField label="Address" value={pendingOption.option.job.privateAddress} onChange={v => setPendingJobField("privateAddress", v)} onActivate={activatePendingEdit} placeholder="Delivery address" />
+                  </>
+                )}
+                {pendingOption.option.job?.type === "delivery" && pendingOption.option.job.deliveryType === "store" && (
+                  <PendingField label="Store" value={pendingOption.option.job.storeName} onChange={v => setPendingJobField("storeName", v)} onActivate={activatePendingEdit} placeholder="Store name" />
+                )}
+                {pendingOption.option.job?.type === "delivery" && pendingOption.option.job.deliveryType === "coffeebar" && (
+                  <>
+                    <PendingField label="Coffee bar" value={pendingOption.option.job.cbName} onChange={v => setPendingJobField("cbName", v)} onActivate={activatePendingEdit} placeholder="Event / venue" />
+                    <PendingField label="People" value={pendingOption.option.job.people != null ? String(pendingOption.option.job.people) : ""} onChange={v => setPendingJobField("people", parseInt(v, 10) || 0)} onActivate={activatePendingEdit} placeholder="Guest count" inputMode="numeric" />
+                  </>
+                )}
+                {pendingOption.option.job?.date && (
+                  <PendingField label="Date" value={pendingOption.option.job.date} onChange={v => setPendingJobField("date", v)} onActivate={activatePendingEdit} placeholder="YYYY-MM-DD" />
+                )}
+                {pendingOption.intent === "edit" && pendingOption.option.patch && Object.keys(pendingOption.option.patch).map(k => (
+                  <PendingField
+                    key={k}
+                    label={k.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase())}
+                    value={pendingOption.option.patch[k] != null ? String(pendingOption.option.patch[k]) : ""}
+                    onChange={v => setPendingPatchField(k, v)}
+                    onActivate={activatePendingEdit}
+                  />
+                ))}
+                <div style={{ display:"flex", gap:8, marginTop:12 }}>
+                  <button onClick={cancelOption} style={{
+                    flex:1, background:"#F0F0F0", border:"1px solid #D0D0D0", borderRadius:10,
+                    padding:"12px 10px", fontSize:14, fontWeight:600, cursor:"pointer", color:"#555"
+                  }}>Cancel</button>
+                  <button onClick={confirmOption} style={{
+                    flex:2, background:intentColor(pendingOption.intent), border:"none", borderRadius:10,
+                    padding:"12px 10px", fontSize:14, fontWeight:700, cursor:"pointer", color:"#fff"
+                  }}>{intentLabel(pendingOption.intent)} ✓</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <TextInput inputRef={chatInputRef} onSend={text => {
+                  if (!text.trim()) return;
+                  setMessages(prev => [...prev, { role:"user", text }]);
+                  setPhase("thinking");
+                  parseIntent(text);
+                }} onFocus={() => {
+                  if (phase === "listening") stopListening();
+                }} disabled={phase==="thinking"} />
+                <button onClick={handleMicTap} style={{
+                  width:46, height:46, borderRadius:"50%", flexShrink:0, alignSelf:"center",
+                  background: phase==="listening" ? "#E53935" : phase==="thinking" ? "#4A90D9" : "#101010",
+                  color:"#fff", border:"none", fontSize:20, cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  animation: phase==="listening" ? "micPulse 1s infinite" : phase==="thinking" ? "micThink 1s infinite" : "none",
+                  transition:"background 0.2s ease",
+                  boxShadow:"0 2px 10px #00000033",
+                }}>
+                  {phase==="thinking" ? "⋯" : phase==="listening" ? "■" : "🎙"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

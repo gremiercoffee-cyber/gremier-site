@@ -455,6 +455,25 @@
     return data;
   }
 
+  /** Queue paid order for Ops scheduling (idempotent safety net). */
+  async function queuePaidOrderForOps(oid) {
+    const id = oid || orderId;
+    if (!id) return;
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ order_id: id }),
+      });
+    } catch (e) {
+      console.warn('Ops schedule queue:', e);
+    }
+  }
+
   async function recheckPayment() {
     renderPending('Checking payment status…');
     const data = await confirmPaymentReturn();
@@ -463,6 +482,7 @@
         const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
         if (link) paymentLink = link;
       }
+      await queuePaidOrderForOps(data.order_id);
       navPayPush('paid');
       applyPayView('paid');
     } else {
@@ -512,6 +532,7 @@
           const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
           if (link) paymentLink = link;
         }
+        await queuePaidOrderForOps(orderId);
         navPayPush('paid');
         applyPayView('paid');
       } else {

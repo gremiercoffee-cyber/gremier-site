@@ -44,11 +44,13 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
-    await enqueuePendingWebsiteDelivery(supabase, orderId);
+    const queueResult = await enqueuePendingWebsiteDelivery(supabase, orderId);
+    const opsQueued = queueResult === "queued" || queueResult === "exists";
     const result = await notifyPaidOrderOnce(supabase, orderId);
 
-    return new Response(JSON.stringify(result), {
-      status: result.sent ? 200 : 400,
+    const ok = result.sent || result.skipped === "already_notified" || opsQueued;
+    return new Response(JSON.stringify({ ...result, ops_queued: opsQueued, queue_result: queueResult }), {
+      status: ok ? 200 : 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

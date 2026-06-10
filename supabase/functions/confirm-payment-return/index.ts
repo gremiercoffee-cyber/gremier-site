@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { enqueuePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
+import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -409,7 +409,10 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (link?.status === "paid") {
         const oid = String(link.order_id || resolvedOrderId || "");
-        if (oid) await notifyPaidOrderOnce(supabase, oid);
+        if (oid) {
+          await ensurePendingWebsiteDelivery(supabase, oid);
+          await notifyPaidOrderOnce(supabase, oid);
+        }
         return new Response(JSON.stringify({
           paid: true,
           order_id: link.order_id || resolvedOrderId || null,
@@ -427,6 +430,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (order?.payment_status === "paid") {
+        await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
         await notifyPaidOrderOnce(supabase, resolvedOrderId);
         return new Response(JSON.stringify({ paid: true, order_id: resolvedOrderId }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -446,8 +450,8 @@ Deno.serve(async (req) => {
             payme_sale_id: saleId || undefined,
             payme_transaction_id: paymeTransactionId || undefined,
           });
-          if (markResult === "newly_paid") {
-            await enqueuePendingWebsiteDelivery(supabase, resolvedOrderId);
+          if (markResult === "newly_paid" || markResult === "already_paid") {
+            await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
           }
           if (markResult === "newly_paid" || markResult === "already_paid") {
             await notifyPaidOrderOnce(supabase, resolvedOrderId);
@@ -470,6 +474,7 @@ Deno.serve(async (req) => {
         .eq("id", resolvedOrderId)
         .maybeSingle();
       if (order?.payment_status === "paid") {
+        await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
         await notifyPaidOrderOnce(supabase, resolvedOrderId);
         return new Response(JSON.stringify({ paid: true, order_id: resolvedOrderId }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },

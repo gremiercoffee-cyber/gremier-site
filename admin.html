@@ -1692,17 +1692,41 @@ async function sendOrderToGoogleSheet(orderId) {
     });
     const data = await res.json().catch(() => ({}));
     if (data.sent || data.skipped === 'already_notified') {
-      showToast(data.skipped === 'already_notified' ? 'Already on Google Sheet ✓' : 'Sent to Google Sheet ✓');
+      showToast(data.skipped === 'already_notified' ? 'Already synced (Sheet + Ops) ✓' : 'Sent to Google Sheet + Ops queue ✓');
     } else if (data.error === 'webhook_failed') {
-      showToast('Sheet sync ran — check Web Orders tab (auto-sync may already have worked)');
+      showToast('Ops queue updated — Sheet sync may need a retry');
       console.warn('notify-paid-order:', data);
     } else {
-      showToast(data.detail || data.error || data.skipped || 'Sheet send failed');
+      showToast(data.detail || data.error || data.skipped || 'Sync failed');
       console.warn('notify-paid-order:', data);
     }
   } catch (err) {
     console.error(err);
     showToast('Could not reach notify-paid-order function');
+  }
+}
+async function queuePaidLinkForOps(orderId) {
+  if (!orderId) { showToast('No order linked to this payment link'); return; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok || data.ops_queued || data.sent || data.skipped === 'already_notified') {
+      showToast(data.ops_queued ? 'Queued for Ops scheduling ✓ — refresh Ops app' : (data.detail || 'Sync attempted — check Ops'));
+    } else {
+      showToast(data.detail || data.error || 'Could not queue for Ops');
+      console.warn('queuePaidLinkForOps:', data);
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Could not reach server — run deploy-functions.bat');
   }
 }
 function openOrderDetail(id) {
@@ -2055,6 +2079,9 @@ async function loadPayLinks() {
     const recreateBtn = missingOrder
       ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
       : '';
+    const opsBtn = (l.status === 'paid' && l.order_id)
+      ? `<button class="btn btn-blue btn-sm" onclick="queuePaidLinkForOps('${l.order_id}')" title="Send to Ops for scheduling">📦 Ops</button>`
+      : '';
     return `<tr>
       <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
@@ -2063,6 +2090,7 @@ async function loadPayLinks() {
       <td class="cell-date hide-mobile">${date}</td>
       <td class="cell-actions">
         <div class="cell-actions-wrap">
+          ${opsBtn}
           ${recreateBtn}
           <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
           ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
