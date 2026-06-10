@@ -755,29 +755,24 @@
     renderProcessing();
     navPayReplace('pending');
 
-    const trustReturn = p.get('payment') === 'return' && !hasExplicitPaymentFailure();
-
-    if (trustReturn) {
-      await finishPaidReturn(orderId, { trustPayMeReturn: true });
-      return true;
-    }
-
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const data = await confirmPaymentReturn();
-        if (data.paid) {
-          orderId = data.order_id || orderId;
-          await finishPaidReturn(orderId);
-          return true;
-        }
-        if (await checkPaidLocally()) {
+        if (data.order_id) orderId = data.order_id;
+        if (data.paid || await checkPaidLocally()) {
           await finishPaidReturn(orderId);
           return true;
         }
       } catch (err) {
         console.warn('Payment confirm attempt failed:', err);
       }
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+      if (attempt < 4) await new Promise(r => setTimeout(r, 800));
+    }
+
+    const trustReturn = p.get('payment') === 'return' && !hasExplicitPaymentFailure();
+    if (trustReturn) {
+      await finishPaidReturn(orderId, { trustPayMeReturn: true });
+      return true;
     }
 
     if (hasExplicitPaymentFailure()) {

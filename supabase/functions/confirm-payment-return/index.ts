@@ -34,6 +34,32 @@ function isPaymeReturnSuccess(body: Record<string, unknown>): boolean {
   );
 }
 
+function isPaymeReturnFailure(body: Record<string, unknown>): boolean {
+  const candidates = [
+    body.payme_status,
+    body.status,
+    body.sale_status,
+    body.payme_sale_status,
+  ].map((v) => String(v || "").toLowerCase());
+  return candidates.some((s) =>
+    s === "failed" || s === "error" || s === "cancelled" || s === "canceled" || s === "declined" || s === "0"
+  );
+}
+
+/** PayMe redirects to sale_return_url after checkout — often without status query params. */
+function shouldTrustPayMeReturn(
+  body: Record<string, unknown>,
+  orderDeliveryInfo: Record<string, unknown> | null,
+  resolvedOrderId: string,
+): boolean {
+  if (body.payment_return !== true || !resolvedOrderId) return false;
+  if (isPaymeReturnFailure(body)) return false;
+  if (isPaymeReturnSuccess(body)) return true;
+  const saleId = String(body.payme_sale_id || "").trim()
+    || String(orderDeliveryInfo?.payme_sale_id || "").trim();
+  return !!saleId;
+}
+
 function looksLikeUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
@@ -66,7 +92,7 @@ async function queryPaymeSaleCompleted(
 async function queryPaymeSaleCompletedWithRetries(
   paymeSaleId: string,
   transactionId: string,
-  attempts = 4,
+  attempts = 8,
 ): Promise<{ completed: boolean; paymeSaleId: string }> {
   let last = { completed: false, paymeSaleId: paymeSaleId };
   for (let i = 0; i < attempts; i++) {
@@ -335,20 +361,24 @@ async function resolveOrderId(
   if (!resolvedOrderId && linkCode) {
     const { data: link } = await supabase
       .from("payment_links")
-      .select("order_id")
+      .select("order_id, reusable, tranzila_url")
       .eq("link_code", linkCode)
       .maybeSingle();
-    if (link?.order_id) resolvedOrderId = String(link.order_id);
+    if (link?.order_id && !isReusablePaymentLink(link)) {
+      resolvedOrderId = String(link.order_id);
+    }
   }
 
   if (!resolvedOrderId && txn.startsWith("pl_")) {
     const code = parseLinkCodeFromTransaction(txn);
     const { data: link } = await supabase
       .from("payment_links")
-      .select("order_id")
+      .select("order_id, reusable, tranzila_url")
       .eq("link_code", code)
       .maybeSingle();
-    if (link?.order_id) resolvedOrderId = String(link.order_id);
+    if (link?.order_id && !isReusablePaymentLink(link)) {
+      resolvedOrderId = String(link.order_id);
+    }
   }
 
   if (!resolvedOrderId && paymeSaleId) {
@@ -420,8 +450,9 @@ Deno.serve(async (req) => {
       const saleId = storedSaleId || saleIdFromLink;
       const txn = txnId || resolvedOrderId || (link ? paymentLinkTransactionId(link.link_code) : "");
       const query = await queryPaymeSaleCompletedWithRetries(saleId, txn);
+      const trustReturn = shouldTrustPayMeReturn(body, orderDeliveryInfo, resolvedOrderId);
       return {
-        completed: returnSuccess || query.completed,
+        completed: returnSuccess || query.completed || trustReturn,
         paymeSaleId: query.paymeSaleId || saleId,
       };
     }
@@ -539,9 +570,31 @@ Deno.serve(async (req) => {
 
     const paymePending = await checkPaymePaid(orderDeliveryInfo, linkRow);
 
-    // PayMe return URL hit — last chance: verify with PayMe API, mark paid, sheet + email.
+    // PayMe return URL — trust redirect + PayMe API lookup, then mark paid + email.
     if (paymentReturn && resolvedOrderId) {
-      const saleId = String(body.payme_sale_id || "").trim();
+      const saleId = String(body.payme_sale_id || "").trim()
+        || String(orderDeliveryInfo?.payme_sale_id || "").trim()
+        || (await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo));
+
+      if (shouldTrustPayMeReturn(body, orderDeliveryInfo, resolvedOrderId)) {
+        const markResult = await markOrderPaid(supabase, resolvedOrderId, {
+          payme_sale_id: saleId || undefined,
+          payme_transaction_id: paymeTransactionId || undefined,
+        });
+        if (markResult === "newly_paid" || markResult === "already_paid") {
+          await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
+          const fulfilled = await fulfillPaidOrder(supabase, resolvedOrderId, { skip_payme_check: true });
+          return new Response(JSON.stringify({
+            paid: true,
+            order_id: resolvedOrderId,
+            trusted_return: true,
+            notified: fulfilled.notified,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
       const fulfilled = await fulfillPaidOrder(supabase, resolvedOrderId, {
         payme_sale_id: saleId || undefined,
       });
