@@ -172,30 +172,48 @@ function getProductRatio(pid, concType) {
 }
 const WEBSITE_NAME_TO_OPS = [
   [/sweetened.*classic|classic.*sweet/i, "sweetened_classic"],
-  [/house blend mini/i, "house_blend_mini"],
-  [/classic mini/i, "classic_mini"],
-  [/vanilla mini/i, "vanilla_mini"],
-  [/original mini/i, "original_mini"],
-  [/caramel mini/i, "caramel_mini"],
-  [/jerry.*house|house.*jerry/i, "jerry_can_houseblend"],
-  [/jerry.*colombia|colombia.*jerry/i, "jerry_can_colombia"],
-  [/jerry.*decaf|decaf.*jerry/i, "jerry_can_decaf"],
-  [/jerry/i, "jerry_can"],
+  [/house blend.*creamier|creamier.*house blend|house blend mini/i, "house_blend_mini"],
+  [/classic.*creamier|creamier.*classic|classic mini/i, "classic_mini"],
+  [/vanilla.*creamier|creamier.*vanilla|vanilla mini/i, "vanilla_mini"],
+  [/original.*creamier|creamier.*original|original mini|sea salt/i, "original_mini"],
+  [/caramel.*creamier|creamier.*caramel|caramel mini/i, "caramel_mini"],
+  [/creamier/i, "vanilla_mini"],
+  [/gerri.*house|jerry.*house|house.*jerry|house.*gerri/i, "jerry_can_houseblend"],
+  [/gerri.*colombia|jerry.*colombia|colombia.*jerry|colombia.*gerri/i, "jerry_can_colombia"],
+  [/gerri.*decaf|jerry.*decaf|decaf.*jerry|decaf.*gerri/i, "jerry_can_decaf"],
+  [/gerri|jerry.?can|jerrycan|5\s*l\s*can|5\s*liter\s*can/i, "jerry_can"],
   [/house blend/i, "house_blend"],
   [/colombia/i, "colombia_liter"],
   [/decaf/i, "decaf_liter"],
-  [/vanilla syrup/i, "vanilla_syrup"],
+  [/vanilla bean|vanilla syrup/i, "vanilla_syrup"],
   [/caramel syrup/i, "caramel_syrup"],
-  [/sugar syrup/i, "sugar_syrup"],
+  [/sugar syrup|simple syrup/i, "sugar_syrup"],
+  [/dispenser/i, "dispenser"],
   [/classic/i, "classic_liter"],
 ];
-function mapWebsiteItemToOpsProduct(item) {
-  if (item?.product_id && PRODUCTS[item.product_id]) return item.product_id;
-  const name = String(item?.name_en || item?.name_he || "").toLowerCase();
-  for (const [re, pid] of WEBSITE_NAME_TO_OPS) {
-    if (re.test(name)) return pid;
-  }
-  return null;
+/** Website name aliases → ops inventory key (normalized substring match). */
+const OPS_PRODUCT_ALIASES = {
+  sweetened_classic: ["sweetened classic", "classic sweetened", "sweet classic"],
+  house_blend_mini: ["house blend mini", "house blend creamier", "hb mini", "hb creamier"],
+  classic_mini: ["classic mini", "classic creamier", "unsweetened creamier", "unsweetened mini"],
+  vanilla_mini: ["vanilla mini", "vanilla creamier", "creamier vanilla"],
+  original_mini: ["original mini", "original creamier", "sea salt creamier", "sea salt mini"],
+  caramel_mini: ["caramel mini", "caramel creamier", "creamier caramel"],
+  jerry_can: ["jerry can classic", "jerry can", "jerrycan", "gerry can", "gerri can", "5l can", "5 l can", "5 liter can"],
+  jerry_can_houseblend: ["jerry can house", "jerry house blend", "gerri house", "house blend jerry", "house blend gerri"],
+  jerry_can_colombia: ["jerry can colombia", "jerry colombia", "gerri colombia", "colombia jerry"],
+  jerry_can_decaf: ["jerry can decaf", "jerry decaf", "gerri decaf", "decaf jerry"],
+  house_blend: ["house blend", "hb liter", "house blend liter"],
+  colombia_liter: ["colombia liter", "colombia light", "light roast colombia"],
+  decaf_liter: ["decaf liter", "decaf bottle"],
+  classic_liter: ["classic liter", "classic dark", "unsweetened classic", "classic glass", "classic 1l", "dark roast"],
+  vanilla_syrup: ["vanilla syrup", "vanilla bean syrup", "vanilla bean", "vanilla bean sugar"],
+  caramel_syrup: ["caramel syrup", "caramel sauce"],
+  sugar_syrup: ["sugar syrup", "simple syrup", "sweet syrup"],
+  dispenser: ["dispenser", "dispense"],
+};
+function normProductName(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 const CONCENTRATE_TO_LITER = { classic: "classic_liter", houseBlend: "house_blend", colombia: "colombia_liter", decaf: "decaf_liter" };
 const OPS_PRODUCT_MATCH_ORDER = [
@@ -206,59 +224,161 @@ const OPS_PRODUCT_MATCH_ORDER = [
 ];
 const OPS_PRODUCT_NAME_MATCHES = {
   sweetened_classic: [/sweetened/i, /classic sweet/i],
-  house_blend_mini: [/house blend mini/i],
-  classic_mini: [/classic mini/i],
-  vanilla_mini: [/vanilla mini/i],
-  original_mini: [/original mini/i, /sea salt/i],
-  caramel_mini: [/caramel mini/i],
-  jerry_can_houseblend: [/jerry.*house|house.*jerry/i],
-  jerry_can_colombia: [/jerry.*colombia|colombia.*jerry/i],
-  jerry_can_decaf: [/jerry.*decaf|decaf.*jerry/i],
-  jerry_can: [/jerry/i],
+  house_blend_mini: [/house blend mini/i, /house blend creamier/i],
+  classic_mini: [/classic mini/i, /classic creamier/i, /unsweetened creamier/i],
+  vanilla_mini: [/vanilla mini/i, /vanilla creamier/i, /creamier vanilla/i],
+  original_mini: [/original mini/i, /original creamier/i, /sea salt/i, /sea salt creamier/i],
+  caramel_mini: [/caramel mini/i, /caramel creamier/i],
+  jerry_can_houseblend: [/jerry.*house|house.*jerry|gerri.*house|house.*gerri/i],
+  jerry_can_colombia: [/jerry.*colombia|colombia.*jerry|gerri.*colombia/i],
+  jerry_can_decaf: [/jerry.*decaf|decaf.*jerry|gerri.*decaf/i],
+  jerry_can: [/jerry/i, /gerri/i, /jerrycan/i, /5\s*l\s*can/i],
   house_blend: [/house blend/i],
   colombia_liter: [/colombia/i],
   decaf_liter: [/decaf/i],
-  vanilla_syrup: [/vanilla syrup/i],
+  vanilla_syrup: [/vanilla bean/i, /vanilla syrup/i],
   caramel_syrup: [/caramel syrup/i],
   sugar_syrup: [/sugar syrup/i, /simple syrup/i],
   dispenser: [/dispenser/i],
-  classic_liter: [/classic dark/i, /classic liter/i, /classic 1/i, /classic glass/i, /unsweetened classic/i, /^classic/i],
+  classic_liter: [/classic dark/i, /classic liter/i, /classic 1/i, /classic glass/i, /unsweetened classic/i],
 };
-function normProductName(s) {
-  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function scoreOpsProductMatch(nameEn, category, opsKey) {
+  const name = normProductName(nameEn);
+  if (!name) return 0;
+  const cat = String(category || "").toLowerCase();
+  const prod = PRODUCTS[opsKey];
+  if (!prod) return 0;
+  let score = 0;
+  for (const alias of OPS_PRODUCT_ALIASES[opsKey] || []) {
+    const a = normProductName(alias);
+    if (!a) continue;
+    if (name === a) score = Math.max(score, 100);
+    else if (name.includes(a)) score = Math.max(score, 85);
+    else if (a.includes(name) && name.length > 4) score = Math.max(score, 75);
+  }
+  for (const pt of OPS_PRODUCT_NAME_MATCHES[opsKey] || []) {
+    if (pt.test(nameEn) || pt.test(name)) score = Math.max(score, 70);
+  }
+  if (cat.includes("mini") && prod.category === "mini") score += 20;
+  if ((cat.includes("bottle") || cat === "liter") && prod.category === "liter") score += 15;
+  if (cat.includes("jerry") && prod.category === "jerry") score += 25;
+  if (cat.includes("syrup") && prod.category === "syrup") score += 25;
+  if (name.includes("creamier") && prod.category === "mini") {
+    const flavorWords = ["vanilla", "original", "caramel", "classic", "house", "blend", "sea", "salt"];
+    const hits = flavorWords.filter(w => name.includes(w) && normProductName(PRODUCTS[opsKey]?.label || "").includes(w.replace("blend", "blend"))).length;
+    if (hits > 0) score = Math.max(score, 60 + hits * 10);
+    else if (opsKey === "vanilla_mini") score = Math.max(score, 55);
+  }
+  const labelNorm = normProductName(prod.label);
+  for (const word of labelNorm.split(" ").filter(w => w.length > 2)) {
+    if (name.includes(word)) score += 8;
+  }
+  if (prod.category === "liter" && /\b1\s*l\b|\bliter\b|\bglass\b/.test(name) && !name.includes("mini") && !name.includes("creamier") && !name.includes("jerry") && !name.includes("gerri")) score += 10;
+  if (prod.category === "mini" && (name.includes("mini") || name.includes("creamier"))) score += 15;
+  if (prod.category === "jerry" && (name.includes("jerry") || name.includes("gerri"))) score += 15;
+  return score;
+}
+function bestOpsKeyForWebProduct(nameEn, category) {
+  let bestKey = null;
+  let bestScore = 0;
+  for (const opsKey of Object.keys(PRODUCTS)) {
+    const score = scoreOpsProductMatch(nameEn, category, opsKey);
+    if (score > bestScore) { bestScore = score; bestKey = opsKey; }
+  }
+  return bestScore >= 28 ? bestKey : null;
+}
+function mapWebsiteItemToOpsProduct(item, webIdToOps) {
+  const pid = item?.product_id;
+  if (pid && webIdToOps?.[pid]) return webIdToOps[pid];
+  if (pid && PRODUCTS[pid]) return pid;
+  const name = cleanWebsiteItemName(item);
+  const fromScore = bestOpsKeyForWebProduct(name, item?.category);
+  if (fromScore) return fromScore;
+  for (const [re, opsKey] of WEBSITE_NAME_TO_OPS) {
+    if (re.test(name)) return opsKey;
+  }
+  return null;
+}
+function cleanWebsiteItemName(item) {
+  return String(item?.name_en || item?.name_he || "")
+    .split("·")[0].split("|")[0].split(" – ")[0].split(" - ")[0].trim().toLowerCase();
+}
+function buildWebProductOpsMap(webProducts) {
+  const idToOps = {};
+  for (const wp of webProducts || []) {
+    if (!wp?.id) continue;
+    const key = bestOpsKeyForWebProduct(wp.name_en, wp.category);
+    if (key) idToOps[wp.id] = key;
+  }
+  return idToOps;
 }
 function webProductMatchesOpsKey(nameEn, opsKey) {
-  const patterns = OPS_PRODUCT_NAME_MATCHES[opsKey];
-  if (!patterns) return false;
-  const name = normProductName(nameEn);
-  return patterns.some(pt => pt.test(nameEn) || pt.test(name));
+  return scoreOpsProductMatch(nameEn, "", opsKey) >= 28;
 }
 function buildProductThumbMap(webProducts) {
   const map = {};
-  const used = new Set();
-  const list = [...(webProducts || [])].filter(p => p.images?.[0]);
   for (const opsKey of OPS_PRODUCT_MATCH_ORDER) {
-    const match = list.find(p => !used.has(p.id) && webProductMatchesOpsKey(p.name_en, opsKey));
-    if (match) {
-      map[opsKey] = match.images[0];
-      used.add(match.id);
+    let bestImg = null;
+    let bestScore = 0;
+    for (const wp of webProducts || []) {
+      if (!wp.images?.[0]) continue;
+      const score = scoreOpsProductMatch(wp.name_en, wp.category, opsKey);
+      if (score > bestScore) {
+        bestScore = score;
+        bestImg = wp.images[0];
+      }
     }
+    if (bestImg && bestScore >= 28) map[opsKey] = bestImg;
   }
   for (const [conc, literPid] of Object.entries(CONCENTRATE_TO_LITER)) {
     if (map[literPid]) map[`__conc_${conc}`] = map[literPid];
   }
   return map;
 }
-async function sbLoadProductThumbnails() {
+async function sbLoadWebProductCatalog() {
   try {
-    const rows = await sbFetch("products?select=id,name_en,images&order=sort_order.asc");
-    return buildProductThumbMap(Array.isArray(rows) ? rows : []);
+    const rows = await sbFetch("products?select=id,name_en,images,category&order=sort_order.asc");
+    const list = Array.isArray(rows) ? rows : [];
+    return { thumbs: buildProductThumbMap(list), idToOps: buildWebProductOpsMap(list) };
   } catch (e) {
-    console.warn("product thumbnails:", e);
-    return {};
+    console.warn("web product catalog:", e);
+    return { thumbs: {}, idToOps: {} };
   }
 }
+async function markPendingWebsiteScheduled(pendingRow, newJob) {
+  const body = JSON.stringify({
+    status: "scheduled",
+    scheduled_date: newJob.date,
+    scheduled_time: newJob.time || null,
+  });
+  if (pendingRow?.id) {
+    await sbFetch(`pending_website_deliveries?id=eq.${pendingRow.id}`, { method: "PATCH", prefer: "return=minimal", body });
+  } else if (pendingRow?.order_id) {
+    await sbFetch(`pending_website_deliveries?order_id=eq.${pendingRow.order_id}`, { method: "PATCH", prefer: "return=minimal", body });
+  }
+}
+async function dismissPendingWebsiteDelivery(orderId, pendingRowId) {
+  const body = JSON.stringify({ status: "dismissed" });
+  if (pendingRowId) {
+    await sbFetch(`pending_website_deliveries?id=eq.${pendingRowId}`, { method: "PATCH", prefer: "return=minimal", body });
+  } else if (orderId) {
+    await sbFetch(`pending_website_deliveries?order_id=eq.${orderId}`, { method: "PATCH", prefer: "return=minimal", body });
+  }
+}
+function websiteItemsToQuantities(items, webIdToOps) {
+  const qty = {};
+  (items || []).forEach((item) => {
+    const pid = mapWebsiteItemToOpsProduct(item, webIdToOps);
+    if (!pid) return;
+    qty[pid] = (qty[pid] || 0) + (Number(item.qty) || 1);
+  });
+  return qty;
+}
+function websiteUnmappedItems(items, webIdToOps) {
+  return (items || []).filter(item => !mapWebsiteItemToOpsProduct(item, webIdToOps));
+}
 const ProductThumbsContext = React.createContext({});
+const WebProductOpsContext = React.createContext({});
 function ProductThumb({ pid, concType, size = 34 }) {
   const thumbs = React.useContext(ProductThumbsContext);
   let url = null;
@@ -308,14 +428,30 @@ function ProductStockRow({ pid, concType, label, labelColor, suffix, value, read
     </div>
   );
 }
-function websiteItemsToQuantities(items) {
-  const qty = {};
-  (items || []).forEach((item) => {
-    const pid = mapWebsiteItemToOpsProduct(item);
-    if (!pid) return;
-    qty[pid] = (qty[pid] || 0) + (Number(item.qty) || 1);
-  });
-  return qty;
+function ProductThumbPicker({ value, onChange, options, accent = "#101010" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+      {options.map(opt => {
+        const selected = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange(opt.key)}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+              border: selected ? `2px solid ${accent}` : "1px solid #E0E0E0",
+              borderRadius: 10, background: selected ? "#F5F5F5" : "#FAFAFA",
+              cursor: "pointer", textAlign: "left", width: "100%",
+            }}
+          >
+            <ProductThumb pid={opt.pid} concType={opt.concType} size={40} />
+            <span style={{ fontSize: 14, fontWeight: selected ? 600 : 400, color: "#1A1A1A" }}>{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 async function sbLoadPendingWebDeliveries() {
   const rows = await sbFetch("pending_website_deliveries?status=eq.pending_schedule&select=*&order=created_at.asc");
@@ -1182,6 +1318,7 @@ export default function App() {
   const [beans,setBeans]=useState({classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
   const [labeledStock,setLabeledStock]=useState({});
   const [productThumbs,setProductThumbs]=useState({});
+  const [webProductIdToOps,setWebProductIdToOps]=useState({});
   const [smartAlerts,setSmartAlerts]=useState([]);
   const [alertDismissed,setAlertDismissed]=useState(false);
   const alertsChecked=React.useRef(false);
@@ -1230,11 +1367,12 @@ export default function App() {
     if (!background) setSyncing(true);
     let loaded = null;
     try {
-      const [allData, thumbs] = await Promise.all([sbLoadAll(), sbLoadProductThumbnails()]);
+      const [allData, catalog] = await Promise.all([sbLoadAll(), sbLoadWebProductCatalog()]);
       loaded = allData;
       const syncedJobs = await syncWebsiteOrderPaymentStatus(allData.jobs);
       setJobs(syncedJobs);
-      setProductThumbs(thumbs);
+      setProductThumbs(catalog.thumbs);
+      setWebProductIdToOps(catalog.idToOps);
       setInventory(allData.inventory);
       setConcentrate(allData.concentrate);
       setBeans(allData.beans);
@@ -1494,14 +1632,7 @@ export default function App() {
     setScreen("dashboard");
     await sbFetch("jobs", {method:"POST", prefer:"return=minimal", body:JSON.stringify(jobToRow(newJob))});
     if (pendingRow && newJob.type==="delivery" && !newJob.done) {
-      await sbFetch(`pending_website_deliveries?id=eq.${pendingRow.id}`, {
-        method:"PATCH", prefer:"return=minimal",
-        body:JSON.stringify({
-          status:"scheduled",
-          scheduled_date:newJob.date,
-          scheduled_time:newJob.time||null,
-        }),
-      });
+      await markPendingWebsiteScheduled(pendingRow, newJob);
       pendingWebsiteRef.current=null;
       setPrefillWebsiteOrder(null);
       loadPendingWebDeliveries();
@@ -1511,9 +1642,24 @@ export default function App() {
     }
     loadData(true);
   }
-  function openWebsiteSchedule(order) {
-    pendingWebsiteRef.current=order;
-    setPrefillWebsiteOrder(order);
+  async function openWebsiteSchedule(order) {
+    let enriched = { ...order };
+    try {
+      if (order.order_id) {
+        const rows = await sbFetch(`orders?id=eq.${order.order_id}&select=items,customer_name,delivery_address,payment_status`);
+        if (rows?.[0]) {
+          enriched = {
+            ...order,
+            items: rows[0].items ?? order.items,
+            customer_name: rows[0].customer_name ?? order.customer_name,
+            delivery_address: rows[0].delivery_address ?? order.delivery_address,
+            payment_status: rows[0].payment_status ?? order.payment_status,
+          };
+        }
+      }
+    } catch (e) { console.warn("openWebsiteSchedule order fetch:", e); }
+    pendingWebsiteRef.current=enriched;
+    setPrefillWebsiteOrder(enriched);
     setWebsiteScheduleOpen(false);
     setScheduleMode("schedule");
     setScreen("schedule");
@@ -1545,6 +1691,10 @@ export default function App() {
     const job=jobs.find(j=>j.id===jobId);
     setJobs(prev=>prev.filter(j=>j.id!==jobId));
     await sbFetch(`jobs?id=eq.${jobId}`,{method:"DELETE",prefer:"return=minimal"});
+    if (job?.websiteOrderId) {
+      await dismissPendingWebsiteDelivery(job.websiteOrderId);
+      loadPendingWebDeliveries();
+    }
     if (!job?.done) { loadData(true); return; }
     if (job.type==="delivery") {
       const qtys=job.quantities||{};
@@ -1622,6 +1772,7 @@ export default function App() {
   if (error) return (<div style={S.app}><div style={S.container}><div style={S.loading}><div style={{color:"#E53935",fontSize:14,padding:20,textAlign:"center"}}>Connection error:<br/><br/>{error}<br/><br/><button style={S.btnPrimary} onClick={loadData}>Retry</button></div></div></div></div>);
   return (
     <ProductThumbsContext.Provider value={productThumbs}>
+    <WebProductOpsContext.Provider value={webProductIdToOps}>
     <div style={S.app}><div style={S.container}>
       {!isAdmin&&<div style={{background:"#1F4D7A",color:"#fff",textAlign:"center",fontSize:11,padding:"5px 0",letterSpacing:1.5,textTransform:"uppercase"}}>View Only</div>}
       {syncing&&<div style={S.syncBar}>Syncing...</div>}
@@ -1648,7 +1799,7 @@ export default function App() {
           ))}
         </div>
       )}
-      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:108,left:14,width:44,height:44,borderRadius:"50%",background:"#4A90D9",color:"#fff",border:"none",fontSize:pendingWebDeliveries.length===1?20:15,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 4px 16px #00000044",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(pendingWebDeliveries.length===1)openWebsiteSchedule(pendingWebDeliveries[0]);else setWebsiteScheduleOpen(true);}} title={schedulePillLabel?`Schedule: ${schedulePillLabel}`:"Schedule new deliveries"}>{pendingWebDeliveries.length===1?"📦":pendingWebDeliveries.length}</button>}
+      {isAdmin&&pendingWebDeliveries.length>0&&!websiteScheduleOpen&&!prefillWebsiteOrder&&<button style={{position:"fixed",bottom:108,left:14,width:44,height:44,borderRadius:"50%",background:"#101010",color:"#fff",border:"none",fontSize:pendingWebDeliveries.length===1?18:15,fontWeight:700,cursor:"pointer",zIndex:60,boxShadow:"0 4px 16px #00000044",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(pendingWebDeliveries.length===1)openWebsiteSchedule(pendingWebDeliveries[0]);else setWebsiteScheduleOpen(true);}} title={schedulePillLabel?`Schedule: ${schedulePillLabel}`:"Schedule new deliveries"}>{pendingWebDeliveries.length===1?"📦":pendingWebDeliveries.length}</button>}
       {isAdmin&&websiteScheduleOpen&&<WebsiteScheduleDrawer orders={pendingWebDeliveries} onSchedule={openWebsiteSchedule} onClose={()=>setWebsiteScheduleOpen(false)}/>}
       {(()=>{const waPending=jobs.filter(j=>j.waNeedsSend&&j.storeName);return isAdmin&&waPending.length>0&&!waOpen?(<button style={{position:"fixed",bottom:196,right:14,background:"#25D366",color:"#fff",border:"none",borderRadius:20,padding:"8px 13px",fontSize:12,fontWeight:600,cursor:"pointer",zIndex:60,boxShadow:"0 2px 12px #00000040"}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>):null;})()}
       {isAdmin&&waOpen&&<WaDrawer jobs={jobs.filter(j=>j.waNeedsSend&&j.storeName)} onMarkSent={markWaSent} onClose={()=>setWaOpen(false)}/>}
@@ -1669,6 +1820,7 @@ export default function App() {
       />
       <BottomNav screen={screen} setScreen={s=>{setScreen(s);}} pendingCount={isAdmin?pendingConfirms.length:0} labeledLowCount={Object.entries(LABELED_WARN).filter(([pid,warn])=>warn!==null&&(labeledStock[pid]||0)<warn).length}/>
     </div></div>
+    </WebProductOpsContext.Provider>
     </ProductThumbsContext.Provider>
   );
 }
@@ -1837,9 +1989,12 @@ function JobRow({job,onCheckoff,onTap,pending}) {
   const color=job.type==="drain"?"#9B6FC8":job.type==="brew"?"#4A90D9":job.type==="bottling"?"#E8821A":job.type==="labeling"?"#3A2A1A":job.deliveryType==="store"?"#101010":"#2E8B57";
   const label=job.type==="delivery"?job.deliveryType==="store"?(job.storeName||"Store"):job.deliveryType==="coffeebar"?(job.cbName||"Coffee Bar"):(job.privateName||"Private"):job.label||(job.type==="bottling"?`Bottle ${job.liters}L ${PRODUCTS[job.product]?.label||""}`:job.type==="brew"?`Brew ${CONCENTRATE_TYPES[job.product]?.label||""} (${job.kg}kg)`:job.type==="drain"?`Drain ${CONCENTRATE_TYPES[job.product]?.label||""}`:job.type==="labeling"?`Label ${job.qty} ${PRODUCTS[job.product]?.label||""}`:job.type);
   const hasWA=job.type==="delivery"&&job.done&&job.storeName&&STORES.find(s=>s.name===job.storeName)?.phone;
+  const prodThumb = job.type==="brew"||job.type==="drain" ? { concType: job.product }
+    : job.type==="bottling"||job.type==="labeling" ? { pid: job.product } : null;
   return (
     <div style={{...S.jobRow,cursor:"pointer"}} onClick={()=>onTap&&onTap(job)}>
       {onCheckoff&&(<button style={{...S.checkbox,borderColor:color}} onClick={e=>{e.stopPropagation();onCheckoff(job);}}>{job.brewStarted&&job.type==="brew"?"·":pending?"?":""}</button>)}
+      {prodThumb && <ProductThumb {...prodThumb} size={36} />}
       <div style={S.jobInfo}>
         <div style={{...S.jobLabel,color}}>{label}</div>
         <div style={S.jobMeta}>{formatDate(job.date)}{job.time?` · ${formatTime(job.time)}`:""}{pending?" · awaiting confirmation":""}</div>
@@ -1902,9 +2057,12 @@ function MiniJobRow({job,onCheckoff,onTap,onDelete}) {
   const address=job.privateAddress||job.cbAddress||null;
   const isOverdue=isJobOverdue(job);
   const overdueActions=!!onDelete;
+  const prodThumb = job.type==="brew"||job.type==="drain" ? { concType: job.product }
+    : job.type==="bottling"||job.type==="labeling" ? { pid: job.product } : null;
   return (
     <div style={{display:"flex",alignItems:"flex-start",gap:5,padding:"5px 0",borderBottom:"1px solid #F0F0F0",cursor:"pointer"}} onClick={()=>onTap&&onTap(job)}>
       {onCheckoff&&(<button style={{width:overdueActions?22:16,height:overdueActions?22:16,borderRadius:overdueActions?4:3,border:`1.5px solid ${isOverdue?"#E53935":color}`,background:isOverdue?"#FFE5E5":"transparent",cursor:"pointer",flexShrink:0,marginTop:2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:overdueActions?13:10,color:isOverdue?"#E53935":color,fontWeight:overdueActions?700:400}} onClick={e=>{e.stopPropagation();onCheckoff(job);}} title="Mark complete">{overdueActions?"✓":(job.brewStarted&&job.type==="brew"?"·":"")}</button>)}
+      {prodThumb && <ProductThumb {...prodThumb} size={28} />}
       <div style={{minWidth:0,flex:1}}>
         <div style={{fontSize:12,fontWeight:600,color:isOverdue?"#E53935":color,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
         {detail?<div style={{fontSize:10,color:"#888",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{detail}</div>:null}
@@ -1918,6 +2076,7 @@ function MiniJobRow({job,onCheckoff,onTap,onDelete}) {
 }
 function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,onRefresh}) {
   const isEdit=!!existingJob;
+  const webIdToOps=React.useContext(WebProductOpsContext);
   const [mode,setMode]=useState(isEdit?"schedule":(initialMode||null));
   const [jobType,setJobType]=useState(existingJob?.type==="delivery"?"delivery":"production");
   const [subType,setSubType]=useState(existingJob?.deliveryType||"store");
@@ -1928,6 +2087,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
   const [privateName,setPrivateName]=useState(existingJob?.privateName||"");
   const [privateAddress,setPrivateAddress]=useState(existingJob?.privateAddress||"");
   const [quantities,setQty]=useState(existingJob?.quantities||{});
+  const [webUnmapped,setWebUnmapped]=useState([]);
   const prefilledWebRef=React.useRef(null);
   useEffect(()=>{
     if (!websiteOrder || isEdit || prefilledWebRef.current===websiteOrder.id) return;
@@ -1937,8 +2097,9 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
     setSubType("private");
     setPrivateName(websiteOrder.customer_name||"");
     setPrivateAddress(websiteOrder.delivery_address||"");
-    setQty(websiteItemsToQuantities(websiteOrder.items));
-  },[websiteOrder,isEdit]);
+    setQty(websiteItemsToQuantities(websiteOrder.items, webIdToOps));
+    setWebUnmapped(websiteUnmappedItems(websiteOrder.items, webIdToOps));
+  },[websiteOrder,isEdit,webIdToOps]);
   const [people,setPeople]=useState(existingJob?.people||25);
   const [product,setProduct]=useState(existingJob?.product||"classic_liter");
   const [liters,setLiters]=useState(existingJob?.liters||"");
@@ -1990,6 +2151,11 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
   return (
     <div style={S.screen}>
       <div style={S.subHdr}><button style={S.backBtn} onClick={onBack}>‹</button><div style={S.subTitle}>{isEdit?"Edit Job":logNow?"✓ Log Now":"📅 Schedule"}</div><div style={{marginLeft:"auto"}}><RefreshBtn onRefresh={onRefresh}/></div></div>
+      {!isEdit&&websiteOrder&&webUnmapped.length>0&&(
+        <div style={{margin:"8px 12px 0",padding:"8px 12px",background:"#FFF8E8",borderRadius:8,fontSize:12,color:"#8A6A00",fontWeight:500}}>
+          Could not auto-match: {webUnmapped.map(i=>`${i.name_en||i.name_he||"Item"} ×${i.qty||1}`).join(", ")} — add manually below
+        </div>
+      )}
       {!isEdit&&<div style={{margin:"8px 12px 0",padding:"8px 12px",background:logNow?"#E8F8EF":"#EBF3FF",borderRadius:8,fontSize:12,color:logNow?"#2E8B57":"#4A90D9",fontWeight:600}}>{logNow?"✓ Logging as completed now":websiteOrder?`📦 ${websiteOrderDisplayLabel(websiteOrder)} — schedule delivery${websiteOrder.payment_status&&websiteOrder.payment_status!=="paid"?" (payment pending)":""}`:"📅 Scheduling for later"}</div>}
       {isEdit&&existingJob?.type==="drain"?(
         <div style={S.card}>
@@ -2051,7 +2217,14 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
               </div>
               {prodType==="brew"&&(
                 <div>
-                  <div style={S.field}><div style={S.lbl}>Concentrate Type</div><select style={S.sel} value={brewConc} onChange={e=>setBrewConc(e.target.value)}>{Object.entries(CONCENTRATE_TYPES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
+                  <div style={S.field}><div style={S.lbl}>Concentrate Type</div>
+                    <ProductThumbPicker
+                      value={brewConc}
+                      onChange={setBrewConc}
+                      accent="#4A90D9"
+                      options={Object.entries(CONCENTRATE_TYPES).map(([k, v]) => ({ key: k, label: v.label, concType: k }))}
+                    />
+                  </div>
                   <div style={S.field}><div style={S.lbl}>Kilos of Coffee</div><select style={S.sel} value={kg} onChange={e=>setKg(Number(e.target.value))}><option value={3}>3kg → ~19L concentrate</option><option value={2}>2kg → ~12.7L concentrate</option><option value={1.5}>1.5kg → ~9.5L concentrate</option><option value={1}>1kg → ~6.4L concentrate</option></select></div>
                   {logNow&&<div style={S.hint}>Will create a drain task for tomorrow</div>}
                   {!logNow&&<div style={S.hint}>Log the brew when you start it to trigger the drain reminder</div>}
@@ -2059,7 +2232,14 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
               )}
               {prodType==="bottling"&&(
                 <div>
-                  <div style={S.field}><div style={S.lbl}>Product</div><select style={S.sel} value={product} onChange={e=>setProduct(e.target.value)}>{Object.entries(PRODUCTS).filter(([,p])=>p.concentrate).map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></div>
+                  <div style={S.field}><div style={S.lbl}>Product</div>
+                    <ProductThumbPicker
+                      value={product}
+                      onChange={setProduct}
+                      accent="#E8821A"
+                      options={Object.entries(PRODUCTS).filter(([, p]) => p.concentrate).map(([k, p]) => ({ key: k, label: p.label, pid: k }))}
+                    />
+                  </div>
                   <div style={S.field}>
                     <div style={S.lbl}>{PRODUCTS[product]?.category==="jerry"?"Number of Jerry Cans":"Liters to Produce"}</div>
                     <input type="number" style={S.inp} value={liters} onChange={e=>setLiters(e.target.value)} placeholder=""/>
@@ -2070,7 +2250,14 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
               )}
               {prodType==="labeling"&&(
                 <div>
-                  <div style={S.field}><div style={S.lbl}>Product to Label</div><select style={S.sel} value={labelProduct} onChange={e=>setLabelProduct(e.target.value)}>{Object.entries(PRODUCTS).filter(([,p])=>p.category==="liter"||p.category==="mini"||p.category==="jerry").map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></div>
+                  <div style={S.field}><div style={S.lbl}>Product to Label</div>
+                    <ProductThumbPicker
+                      value={labelProduct}
+                      onChange={setLabelProduct}
+                      accent="#3A2A1A"
+                      options={Object.entries(PRODUCTS).filter(([, p]) => p.category === "liter" || p.category === "mini" || p.category === "jerry").map(([k, p]) => ({ key: k, label: p.label, pid: k }))}
+                    />
+                  </div>
                   <div style={S.field}><div style={S.lbl}>Quantity</div><input type="number" style={S.inp} value={labelQty} onChange={e=>setLabelQty(e.target.value)} placeholder=""/></div>
                 </div>
               )}
@@ -2368,7 +2555,7 @@ function NeedToMakeScreen({jobs,inventory,concentrate,onBack,onRefresh}) {
               </div>);
             })}
             {urgentConcShortfalls.length>0&&(<div><div style={{fontSize:9,color:"#E53935",letterSpacing:1.5,textTransform:"uppercase",fontWeight:700,marginTop:8,marginBottom:3,borderBottom:"1px solid #E5393522",paddingBottom:2}}>Concentrate</div>
-              {urgentConcShortfalls.map(({k,gap,have,effectiveGap,brewing})=>(<div key={k} style={S.needRow}><div><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{CONCENTRATE_TYPES[k]?.label}</div><div style={{fontSize:11,color:"#333"}}>Need {(gap+have).toFixed(1)}L · Have {have.toFixed(1)}L</div>{brewing>0&&<div style={{fontSize:10,color:"#4A90D9"}}>🧪 {brewing.toFixed(1)}L brewing</div>}</div><div style={{color:effectiveGap===0?"#27AE60":"#E53935",fontWeight:700,fontSize:15}}>{effectiveGap===0?"✓ Covered":`Brew ${effectiveGap.toFixed(1)}L more`}</div></div>))}
+              {urgentConcShortfalls.map(({k,gap,have,effectiveGap,brewing})=>(<div key={k} style={{...S.needRow,gap:10}}><ProductThumb concType={k} size={32} /><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{CONCENTRATE_TYPES[k]?.label}</div><div style={{fontSize:11,color:"#333"}}>Need {(gap+have).toFixed(1)}L · Have {have.toFixed(1)}L</div>{brewing>0&&<div style={{fontSize:10,color:"#4A90D9"}}>🧪 {brewing.toFixed(1)}L brewing</div>}</div><div style={{color:effectiveGap===0?"#27AE60":"#E53935",fontWeight:700,fontSize:15}}>{effectiveGap===0?"✓ Covered":`Brew ${effectiveGap.toFixed(1)}L more`}</div></div>))}
             </div>)}
           </div>
         );
@@ -2386,7 +2573,7 @@ function NeedToMakeScreen({jobs,inventory,concentrate,onBack,onRefresh}) {
       )}
       {concShortfalls.length>0&&(
         <div style={S.card}><div style={{...S.cardTitle,...RHDR}}>⚠ Concentrate to Brew</div>
-          {concShortfalls.map(({k,needed,have,effectiveGap,brewing})=>(<div key={k} style={S.needRow}><div><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{CONCENTRATE_TYPES[k]?.label}</div><div style={{fontSize:11,color:"#333333"}}>Need {needed.toFixed(1)}L · Have {have.toFixed(1)}L</div>{brewing>0&&<div style={{fontSize:10,color:"#4A90D9"}}>🧪 {brewing.toFixed(1)}L brewing</div>}</div><div style={{color:effectiveGap===0?"#27AE60":"#E53935",fontWeight:700,fontSize:15}}>{effectiveGap===0?"✓ Covered":`Brew ${effectiveGap.toFixed(1)}L more`}</div></div>))}
+          {concShortfalls.map(({k,needed,have,effectiveGap,brewing})=>(<div key={k} style={{...S.needRow,gap:10}}><ProductThumb concType={k} size={32} /><div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#1A1A1A"}}>{CONCENTRATE_TYPES[k]?.label}</div><div style={{fontSize:11,color:"#333333"}}>Need {needed.toFixed(1)}L · Have {have.toFixed(1)}L</div>{brewing>0&&<div style={{fontSize:10,color:"#4A90D9"}}>🧪 {brewing.toFixed(1)}L brewing</div>}</div><div style={{color:effectiveGap===0?"#27AE60":"#E53935",fontWeight:700,fontSize:15}}>{effectiveGap===0?"✓ Covered":`Brew ${effectiveGap.toFixed(1)}L more`}</div></div>))}
         </div>
       )}
       {bottleCovered.length>0&&(
@@ -2396,7 +2583,7 @@ function NeedToMakeScreen({jobs,inventory,concentrate,onBack,onRefresh}) {
       )}
       {concCovered.length>0&&(
         <div style={S.card}><div style={{...S.cardTitle,...GHDR}}>✓ Concentrate Covered</div>
-          {concCovered.map(({k,needed,have})=>(<div key={k} style={S.needRow}><div style={{fontSize:14,color:"#222222"}}>{CONCENTRATE_TYPES[k].label}</div><div style={{color:"#27AE60",fontSize:13}}>✓ {have.toFixed(1)}L ready (need {needed.toFixed(1)}L)</div></div>))}
+          {concCovered.map(({k,needed,have})=>(<div key={k} style={{...S.needRow,gap:10}}><ProductThumb concType={k} size={32} /><div style={{fontSize:14,color:"#222222",flex:1}}>{CONCENTRATE_TYPES[k].label}</div><div style={{color:"#27AE60",fontSize:13}}>✓ {have.toFixed(1)}L ready (need {needed.toFixed(1)}L)</div></div>))}
         </div>
       )}
       <div style={{height:110}}/>
@@ -2410,8 +2597,13 @@ function ProductionDetail({job,onClose,onCheckoff,onDelete,onEdit,isAdmin}) {
   return (
     <div style={S.modal} onClick={onClose}>
       <div style={S.modalBox} onClick={e=>e.stopPropagation()}>
-        <div style={S.modalTitle}>{title}</div>
-        <div style={S.modalMeta}>{formatDate(job.date)}{job.time?` · ${formatTime(job.time)}`:""}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <ProductThumb concType={isBrew ? job.product : undefined} pid={isBottling ? job.product : undefined} size={48} />
+          <div>
+            <div style={S.modalTitle}>{title}</div>
+            <div style={S.modalMeta}>{formatDate(job.date)}{job.time?` · ${formatTime(job.time)}`:""}</div>
+          </div>
+        </div>
         <div style={{marginBottom:14}}>
           {isBrew&&<div style={S.qtyListRow}><span style={{color:"#222222"}}>Coffee</span><span style={{color:"#4A90D9",fontWeight:700}}>{job.kg}kg</span></div>}
           {isBottling&&<div style={S.qtyListRow}><span style={{color:"#222222"}}>Liters</span><span style={{color:"#4A90D9",fontWeight:700}}>{job.liters}L</span></div>}
@@ -2545,7 +2737,10 @@ function CheckoffModal({job,onConfirm,onCancel}) {
     return (
       <div style={S.modal}>
         <div style={S.modalBox}>
-          <div style={S.modalTitle}>Confirm Bottling</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <ProductThumb pid={job.product} size={48} />
+            <div style={S.modalTitle}>Confirm Bottling</div>
+          </div>
           <div style={{color:"#222222",fontSize:14,marginBottom:16,lineHeight:1.6}}>{prompt}</div>
           <input type="number" style={{...S.inp,fontSize:24,textAlign:"center",marginBottom:6}} value={actual} onChange={e=>{setActual(Number(e.target.value));}}/>
           <div style={{fontSize:11,color:"#555555",marginBottom:16,textAlign:"center"}}>Edit if different from planned</div>
@@ -2568,7 +2763,10 @@ function CheckoffModal({job,onConfirm,onCancel}) {
     return (
       <div style={S.modal}>
         <div style={S.modalBox}>
-          <div style={S.modalTitle}>Labeled Bottles Used?</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <ProductThumb pid={job.product} size={48} />
+            <div style={S.modalTitle}>Labeled Bottles Used?</div>
+          </div>
           <div style={{color:"#222222",fontSize:14,marginBottom:16,lineHeight:1.6}}>How many labeled <strong>{PRODUCTS[job.product]?.label}</strong> bottles did you use?</div>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
             <button style={S.editBtn} onClick={()=>setLabeledUsed(p=>({...p,[job.product]:Math.max(0,(p[job.product]||0)-1)}))}>−</button>

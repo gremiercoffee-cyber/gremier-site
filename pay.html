@@ -417,7 +417,7 @@
 
   function getReturnPayload() {
     const p = new URLSearchParams(window.location.search);
-    const txn = p.get('transaction_id') || '';
+    const txn = p.get('transaction_id') || (linkCode ? `pl_${linkCode}` : '');
     const resolvedOrderId = p.get('order_id') || orderId || (txn && !txn.startsWith('pl_') ? txn : '');
     return {
       order_id: resolvedOrderId,
@@ -427,9 +427,35 @@
       payme_status: p.get('payme_status') || p.get('payme_status_code') || '',
       status: p.get('status') || '',
       sale_status: p.get('sale_status') || p.get('payme_sale_status') || '',
-      payme_sale_id: p.get('payme_sale_id') || p.get('sale_id') || '',
+      payme_sale_id: p.get('payme_sale_id') || p.get('sale_id') || paymentLink?.payme_sale_id || '',
       payme_transaction_id: p.get('payme_transaction_id') || '',
     };
+  }
+
+  function hasExplicitPaymentFailure() {
+    const p = new URLSearchParams(window.location.search);
+    const st = String(p.get('payme_status') || p.get('status') || p.get('sale_status') || p.get('payme_sale_status') || '').toLowerCase();
+    return ['failed', 'error', 'cancelled', 'canceled', 'declined', '0'].includes(st);
+  }
+
+  async function checkPaidLocally() {
+    if (linkCode) {
+      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      if (link) {
+        paymentLink = { ...(paymentLink || {}), ...link };
+        if (link.order_id) orderId = link.order_id;
+        if (link.status === 'paid') return true;
+        if (link.order_id) {
+          const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
+          if (order?.payment_status === 'paid') return true;
+        }
+      }
+    }
+    if (orderId) {
+      const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+      if (order?.payment_status === 'paid') return true;
+    }
+    return false;
   }
 
   function isPaymentReturnUrl() {
@@ -476,13 +502,24 @@
 
   async function recheckPayment() {
     renderPending('Checking payment status…');
+    if (await checkPaidLocally()) {
+      await queuePaidOrderForOps(orderId);
+      navPayPush('paid');
+      applyPayView('paid');
+      return;
+    }
     const data = await confirmPaymentReturn();
     if (data.paid) {
+      if (data.order_id) orderId = data.order_id;
       if (linkCode) {
         const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
         if (link) paymentLink = link;
       }
-      await queuePaidOrderForOps(data.order_id);
+      await queuePaidOrderForOps(data.order_id || orderId);
+      navPayPush('paid');
+      applyPayView('paid');
+    } else if (await checkPaidLocally()) {
+      await queuePaidOrderForOps(orderId);
       navPayPush('paid');
       applyPayView('paid');
     } else {
@@ -504,26 +541,27 @@
       }
     }
 
+    if (await checkPaidLocally()) {
+      await queuePaidOrderForOps(orderId);
+      navPayPush('paid');
+      applyPayView('paid');
+      return true;
+    }
+
     navPayReplace('pending');
     applyPayView('pending');
 
     let paid = false;
 
     try {
-      for (let i = 0; i < 20; i++) {
-        const data = await confirmPaymentReturn();
-        if (data.paid) { paid = true; break; }
+      for (let i = 0; i < 24; i++) {
+        if (await checkPaidLocally()) { paid = true; break; }
 
-        const payload = getReturnPayload();
-        const paymeOk = ['success', 'completed', 'paid', '1'].includes(String(payload.payme_status || payload.status || payload.sale_status).toLowerCase());
-        if (paymeOk && i >= 1) {
-          await new Promise(r => setTimeout(r, 2000));
-          const retry = await confirmPaymentReturn();
-          if (retry.paid) { paid = true; break; }
-        }
+        const data = await confirmPaymentReturn();
+        if (data.paid) { paid = true; if (data.order_id) orderId = data.order_id; break; }
 
         const sub = document.getElementById('payPendingSub');
-        if (sub) sub.textContent = `Verifying… (${i + 1}/20)`;
+        if (sub) sub.textContent = `Verifying with PayMe… (${i + 1}/24)`;
         await new Promise(r => setTimeout(r, 1500));
       }
 
@@ -535,23 +573,26 @@
         await queuePaidOrderForOps(orderId);
         navPayPush('paid');
         applyPayView('paid');
+      } else if (await checkPaidLocally()) {
+        await queuePaidOrderForOps(orderId);
+        navPayPush('paid');
+        applyPayView('paid');
+      } else if (hasExplicitPaymentFailure()) {
+        navPayPush('failed');
+        applyPayView('failed');
       } else {
-        const payload = getReturnPayload();
-        const paymeOk = ['success', 'completed', 'paid', '1'].includes(
-          String(payload.payme_status || payload.status || payload.sale_status).toLowerCase()
-        );
-        if (paymeOk) {
-          navPayPush('paid');
-          applyPayView('paid');
-        } else {
-          navPayPush('failed');
-          applyPayView('failed');
-        }
+        navPayPush('pending');
+        renderPending('Your payment may still be processing. If you were charged, tap below — we\'ll confirm with PayMe.');
       }
     } catch (err) {
       console.error('Payment return error:', err);
-      navPayPush('failed');
-      applyPayView('failed');
+      if (await checkPaidLocally()) {
+        await queuePaidOrderForOps(orderId);
+        navPayPush('paid');
+        applyPayView('paid');
+      } else {
+        renderPending('Could not verify yet. If you were charged, tap "I paid — check again".');
+      }
     }
 
     return true;

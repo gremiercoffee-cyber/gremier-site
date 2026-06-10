@@ -222,6 +222,14 @@ async function queryPaymeSaleCompleted(paymeSaleId: string): Promise<boolean> {
       return false;
     }
 
+    const isPaidStatus = (status: string) => {
+      const s = status.toLowerCase();
+      return s === "completed" || s === "paid" || s === "success";
+    };
+
+    const topStatus = String(data.sale_status || data.status || "").toLowerCase();
+    if (isPaidStatus(topStatus)) return true;
+
     const items = Array.isArray(data.items)
       ? data.items
       : Array.isArray(data.sales)
@@ -234,12 +242,120 @@ async function queryPaymeSaleCompleted(paymeSaleId: string): Promise<boolean> {
       if (!item || typeof item !== "object") continue;
       const sale = item as Record<string, unknown>;
       const status = String(sale.sale_status || sale.status || "").toLowerCase();
-      if (status === "completed" || status === "paid") return true;
+      if (isPaidStatus(status)) return true;
     }
   } catch (err) {
     console.error("PayMe get-sales error:", err);
   }
   return false;
+}
+
+async function resolvePaymeSaleId(
+  supabase: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  linkCode: string,
+  orderDeliveryInfo: Record<string, unknown> | null,
+): Promise<string> {
+  const fromBody = String(body.payme_sale_id || "").trim();
+  if (fromBody) return fromBody;
+
+  if (linkCode) {
+    const { data: link } = await supabase
+      .from("payment_links")
+      .select("payme_sale_id")
+      .eq("link_code", linkCode)
+      .maybeSingle();
+    if (link?.payme_sale_id) return String(link.payme_sale_id);
+  }
+
+  if (orderDeliveryInfo) {
+    const stored = String(orderDeliveryInfo.payme_sale_id || "").trim();
+    if (stored) return stored;
+  }
+
+  return "";
+}
+
+type PaymentLinkFulfillRow = {
+  link_code: string;
+  order_id?: string | null;
+  status?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  delivery_address?: string | null;
+  items?: unknown[] | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  total?: number | null;
+  discount_note?: string | null;
+};
+
+async function fulfillPaymentLinkFromReturn(
+  supabase: ReturnType<typeof createClient>,
+  link: PaymentLinkFulfillRow,
+  paymeInfo: { payme_sale_id?: string; payme_transaction_id?: string },
+): Promise<string | null> {
+  if (link.status === "paid" && link.order_id) return String(link.order_id);
+
+  let orderId = link.order_id ? String(link.order_id) : null;
+
+  if (orderId) {
+    await supabase
+      .from("orders")
+      .update({
+        payment_status: "paid",
+        status: "confirmed",
+        delivery_info: {
+          payment_link_code: link.link_code,
+          ...paymeInfo,
+          confirmed_via_return: true,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+  } else {
+    const { data: order, error } = await supabase
+      .from("orders")
+      .insert({
+        customer_name: link.customer_name || "Payment Link Customer",
+        customer_phone: link.customer_phone || null,
+        customer_email: null,
+        delivery_address: link.delivery_address || null,
+        items: link.items || [],
+        subtotal: link.subtotal,
+        discount: link.discount || 0,
+        total: link.total,
+        status: "confirmed",
+        payment_status: "paid",
+        payment_method: "payme",
+        source: "payment_link",
+        delivery_info: {
+          payment_link_code: link.link_code,
+          ...paymeInfo,
+          confirmed_via_return: true,
+        },
+        notes: link.discount_note || null,
+      })
+      .select("id")
+      .single();
+
+    if (error || !order?.id) {
+      console.error("confirm-payment-return: failed to create order from payment link", error);
+      return null;
+    }
+    orderId = String(order.id);
+  }
+
+  await supabase
+    .from("payment_links")
+    .update({
+      status: "paid",
+      order_id: orderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("link_code", link.link_code);
+
+  return orderId;
 }
 
 async function markOrderPaid(
@@ -401,33 +517,40 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
     const resolvedOrderId = await resolveOrderId(supabase, body);
 
+    let linkRow: PaymentLinkFulfillRow | null = null;
     if (linkCode) {
       const { data: link } = await supabase
         .from("payment_links")
-        .select("order_id, status")
+        .select("*")
         .eq("link_code", linkCode)
         .maybeSingle();
-      if (link?.status === "paid") {
-        const oid = String(link.order_id || resolvedOrderId || "");
+      linkRow = link as PaymentLinkFulfillRow | null;
+      if (linkRow?.status === "paid") {
+        const oid = String(linkRow.order_id || resolvedOrderId || "");
         if (oid) {
           await ensurePendingWebsiteDelivery(supabase, oid);
           await notifyPaidOrderOnce(supabase, oid);
         }
         return new Response(JSON.stringify({
           paid: true,
-          order_id: link.order_id || resolvedOrderId || null,
+          order_id: linkRow.order_id || resolvedOrderId || null,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
 
+    let orderDeliveryInfo: Record<string, unknown> | null = null;
     if (resolvedOrderId) {
       const { data: order } = await supabase
         .from("orders")
         .select("id, payment_status, delivery_info")
         .eq("id", resolvedOrderId)
         .maybeSingle();
+
+      orderDeliveryInfo = order?.delivery_info && typeof order.delivery_info === "object"
+        ? order.delivery_info as Record<string, unknown>
+        : null;
 
       if (order?.payment_status === "paid") {
         await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
@@ -437,28 +560,42 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (order) {
-        const info = order.delivery_info && typeof order.delivery_info === "object"
-          ? order.delivery_info as Record<string, unknown>
-          : {};
-        const storedSaleId = String(info.payme_sale_id || "");
-        const saleId = paymeSaleId || storedSaleId;
-        const paymeCompleted = saleId ? await queryPaymeSaleCompleted(saleId) : false;
+      const saleId = await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo);
+      const paymeCompleted = saleId ? await queryPaymeSaleCompleted(saleId) : false;
 
-        if (returnSuccess || paymeCompleted) {
-          const markResult = await markOrderPaid(supabase, resolvedOrderId, {
-            payme_sale_id: saleId || undefined,
-            payme_transaction_id: paymeTransactionId || undefined,
-          });
-          if (markResult === "newly_paid" || markResult === "already_paid") {
-            await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
-          }
-          if (markResult === "newly_paid" || markResult === "already_paid") {
-            await notifyPaidOrderOnce(supabase, resolvedOrderId);
-          }
+      if (order && (returnSuccess || paymeCompleted)) {
+        const markResult = await markOrderPaid(supabase, resolvedOrderId, {
+          payme_sale_id: saleId || undefined,
+          payme_transaction_id: paymeTransactionId || undefined,
+        });
+        if (markResult === "newly_paid" || markResult === "already_paid") {
+          await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
+          await notifyPaidOrderOnce(supabase, resolvedOrderId);
+        }
+        return new Response(JSON.stringify({
+          paid: true,
+          order_id: resolvedOrderId,
+          confirmed: true,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (linkRow) {
+      const saleId = await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo);
+      const paymeCompleted = saleId ? await queryPaymeSaleCompleted(saleId) : false;
+      if (returnSuccess || paymeCompleted) {
+        const fulfilledOrderId = await fulfillPaymentLinkFromReturn(supabase, linkRow, {
+          payme_sale_id: saleId || undefined,
+          payme_transaction_id: paymeTransactionId || undefined,
+        });
+        if (fulfilledOrderId) {
+          await ensurePendingWebsiteDelivery(supabase, fulfilledOrderId);
+          await notifyPaidOrderOnce(supabase, fulfilledOrderId);
           return new Response(JSON.stringify({
             paid: true,
-            order_id: resolvedOrderId,
+            order_id: fulfilledOrderId,
             confirmed: true,
           }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -482,10 +619,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    const saleIdForPending = await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo);
+    const paymeStillPending = saleIdForPending ? await queryPaymeSaleCompleted(saleIdForPending) : false;
+
     return new Response(JSON.stringify({
       paid: false,
       order_id: resolvedOrderId || null,
       return_success: returnSuccess,
+      payme_completed: paymeStillPending,
+      pending: returnSuccess || !!linkCode,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
