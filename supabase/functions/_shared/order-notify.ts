@@ -171,7 +171,7 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
   return true;
 }
 
-/** Notify when an order is paid. Sheet + Supabase email (Resend) + Pushover fallback. */
+/** Notify when an order is paid. Resend (primary) + optional Google Sheet + Pushover fallback. */
 export async function sendOrderPaidNotification(
   order: OrderNotifyRow,
   options?: { force?: boolean },
@@ -182,10 +182,6 @@ export async function sendOrderPaidNotification(
   let sheetOk = false;
   let emailOk = false;
   let detail = "";
-
-  const sheet = await sendViaGoogleSheet(payload, options);
-  if (sheet.ok) sheetOk = true;
-  else detail = sheet.detail || detail;
 
   const customerReceipt = buildCustomerReceiptText({
     order_number: order.order_number,
@@ -208,14 +204,21 @@ export async function sendOrderPaidNotification(
     force: options?.force,
   });
   if (resend.ok) emailOk = true;
-  else if (!detail) detail = resend.detail;
+  else detail = resend.detail || detail;
 
-  if (sheetOk || emailOk) return { ok: true };
+  const sheetUrl = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL") || "").trim();
+  if (sheetUrl) {
+    const sheet = await sendViaGoogleSheet(payload, options);
+    if (sheet.ok) sheetOk = true;
+    else if (!emailOk) detail = sheet.detail || detail;
+  }
+
+  if (emailOk || sheetOk) return { ok: true };
 
   const pushed = await sendViaPushover(`💳 ${subject}`, text);
   if (pushed) return { ok: true };
 
-  return { ok: false, detail: detail || "Sheet, email, and Pushover all failed" };
+  return { ok: false, detail: detail || "Resend, sheet, and Pushover all failed" };
 }
 
 type SupabaseClient = ReturnType<typeof createClient>;
@@ -242,10 +245,9 @@ export async function notifyPaidOrderOnce(
 
   const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
   if (!result.ok) {
-    const hasUrl = !!Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL");
     return {
       sent: false,
-      error: hasUrl ? "webhook_failed" : "GOOGLE_ORDER_WEBHOOK_URL not set in Supabase secrets",
+      error: "notify_failed",
       detail: result.detail,
     };
   }
