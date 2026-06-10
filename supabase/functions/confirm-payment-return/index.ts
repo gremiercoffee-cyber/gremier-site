@@ -63,6 +63,43 @@ async function queryPaymeSaleCompleted(
   };
 }
 
+async function queryPaymeSaleCompletedWithRetries(
+  paymeSaleId: string,
+  transactionId: string,
+  attempts = 8,
+): Promise<{ completed: boolean; paymeSaleId: string }> {
+  let last = { completed: false, paymeSaleId: paymeSaleId };
+  for (let i = 0; i < attempts; i++) {
+    last = await queryPaymeSaleCompleted(paymeSaleId, transactionId);
+    if (last.completed) return last;
+    if (i < attempts - 1) {
+      await new Promise((r) => setTimeout(r, i < 2 ? 350 : 900));
+    }
+  }
+  return last;
+}
+
+async function persistPaymeSaleIdOnOrder(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+  paymeSaleId: string,
+  orderDeliveryInfo: Record<string, unknown> | null,
+): Promise<Record<string, unknown>> {
+  const info = orderDeliveryInfo && typeof orderDeliveryInfo === "object" ? orderDeliveryInfo : {};
+  if (!paymeSaleId) return info;
+  if (String(info.payme_sale_id || "") === paymeSaleId) return info;
+  const next = { ...info, payme_sale_id: paymeSaleId };
+  await supabase
+    .from("orders")
+    .update({
+      delivery_info: next,
+      payment_method: "payme",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+  return next;
+}
+
 function paymentLinkTransactionId(linkCode: string): string {
   return linkCode ? `pl_${linkCode}` : "";
 }
@@ -380,11 +417,12 @@ Deno.serve(async (req) => {
     ): Promise<{ completed: boolean; paymeSaleId: string }> {
       const storedSaleId = await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo);
       const saleIdFromLink = link?.payme_sale_id ? String(link.payme_sale_id) : "";
+      const saleId = storedSaleId || saleIdFromLink;
       const txn = txnId || resolvedOrderId || (link ? paymentLinkTransactionId(link.link_code) : "");
-      const query = await queryPaymeSaleCompleted(storedSaleId || saleIdFromLink, txn);
+      const query = await queryPaymeSaleCompletedWithRetries(saleId, txn);
       return {
         completed: returnSuccess || query.completed,
-        paymeSaleId: query.paymeSaleId || storedSaleId || saleIdFromLink,
+        paymeSaleId: query.paymeSaleId || saleId,
       };
     }
 
@@ -422,6 +460,16 @@ Deno.serve(async (req) => {
       orderDeliveryInfo = order?.delivery_info && typeof order.delivery_info === "object"
         ? order.delivery_info as Record<string, unknown>
         : null;
+
+      const paymeSaleIdFromBody = String(body.payme_sale_id || "").trim();
+      if (paymeSaleIdFromBody) {
+        orderDeliveryInfo = await persistPaymeSaleIdOnOrder(
+          supabase,
+          resolvedOrderId,
+          paymeSaleIdFromBody,
+          orderDeliveryInfo,
+        );
+      }
 
       if (order?.payment_status === "paid") {
         await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);

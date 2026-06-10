@@ -2056,6 +2056,9 @@ async function submitOrder() {
     }
 
     sessionStorage.setItem('gremier_pending_order', inserted.id);
+    if (payData.payme_sale_id) {
+      sessionStorage.setItem('gremier_payme_sale_' + inserted.id, payData.payme_sale_id);
+    }
     window.location.href = payData.sale_url;
   } catch (err) {
     console.error(err);
@@ -2071,7 +2074,18 @@ function showCheckoutResult(kind) {
 }
 async function confirmPaymentReturnFromUrl(params, orderId) {
   const txn = params.get('transaction_id') || '';
-  const resolvedOrderId = orderId || params.get('order_id') || (txn && !txn.startsWith('pl_') ? txn : '');
+  const uuidFromTxn = txn && !txn.startsWith('pl_')
+    ? (txn.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0] || txn.split('_')[0])
+    : '';
+  const resolvedOrderId = orderId || params.get('order_id') || uuidFromTxn;
+  let paymeSaleId = params.get('payme_sale_id') || params.get('sale_id') || '';
+  if (!paymeSaleId && resolvedOrderId) {
+    try { paymeSaleId = sessionStorage.getItem('gremier_payme_sale_' + resolvedOrderId) || ''; } catch (_) {}
+  }
+  if (!paymeSaleId && resolvedOrderId) {
+    const { data: order } = await sb.from('orders').select('delivery_info').eq('id', resolvedOrderId).maybeSingle();
+    paymeSaleId = order?.delivery_info?.payme_sale_id || '';
+  }
   const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
     method: 'POST',
     headers: {
@@ -2082,18 +2096,34 @@ async function confirmPaymentReturnFromUrl(params, orderId) {
     body: JSON.stringify({
       order_id: resolvedOrderId,
       link_code: params.get('code') || '',
-      transaction_id: txn,
+      transaction_id: txn || resolvedOrderId,
       payment_return: params.get('payment') === 'return',
       payme_status: params.get('payme_status') || params.get('payme_status_code') || '',
       status: params.get('status') || '',
       sale_status: params.get('sale_status') || params.get('payme_sale_status') || '',
-      payme_sale_id: params.get('payme_sale_id') || params.get('sale_id') || '',
+      payme_sale_id: paymeSaleId,
       payme_transaction_id: params.get('payme_transaction_id') || '',
     }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok && !data.error) data.error = `HTTP ${res.status}`;
   return data;
+}
+async function queueNotifyPaidOrder(orderId, force) {
+  if (!orderId) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ order_id: orderId, ...(force ? { force: true } : {}) }),
+    });
+  } catch (e) {
+    console.warn('notify-paid-order:', e);
+  }
 }
 async function handlePaymentReturn() {
   const params = new URLSearchParams(window.location.search);
@@ -2102,8 +2132,14 @@ async function handlePaymentReturn() {
   if (!isReturn) return;
 
   const txn = params.get('transaction_id') || '';
-  const orderId = params.get('order_id') || txn || sessionStorage.getItem('gremier_pending_order');
+  const uuidFromTxn = txn && !txn.startsWith('pl_')
+    ? (txn.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0] || txn.split('_')[0])
+    : '';
+  const orderId = params.get('order_id') || uuidFromTxn || sessionStorage.getItem('gremier_pending_order');
   const paymeOk = ['success', 'completed', 'paid', '1'].includes(
+    String(params.get('payme_status') || params.get('status') || params.get('sale_status') || '').toLowerCase()
+  );
+  const trustReturn = params.get('payment') === 'return' && !['failed', 'error', 'cancelled', 'canceled', 'declined', '0'].includes(
     String(params.get('payme_status') || params.get('status') || params.get('sale_status') || '').toLowerCase()
   );
 
@@ -2124,14 +2160,18 @@ async function handlePaymentReturn() {
   for (let i = 0; i < 20; i++) {
     const data = await confirmPaymentReturnFromUrl(params, orderId);
     if (data.paid) { paid = true; break; }
-    await new Promise(r => setTimeout(r, 1500));
+    if (i < 19) await new Promise(r => setTimeout(r, i < 3 ? 500 : 1200));
   }
 
-  const resultKind = paid || paymeOk ? 'paid' : 'failed';
+  const resultKind = paid || paymeOk || trustReturn ? 'paid' : 'failed';
   if (resultKind === 'paid') {
     cart = [];
     updateCartCount();
     sessionStorage.removeItem('gremier_pending_order');
+    if (orderId) {
+      try { sessionStorage.removeItem('gremier_payme_sale_' + orderId); } catch (_) {}
+      queueNotifyPaidOrder(orderId, false);
+    }
     if (currentUser) await refreshUserProfile();
   }
   navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind }, true);

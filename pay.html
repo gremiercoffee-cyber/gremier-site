@@ -236,6 +236,28 @@
 
 
 
+  function payStorageKey(orderId, suffix) {
+    return 'gremier_pay_' + orderId + '_' + suffix;
+  }
+
+  function rememberCheckoutSession(orderId, paymeSaleId, code) {
+    if (!orderId) return;
+    try {
+      if (paymeSaleId) sessionStorage.setItem(payStorageKey(orderId, 'sale'), paymeSaleId);
+      if (code) sessionStorage.setItem(payStorageKey(orderId, 'code'), code);
+      sessionStorage.setItem(payStorageKey(orderId, 'started'), String(Date.now()));
+    } catch (_) {}
+  }
+
+  function clearCheckoutSession(orderId) {
+    if (!orderId) return;
+    try {
+      sessionStorage.removeItem(payStorageKey(orderId, 'sale'));
+      sessionStorage.removeItem(payStorageKey(orderId, 'code'));
+      sessionStorage.removeItem(payStorageKey(orderId, 'started'));
+    } catch (_) {}
+  }
+
   async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail } = {}) {
     const body = { language: 'en' };
     if (orderId) body.order_id = orderId;
@@ -261,7 +283,7 @@
       }
       throw new Error(errMsg);
     }
-    return data.sale_url;
+    return data;
   }
 
 
@@ -454,7 +476,7 @@
 
       <div class="pay-status-title">Payment not completed</div>
 
-      <div class="pay-status-sub">If you already paid, tap <strong>Check payment</strong> first — don't pay again.<br/><br/>Only use Try again if the charge did not go through.</div>
+      <div class="pay-status-sub">If PayMe already charged you, tap <strong>Check payment</strong> — don't pay again.<br/><br/>Only use Try again if PayMe shows the payment did not go through.</div>
 
       <button class="pay-btn" style="margin-top:16px;background:transparent;border:1px solid #555;color:#c4c4c4" onclick="recheckPayment()">Check payment</button>
 
@@ -471,62 +493,89 @@
       <div class="pay-status-sub">Confirming your payment.</div>`;
   }
 
-  async function finishPaidReturn(oid) {
+  async function syncPaidOrderToSheet(targetId, maxAttempts) {
+    for (let i = 0; i < maxAttempts; i++) {
+      if (!targetId) return;
+      if (!(await checkPaidLocally())) {
+        await confirmPaymentReturn();
+      }
+      await queuePaidOrderForOps(targetId, i > 0);
+      const { data: order } = await sb.from('orders')
+        .select('payment_status, delivery_info')
+        .eq('id', targetId)
+        .maybeSingle();
+      if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) return;
+      await new Promise(r => setTimeout(r, i < 2 ? 800 : 2000));
+    }
+  }
+
+  async function finishPaidReturn(oid, opts) {
+    opts = opts || {};
     if (linkCode) {
       const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
       if (link) paymentLink = link;
     }
 
     let targetId = oid || orderId;
+    let confirmPaid = false;
 
-    for (let i = 0; i < 8; i++) {
-      if (!(await checkPaidLocally())) {
-        const data = await confirmPaymentReturn();
-        if (data.order_id) {
-          orderId = data.order_id;
-          targetId = data.order_id;
-        }
-      } else if (targetId) {
-        const { data: order } = await sb.from('orders')
-          .select('payment_status, delivery_info')
-          .eq('id', targetId)
-          .maybeSingle();
-        if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) break;
+    for (let i = 0; i < 15; i++) {
+      if (await checkPaidLocally()) {
+        confirmPaid = true;
+        break;
       }
-
-      await queuePaidOrderForOps(targetId, i > 0);
-      if (!targetId) break;
-
-      const { data: order } = await sb.from('orders')
-        .select('payment_status, delivery_info')
-        .eq('id', targetId)
-        .maybeSingle();
-      if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) break;
-      if (i < 7) await new Promise(r => setTimeout(r, i < 2 ? 800 : 2000));
+      const data = await confirmPaymentReturn();
+      if (data.order_id) {
+        orderId = data.order_id;
+        targetId = data.order_id;
+      }
+      if (data.paid) {
+        confirmPaid = true;
+        break;
+      }
+      if (i < 14) await new Promise(r => setTimeout(r, i < 3 ? 500 : 1200));
     }
 
-    if (await checkPaidLocally()) {
+    const paidLocally = await checkPaidLocally();
+    const trustPayMeReturn = opts.trustPayMeReturn === true;
+
+    if (paidLocally || confirmPaid || trustPayMeReturn) {
       navPayPush('paid');
       applyPayView('paid');
+      if (targetId) clearCheckoutSession(targetId);
+      syncPaidOrderToSheet(targetId, 15).catch(function (e) {
+        console.warn('Background sheet sync:', e);
+      });
     } else {
       renderFailed();
       navPayReplace('failed');
     }
   }
 
-  function getReturnPayload() {
+  async function getReturnPayload() {
     const p = new URLSearchParams(window.location.search);
     const txn = p.get('transaction_id') || (linkCode ? `pl_${linkCode}` : '');
-    const resolvedOrderId = p.get('order_id') || orderId || (txn && !txn.startsWith('pl_') ? txn : '');
+    const resolvedOrderId = p.get('order_id') || orderId || (txn && !txn.startsWith('pl_') ? txn.split('_')[0] : '');
+
+    let paymeSaleId = p.get('payme_sale_id') || p.get('sale_id') || '';
+    if (!paymeSaleId && resolvedOrderId) {
+      try { paymeSaleId = sessionStorage.getItem(payStorageKey(resolvedOrderId, 'sale')) || ''; } catch (_) {}
+    }
+    if (!paymeSaleId && resolvedOrderId) {
+      const { data: order } = await sb.from('orders').select('delivery_info').eq('id', resolvedOrderId).maybeSingle();
+      paymeSaleId = order?.delivery_info?.payme_sale_id || '';
+    }
+    if (!paymeSaleId && paymentLink?.payme_sale_id) paymeSaleId = paymentLink.payme_sale_id;
+
     return {
       order_id: resolvedOrderId,
       link_code: linkCode || p.get('code') || '',
-      transaction_id: txn,
+      transaction_id: txn || resolvedOrderId || (linkCode ? `pl_${linkCode}` : ''),
       payment_return: p.get('payment') === 'return',
       payme_status: p.get('payme_status') || p.get('payme_status_code') || '',
       status: p.get('status') || '',
       sale_status: p.get('sale_status') || p.get('payme_sale_status') || '',
-      payme_sale_id: p.get('payme_sale_id') || p.get('sale_id') || paymentLink?.payme_sale_id || '',
+      payme_sale_id: paymeSaleId,
       payme_transaction_id: p.get('payme_transaction_id') || '',
     };
   }
@@ -572,7 +621,7 @@
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify(getReturnPayload()),
+      body: JSON.stringify(await getReturnPayload()),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok && !data.error) data.error = `HTTP ${res.status}`;
@@ -640,8 +689,9 @@
     navPayReplace('pending');
 
     const fromPayMe = params.get('payment') === 'return';
+    const trustReturn = fromPayMe && !hasExplicitPaymentFailure();
 
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       try {
         const data = await confirmPaymentReturn();
         if (data.paid) {
@@ -656,12 +706,12 @@
       } catch (err) {
         console.warn('Payment confirm attempt failed:', err);
       }
-      if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 0 ? 400 : 1500));
+      if (attempt < 5) await new Promise(r => setTimeout(r, attempt === 0 ? 400 : 1500));
     }
 
-    if (fromPayMe && !hasExplicitPaymentFailure()) {
+    if (trustReturn) {
       renderProcessing();
-      await finishPaidReturn(orderId);
+      await finishPaidReturn(orderId, { trustPayMeReturn: true });
       return true;
     }
 
@@ -801,20 +851,18 @@
       await savePayDeliveryAddress(orderId, paymentLink);
       await savePayCustomerEmail(orderId, paymentLink);
 
-      let saleUrl;
+      let payData;
       try {
-        saleUrl = await callCreatePayment({ orderId });
+        payData = await callCreatePayment({ orderId });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
         if (msg.includes('already paid')) {
-          try { await confirmPaymentReturn(); await queuePaidOrderForOps(orderId); } catch (_) {}
-          navPayPush('paid');
-          applyPayView('paid');
+          try { await finishPaidReturn(orderId); } catch (_) {}
           return;
         }
         const tryLinkCode = msg.includes('not found') || msg.includes('missing order') || msg.includes('order_id');
         if (tryLinkCode) {
-          saleUrl = await callCreatePayment({
+          payData = await callCreatePayment({
             linkCode: paymentLink.link_code,
             orderId,
             deliveryAddress: deliveryAddress || undefined,
@@ -825,7 +873,8 @@
         }
       }
 
-      window.location.href = saleUrl;
+      rememberCheckoutSession(orderId, payData.payme_sale_id, paymentLink.link_code);
+      window.location.href = payData.sale_url;
     } catch (e) {
       paymentStarting = false;
       if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
