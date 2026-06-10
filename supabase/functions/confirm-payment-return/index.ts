@@ -121,11 +121,47 @@ type PaymentLinkFulfillRow = {
 async function fulfillPaymentLinkFromReturn(
   supabase: ReturnType<typeof createClient>,
   link: PaymentLinkFulfillRow,
-  paymeInfo: { payme_sale_id?: string; payme_transaction_id?: string },
+  paymeInfo: { payme_sale_id?: string; payme_transaction_id?: string; transaction_id?: string },
+  opts?: { resolvedOrderId?: string },
 ): Promise<string | null> {
   if (link.status === "paid" && link.order_id && !isReusablePaymentLink(link)) return String(link.order_id);
 
   let orderId = isReusablePaymentLink(link) ? null : (link.order_id ? String(link.order_id) : null);
+
+  if (!orderId && opts?.resolvedOrderId) orderId = opts.resolvedOrderId;
+
+  if (!orderId) {
+    const txnId = String(paymeInfo.transaction_id || paymeInfo.payme_transaction_id || "");
+    const txnOrderId = txnId.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    )?.[0];
+    if (txnOrderId) {
+      orderId = txnOrderId;
+    } else {
+      const saleId = String(paymeInfo.payme_sale_id || "");
+      if (saleId) {
+        const { data: orders } = await supabase
+          .from("orders")
+          .select("id, payment_status, delivery_info")
+          .eq("payment_method", "payme")
+          .order("created_at", { ascending: false })
+          .limit(50);
+        const match = (orders || []).find((o) => {
+          const info = o.delivery_info && typeof o.delivery_info === "object"
+            ? o.delivery_info as Record<string, unknown>
+            : {};
+          return String(info.payme_sale_id || "") === saleId;
+        }) ?? (orders || []).find((o) => {
+          if (o.payment_status === "paid") return false;
+          const info = o.delivery_info && typeof o.delivery_info === "object"
+            ? o.delivery_info as Record<string, unknown>
+            : {};
+          return String(info.payment_link_code || "") === link.link_code;
+        });
+        if (match?.id) orderId = String(match.id);
+      }
+    }
+  }
 
   if (orderId) {
     await supabase
@@ -344,7 +380,7 @@ Deno.serve(async (req) => {
     ): Promise<{ completed: boolean; paymeSaleId: string }> {
       const storedSaleId = await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo);
       const saleIdFromLink = link?.payme_sale_id ? String(link.payme_sale_id) : "";
-      const txn = txnId || (link ? paymentLinkTransactionId(link.link_code) : "");
+      const txn = txnId || resolvedOrderId || (link ? paymentLinkTransactionId(link.link_code) : "");
       const query = await queryPaymeSaleCompleted(storedSaleId || saleIdFromLink, txn);
       return {
         completed: returnSuccess || query.completed,
@@ -422,7 +458,8 @@ Deno.serve(async (req) => {
         const fulfilledOrderId = await fulfillPaymentLinkFromReturn(supabase, linkRow, {
           payme_sale_id: payme.paymeSaleId || undefined,
           payme_transaction_id: paymeTransactionId || undefined,
-        });
+          transaction_id: txnId,
+        }, { resolvedOrderId: resolvedOrderId || undefined });
         if (fulfilledOrderId) {
           await ensurePendingWebsiteDelivery(supabase, fulfilledOrderId);
           await notifyPaidOrderOnceLocal(supabase, fulfilledOrderId);

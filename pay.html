@@ -239,8 +239,8 @@
   async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail } = {}) {
     const body = { language: 'en' };
     if (orderId) body.order_id = orderId;
-    else if (linkCode) body.payment_link_code = linkCode;
-    else throw new Error('Payment setup error');
+    if (linkCode) body.payment_link_code = linkCode;
+    if (!body.order_id && !body.payment_link_code) throw new Error('Payment setup error');
     if (deliveryAddress) body.delivery_address = deliveryAddress;
     if (customerEmail) body.customer_email = customerEmail;
 
@@ -433,11 +433,11 @@
 
   function renderPaid() {
     const total = paymentLink?.total != null ? paymentLink.total : '';
-    const totalLine = total !== '' ? `Your payment of ₪${total} was successful.<br/>` : 'Your payment was successful.<br/>';
+    const totalLine = total !== '' ? `Your payment of ₪${total} was confirmed.<br/>` : 'Your payment was confirmed.<br/>';
     document.getElementById('payCard').innerHTML = `
       <img src="logo.png" alt="Gremier Coffee Co." class="pay-logo"/>
       <div class="pay-status">✓</div>
-      <div class="pay-status-title">Payment received</div>
+      <div class="pay-status-title">Payment confirmed</div>
       <div class="pay-status-sub">Thank you! ${totalLine}We'll be in touch shortly.</div>
       <a href="index.html" class="pay-btn" style="display:inline-block;margin-top:24px;text-decoration:none;line-height:1">Back to Gremier</a>`;
   }
@@ -478,27 +478,40 @@
     }
 
     let targetId = oid || orderId;
-    if (!(await checkPaidLocally())) {
-      const data = await confirmPaymentReturn();
-      if (data.order_id) {
-        orderId = data.order_id;
-        targetId = data.order_id;
-      }
-    }
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
+      if (!(await checkPaidLocally())) {
+        const data = await confirmPaymentReturn();
+        if (data.order_id) {
+          orderId = data.order_id;
+          targetId = data.order_id;
+        }
+      } else if (targetId) {
+        const { data: order } = await sb.from('orders')
+          .select('payment_status, delivery_info')
+          .eq('id', targetId)
+          .maybeSingle();
+        if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) break;
+      }
+
       await queuePaidOrderForOps(targetId, i > 0);
       if (!targetId) break;
+
       const { data: order } = await sb.from('orders')
         .select('payment_status, delivery_info')
         .eq('id', targetId)
         .maybeSingle();
       if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) break;
-      if (i < 5) await new Promise(r => setTimeout(r, 1500));
+      if (i < 7) await new Promise(r => setTimeout(r, i < 2 ? 800 : 2000));
     }
 
-    navPayPush('paid');
-    applyPayView('paid');
+    if (await checkPaidLocally()) {
+      navPayPush('paid');
+      applyPayView('paid');
+    } else {
+      renderFailed();
+      navPayReplace('failed');
+    }
   }
 
   function getReturnPayload() {
@@ -614,7 +627,7 @@
       const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
       if (link) {
         paymentLink = link;
-        if (!orderId && link.order_id) orderId = link.order_id;
+        if (!orderId && link.order_id && !isReusableLink(link)) orderId = link.order_id;
       }
     }
 
@@ -647,11 +660,8 @@
     }
 
     if (fromPayMe && !hasExplicitPaymentFailure()) {
-      renderPaid();
-      navPayPush('paid');
-      confirmPaymentReturn()
-        .then(d => queuePaidOrderForOps(d.order_id || orderId))
-        .catch(() => queuePaidOrderForOps(orderId));
+      renderProcessing();
+      await finishPaidReturn(orderId);
       return true;
     }
 
@@ -781,11 +791,12 @@
       await savePayLinkCustomerEmail(paymentLink);
       navPayReplace('checkout');
 
-      if (paymentLink.order_id) {
+      // Reusable links always get a fresh order per payment — never reuse link.order_id.
+      if (paymentLink.order_id && !isReusableLink(paymentLink)) {
         orderId = paymentLink.order_id;
       } else {
         orderId = await ensureOrderId(paymentLink);
-        paymentLink.order_id = orderId;
+        if (!isReusableLink(paymentLink)) paymentLink.order_id = orderId;
       }
       await savePayDeliveryAddress(orderId, paymentLink);
       await savePayCustomerEmail(orderId, paymentLink);
@@ -805,6 +816,7 @@
         if (tryLinkCode) {
           saleUrl = await callCreatePayment({
             linkCode: paymentLink.link_code,
+            orderId,
             deliveryAddress: deliveryAddress || undefined,
             customerEmail: customerEmail || undefined,
           });

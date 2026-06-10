@@ -267,7 +267,7 @@ serve(async (req) => {
 
 
 
-    if (payment_link_code) {
+    if (payment_link_code && !order_id) {
 
       const { data: link, error: linkError } = await supabase
 
@@ -354,7 +354,9 @@ serve(async (req) => {
 
 
 
-      const returnUrl = `${siteUrl}/pay.html?payment=return&code=${encodeURIComponent(row.link_code)}`;
+      const returnUrl = order_id
+        ? `${siteUrl}/pay.html?payment=return&code=${encodeURIComponent(row.link_code)}&order_id=${encodeURIComponent(String(order_id))}`
+        : `${siteUrl}/pay.html?payment=return&code=${encodeURIComponent(row.link_code)}`;
 
       const payload: Record<string, unknown> = {
 

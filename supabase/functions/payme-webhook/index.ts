@@ -423,7 +423,7 @@ async function fulfillPaymentLink(
       if (saleId) {
         const { data: orders } = await supabase
           .from("orders")
-          .select("id, delivery_info")
+          .select("id, payment_status, delivery_info")
           .eq("payment_method", "payme")
           .order("created_at", { ascending: false })
           .limit(50);
@@ -431,8 +431,13 @@ async function fulfillPaymentLink(
           const info = o.delivery_info && typeof o.delivery_info === "object"
             ? o.delivery_info as Record<string, unknown>
             : {};
-          return String(info.payme_sale_id || "") === saleId
-            || String(info.payment_link_code || "") === link.link_code;
+          return String(info.payme_sale_id || "") === saleId;
+        }) ?? (orders || []).find((o) => {
+          if (o.payment_status === "paid") return false;
+          const info = o.delivery_info && typeof o.delivery_info === "object"
+            ? o.delivery_info as Record<string, unknown>
+            : {};
+          return String(info.payment_link_code || "") === link.link_code;
         });
         if (match?.id) orderId = String(match.id);
       }
