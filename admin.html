@@ -205,6 +205,8 @@
     .pl-order-now-switch::after { content:''; position:absolute; width:24px; height:24px; border-radius:50%; background:var(--text2); top:3px; left:3px; transition:transform .25s,background .25s; }
     .pl-order-now-toggle input:checked + .pl-order-now-box .pl-order-now-switch { background:var(--blue); }
     .pl-order-now-toggle input:checked + .pl-order-now-box .pl-order-now-switch::after { transform:translateX(22px); background:#fff; }
+    .pl-link-error { display:none; margin-top:14px; padding:12px 14px; border-radius:6px; background:rgba(229,115,104,.12); border:1px solid rgba(229,115,104,.45); color:#ffb4ad; font-size:.82rem; line-height:1.45; word-break:break-word; }
+    .pl-link-error.show { display:block; }
     .qty-inline { display:flex; align-items:center; gap:6px; }
     .qty-inline-btn { background:var(--bg); border:1px solid var(--border); color:var(--cream); width:22px; height:22px; border-radius:3px; cursor:pointer; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
     .pl-total-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-top:1px solid var(--border); font-size:.9rem; }
@@ -816,7 +818,7 @@
 <!-- PAYMENT LINK MODAL -->
 <div class="modal-backdrop" id="payLinkModal">
   <div class="modal-box modal-paylink">
-    <h2 class="modal-title">New Payment Link</h2>
+    <h2 class="modal-title">New Payment Link <span style="font-size:.65rem;color:var(--text2);font-family:'DM Sans',sans-serif;font-weight:400;letter-spacing:.04em">· v2026-06</span></h2>
     <div class="form-row-2">
       <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
       <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
@@ -857,7 +859,8 @@
         <div class="pl-order-now-switch" aria-hidden="true"></div>
       </div>
     </label>
-    <button class="btn btn-amber btn-full" style="margin-top:16px" onclick="generatePayLink()">Generate Payment Link</button>
+    <div id="plLinkError" class="pl-link-error" role="alert"></div>
+    <button class="btn btn-amber btn-full" style="margin-top:16px" id="plGenerateBtn" onclick="generatePayLink()">Generate Payment Link</button>
     <div id="plLinkResult" style="display:none"></div>
     <button class="btn btn-outline" onclick="closePayLinkModal()" style="margin-top:10px;width:100%">Close</button>
   </div>
@@ -1789,6 +1792,7 @@ async function openNewLink() {
   document.getElementById('plCreateOrderNow').checked = false;
   document.getElementById('plProductResults').innerHTML = '';
   document.getElementById('plLinkResult').style.display = 'none';
+  plSetLinkError('');
   renderPlItems();
   if (!allProducts.length) await loadAllProducts();
   searchPayLinkProducts('');
@@ -1869,48 +1873,82 @@ function updatePlTotal() {
   const final = isNaN(override) ? subtotal : override;
   document.getElementById('plFinalTotal').textContent = `₪${final}`;
 }
+function plSetLinkError(msg) {
+  const el = document.getElementById('plLinkError');
+  if (!el) return;
+  if (msg) { el.textContent = msg; el.classList.add('show'); }
+  else { el.textContent = ''; el.classList.remove('show'); }
+}
 async function insertPaymentLink(linkData, deliveryAddress) {
-  const payload = { ...linkData };
-  if (deliveryAddress) payload.delivery_address = deliveryAddress;
-  let result = await sb.from('payment_links').insert(payload);
-  const errMsg = result.error?.message || '';
-  if (result.error && deliveryAddress && /delivery_address/i.test(errMsg)) {
-    delete payload.delivery_address;
-    result = await sb.from('payment_links').insert(payload);
-  }
-  if (result.error && payload.created_by && /created_by|foreign key|violates foreign key/i.test(result.error.message || '')) {
-    delete payload.created_by;
-    result = await sb.from('payment_links').insert(payload);
+  const core = {
+    link_code: linkData.link_code,
+    customer_name: linkData.customer_name,
+    customer_phone: linkData.customer_phone,
+    items: linkData.items,
+    subtotal: linkData.subtotal,
+    discount: linkData.discount,
+    discount_note: linkData.discount_note,
+    total: linkData.total,
+    status: linkData.status,
+  };
+  let result = await sb.from('payment_links').insert(core).select('id').single();
+  if (result.error) return result;
+  const extras = {};
+  if (deliveryAddress) extras.delivery_address = deliveryAddress;
+  if (linkData.created_by) extras.created_by = linkData.created_by;
+  if (Object.keys(extras).length && result.data?.id) {
+    const { error: updateErr } = await sb.from('payment_links').update(extras).eq('id', result.data.id);
+    if (updateErr) console.warn('payment_links optional fields:', updateErr.message);
   }
   return result;
 }
 async function generatePayLink() {
+  plSetLinkError('');
+  const btn = document.getElementById('plGenerateBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  try {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    plSetLinkError('Session expired — refresh the page and sign in again.');
+    showToast('Session expired — sign in again', 6000);
+    return;
+  }
   if (!plCartItems.length) { showToast('Add at least one product'); return; }
-  const subtotal = plCartItems.reduce((s,i)=>s+i.price*i.qty,0);
+  const subtotal = plCartItems.reduce((s,i)=>s+(Number(i.price)||0)*i.qty,0);
   const override = parseFloat(document.getElementById('plFinalPrice').value);
   const total = isNaN(override) ? subtotal : override;
-  const discount = subtotal - total;
+  if (!total || total <= 0) {
+    plSetLinkError('Total must be greater than zero.');
+    showToast('Total must be greater than zero', 5000);
+    return;
+  }
+  const discount = Math.max(0, subtotal - total);
   const linkCode = Math.random().toString(36).substr(2,10);
   const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
   const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
 
-  const linkItems = plCartItems.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty }));
-  const createOrderNow = document.getElementById('plCreateOrderNow').checked;
+  const linkItems = plCartItems.map(i=>({
+    product_id: i.id, name_en: i.name_en, name_he: i.name_he,
+    price: Number(i.price) || 0, qty: Number(i.qty) || 1,
+  }));
+  const createOrderNow = document.getElementById('plCreateOrderNow')?.checked === true;
   const linkData = {
     link_code: linkCode,
     customer_name: customerName,
     customer_phone: customerPhone,
     items: linkItems,
-    subtotal, discount: discount > 0 ? discount : 0,
+    subtotal: Number(subtotal), discount,
     discount_note: document.getElementById('plDiscountNote').value.trim() || null,
-    total, status: 'pending',
-    created_by: adminUser?.id,
+    total: Number(total), status: 'pending',
+    created_by: adminUser?.id || session.user?.id || null,
   };
   const { error } = await insertPaymentLink(linkData, deliveryAddress);
   if (error) {
-    showToast('Error creating link: ' + (error.message || 'check console'));
-    console.error(error);
+    const detail = error.message || error.details || error.hint || JSON.stringify(error);
+    plSetLinkError('Could not create link: ' + detail);
+    showToast('Error creating link — see red box above button', 8000);
+    console.error('payment_links insert failed:', error);
     return;
   }
 
@@ -1976,6 +2014,13 @@ async function generatePayLink() {
     </div>`;
   if (!createOrderNow || !createdOrderNumber) showToast('Payment link created ✓');
   loadPayLinks();
+  } catch (err) {
+    console.error('generatePayLink:', err);
+    plSetLinkError('Unexpected error: ' + (err.message || String(err)));
+    showToast('Payment link failed — see red box above button', 8000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Payment Link'; }
+  }
 }
 function copyLink(url) {
   navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
@@ -2293,12 +2338,12 @@ function downloadCSV(rows, filename) {
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = filename; a.click();
 }
-function showToast(msg) {
+function showToast(msg, ms = 2400) {
   clearTimeout(undoDeleteTimer);
   lastDeletedArchiveId = null;
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2400);
+  setTimeout(()=>t.classList.remove('show'), ms);
 }
 // ══ DELIVERY SETTINGS ══
 async function loadDeliverySettings() {
