@@ -1873,8 +1873,13 @@ async function insertPaymentLink(linkData, deliveryAddress) {
   const payload = { ...linkData };
   if (deliveryAddress) payload.delivery_address = deliveryAddress;
   let result = await sb.from('payment_links').insert(payload);
-  if (result.error && deliveryAddress && /delivery_address/i.test(result.error.message || '')) {
+  const errMsg = result.error?.message || '';
+  if (result.error && deliveryAddress && /delivery_address/i.test(errMsg)) {
     delete payload.delivery_address;
+    result = await sb.from('payment_links').insert(payload);
+  }
+  if (result.error && payload.created_by && /created_by|foreign key|violates foreign key/i.test(result.error.message || '')) {
+    delete payload.created_by;
     result = await sb.from('payment_links').insert(payload);
   }
   return result;

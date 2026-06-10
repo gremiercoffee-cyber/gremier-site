@@ -1503,15 +1503,33 @@ function normalizeVariationOption(o) {
   return { label: o?.label || String(o), price: o?.price != null ? parseFloat(o.price) : null };
 }
 function pdGetVariationPrice(p) {
+  if (pdSelectedPrice != null && !isNaN(pdSelectedPrice)) return pdSelectedPrice;
   const base = parseFloat(p.price) || 0;
   for (const v of Object.values(pdSelectedVariations)) {
     if (v.price != null && !isNaN(v.price)) return v.price;
   }
   return base;
 }
-function pdGetVariationSuffix() {
+function pdGetPriceLabel() {
+  const guestSelect = document.getElementById('pdGuestSelect');
+  if (guestSelect && guestSectionVisible(guestSelect)) {
+    return guestSelect.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim() || '';
+  }
   const labels = Object.values(pdSelectedVariations).map(v => v.label).filter(Boolean);
-  return labels.length ? ' · ' + labels.join(' · ') : '';
+  return labels.join(' · ');
+}
+function guestSectionVisible(guestSelect) {
+  return guestSelect.closest('#pdGuestSection')?.style.display !== 'none';
+}
+function pdGetVariationSuffix() {
+  const parts = [];
+  const guestSelect = document.getElementById('pdGuestSelect');
+  if (guestSelect && guestSectionVisible(guestSelect)) {
+    const gl = guestSelect.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim();
+    if (gl) parts.push(gl);
+  }
+  Object.values(pdSelectedVariations).forEach(v => { if (v.label) parts.push(v.label); });
+  return parts.length ? ' · ' + parts.join(' · ') : '';
 }
 function pdGetSelectedAddons() {
   if (!pdCurrentProduct) return [];
@@ -1532,19 +1550,23 @@ function pdGetAddonSuffix() {
   return ' · +' + selected.map(a => a.name).join(', ');
 }
 function pdUpdateDrawerPrice() {
-  if (!pdCurrentProduct || isCoffeeBarProduct(pdCurrentProduct)) return;
+  if (!pdCurrentProduct) return;
   const p = pdCurrentProduct;
-  const total = pdGetVariationPrice(p) + pdGetAddonsTotal(p);
+  const total = pdGetVariationPrice(p) + pdGetAddonsTotal();
+  if (isCoffeeBarProduct(p)) {
+    const label = pdGetPriceLabel();
+    const labelHtml = label
+      ? (lang === 'he' ? label : `Price for ${label}`)
+      : (lang === 'he' ? 'מחיר' : 'Price');
+    document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${labelHtml}</span>₪${total}`;
+    return;
+  }
   document.getElementById('pdPrice').innerHTML = p.original_price
     ? `<span class="orig">₪${p.original_price}</span>₪${total}`
     : `₪${total}`;
 }
 function pdOnAddonChange() {
-  if (pdCurrentProduct && isCoffeeBarProduct(pdCurrentProduct) && pdSelectedPrice) {
-    pdOnGuestChange(document.getElementById('pdGuestSelect'));
-  } else {
-    pdUpdateDrawerPrice();
-  }
+  pdUpdateDrawerPrice();
 }
 function renderPdAddons(p) {
   const section = document.getElementById('pdAddonsSection');
@@ -1591,7 +1613,8 @@ function renderPdVariationDropdowns(p) {
     if (!opts.length) return '';
     const optionsHtml = opts.map(o => {
       const priceAttr = o.price != null && !isNaN(o.price) ? o.price : '';
-      return `<option data-label="${escHtml(o.label)}" data-price="${priceAttr}">${escHtml(o.label)}</option>`;
+      const priceLabel = o.price != null && !isNaN(o.price) ? ` — ₪${o.price}` : '';
+      return `<option data-label="${escHtml(o.label)}" data-price="${priceAttr}">${escHtml(o.label)}${priceLabel}</option>`;
     }).join('');
     return `<div style="margin-bottom:14px">
       <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px">${escHtml(g.name)}</label>
@@ -1605,9 +1628,7 @@ function escHtml(s) {
 }
 function pdOnGuestChange(select) {
   pdSelectedPrice = parseFloat(select.value);
-  const label = select.options[select.selectedIndex]?.text.split('—')[0]?.trim() || '';
-  const total = pdSelectedPrice + pdGetAddonsTotal();
-  document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?label||'מחיר':'Price for '+label}</span>₪${total}`;
+  pdUpdateDrawerPrice();
 }
 function openProductDrawerUI(productId) {
   const p = products.find(x => String(x.id) === String(productId));
@@ -1639,11 +1660,6 @@ function openProductDrawerUI(productId) {
     badge.style.display = 'none';
   }
   document.getElementById('pdName').textContent = name;
-  document.getElementById('pdPrice').innerHTML = isCoffeeBarProduct(p)
-    ? `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${lang==='he'?'החל מ':'Starting from'}</span>₪${p.price}`
-    : p.original_price
-      ? `<span class="orig">₪${p.original_price}</span>₪${p.price}`
-      : `₪${p.price}`;
   document.getElementById('pdDesc').textContent = getProductDescription(p);
   const featList = document.getElementById('pdFeatures');
   const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
@@ -1669,6 +1685,7 @@ function openProductDrawerUI(productId) {
     pdOnGuestChange(guestSelect);
   } else {
     guestSection.style.display = 'none';
+    pdUpdateDrawerPrice();
   }
   const waLink = document.getElementById('pdWhatsApp');
   if (isCoffeeBarProduct(p)) {
@@ -1723,56 +1740,30 @@ function pdChangeQty(delta) {
 }
 function pdAddToCart() {
   if (!pdCurrentProduct) return;
-  if (isCoffeeBarProduct(pdCurrentProduct) && pdSelectedPrice) {
-    const guestSelect = document.getElementById('pdGuestSelect');
-    const guestLabel = guestSelect?.options[guestSelect.selectedIndex]?.text.split('—')[0]?.trim() || '';
-    const addonSuffix = pdGetAddonSuffix();
-    const price = pdSelectedPrice + pdGetAddonsTotal();
-    const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
-    const cartId = pdCurrentProduct.id + '_' + pdSelectedPrice + (addonKey ? '_' + addonKey : '');
-    const existing = cart.find(x => x.id === cartId);
-    const nameSuffix = (guestLabel ? ` · ${guestLabel}` : '') + addonSuffix;
-    if (existing) { existing.qty += pdQty; }
-    else cart.push({
-      id: cartId,
-      name_en: pdCurrentProduct.name_en + nameSuffix,
-      name_he: (pdCurrentProduct.name_he || pdCurrentProduct.name_en) + nameSuffix,
-      price,
-      images: pdCurrentProduct.images,
-      category: pdCurrentProduct.category,
-      delivery_price: pdCurrentProduct.delivery_price != null ? parseFloat(pdCurrentProduct.delivery_price) : null,
-      qty: pdQty,
-    });
-    updateCartCount();
-    showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
-    closeProductDrawer(true);
-    openCartUI();
-    navReplace({ page: appPage, layer: 'cart' });
-  } else {
-    const p = pdCurrentProduct;
-    const suffix = pdGetVariationSuffix() + pdGetAddonSuffix();
-    const price = pdGetVariationPrice(p) + pdGetAddonsTotal();
-    const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
-    const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
-    const cartId = [p.id, varKey, addonKey].filter(Boolean).join('_');
-    const existing = cart.find(x => x.id === cartId);
-    if (existing) existing.qty += pdQty;
-    else cart.push({
-      id: cartId,
-      name_en: p.name_en + suffix,
-      name_he: (p.name_he || p.name_en) + suffix,
-      price,
-      images: p.images,
-      category: p.category,
-      delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,
-      qty: pdQty,
-    });
-    updateCartCount();
-    showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
-    closeProductDrawer(true);
-    openCartUI();
-    navReplace({ page: appPage, layer: 'cart' });
-  }
+  const p = pdCurrentProduct;
+  const suffix = pdGetVariationSuffix() + pdGetAddonSuffix();
+  const price = pdGetVariationPrice(p) + pdGetAddonsTotal();
+  const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
+  const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
+  const guestKey = pdSelectedPrice != null ? String(pdSelectedPrice) : '';
+  const cartId = [p.id, varKey, guestKey, addonKey].filter(Boolean).join('_');
+  const existing = cart.find(x => x.id === cartId);
+  if (existing) existing.qty += pdQty;
+  else cart.push({
+    id: cartId,
+    name_en: p.name_en + suffix,
+    name_he: (p.name_he || p.name_en) + suffix,
+    price,
+    images: p.images,
+    category: p.category,
+    delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,
+    qty: pdQty,
+  });
+  updateCartCount();
+  showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
+  closeProductDrawer(true);
+  openCartUI();
+  navReplace({ page: appPage, layer: 'cart' });
 }
 const CARD_DESC_FALLBACK = {
   bottles: { en: 'Slow-steeped cold brew — bold, smooth, ready to pour.', he: 'קולד ברו מחושל לאט — עמוק, חלק ומוכן להגשה.' },

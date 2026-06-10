@@ -226,36 +226,31 @@
 
 
 
-  async function callCreatePayment(id) {
+  async function callCreatePayment({ linkCode, orderId, deliveryAddress } = {}) {
+    const body = linkCode
+      ? { payment_link_code: linkCode, language: 'en' }
+      : { order_id: orderId, language: 'en' };
+    if (deliveryAddress) body.delivery_address = deliveryAddress;
+    if (!linkCode && !orderId) throw new Error('Payment setup error');
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
-
       method: 'POST',
-
       headers: {
-
         'Content-Type': 'application/json',
-
         'apikey': SUPABASE_ANON_KEY,
-
         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-
       },
-
-      body: JSON.stringify({ order_id: id, language: 'en' }),
-
+      body: JSON.stringify(body),
     });
-
     const data = await res.json().catch(() => ({}));
-
     if (!res.ok || !data.sale_url) {
-
-      throw new Error(data.error || 'Could not start PayMe payment');
-
+      const errMsg = data.error || data.message || `Could not start PayMe payment (${res.status})`;
+      if (/hello undefined/i.test(errMsg)) {
+        throw new Error('Payment service needs redeploying — run deploy-functions.bat');
+      }
+      throw new Error(errMsg);
     }
-
     return data.sale_url;
-
   }
 
 
@@ -344,18 +339,23 @@
 
 
 
-  async function savePayDeliveryAddress(orderId, link) {
+  function getPayAddressForCheckout(link) {
+    return getPayDeliveryAddress() || link.delivery_address || '';
+  }
 
-    const addr = getPayDeliveryAddress() || link.delivery_address || '';
-
-    if (!addr) return;
-
-    await sb.from('orders').update({ delivery_address: addr }).eq('id', orderId);
-
+  async function savePayLinkDeliveryAddress(link) {
+    const addr = getPayAddressForCheckout(link);
+    if (!addr) return '';
     const { error } = await sb.from('payment_links').update({ delivery_address: addr }).eq('link_code', link.link_code);
-
     if (!error) link.delivery_address = addr;
+    return addr;
+  }
 
+  async function savePayDeliveryAddress(orderId, link) {
+    const addr = getPayAddressForCheckout(link);
+    if (!addr) return;
+    await sb.from('orders').update({ delivery_address: addr }).eq('id', orderId);
+    await savePayLinkDeliveryAddress(link);
   }
 
 
@@ -610,37 +610,43 @@
 
 
   async function startPayment() {
-
     const btn = document.getElementById('payBtn');
-
     const errEl = document.getElementById('payError');
-
     if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
-
     if (errEl) errEl.style.display = 'none';
 
     try {
-
-      orderId = await ensureOrderId(paymentLink);
-
-      paymentLink.order_id = orderId;
-
-      await savePayDeliveryAddress(orderId, paymentLink);
-
+      const deliveryAddress = getPayAddressForCheckout(paymentLink);
+      await savePayLinkDeliveryAddress(paymentLink);
       navPayReplace('checkout');
 
-      const saleUrl = await callCreatePayment(orderId);
+      let saleUrl;
+      try {
+        // Preferred: no order needed — edge function reads payment_links directly
+        saleUrl = await callCreatePayment({
+          linkCode: paymentLink.link_code,
+          deliveryAddress: deliveryAddress || undefined,
+        });
+      } catch (e) {
+        const msg = (e.message || '').toLowerCase();
+        const needsOrderFallback = msg.includes('missing order') || msg.includes('order_id or payment_link');
+        if (!needsOrderFallback) throw e;
+
+        if (paymentLink.order_id) {
+          orderId = paymentLink.order_id;
+        } else {
+          orderId = await ensureOrderId(paymentLink);
+          paymentLink.order_id = orderId;
+        }
+        await savePayDeliveryAddress(orderId, paymentLink);
+        saleUrl = await callCreatePayment({ orderId });
+      }
 
       window.location.href = saleUrl;
-
     } catch (e) {
-
       if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
-
       if (errEl) { errEl.textContent = e.message || 'Payment error'; errEl.style.display = 'block'; }
-
     }
-
   }
 
 

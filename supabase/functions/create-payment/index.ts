@@ -168,7 +168,7 @@ serve(async (req) => {
 
     const body = await req.json();
 
-    const { order_id, payment_link_code, language } = body;
+    const { order_id, payment_link_code, language, delivery_address } = body;
 
 
 
@@ -236,7 +236,13 @@ serve(async (req) => {
 
       }
 
-
+      const addr = String(delivery_address || "").trim();
+      if (addr) {
+        await supabase
+          .from("payment_links")
+          .update({ delivery_address: addr, updated_at: new Date().toISOString() })
+          .eq("link_code", row.link_code);
+      }
 
       const totalShekels = Number(row.total) || 0;
 
@@ -286,15 +292,13 @@ serve(async (req) => {
 
 
 
-      await supabase
-
+      const { error: plUpdateErr } = await supabase
         .from("payment_links")
-
         .update({ payme_sale_id: paymeSaleId, updated_at: new Date().toISOString() })
-
         .eq("link_code", row.link_code);
-
-
+      if (plUpdateErr) {
+        console.warn("payment_links payme_sale_id update skipped:", plUpdateErr.message);
+      }
 
       return new Response(JSON.stringify({ sale_url: saleUrl, payme_sale_id: paymeSaleId, ok: true }), {
 
