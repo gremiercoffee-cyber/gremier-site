@@ -206,12 +206,7 @@ export async function sendOrderPaidNotification(
   if (resend.ok) emailOk = true;
   else detail = resend.detail || detail;
 
-  const sheetUrl = (Deno.env.get("GOOGLE_ORDER_WEBHOOK_URL") || "").trim();
-  if (sheetUrl) {
-    const sheet = await sendViaGoogleSheet(payload, options);
-    if (sheet.ok) sheetOk = true;
-    else if (!emailOk) detail = sheet.detail || detail;
-  }
+// Google Sheet webhook removed — Resend + Supabase are source of truth
 
   if (emailOk || sheetOk) return { ok: true };
 
