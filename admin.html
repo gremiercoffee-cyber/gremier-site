@@ -619,14 +619,10 @@
           <p class="page-sub">Upload images here — they go live on the website the moment you save them.</p>
         </div>
         <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:16px 18px;margin-bottom:24px;font-size:.84rem;color:var(--text2);line-height:1.6">
-          <strong style="color:var(--cream)">How it works:</strong> Upload a photo for each slot below. The website reads these directly from Cloudinary — no code change needed. Replace or remove any image at any time.
-        </div>
-        <div style="margin-bottom:16px">
-          <div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:14px">Hero Images <small style="font-family:'DM Sans',sans-serif;font-size:.72rem;color:var(--text2);font-weight:300">— shown on the homepage above the fold</small></div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px" id="siteImagesHero"></div>
+          <strong style="color:var(--cream)">How it works:</strong> Upload a photo for each slot below. They appear in the <strong style="color:var(--cream)">In Action</strong> gallery on the Coffee Bars page. Replace or remove any image at any time.
         </div>
         <div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:14px;margin-top:8px">Coffee Bar Ad Images <small style="font-family:'DM Sans',sans-serif;font-size:.72rem;color:var(--text2);font-weight:300">— shown in the events section</small></div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:14px">Coffee Bars — In Action <small style="font-family:'DM Sans',sans-serif;font-size:.72rem;color:var(--text2);font-weight:300">— 4 photos on the Coffee Bars page gallery</small></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px" id="siteImagesCB"></div>
         </div>
       </div>
@@ -962,7 +958,8 @@ async function checkAdminAccess(user) {
   loadAllProducts();
 }
 async function signInAdmin() {
-  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.href } });
+  const adminUrl = `${window.location.origin}/admin.html`;
+  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: adminUrl } });
 }
 async function signOut() { await sb.auth.signOut(); location.reload(); }
 
@@ -2752,18 +2749,15 @@ function showTab(tab) {
 }
 // ══ SITE IMAGES ══
 const SITE_IMAGE_SLOTS = [
-  { key:'hero_1',        label:'Hero Image 1',        hint:'Main homepage hero — large landscape' },
-  { key:'hero_2',        label:'Hero Image 2',        hint:'Second hero / slideshow image' },
-  { key:'hero_3',        label:'Hero Image 3',        hint:'Third hero / slideshow image' },
-  { key:'coffeebar_ad_1',label:'Coffee Bar Ad 1',     hint:'Coffee bars section — promo image' },
-  { key:'coffeebar_ad_2',label:'Coffee Bar Ad 2',     hint:'Coffee bars section — second image' },
+  { key:'cb_gallery_1', label:'In Action Photo 1', hint:'Coffee Bars page — top-left gallery slot' },
+  { key:'cb_gallery_2', label:'In Action Photo 2', hint:'Coffee Bars page — top-right gallery slot' },
+  { key:'cb_gallery_3', label:'In Action Photo 3', hint:'Coffee Bars page — bottom-left gallery slot' },
+  { key:'cb_gallery_4', label:'In Action Photo 4', hint:'Coffee Bars page — bottom-right gallery slot' },
 ];
 let siteImageCache = {};
 async function loadSiteImages() {
-  const heroGrid = document.getElementById('siteImagesHero');
   const cbGrid = document.getElementById('siteImagesCB');
-  if (!heroGrid) return;
-  heroGrid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  if (!cbGrid) return;
   cbGrid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   const { data } = await sb.from('site_settings').select('key,value');
   siteImageCache = {};
@@ -2786,10 +2780,7 @@ async function loadSiteImages() {
       ${url ? `<button class="btn btn-sm btn-full" style="margin-top:8px;background:none;border:1px solid var(--red);color:var(--red);font-size:.75rem" onclick="clearSiteImage('${slot.key}')">✕ Remove</button>` : ''}
     </div>`;
   }
-  const heroSlots = SITE_IMAGE_SLOTS.filter(s => s.key.startsWith('hero'));
-  const cbSlots = SITE_IMAGE_SLOTS.filter(s => s.key.startsWith('coffeebar'));
-  heroGrid.innerHTML = heroSlots.map(slotHTML).join('');
-  cbGrid.innerHTML = cbSlots.map(slotHTML).join('');
+  cbGrid.innerHTML = SITE_IMAGE_SLOTS.map(slotHTML).join('');
 }
 async function uploadSiteImage(key, input) {
   const file = input.files[0];

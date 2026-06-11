@@ -650,6 +650,8 @@
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
   const CLOUDINARY_CLOUD = 'YOUR_CLOUD_NAME';
   const ADMIN_EMAIL = 'gremiercoffee@gmail.com';
+  /** Public shop domain — OAuth must return here, not the old ops-only Vercel URL */
+  const CUSTOMER_SITE_ORIGIN = 'https://gremiercoffee.co.il';
   const SITE_URL = window.location.origin;
 </script>
 <!-- MOBILE MENU -->
@@ -722,14 +724,6 @@
       <button class="btn btn-outline" onclick="showPage('shop')" id="t-view-all">View All Products</button>
     </div>
   </div>
-  <div class="section section-alt">
-    <div class="why-grid" style="max-width:860px;margin:0 auto">
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">❄</div><div class="why-title" id="t-w1t">Slow Cold Brew</div><div class="why-desc" id="t-w1d">Slow-steeped at cold temperature for maximum smoothness and zero bitterness.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">→</div><div class="why-title" id="t-w2t">Delivered Fresh</div><div class="why-desc" id="t-w2d">From our brewhouse to your door — cold, fresh, ready to drink.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">◉</div><div class="why-title" id="t-w3t">Premium Beans</div><div class="why-desc" id="t-w3d">Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
-    </div>
-  </div>
   <div class="section section-alt" id="coffeeBarsSection">
     <div class="section-header">
       <div class="eyebrow" id="t-cb-eye">Events</div>
@@ -738,6 +732,14 @@
       <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.75;" id="t-cb-desc">Bring a premium Gremier cold brew bar to your wedding, party, or corporate event. We set up a beautiful station with our slow-steeped coffee — tailored to your guest count and occasion. Based in Jerusalem, serving events across Israel.</p>
     </div>
     <div class="product-grid" id="coffeeBarGrid"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+  <div class="section section-alt">
+    <div class="why-grid" style="max-width:860px;margin:0 auto">
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">❄</div><div class="why-title" id="t-w1t">Slow Cold Brew</div><div class="why-desc" id="t-w1d">Slow-steeped at cold temperature for maximum smoothness and zero bitterness.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">→</div><div class="why-title" id="t-w2t">Delivered Fresh</div><div class="why-desc" id="t-w2d">From our brewhouse to your door — cold, fresh, ready to drink.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">◉</div><div class="why-title" id="t-w3t">Premium Beans</div><div class="why-desc" id="t-w3d">Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.</div></div>
+      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">Events & Bars</div><div class="why-desc" id="t-w4d">Set up a full cold brew bar at your wedding, birthday, or corporate event.</div></div>
+    </div>
   </div>
   <div class="section" id="aboutSection">
     <div style="max-width:620px;margin:0 auto;text-align:center;">
@@ -1413,10 +1415,30 @@ function closeAuthModal(fromNav) {
   if (document.getElementById('authOverlay').classList.contains('open')) navBack();
   else document.getElementById('authOverlay').classList.remove('open');
 }
+function handleAuthClick() {
+  if (currentUser) showPage('myorders');
+  else openAuthModal();
+}
+function isOAuthReturnUrl() {
+  const h = window.location.hash || '';
+  return h.includes('access_token=') || h.includes('error=') || h.includes('error_description=');
+}
+function getCustomerAuthRedirectUrl() {
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return window.location.origin + '/';
+  }
+  return CUSTOMER_SITE_ORIGIN + '/';
+}
+function cleanOAuthHashFromUrl() {
+  if (!isOAuthReturnUrl()) return;
+  const clean = window.location.pathname + window.location.search;
+  history.replaceState(history.state || { page: 'home', layer: null, __app: 'gremier' }, '', clean || '/');
+}
 async function signInWithGoogle() {
   await sb.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: SITE_URL }
+    options: { redirectTo: getCustomerAuthRedirectUrl() }
   });
 }
 // ══ PRODUCTS ══
@@ -2194,11 +2216,6 @@ async function loadSiteSettings() {
   applySiteImages();
 }
 function applySiteImages() {
-  // Hero background — use hero_1 if set
-  if (siteSettings.hero_1) {
-    const heroBg = document.querySelector('.hero-bg');
-    if (heroBg) heroBg.style.background = `url('${siteSettings.hero_1}') center/cover no-repeat`;
-  }
   // Coffee bars page — hero image
   if (siteSettings.cb_hero) {
     const w = document.getElementById('cbpHeroImgWrap');
@@ -2774,7 +2791,9 @@ function updateDeliveryPrice() {
 }
 // ══ INIT ══
 async function init() {
+  const oauthReturn = isOAuthReturnUrl();
   await initAuth();
+  if (oauthReturn) cleanOAuthHashFromUrl();
   await loadProducts();
   try { await loadDeliveryZones(); } catch(e) { console.warn('Delivery zones unavailable:', e); }
   loadSiteSettings();
@@ -2782,6 +2801,10 @@ async function init() {
   updateCartCount();
   if (isPaymentReturnUrl()) {
     await handlePaymentReturn();
+  } else if (oauthReturn) {
+    appPage = 'home';
+    showPage('home', true);
+    navReplace({ page: 'home', layer: null }, true);
   } else {
     restorePageFromUrl();
   }
