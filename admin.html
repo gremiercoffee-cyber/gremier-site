@@ -860,10 +860,15 @@
   <div class="modal-box modal-paylink">
     <h2 class="modal-title" id="plModalTitle">New Payment Link</h2>
     <p class="page-sub" id="plModalSub" style="margin:-8px 0 16px;font-size:.82rem"></p>
-    <div class="form-row-2">
-      <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
-      <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
-    </div>
+<input type="hidden" id="plEditLinkId"/>
+<div class="form-group">
+  <label class="form-label">Link Name <span style="font-weight:400;color:var(--text2)">(internal — only for admin)</span></label>
+  <input class="form-input" id="plLinkName" placeholder="Example: Weekly yeshiva coffee order"/>
+</div>
+<div class="form-row-2">
+  <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
+  <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
+</div>
     <div class="form-group"><label class="form-label">Email <span style="font-weight:400;color:var(--text2)">(for order confirmation)</span></label><input class="form-input" id="plEmail" type="email" placeholder="customer@example.com"/></div>
     <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
     <div class="form-group">
@@ -922,7 +927,7 @@ let allMembers = [];
 let memberFilter = { search:'', sort:'spent' };
 let editingImages = []; // array of Cloudinary URLs
 let plCartItems = [];
-let plLinkType = 'onetime';
+let plLinkType = 'onetime'; let plEditingLinkId = null; let plEditingLinkCode = null;
 const REUSABLE_LINK_MARKER = 'gremier:reusable';
 function isRecurringPayLink(link) { return isReusablePayLink(link); }
 function isReusablePayLink(link) {
@@ -2120,8 +2125,12 @@ async function openNewLink(type) {
     if (sub) sub.textContent = 'Single checkout — the link closes after the customer pays.';
     if (btn) btn.textContent = 'Generate One-time Link';
   }
-  plCartItems = [];
-  document.getElementById('plCustomer').value = '';
+ plCartItems = [];
+plEditingLinkId = null;
+plEditingLinkCode = null;
+document.getElementById('plEditLinkId').value = '';
+document.getElementById('plLinkName').value = '';
+document.getElementById('plCustomer').value = '';
   document.getElementById('plPhone').value = '';
   document.getElementById('plEmail').value = '';
   document.getElementById('plAddress').value = '';
@@ -2138,13 +2147,97 @@ async function openNewLink(type) {
   document.getElementById('payLinkModal').classList.add('open');
 }
 function closePayLinkModal() { document.getElementById('payLinkModal').classList.remove('open'); }
+
+async function editPayLink(id) {
+  const { data: link, error } = await sb.from('payment_links').select('*').eq('id', id).maybeSingle();
+  if (error || !link) {
+    showToast('Could not load payment link');
+    console.error(error);
+    return;
+  }
+
+  plEditingLinkId = link.id;
+  plEditingLinkCode = link.link_code;
+  plLinkType = isRecurringPayLink(link) ? 'recurring' : 'onetime';
+
+  const title = document.getElementById('plModalTitle');
+  const sub = document.getElementById('plModalSub');
+  const btn = document.getElementById('plGenerateBtn');
+
+  if (title) title.textContent = plLinkType === 'recurring' ? 'Edit Recurring Link' : 'Edit One-time Link';
+  if (sub) sub.textContent = plLinkType === 'recurring'
+    ? 'Edit this recurring link — the same URL will keep working.'
+    : 'Edit this one-time payment link.';
+  if (btn) btn.textContent = 'Save Changes';
+
+  document.getElementById('plEditLinkId').value = link.id;
+  document.getElementById('plLinkName').value = link.link_name || '';
+  document.getElementById('plCustomer').value = link.customer_name || '';
+  document.getElementById('plPhone').value = link.customer_phone || '';
+  document.getElementById('plEmail').value = link.customer_email || '';
+  document.getElementById('plAddress').value = link.delivery_address || '';
+  document.getElementById('plProductSearch').value = '';
+  document.getElementById('plFinalPrice').value = '';
+  document.getElementById('plDiscountNote').value = link.discount_note || '';
+  document.getElementById('plCreateOrderNow').checked = false;
+  document.getElementById('plLinkResult').style.display = 'none';
+  plSetLinkError('');
+
+  plCartItems = (link.items || []).map(i => ({
+    id: i.product_id || i.id || Math.random().toString(36).slice(2),
+    name_en: i.name_en || i.name || 'Item',
+    name_he: i.name_he || '',
+    price: Number(i.price) || 0,
+    qty: Number(i.qty) || 1,
+    image: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
+    image_url: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
+    category: i.category || 'bottles',
+  }));
+
+  renderPlItems();
+  if (!allProducts.length) await loadAllProducts();
+  searchPayLinkProducts('');
+  document.getElementById('payLinkModal').classList.add('open');
+}
 function renderPayLinkProductThumb(p) {
   if (p.images?.length) return `<img src="${escAttr(p.images[0])}" alt=""/>`;
   return `<span class="pl-product-icon">${productIcon(p.category)}</span>`;
 }
 function renderPlItemThumb(item) {
-  if (item.image) return `<img src="${escAttr(item.image)}" alt=""/>`;
+  const img = item.image || item.image_url || item.thumbnail || item.thumbnail_url;
+  if (img) return `<img src="${escAttr(img)}" alt=""/>`;
   return productIcon(item.category || 'bottles');
+}
+
+function getPayLinkItemImage(item) {
+  if (!item) return '';
+  if (item.image) return item.image;
+  if (item.image_url) return item.image_url;
+  if (item.thumbnail) return item.thumbnail;
+  if (item.thumbnail_url) return item.thumbnail_url;
+  if (Array.isArray(item.images) && item.images[0]) return item.images[0];
+  return '';
+}
+
+function renderPayLinkListThumbs(items) {
+  const list = Array.isArray(items) ? items : [];
+  const thumbs = list.map(getPayLinkItemImage).filter(Boolean).slice(0, 4);
+
+  if (!thumbs.length) {
+    return '<span style="display:inline-flex;width:34px;height:34px;border-radius:4px;background:var(--bg3);align-items:center;justify-content:center;margin-right:8px">☕</span>';
+  }
+
+  return `<span style="display:inline-flex;gap:3px;margin-right:8px;vertical-align:middle">
+    ${thumbs.map(src => `<img src="${escAttr(src)}" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--border)"/>`).join('')}
+  </span>`;
+}
+
+function getPayLinkDisplayName(link) {
+  const name = String(link?.link_name || '').trim();
+  if (name) return name;
+  const customer = String(link?.customer_name || '').trim();
+  if (customer) return customer;
+  return 'Untitled link';
 }
 function searchPayLinkProducts(query) {
   const q = (query || '').trim().toLowerCase();
@@ -2220,8 +2313,9 @@ function plSetLinkError(msg) {
 }
 async function insertPaymentLink(linkData, deliveryAddress) {
   const core = {
-    link_code: linkData.link_code,
-    customer_name: linkData.customer_name,
+  link_code: linkData.link_code,
+  link_name: linkData.link_name,
+  customer_name: linkData.customer_name,
     customer_phone: linkData.customer_phone,
     items: linkData.items,
     subtotal: linkData.subtotal,
@@ -2272,21 +2366,29 @@ async function generatePayLink() {
     return;
   }
   const discount = Math.max(0, subtotal - total);
-  const linkCode = Math.random().toString(36).substr(2,10);
-  const customerName = document.getElementById('plCustomer').value.trim() || null;
+  const linkCode = plEditingLinkCode || Math.random().toString(36).substr(2,10);
+const linkName = document.getElementById('plLinkName').value.trim() || null;
+const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
   const customerEmail = document.getElementById('plEmail').value.trim() || null;
   const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
 
-  const linkItems = plCartItems.map(i=>({
-    product_id: i.id, name_en: i.name_en, name_he: i.name_he,
-    price: Number(i.price) || 0, qty: Number(i.qty) || 1,
-  }));
+ const linkItems = plCartItems.map(i=>({
+  product_id: i.id,
+  name_en: i.name_en,
+  name_he: i.name_he,
+  price: Number(i.price) || 0,
+  qty: Number(i.qty) || 1,
+  image: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
+  image_url: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
+  category: i.category || 'bottles',
+}));
   const createOrderNow = document.getElementById('plCreateOrderNow')?.checked === true;
   const reusable = plLinkType === 'recurring';
   const linkData = {
-    link_code: linkCode,
-    customer_name: customerName,
+  link_code: linkCode,
+  link_name: linkName,
+  customer_name: customerName,
     customer_phone: customerPhone,
     customer_email: customerEmail,
     items: linkItems,
@@ -2296,17 +2398,42 @@ async function generatePayLink() {
     created_by: adminUser?.id || session.user?.id || null,
     reusable,
   };
-  const { error } = await insertPaymentLink(linkData, deliveryAddress);
-  if (error) {
-    const detail = error.message || error.details || error.hint || JSON.stringify(error);
-    plSetLinkError('Could not create link: ' + detail);
-    showToast('Error creating link — see red box above button', 8000);
-    console.error('payment_links insert failed:', error);
-    return;
-  }
+ let saveError = null;
+
+if (plEditingLinkId) {
+  const updateData = {
+    link_name: linkName,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_email: customerEmail,
+    delivery_address: deliveryAddress,
+    items: linkItems,
+    subtotal: Number(subtotal),
+    discount,
+    discount_note: document.getElementById('plDiscountNote').value.trim() || null,
+    total: Number(total),
+    reusable,
+    tranzila_url: reusable ? REUSABLE_LINK_MARKER : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const result = await sb.from('payment_links').update(updateData).eq('id', plEditingLinkId);
+  saveError = result.error;
+} else {
+  const result = await insertPaymentLink(linkData, deliveryAddress);
+  saveError = result.error;
+}
+
+if (saveError) {
+  const detail = saveError.message || saveError.details || saveError.hint || JSON.stringify(saveError);
+  plSetLinkError('Could not save link: ' + detail);
+  showToast('Error saving link — see red box above button', 8000);
+  console.error('payment_links save failed:', saveError);
+  return;
+}
 
   let createdOrderNumber = null;
-  if (createOrderNow) {
+  if (createOrderNow && !plEditingLinkId) {
     const orderData = {
       customer_name: customerName || 'Payment Link Customer',
       customer_phone: customerPhone,
@@ -2356,7 +2483,7 @@ async function generatePayLink() {
       ${reusable ? '🔁 Recurring — this link stays open after each payment<br/>' : 'One-time — closes after payment<br/>'}
       💳 Customer pays via PayMe at this link
     </div>`;
-  if (!createOrderNow || !createdOrderNumber) showToast('Payment link created ✓');
+  if (plEditingLinkId) {   showToast('Payment link updated ✓'); } else if (!createOrderNow || !createdOrderNumber) {   showToast('Payment link created ✓'); }
   loadPayLinks();
   } catch (err) {
     console.error('generatePayLink:', err);
@@ -2443,7 +2570,8 @@ async function loadPayLinks() {
 }
 
 function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecurringSection) {
-  const items = (l.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
+  const itemList = l.items || [];
+  const items = itemList.map(i=>`${i.name_en || i.name || 'Item'} ×${i.qty || 1}`).join(', ');
   const date = new Date(l.created_at).toLocaleDateString();
   const linkUrl = `${SITE_URL}/pay.html?code=${l.link_code}`;
   const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
@@ -2456,6 +2584,7 @@ function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecu
   const opsBtn = (display.status === 'pending' || display.status === 'paid' || display.status === 'fulfilled' || isRecurringSection)
     ? `<button class="btn btn-blue btn-sm" onclick="queuePaymentLinkForOps('${l.link_code}')" title="${display.status === 'paid' || display.status === 'fulfilled' ? 'Send to Ops for scheduling' : 'Queue in Ops before customer pays'}">📦 Ops</button>`
     : '';
+
   let statusCell;
   let latestNote = '';
   if (isRecurringSection) {
@@ -2466,9 +2595,23 @@ function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecu
   } else {
     statusCell = `<span class="status-pill s-${display.css}">${display.label}</span>`;
   }
+
+  const displayName = getPayLinkDisplayName(l);
+  const thumbs = renderPayLinkListThumbs(itemList);
+  const customerLine = l.customer_name ? `<br><small>${escHtml(l.customer_name)}</small>` : '';
+  const phoneLine = l.customer_phone ? `<br><small>${escHtml(l.customer_phone)}</small>` : '';
+
   return `<tr>
-    <td class="cell-customer">${l.customer_name||'—'}${l.customer_phone?`<br><small>${l.customer_phone}</small>`:''}${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}${latestNote}</td>
-    <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
+    <td class="cell-customer">
+      <strong style="color:var(--cream)">${escHtml(displayName)}</strong>
+      ${customerLine}
+      ${phoneLine}
+      ${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}
+      ${latestNote}
+    </td>
+    <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(items)}">
+      ${thumbs}<span>${escHtml(items || 'No items')}</span>
+    </td>
     <td class="cell-total" style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
     <td class="cell-status">${statusCell}</td>
     <td class="cell-date hide-mobile">${date}</td>
@@ -2476,6 +2619,7 @@ function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecu
       <div class="cell-actions-wrap">
         ${opsBtn}
         ${recreateBtn}
+        <button class="btn btn-outline btn-sm" onclick="editPayLink('${l.id}')">Edit</button>
         <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
         ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
         <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
