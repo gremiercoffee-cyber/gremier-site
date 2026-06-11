@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
+import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-order.ts";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { findCheckoutOrder } from "../_shared/find-checkout-order.ts";
 import { resolvePayMePaymentStatus } from "../_shared/payme-query.ts";
@@ -261,15 +262,9 @@ async function fulfillPaymentLinkFromReturn(
   }
 
   if (isReusablePaymentLink(link)) {
-    await resetReusablePaymentLink(supabase, link.link_code);
+    await resetReusablePaymentLink(supabase, link.link_code, orderId);
   } else {
-    const linkUpdate: Record<string, unknown> = {
-      status: "paid",
-      order_id: orderId,
-      updated_at: new Date().toISOString(),
-    };
-    if (paymeInfo.payme_sale_id) linkUpdate.payme_sale_id = paymeInfo.payme_sale_id;
-    await supabase.from("payment_links").update(linkUpdate).eq("link_code", link.link_code);
+    await syncPaymentLinkFromOrder(supabase, orderId);
   }
 
   return orderId;
@@ -313,16 +308,9 @@ async function markOrderPaid(
       .eq("link_code", linkCode)
       .maybeSingle();
     if (isReusablePaymentLink(link)) {
-      await resetReusablePaymentLink(supabase, linkCode);
+      await resetReusablePaymentLink(supabase, linkCode, orderId);
     } else {
-      await supabase
-        .from("payment_links")
-        .update({
-          status: "paid",
-          order_id: orderId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("link_code", linkCode);
+      await syncPaymentLinkFromOrder(supabase, orderId);
     }
   }
 

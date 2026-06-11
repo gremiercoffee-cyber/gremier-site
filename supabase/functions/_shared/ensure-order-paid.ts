@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "./payment-link.ts";
+import { syncPaymentLinkFromOrder } from "./sync-payment-link-from-order.ts";
 import { resolvePayMePaymentStatus } from "./payme-query.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
@@ -58,16 +59,9 @@ export async function ensureOrderPaidFromPayMe(
       .eq("link_code", linkCode)
       .maybeSingle();
     if (isReusablePaymentLink(link)) {
-      await resetReusablePaymentLink(supabase, linkCode);
+      await resetReusablePaymentLink(supabase, linkCode, orderId);
     } else {
-      await supabase
-        .from("payment_links")
-        .update({
-          status: "paid",
-          order_id: orderId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("link_code", linkCode);
+      await syncPaymentLinkFromOrder(supabase, orderId);
     }
   }
 

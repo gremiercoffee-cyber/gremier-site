@@ -7,13 +7,15 @@ export const REUSABLE_LINK_MARKER = "gremier:reusable";
 export async function resetReusablePaymentLink(
   supabase: ReturnType<typeof createClient>,
   linkCode: string,
+  paidOrderId?: string,
 ): Promise<void> {
-  const patch = {
+  const patch: Record<string, unknown> = {
     status: "pending",
     order_id: null,
     payme_sale_id: null,
     updated_at: new Date().toISOString(),
   };
+  if (paidOrderId) patch.last_order_id = paidOrderId;
   await supabase.from("payment_links").update(patch).eq("link_code", linkCode);
   // sale_url column may not exist until migration — ignore failure
   await supabase

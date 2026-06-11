@@ -433,6 +433,39 @@ async function markPendingWebsiteScheduled(pendingRow, newJob) {
     await sbFetch(`pending_website_deliveries?order_id=eq.${pendingRow.order_id}`, { method: "PATCH", prefer: "return=minimal", body });
   }
 }
+async function markPendingWebsiteDelivered(pendingRow, job) {
+  const body = JSON.stringify({
+    status: "delivered",
+    scheduled_date: job?.date || null,
+    scheduled_time: job?.time || null,
+  });
+  if (pendingRow?.id) {
+    await sbFetch(`pending_website_deliveries?id=eq.${pendingRow.id}`, { method: "PATCH", prefer: "return=minimal", body });
+  } else if (pendingRow?.order_id) {
+    await sbFetch(`pending_website_deliveries?order_id=eq.${pendingRow.order_id}`, { method: "PATCH", prefer: "return=minimal", body });
+  }
+}
+async function syncOrderFulfilledFromOps(orderId, jobId) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-order-fulfilled`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ order_id: orderId, ops_inventory_already_deducted: true, ops_job_id: jobId || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok && data.skipped !== "already_notified") {
+      console.warn("Admin fulfillment sync failed:", data);
+    }
+    return data;
+  } catch (e) {
+    console.error("syncOrderFulfilledFromOps:", e);
+    return null;
+  }
+}
 async function dismissPendingWebsiteDelivery(orderId, pendingRowId) {
   const body = JSON.stringify({ status: "dismissed" });
   if (pendingRowId) {
@@ -1666,6 +1699,7 @@ export default function App() {
   async function confirmCheckoff(job, actual, confirmedQtys) {
     if (!isAdmin) return;
     setCheckoffJob(null);
+    const wasAlreadyDone = job.done === true;
     // Merge any confirmed quantities or actualQty back into the job object
     // so applyJobSideEffects sees the right numbers
     const finalJob = {
@@ -1680,12 +1714,15 @@ export default function App() {
     setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
     const patchBody = { done: true, actual_qty: actual, wa_sent_at: null };
     if (isStoreWaDelivery(finalJob)) patchBody.wa_needs_send = true;
-    await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify(patchBody)});
-    await applyJobSideEffects(finalJob, confirmedQtys);
+    if (!wasAlreadyDone) {
+      await sbFetch(`jobs?id=eq.${job.id}`, {method:"PATCH", prefer:"return=minimal", body:JSON.stringify(patchBody)});
+      await applyJobSideEffects(finalJob, confirmedQtys);
+    }
     if (finalJob.type === "delivery" && finalJob.websiteOrderId) {
       const pendingRow = pendingWebDeliveries.find(p => p.order_id === finalJob.websiteOrderId)
         || (pendingWebsiteRef.current?.order_id === finalJob.websiteOrderId ? pendingWebsiteRef.current : null);
-      await markPendingWebsiteScheduled(pendingRow || { order_id: finalJob.websiteOrderId }, finalJob);
+      await markPendingWebsiteDelivered(pendingRow || { order_id: finalJob.websiteOrderId }, finalJob);
+      await syncOrderFulfilledFromOps(finalJob.websiteOrderId, finalJob.id);
       pendingWebsiteRef.current = null;
       setPrefillWebsiteOrder(null);
       loadPendingWebDeliveries();

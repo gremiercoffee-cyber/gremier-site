@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHash } from "node:crypto";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
+import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-order.ts";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { findCheckoutOrder } from "../_shared/find-checkout-order.ts";
 
@@ -514,16 +515,9 @@ async function fulfillPaymentLink(
 
 
   if (isReusablePaymentLink(link)) {
-    await resetReusablePaymentLink(supabase, link.link_code);
+    await resetReusablePaymentLink(supabase, link.link_code, orderId);
   } else {
-    await supabase
-      .from("payment_links")
-      .update({
-        status: "paid",
-        order_id: orderId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("link_code", link.link_code);
+    await syncPaymentLinkFromOrder(supabase, orderId);
   }
 
 
@@ -828,12 +822,9 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
         .maybeSingle();
 
       if (isReusablePaymentLink(plink)) {
-        await resetReusablePaymentLink(supabase, linkCode);
+        await resetReusablePaymentLink(supabase, linkCode, order.id);
       } else {
-        await supabase
-          .from("payment_links")
-          .update({ status: "paid", order_id: order.id, updated_at: new Date().toISOString() })
-          .eq("link_code", linkCode);
+        await syncPaymentLinkFromOrder(supabase, order.id);
       }
 
     }
