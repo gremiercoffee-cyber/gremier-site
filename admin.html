@@ -2603,14 +2603,14 @@ function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecu
 
   return `<tr>
     <td class="cell-customer">
-      <strong style="color:var(--cream)">${escHtml(displayName)}</strong>
+      <span style="display:inline-flex;align-items:center;gap:8px;max-width:100%">   ${thumbs}   <strong style="color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(displayName)}</strong> </span>
       ${customerLine}
       ${phoneLine}
       ${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}
       ${latestNote}
     </td>
     <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(items)}">
-      ${thumbs}<span>${escHtml(items || 'No items')}</span>
+      <span>${escHtml(items || 'No items')}</span>
     </td>
     <td class="cell-total" style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
     <td class="cell-status">${statusCell}</td>
