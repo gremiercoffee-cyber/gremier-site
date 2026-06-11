@@ -259,13 +259,14 @@
     } catch (_) {}
   }
 
-  async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail } = {}) {
+  async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail, customerPhone } = {}) {
     const body = { language: 'en' };
     if (orderId) body.order_id = orderId;
     if (linkCode) body.payment_link_code = linkCode;
     if (!body.order_id && !body.payment_link_code) throw new Error('Payment setup error');
     if (deliveryAddress) body.delivery_address = deliveryAddress;
     if (customerEmail) body.customer_email = customerEmail;
+    if (customerPhone) body.customer_phone = customerPhone;
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
       method: 'POST',
@@ -294,7 +295,7 @@
     if (isReusableLink(link)) {
       const orderData = {
         customer_name: link.customer_name || 'Payment Link Customer',
-        customer_phone: link.customer_phone || null,
+        customer_phone: link.customer_phone || getPayPhone() || null,
         customer_email: link.customer_email || getPayEmail() || null,
         delivery_address: link.delivery_address || null,
         items: link.items || [],
@@ -345,7 +346,7 @@
 
       customer_name: link.customer_name || 'Payment Link Customer',
 
-      customer_phone: link.customer_phone || null,
+      customer_phone: link.customer_phone || getPayPhone() || null,
 
       customer_email: link.customer_email || getPayEmail() || null,
 
@@ -390,8 +391,26 @@
     return el ? el.value.trim() : '';
   }
 
+  function getPayPhone() {
+    const el = document.getElementById('payPhone');
+    return el ? el.value.trim() : '';
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+  }
+
+  function isValidPhone(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits.length >= 9 && digits.length <= 15;
+  }
+
   function getPayEmailForCheckout(link) {
     return getPayEmail() || link.customer_email || '';
+  }
+
+  function getPayPhoneForCheckout(link) {
+    return getPayPhone() || link.customer_phone || '';
   }
 
   async function savePayLinkCustomerEmail(link) {
@@ -402,11 +421,26 @@
     return email;
   }
 
+  async function savePayLinkCustomerPhone(link) {
+    const phone = getPayPhoneForCheckout(link);
+    if (!phone) return '';
+    const { error } = await sb.from('payment_links').update({ customer_phone: phone }).eq('link_code', link.link_code);
+    if (!error) link.customer_phone = phone;
+    return phone;
+  }
+
   async function savePayCustomerEmail(orderId, link) {
     const email = getPayEmailForCheckout(link);
     if (!email) return;
     await sb.from('orders').update({ customer_email: email }).eq('id', orderId);
     await savePayLinkCustomerEmail(link);
+  }
+
+  async function savePayCustomerPhone(orderId, link) {
+    const phone = getPayPhoneForCheckout(link);
+    if (!phone) return;
+    await sb.from('orders').update({ customer_phone: phone }).eq('id', orderId);
+    await savePayLinkCustomerPhone(link);
   }
 
   function getPayDeliveryAddress() {
@@ -864,11 +898,21 @@ if (!resolvedLinkCode && resolvedOrderId) {
 
       <div class="pay-field">
 
-        <label for="payEmail">Email <span style="text-transform:none;letter-spacing:0;color:#666">(for receipt)</span></label>
+        <label for="payEmail">Email <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
 
-        <input type="email" id="payEmail" placeholder="you@example.com" value="${(link.customer_email || '').replace(/"/g, '&quot;')}"/>
+        <input type="email" id="payEmail" placeholder="you@example.com" value="${(link.customer_email || '').replace(/"/g, '&quot;')}" required/>
 
-        <div class="pay-field-hint">We'll send your order confirmation here after payment.</div>
+        <div class="pay-field-hint">Required — we'll send your order confirmation here after payment.</div>
+
+      </div>
+
+      <div class="pay-field">
+
+        <label for="payPhone">Phone <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
+
+        <input type="tel" id="payPhone" placeholder="05X-XXXXXXX" value="${(link.customer_phone || '').replace(/"/g, '&quot;')}" required/>
+
+        <div class="pay-field-hint">Required — so we can reach you about delivery.</div>
 
       </div>
 
@@ -934,8 +978,22 @@ if (!resolvedLinkCode && resolvedOrderId) {
     try {
       const deliveryAddress = getPayAddressForCheckout(paymentLink);
       const customerEmail = getPayEmailForCheckout(paymentLink);
+      const customerPhone = getPayPhoneForCheckout(paymentLink);
+      if (!customerEmail || !isValidEmail(customerEmail)) {
+        if (errEl) { errEl.textContent = 'Please enter a valid email address'; errEl.style.display = 'block'; }
+        paymentStarting = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
+        return;
+      }
+      if (!customerPhone || !isValidPhone(customerPhone)) {
+        if (errEl) { errEl.textContent = 'Please enter a valid phone number'; errEl.style.display = 'block'; }
+        paymentStarting = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
+        return;
+      }
       await savePayLinkDeliveryAddress(paymentLink);
       await savePayLinkCustomerEmail(paymentLink);
+      await savePayLinkCustomerPhone(paymentLink);
       navPayReplace('checkout');
 
       // Reusable links always get a fresh order per payment — never reuse link.order_id.
@@ -950,10 +1008,11 @@ if (!resolvedLinkCode && resolvedOrderId) {
       }
       await savePayDeliveryAddress(orderId, paymentLink);
       await savePayCustomerEmail(orderId, paymentLink);
+      await savePayCustomerPhone(orderId, paymentLink);
 
       let payData;
       try {
-        payData = await callCreatePayment({ orderId, linkCode: paymentLink.link_code });
+        payData = await callCreatePayment({ orderId, linkCode: paymentLink.link_code, customerEmail, customerPhone });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
         if (msg.includes('already paid')) {
@@ -967,6 +1026,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
             orderId,
             deliveryAddress: deliveryAddress || undefined,
             customerEmail: customerEmail || undefined,
+            customerPhone: customerPhone || undefined,
           });
         } else {
           throw e;
