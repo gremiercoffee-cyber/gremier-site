@@ -1816,7 +1816,7 @@ function renderOrdersTable(orders) {
       : '';
     return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
       <td class="cell-num" style="color:var(--cream)">#${o.order_number}${subBadge}</td>
-      <td class="cell-customer">${o.customer_name}${o.customer_phone?`<br><small>${o.customer_phone}</small>`:''}</td>
+      <td class="cell-customer">${escHtml(o.customer_name||'')}${o.customer_phone?`<br><small>${escHtml(o.customer_phone)}</small>`:''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
       <td class="cell-total" style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
       <td class="cell-status"><span class="status-pill s-${o.status}">${o.status}</span></td>
@@ -2010,16 +2010,16 @@ function openOrderDetail(id) {
   if (!o) return;
   const items = (o.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${i.name_en} ×${i.qty}</span><span style="color:var(--cream)">₪${i.price*i.qty}</span></div>`).join('');
   document.getElementById('orderModalTitle').textContent = `Order #${o.order_number}`;
-  document.getElementById('orderModalContent').innerHTML = `
+ document.getElementById('orderModalContent').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
-      <div><div class="form-label">Customer</div><div style="font-size:.9rem;color:var(--cream)">${o.customer_name}</div></div>
-      <div><div class="form-label">Phone</div><div style="font-size:.9rem;color:var(--cream)">${o.customer_phone||'—'}</div></div>
-      <div><div class="form-label">Email</div><div style="font-size:.9rem;color:var(--cream)">${o.customer_email||'—'}</div></div>
-      <div><div class="form-label">Address</div><div style="font-size:.9rem;color:var(--cream)">${o.delivery_address||'—'}</div></div>
-      <div><div class="form-label">Status</div><span class="status-pill s-${o.status}">${o.status}</span></div>
-      <div><div class="form-label">Payment</div><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></div>
+      <div><div class="form-label">Customer</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_name||'')}</div></div>
+      <div><div class="form-label">Phone</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_phone||'—')}</div></div>
+      <div><div class="form-label">Email</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_email||'—')}</div></div>
+      <div><div class="form-label">Address</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.delivery_address||'—')}</div></div>
+      <div><div class="form-label">Status</div><span class="status-pill s-${escHtml(o.status||'')}">${escHtml(o.status||'')}</span></div>
+      <div><div class="form-label">Payment</div><span class="status-pill s-${escHtml(o.payment_status||'')}">${escHtml(o.payment_status||'')}</span></div>
     </div>
-    ${o.notes?`<div style="background:var(--bg3);padding:10px 14px;border-radius:4px;font-size:.82rem;color:var(--text2);margin-bottom:16px">Notes: ${o.notes}</div>`:''}
+    ${o.notes?`<div style="background:var(--bg3);padding:10px 14px;border-radius:4px;font-size:.82rem;color:var(--text2);margin-bottom:16px">Notes: ${escHtml(o.notes)}</div>`:''}
     <div>${items}</div>
     <div style="display:flex;justify-content:space-between;padding:12px 0;font-size:.95rem"><span style="color:var(--text2)">Total</span><span style="color:var(--cream);font-size:1.1rem">₪${o.total}</span></div>
     <div style="display:flex;gap:8px;margin-top:8px">
