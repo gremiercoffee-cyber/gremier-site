@@ -629,18 +629,53 @@
           </table></div>
         </div>
       </div>
-      <!-- SITE IMAGES -->
+<!-- SITE IMAGES -->
       <div id="tab-siteimages" class="tab-content" style="display:none">
         <div class="page-header">
-          <h1 class="page-title">🖼️ Site Images</h1>
-          <p class="page-sub">Upload images here — they go live on the website the moment you save them.</p>
+          <h1 class="page-title">🖼️ Site Content</h1>
+          <p class="page-sub">Edit text and images — changes go live on the website immediately.</p>
         </div>
-        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:16px 18px;margin-bottom:24px;font-size:.84rem;color:var(--text2);line-height:1.6">
-          <strong style="color:var(--cream)">How it works:</strong> Upload a photo for each slot below. They appear in the <strong style="color:var(--cream)">In Action</strong> gallery on the Coffee Bars page. Replace or remove any image at any time.
+        <!-- Sub-tab toggles -->
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:28px;flex-wrap:wrap">
+          <button type="button" class="si-sub-btn active" data-panel="cb-gallery" onclick="showSIPanel('cb-gallery')" style="flex:1;padding:11px 14px;background:rgba(208,208,208,.12);border:none;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;cursor:pointer;border-right:1px solid var(--border);letter-spacing:.04em">☕ Coffee Bars — In Action</button>
+          <button type="button" class="si-sub-btn" data-panel="cb-steps" onclick="showSIPanel('cb-steps')" style="flex:1;padding:11px 14px;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.78rem;cursor:pointer;border-right:1px solid var(--border);letter-spacing:.04em">🔢 How It Works Steps</button>
+          <button type="button" class="si-sub-btn" data-panel="cb-text" onclick="showSIPanel('cb-text')" style="flex:1;padding:11px 14px;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.78rem;cursor:pointer;border-right:1px solid var(--border);letter-spacing:.04em">📝 Coffee Bars Text</button>
+          <button type="button" class="si-sub-btn" data-panel="why-cards" onclick="showSIPanel('why-cards')" style="flex:1;padding:11px 14px;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:.04em">✦ Why Gremier Cards</button>
         </div>
-        <div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:14px">Coffee Bars — In Action <small style="font-family:'DM Sans',sans-serif;font-size:.72rem;color:var(--text2);font-weight:300">— 4 photos on the Coffee Bars page gallery</small></div>
+
+        <!-- Panel: Coffee Bars gallery images -->
+        <div id="si-panel-cb-gallery">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
+            <strong style="color:var(--cream)">In Action gallery</strong> — 4 photos shown in the Coffee Bars page gallery section.
+          </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px" id="siteImagesCB"></div>
+        </div>
+
+        <!-- Panel: How It Works steps -->
+        <div id="si-panel-cb-steps" style="display:none">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
+            <strong style="color:var(--cream)">How It Works</strong> — The 3 numbered steps shown under "The Process" on the Coffee Bars page.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px" id="cbStepsEditor"></div>
+          <button class="btn btn-amber" style="margin-top:18px" onclick="saveCBSteps()">Save Steps</button>
+        </div>
+
+        <!-- Panel: Coffee Bars page text -->
+        <div id="si-panel-cb-text" style="display:none">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
+            <strong style="color:var(--cream)">Coffee Bars page text</strong> — Hero subtitle, packages intro, and CTA band copy.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px" id="cbTextEditor"></div>
+          <button class="btn btn-amber" style="margin-top:18px" onclick="saveCBText()">Save Text</button>
+        </div>
+
+        <!-- Panel: Why Gremier cards -->
+        <div id="si-panel-why-cards" style="display:none">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
+            <strong style="color:var(--cream)">Why Gremier cards</strong> — The 4 feature cards on the home page (Slow Cold Brew, Delivered Fresh, etc).
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px" id="whyCardsEditor"></div>
+          <button class="btn btn-amber" style="margin-top:18px" onclick="saveWhyCards()">Save Cards</button>
         </div>
       </div>
     </div><!-- /websiteMain -->
@@ -3027,7 +3062,7 @@ function showTab(tab) {
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='siteimages') loadSiteImages();
 }
-// ══ SITE IMAGES ══
+// ══ SITE IMAGES & CONTENT ══
 const SITE_IMAGE_SLOTS = [
   { key:'cb_gallery_1', label:'In Action Photo 1', hint:'Coffee Bars page — top-left gallery slot' },
   { key:'cb_gallery_2', label:'In Action Photo 2', hint:'Coffee Bars page — top-right gallery slot' },
@@ -3035,13 +3070,26 @@ const SITE_IMAGE_SLOTS = [
   { key:'cb_gallery_4', label:'In Action Photo 4', hint:'Coffee Bars page — bottom-right gallery slot' },
 ];
 let siteImageCache = {};
+
+function showSIPanel(id) {
+  document.querySelectorAll('[id^="si-panel-"]').forEach(p => p.style.display = 'none');
+  document.getElementById('si-panel-' + id).style.display = 'block';
+  document.querySelectorAll('.si-sub-btn').forEach(b => {
+    const active = b.dataset.panel === id;
+    b.style.background = active ? 'rgba(208,208,208,.12)' : 'transparent';
+    b.style.color = active ? 'var(--cream)' : 'var(--text2)';
+  });
+}
+
 async function loadSiteImages() {
   const cbGrid = document.getElementById('siteImagesCB');
   if (!cbGrid) return;
   cbGrid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   const { data } = await sb.from('site_settings').select('key,value');
   siteImageCache = {};
-  (data||[]).forEach(row => siteImageCache[row.key] = row.value);
+  (data||[]).forEach(row => { if (row.value) siteImageCache[row.key] = row.value; });
+
+  // Gallery images
   function slotHTML(slot) {
     const url = siteImageCache[slot.key];
     const thumb = url
@@ -3061,7 +3109,131 @@ async function loadSiteImages() {
     </div>`;
   }
   cbGrid.innerHTML = SITE_IMAGE_SLOTS.map(slotHTML).join('');
+
+  // How It Works steps editor
+  const stepDefaults = [
+    { titleKey:'cbp-s1t', descKey:'cbp-s1d', num:'1', defaultTitle:'Reach Out', defaultDesc:'Message us on WhatsApp with your event date, expected guests, and what you\'re looking for.' },
+    { titleKey:'cbp-s2t', descKey:'cbp-s2d', num:'2', defaultTitle:'We Plan Together', defaultDesc:'We\'ll help you choose the right quantities and flavors for your guest count and event.' },
+    { titleKey:'cbp-s3t', descKey:'cbp-s3d', num:'3', defaultTitle:'Fresh Delivery', defaultDesc:'We deliver fresh cold brew to your event — ready to pour and serve.' },
+  ];
+  const stepsEl = document.getElementById('cbStepsEditor');
+  if (stepsEl) {
+    stepsEl.innerHTML = stepDefaults.map(s => `
+      <div class="card" style="padding:18px 20px">
+        <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px">Step ${s.num}</div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Title (EN)</label>
+            <input class="form-input" id="step-title-en-${s.num}" value="${escAttr(siteImageCache['step_'+s.num+'_title_en'] || s.defaultTitle)}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Title (HE)</label>
+            <input class="form-input" id="step-title-he-${s.num}" value="${escAttr(siteImageCache['step_'+s.num+'_title_he'] || '')}"/>
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Description (EN)</label>
+            <textarea class="form-input" id="step-desc-en-${s.num}" rows="2">${escAttr(siteImageCache['step_'+s.num+'_desc_en'] || s.defaultDesc)}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description (HE)</label>
+            <textarea class="form-input" id="step-desc-he-${s.num}" rows="2">${escAttr(siteImageCache['step_'+s.num+'_desc_he'] || '')}</textarea>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Coffee Bars text editor
+  const cbTextFields = [
+    { key:'cb_hero_sub', label:'Hero Subtitle (EN)', hint:'Under the main Coffee Bars heading', defaultVal:'Premium cold brew for your birthday, corporate event, or any occasion — we\'ll help you choose the right amount for your guest count.' },
+    { key:'cb_hero_sub_he', label:'Hero Subtitle (HE)', hint:'', defaultVal:'' },
+    { key:'cb_packages_intro', label:'Packages Section Intro (EN)', hint:'Under "Coffee Bar Packages" heading', defaultVal:'Premium Gremier cold brew for your party, corporate event, or special occasion — tailored to your guest count. Based in Jerusalem, serving events across Israel.' },
+    { key:'cb_packages_intro_he', label:'Packages Section Intro (HE)', hint:'', defaultVal:'' },
+    { key:'cb_cta_title', label:'CTA Band Title (EN)', hint:'The big heading in the dark bottom band', defaultVal:'Ready to Elevate\nYour Event?' },
+    { key:'cb_cta_sub', label:'CTA Band Subtitle (EN)', hint:'', defaultVal:'Let\'s make your next occasion unforgettable. Message us on WhatsApp and we\'ll get back to you within hours.' },
+  ];
+  const cbTextEl = document.getElementById('cbTextEditor');
+  if (cbTextEl) {
+    cbTextEl.innerHTML = cbTextFields.map(f => `
+      <div class="card" style="padding:18px 20px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">${f.label}${f.hint ? `<span style="font-weight:300;text-transform:none;letter-spacing:0;color:var(--text2);margin-left:6px">${f.hint}</span>` : ''}</label>
+          <textarea class="form-input" id="cbtext-${f.key}" rows="2">${escAttr(siteImageCache[f.key] || f.defaultVal)}</textarea>
+        </div>
+      </div>`).join('');
+  }
+
+  // Why Gremier cards editor
+  const whyDefaults = [
+    { num:1, icon:'❄', defaultTitle:'Slow Cold Brew', defaultDesc:'Slow-steeped at cold temperature for maximum smoothness and zero bitterness.' },
+    { num:2, icon:'→', defaultTitle:'Delivered Fresh', defaultDesc:'From our brewhouse to your door — cold, fresh, ready to drink.' },
+    { num:3, icon:'◉', defaultTitle:'Premium Beans', defaultDesc:'Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.' },
+    { num:4, icon:'✦', defaultTitle:'Events & Bars', defaultDesc:'Cold brew for birthdays, parties, and corporate events — sized for your guest count.' },
+  ];
+  const whyEl = document.getElementById('whyCardsEditor');
+  if (whyEl) {
+    whyEl.innerHTML = whyDefaults.map(w => `
+      <div class="card" style="padding:18px 20px">
+        <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px">Card ${w.num} <span style="font-size:1rem;margin-left:6px">${w.icon}</span></div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Title (EN)</label>
+            <input class="form-input" id="why-title-en-${w.num}" value="${escAttr(siteImageCache['why_'+w.num+'_title_en'] || w.defaultTitle)}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Title (HE)</label>
+            <input class="form-input" id="why-title-he-${w.num}" value="${escAttr(siteImageCache['why_'+w.num+'_title_he'] || '')}"/>
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Description (EN)</label>
+            <textarea class="form-input" id="why-desc-en-${w.num}" rows="2">${escAttr(siteImageCache['why_'+w.num+'_desc_en'] || w.defaultDesc)}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description (HE)</label>
+            <textarea class="form-input" id="why-desc-he-${w.num}" rows="2">${escAttr(siteImageCache['why_'+w.num+'_desc_he'] || '')}</textarea>
+          </div>
+        </div>
+      </div>`).join('');
+  }
 }
+
+async function saveCBSteps() {
+  const upserts = [];
+  for (let n = 1; n <= 3; n++) {
+    ['title_en','title_he','desc_en','desc_he'].forEach(field => {
+      const el = document.getElementById(`step-${field.replace('_','-')}-${n}`);
+      if (el) upserts.push({ key: `step_${n}_${field}`, value: el.value.trim(), updated_at: new Date().toISOString() });
+    });
+  }
+  for (const row of upserts) await sb.from('site_settings').upsert(row, { onConflict: 'key' });
+  showToast('Steps saved ✓');
+}
+
+async function saveCBText() {
+  const keys = ['cb_hero_sub','cb_hero_sub_he','cb_packages_intro','cb_packages_intro_he','cb_cta_title','cb_cta_sub'];
+  const upserts = keys.map(k => {
+    const el = document.getElementById('cbtext-' + k);
+    return { key: k, value: el ? el.value.trim() : '', updated_at: new Date().toISOString() };
+  });
+  for (const row of upserts) await sb.from('site_settings').upsert(row, { onConflict: 'key' });
+  showToast('Coffee Bars text saved ✓');
+}
+
+async function saveWhyCards() {
+  const upserts = [];
+  for (let n = 1; n <= 4; n++) {
+    ['title_en','title_he','desc_en','desc_he'].forEach(field => {
+      const el = document.getElementById(`why-${field.replace('_','-')}-${n}`);
+      if (el) upserts.push({ key: `why_${n}_${field}`, value: el.value.trim(), updated_at: new Date().toISOString() });
+    });
+  }
+  for (const row of upserts) await sb.from('site_settings').upsert(row, { onConflict: 'key' });
+  showToast('Why cards saved ✓');
+}
+
 async function uploadSiteImage(key, input) {
   const file = input.files[0];
   if (!file) return;
