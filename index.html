@@ -1782,15 +1782,19 @@ function pdAddToCart() {
   const existing = cart.find(x => x.id === cartId);
   if (existing) existing.qty += pdQty;
   else cart.push({
-    id: cartId,
-    name_en: p.name_en + suffix,
-    name_he: (p.name_he || p.name_en) + suffix,
-    price,
-    images: p.images,
-    category: p.category,
-    delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,
-    qty: pdQty,
-  });
+  id: cartId,
+  base_product_id: p.id,
+  name_en: p.name_en + suffix,
+  name_he: (p.name_he || p.name_en) + suffix,
+  price,
+  images: p.images,
+  category: p.category,
+  delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,
+  qty: pdQty,
+  selected_variations: pdSelectedVariations,
+  selected_addons: pdGetSelectedAddons(),
+  selected_guest_price: pdSelectedPrice,
+});
   updateCartCount();
   showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
   closeProductDrawer(true);
@@ -1914,7 +1918,7 @@ function addToCart(productId) {
   if (!p) return;
   const existing = cart.find(x => x.id === productId);
   if (existing) existing.qty++;
-  else cart.push({ id:p.id, name_en:p.name_en, name_he:p.name_he, price:p.price, images:p.images, category:p.category, delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null, qty:1 });
+  else cart.push({   id: p.id,   base_product_id: p.id,   name_en: p.name_en,   name_he: p.name_he,   price: p.price,   images: p.images,   category: p.category,   delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,   qty: 1, });
   updateCartCount();
   const btn = document.querySelector(`[data-id="${productId}"]`);
   if (btn) { btn.textContent='✓'; btn.style.background='var(--green)'; setTimeout(()=>{btn.textContent='+';btn.style.background='';},800); }
@@ -2024,6 +2028,25 @@ async function callCreatePayment(orderId) {
   }
   return { ...payData, sale_url: saleUrl };
 }
+  async function callCreateWebsiteOrder(orderPayload) {
+  const { data: { session } } = await sb.auth.getSession();
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + (session?.access_token || SUPABASE_ANON_KEY),
+    },
+    body: JSON.stringify(orderPayload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.id) {
+    throw new Error(data.error || data.message || `Could not create order (${res.status})`);
+  }
+  return data;
+}
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
@@ -2054,58 +2077,45 @@ async function submitOrder() {
   submitBtn.textContent = lang==='he' ? 'מעביר לתשלום…' : 'Redirecting to payment…';
 
   try {
-    const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
-    const deliveryFee = updateDeliveryPrice() || 0;
-    const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
-    const total = cartTotal + deliveryFee - couponDiscount;
-    const pricing = resolveDeliveryPricing(selectedCheckoutCity);
     const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
-    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
-    const orderData = {
-      user_id: currentUser?.id || null,
-      customer_name: name,
-      customer_email: email,
-      customer_phone: phone,
-      delivery_address: cityLabel + ', ' + addr,
-      notes: document.getElementById('coNotes').value.trim(),
-      items: cart.map(i=>({ product_id:i.id, name_en:i.name_en, name_he:i.name_he, price:i.price, qty:i.qty })),
-      subtotal: cartTotal,
-      discount: couponDiscount,
-      total,
-      delivery_info: {
-        delivery_type: shipType,
-        delivery_fee: deliveryFee,
-        city_en: selectedCheckoutCity.en,
-        city_he: selectedCheckoutCity.he,
-        city_code: selectedCheckoutCity.code || null,
-        region: selectedCheckoutCity.region,
-        zone_id: pricing.zone?.id || null,
-        zone_name: pricing.zone?.name_en || '',
-        pricing_source: pricing.source,
-      },
-      status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
-    };
-    const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
-    if (error || !inserted?.id) {
-      console.error(error);
-      alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
-      return;
-    }
 
-    let payData;
-    try {
-      payData = await callCreatePayment(inserted.id);
-    } catch (payErr) {
-      console.error(payErr);
-      alert(payErr.message || (lang==='he' ? 'לא ניתן לפתוח תשלום' : 'Could not start payment'));
-      return;
-    }
+const created = await callCreateWebsiteOrder({
+  customer_name: name,
+  customer_email: email,
+  customer_phone: phone,
+  street_address: addr,
+  notes: document.getElementById('coNotes').value.trim(),
+  city: {
+    en: selectedCheckoutCity.en,
+    he: selectedCheckoutCity.he,
+    code: selectedCheckoutCity.code || null,
+    region: selectedCheckoutCity.region || '',
+  },
+  delivery_type: shipType,
+  use_coupon: !!userCouponAvailable,
+  items: cart.map(i => ({
+    product_id: i.base_product_id || String(i.id).split('_')[0],
+    qty: Number(i.qty) || 1,
+    selected_variations: i.selected_variations || null,
+    selected_addons: i.selected_addons || null,
+    selected_guest_price: i.selected_guest_price || null,
+  })),
+});
 
-    sessionStorage.setItem('gremier_pending_order', inserted.id);
-    if (payData.payme_sale_id) {
-      sessionStorage.setItem('gremier_payme_sale_' + inserted.id, payData.payme_sale_id);
-    }
-    window.location.href = payData.sale_url;
+let payData;
+try {
+  payData = await callCreatePayment(created.id);
+} catch (payErr) {
+  console.error(payErr);
+  alert(payErr.message || (lang==='he' ? 'לא ניתן לפתוח תשלום' : 'Could not start payment'));
+  return;
+}
+
+sessionStorage.setItem('gremier_pending_order', created.id);
+if (payData.payme_sale_id) {
+  sessionStorage.setItem('gremier_payme_sale_' + created.id, payData.payme_sale_id);
+}
+window.location.href = payData.sale_url;
   } catch (err) {
     console.error(err);
     alert(lang==='he' ? 'משהו השתבש. נסו שוב.' : 'Something went wrong. Please try again.');
