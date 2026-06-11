@@ -1285,7 +1285,7 @@ function applyTranslations() {
   }
   renderGrids();
 }
-function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); }
+function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); applySiteImages(); }
 // ══ AUTH ══
 async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
@@ -2250,6 +2250,46 @@ function applySiteImages() {
   ['cb_gallery_1','cb_gallery_2','cb_gallery_3','cb_gallery_4'].forEach((key,i) => {
     const el = document.getElementById('cbpGal'+(i+1));
     if (el && siteSettings[key]) el.innerHTML = `<img src="${siteSettings[key]}" alt="Coffee bar event photo"/>`;
+  });
+  // How It Works steps
+  const stepMap = [
+    { n:1, tEn:'t-cbp-s1t', dEn:'t-cbp-s1d' },
+    { n:2, tEn:'t-cbp-s2t', dEn:'t-cbp-s2d' },
+    { n:3, tEn:'t-cbp-s3t', dEn:'t-cbp-s3d' },
+  ];
+  stepMap.forEach(s => {
+    const tKey = lang==='he' ? `step_${s.n}_title_he` : `step_${s.n}_title_en`;
+    const dKey = lang==='he' ? `step_${s.n}_desc_he` : `step_${s.n}_desc_en`;
+    const tEl = document.getElementById(s.tEn);
+    const dEl = document.getElementById(s.dEn);
+    if (tEl && siteSettings[tKey]) tEl.textContent = siteSettings[tKey];
+    if (dEl && siteSettings[dKey]) dEl.textContent = siteSettings[dKey];
+  });
+  // Coffee Bars page text
+  const heroSubKey = lang==='he' ? 'cb_hero_sub_he' : 'cb_hero_sub';
+  const introKey = lang==='he' ? 'cb_packages_intro_he' : 'cb_packages_intro';
+  const heroSubEl = document.getElementById('t-cbp-hero-sub');
+  const introEl = document.getElementById('t-cbp-intro');
+  if (heroSubEl && siteSettings[heroSubKey]) heroSubEl.textContent = siteSettings[heroSubKey];
+  if (introEl && siteSettings[introKey]) introEl.textContent = siteSettings[introKey];
+  const ctaTitleEl = document.querySelector('.cbp-cta-title');
+  const ctaSubEl = document.querySelector('.cbp-cta-sub');
+  if (ctaTitleEl && siteSettings.cb_cta_title) ctaTitleEl.innerHTML = siteSettings.cb_cta_title.replace(/\n/g,'<br>');
+  if (ctaSubEl && siteSettings.cb_cta_sub) ctaSubEl.textContent = siteSettings.cb_cta_sub;
+  // Why Gremier cards
+  const whyMap = [
+    { n:1, tId:'t-w1t', dId:'t-w1d' },
+    { n:2, tId:'t-w2t', dId:'t-w2d' },
+    { n:3, tId:'t-w3t', dId:'t-w3d' },
+    { n:4, tId:'t-w4t', dId:'t-w4d' },
+  ];
+  whyMap.forEach(w => {
+    const tKey = lang==='he' ? `why_${w.n}_title_he` : `why_${w.n}_title_en`;
+    const dKey = lang==='he' ? `why_${w.n}_desc_he` : `why_${w.n}_desc_en`;
+    const tEl = document.getElementById(w.tId);
+    const dEl = document.getElementById(w.dId);
+    if (tEl && siteSettings[tKey]) tEl.textContent = siteSettings[tKey];
+    if (dEl && siteSettings[dKey]) dEl.textContent = siteSettings[dKey];
   });
 }
 function updateAccountPage() {
