@@ -2675,10 +2675,12 @@ function findZoneForCity(city) {
   if (!city) return null;
   const cn = normalizeCityName(city.en);
   const ch = city.he;
+  const code = city.code != null ? String(city.code) : '';
   for (const z of deliveryZones) {
+    if (code && z.city_code && String(z.city_code) === code) return z;
     const zn = normalizeCityName(z.name_en);
     if (zn === cn || z.name_he === ch) return z;
-    if (cn.includes(zn) || zn.includes(cn)) return z;
+    if (cn && zn && (cn.includes(zn) || zn.includes(cn))) return z;
   }
   return null;
 }
@@ -2799,6 +2801,7 @@ function updateDeliveryPrice() {
   const customFees = cart.map(i => i.delivery_price).filter(v => v !== null && v !== undefined && !isNaN(v));
   const hasProductFee = customFees.length > 0;
   const productFee = hasProductFee ? Math.max(...customFees) : null;
+  // Priority: product delivery_price > zone > default (freeAbove only applies without product fee)
   const isFree = !hasProductFee && pricing.freeAbove && cartTotal >= pricing.freeAbove;
   const zoneRegular = isFree ? 0 : pricing.regular;
   const zoneExpedited = pricing.expedited;

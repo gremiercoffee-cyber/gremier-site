@@ -237,6 +237,13 @@
     .recover-orders-card h3 { font-size:.85rem; color:var(--cream); margin-bottom:8px; font-weight:500; }
     .recover-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.82rem; flex-wrap:wrap; }
     .recover-row:last-child { border-bottom:none; }
+    .order-kind-toggle { display:inline-flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+    .order-kind-toggle .kind-btn { background:var(--bg3); border:none; color:var(--text2); padding:8px 12px; font-size:.72rem; cursor:pointer; font-family:'DM Sans',sans-serif; }
+    .order-kind-toggle .kind-btn.active { background:var(--cream); color:#121212; font-weight:500; }
+    .city-ac-wrap { position:relative; }
+    .city-ac-list { position:absolute; left:0; right:0; top:100%; z-index:50; background:var(--bg2); border:1px solid var(--border); border-radius:4px; max-height:180px; overflow-y:auto; margin-top:4px; }
+    .city-ac-item { padding:8px 12px; font-size:.82rem; cursor:pointer; }
+    .city-ac-item:hover, .city-ac-item.active { background:var(--highlight); color:var(--cream); }
     /* RESPONSIVE */
     html, body { max-width:100vw; overflow-x:hidden; }
     @media(max-width:768px){
@@ -387,15 +394,13 @@
         <button type="button" class="hub-btn" data-mode="ops" onclick="setHubMode('ops')">Operations</button>
       </div>
       <div class="sidebar-nav" id="websiteNav">
-      <div class="nav-item active" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
-      <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
+      <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
-      <div class="nav-item" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
-      <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
-      <div class="nav-item" onclick="showTab('weborders')" id="nav-weborders"><span class="icon">📅</span><span>Schedule Deliveries</span></div>
+      <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
-      <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery Zones</span></div>
+      <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
+      <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       </div>
       <div class="sidebar-bottom">
         <div class="user-info" id="adminEmail">—</div>
@@ -415,19 +420,53 @@
       </div>
       <div id="opsPanel"><iframe id="opsFrame" class="ops-frame" src="about:blank" title="Gremier Operations"></iframe></div>
       <div id="websiteMain">
-      <!-- DASHBOARD -->
-      <div id="tab-dashboard" class="tab-content">
+      <!-- ORDERS -->
+      <div id="tab-orders" class="tab-content">
         <div class="page-header">
-          <h1 class="page-title">Dashboard</h1>
-          <p class="page-sub">Welcome back. Here's what's happening.</p>
+          <h1 class="page-title">Orders</h1>
+          <p class="page-sub">All customer orders — filter by date, status, or subscriptions</p>
         </div>
-        <div class="stat-grid" id="dashStats"><div class="loading"><div class="spinner"></div></div></div>
-        <div class="flex-between">
-          <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Recent Orders</h3>
-          <button class="btn btn-outline btn-sm" onclick="showTab('orders')">View All</button>
+        <div class="filter-bar" style="flex-wrap:wrap;gap:8px">
+          <select class="form-input" style="width:auto" onchange="onOrderPeriodChange()" id="orderPeriod">
+            <option value="month" selected>This Month</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="year">This Year</option>
+            <option value="all">All Time</option>
+            <option value="custom">Custom range</option>
+          </select>
+          <input type="month" class="form-input" style="width:auto" id="orderMonth" onchange="onOrderMonthChange()" title="Pick month"/>
+          <input type="number" class="form-input" style="width:88px" id="orderYear" min="2020" max="2099" placeholder="Year" onchange="onOrderYearChange()"/>
+          <span id="orderCustomRange" style="display:none;gap:6px;align-items:center">
+            <input type="date" class="form-input" style="width:auto" id="orderDateFrom" onchange="filterOrders()"/>
+            <span style="color:var(--text2);font-size:.8rem">–</span>
+            <input type="date" class="form-input" style="width:auto" id="orderDateTo" onchange="filterOrders()"/>
+          </span>
+          <select class="form-input" style="width:auto" onchange="filterOrders()" id="orderStatus">
+            <option value="all">All Status</option>
+            <option value="awaiting_payment">Awaiting payment</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="fulfilled">Fulfilled</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <div class="order-kind-toggle" id="orderKindToggle">
+            <button type="button" class="kind-btn active" data-kind="all" onclick="setOrderKind('all')">All</button>
+            <button type="button" class="kind-btn" data-kind="subscriptions" onclick="setOrderKind('subscriptions')">Subscriptions</button>
+            <button type="button" class="kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
         </div>
+        <div id="recoverOrdersPanel" style="display:none"></div>
+        <div class="stat-grid" id="orderStats"></div>
         <div class="card" style="padding:0">
-          <div class="table-wrap"><table id="dashOrdersTable"><tr><td class="loading" colspan="5"><div class="spinner"></div></td></tr></table></div>
+          <div class="table-wrap"><table id="ordersTable">
+            <thead><tr>
+              <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
+              <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
+            </tr></thead>
+            <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
         </div>
       </div>
       <!-- PRODUCTS -->
@@ -450,41 +489,6 @@
           </select>
         </div>
         <div id="productsList"><div class="loading"><div class="spinner"></div></div></div>
-      </div>
-      <!-- ORDERS -->
-      <div id="tab-orders" class="tab-content" style="display:none">
-        <div class="page-header">
-          <h1 class="page-title">Orders</h1>
-          <p class="page-sub">All customer orders</p>
-        </div>
-        <div class="filter-bar">
-          <select class="form-input" style="width:auto" onchange="filterOrders()" id="orderPeriod">
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="week">This Week</option>
-            <option value="month" selected>This Month</option>
-            <option value="year">This Year</option>
-          </select>
-          <select class="form-input" style="width:auto" onchange="filterOrders()" id="orderStatus">
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="fulfilled">Fulfilled</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
-        </div>
-        <div id="recoverOrdersPanel" style="display:none"></div>
-        <div class="stat-grid" id="orderStats"></div>
-        <div class="card" style="padding:0">
-          <div class="table-wrap"><table id="ordersTable">
-            <thead><tr>
-              <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
-              <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
-            </tr></thead>
-            <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
-          </table></div>
-        </div>
       </div>
       <!-- PAYMENT LINKS -->
       <div id="tab-paylinks" class="tab-content" style="display:none">
@@ -575,7 +579,7 @@
       <div id="tab-delivery" class="tab-content" style="display:none">
         <div class="page-header">
           <div class="flex-between">
-            <div><h1 class="page-title">Delivery Settings</h1><p class="page-sub">Zones, pricing, and delivery rules</p></div>
+            <div><h1 class="page-title">Delivery</h1><p class="page-sub">Default fees, city zones — product delivery price overrides zone, zone overrides default</p></div>
             <button class="btn btn-amber" onclick="saveDeliverySettings()">Save Settings</button>
           </div>
         </div>
@@ -598,20 +602,6 @@
           </table></div>
         </div>
       </div>
-      <!-- SCHEDULE DELIVERIES TAB -->
-      <div id="tab-weborders" class="tab-content" style="display:none">
-        <div class="page-header">
-          <h1 class="page-title">Schedule Deliveries</h1>
-          <p class="page-sub">Website orders waiting to be scheduled. Tap one to assign a delivery date.</p>
-        </div>
-        <div class="stat-grid" id="webOrderStats"></div>
-        <div class="card" style="padding:0">
-          <div class="table-wrap"><table id="webOrdersTable">
-            <thead><tr><th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Address</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th><th class="hide-mobile">Delivery</th><th class="cell-status">Status</th><th class="cell-actions">Schedule</th></tr></thead>
-            <tbody id="webOrdersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
-          </table></div>
-        </div>
-      </div>
       <!-- SITE IMAGES -->
       <div id="tab-siteimages" class="tab-content" style="display:none">
         <div class="page-header">
@@ -631,32 +621,26 @@
   </div>
   <!-- MOBILE BOTTOM TAB BAR -->
   <div class="bottom-tab-bar" id="bottomTabBar">
-    <button class="tab-bar-btn active" id="tbar-dashboard" onclick="showTab('dashboard')">
-      <span class="tab-icon">📊</span>Dashboard
-    </button>
-    <button class="tab-bar-btn" id="tbar-members" onclick="showTab('members')">
-      <span class="tab-icon">👤</span>Members
+    <button class="tab-bar-btn active" id="tbar-orders" onclick="showTab('orders')">
+      <span class="tab-icon">🛒</span>Orders
     </button>
     <button class="tab-bar-btn" id="tbar-products" onclick="showTab('products')">
       <span class="tab-icon">📦</span>Products
     </button>
-    <button class="tab-bar-btn" id="tbar-orders" onclick="showTab('orders')">
-      <span class="tab-icon">🛒</span>Orders
-    </button>
     <button class="tab-bar-btn" id="tbar-paylinks" onclick="showTab('paylinks')">
       <span class="tab-icon">🔗</span>Pay Links
+    </button>
+    <button class="tab-bar-btn" id="tbar-members" onclick="showTab('members')">
+      <span class="tab-icon">👤</span>Members
+    </button>
+    <button class="tab-bar-btn" id="tbar-siteimages" onclick="showTab('siteimages')">
+      <span class="tab-icon">🖼️</span>Images
     </button>
     <button class="tab-bar-btn" id="tbar-reports" onclick="showTab('reports')">
       <span class="tab-icon">📈</span>Reports
     </button>
-    <button class="tab-bar-btn" id="tbar-weborders" onclick="showTab('weborders')">
-      <span class="tab-icon">📅</span>Schedule
-    </button>
-    <button class="tab-bar-btn" id="tbar-siteimages" onclick="showTab('siteimages')">
-      <span class="tab-icon">🖼️</span>Site Images
-    </button>
     <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
-      <span class="tab-icon">🚚</span>Zones
+      <span class="tab-icon">🚚</span>Delivery
     </button>
   </div>
 </div>
@@ -880,6 +864,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let adminUser = null;
 let allProducts = [];
 let allOrders = [];
+let orderKindFilter = 'all';
 let allMembers = [];
 let memberFilter = { search:'', sort:'spent' };
 let editingImages = []; // array of Cloudinary URLs
@@ -954,8 +939,13 @@ async function checkAdminAccess(user) {
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
   setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
-  loadDashboard();
+  loadOrders();
   loadAllProducts();
+  if (!window._recoverPoll) {
+    window._recoverPoll = setInterval(() => {
+      if (document.getElementById('tab-orders')?.style.display !== 'none') loadRecoverableOrdersUI();
+    }, 30000);
+  }
 }
 async function signInAdmin() {
   const adminUrl = `${window.location.origin}/admin.html`;
@@ -985,45 +975,6 @@ function setHubMode(mode) {
 }
 
 // ══ TABS ══
-function showTab(tab) {
-  document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
-  document.getElementById('tab-'+tab).style.display='block';
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById('nav-'+tab).classList.add('active');
-  if (tab==='orders') loadOrders();
-  if (tab==='products') renderProductsList();
-  if (tab==='paylinks') loadPayLinks();
-  if (tab==='reports') loadReports();
-}
-// ══ DASHBOARD ══
-async function loadDashboard() {
-  const { data: orders } = await sb.from('orders').select('*').order('created_at',{ascending:false});
-  allOrders = orders || [];
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayOrders = allOrders.filter(o=>new Date(o.created_at)>=today);
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthOrders = allOrders.filter(o=>new Date(o.created_at)>=monthStart);
-  const monthRevenue = monthOrders.reduce((s,o)=>s+parseFloat(o.total||0),0);
-  document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Today's Orders</div><div class="stat-value">${todayOrders.length}</div><div class="stat-sub">${todayOrders.reduce((s,o)=>s+parseFloat(o.total||0),0).toFixed(0)} ₪ revenue</div></div>
-    <div class="stat-card"><div class="stat-label">This Month</div><div class="stat-value">${monthOrders.length}</div><div class="stat-sub">₪${monthRevenue.toFixed(0)} revenue</div></div>
-    <div class="stat-card"><div class="stat-label">Total Orders</div><div class="stat-value">${allOrders.length}</div><div class="stat-sub">All time</div></div>
-    <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value">${allOrders.filter(o=>o.status==='pending').length}</div><div class="stat-sub">Awaiting action</div></div>
-  `;
-  const recent = allOrders.slice(0,8);
-  document.getElementById('dashOrdersTable').innerHTML = `
-    <thead><tr><th class="cell-num">#</th><th>Customer</th><th class="cell-total">Total</th><th class="cell-status">Status</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions"></th></tr></thead>
-    <tbody>${recent.map(o=>{
-      const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
-      return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
-      <td class="cell-num">#${o.order_number}</td>
-      <td class="cell-customer">${o.customer_name}</td>
-      <td class="cell-total" style="color:var(--cream)">₪${o.total}</td>
-      <td class="cell-status"><span class="status-pill s-${o.status}">${o.status}</span></td>
-      <td class="cell-date hide-mobile">${date}</td>
-      <td class="cell-actions" onclick="event.stopPropagation()"><button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" title="Delete order">✕</button></td>
-    </tr>`}).join('')}</tbody>`;
-}
 // ══ PRODUCTS ══
 async function loadAllProducts() {
   const { data } = await sb.from('products').select('*').order('sort_order');
@@ -1443,7 +1394,7 @@ async function restoreDeletedOrder(archiveId) {
     await sb.from('payment_links').update({ order_id: o.id }).eq('link_code', linkCode);
   }
   showToast(`Order #${o.order_number} restored ✓`);
-  await loadDashboard();
+  await loadOrders();
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
   return true;
 }
@@ -1517,7 +1468,7 @@ async function recreateOrderFromPaymentLink(linkCode) {
   }).eq('link_code', link.link_code);
   showToast(`Order #${inserted.order_number} recreated ✓`);
   if (paymentStatus === 'paid') await sendOrderToGoogleSheet(inserted.id, false);
-  await loadDashboard();
+  await loadOrders();
   await loadOrders();
   if (document.getElementById('tab-paylinks').style.display !== 'none') await loadPayLinks();
 }
@@ -1568,7 +1519,7 @@ async function saveManualRestoredOrder() {
   }
   closeRestoreOrderModal();
   showToast(`Order #${inserted.order_number} created ✓`);
-  await loadDashboard();
+  await loadOrders();
   await loadOrders();
 }
 
@@ -1589,6 +1540,8 @@ async function loadRecoverableOrdersUI() {
   const panel = document.getElementById('recoverOrdersPanel');
   if (!panel) return;
   const sections = [];
+  const RECOVER_TTL_MS = 15 * 60 * 1000;
+  const cutoff = Date.now() - RECOVER_TTL_MS;
 
   try {
     const { data: archives, error: archErr } = await sb.from('deleted_orders')
@@ -1596,8 +1549,9 @@ async function loadRecoverableOrdersUI() {
       .is('restored_at', null)
       .order('deleted_at', { ascending: false })
       .limit(10);
-    if (!archErr && archives?.length) {
-      sections.push(`<div class="recover-orders-card"><h3>Recently deleted — click Restore</h3>${archives.map(a => {
+    const recent = (archives || []).filter(a => new Date(a.deleted_at).getTime() >= cutoff);
+    if (!archErr && recent.length) {
+      sections.push(`<div class="recover-orders-card"><h3>Recently deleted (last 15 min)</h3>${recent.map(a => {
         const o = a.order_data;
         const when = new Date(a.deleted_at).toLocaleString('en-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         return `<div class="recover-row"><span>#${o.order_number || '—'} · ${o.customer_name || '—'} · ₪${o.total || 0} · ${when}</span><button class="btn btn-amber btn-sm" onclick="restoreDeletedOrder('${a.id}')">Restore</button></div>`;
@@ -1612,42 +1566,113 @@ async function loadRecoverableOrdersUI() {
   const missing = (links || []).filter(l => paymentLinkMissingOrder(l, existingOrderIds));
 
   if (missing.length) {
-    sections.push(`<div class="recover-orders-card"><h3>Payment links missing an order (${missing.length}) — click Recreate</h3>
-      <p style="font-size:.78rem;color:var(--text2);margin-bottom:10px">Includes links where the order was deleted, even if status still shows "pending".</p>
-      ${missing.slice(0, 12).map(l => {
+    sections.push(`<div class="recover-orders-card"><h3>Payment links missing an order (${missing.length})</h3>
+      ${missing.slice(0, 8).map(l => {
         const items = (l.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
-        const statusTag = `<span class="status-pill s-${l.status}">${l.status}</span>`;
-        return `<div class="recover-row"><span>${statusTag} ${l.customer_name || '—'} · ₪${l.total}${l.payme_sale_id ? ' · PayMe ✓' : ''} · ${items || 'items'}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate order</button></div>`;
+        return `<div class="recover-row"><span>${l.customer_name || '—'} · ₪${l.total} · ${items || 'items'}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate</button></div>`;
       }).join('')}</div>`);
   }
 
   if (sections.length) {
     panel.innerHTML = sections.join('');
+    panel.style.display = 'block';
   } else {
-    panel.innerHTML = `<div class="recover-orders-card">
-      <h3>Restore a deleted order</h3>
-      <p style="font-size:.82rem;color:var(--text2);line-height:1.55;margin-bottom:12px">No payment links with missing orders were found. The deleted order may have been a <strong>website checkout</strong> (not a payment link), or the payment link was deleted too.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        <button class="btn btn-outline btn-sm" onclick="showTab('paylinks')">Check Payment Links tab</button>
-        <button class="btn btn-amber btn-sm" onclick="openManualOrderRestore()">Create order manually</button>
-      </div>
-    </div>`;
+    panel.innerHTML = '';
+    panel.style.display = 'none';
   }
-  panel.style.display = 'block';
+}
+
+function isSubscriptionOrder(o) {
+  return (o.items || []).some(i => i.category === 'subscriptions' || i.is_subscription);
+}
+
+function setOrderKind(kind) {
+  orderKindFilter = kind;
+  document.querySelectorAll('#orderKindToggle .kind-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.kind === kind);
+  });
+  filterOrders();
+}
+
+function onOrderPeriodChange() {
+  const period = document.getElementById('orderPeriod').value;
+  const custom = document.getElementById('orderCustomRange');
+  if (custom) custom.style.display = period === 'custom' ? 'inline-flex' : 'none';
+  if (period !== 'custom') {
+    const m = document.getElementById('orderMonth');
+    const y = document.getElementById('orderYear');
+    if (m) m.value = '';
+    if (y) y.value = '';
+  }
+  filterOrders();
+}
+
+function onOrderMonthChange() {
+  const y = document.getElementById('orderYear');
+  if (y) y.value = '';
+  document.getElementById('orderPeriod').value = 'all';
+  onOrderPeriodChange();
+  filterOrders();
+}
+
+function onOrderYearChange() {
+  const m = document.getElementById('orderMonth');
+  if (m) m.value = '';
+  document.getElementById('orderPeriod').value = 'all';
+  onOrderPeriodChange();
+  filterOrders();
+}
+
+function applyClientOrderFilters(orders) {
+  let list = orders;
+  if (orderKindFilter === 'subscriptions') list = list.filter(isSubscriptionOrder);
+  else if (orderKindFilter === 'regular') list = list.filter(o => !isSubscriptionOrder(o));
+  return list;
 }
 
 async function loadOrders() {
   const period = document.getElementById('orderPeriod').value;
   const status = document.getElementById('orderStatus').value;
-  let query = sb.from('orders').select('*').order('created_at', {ascending:false});
+  const monthVal = document.getElementById('orderMonth')?.value || '';
+  const yearVal = document.getElementById('orderYear')?.value || '';
+  const fromVal = document.getElementById('orderDateFrom')?.value || '';
+  const toVal = document.getElementById('orderDateTo')?.value || '';
+
+  let query = sb.from('orders').select('*').order('created_at', { ascending: false });
   const now = new Date();
-  if (period === 'today') { const d = new Date(now); d.setHours(0,0,0,0); query = query.gte('created_at', d.toISOString()); }
-  else if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); query = query.gte('created_at', d.toISOString()); }
-  else if (period === 'month') { const d = new Date(now.getFullYear(), now.getMonth(), 1); query = query.gte('created_at', d.toISOString()); }
-  else if (period === 'year') { const d = new Date(now.getFullYear(), 0, 1); query = query.gte('created_at', d.toISOString()); }
+
+  if (monthVal) {
+    const [y, m] = monthVal.split('-').map(Number);
+    query = query.gte('created_at', new Date(y, m - 1, 1).toISOString());
+    query = query.lt('created_at', new Date(y, m, 1).toISOString());
+  } else if (yearVal) {
+    const y = parseInt(yearVal, 10);
+    query = query.gte('created_at', new Date(y, 0, 1).toISOString());
+    query = query.lt('created_at', new Date(y + 1, 0, 1).toISOString());
+  } else if (period === 'custom' && fromVal) {
+    const start = new Date(fromVal);
+    start.setHours(0, 0, 0, 0);
+    query = query.gte('created_at', start.toISOString());
+    if (toVal) {
+      const end = new Date(toVal);
+      end.setHours(23, 59, 59, 999);
+      query = query.lte('created_at', end.toISOString());
+    }
+  } else if (period === 'today') {
+    const d = new Date(now); d.setHours(0, 0, 0, 0);
+    query = query.gte('created_at', d.toISOString());
+  } else if (period === 'week') {
+    const d = new Date(now); d.setDate(d.getDate() - 7);
+    query = query.gte('created_at', d.toISOString());
+  } else if (period === 'month') {
+    query = query.gte('created_at', new Date(now.getFullYear(), now.getMonth(), 1).toISOString());
+  } else if (period === 'year') {
+    query = query.gte('created_at', new Date(now.getFullYear(), 0, 1).toISOString());
+  }
+
   if (status !== 'all') query = query.eq('status', status);
   const { data } = await query;
-  allOrders = data || [];
+  allOrders = applyClientOrderFilters(data || []);
   renderOrdersTable(allOrders);
   renderOrderStats(allOrders);
   await loadRecoverableOrdersUI();
@@ -1656,10 +1681,11 @@ function filterOrders() { loadOrders(); }
 function renderOrderStats(orders) {
   const total = orders.reduce((s,o)=>s+parseFloat(o.total||0),0);
   const paid = orders.filter(o=>o.payment_status==='paid').reduce((s,o)=>s+parseFloat(o.total||0),0);
+  const subs = orders.filter(isSubscriptionOrder).length;
   document.getElementById('orderStats').innerHTML = `
     <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">${orders.length}</div></div>
     <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value">₪${total.toFixed(0)}</div></div>
-    <div class="stat-card"><div class="stat-label">Avg Order</div><div class="stat-value">₪${orders.length?Math.round(total/orders.length):0}</div></div>
+    <div class="stat-card"><div class="stat-label">Subscriptions</div><div class="stat-value">${subs}</div></div>
     <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪${paid.toFixed(0)}</div></div>
   `;
 }
@@ -1669,8 +1695,12 @@ function renderOrdersTable(orders) {
   body.innerHTML = orders.map(o=>{
     const items = (o.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
+    const subBadge = isSubscriptionOrder(o) ? ' <span class="status-pill s-confirmed" style="font-size:.55rem">sub</span>' : '';
+    const fulfillBtn = o.status !== 'fulfilled' && o.payment_status === 'paid'
+      ? `<button class="btn btn-amber btn-sm" onclick="markOrderFulfilled('${o.id}')" title="Mark fulfilled + email">✓</button>`
+      : '';
     return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
-      <td class="cell-num" style="color:var(--cream)">#${o.order_number}</td>
+      <td class="cell-num" style="color:var(--cream)">#${o.order_number}${subBadge}</td>
       <td class="cell-customer">${o.customer_name}${o.customer_phone?`<br><small>${o.customer_phone}</small>`:''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
       <td class="cell-total" style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
@@ -1679,6 +1709,7 @@ function renderOrdersTable(orders) {
       <td class="cell-date hide-mobile">${date}</td>
       <td class="cell-actions" onclick="event.stopPropagation()">
         <div class="cell-actions-wrap">
+          ${fulfillBtn}
           <select class="form-input table-select" onchange="updateOrderStatus('${o.id}',this.value)">
             <option ${o.status==='pending'?'selected':''}>pending</option>
             <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
@@ -1693,8 +1724,39 @@ function renderOrdersTable(orders) {
 }
 async function updateOrderStatus(id, status) {
   await sb.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+  if (status === 'fulfilled') {
+    await markOrderFulfilled(id, false, false);
+    return;
+  }
   showToast('Status updated ✓');
   loadOrders();
+}
+async function markOrderFulfilled(orderId, forceEmail, skipToast) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-order-fulfilled`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ order_id: orderId, force: !!forceEmail }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok || data.skipped === 'already_notified') {
+      if (!skipToast) showToast(data.emailed ? 'Fulfilled + customer emailed ✓' : 'Marked fulfilled ✓');
+      await loadOrders();
+      if (document.getElementById('orderModal').classList.contains('open')) openOrderDetail(orderId);
+      return data;
+    }
+    showToast(data.detail || data.error || 'Fulfillment notify failed', 8000);
+    console.warn('notify-order-fulfilled:', data);
+    return data;
+  } catch (err) {
+    console.error(err);
+    if (!skipToast) showToast('Could not reach notify-order-fulfilled');
+    return null;
+  }
 }
 async function sendOrderToGoogleSheet(orderId, force) {
   try {
@@ -1853,9 +1915,10 @@ function openOrderDetail(id) {
         <option ${o.payment_status==='paid'?'selected':''}>paid</option>
       </select>
     </div>
-    ${o.payment_status === 'paid' ? `<div style="margin-top:12px">
-      <div style="font-size:.78rem;color:var(--text2);margin-bottom:8px">${(o.delivery_info && o.delivery_info.order_notified_at) ? '✓ Synced to Google Sheet' + (o.customer_email ? ' — owner + customer emailed' : ' — owner emailed') : '⚠ Not synced to Google Sheet yet'}</div>
-      <button class="btn btn-sm" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-sync to Sheet' : 'Sync to Sheet + email'}</button>
+    ${o.payment_status === 'paid' ? `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
+      ${o.status !== 'fulfilled' ? `<button class="btn btn-amber btn-sm" onclick="markOrderFulfilled('${o.id}')">Mark fulfilled + email customer</button>` : ''}
+      ${(o.delivery_info && o.delivery_info.fulfilled_notified_at) ? '<span style="font-size:.78rem;color:var(--text2)">✓ Fulfillment email sent</span>' : ''}
+      <button class="btn btn-sm btn-outline" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-send paid email' : 'Send paid email (Resend)'}</button>
     </div>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
@@ -1880,12 +1943,12 @@ async function deleteOrder(id) {
   closeOrderModal();
   if (archiveId) showUndoToast('Order deleted —', archiveId);
   else showToast('Order deleted ✓ (archive unavailable — run deleted_orders migration to enable undo)');
-  await loadDashboard();
+  await loadOrders();
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
   else await loadRecoverableOrdersUI();
   if (document.getElementById('tab-members').style.display !== 'none') await loadMembers();
   if (document.getElementById('tab-reports').style.display !== 'none') await loadReports();
-  if (document.getElementById('tab-weborders').style.display !== 'none') await loadWebOrders();
+  if (document.getElementById('tab-orders')?.style.display !== 'none') await loadOrders();
 }
 async function updatePaymentStatus(id, status) {
   await sb.from('orders').update({ payment_status:status }).eq('id',id);
@@ -2121,7 +2184,7 @@ async function generatePayLink() {
       } else {
         showToast(`Order #${order.order_number} created — in Ops for scheduling ✓`);
       }
-      loadDashboard();
+      loadOrders();
     }
   }
 
@@ -2181,7 +2244,7 @@ async function deletePayLink(id, orderId) {
   if (error) { showToast('Could not delete link'); console.error(error); return; }
   showToast('Payment link deleted ✓');
   loadPayLinks();
-  loadDashboard();
+  loadOrders();
 }
 async function loadPayLinks() {
   const { data } = await sb.from('payment_links').select('*').order('created_at',{ascending:false});
@@ -2501,7 +2564,76 @@ function showToast(msg, ms = 2400) {
   setTimeout(()=>t.classList.remove('show'), ms);
 }
 // ══ DELIVERY SETTINGS ══
+let adminIsraelCities = [];
+
+async function loadAdminIsraelCities() {
+  if (adminIsraelCities.length) return;
+  try {
+    const cached = sessionStorage.getItem('gremier_cities_v1');
+    if (cached) { adminIsraelCities = JSON.parse(cached); return; }
+  } catch (_) {}
+  try {
+    const res = await fetch('https://data.gov.il/api/3/action/datastore_search?resource_id=8f714b6f-c35c-4b40-a0e7-547b675eee0e&limit=1306');
+    const raw = await res.json();
+    const seen = new Set();
+    adminIsraelCities = [];
+    for (const rec of raw?.result?.records || []) {
+      const he = String(rec.city_name_he || '').trim();
+      if (!he || seen.has(he)) continue;
+      seen.add(he);
+      let en = String(rec.city_name_en || '').trim();
+      if (!en || en.length <= 1) en = he;
+      adminIsraelCities.push({ en, he, code: rec.city_code, region: 'Other' });
+    }
+    adminIsraelCities.sort((a, b) => a.he.localeCompare(b.he, 'he'));
+    if (adminIsraelCities.length) sessionStorage.setItem('gremier_cities_v1', JSON.stringify(adminIsraelCities));
+  } catch (e) {
+    try {
+      const res = await fetch('israel-cities.json');
+      adminIsraelCities = await res.json();
+    } catch (_) { adminIsraelCities = []; }
+  }
+}
+
+function initAdminZoneCitySearch() {
+  const input = document.getElementById('zCitySearch');
+  const list = document.getElementById('zCityAcList');
+  if (!input || !list) return;
+  let idx = -1;
+  function pick(c) {
+    document.getElementById('zNameEn').value = c.en;
+    document.getElementById('zNameHe').value = c.he;
+    document.getElementById('zCityCode').value = c.code || '';
+    const reg = document.getElementById('zRegion');
+    if (reg && c.region) reg.value = c.region;
+    input.value = c.he + (c.en !== c.he ? ' / ' + c.en : '');
+    list.style.display = 'none';
+  }
+  function render(q) {
+    const nq = String(q || '').toLowerCase().trim();
+    if (!nq) { list.style.display = 'none'; return; }
+    const matches = adminIsraelCities.filter(c =>
+      c.he.includes(q) || c.en.toLowerCase().includes(nq)
+    ).slice(0, 12);
+    if (!matches.length) { list.style.display = 'none'; return; }
+    list.innerHTML = matches.map((c, i) =>
+      `<div class="city-ac-item${i === idx ? ' active' : ''}" data-i="${i}">${c.he}${c.en !== c.he ? ' · ' + c.en : ''}</div>`
+    ).join('');
+    list.style.display = 'block';
+    list.querySelectorAll('.city-ac-item').forEach(el => {
+      el.onclick = () => pick(matches[Number(el.dataset.i)]);
+    });
+  }
+  input.oninput = () => { idx = -1; render(input.value); };
+  input.onkeydown = (e) => {
+    const items = list.querySelectorAll('.city-ac-item');
+    if (e.key === 'ArrowDown') { idx = Math.min(idx + 1, items.length - 1); render(input.value); e.preventDefault(); }
+    if (e.key === 'ArrowUp') { idx = Math.max(idx - 1, 0); render(input.value); e.preventDefault(); }
+  };
+}
+
 async function loadDeliverySettings() {
+  await loadAdminIsraelCities();
   const { data } = await sb.from('delivery_settings').select('*').eq('id',1).single();
   if (data) {
     document.getElementById('gsExpedited').value = data.expedited_surcharge || 20;
@@ -2555,6 +2687,10 @@ function openZoneModal(zoneId) {
   const deleteBtn = zoneId ? '<button class="btn btn-red btn-sm" style="margin-left:auto" onclick="deleteZone(' + "'" + zoneId + "'" + ')">Delete</button>' : '';
   const html = '<h2 class="modal-title">' + title + '</h2>'
     + '<input type="hidden" id="zoneId" value="' + (zoneId||'') + '"/>'
+    + '<input type="hidden" id="zCityCode" value="' + (z && z.city_code ? z.city_code : '') + '"/>'
+    + '<div class="form-group city-ac-wrap"><label class="form-label">City (search Israel database)</label>'
+    + '<input class="form-input" id="zCitySearch" placeholder="Type city name…" autocomplete="off" value="' + (z ? ((z.name_he||'') + (z.name_en && z.name_en !== z.name_he ? ' / ' + z.name_en : '')) : '') + '"/>'
+    + '<div id="zCityAcList" class="city-ac-list" style="display:none"></div></div>'
     + '<div class="form-row-2">'
     + '<div class="form-group"><label class="form-label">Name (EN)</label><input class="form-input" id="zNameEn" value="' + (z ? z.name_en||'' : '') + '"/></div>'
     + '<div class="form-group"><label class="form-label">Name (HE)</label><input class="form-input" id="zNameHe" value="' + (z ? z.name_he||'' : '') + '"/></div>'
@@ -2578,6 +2714,7 @@ function openZoneModal(zoneId) {
     + '</div>';
   document.getElementById('zoneModalContent').innerHTML = html;
   document.getElementById('zoneModal').classList.add('open');
+  initAdminZoneCitySearch();
 }
 function closeZoneModal() { document.getElementById('zoneModal').classList.remove('open'); }
 async function saveZone() {
@@ -2590,6 +2727,7 @@ async function saveZone() {
     expedited_price: parseFloat(document.getElementById('zExpedited').value)||0,
     free_above: parseFloat(document.getElementById('zFreeAbove').value)||null,
     is_active: document.getElementById('zActive').checked,
+    city_code: document.getElementById('zCityCode')?.value || null,
   };
   if (!data.name_en) { showToast('Zone name required'); return; }
   if (id) await sb.from('delivery_zones').update(data).eq('id',id);
@@ -2744,7 +2882,6 @@ function showTab(tab) {
   if (tab==='reports') loadReports();
   if (tab==='members') loadMembers();
   if (tab==='delivery') loadDeliverySettings();
-  if (tab==='weborders') loadWebOrders();
   if (tab==='siteimages') loadSiteImages();
 }
 // ══ SITE IMAGES ══

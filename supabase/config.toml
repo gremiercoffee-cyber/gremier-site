@@ -10,6 +10,9 @@ verify_jwt = false
 [functions.notify-paid-order]
 verify_jwt = false
 
+[functions.notify-order-fulfilled]
+verify_jwt = false
+
 [functions.chat-assistant]
 verify_jwt = false
 
