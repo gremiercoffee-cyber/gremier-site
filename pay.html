@@ -259,34 +259,36 @@
     } catch (_) {}
   }
 
-  async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerEmail, customerPhone } = {}) {
-    const body = { language: 'en' };
-    if (orderId) body.order_id = orderId;
-    if (linkCode) body.payment_link_code = linkCode;
-    if (!body.order_id && !body.payment_link_code) throw new Error('Payment setup error');
-    if (deliveryAddress) body.delivery_address = deliveryAddress;
-    if (customerEmail) body.customer_email = customerEmail;
-    if (customerPhone) body.customer_phone = customerPhone;
+async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerName, customerEmail, customerPhone } = {}) {
+  const body = { language: 'en' };
+  if (orderId) body.order_id = orderId;
+  if (linkCode) body.payment_link_code = linkCode;
+  if (!body.order_id && !body.payment_link_code) throw new Error('Payment setup error');
+  if (deliveryAddress) body.delivery_address = deliveryAddress;
+  if (customerName) body.customer_name = customerName;
+  if (customerEmail) body.customer_email = customerEmail;
+  if (customerPhone) body.customer_phone = customerPhone;
 
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.sale_url) {
-      const errMsg = data.error || data.message || `Could not start PayMe payment (${res.status})`;
-      if (/hello undefined/i.test(errMsg)) {
-        throw new Error('Payment service needs redeploying — run deploy-functions.bat');
-      }
-      throw new Error(errMsg);
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.sale_url) {
+    const errMsg = data.error || data.message || `Could not start PayMe payment (${res.status})`;
+    if (/hello undefined/i.test(errMsg)) {
+      throw new Error('Payment service needs redeploying — run deploy-functions.bat');
     }
-    return data;
+    throw new Error(errMsg);
   }
+  return data;
+}
 
 
 
@@ -294,7 +296,7 @@
 
     if (isReusableLink(link)) {
       const orderData = {
-        customer_name: link.customer_name || 'Payment Link Customer',
+        customer_name: getPayNameForCheckout(link),
         customer_phone: link.customer_phone || getPayPhone() || null,
         customer_email: link.customer_email || getPayEmail() || null,
         delivery_address: link.delivery_address || null,
@@ -344,7 +346,7 @@
 
     const orderData = {
 
-      customer_name: link.customer_name || 'Payment Link Customer',
+      customer_name: getPayNameForCheckout(link),
 
       customer_phone: link.customer_phone || getPayPhone() || null,
 
@@ -395,7 +397,47 @@
     const el = document.getElementById('payPhone');
     return el ? el.value.trim() : '';
   }
+function getPayName() {
+  const el = document.getElementById('payName');
+  return el ? el.value.trim() : '';
+}
 
+function cleanPayCustomerName(name) {
+  const value = String(name || '').trim();
+  if (!value || /^payment link customer$/i.test(value)) return '';
+  return value;
+}
+
+function getPayNameForCheckout(link) {
+  return getPayName() || cleanPayCustomerName(link?.customer_name) || '';
+}
+
+function getPayLinkDisplayName(link) {
+  if (!link) return '';
+  return String(
+    link.link_name ||
+    link.payment_link_name ||
+    link.reference_name ||
+    link.internal_name ||
+    link.title ||
+    link.name ||
+    ''
+  ).trim();
+}
+
+function getPayItemImage(item) {
+  if (!item) return '';
+  if (item.thumbnail_url) return item.thumbnail_url;
+  if (item.thumbnail) return item.thumbnail;
+  if (item.image_url) return item.image_url;
+  if (item.image) return item.image;
+  if (Array.isArray(item.images) && item.images[0]) return item.images[0];
+  return '';
+}
+
+function payInputValue(value) {
+  return esc(String(value || ''));
+}
   function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
   }
@@ -896,6 +938,10 @@ function renderCheckout(link) {
       </div>
 
       <div class="pay-field">
+  <label for="payName">Full name <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
+  <input type="text" id="payName" placeholder="Your full name" value="${payInputValue(isReusableLink(link) ? '' : cleanPayCustomerName(link.customer_name))}" required/>
+  <div class="pay-field-hint">Required — this name will be saved on your order.</div>
+</div>
 
         <label for="payEmail">Email <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
 
@@ -976,6 +1022,20 @@ function renderCheckout(link) {
 
     try {
       const deliveryAddress = getPayAddressForCheckout(paymentLink);
+      const customerName = getPayNameForCheckout(paymentLink);
+
+if (!customerName) {
+  if (errEl) {
+    errEl.textContent = 'Please enter your full name';
+    errEl.style.display = 'block';
+  }
+  paymentStarting = false;
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Pay with PayMe';
+  }
+  return;
+}
       const customerEmail = getPayEmailForCheckout(paymentLink);
       const customerPhone = getPayPhoneForCheckout(paymentLink);
       if (!customerEmail || !isValidEmail(customerEmail)) {
@@ -990,9 +1050,11 @@ function renderCheckout(link) {
         if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
         return;
       }
-      await savePayLinkDeliveryAddress(paymentLink);
-      await savePayLinkCustomerEmail(paymentLink);
-      await savePayLinkCustomerPhone(paymentLink);
+      if (!isReusableLink(paymentLink)) {
+  await savePayLinkDeliveryAddress(paymentLink);
+  await savePayLinkCustomerEmail(paymentLink);
+  await savePayLinkCustomerPhone(paymentLink);
+}
       navPayReplace('checkout');
 
       // Reusable links always get a fresh order per payment — never reuse link.order_id.
@@ -1011,7 +1073,7 @@ function renderCheckout(link) {
 
       let payData;
       try {
-        payData = await callCreatePayment({ orderId, linkCode: paymentLink.link_code, customerEmail, customerPhone });
+        payData = await callCreatePayment({ orderId, linkCode: paymentLink.link_code, customerName, customerEmail, customerPhone });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
         if (msg.includes('already paid')) {
@@ -1020,13 +1082,14 @@ function renderCheckout(link) {
         }
         const tryLinkCode = msg.includes('not found') || msg.includes('missing order') || msg.includes('order_id');
         if (tryLinkCode) {
-          payData = await callCreatePayment({
-            linkCode: paymentLink.link_code,
-            orderId,
-            deliveryAddress: deliveryAddress || undefined,
-            customerEmail: customerEmail || undefined,
-            customerPhone: customerPhone || undefined,
-          });
+         payData = await callCreatePayment({
+  linkCode: paymentLink.link_code,
+  orderId,
+  deliveryAddress: deliveryAddress || undefined,
+  customerName: customerName || undefined,
+  customerEmail: customerEmail || undefined,
+  customerPhone: customerPhone || undefined,
+});
         } else {
           throw e;
         }
