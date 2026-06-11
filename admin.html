@@ -369,8 +369,6 @@
 <script>
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
-  const CLOUDINARY_CLOUD = 'dqhfv5grg';
-  const CLOUDINARY_PRESET = 'gremier_products'; // create unsigned preset in Cloudinary
   const ADMIN_EMAIL = 'gremiercoffee@gmail.com';
   const SITE_URL = window.location.origin;
 </script>
@@ -1392,16 +1390,31 @@ async function handleImgFiles(files) {
   }
   btn.textContent = 'Save Product'; btn.disabled = false;
 }
-async function uploadToCloudinary(file) {
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('upload_preset', CLOUDINARY_PRESET);
-  fd.append('folder', 'gremier_products');
+async function uploadToCloudinary(file, folder) {
   try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method:'POST', body:fd });
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showToast('Not signed in'); return null; }
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('folder', folder || 'gremier_products');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/cloudinary-upload`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + session.access_token,
+      },
+      body: fd,
+    });
     const data = await res.json();
+    if (!res.ok || !data.secure_url) {
+      showToast(data.error || 'Image upload failed');
+      return null;
+    }
     return data.secure_url;
-  } catch(e) { showToast('Image upload failed'); return null; }
+  } catch(e) {
+    showToast('Image upload failed');
+    return null;
+  }
 }
 async function saveProduct() {
   const id = document.getElementById('editProductId').value;
@@ -3238,20 +3251,31 @@ async function uploadSiteImage(key, input) {
   const file = input.files[0];
   if (!file) return;
   showToast('Uploading...');
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('upload_preset', CLOUDINARY_PRESET);
-  fd.append('folder', 'gremier_site');
   try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method:'POST', body:fd });
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showToast('Not signed in'); return; }
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('folder', 'gremier_site');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/cloudinary-upload`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + session.access_token,
+      },
+      body: fd,
+    });
     const data = await res.json();
-    if (!data.secure_url) throw new Error('Upload failed');
+    if (!res.ok || !data.secure_url) {
+      showToast(data.error || 'Upload failed');
+      return;
+    }
     await sb.from('site_settings').upsert({ key, value: data.secure_url, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     showToast(`${key} updated ✓`);
     loadSiteImages();
   } catch(e) {
     console.error(e);
-    showToast('Upload failed — check Cloudinary preset');
+    showToast('Upload failed');
   }
 }
 async function clearSiteImage(key) {
