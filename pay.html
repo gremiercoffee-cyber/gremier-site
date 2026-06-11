@@ -856,25 +856,24 @@ if (!resolvedLinkCode && resolvedOrderId) {
     return true;
   }
 
-  function renderCheckout(link) {
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
-    const items = (link.items || []).map(i =>
-
-      `<div class="pay-line"><span>${i.name_en} ×${i.qty}</span><span>₪${i.price * i.qty}</span></div>`
-
-    ).join('');
-
-    const discountLine = link.discount > 0
-
-      ? `<div class="pay-line pay-discount"><span>Discount${link.discount_note ? ' — ' + link.discount_note : ''}</span><span>-₪${link.discount}</span></div>`
-
-      : '';
-
-    const customer = link.customer_name
-
-      ? `<div class="pay-customer">For ${link.customer_name}${link.customer_phone ? ' · ' + link.customer_phone : ''}</div>`
-
-      : '';
+function renderCheckout(link) {
+  const items = (link.items || []).map(i =>
+    `<div class="pay-line"><span>${esc(i.name_en)} ×${esc(String(i.qty))}</span><span>₪${parseFloat(i.price * i.qty).toFixed(2)}</span></div>`
+  ).join('');
+  const discountLine = link.discount > 0
+    ? `<div class="pay-line pay-discount"><span>Discount${link.discount_note ? ' — ' + esc(link.discount_note) : ''}</span><span>-₪${link.discount}</span></div>`
+    : '';
+  const customer = link.customer_name
+    ? `<div class="pay-customer">For ${esc(link.customer_name)}${link.customer_phone ? ' · ' + esc(link.customer_phone) : ''}</div>`
+    : '';
 
     document.getElementById('payCard').innerHTML = `
 
