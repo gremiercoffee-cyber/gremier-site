@@ -810,7 +810,7 @@ function renderCheckout(link) {
 
         <label for="payEmail">Email <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
 
-        <input type="email" id="payEmail" placeholder="you@example.com" value="${(link.customer_email || '').replace(/"/g, '&quot;')}" required/>
+        <input type="email" id="payEmail" placeholder="you@example.com" value="${esc(link.customer_email || '')}" required/>
 
         <div class="pay-field-hint">Required — we'll send your order confirmation here after payment.</div>
 
@@ -820,7 +820,7 @@ function renderCheckout(link) {
 
         <label for="payPhone">Phone <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
 
-        <input type="tel" id="payPhone" placeholder="05X-XXXXXXX" value="${(link.customer_phone || '').replace(/"/g, '&quot;')}" required/>
+        <input type="tel" id="payPhone" placeholder="05X-XXXXXXX" value="${esc(link.customer_phone || '')}" required/>
 
         <div class="pay-field-hint">Required — so we can reach you about delivery.</div>
 
@@ -830,7 +830,7 @@ function renderCheckout(link) {
 
         <label for="payAddress">Delivery address <span style="text-transform:none;letter-spacing:0;color:#666">(optional)</span></label>
 
-        <input type="text" id="payAddress" placeholder="City, street, apartment…" value="${(link.delivery_address || '').replace(/"/g, '&quot;')}"/>
+        <input type="text" id="payAddress" placeholder="City, street, apartment…" value="${esc(link.delivery_address || '')}"/>
 
         <div class="pay-field-hint">Add your address here if you know it — otherwise we'll confirm delivery details with you on WhatsApp.</div>
 
