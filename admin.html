@@ -2801,7 +2801,6 @@ function renderMembersList() {
     const phoneLink = m.phone && m.phone !== '—'
       ? `<a href="tel:${escAttr(m.phone)}" style="color:var(--cream2);text-decoration:none">${escHtml(m.phone)}</a>`
       : '—';
-      : '—';
     return `<tr>
 <td class="cell-customer" style="color:var(--cream)">${escHtml(m.name)}${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(m.email)}">${escHtml(m.email)}</td>
