@@ -1,6 +1,12 @@
 [functions.create-payment]
 verify_jwt = false
 
+[functions.create-payment-link-order]
+verify_jwt = false
+
+[functions.create-website-order]
+verify_jwt = false
+
 [functions.payme-webhook]
 verify_jwt = false
 

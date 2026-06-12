@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com; form-action 'self'; upgrade-insecure-requests"/>
+  <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co. — Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   <!-- PWA for admin -->
@@ -13,7 +15,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="Gremier Admin"/>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/vendor/supabase-js.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     :root {
@@ -1848,18 +1850,31 @@ async function updateOrderStatus(id, status) {
   loadOrders();
   await refreshPayLinksIfVisible();
 }
+async function callAdminFunction(functionName, body) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('Admin session expired - refresh and sign in again.');
+  }
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + session.access_token,
+    },
+    body: JSON.stringify(body || {}),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
 async function markOrderFulfilled(orderId, forceEmail, skipToast) {
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-order-fulfilled`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ order_id: orderId, force: !!forceEmail }),
+    const { data } = await callAdminFunction('notify-order-fulfilled', {
+      order_id: orderId,
+      force: !!forceEmail,
     });
-    const data = await res.json().catch(() => ({}));
     if (data.ok || data.skipped === 'already_notified') {
       if (!skipToast) showToast(data.emailed ? 'Fulfilled + customer emailed ✓' : 'Marked fulfilled ✓');
       await loadOrders();
@@ -1872,23 +1887,17 @@ async function markOrderFulfilled(orderId, forceEmail, skipToast) {
     return data;
   } catch (err) {
     console.error(err);
-    if (!skipToast) showToast('Could not reach notify-order-fulfilled');
+    if (!skipToast) showToast(err.message || 'Could not reach notify-order-fulfilled');
     return null;
   }
 }
 async function sendOrderToGoogleSheet(orderId, force) {
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ order_id: orderId, force: !!force }),
+    const { data } = await callAdminFunction('notify-paid-order', {
+      order_id: orderId,
+      force: !!force,
     });
-    const data = await res.json().catch(() => ({}));
-    if (data.sent || data.skipped === 'already_notified') {
+    if (data.sent || data.ops_queued || data.skipped === 'already_notified') {
       const msg = data.skipped === 'already_notified' && !force
         ? 'Already synced (Sheet + Ops) ✓'
         : 'Sent to Google Sheet + email ✓';
@@ -1906,7 +1915,7 @@ async function sendOrderToGoogleSheet(orderId, force) {
     return data;
   } catch (err) {
     console.error(err);
-    showToast('Could not reach notify-paid-order function');
+    showToast(err.message || 'Could not reach notify-paid-order function');
     return null;
   }
 }
@@ -1933,17 +1942,10 @@ async function insertPendingForPaymentLink(link, order) {
 async function queuePaidLinkForOps(orderId) {
   if (!orderId) { showToast('No order linked to this payment link'); return; }
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ order_id: orderId }),
+    const { data } = await callAdminFunction('notify-paid-order', {
+      order_id: orderId,
     });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok || data.ops_queued || data.sent || data.skipped === 'already_notified') {
+    if (data.ops_queued || data.sent || data.skipped === 'already_notified') {
       showToast(data.ops_queued ? 'Queued for Ops scheduling ✓ — refresh Ops app' : (data.detail || 'Sync attempted — check Ops'));
     } else {
       showToast(data.detail || data.error || 'Could not queue for Ops');
@@ -2256,7 +2258,7 @@ async function generatePayLink() {
     return;
   }
   const discount = Math.max(0, subtotal - total);
-  const linkCode = Math.random().toString(36).substr(2,10);
+  const linkCode = crypto.randomUUID().replace(/-/g, '').slice(0, 24);
   const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
   const customerEmail = document.getElementById('plEmail').value.trim() || null;
@@ -3262,9 +3264,8 @@ async function clearSiteImage(key) {
 }
 initAdmin();
 // ── PWA SERVICE WORKER ──
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
-}
+// Disabled from admin page so admin cannot register a root-scoped service worker.
+// If you want an admin PWA later, move admin to /admin/ and register /admin/admin-sw.js with scope /admin/.
 </script>
 </body>
 </html>

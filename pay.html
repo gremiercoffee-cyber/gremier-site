@@ -7,6 +7,8 @@
   <meta charset="UTF-8"/>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co; form-action 'self'; upgrade-insecure-requests"/>
+  <meta name="referrer" content="strict-origin-when-cross-origin"/>
 
   <title>Pay — Gremier Coffee Co.</title>
 
@@ -14,7 +16,7 @@
 
   <link rel="icon" type="image/png" href="logo.png"/>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/vendor/supabase-js.min.js"></script>
 
   <style>
 
@@ -291,97 +293,31 @@
 
 
   async function ensureOrderId(link) {
+    if (!link?.link_code) throw new Error('Payment link missing code');
 
-    if (isReusableLink(link)) {
-      const orderData = {
-        customer_name: link.customer_name || 'Payment Link Customer',
-        customer_phone: link.customer_phone || getPayPhone() || null,
-        customer_email: link.customer_email || getPayEmail() || null,
-        delivery_address: link.delivery_address || null,
-        items: link.items || [],
-        subtotal: link.subtotal,
-        discount: link.discount || 0,
-        total: link.total,
-        status: 'awaiting_payment',
-        payment_status: 'unpaid',
-        payment_method: 'payme',
-        source: 'payment_link',
-        delivery_info: { payment_link_code: link.link_code, reusable_checkout: true },
-        notes: link.discount_note || null,
-      };
-      const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
-      if (error || !inserted?.id) throw new Error('Could not start payment');
-      return inserted.id;
-    }
-
-    if (link.order_id) return link.order_id;
-
-
-
-    const { data: existingRows } = await sb.from('orders')
-      .select('id, payment_status')
-      .eq('source', 'payment_link')
-      .filter('delivery_info->>payment_link_code', 'eq', link.link_code)
-      .eq('payment_status', 'unpaid')
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    const existing = existingRows?.[0];
-
-
-
-    if (existing?.id) {
-
-      if (existing.payment_status === 'paid') throw new Error('This payment link is already paid');
-
-      await sb.from('payment_links').update({ order_id: existing.id }).eq('link_code', link.link_code);
-
-      return existing.id;
-
-    }
-
-
-
-    const orderData = {
-
-      customer_name: link.customer_name || 'Payment Link Customer',
-
-      customer_phone: link.customer_phone || getPayPhone() || null,
-
-      customer_email: link.customer_email || getPayEmail() || null,
-
-      delivery_address: link.delivery_address || null,
-
-      items: link.items || [],
-
-      subtotal: link.subtotal,
-
-      discount: link.discount || 0,
-
-      total: link.total,
-
-      status: 'awaiting_payment',
-
-      payment_status: 'unpaid',
-
-      payment_method: 'payme',
-
-      source: 'payment_link',
-
-      delivery_info: { payment_link_code: link.link_code },
-
-      notes: link.discount_note || null,
-
+    const body = {
+      payment_link_code: link.link_code,
+      customer_email: getPayEmailForCheckout(link) || undefined,
+      customer_phone: getPayPhoneForCheckout(link) || undefined,
+      delivery_address: getPayDeliveryAddress() || link.delivery_address || undefined,
     };
 
-    const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-link-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(body),
+    });
 
-    if (error || !inserted?.id) throw new Error('Could not start payment');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.id) {
+      throw new Error(data.error || data.message || 'Could not start payment');
+    }
 
-    await sb.from('payment_links').update({ order_id: inserted.id }).eq('link_code', link.link_code);
-
-    return inserted.id;
-
+    return data.id;
   }
 
 
@@ -746,31 +682,12 @@ if (!resolvedLinkCode && resolvedOrderId) {
     }
   }
 
-  /** Queue paid order for Ops scheduling (idempotent safety net). */
+  /** Queue paid order for Ops scheduling.
+   * Public client intentionally does not call notify-paid-order.
+   * confirm-payment-return must verify PayMe server-side and trigger email/Ops sync itself.
+   */
   async function queuePaidOrderForOps(oid, force) {
-    const id = oid || orderId;
-    if (!id) return null;
-    try {
-      const payload = { order_id: id };
-      if (force) payload.force = true;
-      const saleId = paymeSaleIdForOrder(id);
-      if (saleId) payload.payme_sale_id = saleId;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(function () { return {}; });
-      if (!res.ok) console.warn('notify-paid-order:', data);
-      return data;
-    } catch (e) {
-      console.warn('Ops schedule queue:', e);
-      return null;
-    }
+    return { skipped: 'client_notify_disabled' };
   }
 
   async function recheckPayment() {

@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com; form-action 'self'; upgrade-insecure-requests"/>
+  <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;700&display=swap" rel="stylesheet"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/vendor/supabase-js.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -1998,6 +2000,24 @@ function closeCheckout(fromNav) {
   if (document.getElementById('checkoutOverlay').classList.contains('open')) navBack();
   else document.getElementById('checkoutOverlay').classList.remove('open');
 }
+async function createWebsiteOrder(orderData) {
+  const { data: { session } } = await sb.auth.getSession();
+  const bearer = session?.access_token || SUPABASE_ANON_KEY;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + bearer,
+    },
+    body: JSON.stringify(orderData),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.id) {
+    throw new Error(data.error || data.message || 'Could not create order');
+  }
+  return data.id;
+}
 async function callCreatePayment(orderId) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
     method: 'POST',
@@ -2085,25 +2105,20 @@ async function submitOrder() {
       },
       status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
     };
-    const { data: inserted, error } = await sb.from('orders').insert(orderData).select('id').single();
-    if (error || !inserted?.id) {
-      console.error(error);
-      alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
-      return;
-    }
+    const orderId = await createWebsiteOrder(orderData);
 
     let payData;
     try {
-      payData = await callCreatePayment(inserted.id);
+      payData = await callCreatePayment(orderId);
     } catch (payErr) {
       console.error(payErr);
       alert(payErr.message || (lang==='he' ? 'לא ניתן לפתוח תשלום' : 'Could not start payment'));
       return;
     }
 
-    sessionStorage.setItem('gremier_pending_order', inserted.id);
+    sessionStorage.setItem('gremier_pending_order', orderId);
     if (payData.payme_sale_id) {
-      sessionStorage.setItem('gremier_payme_sale_' + inserted.id, payData.payme_sale_id);
+      sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
     }
     window.location.href = payData.sale_url;
   } catch (err) {
@@ -2156,20 +2171,9 @@ async function confirmPaymentReturnFromUrl(params, orderId) {
   return data;
 }
 async function queueNotifyPaidOrder(orderId, force) {
-  if (!orderId) return;
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/notify-paid-order`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ order_id: orderId, ...(force ? { force: true } : {}) }),
-    });
-  } catch (e) {
-    console.warn('notify-paid-order:', e);
-  }
+  // Public client intentionally does not call notify-paid-order.
+  // confirm-payment-return must verify PayMe server-side and trigger any email/Ops sync itself.
+  return null;
 }
 async function handlePaymentReturn() {
   const params = new URLSearchParams(window.location.search);

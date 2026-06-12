@@ -447,12 +447,14 @@ async function markPendingWebsiteDelivered(pendingRow, job) {
 }
 async function syncOrderFulfilledFromOps(orderId, jobId) {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("Ops session expired");
     const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-order-fulfilled`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Authorization": `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ order_id: orderId, ops_inventory_already_deducted: true, ops_job_id: jobId || null }),
     });
