@@ -142,14 +142,56 @@
     .hero-desc { font-size:.82rem; color:var(--text2); line-height:1.55; max-width:520px; margin:0 auto 14px; }
     .hero-btns { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:0; }
     .hero-btns .btn { padding:10px 22px; }
+    #t-hero-bars.btn-outline { border-color:var(--amber); color:#1a1a1a; }
+    #t-hero-bars.btn-outline:hover { border-color:var(--amber2); color:#1a1a1a; background:rgba(200,135,58,.08); }
     .section-home-products { padding:16px 24px 48px; }
     .section-home-products .section-header { margin-bottom:20px; }
+    .section-home-products .section-title { position:relative; }
     @media(max-width:480px){
       .hero { padding:16px 16px 8px; }
       .hero-brand { gap:12px; }
       .hero-logo { width:56px; height:56px; }
       .hero-title { font-size:clamp(1.65rem,7vw,2.2rem); }
       .hero-desc { font-size:.78rem; margin-bottom:12px; }
+    }
+    @media(max-width:640px){
+      #memberBanner {
+        min-height:52px;
+        padding:7px 42px 8px 14px;
+        flex-wrap:wrap;
+        gap:2px 8px;
+        line-height:1.3;
+        text-align:center;
+        font-size:.74rem;
+        letter-spacing:.015em;
+      }
+      #memberBanner span { min-width:0; }
+      #memberBanner a { white-space:nowrap; }
+      #memberBanner .banner-close { right:8px; top:50%; transform:translateY(-50%); }
+      body.has-banner nav { top:52px; }
+      body.has-banner .mobile-menu { top:108px; }
+      body.has-banner .page { padding-top:118px !important; }
+      .hero { padding:14px 16px 6px; }
+      .hero-brand { gap:13px; margin-bottom:10px; }
+      .hero-logo { width:64px; height:64px; }
+      .hero-title { font-size:clamp(1.95rem,8.2vw,2.45rem); line-height:1.02; }
+      .hero-desc { margin-bottom:12px; }
+      .hero-btns { gap:9px; }
+      .hero-btns .btn { padding:10px 20px; }
+      .section-home-products {
+        position:relative;
+        padding-top:18px;
+        padding-bottom:42px;
+      }
+      .section-home-products::before {
+        content:'';
+        display:block;
+        width:min(72px,28vw);
+        height:1px;
+        margin:0 auto 16px;
+        background:linear-gradient(90deg,transparent,rgba(200,135,58,.62),transparent);
+      }
+      .section-home-products .section-header { margin-bottom:18px; }
     }
     .divider { width:56px; height:1px; background:#1a1a1a; margin:0 auto 20px; opacity:.2; }
     /* SECTIONS */
@@ -1306,9 +1348,9 @@ async function setUser(user) {
   isAdmin = profile?.is_admin || false;
   userPoints = profile?.points || 0;
   userCouponAvailable = profile?.coupon_available || false;
-  // ensure profile row exists with points columns
+  // ensure profile row exists; loyalty columns are server-managed
   if (!profile) {
-    await sb.from('profiles').upsert({ id: user.id, points: 0, coupon_available: false }, { onConflict: 'id' });
+    await sb.from('profiles').upsert({ id: user.id }, { onConflict: 'id' });
   }
   const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Account';
   const avatar = user.user_metadata?.avatar_url;
@@ -1393,17 +1435,7 @@ function closePointsModal(fromNav) {
   else document.getElementById('pointsModal').classList.remove('open');
 }
 async function awardPointsForOrder(orderTotal) {
-  if (!currentUser) return;
-  const earned = Math.floor(orderTotal / 10);
-  if (earned <= 0) return;
-  const newPoints = userPoints + earned;
-  const newCoupon = userCouponAvailable || newPoints >= 200;
-  // if crossing 200, reset points and mark coupon
-  const finalPoints = newCoupon && !userCouponAvailable ? newPoints - 200 : newPoints;
-  await sb.from('profiles').update({ points: finalPoints, coupon_available: newCoupon }).eq('id', currentUser.id);
-  userPoints = finalPoints;
-  userCouponAvailable = newCoupon;
-  updateLoyaltyPill();
+  if (currentUser) await refreshUserProfile();
 }
 function applyCouponIfAvailable() {
   if (userCouponAvailable) return true;
@@ -1411,9 +1443,7 @@ function applyCouponIfAvailable() {
 }
 async function redeemCoupon() {
   if (!currentUser || !userCouponAvailable) return;
-  await sb.from('profiles').update({ coupon_available: false }).eq('id', currentUser.id);
-  userCouponAvailable = false;
-  updateLoyaltyPill();
+  // Coupon redemption is finalized server-side when PayMe confirms the order.
 }
 function openAuthModal() {
   openAuthModalUI();
@@ -1666,7 +1696,7 @@ function pdOnGuestChange(select) {
 }
 function openProductDrawerUI(productId) {
   const p = products.find(x => String(x.id) === String(productId));
-  if (!p) return;
+  if (!p) return false;
   pdCurrentProduct = p;
   pdQty = 1;
   pdActiveImg = 0;
@@ -1740,10 +1770,12 @@ function openProductDrawerUI(productId) {
   document.body.style.left = '0';
   document.body.style.right = '0';
   document.body.style.overflow = 'hidden';
+  return true;
 }
 function openProductDrawer(productId) {
-  openProductDrawerUI(productId);
-  navPush({ page: appPage, layer: 'product', productId: String(productId) });
+  if (openProductDrawerUI(productId)) {
+    navPush({ page: appPage, layer: 'product', productId: String(productId) });
+  }
 }
 function closeProductDrawer(fromNav) {
   if (!document.getElementById('pdDrawer').classList.contains('open')) return;
@@ -1760,7 +1792,12 @@ function closeProductDrawer(fromNav) {
     pdCurrentProduct = null;
     return;
   }
-  navBack();
+  if ((window.location.hash || '').replace(/^#\/?/, '').toLowerCase().startsWith('product=')) {
+    closeProductDrawer(true);
+    navReplace({ page: appPage, layer: null });
+  } else {
+    navBack();
+  }
 }
 function pdSwitchImg(idx, url) {
   pdActiveImg = idx;
@@ -2218,13 +2255,6 @@ async function handlePaymentReturn() {
     ? (txn.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0] || txn.split('_')[0])
     : '';
   const orderId = params.get('order_id') || uuidFromTxn || sessionStorage.getItem('gremier_pending_order');
-  const paymeOk = ['success', 'completed', 'paid', '1'].includes(
-    String(params.get('payme_status') || params.get('status') || params.get('sale_status') || '').toLowerCase()
-  );
-  const trustReturn = params.get('payment') === 'return' && !['failed', 'error', 'cancelled', 'canceled', 'declined', '0'].includes(
-    String(params.get('payme_status') || params.get('status') || params.get('sale_status') || '').toLowerCase()
-  );
-
   appPage = 'home';
   navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind: 'pending' }, true);
   showPage('home', true);
@@ -2232,7 +2262,7 @@ async function handlePaymentReturn() {
   openCheckoutUI('result', 'pending');
 
   if (!orderId) {
-    const resultKind = paymeOk ? 'paid' : 'failed';
+    const resultKind = 'failed';
     navReplace({ page: 'home', layer: 'checkout', checkoutView: 'result', resultKind }, true);
     openCheckoutUI('result', resultKind);
     return;
@@ -2245,7 +2275,7 @@ async function handlePaymentReturn() {
     if (i < 19) await new Promise(r => setTimeout(r, i < 3 ? 500 : 1200));
   }
 
-  const resultKind = paid || paymeOk || trustReturn ? 'paid' : 'failed';
+  const resultKind = paid ? 'paid' : 'failed';
   if (resultKind === 'paid') {
     cart = [];
     updateCartCount();
@@ -2310,7 +2340,10 @@ function applySiteImages() {
   if (introEl && siteSettings[introKey]) introEl.textContent = siteSettings[introKey];
   const ctaTitleEl = document.querySelector('.cbp-cta-title');
   const ctaSubEl = document.querySelector('.cbp-cta-sub');
-  if (ctaTitleEl && siteSettings.cb_cta_title) ctaTitleEl.innerHTML = siteSettings.cb_cta_title.replace(/\n/g,'<br>');
+  if (ctaTitleEl && siteSettings.cb_cta_title) {
+    ctaTitleEl.textContent = siteSettings.cb_cta_title;
+    ctaTitleEl.style.whiteSpace = 'pre-line';
+  }
   if (ctaSubEl && siteSettings.cb_cta_sub) ctaSubEl.textContent = siteSettings.cb_cta_sub;
   // Why Gremier cards
   const whyMap = [
@@ -2395,6 +2428,14 @@ const APP_PAGES = new Set(['home', 'shop', 'coffeebars', 'myorders']);
 
 function parsePageFromUrl() {
   const raw = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase();
+  const original = (window.location.hash || '').replace(/^#\/?/, '');
+  if (raw.startsWith('product=')) {
+    return {
+      page: 'home',
+      layer: 'product',
+      productId: decodeURIComponent(original.slice('product='.length)),
+    };
+  }
   if (raw === 'about') return { page: 'home', scrollTo: 'aboutSection' };
   if (APP_PAGES.has(raw)) return { page: raw };
   return { page: 'home' };
@@ -2408,6 +2449,11 @@ function buildPageUrl(pageOrHash, stripSearch = false) {
 }
 
 function buildNavUrl(state, stripSearch = false) {
+  if (state.layer === 'product' && state.productId) {
+    const base = window.location.pathname || '/';
+    const search = stripSearch ? '' : window.location.search;
+    return `${base}${search}#product=${encodeURIComponent(state.productId)}`;
+  }
   if (state.scrollTo === 'aboutSection') return buildPageUrl('about', stripSearch);
   const page = state.page || 'home';
   return buildPageUrl(page, stripSearch);
@@ -2581,9 +2627,15 @@ function handleAppPopState(e) {
   navSkipPush = true;
   try {
     if (!e.state || e.state.__app !== 'gremier') {
-      const { page, scrollTo } = parsePageFromUrl();
-      applyNavState({ page, layer: null, scrollTo: scrollTo || null });
-      navReplace({ page, layer: null, scrollTo: scrollTo || null });
+      const parsed = parsePageFromUrl();
+      const state = {
+        page: parsed.page,
+        layer: parsed.layer || null,
+        productId: parsed.productId || null,
+        scrollTo: parsed.scrollTo || null,
+      };
+      applyNavState(state);
+      navReplace(state);
       return;
     }
     applyNavState(e.state);
@@ -2592,11 +2644,20 @@ function handleAppPopState(e) {
   }
 }
 function restorePageFromUrl() {
-  const { page, scrollTo } = parsePageFromUrl();
-  appPage = page;
-  showPage(page, true);
-  navReplace({ page, layer: null, scrollTo: scrollTo || null });
-  if (scrollTo) setTimeout(() => scrollToSection(scrollTo), 120);
+  const parsed = parsePageFromUrl();
+  const state = {
+    page: parsed.page,
+    layer: parsed.layer || null,
+    productId: parsed.productId || null,
+    scrollTo: parsed.scrollTo || null,
+  };
+  appPage = state.page;
+  showPage(state.page, true);
+  navReplace(state);
+  if (state.scrollTo) setTimeout(() => scrollToSection(state.scrollTo), 120);
+  if (state.layer === 'product' && state.productId) {
+    setTimeout(() => openProductDrawerUI(state.productId), 80);
+  }
 }
 function goToAbout(fromHistory) {
   showPage('home', true);

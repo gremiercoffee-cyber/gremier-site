@@ -425,9 +425,8 @@ Deno.serve(async (req) => {
       const saleId = storedSaleId || saleIdFromLink;
       const txn = txnId || resolvedOrderId || (link ? paymentLinkTransactionId(link.link_code) : "");
       const query = await queryPaymeSaleCompletedWithRetries(saleId, txn);
-      const trustReturn = shouldTrustPayMeReturn(body, orderDeliveryInfo, resolvedOrderId);
       return {
-        completed: returnSuccess || query.completed || trustReturn,
+        completed: query.completed,
         paymeSaleId: query.paymeSaleId || saleId,
       };
     }
@@ -550,25 +549,6 @@ Deno.serve(async (req) => {
       const saleId = String(body.payme_sale_id || "").trim()
         || String(orderDeliveryInfo?.payme_sale_id || "").trim()
         || (await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo));
-
-      if (shouldTrustPayMeReturn(body, orderDeliveryInfo, resolvedOrderId)) {
-        const markResult = await markOrderPaid(supabase, resolvedOrderId, {
-          payme_sale_id: saleId || undefined,
-          payme_transaction_id: paymeTransactionId || undefined,
-        });
-        if (markResult === "newly_paid" || markResult === "already_paid") {
-          await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
-          const fulfilled = await fulfillPaidOrder(supabase, resolvedOrderId, { skip_payme_check: true });
-          return new Response(JSON.stringify({
-            paid: true,
-            order_id: resolvedOrderId,
-            trusted_return: true,
-            notified: fulfilled.notified,
-          }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-      }
 
       const fulfilled = await fulfillPaidOrder(supabase, resolvedOrderId, {
         payme_sale_id: saleId || undefined,

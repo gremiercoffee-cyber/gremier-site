@@ -130,6 +130,23 @@
 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+  async function loadPaymentLinkByCode(code) {
+    const linkCodeValue = String(code || '').trim();
+    if (!linkCodeValue) return null;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/get-payment-link`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ link_code: linkCodeValue }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.link) return null;
+    return data.link;
+  }
+
 
 
   const params = new URLSearchParams(window.location.search);
@@ -395,30 +412,26 @@ function payInputValue(value) {
   async function savePayLinkCustomerEmail(link) {
     const email = getPayEmailForCheckout(link);
     if (!email) return '';
-    const { error } = await sb.from('payment_links').update({ customer_email: email }).eq('link_code', link.link_code);
-    if (!error) link.customer_email = email;
+    link.customer_email = email;
     return email;
   }
 
   async function savePayLinkCustomerPhone(link) {
     const phone = getPayPhoneForCheckout(link);
     if (!phone) return '';
-    const { error } = await sb.from('payment_links').update({ customer_phone: phone }).eq('link_code', link.link_code);
-    if (!error) link.customer_phone = phone;
+    link.customer_phone = phone;
     return phone;
   }
 
   async function savePayCustomerEmail(orderId, link) {
     const email = getPayEmailForCheckout(link);
     if (!email) return;
-    await sb.from('orders').update({ customer_email: email }).eq('id', orderId);
     await savePayLinkCustomerEmail(link);
   }
 
   async function savePayCustomerPhone(orderId, link) {
     const phone = getPayPhoneForCheckout(link);
     if (!phone) return;
-    await sb.from('orders').update({ customer_phone: phone }).eq('id', orderId);
     await savePayLinkCustomerPhone(link);
   }
 
@@ -439,15 +452,13 @@ function payInputValue(value) {
   async function savePayLinkDeliveryAddress(link) {
     const addr = getPayAddressForCheckout(link);
     if (!addr) return '';
-    const { error } = await sb.from('payment_links').update({ delivery_address: addr }).eq('link_code', link.link_code);
-    if (!error) link.delivery_address = addr;
+    link.delivery_address = addr;
     return addr;
   }
 
   async function savePayDeliveryAddress(orderId, link) {
     const addr = getPayAddressForCheckout(link);
     if (!addr) return;
-    await sb.from('orders').update({ delivery_address: addr }).eq('id', orderId);
     await savePayLinkDeliveryAddress(link);
   }
 
@@ -556,13 +567,11 @@ function payInputValue(value) {
   async function finishPaidReturn(oid, opts) {
     opts = opts || {};
     if (linkCode) {
-      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      const link = await loadPaymentLinkByCode(linkCode);
       if (link) paymentLink = link;
     }
 
     let targetId = oid || orderId;
-    const trustPayMeReturn = opts.trustPayMeReturn === true || opts.skipConfirm === true;
-
     if (await checkPaidLocally()) {
       showPaymentConfirmed(targetId);
       syncPaidOrderToSheet(targetId, 20).catch(function (e) {
@@ -572,14 +581,6 @@ function payInputValue(value) {
     }
 
     // PayMe sent the customer back — show confirmed now; mark paid + email in background.
-    if (trustPayMeReturn) {
-      showPaymentConfirmed(targetId);
-      syncPaidOrderToSheet(targetId, 20).catch(function (e) {
-        console.warn('Background payment sync:', e);
-      });
-      return;
-    }
-
     for (let i = 0; i < 2; i++) {
       const data = await confirmPaymentReturn();
       if (data.order_id) {
@@ -621,10 +622,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
     }
 
     if (!resolvedOrderId && resolvedLinkCode) {
-      const { data: lnk } = await sb.from('payment_links')
-        .select('last_order_id, order_id')
-        .eq('link_code', resolvedLinkCode)
-        .maybeSingle();
+      const lnk = await loadPaymentLinkByCode(resolvedLinkCode);
       resolvedOrderId = lnk?.last_order_id || (!isReusableLink(lnk) && lnk?.order_id) || '';
     }
 
@@ -674,7 +672,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
 
   async function checkPaidLocally() {
     if (linkCode) {
-      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      const link = await loadPaymentLinkByCode(linkCode);
       if (link) {
         paymentLink = { ...(paymentLink || {}), ...link };
         if (link.order_id && !isReusableLink(link)) orderId = link.order_id;
@@ -748,10 +746,6 @@ if (!resolvedLinkCode && resolvedOrderId) {
       }
       if (i < 2) await new Promise(r => setTimeout(r, 800));
     }
-    if (shouldTrustPayMeReturn()) {
-      await finishPaidReturn(orderId, { trustPayMeReturn: true });
-      return;
-    }
     renderFailed();
   }
 
@@ -769,7 +763,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
     }
 
     if (linkCode) {
-      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      const link = await loadPaymentLinkByCode(linkCode);
       if (link) {
         paymentLink = link;
         if (!orderId && link.order_id && !isReusableLink(link)) orderId = link.order_id;
@@ -782,13 +776,6 @@ if (!resolvedLinkCode && resolvedOrderId) {
     }
 
     // Don't block the UI on slow server calls — PayMe return means payment went through.
-    if (shouldTrustPayMeReturn()) {
-      renderProcessing();
-      navPayReplace('pending');
-      await finishPaidReturn(orderId, { trustPayMeReturn: true });
-      return true;
-    }
-
     renderProcessing();
     navPayReplace('pending');
 
@@ -908,7 +895,7 @@ function renderCheckout(link) {
     }
 
     if (linkCode) {
-      const { data: link } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+      const link = await loadPaymentLinkByCode(linkCode);
       if (link) paymentLink = link;
     }
 
@@ -981,9 +968,7 @@ if (!customerName) {
       } else {
       orderId = await ensureOrderId(paymentLink);
         if (!isReusableLink(paymentLink)) paymentLink.order_id = orderId;
-        if (isReusableLink(paymentLink)) {
-          await sb.from('payment_links').update({ last_order_id: orderId }).eq('link_code', paymentLink.link_code);
-        }
+        if (isReusableLink(paymentLink)) paymentLink.last_order_id = orderId;
       }
       await savePayDeliveryAddress(orderId, paymentLink);
       await savePayCustomerEmail(orderId, paymentLink);
@@ -1044,9 +1029,9 @@ if (!customerName) {
 
 
 
-    const { data: link, error } = await sb.from('payment_links').select('*').eq('link_code', linkCode).maybeSingle();
+    const link = await loadPaymentLinkByCode(linkCode);
 
-    if (error || !link) {
+    if (!link) {
 
       applyPayView('notfound');
 

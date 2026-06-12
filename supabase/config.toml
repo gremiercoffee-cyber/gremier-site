@@ -7,6 +7,9 @@ verify_jwt = false
 [functions.create-website-order]
 verify_jwt = false
 
+[functions.get-payment-link]
+verify_jwt = false
+
 [functions.payme-webhook]
 verify_jwt = false
 
