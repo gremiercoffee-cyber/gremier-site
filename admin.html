@@ -1819,7 +1819,7 @@ function renderOrdersTable(orders) {
   const body = document.getElementById('ordersBody');
   if (!orders.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No orders found.</td></tr>'; return; }
   body.innerHTML = orders.map(o=>{
-    const items = (o.items||[]).map(i=>`${i.name_en} ×${i.qty}`).join(', ');
+    const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
     const subBadge = isSubscriptionOrder(o) ? ' <span class="status-pill s-confirmed" style="font-size:.55rem">sub</span>' : '';
     const fulfillBtn = o.status !== 'fulfilled' && o.payment_status === 'paid'
@@ -1828,7 +1828,7 @@ function renderOrdersTable(orders) {
     return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
       <td class="cell-num" style="color:var(--cream)">#${o.order_number}${subBadge}</td>
       <td class="cell-customer">${escHtml(o.customer_name||'')}${o.customer_phone?`<br><small>${escHtml(o.customer_phone)}</small>`:''}</td>
-      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${items}">${items}</td>
+      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(items)}">${items}</td>
       <td class="cell-total" style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
       <td class="cell-status"><span class="status-pill s-${o.status}">${o.status}</span></td>
       <td class="hide-mobile"><span class="status-pill s-${o.payment_status}">${o.payment_status}</span></td>
@@ -2690,7 +2690,7 @@ function renderReports(orders, period) {
   });
   const custSorted = Object.values(customerMap).sort((a,b)=>b.spent-a.spent);
   document.getElementById('customerBody').innerHTML = custSorted.map(c=>`
-    <tr><td style="color:var(--cream)">${c.name}</td><td style="color:var(--text2)">${c.contact}</td><td>${c.orders}</td><td style="color:var(--cream)">₪${c.spent.toFixed(0)}</td><td>${new Date(c.last).toLocaleDateString()}</td></tr>
+    <tr><td style="color:var(--cream)">${escHtml(c.name)}</td><td style="color:var(--text2)">${escHtml(c.contact)}</td><td>${c.orders}</td><td style="color:var(--cream)">₪${c.spent.toFixed(0)}</td><td>${escHtml(new Date(c.last).toLocaleDateString())}</td></tr>
   `).join('') || '<tr><td colspan="5" class="empty-state">No customer data.</td></tr>';
 }
 function exportReportCSV() {
@@ -2799,11 +2799,12 @@ function renderMembersList() {
       ? new Date(m.lastOrder).toLocaleDateString('en-IL', { day: 'numeric', month: 'short' })
       : '—';
     const phoneLink = m.phone && m.phone !== '—'
-      ? `<a href="tel:${m.phone}" style="color:var(--cream2);text-decoration:none">${m.phone}</a>`
+      ? `<a href="tel:${escAttr(m.phone)}" style="color:var(--cream2);text-decoration:none">${escHtml(m.phone)}</a>`
+      : '—';
       : '—';
     return `<tr>
-      <td class="cell-customer" style="color:var(--cream)">${m.name}${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}</td>
-      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.email}">${m.email}</td>
+<td class="cell-customer" style="color:var(--cream)">${escHtml(m.name)}${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}</td>
+      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(m.email)}">${escHtml(m.email)}</td>
       <td class="hide-mobile">${phoneLink}</td>
       <td class="cell-num">${m.orderCount}</td>
       <td class="cell-total" style="color:var(--cream)">₪${m.totalSpent.toFixed(0)}</td>
@@ -2827,9 +2828,9 @@ function openMemberDetail(memberId) {
         const items = (o.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
         return `<div class="member-order-row" onclick="openOrderFromMember('${o.id}')">
           <div>
-            <div style="color:var(--cream);font-weight:500">#${o.order_number} · ${date}</div>
-            <div class="member-order-meta">${items}</div>
-            ${o.delivery_address ? `<div class="member-order-meta">${o.delivery_address}</div>` : ''}
+            <div style="color:var(--cream);font-weight:500">#${escHtml(String(o.order_number))} · ${escHtml(date)}</div>
+            <div class="member-order-meta">${escHtml(items)}</div>
+            ${o.delivery_address ? `<div class="member-order-meta">${escHtml(o.delivery_address)}</div>` : ''}
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="color:var(--cream);font-weight:500">₪${o.total}</div>
@@ -2841,10 +2842,10 @@ function openMemberDetail(memberId) {
     : '<div class="empty-state" style="padding:24px">No orders yet.</div>';
   document.getElementById('memberModalContent').innerHTML = `
     <div class="member-detail-grid">
-      <div class="member-detail-item"><div class="form-label">Full Name</div><div class="member-detail-value">${m.name}</div></div>
-      <div class="member-detail-item"><div class="form-label">Email</div><div class="member-detail-value">${m.email !== '—' ? `<a href="mailto:${m.email}" style="color:var(--cream)">${m.email}</a>` : '—'}</div></div>
-      <div class="member-detail-item"><div class="form-label">Phone</div><div class="member-detail-value">${m.phone !== '—' ? `<a href="tel:${m.phone}" style="color:var(--cream)">${m.phone}</a>` : '—'}${memberWaUrl ? ` · <a href="${memberWaUrl}" target="_blank" style="color:#25d366;font-size:.82rem">WhatsApp</a>` : ''}</div></div>
-      <div class="member-detail-item"><div class="form-label">Default Address</div><div class="member-detail-value">${m.address}</div></div>
+      <div class="member-detail-item"><div class="form-label">Full Name</div><div class="member-detail-value">${escHtml(m.name)}</div></div>
+      <div class="member-detail-item"><div class="form-label">Email</div><div class="member-detail-value">${m.email !== '—' ? `<a href="mailto:${escAttr(m.email)}" style="color:var(--cream)">${escHtml(m.email)}</a>` : '—'}</div></div>
+      <div class="member-detail-item"><div class="form-label">Phone</div><div class="member-detail-value">${m.phone !== '—' ? `<a href="tel:${escAttr(m.phone)}" style="color:var(--cream)">${escHtml(m.phone)}</a>` : '—'}${memberWaUrl ? ` · <a href="${escAttr(memberWaUrl)}" target="_blank" style="color:#25d366;font-size:.82rem">WhatsApp</a>` : ''}</div></div>
+      <div class="member-detail-item"><div class="form-label">Default Address</div><div class="member-detail-value">${escHtml(m.address)}</div></div>
       <div class="member-detail-item"><div class="form-label">Loyalty Points</div><div class="member-detail-value">${m.points} pts${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">10% coupon ready</span>' : ''}</div></div>
       <div class="member-detail-item"><div class="form-label">Member Since</div><div class="member-detail-value">${joined}</div></div>
       <div class="member-detail-item"><div class="form-label">Total Orders</div><div class="member-detail-value">${m.orderCount}</div></div>
