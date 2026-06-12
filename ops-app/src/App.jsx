@@ -8,6 +8,13 @@ const ADMIN_EMAILS = ["gremiercoffee@gmail.com", "yonigrey@gmail.com"];
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || "";
 const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+async function getRequiredSessionToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error("Your admin session expired. Please sign out and sign back in.");
+  }
+  return session.access_token;
+}
 async function writeDeliveryToSheet(storeName, large, mini, syrup, deliveryDate) {
   const store = STORES.find(s => s.name === storeName);
   const sheetStoreName = store?.sheetName || storeName;
@@ -45,11 +52,12 @@ async function logStoreDeliveryToSheet(job, qtys) {
 }
 async function sbFetch(path, options = {}) {
   try {
+    const token = await getRequiredSessionToken();
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...options,
       headers: {
         "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json",
         "Prefer": options.prefer || "return=representation",
         ...(options.headers || {}),

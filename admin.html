@@ -1047,15 +1047,6 @@ async function checkAdminAccess(user) {
     document.getElementById('accessDenied').style.display = 'block';
     await sb.auth.signOut(); return;
   }
-  // Also try to ensure profile has is_admin=true
-  try {
-    await sb.from('profiles').upsert({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name || '',
-      is_admin: true
-    }, { onConflict: 'id' });
-  } catch(e) { console.log('Profile upsert:', e); }
   adminUser = user;
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
@@ -1531,7 +1522,6 @@ async function restoreDeletedOrder(archiveId) {
     await sb.from('payment_links').update({ order_id: o.id }).eq('link_code', linkCode);
   }
   showToast(`Order #${o.order_number} restored ✓`);
-  await loadOrders();
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
   return true;
 }
@@ -1606,7 +1596,6 @@ async function recreateOrderFromPaymentLink(linkCode) {
   showToast(`Order #${inserted.order_number} recreated ✓`);
   if (paymentStatus === 'paid') await sendOrderToGoogleSheet(inserted.id, false);
   await loadOrders();
-  await loadOrders();
   if (document.getElementById('tab-paylinks').style.display !== 'none') await loadPayLinks();
 }
 
@@ -1656,7 +1645,6 @@ async function saveManualRestoredOrder() {
   }
   closeRestoreOrderModal();
   showToast(`Order #${inserted.order_number} created ✓`);
-  await loadOrders();
   await loadOrders();
 }
 
@@ -2085,12 +2073,10 @@ async function deleteOrder(id) {
   closeOrderModal();
   if (archiveId) showUndoToast('Order deleted —', archiveId);
   else showToast('Order deleted ✓ (archive unavailable — run deleted_orders migration to enable undo)');
-  await loadOrders();
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
   else await loadRecoverableOrdersUI();
   if (document.getElementById('tab-members').style.display !== 'none') await loadMembers();
   if (document.getElementById('tab-reports').style.display !== 'none') await loadReports();
-  if (document.getElementById('tab-orders')?.style.display !== 'none') await loadOrders();
 }
 async function updatePaymentStatus(id, status) {
   await sb.from('orders').update({ payment_status:status }).eq('id',id);

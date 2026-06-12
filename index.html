@@ -1690,6 +1690,9 @@ function renderPdVariationDropdowns(p) {
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
+function escAttr(s) {
+  return escHtml(s).replace(/'/g,'&#39;');
+}
 function pdOnGuestChange(select) {
   pdSelectedPrice = parseFloat(select.value);
   pdUpdateDrawerPrice();
@@ -1703,14 +1706,14 @@ function openProductDrawerUI(productId) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const imgWrap = document.getElementById('pdImgWrap');
   if (p.images && p.images.length > 0) {
-    imgWrap.innerHTML = `<img id="pdMainImg" src="${p.images[0]}" alt="${name}"/>`;
+    imgWrap.innerHTML = `<img id="pdMainImg" src="${escAttr(p.images[0])}" alt="${escAttr(name)}"/>`;
   } else {
     imgWrap.innerHTML = `<span style="font-size:4rem">${productIcon(p.category)}</span>`;
   }
   const thumbs = document.getElementById('pdThumbs');
   if (p.images && p.images.length > 1) {
     thumbs.innerHTML = p.images.map((url, i) =>
-      `<img class="pd-thumb${i===0?' active':''}" src="${url}" onclick="pdSwitchImg(${i},'${url}')" alt=""/>`
+      `<img class="pd-thumb${i===0?' active':''}" src="${escAttr(url)}" onclick="pdSwitchImg(${i})" alt=""/>`
     ).join('');
   } else {
     thumbs.innerHTML = '';
@@ -1799,9 +1802,10 @@ function closeProductDrawer(fromNav) {
     navBack();
   }
 }
-function pdSwitchImg(idx, url) {
+function pdSwitchImg(idx) {
   pdActiveImg = idx;
   const main = document.getElementById('pdMainImg');
+  const url = pdCurrentProduct?.images?.[idx] || '';
   if (main) main.src = url;
   document.querySelectorAll('.pd-thumb').forEach((t, i) => t.classList.toggle('active', i === idx));
 }
@@ -1892,7 +1896,7 @@ function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = productCardDesc(p);
   const img = (p.images && p.images.length > 0)
-    ? `<img src="${p.images[0]}" alt="${name}" loading="lazy" draggable="false"/>`
+    ? `<img src="${escAttr(p.images[0])}" alt="${escAttr(name)}" loading="lazy" draggable="false"/>`
     : `<div class="product-img-placeholder">${productIcon(p.category)}</div>`;
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
   return `
@@ -1997,7 +2001,7 @@ function renderCartDrawer() {
   body.innerHTML = cart.map(item => {
     const name = lang==='he' ? (item.name_he||item.name_en) : item.name_en;
     const thumb = (item.images && item.images.length)
-      ? `<img src="${item.images[0]}" alt="${name}"/>`
+      ? `<img src="${escAttr(item.images[0])}" alt="${escAttr(name)}"/>`
       : productIcon(item.category);
     return `<div class="cart-item">
       <div class="cart-item-thumb">${thumb}</div>
@@ -2211,10 +2215,6 @@ async function confirmPaymentReturnFromUrl(params, orderId) {
   let paymeSaleId = params.get('payme_sale_id') || params.get('sale_id') || '';
   if (!paymeSaleId && resolvedOrderId) {
     try { paymeSaleId = sessionStorage.getItem('gremier_payme_sale_' + resolvedOrderId) || ''; } catch (_) {}
-  }
-  if (!paymeSaleId && resolvedOrderId) {
-    const { data: order } = await sb.from('orders').select('delivery_info').eq('id', resolvedOrderId).maybeSingle();
-    paymeSaleId = order?.delivery_info?.payme_sale_id || '';
   }
   const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-payment-return`, {
     method: 'POST',
@@ -3218,7 +3218,10 @@ function appendBotMessage(text, cartItems, quickReplies) {
   document.getElementById('chatQuickReplies')?.remove();
   const div = document.createElement('div');
   div.className = 'chat-msg bot';
-  div.innerHTML = '<div class="chat-bubble">' + text + '</div>';
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  bubble.textContent = text;
+  div.appendChild(bubble);
   container.appendChild(div);
   // Auto-add cart items immediately — no confirm step
   if (cartItems && cartItems.length > 0) {
@@ -3240,7 +3243,10 @@ function appendUserMessage(text) {
   const container = document.getElementById('chatbotMessages');
   const div = document.createElement('div');
   div.className = 'chat-msg user';
-  div.innerHTML = '<div class="chat-bubble">' + text + '</div>';
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  bubble.textContent = text;
+  div.appendChild(bubble);
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }

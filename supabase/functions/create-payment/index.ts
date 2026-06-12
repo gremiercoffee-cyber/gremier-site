@@ -229,7 +229,7 @@ serve(async (req) => {
 
     const body = await req.json();
 
-    const { order_id, payment_link_code, language, delivery_address, customer_email, customer_phone } = body;
+    const { order_id, payment_link_code, language, delivery_address, customer_name, customer_email, customer_phone } = body;
 
 
 
@@ -299,20 +299,24 @@ serve(async (req) => {
 
       }
 
+      const name = String(customer_name || row.customer_name || "").trim();
       const addr = String(delivery_address || "").trim();
       const email = String(customer_email || row.customer_email || "").trim();
       const phone = String(customer_phone || row.customer_phone || "").trim();
       const linkPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (name) linkPatch.customer_name = name;
       if (addr) linkPatch.delivery_address = addr;
       if (email) linkPatch.customer_email = email;
       if (phone) linkPatch.customer_phone = phone;
       if (Object.keys(linkPatch).length > 1) {
         await supabase.from("payment_links").update(linkPatch).eq("link_code", row.link_code);
+        if (name) row.customer_name = name;
         if (email) row.customer_email = email;
         if (phone) row.customer_phone = phone;
         if (addr) (row as Record<string, unknown>).delivery_address = addr;
       }
       const orderPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (name) orderPatch.customer_name = name;
       if (email) orderPatch.customer_email = email;
       if (phone) orderPatch.customer_phone = phone;
       if (addr) orderPatch.delivery_address = addr;
@@ -458,15 +462,18 @@ serve(async (req) => {
 
     }
 
+    const name = String(customer_name || "").trim();
     const addr = String(delivery_address || "").trim();
     const email = String(customer_email || "").trim();
     const phone = String(customer_phone || "").trim();
     const orderPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (name) orderPatch.customer_name = name;
     if (addr) orderPatch.delivery_address = addr;
     if (email) orderPatch.customer_email = email;
     if (phone) orderPatch.customer_phone = phone;
     if (Object.keys(orderPatch).length > 1) {
       await supabase.from("orders").update(orderPatch).eq("id", row.id);
+      if (name) row.customer_name = name;
       if (email) row.customer_email = email;
       if (phone) row.customer_phone = phone;
       if (addr) row.delivery_address = addr;

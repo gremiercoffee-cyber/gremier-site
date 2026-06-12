@@ -554,12 +554,6 @@ function payInputValue(value) {
       const notifyResult = await queuePaidOrderForOps(id, i > 0);
       if (notifyResult?.sent || notifyResult?.skipped === 'already_notified') return;
 
-      const { data: order } = await sb.from('orders')
-        .select('payment_status, delivery_info')
-        .eq('id', id)
-        .maybeSingle();
-      if (order?.payment_status === 'paid' && order?.delivery_info?.order_notified_at) return;
-
       await new Promise(r => setTimeout(r, i < 2 ? 600 : 1500));
     }
   }
@@ -579,15 +573,14 @@ function payInputValue(value) {
       });
       return;
     }
-
-    // PayMe sent the customer back — show confirmed now; mark paid + email in background.
+    // Only show confirmed after the server verifies PayMe and returns paid:true.
     for (let i = 0; i < 2; i++) {
       const data = await confirmPaymentReturn();
       if (data.order_id) {
         orderId = data.order_id;
         targetId = data.order_id;
       }
-      if (data.paid || await checkPaidLocally()) {
+      if (data.paid) {
         showPaymentConfirmed(targetId);
         syncPaidOrderToSheet(targetId, 20).catch(function (e) {
           console.warn('Background payment sync:', e);
@@ -597,14 +590,6 @@ function payInputValue(value) {
       if (i < 1) await new Promise(r => setTimeout(r, 600));
     }
 
-    if (shouldTrustPayMeReturn()) {
-      showPaymentConfirmed(targetId);
-      syncPaidOrderToSheet(targetId, 20).catch(function (e) {
-        console.warn('Background payment sync:', e);
-      });
-      return;
-    }
-
     renderFailed();
     navPayReplace('failed');
   }
@@ -612,7 +597,7 @@ function payInputValue(value) {
   async function getReturnPayload() {
     const p = new URLSearchParams(window.location.search);
     const txn = p.get('transaction_id') || (linkCode ? `pl_${linkCode}` : '');
-    const resolvedOrderId = p.get('order_id') || orderId
+    let resolvedOrderId = p.get('order_id') || orderId
       || (function () { try { return sessionStorage.getItem('gremier_pay_last_order') || ''; } catch (_) { return ''; } })()
       || (txn && !txn.startsWith('pl_') ? txn.split('_')[0] : '');
 
@@ -626,23 +611,9 @@ if (!resolvedLinkCode && resolvedOrderId) {
       resolvedOrderId = lnk?.last_order_id || (!isReusableLink(lnk) && lnk?.order_id) || '';
     }
 
-    if (!resolvedOrderId && resolvedLinkCode) {
-      const { data: rows } = await sb.from('orders')
-        .select('id')
-        .filter('delivery_info->>payment_link_code', 'eq', resolvedLinkCode)
-        .eq('payment_status', 'unpaid')
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (rows?.[0]?.id) resolvedOrderId = rows[0].id;
-    }
-
     let paymeSaleId = p.get('payme_sale_id') || p.get('sale_id') || '';
     if (!paymeSaleId && resolvedOrderId) {
       try { paymeSaleId = sessionStorage.getItem(payStorageKey(resolvedOrderId, 'sale')) || ''; } catch (_) {}
-    }
-    if (!paymeSaleId && resolvedOrderId) {
-      const { data: order } = await sb.from('orders').select('delivery_info').eq('id', resolvedOrderId).maybeSingle();
-      paymeSaleId = order?.delivery_info?.payme_sale_id || '';
     }
     if (!paymeSaleId && paymentLink?.payme_sale_id) paymeSaleId = paymentLink.payme_sale_id;
 
@@ -666,10 +637,6 @@ if (!resolvedLinkCode && resolvedOrderId) {
     return ['failed', 'error', 'cancelled', 'canceled', 'declined', '0'].includes(st);
   }
 
-  function shouldTrustPayMeReturn() {
-    return isPaymentReturnUrl() && !hasExplicitPaymentFailure();
-  }
-
   async function checkPaidLocally() {
     if (linkCode) {
       const link = await loadPaymentLinkByCode(linkCode);
@@ -677,15 +644,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
         paymentLink = { ...(paymentLink || {}), ...link };
         if (link.order_id && !isReusableLink(link)) orderId = link.order_id;
         if (link.status === 'paid' && !isReusableLink(link)) return true;
-        if (link.order_id && !isReusableLink(link)) {
-          const { data: order } = await sb.from('orders').select('payment_status').eq('id', link.order_id).maybeSingle();
-          if (order?.payment_status === 'paid') return true;
-        }
       }
-    }
-    if (orderId) {
-      const { data: order } = await sb.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
-      if (order?.payment_status === 'paid') return true;
     }
     return false;
   }
@@ -739,7 +698,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
     }
     for (let i = 0; i < 3; i++) {
       const data = await confirmPaymentReturn();
-      if (data.paid || await checkPaidLocally()) {
+      if (data.paid) {
         orderId = data.order_id || orderId;
         await finishPaidReturn(orderId);
         return;
@@ -774,8 +733,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
       await finishPaidReturn(orderId);
       return true;
     }
-
-    // Don't block the UI on slow server calls — PayMe return means payment went through.
+    // Keep the customer in a confirming state until the server verifies PayMe.
     renderProcessing();
     navPayReplace('pending');
 
@@ -783,7 +741,7 @@ if (!resolvedLinkCode && resolvedOrderId) {
       try {
         const data = await confirmPaymentReturn();
         if (data.order_id) orderId = data.order_id;
-        if (data.paid || await checkPaidLocally()) {
+        if (data.paid) {
           await finishPaidReturn(orderId);
           return true;
         }
@@ -847,6 +805,8 @@ function renderCheckout(link) {
   <input type="text" id="payName" placeholder="Your full name" value="${payInputValue(isReusableLink(link) ? '' : cleanPayCustomerName(link.customer_name))}" required/>
   <div class="pay-field-hint">Required — this name will be saved on your order.</div>
 </div>
+
+      <div class="pay-field">
 
         <label for="payEmail">Email <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
 
@@ -1052,26 +1012,6 @@ if (!customerName) {
       navPayReplace('paid');
 
       return;
-
-    }
-
-
-
-    if (link.order_id && !isReusableLink(link)) {
-
-      const { data: order } = await sb.from('orders').select('payment_status, delivery_address').eq('id', link.order_id).maybeSingle();
-
-      if (order?.payment_status === 'paid') {
-
-        applyPayView('paid');
-
-        navPayReplace('paid');
-
-        return;
-
-      }
-
-      if (order?.delivery_address && !link.delivery_address) link.delivery_address = order.delivery_address;
 
     }
 
