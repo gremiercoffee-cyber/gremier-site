@@ -73,6 +73,9 @@ Deno.serve(async (req) => {
       name_he: item.name_he || null,
       price: Number(item.price) || 0,
       qty: Math.max(1, Number(item.qty) || 1),
+      selected_variations: item.selected_variations || null,
+      selected_addons: item.selected_addons || null,
+      selected_guest_price: item.selected_guest_price || null,
     }));
 
     const { data: inserted, error } = await admin

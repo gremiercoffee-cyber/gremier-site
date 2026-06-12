@@ -58,10 +58,14 @@ Deno.serve(async (req) => {
 
     const reusable = isReusableLink(link);
 
+    const customerName = String(body.customer_name || link.customer_name || "").trim() || null;
     const customerEmail = String(body.customer_email || link.customer_email || "").trim() || null;
     const customerPhone = String(body.customer_phone || link.customer_phone || "").trim() || null;
     const deliveryAddress = String(body.delivery_address || link.delivery_address || "").trim() || null;
 
+    if (customerName && customerName !== link.customer_name) {
+      await admin.from("payment_links").update({ customer_name: customerName }).eq("link_code", linkCode);
+    }
     if (customerEmail && customerEmail !== link.customer_email) {
       await admin.from("payment_links").update({ customer_email: customerEmail }).eq("link_code", linkCode);
     }
@@ -96,7 +100,7 @@ Deno.serve(async (req) => {
     const { data: inserted, error: insertErr } = await admin
       .from("orders")
       .insert({
-        customer_name: link.customer_name || "Payment Link Customer",
+        customer_name: customerName || "Payment Link Customer",
         customer_phone: customerPhone,
         customer_email: customerEmail,
         delivery_address: deliveryAddress,
