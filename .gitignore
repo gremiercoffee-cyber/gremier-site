@@ -4,3 +4,14 @@ ops-app/.env
 ops-app/.env.local
 ops/
 .tools/
+
+# Supabase CLI local files
+.supabase-home/
+supabase/.temp/
+*.ndjson
+
+# Local deployment scripts
+*.bat
+
+# Misc
+telemetry.json
