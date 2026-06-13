@@ -77,6 +77,30 @@ function selectedValues(value: unknown): Record<string, unknown>[] {
     .filter((v) => v && typeof v === "object") as Record<string, unknown>[];
 }
 
+function isSubscriptionProduct(product: Record<string, unknown>): boolean {
+  return product.is_subscription === true || String(product.category || "") === "subscriptions";
+}
+
+function getSubscriptionBundleIds(product: Record<string, unknown>): string[] {
+  const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
+  const bundle = variations.find((v) => v.type === "subscription_bundle");
+  const rawItems = Array.isArray(bundle?.items)
+    ? bundle.items
+    : (Array.isArray(bundle?.product_ids) ? bundle.product_ids : []);
+  return [...new Set(rawItems
+    .map((item: unknown) => {
+      if (typeof item === "string") return item;
+      const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+      return String(row.product_id || row.id || "").trim();
+    })
+    .filter(Boolean))];
+}
+
+function normalizeSubscriptionInterval(value: unknown): "weekly" | "biweekly" | "monthly" {
+  const interval = String(value || "").trim().toLowerCase();
+  return interval === "weekly" || interval === "biweekly" ? interval : "monthly";
+}
+
 function computeUnitPrice(product: Record<string, unknown>, item: Record<string, unknown>): number {
   const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
   let unitPrice = Number(product.price) || 0;
@@ -186,14 +210,19 @@ Deno.serve(async (req) => {
     });
 
     const userId = await getUserId(req, supabaseUrl);
-    const productIds = [...new Set(items.map((item: Record<string, unknown>) => String(item.product_id || "").trim()).filter(Boolean))];
+    const productIds = [...new Set(items.flatMap((item: Record<string, unknown>) => [
+      String(item.product_id || "").trim(),
+      ...(Array.isArray(item.subscription_items)
+        ? item.subscription_items.map((subItem: Record<string, unknown>) => String(subItem?.product_id || "").trim())
+        : []),
+    ]).filter(Boolean))];
     if (!productIds.length || items.some((item: Record<string, unknown>) => !String(item.product_id || "").trim())) {
       return json({ error: "Invalid order items" }, 400);
     }
 
     const { data: productRows, error: productErr } = await admin
       .from("products")
-      .select("id,name_en,name_he,price,is_active,variations,delivery_price")
+      .select("id,name_en,name_he,price,is_active,category,is_subscription,variations,delivery_price")
       .in("id", productIds);
     if (productErr) throw productErr;
 
@@ -203,7 +232,40 @@ Deno.serve(async (req) => {
       const product = productsById.get(productId);
       if (!product || product.is_active === false) throw new Error("Invalid order item");
       const qty = Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 1)));
-      const unitPrice = computeUnitPrice(product, item);
+      const subscriptionItems = Array.isArray(item.subscription_items) ? item.subscription_items as Record<string, unknown>[] : [];
+      let unitPrice = computeUnitPrice(product, item);
+      let normalizedSubscriptionItems: Record<string, unknown>[] | null = null;
+      let subscriptionInterval: string | null = null;
+
+      if (isSubscriptionProduct(product)) {
+        const allowedIds = getSubscriptionBundleIds(product);
+        if (allowedIds.length) {
+          normalizedSubscriptionItems = subscriptionItems
+            .map((subItem) => {
+              const subProductId = String(subItem.product_id || "").trim();
+              if (!allowedIds.includes(subProductId)) throw new Error("Invalid subscription item");
+              const subProduct = productsById.get(subProductId);
+              if (!subProduct || subProduct.is_active === false || isSubscriptionProduct(subProduct)) {
+                throw new Error("Invalid subscription item");
+              }
+              const subQty = Math.max(1, Math.min(99, Math.floor(Number(subItem.qty) || 1)));
+              const price = Number(subProduct.price) || 0;
+              if (!(price > 0)) throw new Error("Invalid subscription item price");
+              return {
+                product_id: subProductId,
+                name_en: subProduct.name_en || null,
+                name_he: subProduct.name_he || null,
+                price,
+                qty: subQty,
+              };
+            });
+          if (!normalizedSubscriptionItems.length) throw new Error("Choose at least one subscription item");
+          unitPrice = normalizedSubscriptionItems.reduce((sum, subItem) => {
+            return sum + (Number(subItem.price) || 0) * (Number(subItem.qty) || 1);
+          }, 0);
+        }
+        subscriptionInterval = normalizeSubscriptionInterval(item.subscription_interval);
+      }
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
       return {
         product_id: productId,
@@ -211,6 +273,10 @@ Deno.serve(async (req) => {
         name_he: product.name_he || null,
         price: unitPrice,
         qty,
+        category: product.category || null,
+        is_subscription: isSubscriptionProduct(product),
+        subscription_interval: subscriptionInterval,
+        subscription_items: normalizedSubscriptionItems,
         selected_variations: item.selected_variations || null,
         selected_addons: item.selected_addons || null,
         selected_guest_price: item.selected_guest_price || null,
@@ -243,6 +309,7 @@ Deno.serve(async (req) => {
       couponAllowed = !!profile?.coupon_available;
     }
     const discount = couponAllowed ? Math.round(subtotal * 0.10) : 0;
+    const subscriptionItem = allowedItems.find((item) => item.is_subscription);
     const total = Math.max(0, subtotal + delivery.fee - discount);
     if (!(total > 0)) return json({ error: "Invalid order total" }, 400);
 
@@ -266,6 +333,10 @@ Deno.serve(async (req) => {
           zone_name: delivery.zone?.name_en || "",
           pricing_source: delivery.source,
           server_priced: true,
+          subscription: subscriptionItem ? {
+            interval: subscriptionItem.subscription_interval || "monthly",
+            recurring_required: true,
+          } : null,
         },
         status: "awaiting_payment",
         payment_status: "unpaid",

@@ -788,7 +788,12 @@
     </div>
     <div class="toggle-row">
       <span class="toggle-label">Subscription product</span>
-      <label class="toggle"><input type="checkbox" id="pSubscription"/><span class="toggle-slider"></span></label>
+      <label class="toggle"><input type="checkbox" id="pSubscription" onchange="renderSubscriptionBundleEditor()"/><span class="toggle-slider"></span></label>
+    </div>
+    <div id="subscriptionBundleSection" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:14px 16px;margin:-2px 0 16px">
+      <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;font-weight:500">Combo Subscription Items</div>
+      <div style="font-size:.78rem;color:var(--text2);margin-bottom:12px;line-height:1.5">Check the products customers can choose inside the combo subscription drawer.</div>
+      <div id="subscriptionBundleEditor"></div>
     </div>
     <div class="toggle-row">
       <span class="toggle-label">Show in Coffee Bar section</span>
@@ -1126,6 +1131,7 @@ function renderProductsList() {
 }
 function onCategoryChange(cat) {
   document.getElementById('guestPricingSection').style.display = cat === 'coffeebars' ? 'block' : 'none';
+  renderSubscriptionBundleEditor();
 }
 function syncBasePrice() {
   const tiers = [25,50,75,100,125];
@@ -1151,10 +1157,57 @@ function buildGuestPricingVariation() {
   return { name:'Number of Guests', type:'guest_count', options };
 }
 function isSystemVariation(v) {
-  return v && (v.type === 'guest_count' || v.type === 'delivery_price' || v.type === 'addons');
+  return v && (v.type === 'guest_count' || v.type === 'delivery_price' || v.type === 'addons' || v.type === 'subscription_bundle');
 }
 function isChoiceVariation(v) {
   return v && !isSystemVariation(v) && v.name && Array.isArray(v.options) && v.options.length;
+}
+let subscriptionBundleProductIds = [];
+function isSubscriptionEditorActive() {
+  return document.getElementById('pSubscription')?.checked || document.getElementById('pCategory')?.value === 'subscriptions';
+}
+function loadSubscriptionBundleFromProduct(variations) {
+  const bundle = (variations || []).find(v => v.type === 'subscription_bundle');
+  const rows = Array.isArray(bundle?.items) ? bundle.items : (Array.isArray(bundle?.product_ids) ? bundle.product_ids : []);
+  return [...new Set(rows.map(item => String(item.product_id || item.id || item).trim()).filter(Boolean))];
+}
+function collectSubscriptionBundleForSave() {
+  if (!isSubscriptionEditorActive()) return null;
+  const ids = Array.from(document.querySelectorAll('#subscriptionBundleEditor input[type=checkbox]:checked'))
+    .map(cb => String(cb.value || '').trim())
+    .filter(Boolean);
+  return ids.length ? { type: 'subscription_bundle', items: ids.map(product_id => ({ product_id })) } : null;
+}
+function renderSubscriptionBundleEditor() {
+  const section = document.getElementById('subscriptionBundleSection');
+  const editor = document.getElementById('subscriptionBundleEditor');
+  if (!section || !editor) return;
+  const active = isSubscriptionEditorActive();
+  section.style.display = active ? 'block' : 'none';
+  if (!active) {
+    editor.innerHTML = '';
+    return;
+  }
+  const currentId = document.getElementById('editProductId')?.value || '';
+  const candidates = allProducts.filter(p => String(p.id) !== String(currentId) && p.category !== 'subscriptions' && !p.is_subscription);
+  if (!candidates.length) {
+    editor.innerHTML = '<div class="empty-state" style="padding:12px">No regular products found yet.</div>';
+    return;
+  }
+  editor.innerHTML = candidates.map(p => {
+    const thumb = p.images?.length
+      ? `<img src="${escAttr(p.images[0])}" alt="${escAttr(p.name_en)}" style="width:42px;height:42px;object-fit:cover;border-radius:4px"/>`
+      : `<span style="font-size:1.4rem">${productIcon(p.category)}</span>`;
+    const checked = subscriptionBundleProductIds.includes(String(p.id)) ? 'checked' : '';
+    return `<label style="display:grid;grid-template-columns:auto 42px 1fr;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" value="${escAttr(p.id)}" ${checked}/>
+      <div style="width:42px;height:42px;border-radius:4px;background:var(--bg2);display:flex;align-items:center;justify-content:center;overflow:hidden">${thumb}</div>
+      <div>
+        <div style="font-size:.86rem;color:var(--cream)">${escAttr(p.name_en)}</div>
+        <div style="font-size:.72rem;color:var(--text2)">₪${p.price} · ${p.category}</div>
+      </div>
+    </label>`;
+  }).join('');
 }
 function renderAddonsEditor(items) {
   const el = document.getElementById('addonsEditor');
@@ -1307,9 +1360,11 @@ function buildProductVariations() {
   const base = collectChoiceVariationsForSave();
   const gp = buildGuestPricingVariation();
   const addons = collectAddonsForSave();
+  const subscriptionBundle = collectSubscriptionBundleForSave();
   let vars = gp ? [...base, gp] : [...base];
-  vars = vars.filter(v => v.type !== 'delivery_price' && v.type !== 'addons');
+  vars = vars.filter(v => v.type !== 'delivery_price' && v.type !== 'addons' && v.type !== 'subscription_bundle');
   if (addons) vars.push(addons);
+  if (subscriptionBundle) vars.push(subscriptionBundle);
   const deliveryPrice = readDeliveryPriceInput();
   if (deliveryPrice !== null) vars.push({ type: 'delivery_price', price: deliveryPrice });
   return vars;
@@ -1353,14 +1408,17 @@ function openProductModal(productId) {
     document.getElementById('pCoffeeBar').checked = !!p.is_coffee_bar;
     renderVariationGroupsEditor(loadVariationGroupsFromProduct(p.variations));
     renderAddonsEditor(loadAddonsFromProduct(p.variations));
+    subscriptionBundleProductIds = loadSubscriptionBundleFromProduct(p.variations);
     loadGuestPricing(p.variations);
     onCategoryChange(p.category || 'bottles');
+    renderSubscriptionBundleEditor();
     editingImages = [...(p.images || [])];
     renderImgPreviews();
   } else {
     ['pNameEn','pNameHe','pDescEn','pDescHe','pPrice','pOrigPrice','pDeliveryPrice','pBadge'].forEach(id=>document.getElementById(id).value='');
     renderVariationGroupsEditor([]);
     renderAddonsEditor([]);
+    subscriptionBundleProductIds = [];
     [25,50,75,100,125].forEach(t=>document.getElementById('gp'+t).value='');
     document.getElementById('pCategory').value='bottles';
     document.getElementById('pBadgeType').value='';
@@ -1368,6 +1426,7 @@ function openProductModal(productId) {
     document.getElementById('pSubscription').checked=false;
     document.getElementById('pCoffeeBar').checked=false;
     onCategoryChange('bottles');
+    renderSubscriptionBundleEditor();
   }
   document.getElementById('productModal').classList.add('open');
 }

@@ -42,6 +42,8 @@ type OrderRow = {
 
   delivery_info?: Record<string, unknown> | null;
 
+  items?: Array<Record<string, unknown>> | null;
+
 };
 
 type PaymentLinkRow = {
@@ -183,6 +185,51 @@ function withPayMeBuyerOnUrl(
   opts: { email?: string | null; phone?: string | null; name?: string | null },
 ): string {
   return appendPayMeBuyerParams(saleUrl, opts);
+}
+
+function getSubscriptionMeta(order: OrderRow): Record<string, unknown> | null {
+  const info = order.delivery_info && typeof order.delivery_info === "object" ? order.delivery_info : {};
+  const fromInfo = info.subscription && typeof info.subscription === "object"
+    ? info.subscription as Record<string, unknown>
+    : null;
+  const fromItems = Array.isArray(order.items)
+    ? order.items.find((item) => item?.is_subscription === true)
+    : null;
+  if (!fromInfo && !fromItems) return null;
+  const interval = String(fromInfo?.interval || fromItems?.subscription_interval || "monthly").toLowerCase();
+  return {
+    ...(fromInfo || {}),
+    interval: interval === "weekly" || interval === "biweekly" ? interval : "monthly",
+  };
+}
+
+function intervalToDays(interval: unknown): number {
+  if (interval === "weekly") return 7;
+  if (interval === "biweekly") return 14;
+  return 30;
+}
+
+function buildRecurringPayloadPatch(order: OrderRow, subscription: Record<string, unknown>): Record<string, unknown> {
+  const templateRaw = Deno.env.get("PAYME_RECURRING_PAYLOAD_JSON") || "";
+  if (!templateRaw.trim()) {
+    throw new Error("Subscription checkout is not configured for automatic recurring billing yet. Set PAYME_RECURRING_PAYLOAD_JSON with PayMe recurring fields before selling subscriptions.");
+  }
+  const replacements: Record<string, string> = {
+    "{{interval}}": String(subscription.interval || "monthly"),
+    "{{interval_days}}": String(intervalToDays(subscription.interval)),
+    "{{order_id}}": order.id,
+    "{{total_agorot}}": String(Math.round((Number(order.total) || 0) * 100)),
+    "{{total_shekels}}": String(Number(order.total) || 0),
+  };
+  let expanded = templateRaw;
+  for (const [needle, value] of Object.entries(replacements)) {
+    expanded = expanded.split(needle).join(value);
+  }
+  const parsed = JSON.parse(expanded);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("PAYME_RECURRING_PAYLOAD_JSON must be a JSON object");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 async function tryReuseExistingPayMeSale(
@@ -438,7 +485,7 @@ serve(async (req) => {
 
       .from("orders")
 
-      .select("id, order_number, customer_name, customer_email, customer_phone, total, payment_status, source, delivery_info")
+      .select("id, order_number, customer_name, customer_email, customer_phone, total, payment_status, source, delivery_info, items")
 
       .eq("id", order_id)
 
@@ -576,6 +623,11 @@ serve(async (req) => {
       buyer_phone: buyerPhone || undefined,
 
     };
+
+    const subscriptionMeta = getSubscriptionMeta(row);
+    if (subscriptionMeta) {
+      Object.assign(payload, buildRecurringPayloadPatch(row, subscriptionMeta));
+    }
 
     const { saleUrl, paymeSaleId } = await generatePayMeSale(payload, paymeBase);
     const checkoutUrl = withPayMeBuyerOnUrl(saleUrl, {

@@ -299,6 +299,22 @@
     .cart-total-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
     .cart-total-label { font-size:.8rem; color:var(--text2); text-transform:uppercase; letter-spacing:.1em; }
     .cart-total-price { font-family:'Playfair Display',serif; font-size:1.4rem; color:#1a1a1a; }
+    .sub-frequency-row { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:8px 0 16px; }
+    .sub-frequency-btn { border:1px solid var(--border); background:#fff; color:#1a1a1a; min-height:40px; border-radius:4px; font:600 .78rem 'DM Sans',sans-serif; cursor:pointer; }
+    .sub-frequency-btn.active { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
+    .sub-bundle-item { display:grid; grid-template-columns:46px 1fr auto; gap:11px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
+    .sub-bundle-thumb { width:46px; height:46px; border-radius:4px; background:var(--bg3); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:1.35rem; }
+    .sub-bundle-thumb img { width:100%; height:100%; object-fit:cover; }
+    .sub-bundle-name { font-size:.86rem; color:#1a1a1a; line-height:1.3; }
+    .sub-bundle-price { font-size:.76rem; color:var(--text2); margin-top:2px; }
+    .sub-bundle-controls { display:flex; align-items:center; gap:8px; }
+    .sub-toggle { width:36px; height:22px; border-radius:12px; border:none; background:#d6d0c8; position:relative; cursor:pointer; flex-shrink:0; }
+    .sub-toggle::after { content:''; position:absolute; width:18px; height:18px; border-radius:50%; background:#fff; top:2px; left:2px; transition:left .18s; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+    .sub-toggle.active { background:#1a1a1a; }
+    .sub-toggle.active::after { left:16px; }
+    .sub-item-qty { display:flex; align-items:center; gap:6px; }
+    .sub-item-qty button { width:24px; height:24px; border:1px solid var(--border); background:#fff; border-radius:50%; cursor:pointer; }
+    .sub-item-qty span { min-width:16px; text-align:center; font-size:.82rem; }
     /* MODAL */
     .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:300; display:flex; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity .3s; }
     .modal-overlay.open { opacity:1; pointer-events:all; }
@@ -896,6 +912,7 @@
     <ul class="pd-features" id="pdFeatures" style="display:none"></ul>
     <div id="pdVariationsSection" style="display:none"></div>
     <div id="pdAddonsSection" style="display:none;margin-bottom:16px"></div>
+    <div id="pdSubscriptionSection" style="display:none;margin-bottom:16px"></div>
     <!-- Guest count dropdown — only shown for coffeebars products -->
     <div id="pdGuestSection" style="display:none;margin-bottom:16px">
       <label style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:7px" id="pdGuestLabel">Number of Guests</label>
@@ -1551,6 +1568,8 @@ let pdActiveImg = 0;
 let pdScrollY = 0;
 let pdSelectedPrice = null;
 let pdSelectedVariations = {};
+let pdSubscriptionInterval = 'monthly';
+let pdSubscriptionItems = {};
 const pdSelectStyle = "width:100%;background:var(--bg3);border:1px solid var(--border);color:#1a1a1a;padding:10px 13px;font-family:'DM Sans',sans-serif;font-size:.87rem;border-radius:3px;outline:none";
 function isChoiceVariation(v) {
   return v && v.type !== 'guest_count' && v.type !== 'delivery_price' && v.type !== 'addons' && v.name && Array.isArray(v.options) && v.options.length;
@@ -1561,6 +1580,61 @@ function getProductAddons(p) {
 }
 function getChoiceVariations(p) {
   return (p?.variations || []).filter(isChoiceVariation);
+}
+function isSubscriptionProduct(p) {
+  return !!p && (p.is_subscription || p.category === 'subscriptions');
+}
+function getSubscriptionBundleConfig(p) {
+  return (p?.variations || []).find(v => v.type === 'subscription_bundle') || null;
+}
+function getSubscriptionBundleProducts(p) {
+  const config = getSubscriptionBundleConfig(p);
+  const ids = (config?.items || config?.product_ids || [])
+    .map(item => String(item.product_id || item.id || item).trim())
+    .filter(Boolean);
+  const uniqueIds = [...new Set(ids)];
+  return uniqueIds.map(id => products.find(x => String(x.id) === id)).filter(Boolean);
+}
+function getSubscriptionSelection() {
+  const bundleProducts = getSubscriptionBundleProducts(pdCurrentProduct);
+  return bundleProducts
+    .map(item => {
+      const state = pdSubscriptionItems[String(item.id)] || { selected: false, qty: 1 };
+      return state.selected ? {
+        product_id: String(item.id),
+        name_en: item.name_en,
+        name_he: item.name_he || item.name_en,
+        price: parseFloat(item.price) || 0,
+        qty: Math.max(1, parseInt(state.qty, 10) || 1),
+        image: item.images?.[0] || '',
+      } : null;
+    })
+    .filter(Boolean);
+}
+function pdGetSubscriptionTotal() {
+  const selected = getSubscriptionSelection();
+  if (selected.length) return selected.reduce((sum, item) => sum + item.price * item.qty, 0);
+  return parseFloat(pdCurrentProduct?.price) || 0;
+}
+function pdSetSubscriptionInterval(interval) {
+  pdSubscriptionInterval = ['weekly','biweekly','monthly'].includes(interval) ? interval : 'monthly';
+  document.querySelectorAll('#pdSubscriptionSection .sub-frequency-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.interval === pdSubscriptionInterval);
+  });
+}
+function pdToggleSubscriptionItem(productId) {
+  const key = String(productId);
+  const current = pdSubscriptionItems[key] || { selected: false, qty: 1 };
+  pdSubscriptionItems[key] = { ...current, selected: !current.selected, qty: Math.max(1, current.qty || 1) };
+  renderPdSubscriptionSection(pdCurrentProduct, true);
+  pdUpdateDrawerPrice();
+}
+function pdChangeSubscriptionItemQty(productId, delta) {
+  const key = String(productId);
+  const current = pdSubscriptionItems[key] || { selected: true, qty: 1 };
+  pdSubscriptionItems[key] = { ...current, selected: true, qty: Math.max(1, (parseInt(current.qty, 10) || 1) + delta) };
+  renderPdSubscriptionSection(pdCurrentProduct, true);
+  pdUpdateDrawerPrice();
 }
 function normalizeVariationOption(o) {
   if (typeof o === 'string') return { label: o, price: null };
@@ -1623,6 +1697,15 @@ function pdUpdateDrawerPrice() {
       ? (lang === 'he' ? label : `Price for ${label}`)
       : (lang === 'he' ? 'מחיר' : 'Price');
     document.getElementById('pdPrice').innerHTML = `<span style="font-size:.65rem;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:2px">${labelHtml}</span>₪${total}`;
+    return;
+  }
+  if (isSubscriptionProduct(p)) {
+    const intervalLabel = {
+      weekly: lang === 'he' ? 'כל שבוע' : 'weekly',
+      biweekly: lang === 'he' ? 'כל שבועיים' : 'bi-weekly',
+      monthly: lang === 'he' ? 'כל חודש' : 'monthly',
+    }[pdSubscriptionInterval];
+    document.getElementById('pdPrice').innerHTML = `₪${pdGetSubscriptionTotal()} <span style="font-size:.75rem;color:var(--text2);font-weight:400">/ ${intervalLabel}</span>`;
     return;
   }
   document.getElementById('pdPrice').innerHTML = p.original_price
@@ -1690,6 +1773,55 @@ function renderPdVariationDropdowns(p) {
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
+function renderPdSubscriptionSection(p, keepState) {
+  const section = document.getElementById('pdSubscriptionSection');
+  if (!isSubscriptionProduct(p)) {
+    section.innerHTML = '';
+    section.style.display = 'none';
+    return;
+  }
+  const bundleProducts = getSubscriptionBundleProducts(p);
+  if (!keepState) {
+    pdSubscriptionInterval = 'monthly';
+    pdSubscriptionItems = {};
+    bundleProducts.forEach(item => {
+      pdSubscriptionItems[String(item.id)] = { selected: true, qty: 1 };
+    });
+  }
+  const intervalButtons = [
+    { key: 'weekly', label: lang === 'he' ? 'שבועי' : 'Weekly' },
+    { key: 'biweekly', label: lang === 'he' ? 'דו-שבועי' : 'Bi-weekly' },
+    { key: 'monthly', label: lang === 'he' ? 'חודשי' : 'Monthly' },
+  ].map(opt => `<button type="button" class="sub-frequency-btn ${pdSubscriptionInterval === opt.key ? 'active' : ''}" data-interval="${opt.key}" onclick="pdSetSubscriptionInterval('${opt.key}');pdUpdateDrawerPrice()">${opt.label}</button>`).join('');
+  const title = lang === 'he' ? 'מה לכלול במנוי' : 'Choose what goes in your subscription';
+  const freqTitle = lang === 'he' ? 'תדירות חיוב ומשלוח' : 'Billing and delivery frequency';
+  const rows = bundleProducts.length ? bundleProducts.map(item => {
+    const state = pdSubscriptionItems[String(item.id)] || { selected: false, qty: 1 };
+    const name = lang === 'he' ? (item.name_he || item.name_en) : item.name_en;
+    const thumb = item.images?.[0]
+      ? `<img src="${escAttr(item.images[0])}" alt="${escAttr(name)}"/>`
+      : productIcon(item.category);
+    return `<div class="sub-bundle-item">
+      <div class="sub-bundle-thumb">${thumb}</div>
+      <div>
+        <div class="sub-bundle-name">${escHtml(name)}</div>
+        <div class="sub-bundle-price">₪${parseFloat(item.price) || 0}</div>
+      </div>
+      <div class="sub-bundle-controls">
+        <button type="button" class="sub-toggle ${state.selected ? 'active' : ''}" onclick="pdToggleSubscriptionItem('${escAttr(item.id)}')" aria-label="Toggle ${escAttr(name)}"></button>
+        <div class="sub-item-qty" style="${state.selected ? '' : 'opacity:.35;pointer-events:none'}">
+          <button type="button" onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',-1)">−</button>
+          <span>${Math.max(1, parseInt(state.qty, 10) || 1)}</span>
+          <button type="button" onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',1)">+</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') : `<div style="font-size:.84rem;color:var(--text2);line-height:1.55">${lang === 'he' ? 'עדיין לא נבחרו מוצרים למנוי בממשק הניהול.' : 'No subscription items have been selected in admin yet.'}</div>`;
+  section.style.display = 'block';
+  section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${freqTitle}</div>
+    <div class="sub-frequency-row">${intervalButtons}</div>
+    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px">${title}</div>${rows}`;
+}
 function escAttr(s) {
   return escHtml(s).replace(/'/g,'&#39;');
 }
@@ -1741,6 +1873,7 @@ function openProductDrawerUI(productId) {
   pdSelectedVariations = {};
   renderPdVariationDropdowns(p);
   renderPdAddons(p);
+  renderPdSubscriptionSection(p, false);
   const guestSection = document.getElementById('pdGuestSection');
   const guestSelect = document.getElementById('pdGuestSelect');
   const guestTierVar = (p.variations || []).find(v => v.type === 'guest_count');
@@ -1762,6 +1895,7 @@ function openProductDrawerUI(productId) {
     waLink.style.display = 'none';
   }
   document.getElementById('pdQty').textContent = 1;
+  document.querySelector('.pd-qty')?.style.setProperty('display', isSubscriptionProduct(p) ? 'none' : 'flex');
   document.getElementById('pdAddBtn').textContent = isCoffeeBarProduct(p)
     ? (lang === 'he' ? 'הזמן עכשיו' : 'Book Now')
     : (lang === 'he' ? 'הוסף לעגלה' : 'Add to Cart');
@@ -1817,11 +1951,19 @@ function pdAddToCart() {
   if (!pdCurrentProduct) return;
   const p = pdCurrentProduct;
   const suffix = pdGetVariationSuffix() + pdGetAddonSuffix();
-  const price = pdGetVariationPrice(p) + pdGetAddonsTotal();
+  const subscriptionSelection = isSubscriptionProduct(p) ? getSubscriptionSelection() : [];
+  if (isSubscriptionProduct(p) && getSubscriptionBundleProducts(p).length && !subscriptionSelection.length) {
+    alert(lang === 'he' ? 'בחרו לפחות מוצר אחד למנוי' : 'Please choose at least one subscription item');
+    return;
+  }
+  const price = isSubscriptionProduct(p) ? pdGetSubscriptionTotal() : pdGetVariationPrice(p) + pdGetAddonsTotal();
   const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
   const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
   const guestKey = pdSelectedPrice != null ? String(pdSelectedPrice) : '';
-  const cartId = [p.id, varKey, guestKey, addonKey].filter(Boolean).join('_');
+  const subKey = isSubscriptionProduct(p)
+    ? [pdSubscriptionInterval, ...subscriptionSelection.map(i => `${i.product_id}x${i.qty}`)].join('_')
+    : '';
+  const cartId = [p.id, varKey, guestKey, addonKey, subKey].filter(Boolean).join('_');
   const existing = cart.find(x => x.id === cartId);
   if (existing) existing.qty += pdQty;
   else cart.push({
@@ -1833,10 +1975,13 @@ function pdAddToCart() {
   images: p.images,
   category: p.category,
   delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,
-  qty: pdQty,
+  qty: isSubscriptionProduct(p) ? 1 : pdQty,
   selected_variations: pdSelectedVariations,
   selected_addons: pdGetSelectedAddons(),
   selected_guest_price: pdSelectedPrice,
+  is_subscription: isSubscriptionProduct(p),
+  subscription_interval: isSubscriptionProduct(p) ? pdSubscriptionInterval : null,
+  subscription_items: isSubscriptionProduct(p) ? subscriptionSelection : null,
 });
   updateCartCount();
   showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
@@ -2003,11 +2148,15 @@ function renderCartDrawer() {
     const thumb = (item.images && item.images.length)
       ? `<img src="${escAttr(item.images[0])}" alt="${escAttr(name)}"/>`
       : productIcon(item.category);
+    const subDetail = item.is_subscription
+      ? `<div style="font-size:.74rem;color:var(--text2);line-height:1.45;margin-top:4px">${subscriptionIntervalLabel(item.subscription_interval)} · ${(item.subscription_items || []).map(si => `${lang === 'he' ? (si.name_he || si.name_en) : si.name_en} ×${si.qty}`).join(', ')}</div>`
+      : '';
     return `<div class="cart-item">
       <div class="cart-item-thumb">${thumb}</div>
       <div class="cart-item-info">
         <div class="cart-item-name">${name}</div>
         <div class="cart-item-price">₪${item.price} × ${item.qty} = ₪${item.price*item.qty}</div>
+        ${subDetail}
         <div class="qty-controls">
           <button class="qty-btn" onclick="changeQty('${item.id}',-1)">−</button>
           <span class="qty-val">${item.qty}</span>
@@ -2018,6 +2167,14 @@ function renderCartDrawer() {
     </div>`;
   }).join('');
   document.getElementById('cartTotal').textContent = `₪${total}`;
+}
+function subscriptionIntervalLabel(interval) {
+  const labels = {
+    weekly: lang === 'he' ? 'שבועי' : 'Weekly',
+    biweekly: lang === 'he' ? 'דו-שבועי' : 'Bi-weekly',
+    monthly: lang === 'he' ? 'חודשי' : 'Monthly',
+  };
+  return labels[interval] || labels.monthly;
 }
 function changeQty(id, delta) {
   const item = cart.find(x=>x.id===id);
@@ -2161,6 +2318,9 @@ async function submitOrder() {
         selected_variations: i.selected_variations || null,
         selected_addons: i.selected_addons || null,
         selected_guest_price: i.selected_guest_price || null,
+        is_subscription: !!i.is_subscription,
+        subscription_interval: i.subscription_interval || null,
+        subscription_items: i.subscription_items || null,
       })),
       subtotal: cartTotal,
       discount: couponDiscount,
@@ -2175,6 +2335,9 @@ async function submitOrder() {
         zone_id: pricing.zone?.id || null,
         zone_name: pricing.zone?.name_en || '',
         pricing_source: pricing.source,
+        subscription: cart.some(i => i.is_subscription) ? {
+          interval: cart.find(i => i.is_subscription)?.subscription_interval || 'monthly',
+        } : null,
       },
       status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
     };
