@@ -4011,6 +4011,7 @@ async function sendMonthlyBilling() {
   if (btn) { btn.textContent = 'Sending…'; btn.disabled = true; }
   try {
     const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showToast('Not signed in'); return; }
     const res = await fetch(`${SUPABASE_URL}/functions/v1/monthly-billing`, {
       method: 'POST',
       headers: {
