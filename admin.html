@@ -3465,7 +3465,7 @@ function showTab(tab) {
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='siteimages') loadSiteImages();
   if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
-if (tab==='dashboard') { loadStores(); loadDashboard(); }
+if (tab==='dashboard') { loadStores().then(() => loadDashboard()); }
 }
 // ══ SITE IMAGES & CONTENT ══
 const SITE_IMAGE_SLOTS = [
@@ -4046,18 +4046,30 @@ async function loadDashboard() {
   else if (period === 'month') { since = new Date(now.getFullYear(), now.getMonth(), 1).toISOString(); }
   else if (period === 'year') { since = new Date(now.getFullYear(), 0, 1).toISOString(); }
 
-  // Fetch orders
   const ordersQ = sb.from('orders').select('*').order('created_at', { ascending: false });
   const { data: orders } = since ? await ordersQ.gte('created_at', since) : await ordersQ;
 
-  // Fetch store deliveries for current month (always month view for stores)
-  const mStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const mEnd   = new Date(now.getFullYear(), now.getMonth()+1, 1).toISOString().split('T')[0];
-  const { data: deliveries } = await sb.from('store_deliveries')
+  // Store deliveries match the same period
+  let dStart, dEnd;
+  if (period === 'week') {
+    const d = new Date(now); d.setDate(d.getDate()-7);
+    dStart = d.toISOString().split('T')[0];
+  } else if (period === 'month') {
+    dStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  } else if (period === 'year') {
+    dStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+  }
+  dEnd = new Date(now.getFullYear(), now.getMonth()+1, 1).toISOString().split('T')[0];
+
+  let delivQ = sb.from('store_deliveries')
     .select('*, stores(price_large, price_small, price_syrup)')
-    .gte('delivery_date', mStart)
-    .lt('delivery_date', mEnd)
     .order('delivery_date', { ascending: false });
+  if (dStart) delivQ = delivQ.gte('delivery_date', dStart);
+  delivQ = delivQ.lt('delivery_date', dEnd);
+
+  const { data: deliveries } = await delivQ;
+
+  if (!allStores.length) await loadStores();
 
   renderDashboardKPIs(orders || [], deliveries || []);
   renderDashboardChart(orders || [], deliveries || []);
