@@ -1254,6 +1254,9 @@ async function checkAdminAccess(user) {
   document.getElementById('adminEmail').textContent = user.email;
   setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
   showTab('dashboard');
+loadOrders();
+loadAllProducts();
+loadStores(); // preload stores cache
   loadOrders();
   loadAllProducts();
   if (!window._recoverPoll) {
@@ -1292,8 +1295,11 @@ function setHubMode(mode) {
 // ══ TABS ══
 // ══ PRODUCTS ══
 async function loadAllProducts() {
+  const cached = localStorage.getItem('gremier_products_cache');
+  if (cached) { allProducts = JSON.parse(cached).map(normalizeProduct); renderProductsList(); }
   const { data } = await sb.from('products').select('*').order('sort_order');
   allProducts = (data || []).map(normalizeProduct);
+  localStorage.setItem('gremier_products_cache', JSON.stringify(data || []));
   renderProductsList();
 }
 let prodFilter = { search:'', cat:'all' };
@@ -2013,6 +2019,8 @@ function applyClientOrderFilters(orders) {
 }
 
 async function loadOrders() {
+  const cached = localStorage.getItem('gremier_orders_cache');
+  if (cached) { allOrders = JSON.parse(cached); renderOrdersTable(allOrders); renderOrderStats(allOrders); }
   const period = document.getElementById('orderPeriod').value;
   const status = document.getElementById('orderStatus').value;
   const monthVal = document.getElementById('orderMonth')?.value || '';
@@ -2055,6 +2063,7 @@ async function loadOrders() {
   if (status !== 'all') query = query.eq('status', status);
   const { data } = await query;
   allOrders = applyClientOrderFilters(data || []);
+  localStorage.setItem('gremier_orders_cache', JSON.stringify(data || []));
   renderOrdersTable(allOrders);
   renderOrderStats(allOrders);
   await loadRecoverableOrdersUI();
@@ -4100,37 +4109,61 @@ function renderDashboardKPIs(orders, deliveries) {
 function renderDashboardChart(orders, deliveries) {
   const el = document.getElementById('dashChart');
   if (!el) return;
-  // Build daily map
-  const byDate = {};
+
+  // Build running cumulative totals by day of month
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const today = now.getDate();
+
+  // Initialize all days
+  const dailyOrders = {};
+  const dailyStores = {};
+  for (let i = 1; i <= daysInMonth; i++) {
+    dailyOrders[i] = 0;
+    dailyStores[i] = 0;
+  }
+
   orders.forEach(o => {
-    const k = new Date(o.created_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' });
-    byDate[k] = (byDate[k] || { orders: 0, stores: 0 });
-    byDate[k].orders += parseFloat(o.total || 0);
+    const day = new Date(o.created_at).getDate();
+    dailyOrders[day] = (dailyOrders[day] || 0) + parseFloat(o.total || 0);
   });
   deliveries.forEach(d => {
-    const k = new Date(d.delivery_date + 'T12:00:00').toLocaleDateString('en-IL', { day:'numeric', month:'short' });
-    byDate[k] = (byDate[k] || { orders: 0, stores: 0 });
-    byDate[k].stores += deliveryTotal(d);
+    const day = new Date(d.delivery_date + 'T12:00:00').getDate();
+    dailyStores[day] = (dailyStores[day] || 0) + deliveryTotal(d);
   });
-  const keys = Object.keys(byDate);
-  const maxVal = Math.max(...keys.map(k => byDate[k].orders + byDate[k].stores), 1);
+
+  // Build running totals
+  let runningOrders = 0, runningStores = 0;
+  const days = [];
+  for (let i = 1; i <= today; i++) {
+    runningOrders += dailyOrders[i] || 0;
+    runningStores += dailyStores[i] || 0;
+    days.push({ day: i, orders: runningOrders, stores: runningStores });
+  }
+
+  const maxVal = Math.max(...days.map(d => d.orders + d.stores), 1);
+
   el.innerHTML = `
-    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:14px">Daily Revenue</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">Running Monthly Revenue</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
       <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--text2)"><span style="width:10px;height:10px;background:var(--cream);border-radius:2px;display:inline-block"></span>Online orders</span>
       <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--text2)"><span style="width:10px;height:10px;background:var(--blue);border-radius:2px;display:inline-block"></span>Store deliveries</span>
+      <span style="margin-left:auto;font-size:.78rem;color:var(--cream)">Total: ₪${(days[days.length-1]?.orders + days[days.length-1]?.stores || 0).toFixed(0)}</span>
     </div>
-    <div class="chart-bars">${keys.map(k => {
-      const oPct = Math.max(2, Math.round((byDate[k].orders / maxVal) * 100));
-      const sPct = Math.max(2, Math.round((byDate[k].stores / maxVal) * 100));
-      return `<div class="chart-bar-wrap" title="${k}: ₪${(byDate[k].orders+byDate[k].stores).toFixed(0)}">
-        <div style="display:flex;flex-direction:column-reverse;height:100px;gap:1px">
-          ${byDate[k].orders > 0 ? `<div style="height:${oPct}px;background:var(--cream);border-radius:2px 2px 0 0;opacity:.7;min-height:2px"></div>` : ''}
-          ${byDate[k].stores > 0 ? `<div style="height:${sPct}px;background:var(--blue);border-radius:2px 2px 0 0;opacity:.7;min-height:2px"></div>` : ''}
-        </div>
-        <div class="chart-bar-label">${k}</div>
-      </div>`;
-    }).join('')}</div>`;
+    <div class="chart-bars" style="align-items:flex-end">
+      ${days.map(d => {
+        const oPct = Math.max(2, Math.round((d.orders / maxVal) * 100));
+        const sPct = Math.max(2, Math.round((d.stores / maxVal) * 100));
+        const showLabel = d.day === 1 || d.day % 5 === 0 || d.day === today;
+        return `<div class="chart-bar-wrap" title="Day ${d.day}: ₪${(d.orders + d.stores).toFixed(0)} total">
+          <div style="display:flex;flex-direction:column-reverse;height:100px;gap:1px">
+            <div style="height:${oPct}px;background:var(--cream);border-radius:2px 2px 0 0;opacity:.8;min-height:2px"></div>
+            <div style="height:${sPct}px;background:var(--blue);border-radius:2px 2px 0 0;opacity:.8;min-height:2px"></div>
+          </div>
+          <div class="chart-bar-label">${showLabel ? d.day : ''}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
 }
 
 function renderDashboardRecentOrders(orders) {
