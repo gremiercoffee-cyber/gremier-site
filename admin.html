@@ -60,6 +60,9 @@
       body.hub-ops-mode #opsPanel .ops-frame { height:calc(100vh - 52px); min-height:calc(100vh - 52px); }
       .hub-switch-sidebar { display:none; }
       .hub-switch-mobile { display:flex; }
+      @media(max-width:768px){
+  #dashCols { grid-template-columns: 1fr !important; }
+}
     }
     @media(min-width:769px){
       body.hub-ops-mode #opsPanel .ops-frame { height:100vh; min-height:100vh; }
@@ -404,6 +407,8 @@
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
+      <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
+      <div class="nav-item" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div> 
       </div>
       <div class="sidebar-bottom">
         <div class="user-info" id="adminEmail">—</div>
@@ -678,6 +683,138 @@
           <button class="btn btn-amber" style="margin-top:18px" onclick="saveWhyCards()">Save Cards</button>
         </div>
       </div>
+       <!-- STORE DELIVERIES TAB -->
+<div id="tab-storedeliveries" class="tab-content" style="display:none">
+  <div class="page-header">
+    <div class="flex-between">
+      <div>
+        <h1 class="page-title">🏪 Store Deliveries</h1>
+        <p class="page-sub">Track what you bring to each store — monthly totals + billing</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="openAddStoreModal()">+ Add Store</button>
+        <button class="btn btn-amber btn-sm" onclick="openLogDeliveryModal()">+ Log Delivery</button>
+        <button class="btn btn-outline btn-sm" onclick="sendMonthlyBilling()" id="billingBtn">📧 Send Monthly Billing</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Month picker -->
+  <div class="filter-bar" style="margin-bottom:20px">
+    <input type="month" class="form-input" style="width:auto" id="sdMonth" onchange="loadStoreDeliveries()"/>
+    <select class="form-input" style="width:auto" id="sdStoreFilter" onchange="loadStoreDeliveries()">
+      <option value="all">All Stores</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="exportDeliveriesCSV()">⬇ Export CSV</button>
+  </div>
+
+  <!-- Monthly summary stats -->
+  <div class="stat-grid" id="sdStats" style="margin-bottom:24px"></div>
+
+  <!-- Per-store breakdown -->
+  <div id="sdStoreBlocks"></div>
+
+  <!-- All deliveries table -->
+  <div class="flex-between" style="margin-top:28px;margin-bottom:14px">
+    <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">All Deliveries This Month</h3>
+  </div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Store</th>
+          <th class="cell-num">Large</th>
+          <th class="cell-num">Small</th>
+          <th class="cell-num">Syrup</th>
+          <th class="cell-total">Total</th>
+          <th class="cell-date">Date</th>
+          <th class="cell-actions">Actions</th>
+        </tr></thead>
+        <tbody id="sdDeliveriesBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Stores management -->
+  <div class="flex-between" style="margin-top:36px;margin-bottom:14px">
+    <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Store Prices</h3>
+    <button class="btn btn-outline btn-sm" onclick="openAddStoreModal()">+ Add Store</button>
+  </div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Store Name</th>
+          <th>Large (₪)</th>
+          <th>Small (₪)</th>
+          <th>Syrup (₪)</th>
+          <th class="cell-actions">Edit</th>
+        </tr></thead>
+        <tbody id="sdStoresPricesBody"><tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD TAB -->
+<div id="tab-dashboard" class="tab-content" style="display:none">
+  <div class="page-header">
+    <div class="flex-between">
+      <div>
+        <h1 class="page-title">📊 Dashboard</h1>
+        <p class="page-sub">Everything at a glance — orders, store deliveries, monthly revenue</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <select class="form-input" style="width:auto" id="dashPeriod" onchange="loadDashboard()">
+          <option value="month" selected>This Month</option>
+          <option value="week">This Week</option>
+          <option value="year">This Year</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top KPI row -->
+  <div class="stat-grid" id="dashKPIs" style="margin-bottom:28px"></div>
+
+  <!-- Revenue chart -->
+  <div class="card" style="padding:20px;margin-bottom:24px" id="dashChart">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Two column layout: recent orders + recent store deliveries -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px" id="dashCols">
+    <div>
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Orders</h3>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th>#</th><th>Customer</th><th class="cell-total">Total</th><th class="cell-status">Status</th></tr></thead>
+          <tbody id="dashRecentOrders"></tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Store Deliveries</h3>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th>Store</th><th class="cell-num">🫙L</th><th class="cell-num">🫙S</th><th class="cell-total">₪</th></tr></thead>
+          <tbody id="dashRecentDeliveries"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Store monthly breakdown -->
+  <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Store Totals This Month</h3>
+  <div class="card" style="padding:0;margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Syrup</th><th class="cell-total">Revenue</th></tr></thead>
+        <tbody id="dashStoreBreakdown"></tbody>
+      </table>
+    </div>
+  </div>
+</div> 
     </div><!-- /websiteMain -->
     </div><!-- /main -->
   </div>
@@ -704,6 +841,12 @@
     <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
       <span class="tab-icon">🚚</span>Delivery
     </button>
+    <button class="tab-bar-btn" id="tbar-storedeliveries" onclick="showTab('storedeliveries')">
+  <span class="tab-icon">🏪</span>Stores
+</button>
+<button class="tab-bar-btn" id="tbar-dashboard" onclick="showTab('dashboard')">
+  <span class="tab-icon">📊</span>Dashboard
+</button>
   </div>
 </div>
 <!-- MEMBER DETAIL MODAL -->
@@ -859,6 +1002,58 @@
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-amber" onclick="saveManualRestoredOrder()">Create order</button>
       <button class="btn btn-outline" onclick="closeRestoreOrderModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+  <!-- STORE MODAL (add/edit store) -->
+<div class="modal-backdrop" id="storeModal">
+  <div class="modal-box" style="max-width:480px">
+    <h2 class="modal-title" id="storeModalTitle">Add Store</h2>
+    <input type="hidden" id="editStoreId"/>
+    <div class="form-group"><label class="form-label">Store Name</label><input class="form-input" id="sName" placeholder="e.g. Arzei Market"/></div>
+    <div class="form-group"><label class="form-label">Phone (optional)</label><input class="form-input" id="sPhone" placeholder="05X-XXXXXXX"/></div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">Large Bottle (₪)</label><input class="form-input" type="number" step="0.5" id="sPriceLarge" placeholder="30"/></div>
+      <div class="form-group"><label class="form-label">Small Bottle (₪)</label><input class="form-input" type="number" step="0.5" id="sPriceSmall" placeholder="10"/></div>
+      <div class="form-group"><label class="form-label">Syrup (₪) — optional</label><input class="form-input" type="number" step="0.5" id="sPriceSyrup" placeholder="0"/></div>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Store active</span>
+      <label class="toggle"><input type="checkbox" id="sActive" checked/><span class="toggle-slider"></span></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-amber" onclick="saveStore()">Save Store</button>
+      <button class="btn btn-outline" onclick="closeStoreModal()">Cancel</button>
+      <button class="btn btn-red btn-sm" id="deleteStoreBtn" style="margin-left:auto;display:none" onclick="deleteStore()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOG DELIVERY MODAL -->
+<div class="modal-backdrop" id="logDeliveryModal">
+  <div class="modal-box" style="max-width:480px">
+    <h2 class="modal-title">Log Store Delivery</h2>
+    <input type="hidden" id="editDeliveryId"/>
+    <div class="form-group">
+      <label class="form-label">Store</label>
+      <select class="form-input" id="ldStore" onchange="updateDeliveryPreview()"></select>
+    </div>
+    <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="ldDate"/></div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">Large Bottles</label><input class="form-input" type="number" min="0" id="ldLarge" value="0" oninput="updateDeliveryPreview()"/></div>
+      <div class="form-group"><label class="form-label">Small Bottles</label><input class="form-input" type="number" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()"/></div>
+      <div class="form-group"><label class="form-label">Syrups</label><input class="form-input" type="number" min="0" id="ldSyrup" value="0" oninput="updateDeliveryPreview()"/></div>
+    </div>
+    <div id="deliveryPreview" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:16px;display:none">
+      <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">Delivery Total</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--cream)" id="deliveryPreviewTotal">₪0</div>
+      <div style="font-size:.78rem;color:var(--text2);margin-top:4px" id="deliveryPreviewBreakdown"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" onclick="saveDelivery()">Save Delivery</button>
+      <button class="btn btn-outline" onclick="closeLogDeliveryModal()">Cancel</button>
+      <button class="btn btn-red btn-sm" id="deleteDeliveryBtn" style="margin-left:auto;display:none" onclick="deleteDelivery()">Delete</button>
     </div>
   </div>
 </div>
@@ -3268,6 +3463,8 @@ function showTab(tab) {
   if (tab==='members') loadMembers();
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='siteimages') loadSiteImages();
+  if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
+if (tab==='dashboard') { loadStores(); loadDashboard(); }
 }
 // ══ SITE IMAGES & CONTENT ══
 const SITE_IMAGE_SLOTS = [
@@ -3478,6 +3675,505 @@ async function clearSiteImage(key) {
   showToast('Image removed');
   loadSiteImages();
 }
+  // ══ STORE DELIVERIES ══
+let allStores = [];
+let allDeliveries = [];
+
+function getSDMonth() {
+  const el = document.getElementById('sdMonth');
+  if (!el) return null;
+  if (el.value) return el.value;
+  const now = new Date();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  el.value = `${now.getFullYear()}-${m}`;
+  return el.value;
+}
+
+async function loadStores() {
+  const { data } = await sb.from('stores').select('*').order('sort_order');
+  allStores = data || [];
+  renderStoresPricesTable();
+  populateStoreSelects();
+}
+
+function populateStoreSelects() {
+  const filter = document.getElementById('sdStoreFilter');
+  const ldStore = document.getElementById('ldStore');
+  if (filter) {
+    filter.innerHTML = '<option value="all">All Stores</option>' +
+      allStores.filter(s => s.is_active).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  }
+  if (ldStore) {
+    ldStore.innerHTML = allStores.filter(s => s.is_active)
+      .map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  }
+}
+
+function renderStoresPricesTable() {
+  const body = document.getElementById('sdStoresPricesBody');
+  if (!body) return;
+  if (!allStores.length) { body.innerHTML = '<tr><td colspan="5" class="empty-state">No stores yet.</td></tr>'; return; }
+  body.innerHTML = allStores.map(s => `<tr>
+    <td style="color:var(--cream)">${escHtml(s.name)}${!s.is_active ? ' <span style="color:var(--text2);font-size:.72rem">(inactive)</span>' : ''}</td>
+    <td>₪${parseFloat(s.price_large || 0).toFixed(2)}</td>
+    <td>₪${parseFloat(s.price_small || 0).toFixed(2)}</td>
+    <td>${s.price_syrup > 0 ? '₪' + parseFloat(s.price_syrup).toFixed(2) : '—'}</td>
+    <td class="cell-actions"><button class="btn btn-outline btn-sm" onclick="openAddStoreModal('${s.id}')">Edit</button></td>
+  </tr>`).join('');
+}
+
+async function loadStoreDeliveries() {
+  const monthVal = getSDMonth();
+  if (!monthVal) return;
+  const [y, m] = monthVal.split('-').map(Number);
+  const start = new Date(y, m - 1, 1).toISOString().split('T')[0];
+  const end   = new Date(y, m, 1).toISOString().split('T')[0];
+  const storeFilter = document.getElementById('sdStoreFilter')?.value || 'all';
+
+  let query = sb.from('store_deliveries')
+    .select('*, stores(name, price_large, price_small, price_syrup)')
+    .gte('delivery_date', start)
+    .lt('delivery_date', end)
+    .order('delivery_date', { ascending: false });
+  if (storeFilter !== 'all') query = query.eq('store_id', storeFilter);
+
+  const { data } = await query;
+  allDeliveries = data || [];
+  renderDeliveriesTable();
+  renderSDStats();
+  renderStoreBlocks();
+}
+
+function deliveryTotal(d) {
+  const store = allStores.find(s => s.id === d.store_id);
+  if (!store) return 0;
+  return (d.qty_large || 0) * (store.price_large || 0) +
+         (d.qty_small || 0) * (store.price_small || 0) +
+         (d.qty_syrup || 0) * (store.price_syrup || 0);
+}
+
+function renderDeliveriesTable() {
+  const body = document.getElementById('sdDeliveriesBody');
+  if (!body) return;
+  if (!allDeliveries.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty-state">No deliveries this month.</td></tr>';
+    return;
+  }
+  body.innerHTML = allDeliveries.map(d => {
+    const total = deliveryTotal(d);
+    const date = new Date(d.delivery_date + 'T12:00:00').toLocaleDateString('en-IL', { day:'numeric', month:'short' });
+    return `<tr>
+      <td style="color:var(--cream)">${escHtml(d.store_name || d.stores?.name || '—')}</td>
+      <td class="cell-num">${d.qty_large || 0}</td>
+      <td class="cell-num">${d.qty_small || 0}</td>
+      <td class="cell-num">${d.qty_syrup || 0}</td>
+      <td class="cell-total" style="color:var(--cream)">₪${total.toFixed(0)}</td>
+      <td class="cell-date">${date}</td>
+      <td class="cell-actions">
+        <div class="cell-actions-wrap">
+          <button class="btn btn-outline btn-sm" onclick="openEditDeliveryModal('${d.id}')">Edit</button>
+          <button class="btn btn-red btn-sm" onclick="deleteDeliveryById('${d.id}')">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSDStats() {
+  const el = document.getElementById('sdStats');
+  if (!el) return;
+  const totalRevenue = allDeliveries.reduce((s, d) => s + deliveryTotal(d), 0);
+  const totalLarge = allDeliveries.reduce((s, d) => s + (d.qty_large || 0), 0);
+  const totalSmall = allDeliveries.reduce((s, d) => s + (d.qty_small || 0), 0);
+  const totalSyrup = allDeliveries.reduce((s, d) => s + (d.qty_syrup || 0), 0);
+  const activeStores = new Set(allDeliveries.map(d => d.store_id)).size;
+  el.innerHTML = `
+    <div class="stat-card"><div class="stat-label">Store Revenue</div><div class="stat-value">₪${totalRevenue.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Large Bottles</div><div class="stat-value">${totalLarge}</div></div>
+    <div class="stat-card"><div class="stat-label">Small Bottles</div><div class="stat-value">${totalSmall}</div></div>
+    <div class="stat-card"><div class="stat-label">Syrups</div><div class="stat-value">${totalSyrup}</div></div>
+    <div class="stat-card"><div class="stat-label">Active Stores</div><div class="stat-value">${activeStores}</div></div>
+  `;
+}
+
+function renderStoreBlocks() {
+  const el = document.getElementById('sdStoreBlocks');
+  if (!el) return;
+  // Group deliveries by store
+  const map = {};
+  allDeliveries.forEach(d => {
+    const sid = d.store_id;
+    if (!map[sid]) {
+      const store = allStores.find(s => s.id === sid);
+      map[sid] = {
+        name: d.store_name || store?.name || '—',
+        store,
+        deliveries: [],
+        totalLarge: 0, totalSmall: 0, totalSyrup: 0, totalRevenue: 0,
+      };
+    }
+    map[sid].deliveries.push(d);
+    map[sid].totalLarge += d.qty_large || 0;
+    map[sid].totalSmall += d.qty_small || 0;
+    map[sid].totalSyrup += d.qty_syrup || 0;
+    map[sid].totalRevenue += deliveryTotal(d);
+  });
+  if (!Object.keys(map).length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px">` +
+    Object.values(map).sort((a,b) => b.totalRevenue - a.totalRevenue).map(g => {
+      const s = g.store;
+      const lines = [];
+      if (g.totalLarge > 0) lines.push(`${g.totalLarge} large × ₪${s?.price_large||0} = ₪${(g.totalLarge*(s?.price_large||0)).toFixed(0)}`);
+      if (g.totalSmall > 0) lines.push(`${g.totalSmall} small × ₪${s?.price_small||0} = ₪${(g.totalSmall*(s?.price_small||0)).toFixed(0)}`);
+      if (g.totalSyrup > 0) lines.push(`${g.totalSyrup} syrup × ₪${s?.price_syrup||0} = ₪${(g.totalSyrup*(s?.price_syrup||0)).toFixed(0)}`);
+      return `<div class="card" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div style="font-weight:600;color:var(--cream)">${escHtml(g.name)}</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--cream)">₪${g.totalRevenue.toFixed(0)}</div>
+        </div>
+        <div style="font-size:.78rem;color:var(--text2);line-height:1.8">${lines.join('<br>') || 'No deliveries'}</div>
+        <div style="margin-top:10px;font-size:.72rem;color:var(--text2)">${g.deliveries.length} delivery run${g.deliveries.length !== 1 ? 's' : ''}</div>
+      </div>`;
+    }).join('') + `</div>`;
+}
+
+// ── Store modal ──
+function openAddStoreModal(storeId) {
+  const s = storeId ? allStores.find(x => x.id === storeId) : null;
+  document.getElementById('storeModalTitle').textContent = s ? 'Edit Store' : 'Add Store';
+  document.getElementById('editStoreId').value = storeId || '';
+  document.getElementById('sName').value = s?.name || '';
+  document.getElementById('sPhone').value = s?.phone || '';
+  document.getElementById('sPriceLarge').value = s?.price_large || '';
+  document.getElementById('sPriceSmall').value = s?.price_small || '';
+  document.getElementById('sPriceSyrup').value = s?.price_syrup || '';
+  document.getElementById('sActive').checked = s ? s.is_active : true;
+  document.getElementById('deleteStoreBtn').style.display = storeId ? 'flex' : 'none';
+  document.getElementById('storeModal').classList.add('open');
+}
+function closeStoreModal() { document.getElementById('storeModal').classList.remove('open'); }
+
+async function saveStore() {
+  const id = document.getElementById('editStoreId').value;
+  const data = {
+    name: document.getElementById('sName').value.trim(),
+    phone: document.getElementById('sPhone').value.trim() || null,
+    price_large: parseFloat(document.getElementById('sPriceLarge').value) || 0,
+    price_small: parseFloat(document.getElementById('sPriceSmall').value) || 0,
+    price_syrup: parseFloat(document.getElementById('sPriceSyrup').value) || 0,
+    is_active: document.getElementById('sActive').checked,
+    updated_at: new Date().toISOString(),
+  };
+  if (!data.name) { showToast('Store name is required'); return; }
+  if (id) {
+    await sb.from('stores').update(data).eq('id', id);
+  } else {
+    data.sort_order = allStores.length + 1;
+    await sb.from('stores').insert(data);
+  }
+  showToast(id ? 'Store updated ✓' : 'Store added ✓');
+  closeStoreModal();
+  await loadStores();
+  await loadStoreDeliveries();
+}
+
+async function deleteStore() {
+  const id = document.getElementById('editStoreId').value;
+  if (!id || !confirm('Delete this store? All delivery records will also be deleted.')) return;
+  await sb.from('stores').delete().eq('id', id);
+  showToast('Store deleted');
+  closeStoreModal();
+  await loadStores();
+  await loadStoreDeliveries();
+}
+
+// ── Log delivery modal ──
+function openLogDeliveryModal() {
+  document.getElementById('editDeliveryId').value = '';
+  document.getElementById('ldDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ldLarge').value = '0';
+  document.getElementById('ldSmall').value = '0';
+  document.getElementById('ldSyrup').value = '0';
+  document.getElementById('ldNotes').value = '';
+  document.getElementById('deleteDeliveryBtn').style.display = 'none';
+  document.getElementById('deliveryPreview').style.display = 'none';
+  populateStoreSelects();
+  document.getElementById('logDeliveryModal').classList.add('open');
+}
+
+function openEditDeliveryModal(deliveryId) {
+  const d = allDeliveries.find(x => x.id === deliveryId);
+  if (!d) return;
+  document.getElementById('editDeliveryId').value = d.id;
+  populateStoreSelects();
+  document.getElementById('ldStore').value = d.store_id;
+  document.getElementById('ldDate').value = d.delivery_date;
+  document.getElementById('ldLarge').value = d.qty_large || 0;
+  document.getElementById('ldSmall').value = d.qty_small || 0;
+  document.getElementById('ldSyrup').value = d.qty_syrup || 0;
+  document.getElementById('ldNotes').value = d.notes || '';
+  document.getElementById('deleteDeliveryBtn').style.display = 'flex';
+  updateDeliveryPreview();
+  document.getElementById('logDeliveryModal').classList.add('open');
+}
+
+function closeLogDeliveryModal() { document.getElementById('logDeliveryModal').classList.remove('open'); }
+
+function updateDeliveryPreview() {
+  const storeId = document.getElementById('ldStore')?.value;
+  const store = allStores.find(s => s.id === storeId);
+  if (!store) return;
+  const large = parseInt(document.getElementById('ldLarge').value) || 0;
+  const small = parseInt(document.getElementById('ldSmall').value) || 0;
+  const syrup = parseInt(document.getElementById('ldSyrup').value) || 0;
+  const total = (large * store.price_large) + (small * store.price_small) + (syrup * (store.price_syrup || 0));
+  const preview = document.getElementById('deliveryPreview');
+  const lines = [];
+  if (large > 0) lines.push(`${large} large × ₪${store.price_large} = ₪${(large*store.price_large).toFixed(0)}`);
+  if (small > 0) lines.push(`${small} small × ₪${store.price_small} = ₪${(small*store.price_small).toFixed(0)}`);
+  if (syrup > 0) lines.push(`${syrup} syrup × ₪${store.price_syrup||0} = ₪${(syrup*(store.price_syrup||0)).toFixed(0)}`);
+  if (total > 0 || large > 0 || small > 0 || syrup > 0) {
+    preview.style.display = 'block';
+    document.getElementById('deliveryPreviewTotal').textContent = `₪${total.toFixed(2)}`;
+    document.getElementById('deliveryPreviewBreakdown').innerHTML = lines.join(' · ');
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+async function saveDelivery() {
+  const id = document.getElementById('editDeliveryId').value;
+  const storeId = document.getElementById('ldStore').value;
+  const store = allStores.find(s => s.id === storeId);
+  if (!store) { showToast('Please select a store'); return; }
+  const data = {
+    store_id: storeId,
+    store_name: store.name,
+    qty_large: parseInt(document.getElementById('ldLarge').value) || 0,
+    qty_small: parseInt(document.getElementById('ldSmall').value) || 0,
+    qty_syrup: parseInt(document.getElementById('ldSyrup').value) || 0,
+    delivery_date: document.getElementById('ldDate').value,
+    notes: document.getElementById('ldNotes').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (!data.delivery_date) { showToast('Please pick a date'); return; }
+  if (id) {
+    await sb.from('store_deliveries').update(data).eq('id', id);
+    showToast('Delivery updated ✓');
+  } else {
+    await sb.from('store_deliveries').insert(data);
+    showToast('Delivery logged ✓');
+  }
+  closeLogDeliveryModal();
+  await loadStoreDeliveries();
+}
+
+async function deleteDelivery() {
+  const id = document.getElementById('editDeliveryId').value;
+  if (!id || !confirm('Delete this delivery?')) return;
+  await sb.from('store_deliveries').delete().eq('id', id);
+  showToast('Delivery deleted');
+  closeLogDeliveryModal();
+  await loadStoreDeliveries();
+}
+
+async function deleteDeliveryById(id) {
+  if (!confirm('Delete this delivery?')) return;
+  await sb.from('store_deliveries').delete().eq('id', id);
+  showToast('Delivery deleted');
+  await loadStoreDeliveries();
+}
+
+function exportDeliveriesCSV() {
+  const rows = [['Store','Date','Large','Small','Syrup','Total (₪)','Notes']];
+  allDeliveries.forEach(d => {
+    rows.push([
+      d.store_name || '—',
+      d.delivery_date,
+      d.qty_large || 0,
+      d.qty_small || 0,
+      d.qty_syrup || 0,
+      deliveryTotal(d).toFixed(2),
+      d.notes || '',
+    ]);
+  });
+  downloadCSV(rows, `gremier-store-deliveries-${getSDMonth()}.csv`);
+}
+
+async function sendMonthlyBilling() {
+  const monthVal = getSDMonth();
+  const [y, m] = monthVal.split('-').map(Number);
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const label = `${monthNames[m-1]} ${String(y).slice(-2)}`;
+  if (!confirm(`Send monthly billing for ${label}?\n\nThis will email חשבון עסקה invoices for every store that had deliveries.`)) return;
+  const btn = document.getElementById('billingBtn');
+  if (btn) { btn.textContent = 'Sending…'; btn.disabled = true; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/monthly-billing`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + session.access_token,
+      },
+      body: JSON.stringify({ year: y, month: m }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✓ Billing sent! ${data.stores} stores · ₪${data.grandTotal?.toFixed(0)}`);
+    } else if (data.skipped === 'no_deliveries') {
+      showToast('No deliveries found for that month');
+    } else {
+      showToast('Billing failed — check console');
+      console.error(data);
+    }
+  } catch(e) {
+    showToast('Could not reach billing function');
+    console.error(e);
+  } finally {
+    if (btn) { btn.textContent = '📧 Send Monthly Billing'; btn.disabled = false; }
+  }
+}
+
+// ══ DASHBOARD ══
+async function loadDashboard() {
+  const period = document.getElementById('dashPeriod')?.value || 'month';
+  const now = new Date();
+  let since;
+  if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
+  else if (period === 'month') { since = new Date(now.getFullYear(), now.getMonth(), 1).toISOString(); }
+  else if (period === 'year') { since = new Date(now.getFullYear(), 0, 1).toISOString(); }
+
+  // Fetch orders
+  const ordersQ = sb.from('orders').select('*').order('created_at', { ascending: false });
+  const { data: orders } = since ? await ordersQ.gte('created_at', since) : await ordersQ;
+
+  // Fetch store deliveries for current month (always month view for stores)
+  const mStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const mEnd   = new Date(now.getFullYear(), now.getMonth()+1, 1).toISOString().split('T')[0];
+  const { data: deliveries } = await sb.from('store_deliveries')
+    .select('*, stores(price_large, price_small, price_syrup)')
+    .gte('delivery_date', mStart)
+    .lt('delivery_date', mEnd)
+    .order('delivery_date', { ascending: false });
+
+  renderDashboardKPIs(orders || [], deliveries || []);
+  renderDashboardChart(orders || [], deliveries || []);
+  renderDashboardRecentOrders(orders || []);
+  renderDashboardRecentDeliveries(deliveries || []);
+  renderDashboardStoreBreakdown(deliveries || []);
+}
+
+function renderDashboardKPIs(orders, deliveries) {
+  const el = document.getElementById('dashKPIs');
+  if (!el) return;
+  const orderRevenue = orders.reduce((s, o) => s + parseFloat(o.total||0), 0);
+  const orderPaid = orders.filter(o => o.payment_status === 'paid').reduce((s, o) => s + parseFloat(o.total||0), 0);
+  const storeRevenue = deliveries.reduce((s, d) => s + deliveryTotal(d), 0);
+  const totalRevenue = orderRevenue + storeRevenue;
+  const pending = orders.filter(o => o.status === 'pending' || o.status === 'confirmed').length;
+  el.innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value">₪${totalRevenue.toFixed(0)}</div><div class="stat-sub">orders + stores</div></div>
+    <div class="stat-card"><div class="stat-label">Online Orders</div><div class="stat-value">₪${orderRevenue.toFixed(0)}</div><div class="stat-sub">${orders.length} orders</div></div>
+    <div class="stat-card"><div class="stat-label">Collected</div><div class="stat-value">₪${orderPaid.toFixed(0)}</div><div class="stat-sub">paid orders</div></div>
+    <div class="stat-card"><div class="stat-label">Store Sales</div><div class="stat-value">₪${storeRevenue.toFixed(0)}</div><div class="stat-sub">this month</div></div>
+    <div class="stat-card"><div class="stat-label">Pending Orders</div><div class="stat-value">${pending}</div><div class="stat-sub">need action</div></div>
+  `;
+}
+
+function renderDashboardChart(orders, deliveries) {
+  const el = document.getElementById('dashChart');
+  if (!el) return;
+  // Build daily map
+  const byDate = {};
+  orders.forEach(o => {
+    const k = new Date(o.created_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' });
+    byDate[k] = (byDate[k] || { orders: 0, stores: 0 });
+    byDate[k].orders += parseFloat(o.total || 0);
+  });
+  deliveries.forEach(d => {
+    const k = new Date(d.delivery_date + 'T12:00:00').toLocaleDateString('en-IL', { day:'numeric', month:'short' });
+    byDate[k] = (byDate[k] || { orders: 0, stores: 0 });
+    byDate[k].stores += deliveryTotal(d);
+  });
+  const keys = Object.keys(byDate);
+  const maxVal = Math.max(...keys.map(k => byDate[k].orders + byDate[k].stores), 1);
+  el.innerHTML = `
+    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:14px">Daily Revenue</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--text2)"><span style="width:10px;height:10px;background:var(--cream);border-radius:2px;display:inline-block"></span>Online orders</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--text2)"><span style="width:10px;height:10px;background:var(--blue);border-radius:2px;display:inline-block"></span>Store deliveries</span>
+    </div>
+    <div class="chart-bars">${keys.map(k => {
+      const oPct = Math.max(2, Math.round((byDate[k].orders / maxVal) * 100));
+      const sPct = Math.max(2, Math.round((byDate[k].stores / maxVal) * 100));
+      return `<div class="chart-bar-wrap" title="${k}: ₪${(byDate[k].orders+byDate[k].stores).toFixed(0)}">
+        <div style="display:flex;flex-direction:column-reverse;height:100px;gap:1px">
+          ${byDate[k].orders > 0 ? `<div style="height:${oPct}px;background:var(--cream);border-radius:2px 2px 0 0;opacity:.7;min-height:2px"></div>` : ''}
+          ${byDate[k].stores > 0 ? `<div style="height:${sPct}px;background:var(--blue);border-radius:2px 2px 0 0;opacity:.7;min-height:2px"></div>` : ''}
+        </div>
+        <div class="chart-bar-label">${k}</div>
+      </div>`;
+    }).join('')}</div>`;
+}
+
+function renderDashboardRecentOrders(orders) {
+  const body = document.getElementById('dashRecentOrders');
+  if (!body) return;
+  const recent = orders.slice(0, 8);
+  body.innerHTML = recent.length
+    ? recent.map(o => `<tr>
+        <td style="color:var(--cream);font-size:.78rem">#${o.order_number}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;font-size:.78rem">${escHtml(o.customer_name||'')}</td>
+        <td class="cell-total" style="color:var(--cream);font-size:.78rem">₪${o.total}</td>
+        <td class="cell-status"><span class="status-pill s-${o.status}" style="font-size:.55rem">${o.status}</span></td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">No orders yet.</td></tr>';
+}
+
+function renderDashboardRecentDeliveries(deliveries) {
+  const body = document.getElementById('dashRecentDeliveries');
+  if (!body) return;
+  const recent = deliveries.slice(0, 8);
+  body.innerHTML = recent.length
+    ? recent.map(d => `<tr>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;font-size:.78rem;color:var(--cream)">${escHtml(d.store_name||'—')}</td>
+        <td class="cell-num" style="font-size:.78rem">${d.qty_large||0}</td>
+        <td class="cell-num" style="font-size:.78rem">${d.qty_small||0}</td>
+        <td class="cell-total" style="color:var(--cream);font-size:.78rem">₪${deliveryTotal(d).toFixed(0)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">No deliveries yet.</td></tr>';
+}
+
+function renderDashboardStoreBreakdown(deliveries) {
+  const body = document.getElementById('dashStoreBreakdown');
+  if (!body) return;
+  const map = {};
+  deliveries.forEach(d => {
+    const sid = d.store_id;
+    if (!map[sid]) map[sid] = { name: d.store_name || '—', large:0, small:0, syrup:0, total:0 };
+    map[sid].large += d.qty_large || 0;
+    map[sid].small += d.qty_small || 0;
+    map[sid].syrup += d.qty_syrup || 0;
+    map[sid].total += deliveryTotal(d);
+  });
+  const rows = Object.values(map).sort((a,b) => b.total - a.total);
+  body.innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td style="color:var(--cream)">${escHtml(r.name)}</td>
+        <td>${r.large || '—'}</td>
+        <td>${r.small || '—'}</td>
+        <td>${r.syrup || '—'}</td>
+        <td class="cell-total" style="color:var(--cream)">₪${r.total.toFixed(0)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">No store deliveries this month.</td></tr>';
+}
+
+// ── Hook stores into showTab ──
+// Find the existing showTab function and add these two cases:
+// if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
+// if (tab==='dashboard') loadDashboard();
 initAdmin();
 // ── PWA SERVICE WORKER ──
 // Disabled from admin page so admin cannot register a root-scoped service worker.
