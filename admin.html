@@ -429,7 +429,7 @@
       <div id="opsPanel"><iframe id="opsFrame" class="ops-frame" src="about:blank" title="Gremier Operations"></iframe></div>
       <div id="websiteMain">
       <!-- ORDERS -->
-      <div id="tab-orders" class="tab-content">
+      <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Orders</h1>
           <p class="page-sub">All customer orders — filter by date, status, or subscriptions</p>
@@ -1253,6 +1253,7 @@ async function checkAdminAccess(user) {
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
   setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
+  showTab('dashboard');
   loadOrders();
   loadAllProducts();
   if (!window._recoverPoll) {
