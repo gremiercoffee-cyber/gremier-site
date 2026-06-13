@@ -1253,12 +1253,10 @@ async function checkAdminAccess(user) {
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
   setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
-  showTab('dashboard');
-loadOrders();
-loadAllProducts();
-loadStores(); // preload stores cache
+showTab('dashboard');
   loadOrders();
   loadAllProducts();
+  loadStores();
   if (!window._recoverPoll) {
     window._recoverPoll = setInterval(() => {
       if (document.getElementById('tab-orders')?.style.display !== 'none') loadRecoverableOrdersUI();
@@ -4087,12 +4085,9 @@ if (!allStores.length) await loadStores();
   const deliveriesFinal = deliveries || [];
   renderDashboardKPIs(ordersFinal, deliveriesFinal);
   renderDashboardChart(ordersFinal, deliveriesFinal);
-  renderDashboardRecentOrders(ordersFinal);
+renderDashboardRecentOrders(ordersFinal);
   renderDashboardRecentDeliveries(deliveriesFinal);
   renderDashboardStoreBreakdown(deliveriesFinal);
-  renderDashboardRecentOrders(orders || []);
-  renderDashboardRecentDeliveries(deliveries || []);
-  renderDashboardStoreBreakdown(deliveries || []);
 }
 
 function renderDashboardKPIs(orders, deliveries) {
