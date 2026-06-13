@@ -4080,10 +4080,15 @@ async function loadDashboard() {
 
   const { data: deliveries } = await delivQ;
 
-  if (!allStores.length) await loadStores();
+if (!allStores.length) await loadStores();
 
-  renderDashboardKPIs(orders || [], deliveries || []);
-  renderDashboardChart(orders || [], deliveries || []);
+  const ordersFinal = orders || [];
+  const deliveriesFinal = deliveries || [];
+  renderDashboardKPIs(ordersFinal, deliveriesFinal);
+  renderDashboardChart(ordersFinal, deliveriesFinal);
+  renderDashboardRecentOrders(ordersFinal);
+  renderDashboardRecentDeliveries(deliveriesFinal);
+  renderDashboardStoreBreakdown(deliveriesFinal);
   renderDashboardRecentOrders(orders || []);
   renderDashboardRecentDeliveries(deliveries || []);
   renderDashboardStoreBreakdown(deliveries || []);
