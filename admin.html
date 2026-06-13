@@ -400,6 +400,7 @@
         <button type="button" class="hub-btn" data-mode="ops" onclick="setHubMode('ops')">Operations</button>
       </div>
       <div class="sidebar-nav" id="websiteNav">
+      <div class="nav-item" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
@@ -820,6 +821,9 @@
   </div>
   <!-- MOBILE BOTTOM TAB BAR -->
   <div class="bottom-tab-bar" id="bottomTabBar">
+    <button class="tab-bar-btn" id="tbar-dashboard" onclick="showTab('dashboard')">
+  <span class="tab-icon">📊</span>Dashboard
+</button>
     <button class="tab-bar-btn active" id="tbar-orders" onclick="showTab('orders')">
       <span class="tab-icon">🛒</span>Orders
     </button>
