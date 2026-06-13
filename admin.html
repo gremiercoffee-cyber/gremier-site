@@ -4228,11 +4228,18 @@ function renderDashboardStoreBreakdown(deliveries) {
 // Find the existing showTab function and add these two cases:
 // if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
 // if (tab==='dashboard') loadDashboard();
-  async function sendCustomerReceipt(orderId) {
-  if (!confirm('Send a קבלה PDF to the customer\'s email?')) return;
+async function sendCustomerReceipt(orderId) {
+  const o = allOrders.find(x => x.id === orderId);
+  if (!o) return;
+  const name = prompt('Name to appear on the receipt:', o.customer_name || '');
+  if (name === null) return; // cancelled
+  if (!confirm(`Send קבלה PDF to ${o.customer_email}?`)) return;
   showToast('Sending receipt…');
   try {
-    const { data } = await callAdminFunction('send-customer-receipt', { order_id: orderId });
+    const { data } = await callAdminFunction('send-customer-receipt', {
+      order_id: orderId,
+      override_name: name.trim() || o.customer_name,
+    });
     if (data.ok) {
       showToast(`Receipt sent to ${data.sent_to} ✓`);
     } else if (data.error === 'no_email') {
