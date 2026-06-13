@@ -2315,6 +2315,7 @@ function openOrderDetail(id) {
       ${(o.delivery_info && o.delivery_info.fulfilled_notified_at) ? '<span style="font-size:.78rem;color:var(--text2)">✓ Fulfillment email sent</span>' : ''}
       <button class="btn btn-sm btn-outline" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-send paid email' : 'Send paid email (Resend)'}</button>
     </div>` : ''}
+    ${order.customer_email ? `<button class="btn btn-outline btn-sm" onclick="sendCustomerReceipt('${o.id}')" style="margin-top:14px">📄 Send Receipt to Customer</button>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
 }
@@ -4227,6 +4228,24 @@ function renderDashboardStoreBreakdown(deliveries) {
 // Find the existing showTab function and add these two cases:
 // if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
 // if (tab==='dashboard') loadDashboard();
+  async function sendCustomerReceipt(orderId) {
+  if (!confirm('Send a קבלה PDF to the customer\'s email?')) return;
+  showToast('Sending receipt…');
+  try {
+    const { data } = await callAdminFunction('send-customer-receipt', { order_id: orderId });
+    if (data.ok) {
+      showToast(`Receipt sent to ${data.sent_to} ✓`);
+    } else if (data.error === 'no_email') {
+      showToast('Customer has no email address on file');
+    } else {
+      showToast('Failed to send receipt — check console');
+      console.error(data);
+    }
+  } catch(e) {
+    showToast('Could not reach receipt function');
+    console.error(e);
+  }
+}
 initAdmin();
 // ── PWA SERVICE WORKER ──
 // Disabled from admin page so admin cannot register a root-scoped service worker.
