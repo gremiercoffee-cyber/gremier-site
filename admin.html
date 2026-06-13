@@ -4155,13 +4155,13 @@ function renderDashboardChart(orders, deliveries) {
       <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--text2)"><span style="width:10px;height:10px;background:var(--blue);border-radius:2px;display:inline-block"></span>Store deliveries</span>
       <span style="margin-left:auto;font-size:.78rem;color:var(--cream)">Total: ₪${(days[days.length-1]?.orders + days[days.length-1]?.stores || 0).toFixed(0)}</span>
     </div>
-    <div class="chart-bars" style="align-items:flex-end">
+    <div class="chart-bars" style="align-items:flex-end;height:120px;display:flex;gap:2px">
       ${days.map(d => {
         const oPct = Math.max(2, Math.round((d.orders / maxVal) * 100));
         const sPct = Math.max(2, Math.round((d.stores / maxVal) * 100));
         const showLabel = d.day === 1 || d.day % 5 === 0 || d.day === today;
         return `<div class="chart-bar-wrap" title="Day ${d.day}: ₪${(d.orders + d.stores).toFixed(0)} total">
-          <div style="display:flex;flex-direction:column-reverse;height:100px;gap:1px">
+          <div style="display:flex;flex-direction:column-reverse;height:100px;gap:1px;width:100%;align-items:stretch">
             <div style="height:${oPct}px;background:var(--cream);border-radius:2px 2px 0 0;opacity:.8;min-height:2px"></div>
             <div style="height:${sPct}px;background:var(--blue);border-radius:2px 2px 0 0;opacity:.8;min-height:2px"></div>
           </div>
