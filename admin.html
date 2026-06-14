@@ -700,7 +700,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <table>
               <thead><tr>
                 <th>Name</th><th class="hide-mobile">Email</th><th class="hide-mobile">Phone</th>
-                <th class="cell-num">Orders</th><th class="cell-total">Spent</th>
+                <th class="cell-num hide-mobile">Orders</th><th class="cell-total hide-mobile">Spent</th>
                 <th class="hide-mobile">Points</th><th class="cell-date hide-mobile">Last Order</th>
                 <th class="cell-actions">View</th>
               </tr></thead>
@@ -3227,12 +3227,14 @@ function renderMembersList() {
     return `<tr>
 <td class="cell-customer" style="color:var(--cream)">
   ${escHtml(m.name)}
-  <small style="display:block;color:var(--text2);margin-top:4px">${m.points || 0} pts</small>
   ${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}
+  <div style="font-size:12px;color:var(--text2);margin-top:4px">
+    ${m.points || 0} pts · ${m.orderCount} orders · ₪${m.totalSpent.toFixed(0)}
+  </div>
 </td>      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(m.email)}">${escHtml(m.email)}</td>
       <td class="hide-mobile">${phoneLink}</td>
-      <td class="cell-num">${m.orderCount}</td>
-      <td class="cell-total" style="color:var(--cream)">₪${m.totalSpent.toFixed(0)}</td>
+     <td class="cell-num hide-mobile">${m.orderCount}</td>
+     <td class="cell-total hide-mobile" style="color:var(--cream)">₪${m.totalSpent.toFixed(0)}</td>
       <td class="hide-mobile">${m.points}</td>
       <td class="cell-date hide-mobile">${lastDate}</td>
 <td class="cell-actions">
