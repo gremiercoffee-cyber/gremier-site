@@ -424,8 +424,10 @@
     /* DESIGN POLISH */
     .btn-amber { background:var(--amber); color:#fff; }
     .btn-amber:hover { background:var(--amber2); transform:translateY(-1px); }
-.btn-light { background:#fff; color:#1a1a1a; }
+    .btn-light { background:#fff; color:#1a1a1a; }
     .btn-light:hover { background:#f0ede8; transform:translateY(-1px); }
+    .gc-page-amt-btn { background:#fff; border:1px solid var(--border); color:#1a1a1a; padding:10px 22px; border-radius:20px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:.9rem; transition:all .2s; }
+    .gc-page-amt-btn:hover, .gc-page-amt-btn.active { border-color:#1a1a1a; background:#1a1a1a; color:#fff; }
     .gc-amt-btn { background:transparent; border:1px solid rgba(255,255,255,.3); color:inherit; padding:8px 18px; border-radius:20px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:.82rem; transition:all .2s; }
     .gc-amt-btn:hover, .gc-amt-btn.active { border-color:#c8873a; background:rgba(200,135,58,.15); }
     .modal .gc-amt-btn { border-color:var(--border); color:#1a1a1a; }
@@ -724,8 +726,8 @@
   <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
   <a onclick="showPage('coffeebars');closeMobileMenu()" id="mm-bars">Coffee Bars</a>
   <a onclick="goToAbout();closeMobileMenu()" id="mm-about">About</a>
-  <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Account</a>
-</div>
+<a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Account</a>
+<a onclick="showPage('giftcards');closeMobileMenu()">Gift Cards</a></div>
 <nav>
   <span class="nav-logo-wrap" onclick="showPage('home')">
     <img src="logo.png" alt="Gremier Coffee Co." class="nav-logo-img"/>
@@ -736,8 +738,8 @@
     <li><a onclick="showPage('shop')">Shop</a></li>
     <li><a onclick="showPage('coffeebars')">Coffee Bars</a></li>
     <li><a onclick="goToAbout()">About</a></li>
-    <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Account</a></li>
-  </ul>
+<li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Account</a></li>
+<li><a onclick="showPage('giftcards')">Gift Cards</a></li>  </ul>
   <div class="nav-right">
     <button class="lang-btn" onclick="toggleLang()" id="langBtn" aria-label="Switch language" title="Switch language">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -870,6 +872,65 @@
         <button class="gc-amt-btn" data-amt="200" onclick="gcSelectAmount(200)">₪200</button>
       </div>
       <button class="btn btn-light" onclick="openGiftCardPurchase()" id="t-gc-buy-btn" style="font-size:.84rem">Buy a Gift Card →</button>
+    </div>
+  </div>
+</div>
+  <!-- ══ GIFT CARDS PAGE ══ -->
+<div id="giftcardsPage" class="page" style="padding-top:80px">
+  <div class="section">
+    <div class="section-header">
+      <div class="eyebrow">Send a Gift</div>
+      <div class="divider"></div>
+      <h2 class="section-title">Gift Cards</h2>
+      <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.75">Give the gift of great cold brew. They choose what they love, delivered fresh to their door.</p>
+    </div>
+    <div style="max-width:480px;margin:0 auto">
+      <!-- Amount picker -->
+      <div style="margin-bottom:28px">
+        <div class="form-label" style="text-align:center;margin-bottom:14px">Choose an amount</div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap" id="gcPageAmtBtns">
+          <button class="gc-page-amt-btn active" data-amt="50" onclick="gcPagePick(50)">₪50</button>
+          <button class="gc-page-amt-btn" data-amt="100" onclick="gcPagePick(100)">₪100</button>
+          <button class="gc-page-amt-btn" data-amt="150" onclick="gcPagePick(150)">₪150</button>
+          <button class="gc-page-amt-btn" data-amt="200" onclick="gcPagePick(200)">₪200</button>
+        </div>
+        <input class="form-input" type="number" id="gcPageCustom" placeholder="Or enter a custom amount (₪)" style="margin-top:12px;text-align:center" oninput="gcPageCustomInput()"/>
+      </div>
+      <!-- Details form -->
+      <div style="background:#f7f5f2;border:1px solid var(--border);border-radius:8px;padding:28px">
+        <div class="form-group"><label class="form-label">Recipient email</label><input class="form-input" type="email" id="gcPageEmail" placeholder="friend@example.com"/></div>
+        <div class="form-group"><label class="form-label">Recipient name (optional)</label><input class="form-input" id="gcPageName" placeholder="Dana"/></div>
+        <div class="form-group"><label class="form-label">Gift message (optional)</label><textarea class="form-input" id="gcPageMessage" rows="3" placeholder="Enjoy a coffee on me!"></textarea></div>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:.82rem;color:var(--text2)">Gift card value</span>
+          <span style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#1a1a1a" id="gcPageAmtDisplay">₪50</span>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="purchaseGiftCardFromPage()" id="gcPageBuyBtn">Continue to Payment</button>
+        <p style="font-size:.74rem;color:var(--text2);text-align:center;margin-top:12px;line-height:1.5">The code is emailed to the recipient instantly after payment. Balance never expires and carries over across orders.</p>
+      </div>
+
+      <!-- How it works -->
+      <div style="margin-top:48px">
+        <h3 style="font-family:'Playfair Display',serif;font-size:1.3rem;text-align:center;margin-bottom:24px">How it works</h3>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;gap:14px;align-items:flex-start">
+            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">1</div>
+            <div><div style="font-weight:600;margin-bottom:3px">Choose an amount</div><div style="font-size:.84rem;color:var(--text2)">Pick ₪50, ₪100, ₪150, ₪200 or any custom amount.</div></div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start">
+            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">2</div>
+            <div><div style="font-weight:600;margin-bottom:3px">Pay securely</div><div style="font-size:.84rem;color:var(--text2)">Checkout with your card via PayMe — takes 30 seconds.</div></div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start">
+            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">3</div>
+            <div><div style="font-weight:600;margin-bottom:3px">They get the code</div><div style="font-size:.84rem;color:var(--text2)">The recipient gets an email with their unique gift card code immediately.</div></div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start">
+            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">4</div>
+            <div><div style="font-weight:600;margin-bottom:3px">They shop & redeem</div><div style="font-size:.84rem;color:var(--text2)">Enter the code at checkout. Remaining balance stays on the card for next time.</div></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2705,8 +2766,8 @@ async function loadMyOrders() {
 // ══ APP NAVIGATION (browser / backspace back) ══
 let appPage = 'home';
 let navSkipPush = false;
-const APP_PAGES = new Set(['home', 'shop', 'coffeebars', 'myorders']);
-
+const APP_PAGES = new Set(['home', 'shop', 'coffeebars', 'myorders', 'giftcards']);
+  
 function parsePageFromUrl() {
   const raw = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase();
   const original = (window.location.hash || '').replace(/^#\/?/, '');
@@ -2975,8 +3036,8 @@ function showPage(page, fromHistory) {
   window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'shop') { activeCategory='all'; renderShop(); }
   if (page === 'myorders') loadMyOrders();
-  if (page === 'coffeebars') renderCoffeeBarsPage();
-  document.getElementById('mobileMenu')?.classList.remove('open');
+if (page === 'coffeebars') renderCoffeeBarsPage();
+if (page === 'giftcards') gcPagePick(gcPageAmount);  document.getElementById('mobileMenu')?.classList.remove('open');
   if (!fromHistory) navPush({ page, layer: null });
 }
 function toggleMobileMenu() {
@@ -3377,8 +3438,7 @@ async function purchaseGiftCard() {
       customer_email: currentUser?.email || recipientEmail,
       customer_phone: null,
       delivery_address: null,
-      items: [{ product_id: 'giftcard', name_en: `Gift Card ₪${amount}`, name_he: `כרטיס מתנה ₪${amount}`, price: amount, qty: 1 }],
-      subtotal: amount,
+items: [{ product_id: null, name_en: `Gift Card ₪${amount}`, name_he: `כרטיס מתנה ₪${amount}`, price: amount, qty: 1, category: 'giftcard' }],      subtotal: amount,
       discount: 0,
       total: amount,
       delivery_info: {
@@ -3403,6 +3463,60 @@ async function purchaseGiftCard() {
     btn.disabled = false; btn.textContent = lang==='he'?'המשך לתשלום':'Continue to Payment';
   }
 }  
+// ══ GIFT CARDS PAGE ══
+let gcPageAmount = 50;
+function gcPagePick(amt) {
+  gcPageAmount = amt;
+  document.getElementById('gcPageCustom').value = '';
+  document.getElementById('gcPageAmtDisplay').textContent = `₪${amt}`;
+  document.querySelectorAll('.gc-page-amt-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.amt) === amt));
+}
+function gcPageCustomInput() {
+  const v = parseFloat(document.getElementById('gcPageCustom').value);
+  if (!isNaN(v) && v > 0) {
+    gcPageAmount = v;
+    document.getElementById('gcPageAmtDisplay').textContent = `₪${v}`;
+    document.querySelectorAll('.gc-page-amt-btn').forEach(b => b.classList.remove('active'));
+  }
+}
+async function purchaseGiftCardFromPage() {
+  const amount = gcPageAmount;
+  const recipientEmail = document.getElementById('gcPageEmail').value.trim();
+  if (!amount || amount <= 0) { alert(lang==='he'?'בחרו סכום':'Choose an amount'); return; }
+  if (!recipientEmail || !isValidEmail(recipientEmail)) { alert(lang==='he'?'הזינו אימייל נמען תקין':'Enter a valid recipient email'); return; }
+  const btn = document.getElementById('gcPageBuyBtn');
+  btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting to payment…';
+  try {
+    const orderData = {
+      user_id: currentUser?.id || null,
+      customer_name: currentUser?.user_metadata?.full_name || 'Gift Card Purchase',
+      customer_email: currentUser?.email || recipientEmail,
+      customer_phone: null,
+      delivery_address: null,
+      items: [{ product_id: null, name_en: `Gift Card ₪${amount}`, name_he: `כרטיס מתנה ₪${amount}`, price: amount, qty: 1, category: 'giftcard' }],
+      subtotal: amount, discount: 0, total: amount,
+      delivery_info: {
+        is_gift_card: true,
+        gift_card: {
+          amount,
+          recipient_email: recipientEmail,
+          recipient_name: document.getElementById('gcPageName').value.trim() || null,
+          message: document.getElementById('gcPageMessage').value.trim() || null,
+        },
+      },
+      status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'gift_card',
+    };
+    const orderId = await createWebsiteOrder(orderData);
+    const payData = await callCreatePayment(orderId);
+    sessionStorage.setItem('gremier_pending_order', orderId);
+    if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
+    window.location.href = payData.sale_url;
+  } catch (err) {
+    console.error(err);
+    alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
+    btn.disabled = false; btn.textContent = lang==='he'?'המשך לתשלום':'Continue to Payment';
+  }
+}
 init();
 window.addEventListener('popstate', handleAppPopState);
 // ══ CHATBOT ══
