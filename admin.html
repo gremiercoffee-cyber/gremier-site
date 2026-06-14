@@ -1287,7 +1287,9 @@ function setHubMode(mode) {
   });
   if (isOps) {
     const frame = document.getElementById('opsFrame');
-    if (frame && (!frame.src || frame.src === 'about:blank')) frame.src = '/ops/';
+   if (frame && (!frame.src || frame.src === 'about:blank')) {
+  frame.src = 'https://YOUR-OPS-VERCEL-URL.vercel.app/';
+}
   }
 }
 
