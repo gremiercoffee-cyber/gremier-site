@@ -1285,10 +1285,10 @@ function setHubMode(mode) {
   document.querySelectorAll('.hub-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
-  if (isOps) {
-    const frame = document.getElementById('opsFrame');
-   if (frame && (!frame.src || frame.src === 'about:blank')) {
-  frame.src = 'https://YOUR-OPS-VERCEL-URL.vercel.app/';
+ if (isOps) {
+  const frame = document.getElementById('opsFrame');
+  const opsUrl = 'https://gremier-coffee.vercel.app/';
+  if (frame && frame.src !== opsUrl) frame.src = opsUrl;
 }
   }
 }
