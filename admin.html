@@ -34,7 +34,7 @@
   window.signInAdmin = async function signInAdmin() {
     try {
       const sbLogin = getAdminSupabase();
-      const adminUrl = `${window.location.origin}/admin.html`;
+      const adminUrl = 'https://gremier-site.vercel.app/admin.html';
 
       const { error } = await sbLogin.auth.signInWithOAuth({
         provider: 'google',
@@ -1353,7 +1353,7 @@ setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
   }
 }
 async function signInAdmin() {
-  const adminUrl = `${window.location.origin}/admin.html`;
+  const adminUrl = 'https://gremier-site.vercel.app/admin.html';
   await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: adminUrl } });
 }
 async function signOut() { await sb.auth.signOut(); location.reload(); }
