@@ -3488,26 +3488,26 @@ async function purchaseGiftCardFromPage() {
   const btn = document.getElementById('gcPageBuyBtn');
   btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting to payment…';
   try {
-    const orderData = {
-      user_id: currentUser?.id || null,
-      customer_name: currentUser?.user_metadata?.full_name || 'Gift Card Purchase',
-      customer_email: currentUser?.email || recipientEmail,
-      customer_phone: null,
-      delivery_address: null,
-      items: [{ product_id: null, name_en: `Gift Card ₪${amount}`, name_he: `כרטיס מתנה ₪${amount}`, price: amount, qty: 1, category: 'giftcard' }],
-      subtotal: amount, discount: 0, total: amount,
-      delivery_info: {
-        is_gift_card: true,
-        gift_card: {
-          amount,
-          recipient_email: recipientEmail,
-          recipient_name: document.getElementById('gcPageName').value.trim() || null,
-          message: document.getElementById('gcPageMessage').value.trim() || null,
-        },
+   const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-giftcard-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session?.access_token || SUPABASE_ANON_KEY),
       },
-      status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'gift_card',
-    };
-    const orderId = await createWebsiteOrder(orderData);
+      body: JSON.stringify({
+        amount,
+        recipient_email: recipientEmail,
+        recipient_name: document.getElementById('gcPageName').value.trim() || null,
+        message: document.getElementById('gcPageMessage').value.trim() || null,
+        customer_email: currentUser?.email || recipientEmail,
+        customer_name: currentUser?.user_metadata?.full_name || 'Gift Card Purchase',
+      }),
+    });
+    const orderResult = await res.json().catch(() => ({}));
+    if (!res.ok || !orderResult.id) throw new Error(orderResult.error || 'Could not create gift card order');
+    const orderId = orderResult.id;
     const payData = await callCreatePayment(orderId);
     sessionStorage.setItem('gremier_pending_order', orderId);
     if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
