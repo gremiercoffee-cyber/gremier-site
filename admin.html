@@ -3157,8 +3157,15 @@ async function loadMembers() {
         points: 0, coupon_available: false, is_admin: false,
       });
     });
-  allMembers = buildMemberRecords(members);
-  sortMembers(memberFilter.sort, false);
+allMembers = buildMemberRecords(members).map(m => {
+  const profile = members.find(p => p.id === m.id);
+  return {
+    ...m,
+    points: Number(profile?.points ?? m.points ?? 0),
+    coupon_available: Boolean(profile?.coupon_available ?? m.coupon_available),
+    points_redeemed: Number(profile?.points_redeemed ?? m.points_redeemed ?? 0),
+  };
+});  sortMembers(memberFilter.sort, false);
   renderMemberStats();
   renderMembersList();
 }
