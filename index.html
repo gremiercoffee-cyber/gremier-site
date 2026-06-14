@@ -424,8 +424,12 @@
     /* DESIGN POLISH */
     .btn-amber { background:var(--amber); color:#fff; }
     .btn-amber:hover { background:var(--amber2); transform:translateY(-1px); }
-    .btn-light { background:#fff; color:#1a1a1a; }
+.btn-light { background:#fff; color:#1a1a1a; }
     .btn-light:hover { background:#f0ede8; transform:translateY(-1px); }
+    .gc-amt-btn { background:transparent; border:1px solid rgba(255,255,255,.3); color:inherit; padding:8px 18px; border-radius:20px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:.82rem; transition:all .2s; }
+    .gc-amt-btn:hover, .gc-amt-btn.active { border-color:#c8873a; background:rgba(200,135,58,.15); }
+    .modal .gc-amt-btn { border-color:var(--border); color:#1a1a1a; }
+    .modal .gc-amt-btn.active { border-color:#c8873a; background:rgba(200,135,58,.12); }
     /* COFFEE BARS FULL PAGE */
     .cbp-hero { background:#1a1a1a; padding:80px 32px 64px; text-align:center; }
     .cbp-hero-title { font-family:'Playfair Display',serif; font-size:clamp(2.8rem,7vw,5rem); font-weight:900; color:#fff; line-height:1.05; margin-bottom:16px; }
@@ -854,6 +858,19 @@
       </div>
     </div>
     <div class="product-grid" id="shopGrid"><div class="loading"><div class="spinner"></div></div></div>
+ 
+    <div style="max-width:560px;margin:48px auto 0;background:#1a1a1a;border-radius:8px;padding:32px;text-align:center;color:#fff">
+      <div style="font-size:2rem;margin-bottom:10px">🎁</div>
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:8px" id="t-gc-buy-title">Gift the Perfect Brew</h3>
+      <p style="font-size:.86rem;color:rgba(255,255,255,.6);margin-bottom:20px;line-height:1.6" id="t-gc-buy-sub">Send a Gremier gift card — they pick what they love, you make their day. Delivered instantly by email.</p>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:18px" id="gcAmountBtns">
+        <button class="gc-amt-btn" data-amt="50" onclick="gcSelectAmount(50)">₪50</button>
+        <button class="gc-amt-btn" data-amt="100" onclick="gcSelectAmount(100)">₪100</button>
+        <button class="gc-amt-btn" data-amt="150" onclick="gcSelectAmount(150)">₪150</button>
+        <button class="gc-amt-btn" data-amt="200" onclick="gcSelectAmount(200)">₪200</button>
+      </div>
+      <button class="btn btn-light" onclick="openGiftCardPurchase()" id="t-gc-buy-btn" style="font-size:.84rem">Buy a Gift Card →</button>
+    </div>
   </div>
 </div>
 <!-- ══ ACCOUNT PAGE ══ -->
@@ -1072,7 +1089,21 @@
         </div>
         <div id="freeDeliveryNote" style="display:none;font-size:.76rem;color:#4caf72;margin-top:6px">✓ Free delivery on this order!</div>
       </div>
-      <div class="form-group"><label class="form-label" id="t-co-notes">Notes (optional)</label><input class="form-input" id="coNotes" type="text" placeholder="Any special requests?"/></div>
+       <div class="form-group"><label class="form-label" id="t-co-notes">Notes (optional)</label><input class="form-input" id="coNotes" type="text" placeholder="Any special requests?"/></div>
+ 
+      <div class="form-group">
+        <label class="form-label" id="t-co-redeem">Coupon or gift card</label>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="coRedeemCode" type="text" placeholder="Enter code" style="text-transform:uppercase"/>
+          <button class="btn btn-outline btn-sm" type="button" onclick="applyRedeemCode()" id="coRedeemBtn">Apply</button>
+        </div>
+        <div id="coRedeemMsg" style="font-size:.78rem;margin-top:6px;display:none"></div>
+        <div id="coRedeemApplied" style="display:none;margin-top:8px;font-size:.82rem;color:var(--green);display:flex;align-items:center;gap:8px">
+          <span id="coRedeemAppliedText"></span>
+          <button type="button" onclick="clearRedeemCode()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.78rem;text-decoration:underline">remove</button>
+        </div>
+      </div>
+ 
       <div class="order-summary-box" id="coSummary"></div>
       <div class="payment-ph">
         <div class="payment-ph-icon">💳</div>
@@ -1091,7 +1122,34 @@
   </div>
 </div>
 <!-- ══ AUTH MODAL ══ -->
-<div class="modal-overlay" id="authOverlay">
+ 
+REPLACE WITH (adds the purchase modal above the auth modal):
+ 
+<!-- ══ GIFT CARD PURCHASE MODAL ══ -->
+<div class="modal-overlay" id="gcPurchaseOverlay">
+  <div class="modal" style="max-width:440px">
+    <h2 class="modal-title" id="t-gcp-title">Buy a Gift Card</h2>
+    <p class="modal-sub" id="t-gcp-sub">Choose an amount and who it's for. The code is emailed instantly after payment.</p>
+    <div class="form-group">
+      <label class="form-label" id="t-gcp-amount">Amount</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="gc-amt-btn" data-amt="50" onclick="gcpPick(50)">₪50</button>
+        <button class="gc-amt-btn" data-amt="100" onclick="gcpPick(100)">₪100</button>
+        <button class="gc-amt-btn" data-amt="150" onclick="gcpPick(150)">₪150</button>
+        <button class="gc-amt-btn" data-amt="200" onclick="gcpPick(200)">₪200</button>
+      </div>
+      <input class="form-input" type="number" id="gcpCustomAmount" placeholder="Or custom amount ₪" style="margin-top:8px" oninput="gcpCustomInput()"/>
+    </div>
+    <div class="form-group"><label class="form-label" id="t-gcp-remail">Recipient email</label><input class="form-input" type="email" id="gcpRecipientEmail" placeholder="friend@example.com"/></div>
+    <div class="form-group"><label class="form-label" id="t-gcp-rname">Recipient name (optional)</label><input class="form-input" id="gcpRecipientName" placeholder="Dana"/></div>
+    <div class="form-group"><label class="form-label" id="t-gcp-msg">Message (optional)</label><input class="form-input" id="gcpMessage" placeholder="Enjoy a coffee on me!"/></div>
+    <button class="btn btn-primary btn-full" onclick="purchaseGiftCard()" id="gcpBuyBtn">Continue to Payment</button>
+    <button class="btn btn-outline btn-full" style="margin-top:10px" onclick="closeGiftCardPurchase()">Cancel</button>
+  </div>
+</div>
+ 
+<!-- ══ AUTH MODAL ══ -->
+  <div class="modal-overlay" id="authOverlay">
   <div class="modal" style="max-width:420px">
     <h2 class="modal-title" id="t-auth-title">Sign In</h2>
     <p class="modal-sub" id="t-auth-sub">Sign in to track your orders and check out faster.</p>
@@ -2323,8 +2381,9 @@ async function submitOrder() {
   try {
     const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
     const deliveryFee = updateDeliveryPrice() || 0;
-    const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
-    const total = cartTotal + deliveryFee - couponDiscount;
+    const couponDiscount = (appliedRedeem && appliedRedeem.kind === 'coupon') ? Number(appliedRedeem.discount) || 0 : 0;
+    const giftCardDiscount = (appliedRedeem && appliedRedeem.kind === 'gift_card') ? Number(appliedRedeem.discount) || 0 : 0;
+    const total = Math.max(0, cartTotal + deliveryFee - couponDiscount - giftCardDiscount);
     const pricing = resolveDeliveryPricing(selectedCheckoutCity);
     const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
     const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
@@ -2349,7 +2408,11 @@ async function submitOrder() {
         subscription_items: i.subscription_items || null,
       })),
       subtotal: cartTotal,
-      discount: couponDiscount,
+      discount: couponDiscount + giftCardDiscount,
+      coupon_code: (appliedRedeem && appliedRedeem.kind === 'coupon') ? appliedRedeem.code : null,
+      coupon_discount: couponDiscount,
+      gift_card_code: (appliedRedeem && appliedRedeem.kind === 'gift_card') ? appliedRedeem.code : null,
+      gift_card_discount: giftCardDiscount,
       total,
       delivery_info: {
         delivery_type: shipType,
@@ -2711,20 +2774,25 @@ function closeAllLayersUI() {
   chatOpen = false;
   document.getElementById('authOverlay')?.classList.remove('open');
   document.getElementById('pointsModal')?.classList.remove('open');
-  document.getElementById('memberPopup')?.classList.remove('open');
+ document.getElementById('memberPopup')?.classList.remove('open');
+  document.getElementById('gcPurchaseOverlay')?.classList.remove('open');
   document.getElementById('mobileMenu')?.classList.remove('open');
 }
 function prepareCheckoutContent() {
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const couponDiscount = userCouponAvailable ? Math.round(cartTotal * 0.10) : 0;
+    const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const redeemDiscount = appliedRedeem ? Number(appliedRedeem.discount) || 0 : 0;
   const lines = cart.map(i => `<div class="order-line"><span>${lang === 'he' ? (i.name_he || i.name_en) : i.name_en} ×${i.qty}</span><span>₪${i.price * i.qty}</span></div>`).join('');
-  const couponLine = couponDiscount > 0
-    ? `<div class="order-line" style="color:var(--green)"><span>🎁 ${lang === 'he' ? 'קופון חבר (10%)' : 'Member coupon (10%)'}</span><span>-₪${couponDiscount}</span></div>`
-    : '';
+  let redeemLine = '';
+  if (appliedRedeem) {
+    const lbl = appliedRedeem.kind === 'gift_card'
+      ? (lang === 'he' ? `🎁 כרטיס מתנה (${appliedRedeem.code})` : `🎁 Gift card (${appliedRedeem.code})`)
+      : (lang === 'he' ? `🎟️ קופון (${appliedRedeem.code})` : `🎟️ Coupon (${appliedRedeem.code})`);
+    redeemLine = `<div class="order-line" style="color:var(--green)"><span>${lbl}</span><span>-₪${redeemDiscount}</span></div>`;
+  }
   document.getElementById('coSummary').innerHTML = `
     <div class="order-summary-title">${lang === 'he' ? 'סיכום הזמנה' : 'Order Summary'}</div>
-    ${lines}${couponLine}
-    <div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span>₪${cartTotal - couponDiscount}</span></div>`;
+    ${lines}${redeemLine}
+    <div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span>₪${Math.max(0, cartTotal - redeemDiscount)}</span></div>`;
   selectedCheckoutCity = null;
   const cityInput = document.getElementById('coCityInput');
   if (cityInput) cityInput.value = '';
@@ -2752,10 +2820,13 @@ function showCheckoutResultUI(kind) {
   }
 }
 function openCheckoutUI(view = 'form', resultKind) {
-  if (view === 'form') {
+ if (view === 'form') {
     document.getElementById('checkoutFormView').style.display = 'block';
     document.getElementById('checkoutConfirmView').style.display = 'none';
+    const rc = document.getElementById('coRedeemApplied');
+    // keep an applied code if one exists; just refresh the summary
     prepareCheckoutContent();
+    if (appliedRedeem && rc) showRedeemApplied(appliedRedeem.message, appliedRedeem.discount);
   } else {
     showCheckoutResultUI(resultKind || 'paid');
   }
@@ -2838,6 +2909,9 @@ function applyNavState(state) {
       break;
     case 'menu':
       document.getElementById('mobileMenu').classList.add('open');
+      break;
+    case 'giftcard':
+      document.getElementById('gcPurchaseOverlay').classList.add('open');
       break;
   }
 }
@@ -3191,6 +3265,144 @@ async function init() {
     restorePageFromUrl();
   }
 }
+// ══════════════ CHECKOUT: COUPON + GIFT CARD ══════════════
+let appliedRedeem = null; // { kind:'coupon'|'gift_card', code, discount, ... }
+ 
+function setRedeemMsg(msg, ok) {
+  const el = document.getElementById('coRedeemMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--green)' : 'var(--red)';
+  el.style.display = msg ? 'block' : 'none';
+}
+function clearRedeemCode() {
+  appliedRedeem = null;
+  document.getElementById('coRedeemCode').value = '';
+  document.getElementById('coRedeemApplied').style.display = 'none';
+  setRedeemMsg('', false);
+  prepareCheckoutContent();
+}
+async function applyRedeemCode() {
+  const code = document.getElementById('coRedeemCode').value.trim().toUpperCase();
+  if (!code) { setRedeemMsg(lang==='he'?'הזינו קוד':'Enter a code', false); return; }
+  const btn = document.getElementById('coRedeemBtn');
+  btn.disabled = true; btn.textContent = '…';
+  const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const items = cart.map(i => ({
+    product_id: i.base_product_id || String(i.id).split('_')[0],
+    price: i.price, qty: i.qty, category: i.category,
+  }));
+  try {
+    // Try coupon first, then gift card
+    let res = await fetch(`${SUPABASE_URL}/functions/v1/validate-coupon`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+      body: JSON.stringify({ code, cart_total: cartTotal, items, user_id: currentUser?.id || null, email: document.getElementById('coEmail').value.trim() || currentUser?.email || null }),
+    });
+    let data = await res.json().catch(() => ({}));
+    if (data.valid) {
+      appliedRedeem = { kind: 'coupon', code: data.code, discount: data.discount, message: data.message };
+      showRedeemApplied(data.message, data.discount);
+      return;
+    }
+    // Not a valid coupon — try gift card
+    res = await fetch(`${SUPABASE_URL}/functions/v1/validate-gift-card`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+      body: JSON.stringify({ code, cart_total: cartTotal }),
+    });
+    const gcData = await res.json().catch(() => ({}));
+    if (gcData.valid) {
+      appliedRedeem = { kind: 'gift_card', code: gcData.code, discount: gcData.applied, balance: gcData.balance, message: gcData.message };
+      showRedeemApplied(gcData.message, gcData.applied);
+      return;
+    }
+    setRedeemMsg(data.message || gcData.message || (lang==='he'?'קוד לא תקין':'Invalid code'), false);
+  } catch (e) {
+    setRedeemMsg(lang==='he'?'שגיאה, נסו שוב':'Error, try again', false);
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = lang==='he'?'החל':'Apply';
+  }
+}
+function showRedeemApplied(message, discount) {
+  setRedeemMsg('', true);
+  const wrap = document.getElementById('coRedeemApplied');
+  wrap.style.display = 'flex';
+  const label = appliedRedeem.kind === 'gift_card'
+    ? (lang==='he'?`כרטיס מתנה: -₪${discount}`:`Gift card: -₪${discount}`)
+    : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`);
+  document.getElementById('coRedeemAppliedText').textContent = '✓ ' + label;
+  prepareCheckoutContent();
+}
+ 
+// ══════════════ GIFT CARD PURCHASE ══════════════
+let gcpAmount = 100;
+function gcSelectAmount(amt) { gcpAmount = amt; openGiftCardPurchase(); }
+function gcpPick(amt) {
+  gcpAmount = amt;
+  document.getElementById('gcpCustomAmount').value = '';
+  document.querySelectorAll('#gcPurchaseOverlay .gc-amt-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.amt) === amt));
+}
+function gcpCustomInput() {
+  const v = parseFloat(document.getElementById('gcpCustomAmount').value);
+  if (!isNaN(v) && v > 0) {
+    gcpAmount = v;
+    document.querySelectorAll('#gcPurchaseOverlay .gc-amt-btn').forEach(b => b.classList.remove('active'));
+  }
+}
+function openGiftCardPurchase() {
+  document.getElementById('gcPurchaseOverlay').classList.add('open');
+  gcpPick(gcpAmount);
+  navPush({ page: appPage, layer: 'giftcard' });
+}
+function closeGiftCardPurchase(fromNav) {
+  if (fromNav) { document.getElementById('gcPurchaseOverlay').classList.remove('open'); return; }
+  if (document.getElementById('gcPurchaseOverlay').classList.contains('open')) navBack();
+  else document.getElementById('gcPurchaseOverlay').classList.remove('open');
+}
+async function purchaseGiftCard() {
+  const amount = gcpAmount;
+  const recipientEmail = document.getElementById('gcpRecipientEmail').value.trim();
+  if (!amount || amount <= 0) { alert(lang==='he'?'בחרו סכום':'Choose an amount'); return; }
+  if (!recipientEmail || !isValidEmail(recipientEmail)) { alert(lang==='he'?'הזינו אימייל נמען תקין':'Enter a valid recipient email'); return; }
+  const btn = document.getElementById('gcpBuyBtn');
+  btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting…';
+  try {
+    // Create a gift-card purchase order; the gift card is issued server-side
+    // after payment is confirmed (via issue-gift-card with order_id).
+    const orderData = {
+      user_id: currentUser?.id || null,
+      customer_name: currentUser?.user_metadata?.full_name || 'Gift Card Purchase',
+      customer_email: currentUser?.email || recipientEmail,
+      customer_phone: null,
+      delivery_address: null,
+      items: [{ product_id: 'giftcard', name_en: `Gift Card ₪${amount}`, name_he: `כרטיס מתנה ₪${amount}`, price: amount, qty: 1 }],
+      subtotal: amount,
+      discount: 0,
+      total: amount,
+      delivery_info: {
+        is_gift_card: true,
+        gift_card: {
+          amount,
+          recipient_email: recipientEmail,
+          recipient_name: document.getElementById('gcpRecipientName').value.trim() || null,
+          message: document.getElementById('gcpMessage').value.trim() || null,
+        },
+      },
+      status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'gift_card',
+    };
+    const orderId = await createWebsiteOrder(orderData);
+    const payData = await callCreatePayment(orderId);
+    sessionStorage.setItem('gremier_pending_order', orderId);
+    if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
+    window.location.href = payData.sale_url;
+  } catch (err) {
+    console.error(err);
+    alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
+    btn.disabled = false; btn.textContent = lang==='he'?'המשך לתשלום':'Continue to Payment';
+  }
+}  
 init();
 window.addEventListener('popstate', handleAppPopState);
 // ══ CHATBOT ══
