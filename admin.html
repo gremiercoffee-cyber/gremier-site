@@ -3474,7 +3474,6 @@ function showTab(tab) {
   document.getElementById('tbar-'+tab)?.classList.add('active');
   localStorage.setItem('gremier_admin_tab', tab);
   if (tab==='orders') loadOrders();
-  if (tab==='orders') loadOrders();
   if (tab==='products') renderProductsList();
   if (tab==='paylinks') loadPayLinks();
   if (tab==='reports') loadReports();
@@ -4261,7 +4260,6 @@ initAdmin();
 // Disabled from admin page so admin cannot register a root-scoped service worker.
 // If you want an admin PWA later, move admin to /admin/ and register /admin/admin-sw.js with scope /admin/.
 
-async function generateCouponForMember(userId, memberEmail) {
 // ── ADMIN: Backspace navigation fix ──
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Backspace') return;
@@ -4321,7 +4319,9 @@ async function generateCouponForMember(userId, memberEmail) {
     alert('Error: ' + (e.message || e));
   }
 }
-}
+</script>
+</body>
+</html>
 </script>
 </body>
 </html>
