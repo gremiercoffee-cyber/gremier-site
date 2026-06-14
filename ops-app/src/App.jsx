@@ -750,31 +750,6 @@ async function fetchSmartAlerts(jobs, inventory, concentrate, beans, labeledStoc
 const systemPrompt = `You are the operations assistant...` // keep your existing system string
 const data = await opsAI("smart_alerts", { snapshot, system: systemPrompt });
 const raw = data.content?.[0]?.text || "[]";
-      model: "claude-sonnet-4-6",
-      max_tokens: 600,
-      system: `You are the operations assistant for Gremier Coffee, a small cold brew coffee company.
-You will receive a snapshot of the business state including current inventory, concentrate levels, bean stock, upcoming scheduled jobs, and recent completed job history.
-Your job is to return 1-3 alerts for the owner about what needs attention TODAY.
-Rules:
-- Max 12 words per alert. Be blunt. No sentences, just the point.
-- Good example: "Classic low — bottle today before Thursday delivery."
-- Bad example: "Today's deliveries require 6 house_blend but you only have 6 in stock (0 labeled)..."
-- The "inventory" stock count IS the ready stock. Do NOT treat labeled stock as a separate requirement — labeled bottles are just pre-labeled inventory, not additional stock needed.
-- Consider: stock vs upcoming deliveries, brewing lead time (22h classic, 18h others), bean levels.
-- Priority 1: anything urgent for TODAY — stock gaps, timing issues, things that need action now.
-- Priority 2: if nothing urgent today, look ahead at the next 3-5 days and flag anything worth planning for.
-- If truly nothing to flag, return an empty array.
-Be specific and practical. Connect the dots — don't just say "stock is low", say WHY it matters and WHAT to do.
-Consider: upcoming deliveries vs current stock, brewing lead time (22h for classic, 18h for others), bean levels, labeling needs, trends in recent history.
-If everything looks fine, return an empty array.
-Respond ONLY with a JSON array like:
-[
-  { "level": "critical" | "warning" | "info", "msg": "short actionable alert" }
-]
-No explanation, no markdown.`,
-      messages: [{ role: "user", content: JSON.stringify(snapshot) }],
-    });
-    const raw = message.content?.[0]?.text || "[]";
     const clean = raw.replace(/```json|```/g, "").trim();
     const alerts = JSON.parse(clean);
     localStorage.setItem("gremier_alert_date", today);
@@ -1048,10 +1023,8 @@ Keep replies short — 1-2 sentences, conversational, not robotic.`;
           temperature: 0.2,
           response_format: { type: "json_object" },
           messages: [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: text }],
-        }),
-      });
-      const data = await res.json();
-      const raw = data.choices?.[0]?.message?.content || "";
+        });
+      const raw = data.choices?.[0]?.message?.content || data.content?.[0]?.text || "";
       let obj;
       try { obj = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
       catch { setMessages(prev=>[...prev,{role:"assistant",text:"Sorry, I had trouble understanding that. Try again."}]); setPhase("idle"); return; }
