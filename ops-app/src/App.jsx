@@ -5,8 +5,22 @@ const DELIVERY_SHEET_URL = "https://script.google.com/macros/s/AKfycbwZYrVdny2xc
 const SUPABASE_URL = "https://ayuzmwpmhncxrugsyxmw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn";
 const ADMIN_EMAILS = ["gremiercoffee@gmail.com", "yonigrey@gmail.com"];
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || "";
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+const OPS_AI_URL = `${SUPABASE_URL}/functions/v1/ops-ai`;
+
+async function opsAI(action, payload, isFormData = false) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = { "apikey": SUPABASE_KEY };
+  if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+  if (!isFormData) headers["Content-Type"] = "application/json";
+
+  const res = await fetch(`${OPS_AI_URL}?action=${action}`, {
+    method: "POST",
+    headers,
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 async function getRequiredSessionToken() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -733,9 +747,9 @@ async function fetchSmartAlerts(jobs, inventory, concentrate, beans, labeledStoc
     recentHistory: recentCompleted,
   };
   try {
-    const { default: Anthropic } = await import("https://esm.sh/@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, dangerouslyAllowBrowser: true });
-    const message = await client.messages.create({
+const systemPrompt = `You are the operations assistant...` // keep your existing system string
+const data = await opsAI("smart_alerts", { snapshot, system: systemPrompt });
+const raw = data.content?.[0]?.text || "[]";
       model: "claude-sonnet-4-6",
       max_tokens: 600,
       system: `You are the operations assistant for Gremier Coffee, a small cold brew coffee company.
@@ -945,13 +959,7 @@ function VoiceLogger({ onAddJob, jobs, beans, inventory, concentrate, labeledSto
       formData.append("language", "en");
       const sttPrompt = `Gremier Coffee cold brew operations. Stores: ${STORES.map(s=>s.name).join(", ")}. Products: ${Object.values(PRODUCTS).map(p=>p.label).join(", ")}. Terms: classic, house blend, colombia, decaf, concentrate, brew, drain, bottle, label, jerry can, dispenser, coffee bar, delivery, schedule, paid, billed, kilo, liter, case.`;
       formData.append("prompt", sttPrompt);
-      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
-        body: formData,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data = await opsAI("transcribe", formData, true);
       const text = data.text?.trim();
       if (!text) { setPhase("idle"); setErrorMsg("Couldn't hear anything."); return; }
       setMessages(prev => [...prev, { role: "user", text }]);
@@ -1034,10 +1042,7 @@ Keep replies short — 1-2 sentences, conversational, not robotic.`;
       const history = messages
         .filter(m => m.text && m.text !== "⋯")
         .map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({
+       const data = await opsAI("parse_intent", {
           model: "gpt-4o",
           max_tokens: 600,
           temperature: 0.2,
