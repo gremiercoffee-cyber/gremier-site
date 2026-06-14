@@ -649,8 +649,7 @@
     white-space: nowrap;
   }
   .chat-qr-btn:hover { border-color: #1a1a1a; background: #f7f5f2; }
-  /* CHAT TOOLTIP */
-  #chatTooltip {
+ /* CHAT TOOLTIP */
 #chatTooltip {
   font-family:'Caveat', cursive;
   font-weight:400;
@@ -673,9 +672,10 @@
     width:170px;
   }
 }
-  @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-  #chatTooltip.fade-out { animation:tooltipOut .4s ease forwards; }
-  @keyframes tooltipOut { to{opacity:0} }
+
+@keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+#chatTooltip.fade-out { animation:tooltipOut .4s ease forwards; }
+@keyframes tooltipOut { to{opacity:0} }
   /* TOAST */
     .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; padding:12px 24px; border-radius:4px; font-size:.85rem; font-weight:500; z-index:500; transition:transform .3s; white-space:nowrap; box-shadow:0 4px 20px rgba(0,0,0,.25); }
     .toast.show { transform:translateX(-50%) translateY(0); }
