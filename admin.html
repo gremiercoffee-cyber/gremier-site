@@ -1374,10 +1374,11 @@ async function signOut() { await sb.auth.signOut(); location.reload(); }
 function setHubMode(mode) {
   const isOps = mode === 'ops';
 
-  if (isOps) {
-    window.location.href = 'https://gremier-coffee.vercel.app/';
-    return;
-  }
+ if (isOps) {
+  window.open('https://gremier-coffee.vercel.app/', '_blank', 'noopener,noreferrer');
+  localStorage.setItem('gremier_hub_mode', 'website');
+  return;
+}
 
   localStorage.setItem('gremier_hub_mode', mode);
   document.body.classList.toggle('hub-ops-mode', false);
