@@ -1385,6 +1385,41 @@ function setHubMode(mode) {
 }
 
 // ══ TABS ══
+function showTab(tab) {
+  localStorage.setItem('gremier_admin_tab', tab);
+
+  document.querySelectorAll('.tab-content').forEach(el => {
+    el.style.display = 'none';
+  });
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.remove('active');
+  });
+
+  document.querySelectorAll('.tab-bar-btn').forEach(el => {
+    el.classList.remove('active');
+  });
+
+  const tabEl = document.getElementById('tab-' + tab);
+  if (tabEl) tabEl.style.display = 'block';
+
+  const navEl = document.getElementById('nav-' + tab);
+  if (navEl) navEl.classList.add('active');
+
+  const bottomEl = document.getElementById('tabbar-' + tab);
+  if (bottomEl) bottomEl.classList.add('active');
+
+  if (tab === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
+  if (tab === 'orders' && typeof loadOrders === 'function') loadOrders();
+  if (tab === 'products' && typeof loadAllProducts === 'function') loadAllProducts();
+  if (tab === 'paylinks' && typeof loadPayLinks === 'function') loadPayLinks();
+  if (tab === 'members' && typeof loadMembers === 'function') loadMembers();
+  if (tab === 'reports' && typeof loadReports === 'function') loadReports();
+  if (tab === 'delivery' && typeof loadDeliverySettings === 'function') loadDeliverySettings();
+  if (tab === 'storedeliveries' && typeof loadStoreDeliveries === 'function') loadStoreDeliveries();
+  if (tab === 'siteimages' && typeof loadSiteImages === 'function') loadSiteImages();
+}
+
 // ══ PRODUCTS ══
 async function loadAllProducts() {
   const cached = localStorage.getItem('gremier_products_cache');
