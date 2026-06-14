@@ -3343,7 +3343,8 @@ async function saveZone() {
     free_above: parseFloat(document.getElementById('zFreeAbove').value)||null,
     is_active: document.getElementById('zActive').checked,
     city_code: document.getElementById('zCityCode')?.value || null,
-  };
+    sort_order: parseInt(document.getElementById('zSortOrder')?.value || '0', 10) || 0
+   };
   if (!data.name_en) { showToast('Zone name required'); return; }
   const query = id
     ? sb.from('delivery_zones').update(data).eq('id', id).select()
