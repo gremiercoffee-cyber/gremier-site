@@ -463,7 +463,9 @@
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
   const ADMIN_EMAIL = 'gremiercoffee@gmail.com';
-  const SITE_URL = window.location.origin;
+  const SITE_URL = 'https://gremiercoffee.co.il';
+const ADMIN_URL = 'https://gremier-site.vercel.app/admin.html';
+const OPS_URL = 'https://gremier-coffee.vercel.app/';
 </script>
 <!-- AUTH SCREEN -->
 <div id="authScreen">
@@ -1340,7 +1342,7 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
+setHubMode('website');
   const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   showTab(_savedAdminTab);
   loadOrders();
