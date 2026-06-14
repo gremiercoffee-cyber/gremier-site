@@ -1360,24 +1360,28 @@ async function signOut() { await sb.auth.signOut(); location.reload(); }
 
 function setHubMode(mode) {
   const isOps = mode === 'ops';
+
+  if (isOps) {
+    window.location.href = 'https://gremier-coffee.vercel.app/';
+    return;
+  }
+
   localStorage.setItem('gremier_hub_mode', mode);
-  document.body.classList.toggle('hub-ops-mode', isOps);
+  document.body.classList.toggle('hub-ops-mode', false);
+
   const websiteNav = document.getElementById('websiteNav');
   const websiteMain = document.getElementById('websiteMain');
   const opsPanel = document.getElementById('opsPanel');
   const bottomBar = document.getElementById('bottomTabBar');
-  if (websiteNav) websiteNav.style.display = isOps ? 'none' : '';
-  if (websiteMain) websiteMain.style.display = isOps ? 'none' : '';
-  if (opsPanel) opsPanel.style.display = isOps ? 'block' : 'none';
-  if (bottomBar) bottomBar.style.display = isOps ? 'none' : '';
+
+  if (websiteNav) websiteNav.style.display = '';
+  if (websiteMain) websiteMain.style.display = '';
+  if (opsPanel) opsPanel.style.display = 'none';
+  if (bottomBar) bottomBar.style.display = '';
+
   document.querySelectorAll('.hub-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
- if (isOps) {
-  window.location.href = 'https://gremier-coffee.vercel.app/';
-  return;
-}
-  }
 }
 
 // ══ TABS ══
