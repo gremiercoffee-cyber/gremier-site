@@ -85,7 +85,7 @@
       setTimeout(() => {
         try {
           if (typeof setHubMode === 'function') {
-            setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
+            setHubMode('website');
           }
           if (typeof showTab === 'function') {
             showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
@@ -1353,8 +1353,15 @@ setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
   }
 }
 async function signInAdmin() {
-  const adminUrl = 'https://gremier-site.vercel.app/admin.html';
-  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: adminUrl } });
+  localStorage.setItem('gremier_hub_mode', 'website');
+  localStorage.setItem('gremier_admin_tab', 'dashboard');
+
+  await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: 'https://gremier-site.vercel.app/admin.html'
+    }
+  });
 }
 async function signOut() { await sb.auth.signOut(); location.reload(); }
 
