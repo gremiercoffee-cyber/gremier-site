@@ -511,6 +511,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
+      <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
+      <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
       </div>
       <div class="sidebar-bottom">
         <div class="user-info" id="adminEmail">—</div>
@@ -916,7 +918,67 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </table>
     </div>
   </div>
-</div> 
+</div>
+ 
+<!-- COUPONS TAB -->
+<div id="tab-coupons" class="tab-content" style="display:none">
+  <div class="page-header">
+    <div class="flex-between">
+      <div><h1 class="page-title">🎟️ Coupons</h1><p class="page-sub">Create and manage discount codes</p></div>
+      <button class="btn btn-amber" onclick="openCouponModal()">+ New Coupon</button>
+    </div>
+  </div>
+  <div class="filter-bar">
+    <select class="form-input" style="width:auto" id="couponStatusFilter" onchange="renderCouponsTable()">
+      <option value="all">All</option>
+      <option value="active">Active</option>
+      <option value="inactive">Inactive</option>
+      <option value="expired">Expired</option>
+    </select>
+    <input type="text" class="product-search" placeholder="Search code…" oninput="couponSearch(this.value)" id="couponSearchInput"/>
+  </div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Code</th><th>Discount</th><th class="hide-mobile">Scope</th>
+        <th class="cell-num">Uses</th><th class="cell-status">Status</th>
+        <th class="cell-date hide-mobile">Expires</th><th class="cell-actions">Actions</th>
+      </tr></thead>
+      <tbody id="couponsBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+ 
+<!-- GIFT CARDS TAB -->
+<div id="tab-giftcards" class="tab-content" style="display:none">
+  <div class="page-header">
+    <div class="flex-between">
+      <div><h1 class="page-title">🎁 Gift Cards</h1><p class="page-sub">Issue and track gift cards</p></div>
+      <button class="btn btn-amber" onclick="openGiftCardModal()">+ Issue Gift Card</button>
+    </div>
+  </div>
+  <div class="stat-grid" id="giftCardStats"></div>
+  <div class="filter-bar">
+    <select class="form-input" style="width:auto" id="giftCardStatusFilter" onchange="renderGiftCardsTable()">
+      <option value="all">All</option>
+      <option value="active">Active (has balance)</option>
+      <option value="empty">Empty</option>
+      <option value="inactive">Inactive</option>
+    </select>
+    <input type="text" class="product-search" placeholder="Search code or email…" oninput="giftCardSearch(this.value)" id="giftCardSearchInput"/>
+  </div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Code</th><th class="cell-total">Balance</th><th class="hide-mobile">Original</th>
+        <th class="hide-mobile">Recipient</th><th class="cell-status">Status</th>
+        <th class="cell-date hide-mobile">Created</th><th class="cell-actions">Actions</th>
+      </tr></thead>
+      <tbody id="giftCardsBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+ 
     </div><!-- /websiteMain -->
     </div><!-- /main -->
   </div>
@@ -946,9 +1008,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
       <span class="tab-icon">🚚</span>Delivery
     </button>
-    <button class="tab-bar-btn" id="tbar-storedeliveries" onclick="showTab('storedeliveries')">
+       <button class="tab-bar-btn" id="tbar-storedeliveries" onclick="showTab('storedeliveries')">
   <span class="tab-icon">🏪</span>Stores
 </button>
+    <button class="tab-bar-btn" id="tbar-coupons" onclick="showTab('coupons')">
+  <span class="tab-icon">🎟️</span>Coupons
+</button>
+    <button class="tab-bar-btn" id="tbar-giftcards" onclick="showTab('giftcards')">
+  <span class="tab-icon">🎁</span>Gifts
 </button>
   </div>
 </div>
@@ -1217,6 +1284,95 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="btn btn-outline" onclick="closePayLinkModal()" style="margin-top:10px;width:100%">Close</button>
   </div>
 </div>
+<!-- COUPON MODAL -->
+<div class="modal-backdrop" id="couponModal">
+  <div class="modal-box" style="max-width:560px">
+    <h2 class="modal-title" id="couponModalTitle">New Coupon</h2>
+    <input type="hidden" id="editCouponId"/>
+    <div class="form-row-2">
+      <div class="form-group">
+        <label class="form-label">Code</label>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="cpCode" placeholder="SUMMER10" style="text-transform:uppercase"/>
+          <button class="btn btn-outline btn-sm" onclick="cpGenerateCode()" type="button">🎲</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Internal note</label>
+        <input class="form-input" id="cpDescription" placeholder="e.g. Newsletter promo"/>
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Discount type</label>
+        <select class="form-input" id="cpType" onchange="cpOnTypeChange()">
+          <option value="percent">Percent (%)</option>
+          <option value="fixed">Fixed (₪)</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Value</label>
+        <input class="form-input" type="number" id="cpValue" placeholder="10"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Applies to</label>
+      <select class="form-input" id="cpAppliesTo" onchange="cpOnScopeChange()">
+        <option value="all">Entire order</option>
+        <option value="category">A category</option>
+        <option value="specific_products">Specific products</option>
+      </select>
+    </div>
+    <div class="form-group" id="cpCategoryWrap" style="display:none">
+      <label class="form-label">Category</label>
+      <select class="form-input" id="cpCategory">
+        <option value="bottles">Bottles</option>
+        <option value="minis">Mini Packs</option>
+        <option value="bulk">Bulk & 5L</option>
+        <option value="subscriptions">Subscriptions</option>
+        <option value="coffeebars">Coffee Bars</option>
+      </select>
+    </div>
+    <div class="form-group" id="cpProductsWrap" style="display:none">
+      <label class="form-label">Pick products</label>
+      <div id="cpProductsList" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:8px"></div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group"><label class="form-label">Min order (₪)</label><input class="form-input" type="number" id="cpMinOrder" placeholder="optional"/></div>
+      <div class="form-group"><label class="form-label">Max total uses</label><input class="form-input" type="number" id="cpMaxUses" placeholder="∞ unlimited"/></div>
+      <div class="form-group"><label class="form-label">Expires</label><input class="form-input" type="date" id="cpExpires"/></div>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">One use per customer</span>
+      <label class="toggle"><input type="checkbox" id="cpOnePerUser"/><span class="toggle-slider"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Active</span>
+      <label class="toggle"><input type="checkbox" id="cpActive" checked/><span class="toggle-slider"></span></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-amber" onclick="saveCoupon()">Save Coupon</button>
+      <button class="btn btn-outline" onclick="closeCouponModal()">Cancel</button>
+      <button class="btn btn-red btn-sm" id="deleteCouponBtn" style="margin-left:auto;display:none" onclick="deleteCoupon()">Delete</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- GIFT CARD MODAL -->
+<div class="modal-backdrop" id="giftCardModal">
+  <div class="modal-box" style="max-width:480px">
+    <h2 class="modal-title">Issue Gift Card</h2>
+    <div class="form-group"><label class="form-label">Amount (₪)</label><input class="form-input" type="number" id="gcAmount" placeholder="100"/></div>
+    <div class="form-group"><label class="form-label">Recipient email <span style="font-weight:400;color:var(--text2)">(emails the code)</span></label><input class="form-input" type="email" id="gcRecipientEmail" placeholder="friend@example.com"/></div>
+    <div class="form-group"><label class="form-label">Recipient name (optional)</label><input class="form-input" id="gcRecipientName" placeholder="Dana"/></div>
+    <div class="form-group"><label class="form-label">Gift message (optional)</label><input class="form-input" id="gcMessage" placeholder="Enjoy a coffee on me!"/></div>
+    <div class="form-group"><label class="form-label">Expires (optional)</label><input class="form-input" type="date" id="gcExpires"/></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-amber" onclick="issueGiftCard()" id="issueGcBtn">Issue & Email</button>
+      <button class="btn btn-outline" onclick="closeGiftCardModal()">Cancel</button>
+    </div>
+    <div id="gcIssueResult" style="display:none;margin-top:16px"></div>
+  </div>
+</div>
+ 
 <div class="toast" id="toast"></div>
 <script>
   function escHtml(s) {
@@ -3686,8 +3842,11 @@ function showTab(tab) {
   if (tab==='members') loadMembers();
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='siteimages') loadSiteImages();
-  if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
+    if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
+  if (tab==='coupons') loadCoupons();
+  if (tab==='giftcards') loadGiftCards();
 if (tab==='dashboard') { loadStores().then(() => loadDashboard()); }
+}
 }
 // ══ SITE IMAGES & CONTENT ══
 const SITE_IMAGE_SLOTS = [
@@ -4461,6 +4620,260 @@ async function sendCustomerReceipt(orderId) {
     console.error(e);
   }
 }
+// ══════════════ COUPONS ══════════════
+let allCoupons = [];
+let couponSearchTerm = '';
+ 
+async function loadCoupons() {
+  const { data, error } = await sb.from('coupons').select('*').order('created_at', { ascending: false });
+  if (error) { console.error(error); showToast('Could not load coupons'); }
+  allCoupons = data || [];
+  renderCouponsTable();
+}
+function couponSearch(v) { couponSearchTerm = v.toLowerCase(); renderCouponsTable(); }
+function couponStatus(c) {
+  if (c.expires_at && new Date(c.expires_at) < new Date()) return 'expired';
+  if (!c.is_active) return 'inactive';
+  if (c.max_uses != null && c.uses_count >= c.max_uses) return 'used up';
+  return 'active';
+}
+function renderCouponsTable() {
+  const body = document.getElementById('couponsBody');
+  if (!body) return;
+  const filter = document.getElementById('couponStatusFilter')?.value || 'all';
+  let list = allCoupons.filter(c => {
+    if (couponSearchTerm && !c.code.toLowerCase().includes(couponSearchTerm)) return false;
+    const st = couponStatus(c);
+    if (filter === 'active') return st === 'active';
+    if (filter === 'inactive') return st === 'inactive' || st === 'used up';
+    if (filter === 'expired') return st === 'expired';
+    return true;
+  });
+  if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="empty-state">No coupons.</td></tr>'; return; }
+  body.innerHTML = list.map(c => {
+    const val = c.discount_type === 'percent' ? `${c.discount_value}%` : `₪${c.discount_value}`;
+    const scope = c.applies_to === 'all' ? 'Entire order'
+      : c.applies_to === 'category' ? `Cat: ${c.category}`
+      : `${(c.product_ids||[]).length} products`;
+    const uses = `${c.uses_count}${c.max_uses != null ? '/' + c.max_uses : ''}`;
+    const st = couponStatus(c);
+    const stCss = st === 'active' ? 's-fulfilled' : st === 'expired' ? 's-cancelled' : 's-pending';
+    const exp = c.expires_at ? new Date(c.expires_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' }) : '—';
+    const loyalty = c.user_id ? ' <span class="status-pill s-confirmed" style="font-size:.5rem">loyalty</span>' : '';
+    return `<tr>
+      <td style="color:var(--cream)"><strong>${escHtml(c.code)}</strong>${loyalty}${c.one_time_per_user?' <span class="status-pill s-pending" style="font-size:.5rem">1×/user</span>':''}${c.description?`<br><small style="color:var(--text2)">${escHtml(c.description)}</small>`:''}</td>
+      <td style="color:var(--cream)">${val}</td>
+      <td class="hide-mobile">${scope}</td>
+      <td class="cell-num">${uses}</td>
+      <td class="cell-status"><span class="status-pill ${stCss}">${st}</span></td>
+      <td class="cell-date hide-mobile">${exp}</td>
+      <td class="cell-actions"><div class="cell-actions-wrap">
+        <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(c.code)}')">Copy</button>
+        <button class="btn btn-outline btn-sm" onclick="openCouponModal('${c.id}')">Edit</button>
+        <button class="btn btn-sm ${c.is_active?'btn-red':'btn-green'}" onclick="toggleCoupon('${c.id}',${c.is_active})">${c.is_active?'Off':'On'}</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+function cpGenerateCode() {
+  const part = () => Math.random().toString(36).slice(2, 6).toUpperCase();
+  document.getElementById('cpCode').value = `GREM-${part()}`;
+}
+function cpOnTypeChange() {}
+function cpOnScopeChange() {
+  const v = document.getElementById('cpAppliesTo').value;
+  document.getElementById('cpCategoryWrap').style.display = v === 'category' ? 'block' : 'none';
+  document.getElementById('cpProductsWrap').style.display = v === 'specific_products' ? 'block' : 'none';
+  if (v === 'specific_products') renderCpProductPicker();
+}
+function renderCpProductPicker(selected) {
+  const el = document.getElementById('cpProductsList');
+  const sel = new Set((selected || []).map(String));
+  el.innerHTML = allProducts.map(p => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:.84rem;color:var(--cream)">
+      <input type="checkbox" value="${escAttr(p.id)}" ${sel.has(String(p.id))?'checked':''}/>
+      ${escHtml(p.name_en)} <span style="color:var(--text2)">₪${p.price}</span>
+    </label>`).join('') || '<div class="empty-state" style="padding:8px">No products.</div>';
+}
+async function openCouponModal(id) {
+  if (!allProducts.length) await loadAllProducts();
+  document.getElementById('editCouponId').value = id || '';
+  document.getElementById('couponModalTitle').textContent = id ? 'Edit Coupon' : 'New Coupon';
+  document.getElementById('deleteCouponBtn').style.display = id ? 'flex' : 'none';
+  if (id) {
+    const c = allCoupons.find(x => x.id === id);
+    document.getElementById('cpCode').value = c.code || '';
+    document.getElementById('cpDescription').value = c.description || '';
+    document.getElementById('cpType').value = c.discount_type || 'percent';
+    document.getElementById('cpValue').value = c.discount_value || '';
+    document.getElementById('cpAppliesTo').value = c.applies_to || 'all';
+    document.getElementById('cpCategory').value = c.category || 'bottles';
+    document.getElementById('cpMinOrder').value = c.min_order_amount || '';
+    document.getElementById('cpMaxUses').value = c.max_uses || '';
+    document.getElementById('cpExpires').value = c.expires_at ? c.expires_at.slice(0,10) : '';
+    document.getElementById('cpOnePerUser').checked = !!c.one_time_per_user;
+    document.getElementById('cpActive').checked = c.is_active;
+    cpOnScopeChange();
+    if (c.applies_to === 'specific_products') renderCpProductPicker(c.product_ids);
+  } else {
+    ['cpCode','cpDescription','cpValue','cpMinOrder','cpMaxUses','cpExpires'].forEach(i=>document.getElementById(i).value='');
+    document.getElementById('cpType').value='percent';
+    document.getElementById('cpAppliesTo').value='all';
+    document.getElementById('cpOnePerUser').checked=false;
+    document.getElementById('cpActive').checked=true;
+    cpOnScopeChange();
+  }
+  document.getElementById('couponModal').classList.add('open');
+}
+function closeCouponModal() { document.getElementById('couponModal').classList.remove('open'); }
+async function saveCoupon() {
+  const id = document.getElementById('editCouponId').value;
+  const appliesTo = document.getElementById('cpAppliesTo').value;
+  const code = document.getElementById('cpCode').value.trim().toUpperCase();
+  if (!code) { showToast('Code is required'); return; }
+  const value = parseFloat(document.getElementById('cpValue').value);
+  if (isNaN(value) || value <= 0) { showToast('Enter a discount value'); return; }
+  let productIds = null;
+  if (appliesTo === 'specific_products') {
+    productIds = Array.from(document.querySelectorAll('#cpProductsList input:checked')).map(cb => cb.value);
+    if (!productIds.length) { showToast('Pick at least one product'); return; }
+  }
+  const data = {
+    code,
+    description: document.getElementById('cpDescription').value.trim() || null,
+    discount_type: document.getElementById('cpType').value,
+    discount_value: value,
+    applies_to: appliesTo,
+    product_ids: appliesTo === 'specific_products' ? productIds : null,
+    category: appliesTo === 'category' ? document.getElementById('cpCategory').value : null,
+    min_order_amount: parseFloat(document.getElementById('cpMinOrder').value) || null,
+    max_uses: parseInt(document.getElementById('cpMaxUses').value, 10) || null,
+    expires_at: document.getElementById('cpExpires').value || null,
+    one_time_per_user: document.getElementById('cpOnePerUser').checked,
+    is_active: document.getElementById('cpActive').checked,
+    updated_at: new Date().toISOString(),
+  };
+  let error;
+  if (id) ({ error } = await sb.from('coupons').update(data).eq('id', id));
+  else ({ error } = await sb.from('coupons').insert(data));
+  if (error) { showToast('Save failed — ' + (error.message||'')); console.error(error); return; }
+  showToast(id ? 'Coupon updated ✓' : 'Coupon created ✓');
+  closeCouponModal();
+  loadCoupons();
+}
+async function toggleCoupon(id, current) {
+  await sb.from('coupons').update({ is_active: !current, updated_at: new Date().toISOString() }).eq('id', id);
+  loadCoupons();
+}
+async function deleteCoupon() {
+  const id = document.getElementById('editCouponId').value;
+  if (!id || !confirm('Delete this coupon?')) return;
+  await sb.from('coupons').delete().eq('id', id);
+  showToast('Coupon deleted');
+  closeCouponModal();
+  loadCoupons();
+}
+ 
+// ══════════════ GIFT CARDS ══════════════
+let allGiftCards = [];
+let giftCardSearchTerm = '';
+ 
+async function loadGiftCards() {
+  const { data, error } = await sb.from('gift_cards').select('*').order('created_at', { ascending: false });
+  if (error) console.error(error);
+  allGiftCards = data || [];
+  renderGiftCardStats();
+  renderGiftCardsTable();
+}
+function giftCardSearch(v) { giftCardSearchTerm = v.toLowerCase(); renderGiftCardsTable(); }
+function renderGiftCardStats() {
+  const active = allGiftCards.filter(g => g.is_active && g.balance > 0);
+  const outstanding = active.reduce((s, g) => s + Number(g.balance), 0);
+  const issued = allGiftCards.reduce((s, g) => s + Number(g.initial_amount), 0);
+  const redeemed = issued - allGiftCards.reduce((s, g) => s + Number(g.balance), 0);
+  document.getElementById('giftCardStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Active Cards</div><div class="stat-value">${active.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value">₪${outstanding.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Issued</div><div class="stat-value">₪${issued.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Redeemed</div><div class="stat-value">₪${redeemed.toFixed(0)}</div></div>`;
+}
+function giftCardStatus(g) {
+  if (!g.is_active) return 'inactive';
+  if (g.expires_at && new Date(g.expires_at) < new Date()) return 'expired';
+  if (Number(g.balance) <= 0) return 'empty';
+  return 'active';
+}
+function renderGiftCardsTable() {
+  const body = document.getElementById('giftCardsBody');
+  if (!body) return;
+  const filter = document.getElementById('giftCardStatusFilter')?.value || 'all';
+  let list = allGiftCards.filter(g => {
+    if (giftCardSearchTerm && !(g.code.toLowerCase().includes(giftCardSearchTerm) || (g.recipient_email||'').toLowerCase().includes(giftCardSearchTerm))) return false;
+    const st = giftCardStatus(g);
+    if (filter === 'active') return st === 'active';
+    if (filter === 'empty') return st === 'empty';
+    if (filter === 'inactive') return st === 'inactive' || st === 'expired';
+    return true;
+  });
+  if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="empty-state">No gift cards.</td></tr>'; return; }
+  body.innerHTML = list.map(g => {
+    const st = giftCardStatus(g);
+    const stCss = st === 'active' ? 's-fulfilled' : st === 'empty' ? 's-pending' : 's-cancelled';
+    const created = new Date(g.created_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' });
+    return `<tr>
+      <td style="color:var(--cream)"><strong>${escHtml(g.code)}</strong>${g.message?`<br><small style="color:var(--text2)">${escHtml(g.message)}</small>`:''}</td>
+      <td class="cell-total" style="color:var(--cream)">₪${Number(g.balance).toFixed(0)}</td>
+      <td class="hide-mobile">₪${Number(g.initial_amount).toFixed(0)}</td>
+      <td class="hide-mobile">${escHtml(g.recipient_email||g.recipient_name||'—')}</td>
+      <td class="cell-status"><span class="status-pill ${stCss}">${st}</span></td>
+      <td class="cell-date hide-mobile">${created}</td>
+      <td class="cell-actions"><div class="cell-actions-wrap">
+        <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(g.code)}')">Copy</button>
+        <button class="btn btn-sm ${g.is_active?'btn-red':'btn-green'}" onclick="toggleGiftCard('${g.id}',${g.is_active})">${g.is_active?'Off':'On'}</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+function openGiftCardModal() {
+  ['gcAmount','gcRecipientEmail','gcRecipientName','gcMessage','gcExpires'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('gcIssueResult').style.display = 'none';
+  document.getElementById('giftCardModal').classList.add('open');
+}
+function closeGiftCardModal() { document.getElementById('giftCardModal').classList.remove('open'); }
+async function issueGiftCard() {
+  const amount = parseFloat(document.getElementById('gcAmount').value);
+  if (!amount || amount <= 0) { showToast('Enter an amount'); return; }
+  const btn = document.getElementById('issueGcBtn');
+  btn.disabled = true; btn.textContent = 'Issuing…';
+  try {
+    const { data } = await callAdminFunction('issue-gift-card', {
+      amount,
+      recipient_email: document.getElementById('gcRecipientEmail').value.trim() || null,
+      recipient_name: document.getElementById('gcRecipientName').value.trim() || null,
+      message: document.getElementById('gcMessage').value.trim() || null,
+      expires_at: document.getElementById('gcExpires').value || null,
+    });
+    if (data.ok) {
+      const res = document.getElementById('gcIssueResult');
+      res.style.display = 'block';
+      res.innerHTML = `<div class="link-result"><div class="link-url">Code: <strong>${escHtml(data.code)}</strong> · ₪${data.amount}${data.emailed?' · emailed ✓':''}</div><button class="copy-btn" onclick="copyLink('${escAttr(data.code)}')">Copy</button></div>`;
+      showToast('Gift card issued ✓');
+      loadGiftCards();
+    } else {
+      showToast('Failed — ' + (data.error || 'check console'));
+      console.error(data);
+    }
+  } catch (e) {
+    showToast('Could not reach gift card function');
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Issue & Email';
+  }
+}
+async function toggleGiftCard(id, current) {
+  await sb.from('gift_cards').update({ is_active: !current, updated_at: new Date().toISOString() }).eq('id', id);
+  loadGiftCards();
+}  
 initAdmin();
 // ── PWA SERVICE WORKER ──
 // Disabled from admin page so admin cannot register a root-scoped service worker.
