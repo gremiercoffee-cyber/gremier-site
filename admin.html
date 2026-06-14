@@ -4252,6 +4252,96 @@ initAdmin();
 // ── PWA SERVICE WORKER ──
 // Disabled from admin page so admin cannot register a root-scoped service worker.
 // If you want an admin PWA later, move admin to /admin/ and register /admin/admin-sw.js with scope /admin/.
+  // ── ADMIN: Backspace navigation fix ──
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Backspace') return;
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  const editable = document.activeElement?.isContentEditable;
+  // If focus is inside a text field, let browser handle it normally
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || editable) return;
+  // Otherwise block backspace from navigating away
+  e.preventDefault();
+});
+
+// ── ADMIN: Tab/page persistence via URL hash ──
+(function initAdminTabPersistence() {
+  // Try to find the tab-switching function and wrap it
+  // Read saved tab on load
+  const savedTab = localStorage.getItem('gremier_admin_tab');
+  if (savedTab) {
+    // Restore after a short delay so the page is ready
+    setTimeout(() => {
+      const tabBtn = document.querySelector(`[data-tab="${savedTab}"], [onclick*="showTab('${savedTab}')"], [onclick*='showTab("${savedTab}")']`);
+      if (tabBtn) tabBtn.click();
+    }, 100);
+  }
+
+  // Intercept all tab buttons to save their tab name
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-tab], [onclick*="showTab"]');
+    if (!btn) return;
+    // Extract tab name from data-tab or onclick
+    let tabName = btn.dataset.tab;
+    if (!tabName) {
+      const match = (btn.getAttribute('onclick') || '').match(/showTab\(['"]([^'"]+)['"]\)/);
+      if (match) tabName = match[1];
+    }
+    if (tabName) localStorage.setItem('gremier_admin_tab', tabName);
+  });
+})();
+  // ── ADMIN: Member loyalty point editor ──
+async function openEditMemberPoints(userId, currentPoints, memberName) {
+  if (!isAdmin) { alert('Admin only'); return; }
+  const newVal = prompt(`Edit loyalty points for ${memberName}\nCurrent: ${currentPoints}\nEnter new points value:`, currentPoints);
+  if (newVal === null) return; // cancelled
+  const parsed = parseInt(newVal, 10);
+  if (isNaN(parsed) || parsed < 0) {
+    alert('Please enter a valid non-negative number');
+    return;
+  }
+  const diff = parsed - currentPoints;
+  try {
+    // Update points
+    const { error } = await sb.from('profiles')
+      .update({ points: parsed })
+      .eq('id', userId);
+    if (error) throw error;
+    // Log the change
+    await sb.from('loyalty_audit').insert({
+      user_id: userId,
+      change_amount: diff,
+      reason: 'Admin manual adjustment',
+      admin_id: currentAdminUser?.id || null,
+    });
+    alert(`✓ Points updated to ${parsed}`);
+    // Re-render members list if that function exists
+    if (typeof loadMembers === 'function') loadMembers();
+    else if (typeof renderMembers === 'function') renderMembers();
+  } catch(e) {
+    alert('Error: ' + (e.message || e));
+  }
+}
+
+async function generateCouponForMember(userId, memberEmail) {
+  if (!isAdmin) { alert('Admin only'); return; }
+  const code = 'REWARD-' + Math.random().toString(36).substring(2,8).toUpperCase();
+  try {
+    const { error } = await sb.from('coupons').insert({
+      code,
+      discount_type: 'percent',
+      discount_value: 10,
+      is_active: true,
+      is_used: false,
+      one_time: true,
+      user_id: userId,
+      customer_email: memberEmail || null,
+    });
+    if (error) throw error;
+    alert(`✓ Coupon created: ${code}\nShare this with the customer.`);
+  } catch(e) {
+    alert('Error: ' + (e.message || e));
+  }
+}
 </script>
 </body>
 </html>
