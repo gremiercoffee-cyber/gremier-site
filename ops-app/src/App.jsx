@@ -1989,8 +1989,7 @@ export default function App() {
     <div style={S.app}><div style={S.container}>
       {!isAdmin&&<div style={{background:"#1F4D7A",color:"#fff",textAlign:"center",fontSize:11,padding:"5px 0",letterSpacing:1.5,textTransform:"uppercase"}}>View Only</div>}
       {syncing&&<div style={S.syncBar}>Syncing...</div>}
-      {screen==="dashboard"&&<Dashboard concentrate={concentrate} needed={needed} monthView={monthView} setMonthView={setMonthView} jobs={jobs} today={today} onCheckoff={isAdmin?handleCheckoff:null} onJobTap={setSelectedJob} onSchedule={()=>{setScheduleMode("schedule");setScreen("schedule");}} onLogNow={()=>{setScheduleMode("lognow");setScreen("schedule");}} setCalDay={setCalDay} onRefresh={loadData} onSignOut={signOut} isAdmin={isAdmin}/>}
-      {isAdmin&&screen==="schedule"&&<ScheduleScreen onSubmit={addJob} onBack={()=>{pendingWebsiteRef.current=null;setPrefillWebsiteOrder(null);setScreen("dashboard");}} initialMode={scheduleMode} websiteOrder={prefillWebsiteOrder} onRefresh={loadData}/>}
+{screen==="dashboard"&&<Dashboard concentrate={concentrate} needed={needed} monthView={monthView} setMonthView={setMonthView} jobs={jobs} today={today} onCheckoff={isAdmin?handleCheckoff:null} onJobTap={setSelectedJob} onSchedule={()=>{setScheduleMode("schedule");setScreen("schedule");}} onLogNow={()=>{setScheduleMode("lognow");setScreen("schedule");}} setCalDay={setCalDay} onRefresh={loadData} onSignOut={signOut} isAdmin={isAdmin} onDeleteJob={isAdmin?deleteJob:null} onGetAlerts={isAdmin?async()=>{setSmartAlerts([]);setAlertDismissed(false);const alerts=await fetchSmartAlerts(jobs,inventory,concentrate,beans,labeledStock);if(alerts.length>0){setSmartAlerts(alerts);setAlertDismissed(false);}else{setSmartAlerts([{level:"info",msg:"All good — nothing urgent to flag right now."}]);setAlertDismissed(false);}}:null}/>}      {isAdmin&&screen==="schedule"&&<ScheduleScreen onSubmit={addJob} onBack={()=>{pendingWebsiteRef.current=null;setPrefillWebsiteOrder(null);setScreen("dashboard");}} initialMode={scheduleMode} websiteOrder={prefillWebsiteOrder} onRefresh={loadData}/>}
       {isAdmin&&editingJob&&(<div style={{position:"fixed",inset:0,background:"#00000088",zIndex:150,overflowY:"auto"}}><div style={{background:"#FFFFFF",minHeight:"100%",maxWidth:480,margin:"0 auto",position:"relative"}}><ScheduleScreen onSubmit={updateJob} onBack={()=>setEditingJob(null)} existingJob={editingJob} onRefresh={loadData}/></div></div>)}
       {screen==="tasks"&&<TasksScreen jobs={jobs} pendingConfirms={isAdmin?pendingConfirms:[]} onCheckoff={isAdmin?handleCheckoff:null} onConfirm={isAdmin?setCheckoffJob:null} onJobTap={setSelectedJob} onBack={()=>setScreen("dashboard")} onDelete={isAdmin?deleteJob:null} onRefresh={loadData} isAdmin={isAdmin}/>}
       {screen==="stock"&&<StockScreen concentrate={concentrate} setConcentrate={setConcentrateItem} inventory={inventory} setInventory={setInventoryItem} needed={needed} jobs={jobs} beans={beans} setBeans={setBeansItem} setBeanOrdered={setBeanOrdered} deliverBeans={deliverBeans} onBack={()=>setScreen("dashboard")} onRefresh={loadData} isAdmin={isAdmin}/>}
@@ -2037,14 +2036,14 @@ export default function App() {
     </ProductThumbsContext.Provider>
   );
 }
-function Dashboard({concentrate,needed,monthView,setMonthView,jobs,today,onCheckoff,onJobTap,onSchedule,onLogNow,setCalDay,onRefresh,onSignOut,isAdmin}) {
-  return (
+function Dashboard({concentrate,needed,monthView,setMonthView,jobs,today,onCheckoff,onJobTap,onSchedule,onLogNow,setCalDay,onRefresh,onSignOut,isAdmin,onDeleteJob,onGetAlerts}) {  return (
     <div style={S.screen}>
       <div style={S.header}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px 10px"}}>
           <GremierLogo compact={true}/>
-          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+<div style={{display:"flex",gap:6,alignItems:"center"}}>
             <RefreshBtn onRefresh={onRefresh}/>
+            <button onClick={onGetAlerts} style={{background:"#1F4D7A",border:"none",borderRadius:8,fontSize:11,cursor:"pointer",color:"#fff",padding:"5px 8px"}}>🤖 Briefing</button>
             <button onClick={onSignOut} style={{background:"#F0F0F0",border:"1.5px solid #D0D0D0",borderRadius:8,fontSize:11,cursor:"pointer",color:"#555555",padding:"5px 8px"}}>Sign out</button>
           </div>
         </div>
