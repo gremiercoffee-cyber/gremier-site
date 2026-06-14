@@ -1185,8 +1185,23 @@ const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ══ STATE ══
 let lang = 'en';
-let cart = [];
-let products = [];
+// ── CART PERSISTENCE ──
+const CART_STORAGE_KEY = 'gremier_cart_v2';
+function saveCartToStorage() {
+  try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart)); } catch(_) {}
+}
+function loadCartFromStorage() {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch(_) { return []; }
+}
+function clearCartFromStorage() {
+  try { localStorage.removeItem(CART_STORAGE_KEY); } catch(_) {}
+}
+let cart = loadCartFromStorage();let products = [];
 let activeCategory = 'all';
 let currentUser = null;
 let isAdmin = false;
@@ -1383,6 +1398,9 @@ async function setUser(user) {
   closeMemberPopup(true);
   // show loyalty pill
   updateLoyaltyPill();
+}
+async function signOut() {
+  await sb.auth.signOut();
 }
 function clearUser() {
   currentUser = null; isAdmin = false; userPoints = 0; userCouponAvailable = false;
@@ -2117,6 +2135,7 @@ function updateCartCount() {
   const el = document.getElementById('cartCount');
   el.textContent = n;
   el.dataset.empty = n ? '0' : '1';
+  saveCartToStorage();
 }
 function openCart() {
   openCartUI();
@@ -2438,9 +2457,10 @@ async function handlePaymentReturn() {
     if (i < 19) await new Promise(r => setTimeout(r, i < 3 ? 500 : 1200));
   }
 
-  const resultKind = paid ? 'paid' : 'failed';
+const resultKind = paid ? 'paid' : 'failed';
   if (resultKind === 'paid') {
     cart = [];
+    clearCartFromStorage();
     updateCartCount();
     sessionStorage.removeItem('gremier_pending_order');
     if (orderId) {
@@ -2555,7 +2575,35 @@ function updateAccountPage() {
     document.getElementById('t-acc-signin-sub').textContent = 'עקוב אחר הזמנות, נקודות ופרופיל.';
     document.getElementById('t-acc-signin-btn').textContent = 'כניסה';
   }
-  document.getElementById('accCouponBox').style.display = userCouponAvailable ? 'flex' : 'none';
+document.getElementById('accCouponBox').style.display = userCouponAvailable ? 'flex' : 'none';
+  // Load and show actual coupon codes
+  if (userCouponAvailable && currentUser) loadAndShowUserCoupons();}
+  async function loadAndShowUserCoupons() {
+  if (!currentUser) return;
+  try {
+    const { data: coupons } = await sb.from('coupons')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .eq('is_active', true)
+      .eq('is_used', false)
+      .order('created_at', { ascending: false });
+    const box = document.getElementById('accCouponBox');
+    if (!box) return;
+    if (!coupons || !coupons.length) {
+      box.style.display = 'none';
+      return;
+    }
+    box.style.display = 'flex';
+    const codeEl = document.getElementById('t-acc-coupon-sub');
+    if (codeEl) {
+      const codes = coupons.map(c => `<strong>${c.code}</strong> (${c.discount_type === 'percent' ? c.discount_value + '%' : '₪' + c.discount_value} off)`).join('<br/>');
+      codeEl.innerHTML = lang === 'he'
+        ? `הקוד שלך: ${codes}`
+        : `Your code: ${codes}`;
+    }
+  } catch(e) {
+    console.warn('Could not load coupons:', e);
+  }
 }
 async function loadMyOrders() {
   if (!currentUser) {
