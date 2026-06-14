@@ -369,7 +369,7 @@
       th { padding:7px 6px; font-size:.58rem; }
       td { padding:7px 6px; }
       .cell-date { width:52px; font-size:.65rem; }
-      .cell-actions { width:64px; }
+      .cell-actions { width:86px; }
       .cell-status { width:68px; }
       .cell-total { width:48px; }
       .cell-num { width:32px; }
@@ -3225,8 +3225,11 @@ function renderMembersList() {
       ? `<a href="tel:${escAttr(m.phone)}" style="color:var(--cream2);text-decoration:none">${escHtml(m.phone)}</a>`
       : '—';
     return `<tr>
-<td class="cell-customer" style="color:var(--cream)">${escHtml(m.name)}${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}</td>
-      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(m.email)}">${escHtml(m.email)}</td>
+<td class="cell-customer" style="color:var(--cream)">
+  ${escHtml(m.name)}
+  <small style="display:block;color:var(--text2);margin-top:4px">${m.points || 0} pts</small>
+  ${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">Coupon</span>' : ''}
+</td>      <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(m.email)}">${escHtml(m.email)}</td>
       <td class="hide-mobile">${phoneLink}</td>
       <td class="cell-num">${m.orderCount}</td>
       <td class="cell-total" style="color:var(--cream)">₪${m.totalSpent.toFixed(0)}</td>
