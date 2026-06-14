@@ -16,6 +16,32 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="Gremier Admin"/>
   <script src="/vendor/supabase-js.min.js"></script>
+  <script>
+  window.signInAdmin = async function signInAdmin() {
+    try {
+      const { createClient } = window.supabase;
+      const sbLogin = createClient(
+        'https://ayuzmwpmhncxrugsyxmw.supabase.co',
+        'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
+      );
+
+      const adminUrl = `${window.location.origin}/admin.html`;
+
+      const { error } = await sbLogin.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: adminUrl }
+      });
+
+      if (error) {
+        console.error('Admin Google sign-in failed:', error);
+        alert('Google sign-in failed: ' + error.message);
+      }
+    } catch (err) {
+      console.error('Admin Google sign-in crashed:', err);
+      alert('Google sign-in crashed. Check console.');
+    }
+  };
+</script>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     :root {
