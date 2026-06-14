@@ -1252,8 +1252,9 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-  setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
-showTab('dashboard');
+setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
+  const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+  showTab(_savedAdminTab);
   loadOrders();
   loadAllProducts();
   loadStores();
@@ -3073,8 +3074,13 @@ function renderMembersList() {
       <td class="cell-total" style="color:var(--cream)">₪${m.totalSpent.toFixed(0)}</td>
       <td class="hide-mobile">${m.points}</td>
       <td class="cell-date hide-mobile">${lastDate}</td>
-      <td class="cell-actions"><button class="btn btn-outline btn-sm" onclick="openMemberDetail('${m.id}')">View</button></td>
-    </tr>`;
+<td class="cell-actions">
+        <div class="cell-actions-wrap">
+          <button class="btn btn-outline btn-sm" onclick="openMemberDetail('${m.id}')">View</button>
+          <button class="btn btn-outline btn-sm" onclick="openEditMemberPoints('${m.id}',${m.points||0},'${(m.name||'').replace(/'/g,String.fromCharCode(92,39))}')">✏️ Pts</button>
+          <button class="btn btn-outline btn-sm" style="border-color:#c8873a;color:#c8873a" onclick="generateCouponForMember('${m.id}','${(m.email||'').replace(/'/g,String.fromCharCode(92,39))}')">🎁</button>
+        </div>
+      </td>    </tr>`;
   }).join('');
 }
 function openMemberDetail(memberId) {
@@ -3466,6 +3472,8 @@ function showTab(tab) {
   // Update mobile bottom bar
   document.querySelectorAll('.tab-bar-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tbar-'+tab)?.classList.add('active');
+  localStorage.setItem('gremier_admin_tab', tab);
+  if (tab==='orders') loadOrders();
   if (tab==='orders') loadOrders();
   if (tab==='products') renderProductsList();
   if (tab==='paylinks') loadPayLinks();
@@ -4252,48 +4260,22 @@ initAdmin();
 // ── PWA SERVICE WORKER ──
 // Disabled from admin page so admin cannot register a root-scoped service worker.
 // If you want an admin PWA later, move admin to /admin/ and register /admin/admin-sw.js with scope /admin/.
-  // ── ADMIN: Backspace navigation fix ──
+
+async function generateCouponForMember(userId, memberEmail) {
+// ── ADMIN: Backspace navigation fix ──
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Backspace') return;
   const tag = document.activeElement?.tagName?.toLowerCase();
   const editable = document.activeElement?.isContentEditable;
-  // If focus is inside a text field, let browser handle it normally
   if (tag === 'input' || tag === 'textarea' || tag === 'select' || editable) return;
-  // Otherwise block backspace from navigating away
   e.preventDefault();
 });
 
-// ── ADMIN: Tab/page persistence via URL hash ──
-(function initAdminTabPersistence() {
-  // Try to find the tab-switching function and wrap it
-  // Read saved tab on load
-  const savedTab = localStorage.getItem('gremier_admin_tab');
-  if (savedTab) {
-    // Restore after a short delay so the page is ready
-    setTimeout(() => {
-      const tabBtn = document.querySelector(`[data-tab="${savedTab}"], [onclick*="showTab('${savedTab}')"], [onclick*='showTab("${savedTab}")']`);
-      if (tabBtn) tabBtn.click();
-    }, 100);
-  }
-
-  // Intercept all tab buttons to save their tab name
-  document.addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-tab], [onclick*="showTab"]');
-    if (!btn) return;
-    // Extract tab name from data-tab or onclick
-    let tabName = btn.dataset.tab;
-    if (!tabName) {
-      const match = (btn.getAttribute('onclick') || '').match(/showTab\(['"]([^'"]+)['"]\)/);
-      if (match) tabName = match[1];
-    }
-    if (tabName) localStorage.setItem('gremier_admin_tab', tabName);
-  });
-})();
-  // ── ADMIN: Member loyalty point editor ──
+// ── ADMIN: Member loyalty point editor ──
 async function openEditMemberPoints(userId, currentPoints, memberName) {
-  if (!isAdmin) { alert('Admin only'); return; }
-  const newVal = prompt(`Edit loyalty points for ${memberName}\nCurrent: ${currentPoints}\nEnter new points value:`, currentPoints);
-  if (newVal === null) return; // cancelled
+  if (!adminUser) { alert('Admin only'); return; }
+  const newVal = prompt('Edit loyalty points for ' + memberName + '\nCurrent: ' + currentPoints + '\nEnter new points value:', currentPoints);
+  if (newVal === null) return;
   const parsed = parseInt(newVal, 10);
   if (isNaN(parsed) || parsed < 0) {
     alert('Please enter a valid non-negative number');
@@ -4301,29 +4283,25 @@ async function openEditMemberPoints(userId, currentPoints, memberName) {
   }
   const diff = parsed - currentPoints;
   try {
-    // Update points
     const { error } = await sb.from('profiles')
       .update({ points: parsed })
       .eq('id', userId);
     if (error) throw error;
-    // Log the change
     await sb.from('loyalty_audit').insert({
       user_id: userId,
       change_amount: diff,
       reason: 'Admin manual adjustment',
-      admin_id: currentAdminUser?.id || null,
-    });
-    alert(`✓ Points updated to ${parsed}`);
-    // Re-render members list if that function exists
-    if (typeof loadMembers === 'function') loadMembers();
-    else if (typeof renderMembers === 'function') renderMembers();
+      admin_id: adminUser.id,
+    }).then(() => {}).catch(e => console.warn('loyalty_audit:', e));
+    showToast('Points updated to ' + parsed + ' ✓');
+    await loadMembers();
   } catch(e) {
     alert('Error: ' + (e.message || e));
   }
 }
 
 async function generateCouponForMember(userId, memberEmail) {
-  if (!isAdmin) { alert('Admin only'); return; }
+  if (!adminUser) { alert('Admin only'); return; }
   const code = 'REWARD-' + Math.random().toString(36).substring(2,8).toUpperCase();
   try {
     const { error } = await sb.from('coupons').insert({
@@ -4337,10 +4315,12 @@ async function generateCouponForMember(userId, memberEmail) {
       customer_email: memberEmail || null,
     });
     if (error) throw error;
-    alert(`✓ Coupon created: ${code}\nShare this with the customer.`);
+    showToast('Coupon created: ' + code + ' ✓');
+    alert('Coupon code: ' + code + '\nShare this with the customer.');
   } catch(e) {
     alert('Error: ' + (e.message || e));
   }
+}
 }
 </script>
 </body>
