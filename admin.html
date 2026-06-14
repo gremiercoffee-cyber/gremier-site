@@ -1286,9 +1286,8 @@ function setHubMode(mode) {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
  if (isOps) {
-  const frame = document.getElementById('opsFrame');
-  const opsUrl = 'https://gremier-coffee.vercel.app/';
-  if (frame && frame.src !== opsUrl) frame.src = opsUrl;
+  window.location.href = 'https://gremier-coffee.vercel.app/';
+  return;
 }
   }
 }
