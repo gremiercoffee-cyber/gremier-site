@@ -3489,7 +3489,7 @@ async function purchaseGiftCardFromPage() {
   btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting to payment…';
   try {
    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-giftcard-order`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-gift-card-order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
