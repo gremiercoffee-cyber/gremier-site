@@ -652,8 +652,8 @@
   /* CHAT TOOLTIP */
   #chatTooltip {
 #chatTooltip {
-  font-family:'Caveat','Comic Sans MS',cursive;
-  font-weight:700;
+  font-family:'Caveat', cursive;
+  font-weight:400;
   font-size:1.05rem;
   color:#1a1a1a;
   text-align:right;
@@ -661,7 +661,7 @@
   pointer-events:none;
   animation:tooltipIn .5s ease .8s both;
   display:block;
-  white-space:nowrap;
+  white-space:normal;
 }
 
 @media(min-width:641px){
@@ -669,7 +669,8 @@
     position:absolute;
     right:56px;
     bottom:2px;
-    font-size:1.28rem;
+    font-size:1.25rem;
+    width:170px;
   }
 }
   @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
