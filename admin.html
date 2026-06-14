@@ -15,16 +15,24 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="Gremier Admin"/>
-  <script src="/vendor/supabase-js.min.js"></script>
-  <script>
+<script>
+  window.ADMIN_SB = null;
+
+  function getAdminSupabase() {
+    if (window.ADMIN_SB) return window.ADMIN_SB;
+
+    const { createClient } = window.supabase;
+    window.ADMIN_SB = createClient(
+      'https://ayuzmwpmhncxrugsyxmw.supabase.co',
+      'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
+    );
+
+    return window.ADMIN_SB;
+  }
+
   window.signInAdmin = async function signInAdmin() {
     try {
-      const { createClient } = window.supabase;
-      const sbLogin = createClient(
-        'https://ayuzmwpmhncxrugsyxmw.supabase.co',
-        'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
-      );
-
+      const sbLogin = getAdminSupabase();
       const adminUrl = `${window.location.origin}/admin.html`;
 
       const { error } = await sbLogin.auth.signInWithOAuth({
@@ -41,6 +49,59 @@
       alert('Google sign-in crashed. Check console.');
     }
   };
+
+  async function earlyAdminSessionCheck() {
+    try {
+      const sbLogin = getAdminSupabase();
+      const { data: { session }, error } = await sbLogin.auth.getSession();
+
+      if (error) {
+        console.error('Admin session check failed:', error);
+        return;
+      }
+
+      if (!session?.user) return;
+
+      const allowedAdmins = ['gremiercoffee@gmail.com', 'yonigrey@gmail.com'];
+      const email = session.user.email;
+
+      if (!allowedAdmins.includes(email)) {
+        const denied = document.getElementById('accessDenied');
+        if (denied) denied.style.display = 'block';
+        await sbLogin.auth.signOut();
+        return;
+      }
+
+      const authScreen = document.getElementById('authScreen');
+      const appScreen = document.getElementById('appScreen');
+
+      if (authScreen) authScreen.style.display = 'none';
+      if (appScreen) appScreen.style.display = 'block';
+
+      const adminEmail = document.getElementById('adminEmail');
+      if (adminEmail) adminEmail.textContent = email;
+
+      setTimeout(() => {
+        try {
+          if (typeof setHubMode === 'function') {
+            setHubMode(localStorage.getItem('gremier_hub_mode') || 'website');
+          }
+          if (typeof showTab === 'function') {
+            showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
+          }
+          if (typeof loadOrders === 'function') loadOrders();
+          if (typeof loadAllProducts === 'function') loadAllProducts();
+          if (typeof loadStores === 'function') loadStores();
+        } catch (err) {
+          console.error('Admin post-login boot failed:', err);
+        }
+      }, 300);
+    } catch (err) {
+      console.error('Early admin session check crashed:', err);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', earlyAdminSessionCheck);
 </script>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
