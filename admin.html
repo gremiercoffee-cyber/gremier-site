@@ -3249,7 +3249,17 @@ async function saveDeliverySettings() {
 }
 let allZones = [];
 async function loadZones() {
-  const { data } = await sb.from('delivery_zones').select('*').order('sort_order');
+  const { data, error } = await sb
+    .from('delivery_zones')
+    .select('*')
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    console.error('Failed to load delivery zones:', error);
+    showToast('Failed to load zones: ' + error.message);
+    return;
+  }
+
   allZones = data || [];
   renderZones();
 }
@@ -3272,8 +3282,18 @@ function renderZones() {
   </tr>`).join('');
 }
 async function toggleZone(id, current) {
-  await sb.from('delivery_zones').update({is_active:!current}).eq('id',id);
-  loadZones();
+  const { error } = await sb
+    .from('delivery_zones')
+    .update({ is_active: !current })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Failed to toggle delivery zone:', error);
+    showToast('Zone update failed: ' + error.message);
+    return;
+  }
+
+  await loadZones();
 }
 function openZoneModal(zoneId) {
   const z = zoneId ? allZones.find(x=>x.id===zoneId) : null;
@@ -3325,18 +3345,40 @@ async function saveZone() {
     city_code: document.getElementById('zCityCode')?.value || null,
   };
   if (!data.name_en) { showToast('Zone name required'); return; }
-  if (id) await sb.from('delivery_zones').update(data).eq('id',id);
-  else await sb.from('delivery_zones').insert(data);
-  showToast(id?'Zone updated ✓':'Zone added ✓');
+  const query = id
+    ? sb.from('delivery_zones').update(data).eq('id', id).select()
+    : sb.from('delivery_zones').insert(data).select();
+
+  const { data: savedZone, error } = await query;
+
+  if (error) {
+    console.error('Failed to save delivery zone:', error);
+    showToast('Zone save failed: ' + error.message);
+    return;
+  }
+
+  console.log('Saved delivery zone:', savedZone);
+  showToast(id ? 'Zone updated ✓' : 'Zone added ✓');
   closeZoneModal();
-  loadZones();
+  await loadZones();
 }
 async function deleteZone(id) {
   if (!confirm('Delete this zone?')) return;
-  await sb.from('delivery_zones').delete().eq('id',id);
+
+  const { error } = await sb
+    .from('delivery_zones')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Failed to delete delivery zone:', error);
+    showToast('Zone delete failed: ' + error.message);
+    return;
+  }
+
   showToast('Zone deleted');
   closeZoneModal();
-  loadZones();
+  await loadZones();
 }
 // ══ SCHEDULE DELIVERIES ══
 async function loadWebOrders() {
