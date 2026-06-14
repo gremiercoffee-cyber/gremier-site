@@ -4473,32 +4473,58 @@ document.addEventListener('keydown', function(e) {
 // ── ADMIN: Member loyalty point editor ──
 async function openEditMemberPoints(userId, currentPoints, memberName) {
   if (!adminUser) { alert('Admin only'); return; }
-  const newVal = prompt('Edit loyalty points for ' + memberName + '\nCurrent: ' + currentPoints + '\nEnter new points value:', currentPoints);
+
+  const newVal = prompt(
+    'Edit loyalty points for ' + memberName +
+    '\nCurrent: ' + currentPoints +
+    '\nEnter new points value:',
+    currentPoints
+  );
+
   if (newVal === null) return;
+
   const parsed = parseInt(newVal, 10);
   if (isNaN(parsed) || parsed < 0) {
     alert('Please enter a valid non-negative number');
     return;
   }
-  const diff = parsed - currentPoints;
+
+  const diff = parsed - Number(currentPoints || 0);
+
   try {
-    const { error } = await sb.from('profiles')
+    const { data, error } = await sb.from('profiles')
       .update({ points: parsed })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select('id,email,full_name,points,coupon_available,points_redeemed,created_at')
+      .single();
+
     if (error) throw error;
+
     await sb.from('loyalty_audit').insert({
       user_id: userId,
       change_amount: diff,
       reason: 'Admin manual adjustment',
       admin_id: adminUser.id,
     }).then(() => {}).catch(e => console.warn('loyalty_audit:', e));
-    showToast('Points updated to ' + parsed + ' ✓');
-    await loadMembers();
+
+    allMembers = allMembers.map(m =>
+      m.id === userId
+        ? {
+            ...m,
+            points: Number(data?.points ?? parsed),
+            couponAvailable: Boolean(data?.coupon_available ?? m.couponAvailable),
+          }
+        : m
+    );
+
+    renderMemberStats();
+    renderMembersList();
+
+    showToast('Points updated to ' + Number(data?.points ?? parsed) + ' ✓');
   } catch(e) {
     alert('Error: ' + (e.message || e));
   }
 }
-
 async function generateCouponForMember(userId, memberEmail) {
   if (!adminUser) { alert('Admin only'); return; }
   const code = 'REWARD-' + Math.random().toString(36).substring(2,8).toUpperCase();
