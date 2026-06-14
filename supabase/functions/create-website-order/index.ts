@@ -96,9 +96,10 @@ function getSubscriptionBundleIds(product: Record<string, unknown>): string[] {
     .filter(Boolean))];
 }
 
-function normalizeSubscriptionInterval(value: unknown): "weekly" | "biweekly" | "monthly" {
+function normalizeSubscriptionInterval(value: unknown): "weekly" | "monthly" {
   const interval = String(value || "").trim().toLowerCase();
-  return interval === "weekly" || interval === "biweekly" ? interval : "monthly";
+  if (interval === "biweekly") throw new Error("Bi-weekly subscriptions are not supported yet");
+  return interval === "weekly" ? interval : "monthly";
 }
 
 function computeUnitPrice(product: Record<string, unknown>, item: Record<string, unknown>): number {

@@ -180,6 +180,53 @@ async function generatePayMeSale(
 
 }
 
+async function generatePayMeSubscription(
+  payload: Record<string, unknown>,
+  paymeBase: string,
+): Promise<{ saleUrl: string; paymeSaleId: string }> {
+  const endpoint = Deno.env.get("PAYME_RECURRING_ENDPOINT")
+    || `${paymeBase}api/generate-subscription`;
+  const paymeRes = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const paymeText = await paymeRes.text();
+  let paymeData: Record<string, unknown> = {};
+  try {
+    paymeData = paymeText ? JSON.parse(paymeText) : {};
+  } catch {
+    throw new Error(`PayMe returned invalid subscription response (${paymeRes.status})`);
+  }
+  console.log("PayMe subscription response:", paymeRes.status, paymeData);
+
+  const statusCode = Number(paymeData.status_code);
+  const paymeSaleId = String(
+    paymeData.payme_subscription_id
+      || paymeData.subscription_id
+      || paymeData.payme_sale_id
+      || "",
+  );
+  const saleUrl = String(
+    paymeData.sale_url
+      || paymeData.sale_url_full
+      || paymeData.subscription_url
+      || paymeData.sub_url
+      || paymeData.redirect_url
+      || "",
+  );
+
+  if (!paymeRes.ok || statusCode !== 0 || !saleUrl) {
+    const detail = paymeData.status_error_details || paymeData.status_error_code || paymeData.message
+      || paymeText.slice(0, 200)
+      || "PayMe subscription could not be created";
+    throw new Error(String(detail));
+  }
+
+  return { saleUrl, paymeSaleId };
+}
+
 function withPayMeBuyerOnUrl(
   saleUrl: string,
   opts: { email?: string | null; phone?: string | null; name?: string | null },
@@ -197,39 +244,64 @@ function getSubscriptionMeta(order: OrderRow): Record<string, unknown> | null {
     : null;
   if (!fromInfo && !fromItems) return null;
   const interval = String(fromInfo?.interval || fromItems?.subscription_interval || "monthly").toLowerCase();
+  if (interval === "biweekly") {
+    throw new Error("Bi-weekly subscriptions are not supported by PayMe yet");
+  }
   return {
     ...(fromInfo || {}),
-    interval: interval === "weekly" || interval === "biweekly" ? interval : "monthly",
+    interval: interval === "weekly" ? interval : "monthly",
   };
 }
 
-function intervalToDays(interval: unknown): number {
-  if (interval === "weekly") return 7;
-  if (interval === "biweekly") return 14;
-  return 30;
+function intervalToPayMeIterationType(interval: unknown): number {
+  return interval === "weekly" ? 2 : 3;
 }
 
-function buildRecurringPayloadPatch(order: OrderRow, subscription: Record<string, unknown>): Record<string, unknown> {
+function nextIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildRecurringPayload(
+  order: OrderRow,
+  subscription: Record<string, unknown>,
+  opts: {
+    sellerId: string;
+    paymeClientKey: string;
+    totalShekels: number;
+    buyerEmail: string;
+    buyerPhone: string;
+    returnUrl: string;
+    callbackUrl: string;
+  },
+): Record<string, unknown> {
   const templateRaw = Deno.env.get("PAYME_RECURRING_PAYLOAD_JSON") || "";
   if (!templateRaw.trim()) {
-    throw new Error("Subscription checkout is not configured for automatic recurring billing yet. Set PAYME_RECURRING_PAYLOAD_JSON with PayMe recurring fields before selling subscriptions.");
+    throw new Error("Subscription checkout is not configured for automatic recurring billing yet. Set PAYME_RECURRING_PAYLOAD_JSON with PayMe shared recurring defaults.");
   }
-  const replacements: Record<string, string> = {
-    "{{interval}}": String(subscription.interval || "monthly"),
-    "{{interval_days}}": String(intervalToDays(subscription.interval)),
-    "{{order_id}}": order.id,
-    "{{total_agorot}}": String(Math.round((Number(order.total) || 0) * 100)),
-    "{{total_shekels}}": String(Number(order.total) || 0),
-  };
-  let expanded = templateRaw;
-  for (const [needle, value] of Object.entries(replacements)) {
-    expanded = expanded.split(needle).join(value);
-  }
-  const parsed = JSON.parse(expanded);
+  const parsed = JSON.parse(templateRaw);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("PAYME_RECURRING_PAYLOAD_JSON must be a JSON object");
   }
-  return parsed as Record<string, unknown>;
+  if (!opts.paymeClientKey) {
+    throw new Error("Subscription checkout is missing PAYME_CLIENT_KEY");
+  }
+  if (!opts.buyerEmail || !opts.buyerPhone) {
+    throw new Error("Subscription checkout requires customer email and phone");
+  }
+  return {
+    ...(parsed as Record<string, unknown>),
+    payme_client_key: opts.paymeClientKey,
+    seller_payme_id: opts.sellerId,
+    sub_price: Math.round(opts.totalShekels * 100),
+    sub_description: `Gremier Coffee Subscription #${order.order_number ?? order.id.slice(0, 8)}`,
+    sub_iteration_type: intervalToPayMeIterationType(subscription.interval),
+    sub_start_date: nextIsoDate(),
+    subscription_id: order.id,
+    sub_callback_url: opts.callbackUrl,
+    sub_return_url: opts.returnUrl,
+    sub_email_address: opts.buyerEmail,
+    sub_indicative_mobile: opts.buyerPhone,
+  };
 }
 
 async function tryReuseExistingPayMeSale(
@@ -625,11 +697,20 @@ serve(async (req) => {
     };
 
     const subscriptionMeta = getSubscriptionMeta(row);
-    if (subscriptionMeta) {
-      Object.assign(payload, buildRecurringPayloadPatch(row, subscriptionMeta));
-    }
-
-    const { saleUrl, paymeSaleId } = await generatePayMeSale(payload, paymeBase);
+    const { saleUrl, paymeSaleId } = subscriptionMeta
+      ? await generatePayMeSubscription(
+        buildRecurringPayload(row, subscriptionMeta, {
+          sellerId,
+          paymeClientKey: Deno.env.get("PAYME_CLIENT_KEY") || "",
+          totalShekels,
+          buyerEmail,
+          buyerPhone,
+          returnUrl,
+          callbackUrl: `${supabaseUrl}/functions/v1/payme-webhook`,
+        }),
+        paymeBase,
+      )
+      : await generatePayMeSale(payload, paymeBase);
     const checkoutUrl = withPayMeBuyerOnUrl(saleUrl, {
       email: buyerEmail,
       phone: buyerPhone,

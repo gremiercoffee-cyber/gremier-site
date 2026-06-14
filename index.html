@@ -299,7 +299,7 @@
     .cart-total-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
     .cart-total-label { font-size:.8rem; color:var(--text2); text-transform:uppercase; letter-spacing:.1em; }
     .cart-total-price { font-family:'Playfair Display',serif; font-size:1.4rem; color:#1a1a1a; }
-    .sub-frequency-row { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:8px 0 16px; }
+    .sub-frequency-row { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:8px 0 16px; }
     .sub-frequency-btn { border:1px solid var(--border); background:#fff; color:#1a1a1a; min-height:40px; border-radius:4px; font:600 .78rem 'DM Sans',sans-serif; cursor:pointer; }
     .sub-frequency-btn.active { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
     .sub-bundle-item { display:grid; grid-template-columns:46px 1fr auto; gap:11px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
@@ -1617,7 +1617,7 @@ function pdGetSubscriptionTotal() {
   return parseFloat(pdCurrentProduct?.price) || 0;
 }
 function pdSetSubscriptionInterval(interval) {
-  pdSubscriptionInterval = ['weekly','biweekly','monthly'].includes(interval) ? interval : 'monthly';
+  pdSubscriptionInterval = interval === 'weekly' ? 'weekly' : 'monthly';
   document.querySelectorAll('#pdSubscriptionSection .sub-frequency-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.interval === pdSubscriptionInterval);
   });
@@ -1702,7 +1702,6 @@ function pdUpdateDrawerPrice() {
   if (isSubscriptionProduct(p)) {
     const intervalLabel = {
       weekly: lang === 'he' ? 'כל שבוע' : 'weekly',
-      biweekly: lang === 'he' ? 'כל שבועיים' : 'bi-weekly',
       monthly: lang === 'he' ? 'כל חודש' : 'monthly',
     }[pdSubscriptionInterval];
     document.getElementById('pdPrice').innerHTML = `₪${pdGetSubscriptionTotal()} <span style="font-size:.75rem;color:var(--text2);font-weight:400">/ ${intervalLabel}</span>`;
@@ -1790,7 +1789,6 @@ function renderPdSubscriptionSection(p, keepState) {
   }
   const intervalButtons = [
     { key: 'weekly', label: lang === 'he' ? 'שבועי' : 'Weekly' },
-    { key: 'biweekly', label: lang === 'he' ? 'דו-שבועי' : 'Bi-weekly' },
     { key: 'monthly', label: lang === 'he' ? 'חודשי' : 'Monthly' },
   ].map(opt => `<button type="button" class="sub-frequency-btn ${pdSubscriptionInterval === opt.key ? 'active' : ''}" data-interval="${opt.key}" onclick="pdSetSubscriptionInterval('${opt.key}');pdUpdateDrawerPrice()">${opt.label}</button>`).join('');
   const title = lang === 'he' ? 'מה לכלול במנוי' : 'Choose what goes in your subscription';
@@ -2171,7 +2169,6 @@ function renderCartDrawer() {
 function subscriptionIntervalLabel(interval) {
   const labels = {
     weekly: lang === 'he' ? 'שבועי' : 'Weekly',
-    biweekly: lang === 'he' ? 'דו-שבועי' : 'Bi-weekly',
     monthly: lang === 'he' ? 'חודשי' : 'Monthly',
   };
   return labels[interval] || labels.monthly;
