@@ -5883,6 +5883,22 @@ const OPS_SB = window.supabase.createClient(
   'https://ayuzmwpmhncxrugsyxmw.supabase.co',
   'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
 );
+  window.opsFetch = async function opsFetch(path, options = {}) {
+  const { data: { session } } = await OPS_SB.auth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
+      'Authorization': token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      'Prefer': options.prefer || 'return=representation',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+};
 
 // ── constants ──────────────────────────────────────────────
 const CONCENTRATE_TYPES = {
@@ -5925,22 +5941,6 @@ function getProductRatio(pid, concType) {
 }
 
 // ── Supabase helpers ───────────────────────────────────────
-async function opsFetch(path, options = {}) {
-  const { data: { session } } = await OPS_SB.auth.getSession();
-  const token = session?.access_token;
-  const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
-      'Authorization': token ? `Bearer ${token}` : '',
-      'Content-Type': 'application/json',
-      'Prefer': options.prefer || 'return=representation',
-      ...(options.headers || {}),
-    },
-  });
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
 async function loadStockData() {
   const [inventory, concentrate, beans, labeledStock] = await Promise.all([
     opsFetch('inventory?select=*'),
