@@ -4443,8 +4443,32 @@ async function saveDelivery() {
     await sb.from('store_deliveries').update(data).eq('id', id);
     showToast('Delivery updated ✓');
   } else {
-    const { data: inserted } = await sb.from('store_deliveries').insert(data).select('id').single();
-    // create Schedule job with full per-product quantities
+await sb.from('store_deliveries').insert(data);
+    // deduct inventory for each product
+    const hasQtys = Object.values(ldQuantities).some(q=>q>0);
+    if (hasQtys) {
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      const headers = {
+        'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      };
+      for (const [pid, qty] of Object.entries(ldQuantities)) {
+        if (!qty || qty <= 0) continue;
+        const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/inventory?product=eq.${pid}`, { headers });
+        const rows = await res.json();
+        if (!rows?.length) continue;
+        const newQty = Math.max(0, (rows[0].qty || 0) - qty);
+        await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/inventory?product=eq.${pid}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ qty: newQty }),
+        });
+      }
+    }
+    showToast('Delivery logged ✓');    // create Schedule job with full per-product quantities
     const hasQtys = Object.values(ldQuantities).some(q=>q>0);
     if (hasQtys) {
       const jobId = 'admin_del_' + Date.now() + '_' + Math.random().toString(36).slice(2);
