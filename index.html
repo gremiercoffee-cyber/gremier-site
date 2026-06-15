@@ -2470,11 +2470,13 @@ async function submitOrder() {
   submitBtn.textContent = lang==='he' ? 'מעביר לתשלום…' : 'Redirecting to payment…';
 
   try {
-    const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
     const deliveryFee = updateDeliveryPrice() || 0;
     const couponDiscount = (appliedRedeem && appliedRedeem.kind === 'coupon') ? Number(appliedRedeem.discount) || 0 : 0;
     const giftCardDiscount = (appliedRedeem && appliedRedeem.kind === 'gift_card') ? Number(appliedRedeem.discount) || 0 : 0;
-    const total = Math.max(0, cartTotal + deliveryFee - couponDiscount - giftCardDiscount);
+    const totalDiscount = couponDiscount + giftCardDiscount;
+    const total = Math.max(0, cartTotal + deliveryFee - totalDiscount);
+    console.log('Order total breakdown:', { cartTotal, deliveryFee, couponDiscount, giftCardDiscount, totalDiscount, total });
     const pricing = resolveDeliveryPricing(selectedCheckoutCity);
 const isExpedited = document.getElementById('shipExpedited')?.checked;
 const priorityType = document.getElementById('priorityDate')?.checked ? 'specific_date' : 'fast';
@@ -2887,8 +2889,7 @@ function prepareCheckoutContent() {
   document.getElementById('coSummary').innerHTML = `
     <div class="order-summary-title">${lang === 'he' ? 'סיכום הזמנה' : 'Order Summary'}</div>
     ${lines}${redeemLine}
-    <div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span>₪${Math.max(0, cartTotal - redeemDiscount)}</span></div>`;
-  selectedCheckoutCity = null;
+<div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span id="coSummaryTotal">₪${Math.max(0, cartTotal - redeemDiscount)}</span></div>`;  selectedCheckoutCity = null;
   const cityInput = document.getElementById('coCityInput');
   if (cityInput) cityInput.value = '';
   hideCitySuggestions();
@@ -3338,8 +3339,13 @@ function updateDeliveryPrice() {
   document.getElementById('shipExpeditedPrice').textContent = `₪${expeditedFee}`;
   if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
   if (freeNote) freeNote.style.display = (!hasProductFee && isFree && !isExpedited) ? 'block' : 'none';
-  return fee;
-}
+const summaryTotal = document.getElementById('coSummaryTotal');
+if (summaryTotal) {
+    const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+    const redeemDiscount = appliedRedeem ? Number(appliedRedeem.discount) || 0 : 0;
+    summaryTotal.textContent = `₪${Math.max(0, cartTotal + fee - redeemDiscount)}`;
+  }
+  return fee;}
 // ══ INIT ══
 async function init() {
   const oauthReturn = isOAuthReturnUrl();
