@@ -1391,7 +1391,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div id="gcIssueResult" style="display:none;margin-top:16px"></div>
   </div>
 </div>
- 
+
+  <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
 <script>
   function escHtml(s) {
@@ -6416,5 +6417,307 @@ function StockTab() {
 const stockRoot = document.getElementById('ops-stock-root');
 if (stockRoot) ReactDOM.createRoot(stockRoot).render(<StockTab />);
 </script>
+
+<script type="text/babel" data-presets="react">
+const { useState: useState3, useEffect: useEffect3, useRef: useRef3 } = React;
+
+const OPS_AI_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/ops-ai';
+
+async function opsAI2(action, payload, isFormData = false) {
+  const { data: { session } } = await window.ADMIN_SB.auth.getSession();
+  const headers = { 'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn' };
+  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+  if (!isFormData) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`${OPS_AI_URL}?action=${action}`, {
+    method: 'POST', headers,
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function VoiceLoggerFloat() {
+  const [isOpen, setIsOpen] = useState3(false);
+  const [phase, setPhase] = useState3('idle');
+  const [messages, setMessages] = useState3([]);
+  const [pendingOption, setPendingOption] = useState3(null);
+  const [errorMsg, setErrorMsg] = useState3('');
+  const [stores, setStores] = useState3([]);
+  const mediaRecorderRef = useRef3(null);
+  const audioChunksRef = useRef3([]);
+  const messagesEndRef = useRef3(null);
+
+  useEffect3(() => {
+    window.opsFetch('stores?select=name,phone&is_active=eq.true').then(rows => setStores(rows||[]));
+  }, []);
+
+  useEffect3(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, pendingOption]);
+
+  function openChat() {
+    setIsOpen(true); setMessages([]); setPendingOption(null); setErrorMsg('');
+    setTimeout(() => startListening(), 100);
+  }
+  function closeChat() {
+    stopListening(); setIsOpen(false); setPhase('idle');
+    setMessages([]); setPendingOption(null); setErrorMsg('');
+  }
+  function stopListening() { try { mediaRecorderRef.current?.stop(); } catch(e){} }
+
+  function handleMicTap() {
+    if (pendingOption) return;
+    if (phase==='listening') stopListening();
+    else if (phase==='idle'||phase==='done') { setErrorMsg(''); setPendingOption(null); startListening(); }
+  }
+
+  async function startListening() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setPhase('listening');
+      audioChunksRef.current = [];
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = e => { if (e.data.size>0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t=>t.stop());
+        if (!audioChunksRef.current.length) { setPhase('idle'); return; }
+        setPhase('thinking');
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        await transcribeAndProcess(audioBlob, mimeType);
+      };
+      recorder.onerror = () => { setPhase('idle'); setErrorMsg('Mic error. Try again.'); };
+      recorder.start();
+    } catch(e) { setPhase('idle'); setErrorMsg('Mic access denied.'); }
+  }
+
+  async function transcribeAndProcess(audioBlob, mimeType) {
+    try {
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const formData = new FormData();
+      formData.append('file', audioBlob, `recording.${ext}`);
+      formData.append('model', 'whisper-1');
+      formData.append('language', 'en');
+      const storeNames = stores.map(s=>s.name).join(', ');
+      const prodNames = Object.values(window.__OPS_PRODUCTS__||{}).map(p=>p.label||'').filter(Boolean).join(', ');
+      formData.append('prompt', `Gremier Coffee cold brew operations. Stores: ${storeNames}. Products: ${prodNames}. Terms: classic, house blend, colombia, decaf, concentrate, brew, drain, bottle, label, jerry can, delivery, schedule, paid, billed, kilo, liter.`);
+      const data = await opsAI2('transcribe', formData, true);
+      const text = data.text?.trim();
+      if (!text) { setPhase('idle'); setErrorMsg("Couldn't hear anything."); return; }
+      setMessages(prev=>[...prev,{role:'user',text}]);
+      await parseIntent2(text);
+    } catch(err) { setPhase('idle'); setErrorMsg('Transcription error: '+err.message); }
+  }
+
+  async function parseIntent2(text) {
+    const today = todayISO2();
+    const tomorrow = tomorrowISO2();
+    const systemPrompt = `You are the voice assistant for Gremier Coffee, a cold brew company in Jerusalem.
+TODAY: ${today} TOMORROW: ${tomorrow}
+STORES: ${stores.map(s=>s.name).join(', ')}
+PRODUCTS: ${Object.entries(window.__OPS_PRODUCTS_FULL__||{}).map(([k])=>k).join(', ')}
+
+PICK ONE INTENT:
+1. log — something already happened. done=true, date=today.
+2. schedule — planning for later. done=false.
+3. ask — question about stock or planning. Answer conversationally.
+4. clarify — key info missing. Ask one short question with choices.
+5. unknown — cannot tell what they mean.
+
+JOB SHAPES:
+- delivery store: { type:"delivery", deliveryType:"store", storeName, quantities:{product_key:qty}, done, date }
+- delivery private: { type:"delivery", deliveryType:"private", privateName, privateAddress, quantities, done, date }
+- brew: { type:"brew", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:1|1.5|2|3, done, date }
+- bottling: { type:"bottling", product:product_key, liters:number, done, date }
+- labeling: { type:"labeling", product:product_key, qty:number, done, date }
+- drain: { type:"drain", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
+
+RESPONSE — return ONLY JSON:
+log/schedule: { "intent":"log"|"schedule", "reply":"short confirmation", "option":{ "label":"...", "job":{...} } }
+ask: { "intent":"ask", "reply":"your answer" }
+clarify: { "intent":"clarify", "reply":"one short question", "choices":["A","B"] }
+unknown: { "intent":"unknown", "reply":"I didn't catch that. Try again?" }
+
+Keep replies short — 1-2 sentences.`;
+
+    try {
+      const history = messages.filter(m=>m.text&&m.text!=='⋯').map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+      const data = await opsAI2('parse_intent', {
+        model:'gpt-4o', max_tokens:600, temperature:0.2,
+        response_format:{type:'json_object'},
+        messages:[{role:'system',content:systemPrompt},...history,{role:'user',content:text}],
+      });
+      const raw = data.choices?.[0]?.message?.content||data.content?.[0]?.text||'';
+      let obj;
+      try { obj = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+      catch { setMessages(prev=>[...prev,{role:'assistant',text:'Sorry, trouble understanding. Try again.'}]); setPhase('idle'); return; }
+      const reply = obj.reply||'Done.';
+      const choices = obj.choices||null;
+      if (obj.intent==='ask'||obj.intent==='unknown'||obj.intent==='clarify') {
+        setMessages(prev=>[...prev,{role:'assistant',text:reply,choices}]);
+        setPhase('done');
+      } else if (obj.option) {
+        setMessages(prev=>[...prev,{role:'assistant',text:reply,option:obj.option,intent:obj.intent,choices}]);
+        setPendingOption({option:obj.option,intent:obj.intent});
+        setPhase('done');
+      } else {
+        setMessages(prev=>[...prev,{role:'assistant',text:reply,choices}]);
+        setPhase('done');
+      }
+    } catch(err) {
+      setMessages(prev=>[...prev,{role:'assistant',text:'API error. Try again.'}]);
+      setPhase('idle');
+    }
+  }
+
+  async function confirmOption() {
+    if (!pendingOption) return;
+    const { option, intent } = pendingOption;
+    setPendingOption(null); setPhase('idle');
+    const job = option.job;
+    if (!job) return;
+    const newJob = {
+      ...job,
+      id: Date.now()+'_'+Math.random().toString(36).slice(2),
+      label: option.label||job.label||job.type,
+      brewStarted: false,
+    };
+    await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
+    setMessages(prev=>[...prev,{role:'assistant',text:'✓ Saved!'}]);
+  }
+
+  function cancelOption() {
+    setPendingOption(null);
+    setMessages(prev=>[...prev,{role:'assistant',text:'Cancelled.'}]);
+    setPhase('idle');
+  }
+
+  const intentColor = i => i==='log'?'#4caf72':i==='schedule'?'#6aa8e8':'#d0d0d0';
+  const intentLabel = i => i==='log'?'Log Now':i==='schedule'?'Schedule':'Confirm';
+
+  const AMBER = '#e0a030';
+
+  return (
+    <>
+      <style>{`
+        @keyframes micPulse { 0%,100%{box-shadow:0 0 0 0px rgba(224,160,48,.5),0 4px 16px rgba(0,0,0,.4);} 50%{box-shadow:0 0 0 12px rgba(224,160,48,.15),0 4px 16px rgba(0,0,0,.4);} }
+        @keyframes micThink { 0%,100%{box-shadow:0 0 0 0px rgba(106,168,232,.5);} 50%{box-shadow:0 0 0 10px rgba(106,168,232,.15);} }
+        @keyframes slideUp2 { from{transform:translateY(100%);opacity:0;} to{transform:translateY(0);opacity:1;} }
+        @keyframes fadeInMsg { from{opacity:0;transform:translateY(4px);} to{opacity:1;transform:translateY(0);} }
+        .vl-msg { animation: fadeInMsg .18s ease; }
+      `}</style>
+
+      {/* backdrop */}
+      {isOpen&&<div onClick={closeChat} style={{position:'fixed',inset:0,zIndex:298,background:'rgba(0,0,0,.55)'}}/>}
+
+      {/* floating button */}
+      {!isOpen&&(
+        <button onClick={openChat} style={{
+          position:'fixed', bottom:108, right:14,
+          width:46, height:46, borderRadius:'50%',
+          background:AMBER, color:'#121212',
+          border:'none', fontSize:20, cursor:'pointer', zIndex:299,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          boxShadow:'0 4px 16px rgba(0,0,0,.5)',
+        }}>🎙</button>
+      )}
+
+      {/* chat panel */}
+      {isOpen&&(
+        <div onClick={e=>e.stopPropagation()} style={{
+          position:'fixed', bottom:0, left:0, right:0, zIndex:299,
+          background:'#1e1e1e', borderRadius:'18px 18px 0 0',
+          boxShadow:'0 -4px 30px rgba(0,0,0,.4)',
+          animation:'slideUp2 .22s ease',
+          display:'flex', flexDirection:'column', maxHeight:'72vh',
+          border:'1px solid #454545', borderBottom:'none',
+        }}>
+          {/* header */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px 10px',borderBottom:'1px solid #303030',flexShrink:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:AMBER,letterSpacing:.5}}>☕ Gremier Assistant</div>
+            <button onClick={closeChat} style={{background:'none',border:'none',color:'#9a9a9a',fontSize:20,cursor:'pointer'}}>✕</button>
+          </div>
+
+          {/* messages */}
+          <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:10}}>
+            {messages.map((msg,i)=>(
+              <div key={i} className="vl-msg" style={{display:'flex',flexDirection:'column',alignItems:msg.role==='user'?'flex-end':'flex-start'}}>
+                <div style={{
+                  padding:'9px 13px',
+                  borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',
+                  background:msg.role==='user'?AMBER:'#303030',
+                  color:msg.role==='user'?'#121212':'#efefef',
+                  fontSize:14, lineHeight:1.5, maxWidth:'90%',
+                }}>{msg.text}</div>
+                {msg.choices&&i===messages.length-1&&(
+                  <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>
+                    {msg.choices.map((choice,ci)=>(
+                      <button key={ci} onClick={()=>{
+                        setMessages(prev=>[...prev,{role:'user',text:choice}]);
+                        setPhase('thinking');
+                        parseIntent2(choice);
+                      }} style={{background:'#303030',border:'1px solid #454545',borderRadius:20,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:'pointer',color:'#efefef'}}>
+                        {choice}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {phase==='thinking'&&(
+              <div className="vl-msg" style={{display:'flex',alignItems:'flex-start'}}>
+                <div style={{background:'#303030',borderRadius:'16px 16px 16px 4px',padding:'10px 14px',fontSize:18,color:'#9a9a9a'}}>⋯</div>
+              </div>
+            )}
+            <div ref={messagesEndRef}/>
+          </div>
+
+          {/* error */}
+          {errorMsg&&<div style={{padding:'4px 16px',fontSize:12,color:'#e57368',textAlign:'center',flexShrink:0}}>{errorMsg}</div>}
+
+          {/* bottom bar */}
+          <div style={{padding:'10px 12px 28px',flexShrink:0,borderTop:'1px solid #303030',background:'#1e1e1e'}}>
+            {pendingOption?(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:intentColor(pendingOption.intent),marginBottom:6}}>{intentLabel(pendingOption.intent)}: {pendingOption.option.label}</div>
+                <div style={{display:'flex',gap:8,marginTop:8}}>
+                  <button onClick={cancelOption} style={{flex:1,background:'#303030',border:'1px solid #454545',borderRadius:8,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer',color:'#9a9a9a'}}>Cancel</button>
+                  <button onClick={confirmOption} style={{flex:2,background:intentColor(pendingOption.intent),border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',color:'#121212'}}>{intentLabel(pendingOption.intent)} ✓</button>
+                </div>
+              </div>
+            ):(
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <input
+                  type="text"
+                  placeholder="Or type a message…"
+                  style={{flex:1,background:'#303030',border:'1px solid #454545',borderRadius:20,padding:'10px 14px',color:'#efefef',fontSize:14,outline:'none'}}
+                  onKeyDown={e=>{if(e.key==='Enter'&&e.target.value.trim()){const t=e.target.value.trim();e.target.value='';setMessages(prev=>[...prev,{role:'user',text:t}]);setPhase('thinking');parseIntent2(t);}}}
+                />
+                <button onClick={handleMicTap} style={{
+                  width:46,height:46,borderRadius:'50%',flexShrink:0,
+                  background:phase==='listening'?'#e57368':phase==='thinking'?'#6aa8e8':AMBER,
+                  color:'#121212',border:'none',fontSize:20,cursor:'pointer',
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  animation:phase==='listening'?'micPulse 1s infinite':phase==='thinking'?'micThink 1s infinite':'none',
+                  boxShadow:'0 2px 10px rgba(0,0,0,.4)',
+                }}>
+                  {phase==='thinking'?'⋯':phase==='listening'?'■':'🎙'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const vlRoot = document.getElementById('ops-voicelogger-root');
+if (vlRoot) ReactDOM.createRoot(vlRoot).render(<VoiceLoggerFloat/>);
+</script>
+
 </body>
 </html>
