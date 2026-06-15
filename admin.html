@@ -28,6 +28,9 @@
   <link rel="apple-touch-icon" href="logo.png"/>
   <meta name="theme-color" content="#141414"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
 <script>
   window.ADMIN_SB = null;
 
@@ -503,6 +506,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
+      <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
@@ -532,6 +536,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <div id="opsPanel"><iframe id="opsFrame" class="ops-frame" src="about:blank" title="Gremier Operations"></iframe></div>
       <div id="websiteMain">
+        <!-- STOCK (ops) TAB -->
+      <div id="tab-stock" class="tab-content" style="display:none">
+        <div id="ops-stock-root"></div>
+      </div>
       <!-- ORDERS -->
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
@@ -986,6 +994,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="bottom-tab-bar" id="bottomTabBar">
     <button class="tab-bar-btn" id="tbar-dashboard" onclick="showTab('dashboard')">
   <span class="tab-icon">📊</span>Dashboard
+</button>
+    <button class="tab-bar-btn" id="tbar-stock" onclick="showTab('stock')">
+  <span class="tab-icon">⚗️</span>Stock
 </button>
     <button class="tab-bar-btn active" id="tbar-orders" onclick="showTab('orders')">
       <span class="tab-icon">🛒</span>Orders
@@ -4966,6 +4977,33 @@ async function generateCouponForMember(userId, memberEmail) {
 </script>
 </body>
 </html>
+</script>
+<script type="text/babel" data-presets="react">
+  const { useState, useEffect } = React;
+
+  const OPS_SB = window.supabase.createClient(
+    'https://ayuzmwpmhncxrugsyxmw.supabase.co',
+    'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
+  );
+
+  function StockTabPlaceholder() {
+    const [status, setStatus] = useState('Connecting…');
+    useEffect(() => {
+      OPS_SB.from('concentrate').select('*').then(({ data, error }) => {
+        if (error) setStatus('Supabase error: ' + error.message);
+        else setStatus('Connected ✓ — ' + (data?.length ?? 0) + ' concentrate rows loaded');
+      });
+    }, []);
+    return (
+      <div style={{ padding: 24, color: '#efefef', fontFamily: 'DM Sans, sans-serif' }}>
+        <h2 style={{ fontFamily: 'Playfair Display, serif', marginBottom: 12 }}>Stock — wiring test</h2>
+        <div style={{ fontSize: 14, color: '#9a9a9a' }}>{status}</div>
+      </div>
+    );
+  }
+
+  const stockRoot = document.getElementById('ops-stock-root');
+  if (stockRoot) ReactDOM.createRoot(stockRoot).render(<StockTabPlaceholder />);
 </script>
 </body>
 </html>
