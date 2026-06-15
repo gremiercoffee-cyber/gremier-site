@@ -4979,31 +4979,544 @@ async function generateCouponForMember(userId, memberEmail) {
 </html>
 </script>
 <script type="text/babel" data-presets="react">
-  const { useState, useEffect } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
-  const OPS_SB = window.supabase.createClient(
-    'https://ayuzmwpmhncxrugsyxmw.supabase.co',
-    'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
-  );
+const OPS_SB = window.supabase.createClient(
+  'https://ayuzmwpmhncxrugsyxmw.supabase.co',
+  'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
+);
 
-  function StockTabPlaceholder() {
-    const [status, setStatus] = useState('Connecting…');
-    useEffect(() => {
-      OPS_SB.from('concentrate').select('*').then(({ data, error }) => {
-        if (error) setStatus('Supabase error: ' + error.message);
-        else setStatus('Connected ✓ — ' + (data?.length ?? 0) + ' concentrate rows loaded');
+// ── constants ──────────────────────────────────────────────
+const CONCENTRATE_TYPES = {
+  classic:    { label: 'Classic (Dark Roast)',   ratio: 0.44 },
+  houseBlend: { label: 'House Blend',             ratio: 0.50 },
+  colombia:   { label: 'Colombia (Light Roast)',  ratio: 0.50 },
+  decaf:      { label: 'Decaf',                   ratio: 0.50 },
+};
+const PRODUCTS = {
+  classic_liter:        { label: 'Classic',               category: 'liter',     concentrate: 'classic',    litersPerUnit: 1    },
+  sweetened_classic:    { label: 'Sweetened Classic',     category: 'liter',     concentrate: 'classic',    litersPerUnit: 1    },
+  house_blend:          { label: 'House Blend',           category: 'liter',     concentrate: 'houseBlend', litersPerUnit: 1    },
+  colombia_liter:       { label: 'Colombia',              category: 'liter',     concentrate: 'colombia',   litersPerUnit: 1    },
+  decaf_liter:          { label: 'Decaf',                 category: 'liter',     concentrate: 'decaf',      litersPerUnit: 1    },
+  classic_mini:         { label: 'Classic Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
+  house_blend_mini:     { label: 'House Blend Mini',      category: 'mini',      concentrate: 'houseBlend', litersPerUnit: 0.25 },
+  vanilla_mini:         { label: 'Vanilla Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
+  original_mini:        { label: 'Original Mini',         category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
+  caramel_mini:         { label: 'Caramel Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
+  jerry_can:            { label: 'Jerry Can Classic',     category: 'jerry',     concentrate: 'classic',    litersPerUnit: 5    },
+  jerry_can_houseblend: { label: 'Jerry Can House Blend', category: 'jerry',     concentrate: 'houseBlend', litersPerUnit: 5    },
+  jerry_can_colombia:   { label: 'Jerry Can Colombia',    category: 'jerry',     concentrate: 'colombia',   litersPerUnit: 5    },
+  jerry_can_decaf:      { label: 'Jerry Can Decaf',       category: 'jerry',     concentrate: 'decaf',      litersPerUnit: 5    },
+  vanilla_syrup:        { label: 'Vanilla Syrup',         category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
+  caramel_syrup:        { label: 'Caramel Syrup',         category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
+  sugar_syrup:          { label: 'Sugar Syrup',           category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
+  dispenser:            { label: 'Dispenser',             category: 'dispenser', concentrate: null,         litersPerUnit: 0    },
+};
+const BEAN_TYPES = {
+  classic:    { label: 'Classic (Dark Roast)',   warnKg: 9 },
+  houseBlend: { label: 'House Blend',             warnKg: 3 },
+  colombia:   { label: 'Colombia (Light Roast)',  warnKg: 3 },
+  decaf:      { label: 'Decaf',                   warnKg: 1 },
+};
+const LABELED_PRODUCTS = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+const LABELED_WARN = { classic_liter:30, sweetened_classic:25, house_blend:20, colombia_liter:20, vanilla_mini:80, original_mini:80, caramel_mini:100, classic_mini:null, house_blend_mini:null };
+const MINI_PRODUCTS = ['vanilla_mini','original_mini','caramel_mini'];
+function getProductRatio(pid, concType) {
+  return MINI_PRODUCTS.includes(pid) ? 0.29 : (CONCENTRATE_TYPES[concType]?.ratio || 0.44);
+}
+
+// ── Supabase helpers ───────────────────────────────────────
+async function opsFetch(path, options = {}) {
+  const { data: { session } } = await OPS_SB.auth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
+      'Authorization': token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      'Prefer': options.prefer || 'return=representation',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+async function loadStockData() {
+  const [inventory, concentrate, beans, labeledStock] = await Promise.all([
+    opsFetch('inventory?select=*'),
+    opsFetch('concentrate?select=*'),
+    opsFetch('beans?select=*'),
+    opsFetch('labeled_stock?select=*'),
+  ]);
+  const inventoryMap = {}; (inventory||[]).forEach(r => { inventoryMap[r.product] = r.qty; });
+  const concentrateMap = {}; (concentrate||[]).forEach(r => { concentrateMap[r.type] = r.liters; });
+  const beansMap = {}; (beans||[]).forEach(r => { beansMap[r.type] = { kg: r.kg, ordered: r.ordered||false, orderedKg: r.ordered_kg||0 }; });
+  const labeledMap = {}; (labeledStock||[]).forEach(r => { labeledMap[r.product] = r.qty; });
+  return { inventory: inventoryMap, concentrate: concentrateMap, beans: beansMap, labeledStock: labeledMap };
+}
+async function loadUpcomingJobs() {
+  const today = new Date().toISOString().split('T')[0];
+  const rows = await opsFetch(`jobs?select=*&done=eq.false&date=gte.${today}&order=date.asc`);
+  return rows || [];
+}
+async function patchInventory(product, qty) {
+  await opsFetch(`inventory?product=eq.${product}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+}
+async function patchConcentrate(type, liters) {
+  await opsFetch(`concentrate?type=eq.${type}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ liters }) });
+}
+async function patchBeans(type, kg) {
+  await opsFetch(`beans?type=eq.${type}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ kg }) });
+}
+async function patchBeanOrdered(type, ordered, orderedKg) {
+  await opsFetch(`beans?type=eq.${type}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ ordered, ordered_kg: orderedKg }) });
+}
+async function patchLabeledStock(product, qty) {
+  await opsFetch(`labeled_stock?product=eq.${product}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+}
+
+// ── Need-to-make calculation ───────────────────────────────
+function concentrateNeeded(jobs, inventory, concentrate) {
+  const n = { classic:0, houseBlend:0, colombia:0, decaf:0 };
+  const remStock = { ...inventory };
+  const remConc  = { ...concentrate };
+  const JERRY_MAP = { classic:'jerry_can', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
+  const kgToL = { 3:19, 2:12.7, 1.5:9.5, 1:6.4 };
+  [...jobs].filter(j=>!j.done).sort((a,b)=>a.date.localeCompare(b.date)).forEach(j => {
+    if (j.type === 'bottling' && PRODUCTS[j.product]?.concentrate) {
+      const ct = PRODUCTS[j.product].concentrate;
+      const ratio = getProductRatio(j.product, ct);
+      const need = (j.liters||0)*ratio;
+      n[ct] += Math.max(0, need - (remConc[ct]||0));
+      remConc[ct] = Math.max(0, (remConc[ct]||0) - need);
+    }
+    if (j.type === 'delivery') {
+      Object.entries(j.quantities||{}).forEach(([pid,qty]) => {
+        if (!PRODUCTS[pid]?.concentrate || !qty) return;
+        const ct = PRODUCTS[pid].concentrate;
+        const ratio = getProductRatio(pid, ct);
+        const inStock = remStock[pid]||0;
+        const gap = Math.max(0, qty - inStock);
+        remStock[pid] = Math.max(0, inStock - qty);
+        n[ct] += PRODUCTS[pid].litersPerUnit * gap * ratio;
       });
-    }, []);
-    return (
-      <div style={{ padding: 24, color: '#efefef', fontFamily: 'DM Sans, sans-serif' }}>
-        <h2 style={{ fontFamily: 'Playfair Display, serif', marginBottom: 12 }}>Stock — wiring test</h2>
-        <div style={{ fontSize: 14, color: '#9a9a9a' }}>{status}</div>
-      </div>
-    );
-  }
+      if (j.delivery_type === 'coffeebar') {
+        const canCount = Math.floor((j.people||0)/25);
+        const cans = j.jerry_cans || Array(canCount).fill('classic');
+        cans.forEach(ct => {
+          if (!CONCENTRATE_TYPES[ct]) return;
+          const pid = JERRY_MAP[ct]||'jerry_can';
+          const inStock = remStock[pid]||0;
+          if (inStock > 0) { remStock[pid] = Math.max(0, inStock-1); return; }
+          const ratio = CONCENTRATE_TYPES[ct].ratio;
+          const need = 5*ratio;
+          n[ct] += Math.max(0, need - (remConc[ct]||0));
+          remConc[ct] = Math.max(0, (remConc[ct]||0) - need);
+        });
+      }
+    }
+  });
+  return n;
+}
+function bottleNeeds(jobs, inventory) {
+  const needs = {};
+  const rem = { ...inventory };
+  [...jobs].filter(j=>!j.done&&j.type==='delivery').forEach(j => {
+    Object.entries(j.quantities||{}).forEach(([pid,qty]) => {
+      if (!qty) return;
+      needs[pid] = (needs[pid]||0) + qty;
+    });
+    if (j.delivery_type === 'coffeebar') {
+      const canCount = Math.floor((j.people||0)/25);
+      const cans = j.jerry_cans||Array(canCount).fill('classic');
+      const JERRY_MAP = { classic:'jerry_can', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
+      cans.forEach(ct => { const pid = JERRY_MAP[ct]||'jerry_can'; needs[pid]=(needs[pid]||0)+1; });
+    }
+  });
+  return Object.entries(needs).map(([pid,totalNeeded]) => ({
+    pid, totalNeeded, inStock: rem[pid]||0, gap: totalNeeded-(rem[pid]||0),
+  })).filter(x=>x.totalNeeded>0);
+}
 
-  const stockRoot = document.getElementById('ops-stock-root');
-  if (stockRoot) ReactDOM.createRoot(stockRoot).render(<StockTabPlaceholder />);
+// ── Shared UI components ───────────────────────────────────
+const SS = {
+  screen: { background:'#141414', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#efefef', paddingBottom:80 },
+  card: { background:'#252525', border:'1px solid #454545', borderRadius:6, padding:'16px 18px', margin:'12px 0' },
+  hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#fff', background:'#303030', borderRadius:6, padding:'8px 12px', marginBottom:14 },
+  row: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'1px solid #303030' },
+  lbl: { fontSize:13, color:'#c4c4c4' },
+  val: { fontSize:15, fontWeight:600, color:'#efefef' },
+  btn: { width:28, height:28, borderRadius:5, background:'#303030', border:'1px solid #454545', color:'#efefef', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' },
+  inp: { width:64, background:'#1e1e1e', border:'1px solid #454545', borderRadius:5, padding:'4px 6px', color:'#efefef', fontSize:14, textAlign:'center' },
+  toggleRow: { display:'flex', gap:0, border:'1px solid #454545', borderRadius:5, overflow:'hidden', marginBottom:18 },
+  toggleBtn: (active) => ({ flex:1, padding:'10px 6px', background:active?'#d0d0d0':'transparent', color:active?'#121212':'#9a9a9a', border:'none', fontFamily:"'DM Sans',sans-serif", fontSize:13, fontWeight:active?700:400, cursor:'pointer', transition:'all .2s' }),
+  needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#4caf72':'#e57368', whiteSpace:'nowrap' }),
+};
+
+function NumRow({ label, value, onDec, onInc, onChange, suffix, warn }) {
+  return (
+    <div style={{ ...SS.row, gap:10 }}>
+      <span style={{ ...SS.lbl, flex:1, color: warn ? '#e57368' : '#c4c4c4' }}>{label}</span>
+      {suffix && <span style={{ fontSize:11, color:'#9a9a9a', marginRight:6 }}>{suffix}</span>}
+      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+        <button style={SS.btn} onClick={onDec}>−</button>
+        <input style={SS.inp} type="number" value={value??''} onChange={onChange}/>
+        <button style={SS.btn} onClick={onInc}>+</button>
+      </div>
+    </div>
+  );
+}
+
+// ── CONCENTRATE sub-screen ─────────────────────────────────
+function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
+  const needed = concentrateNeeded(jobs, inventory, concentrate);
+  const inProgress = {};
+  jobs.filter(j=>j.brew_started&&!j.done).forEach(j => {
+    const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
+    const liters = kgToL[j.kg]||19;
+    inProgress[j.product] = (inProgress[j.product]||0)+liters;
+  });
+  async function save(k, val) {
+    const v = Math.max(0, parseFloat(val)||0);
+    setConcentrate(p=>({...p,[k]:v}));
+    await patchConcentrate(k, v);
+  }
+  return (
+    <div>
+      <div style={SS.card}>
+        <div style={SS.hdr}>Concentrate (Liters)</div>
+        {Object.entries(CONCENTRATE_TYPES).map(([k,ct]) => (
+          <NumRow key={k}
+            label={ct.label}
+            value={concentrate[k]??''}
+            onDec={()=>save(k, Math.max(0,parseFloat(((concentrate[k]||0)-0.5).toFixed(1))))}
+            onInc={()=>save(k, parseFloat(((concentrate[k]||0)+0.5).toFixed(1)))}
+            onChange={e=>save(k,e.target.value)}
+          />
+        ))}
+      </div>
+      <div style={SS.card}>
+        <div style={SS.hdr}>Upcoming Needs</div>
+        {Object.entries(CONCENTRATE_TYPES).map(([k,ct]) => {
+          const n = needed[k]||0;
+          const brewing = inProgress[k]||0;
+          const have = concentrate[k]||0;
+          const eff = Math.max(0, n - brewing - have);
+          if (n===0 && brewing===0) return null;
+          return (
+            <div key={k} style={SS.row}>
+              <span style={SS.lbl}>{ct.label}</span>
+              {brewing>0&&<span style={{fontSize:11,color:'#6aa8e8'}}>🧪 {brewing.toFixed(1)}L brewing</span>}
+              <span style={SS.needBadge(eff===0)}>{eff===0?'✓ Covered':`Brew ${eff.toFixed(1)}L more`}</span>
+            </div>
+          );
+        }).filter(Boolean)}
+        {Object.values(needed).every(v=>v===0)&&<div style={{color:'#9a9a9a',fontSize:13}}>All needs covered</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── BOTTLED COFFEE sub-screen ──────────────────────────────
+function BottledScreen({ inventory, setInventory }) {
+  async function save(pid, val) {
+    const v = Math.max(0, parseInt(val)||0);
+    setInventory(p=>({...p,[pid]:v}));
+    await patchInventory(pid, v);
+  }
+  const groups = [
+    { label:'Liter Bottles', cats:['liter'] },
+    { label:'Mini Bottles',  cats:['mini']  },
+    { label:'Jerry Cans',    cats:['jerry'] },
+    { label:'Syrups',        cats:['syrup'] },
+    { label:'Dispensers',    cats:['dispenser'] },
+  ];
+  return (
+    <div>
+      {groups.map(({label,cats}) => {
+        const items = Object.entries(PRODUCTS).filter(([,p])=>cats.includes(p.category));
+        if (!items.length) return null;
+        return (
+          <div key={label} style={SS.card}>
+            <div style={SS.hdr}>{label}</div>
+            {items.map(([pid,p]) => (
+              <NumRow key={pid}
+                label={p.label}
+                value={inventory[pid]??''}
+                onDec={()=>save(pid,Math.max(0,(inventory[pid]||0)-1))}
+                onInc={()=>save(pid,(inventory[pid]||0)+1)}
+                onChange={e=>save(pid,e.target.value)}
+              />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── LABELS sub-screen ──────────────────────────────────────
+function LabelsScreen({ labeledStock, setLabeledStock }) {
+  async function save(pid, val) {
+    const v = Math.max(0, parseInt(val)||0);
+    setLabeledStock(p=>({...p,[pid]:v}));
+    await patchLabeledStock(pid, v);
+  }
+  const groups = [
+    { label:'Liter Bottles', pids:['classic_liter','sweetened_classic','house_blend','colombia_liter'] },
+    { label:'Mini Bottles',  pids:['vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'] },
+  ];
+  return (
+    <div>
+      {groups.map(({label,pids}) => (
+        <div key={label} style={SS.card}>
+          <div style={SS.hdr}>{label}</div>
+          {pids.map(pid => {
+            const warn = LABELED_WARN[pid];
+            const qty = labeledStock[pid]||0;
+            const isLow = warn!==null && qty<warn;
+            return (
+              <NumRow key={pid}
+                label={PRODUCTS[pid]?.label}
+                value={qty}
+                warn={isLow}
+                suffix={isLow?'● Low':null}
+                onDec={()=>save(pid,Math.max(0,qty-1))}
+                onInc={()=>save(pid,qty+1)}
+                onChange={e=>save(pid,e.target.value)}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── MAKE sub-screen ────────────────────────────────────────
+function MakeScreen({ jobs, inventory, concentrate }) {
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now()+86400000).toISOString().split('T')[0];
+  const upcoming = jobs.filter(j=>!j.done);
+  const urgent = jobs.filter(j=>!j.done&&(j.date===today||j.date===tomorrow));
+  const concNeeds = concentrateNeeded(upcoming, inventory, concentrate);
+  const urgentConcNeeds = concentrateNeeded(urgent, inventory, concentrate);
+  const allBottles = bottleNeeds(upcoming, inventory);
+  const urgentBottles = bottleNeeds(urgent, inventory);
+  const bottleShortfalls = allBottles.filter(g=>g.gap>0&&PRODUCTS[g.pid]?.category!=='jerry');
+  const jerryShortfalls  = allBottles.filter(g=>g.gap>0&&PRODUCTS[g.pid]?.category==='jerry');
+  const bottleCovered    = allBottles.filter(g=>g.gap<=0);
+  const concShortfalls   = Object.entries(CONCENTRATE_TYPES).map(([k,ct]) => {
+    const gap = concNeeds[k]||0; const have = concentrate[k]||0;
+    return { k, label:ct.label, needed:gap+have, have, gap, effectiveGap:Math.max(0,gap-have) };
+  }).filter(x=>x.effectiveGap>0);
+  const urgBottles = urgentBottles.filter(g=>g.gap>0);
+  const urgConc    = Object.entries(urgentConcNeeds).filter(([,v])=>v>0).map(([k,gap])=>({
+    k, label:CONCENTRATE_TYPES[k]?.label, gap, have:concentrate[k]||0,
+    effectiveGap:Math.max(0,gap-(concentrate[k]||0)),
+  })).filter(x=>x.effectiveGap>0);
+  const RHDR = { ...SS.hdr, background:'#e57368', color:'#fff' };
+  const GHDR = { ...SS.hdr, background:'#4caf72', color:'#fff' };
+  return (
+    <div>
+      {(urgBottles.length>0||urgConc.length>0)&&(
+        <div style={{...SS.card,border:'1px solid #e57368',background:'#1e1010'}}>
+          <div style={RHDR}>🔥 Needed Today or Tomorrow</div>
+          {urgBottles.map(({pid,totalNeeded,inStock,gap})=>(
+            <div key={pid} style={SS.row}>
+              <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
+              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
+              <span style={SS.needBadge(false)}>Make {gap} more</span>
+            </div>
+          ))}
+          {urgConc.map(({k,label,gap,have,effectiveGap})=>(
+            <div key={k} style={SS.row}>
+              <span style={SS.lbl}>{label}</span>
+              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {(gap+have).toFixed(1)}L · Have {have.toFixed(1)}L</span>
+              <span style={SS.needBadge(false)}>Brew {effectiveGap.toFixed(1)}L</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {bottleShortfalls.length>0&&(
+        <div style={SS.card}>
+          <div style={RHDR}>⚠ Bottles to Produce</div>
+          {bottleShortfalls.map(({pid,totalNeeded,inStock,gap})=>(
+            <div key={pid} style={SS.row}>
+              <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
+              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
+              <span style={SS.needBadge(false)}>Make {gap}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {jerryShortfalls.length>0&&(
+        <div style={SS.card}>
+          <div style={RHDR}>⚠ Jerry Cans to Make</div>
+          {jerryShortfalls.map(({pid,totalNeeded,inStock,gap})=>(
+            <div key={pid} style={SS.row}>
+              <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
+              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
+              <span style={SS.needBadge(false)}>Make {gap}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {concShortfalls.length>0&&(
+        <div style={SS.card}>
+          <div style={RHDR}>⚠ Concentrate to Brew</div>
+          {concShortfalls.map(({k,label,needed,have,effectiveGap})=>(
+            <div key={k} style={SS.row}>
+              <span style={SS.lbl}>{label}</span>
+              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {needed.toFixed(1)}L · Have {have.toFixed(1)}L</span>
+              <span style={SS.needBadge(false)}>Brew {effectiveGap.toFixed(1)}L</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {bottleCovered.length>0&&(
+        <div style={SS.card}>
+          <div style={GHDR}>✓ Covered by Stock</div>
+          {bottleCovered.map(({pid,totalNeeded,inStock})=>(
+            <div key={pid} style={SS.row}>
+              <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
+              <span style={SS.needBadge(true)}>✓ {inStock} in stock (need {totalNeeded})</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {bottleShortfalls.length===0&&jerryShortfalls.length===0&&concShortfalls.length===0&&urgBottles.length===0&&urgConc.length===0&&(
+        <div style={{...SS.card,textAlign:'center',color:'#9a9a9a',fontSize:14}}>All production needs covered ✓</div>
+      )}
+    </div>
+  );
+}
+
+// ── BEANS sub-section (inside Concentrate) ─────────────────
+function BeansSection({ beans, setBeans }) {
+  async function saveKg(type, kg) {
+    const v = Math.max(0, parseFloat(kg)||0);
+    setBeans(p=>({...p,[type]:{...(p[type]||{}),kg:v}}));
+    await patchBeans(type, v);
+  }
+  async function markOrdered(type, orderedKg) {
+    const v = parseFloat(orderedKg)||0;
+    if (v<=0) return;
+    setBeans(p=>({...p,[type]:{...(p[type]||{}),ordered:true,orderedKg:v}}));
+    await patchBeanOrdered(type, true, v);
+  }
+  async function markDelivered(type) {
+    const current = beans[type]||{};
+    const newKg = parseFloat(((current.kg||0)+(current.orderedKg||0)).toFixed(1));
+    setBeans(p=>({...p,[type]:{kg:newKg,ordered:false,orderedKg:0}}));
+    await opsFetch(`beans?type=eq.${type}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg,ordered:false,ordered_kg:0})});
+  }
+  async function cancelOrder(type) {
+    setBeans(p=>({...p,[type]:{...(p[type]||{}),ordered:false,orderedKg:0}}));
+    await patchBeanOrdered(type, false, 0);
+  }
+  return (
+    <div style={SS.card}>
+      <div style={SS.hdr}>Coffee Beans (kg)</div>
+      {Object.entries(BEAN_TYPES).map(([k,bt]) => {
+        const d = beans[k]||{};
+        const isLow = d.kg<=bt.warnKg && !d.ordered;
+        const [orderKg, setOrderKg] = [useRef(''), null];
+        return (
+          <div key={k} style={{borderBottom:'1px solid #303030',paddingBottom:10,marginBottom:10}}>
+            <NumRow
+              label={bt.label}
+              value={d.kg??''}
+              warn={isLow}
+              onDec={()=>saveKg(k,Math.max(0,parseFloat(((d.kg||0)-1).toFixed(1))))}
+              onInc={()=>saveKg(k,parseFloat(((d.kg||0)+1).toFixed(1)))}
+              onChange={e=>saveKg(k,e.target.value)}
+            />
+            {isLow&&!d.ordered&&(
+              <BeanOrderRow beanKey={k} onOrder={markOrdered}/>
+            )}
+            {d.ordered&&(
+              <div style={{background:'#1a2a1a',border:'1px solid #4caf72',borderRadius:6,padding:'10px 12px',marginTop:6,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:'#4caf72'}}>✓ Ordered — {d.orderedKg}kg incoming</div>
+                  <div style={{fontSize:11,color:'#9a9a9a',marginTop:3}}>Tap Delivered when stock arrives</div>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  <button style={{background:'#4caf72',color:'#fff',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={()=>markDelivered(k)}>📦 Delivered</button>
+                  <button style={{background:'#303030',color:'#9a9a9a',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,cursor:'pointer'}} onClick={()=>cancelOrder(k)}>✕</button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function BeanOrderRow({ beanKey, onOrder }) {
+  const [kg, setKg] = useState('');
+  return (
+    <div style={{display:'flex',gap:8,marginTop:6}}>
+      <input type="number" placeholder="kg ordered" style={{...SS.inp,flex:1,width:'auto'}} value={kg} onChange={e=>setKg(e.target.value)}/>
+      <button style={{background:'#d0d0d0',color:'#121212',border:'none',borderRadius:6,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={async()=>{const v=parseFloat(kg)||0;if(v<=0)return;await onOrder(beanKey,v);setKg('');}}>✓ Ordered</button>
+    </div>
+  );
+}
+
+// ── ROOT STOCK TAB ─────────────────────────────────────────
+function StockTab() {
+  const [tab, setTab] = useState('concentrate');
+  const [loading, setLoading] = useState(true);
+  const [inventory, setInventory] = useState({});
+  const [concentrate, setConcentrate] = useState({classic:0,houseBlend:0,colombia:0,decaf:0});
+  const [beans, setBeans] = useState({classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
+  const [labeledStock, setLabeledStock] = useState({});
+  const [jobs, setJobs] = useState([]);
+
+  useEffect(() => {
+    Promise.all([loadStockData(), loadUpcomingJobs()]).then(([stock, j]) => {
+      setInventory(stock.inventory);
+      setConcentrate(stock.concentrate);
+      setBeans(stock.beans);
+      setLabeledStock(stock.labeledStock);
+      setJobs(j);
+      setLoading(false);
+    });
+  }, []);
+
+  const TABS = [
+    { id:'concentrate', label:'Concentrate' },
+    { id:'bottled',     label:'Bottled' },
+    { id:'labels',      label:'Labels' },
+    { id:'make',        label:'Make' },
+  ];
+
+  if (loading) return <div style={{...SS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#9a9a9a'}}><div style={{width:20,height:20,border:'2px solid #454545',borderTopColor:'#d0d0d0',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading stock…</div>;
+
+  return (
+    <div style={SS.screen}>
+      <div style={{padding:'16px 16px 0'}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#efefef',marginBottom:14}}>Stock</div>
+        <div style={SS.toggleRow}>
+          {TABS.map(t=>(
+            <button key={t.id} style={SS.toggleBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{padding:'0 16px'}}>
+        {tab==='concentrate'&&<><ConcentrateScreen concentrate={concentrate} setConcentrate={setConcentrate} jobs={jobs} inventory={inventory}/><BeansSection beans={beans} setBeans={setBeans}/></>}
+        {tab==='bottled'&&<BottledScreen inventory={inventory} setInventory={setInventory}/>}
+        {tab==='labels'&&<LabelsScreen labeledStock={labeledStock} setLabeledStock={setLabeledStock}/>}
+        {tab==='make'&&<MakeScreen jobs={jobs} inventory={inventory} concentrate={concentrate}/>}
+      </div>
+    </div>
+  );
+}
+
+const stockRoot = document.getElementById('ops-stock-root');
+if (stockRoot) ReactDOM.createRoot(stockRoot).render(<StockTab />);
 </script>
 </body>
 </html>
