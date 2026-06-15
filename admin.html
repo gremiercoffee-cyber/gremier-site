@@ -507,6 +507,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
+        <div class="nav-item" onclick="showTab('schedule')" id="nav-schedule"><span class="icon">📅</span><span>Schedule</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
@@ -539,6 +540,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <!-- STOCK (ops) TAB -->
       <div id="tab-stock" class="tab-content" style="display:none">
         <div id="ops-stock-root"></div>
+      </div>
+        <!-- SCHEDULE (ops) TAB -->
+      <div id="tab-schedule" class="tab-content" style="display:none">
+        <div id="ops-schedule-root"></div>
       </div>
       <!-- ORDERS -->
       <div id="tab-orders" class="tab-content" style="display:none">
@@ -997,6 +1002,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 </button>
     <button class="tab-bar-btn" id="tbar-stock" onclick="showTab('stock')">
   <span class="tab-icon">⚗️</span>Stock
+</button>
+    <button class="tab-bar-btn" id="tbar-schedule" onclick="showTab('schedule')">
+  <span class="tab-icon">📅</span>Schedule
 </button>
     <button class="tab-bar-btn active" id="tbar-orders" onclick="showTab('orders')">
       <span class="tab-icon">🛒</span>Orders
@@ -4975,6 +4983,896 @@ async function generateCouponForMember(userId, memberEmail) {
   }
 }
 </script>
+
+  <script type="text/babel" data-presets="react">
+const { useState: useState2, useEffect: useEffect2, useCallback: useCallback2, useRef: useRef2 } = React;
+
+// ── helpers ────────────────────────────────────────────────
+function todayISO2() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function tomorrowISO2() {
+  const d = new Date(); d.setDate(d.getDate()+1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function formatDate2(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IL', { weekday:'short', month:'short', day:'numeric' });
+}
+function formatTime2(t) {
+  if (!t) return '';
+  return t.slice(0,5);
+}
+function isJobOverdue2(job) {
+  if (job.done) return false;
+  const today = todayISO2();
+  if (job.date < today) return true;
+  if (job.date === today && job.time) {
+    const [h,m] = job.time.split(':').map(Number);
+    const now = new Date();
+    return now.getHours() > h || (now.getHours()===h && now.getMinutes()>=m);
+  }
+  return false;
+}
+function monthDates2(year, month) {
+  const days = [], d = new Date(year, month, 1);
+  while (d.getMonth()===month) { days.push(new Date(d)); d.setDate(d.getDate()+1); }
+  return days;
+}
+function rowToJob2(r) {
+  return {
+    id: r.id, type: r.type, date: r.date, time: r.time, done: r.done,
+    brewStarted: r.brew_started, actualQty: r.actual_qty, product: r.product,
+    kg: r.kg, liters: r.liters, label: r.label, deliveryType: r.delivery_type,
+    storeName: r.store_name, privateName: r.private_name, privateAddress: r.private_address,
+    people: r.people, plannedTotal: r.planned_total, quantities: r.quantities||{},
+    needsConfirmation: r.needs_confirmation, jerryCans: r.jerry_cans||[],
+    qty: r.qty, cbName: r.cb_name, cbAddress: r.cb_address, dispensers: r.dispensers,
+    waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups||{}, billed: r.billed,
+    paid: r.paid||false, websiteOrderId: r.website_order_id||null,
+    customerPhone: r.customer_phone||null, waSentAt: r.wa_sent_at||null,
+  };
+}
+function jobToRow2(job) {
+  return {
+    id: job.id, type: job.type, date: job.date, time: job.time||null,
+    done: job.done||false, actual_qty: job.actualQty||null,
+    brew_started: job.brewStarted===true, product: job.product||null,
+    kg: job.kg||null, liters: job.liters||null, label: job.label||null,
+    delivery_type: job.deliveryType||null, store_name: job.storeName||null,
+    private_name: job.privateName||null, private_address: job.privateAddress||null,
+    people: job.people||null, planned_total: job.plannedTotal||null,
+    quantities: job.quantities||null, created_at: job.createdAt||new Date().toISOString(),
+    needs_confirmation: job.needsConfirmation||false, jerry_cans: job.jerryCans||null,
+    qty: job.qty||null, cb_name: job.cbName||null, cb_address: job.cbAddress||null,
+    dispensers: job.dispensers||null, wa_needs_send: job.waNeedsSend||false,
+    cb_syrups: job.cbSyrups||null, billed: job.billed||false, paid: job.paid||false,
+    website_order_id: job.websiteOrderId||null, customer_phone: job.customerPhone||null,
+    wa_sent_at: job.waSentAt||null,
+  };
+}
+
+// ── store helpers (from table, not hardcoded) ──────────────
+function whatsAppPhone2(raw) {
+  if (!raw||!String(raw).trim()) return null;
+  let s = String(raw).trim().replace(/[\s\-().]/g,'');
+  if (s.startsWith('+')) { const d=s.slice(1).replace(/\D/g,''); return (d.length>=7&&d.length<=15)?d:null; }
+  const digits = s.replace(/\D/g,'');
+  if (!digits) return null;
+  if (digits.startsWith('0')&&digits.length===10) return '972'+digits.slice(1);
+  if (digits.length===9&&digits.startsWith('5')) return '972'+digits;
+  return (digits.length>=7&&digits.length<=15)?digits:null;
+}
+function getStoreWaPhone2(storeName, stores) {
+  const store = stores.find(s=>s.name===storeName);
+  if (!store?.phone) return null;
+  return whatsAppPhone2(store.phone)||String(store.phone).replace(/\D/g,'')||null;
+}
+function isStoreWaDelivery2(job, stores) {
+  if (!job||job.type!=='delivery'||!job.storeName) return false;
+  if (job.deliveryType==='private'||job.deliveryType==='coffeebar') return false;
+  return !!getStoreWaPhone2(job.storeName, stores);
+}
+const STORE_WA_LOOKBACK_DAYS = 45;
+function jobWaDrawerEligible2(job, stores) {
+  if (!isStoreWaDelivery2(job,stores)||!job.done||job.waSentAt) return false;
+  const d = String(job.date||'').slice(0,10);
+  if (!d) return false;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-STORE_WA_LOOKBACK_DAYS);
+  return d >= cutoff.toISOString().slice(0,10);
+}
+function generateWAMessage2(storeName, job) {
+  const dateStr = new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const PRODUCTS2 = window.__OPS_PRODUCTS__ || {};
+  const large = Object.entries(job.quantities||{}).filter(([p])=>PRODUCTS2[p]?.category==='liter').reduce((s,[,q])=>s+(q||0),0);
+  const mini  = Object.entries(job.quantities||{}).filter(([p])=>PRODUCTS2[p]?.category==='mini' ).reduce((s,[,q])=>s+(q||0),0);
+  const syrup = Object.entries(job.quantities||{}).filter(([p])=>PRODUCTS2[p]?.category==='syrup').reduce((s,[,q])=>s+(q||0),0);
+  const total = large+mini+syrup;
+  const lines = [`תעודת משלוח - גרמיר קפה`,`תאריך: ${dateStr}`,`לכבוד: ${storeName}`,`----------------------------`];
+  if (large>0) lines.push(`בקבוק גדול: ${large} יחידות`);
+  if (mini>0)  lines.push(`בקבוק קטן: ${mini} יחידות`);
+  if (syrup>0) lines.push(`סירופ: ${syrup} יחידות`);
+  lines.push(`----------------------------`,`סה"כ: ${total} יחידות`,`תודה! גרמיר קפה`);
+  return lines.join('\n');
+}
+function buildStoreWaLink2(job, stores) {
+  if (!isStoreWaDelivery2(job,stores)) return null;
+  const phone = getStoreWaPhone2(job.storeName, stores);
+  if (!phone) return null;
+  const msg = generateWAMessage2(job.storeName, job);
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+}
+
+// expose PRODUCTS to WA message builder
+window.__OPS_PRODUCTS__ = {
+  classic_liter:{category:'liter'}, sweetened_classic:{category:'liter'},
+  house_blend:{category:'liter'}, colombia_liter:{category:'liter'}, decaf_liter:{category:'liter'},
+  classic_mini:{category:'mini'}, house_blend_mini:{category:'mini'}, vanilla_mini:{category:'mini'},
+  original_mini:{category:'mini'}, caramel_mini:{category:'mini'},
+  jerry_can:{category:'jerry'}, jerry_can_houseblend:{category:'jerry'},
+  jerry_can_colombia:{category:'jerry'}, jerry_can_decaf:{category:'jerry'},
+  vanilla_syrup:{category:'syrup'}, caramel_syrup:{category:'syrup'}, sugar_syrup:{category:'syrup'},
+  dispenser:{category:'dispenser'},
+};
+
+// ── Supabase job ops ───────────────────────────────────────
+async function loadAllJobs2() {
+  const rows = await opsFetch('jobs?select=*&order=date.asc');
+  return (rows||[]).map(rowToJob2);
+}
+async function loadPendingWebDeliveries2() {
+  const rows = await opsFetch('pending_website_deliveries?status=eq.pending_schedule&select=*&order=created_at.asc');
+  if (!Array.isArray(rows)||!rows.length) return rows||[];
+  const ids = [...new Set(rows.map(r=>r.order_id).filter(Boolean))];
+  if (!ids.length) return rows;
+  const orders = await opsFetch(`orders?id=in.(${ids.join(',')})&select=id,payment_status`);
+  const payMap = {}; (orders||[]).forEach(o=>{payMap[o.id]=o.payment_status;});
+  return rows.map(r=>({...r, payment_status: payMap[r.order_id]||null}));
+}
+function websiteOrderDisplayLabel2(order) {
+  const name = String(order?.customer_name||'').trim();
+  if (name) return name;
+  const addr = String(order?.delivery_address||'').trim();
+  if (addr) return addr;
+  if (order?.order_number!=null) return `Order #${order.order_number}`;
+  return 'Delivery';
+}
+async function patchJob2(id, patch) {
+  await opsFetch(`jobs?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify(patch)});
+}
+async function deleteJobFromDB2(id) {
+  await opsFetch(`jobs?id=eq.${id}`,{method:'DELETE',prefer:'return=minimal'});
+}
+async function createDrain2(brewJob) {
+  const existing = await opsFetch(`jobs?type=eq.drain&product=eq.${brewJob.product}&done=eq.false&select=id`);
+  if (existing?.length) return;
+  const drainHours = brewJob.product==='classic'?22:18;
+  const drainTime = new Date(Date.now()+drainHours*60*60*1000);
+  const drainDate = `${drainTime.getFullYear()}-${String(drainTime.getMonth()+1).padStart(2,'0')}-${String(drainTime.getDate()).padStart(2,'0')}`;
+  const drainTimeStr = `${String(drainTime.getHours()).padStart(2,'0')}:${String(drainTime.getMinutes()).padStart(2,'0')}`;
+  await opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
+    id:`drain_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    type:'drain', product:brewJob.product, kg:brewJob.kg, date:drainDate, time:drainTimeStr,
+    done:false, needs_confirmation:false,
+    label:`Drain ${brewJob.product} (${drainHours}h brew)`, created_at:new Date().toISOString(),
+  })});
+}
+
+// store delivery sync (ops checkoff → admin store_deliveries table)
+async function syncStoreDeliveryToAdmin(job, qtys) {
+  const PRODUCTS2 = window.__OPS_PRODUCTS__;
+  const large = Object.entries(qtys||{}).filter(([p])=>PRODUCTS2[p]?.category==='liter').reduce((s,[,q])=>s+(q||0),0);
+  const mini  = Object.entries(qtys||{}).filter(([p])=>PRODUCTS2[p]?.category==='mini' ).reduce((s,[,q])=>s+(q||0),0);
+  const syrup = Object.entries(qtys||{}).filter(([p])=>PRODUCTS2[p]?.category==='syrup').reduce((s,[,q])=>s+(q||0),0);
+  // find store_id from stores table
+  const stores = await opsFetch('stores?select=id,name&is_active=eq.true');
+  const store = (stores||[]).find(s=>s.name===job.storeName);
+  if (!store) return;
+  await opsFetch('store_deliveries',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
+    store_id: store.id,
+    store_name: job.storeName,
+    qty_large: large,
+    qty_small: mini,
+    qty_syrup: syrup,
+    delivery_date: job.date,
+    source: 'ops_checkoff',
+    notes: null,
+    updated_at: new Date().toISOString(),
+  })});
+}
+
+// inventory helpers (reuse opsFetch from phase 1)
+async function incrementInventory2(product, delta) {
+  const rows = await opsFetch(`inventory?product=eq.${product}&select=qty`);
+  if (!rows?.length) return;
+  const newQty = Math.max(0,(rows[0].qty||0)+delta);
+  await opsFetch(`inventory?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+}
+async function incrementConcentrate2(type, delta) {
+  const rows = await opsFetch(`concentrate?type=eq.${type}&select=liters`);
+  if (!rows?.length) return;
+  const newLiters = Math.max(0,parseFloat(((rows[0].liters||0)+delta).toFixed(1)));
+  await opsFetch(`concentrate?type=eq.${type}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({liters:newLiters})});
+}
+async function incrementLabeledStock2(product, delta) {
+  const rows = await opsFetch(`labeled_stock?product=eq.${product}&select=qty`);
+  if (!rows?.length) return;
+  const newQty = Math.max(0,(rows[0].qty||0)+delta);
+  await opsFetch(`labeled_stock?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+}
+
+async function applyJobSideEffects2(job, confirmedQtys, stores) {
+  const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
+  const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
+  const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
+  const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
+  const CONC_TYPES = {classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const PRODS = window.__OPS_PRODUCTS__;
+
+  if (job.type==='brew') {
+    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const currentKg = beanRows?.[0]?.kg||0;
+    const newKg = parseFloat(Math.max(0,currentKg-(job.kg||3)).toFixed(1));
+    await opsFetch(`beans?type=eq.${job.product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg})});
+    await createDrain2(job);
+  }
+  if (job.type==='drain') {
+    await incrementConcentrate2(job.product, kgToL[job.kg]||19);
+    const brews = await opsFetch(`jobs?type=eq.brew&product=eq.${job.product}&brew_started=eq.true&done=eq.false&select=id`);
+    if (brews?.length) await patchJob2(brews[0].id,{done:true});
+  }
+  if (job.type==='bottling') {
+    const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
+    if (concType) {
+      const liters = job.actualQty!=null?job.actualQty:(job.liters||0);
+      const ratio = MINI_P.includes(job.product)?0.29:(CONC_TYPES[concType]?.ratio||0.44);
+      await incrementConcentrate2(concType, -(liters*ratio));
+      const units = MINI_P.includes(job.product)?Math.round(liters*4):JERRY_P.includes(job.product)?Math.round(liters/5):Math.round(liters);
+      await incrementInventory2(job.product, units);
+    }
+    if (job.labeledUsed) {
+      for (const [pid,qty] of Object.entries(job.labeledUsed)) {
+        if (qty>0) await incrementLabeledStock2(pid,-qty);
+      }
+    }
+  }
+  if (job.type==='labeling') {
+    const LABELED = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+    if (LABELED.includes(job.product)) await incrementLabeledStock2(job.product, job.qty||0);
+  }
+  if (job.type==='delivery') {
+    const qtys = confirmedQtys||job.quantities||{};
+    // store delivery → write to store_deliveries table instead of Google Sheet
+    if (isStoreWaDelivery2(job, stores)) {
+      await syncStoreDeliveryToAdmin(job, qtys);
+    }
+    for (const [pid,qty] of Object.entries(qtys)) {
+      if (qty>0) await incrementInventory2(pid,-qty);
+    }
+    if (job.deliveryType==='coffeebar') {
+      if (job.dispensers) await incrementInventory2('dispenser',-job.dispensers);
+      for (const [pid,qty] of Object.entries(job.cbSyrups||{})) {
+        if (qty>0) await incrementInventory2(pid,-qty);
+      }
+      const jd={};
+      (job.jerryCans||[]).forEach(ct=>{const pid=JERRY_MAP[ct]||'jerry_can';jd[pid]=(jd[pid]||0)+1;});
+      for (const [pid,qty] of Object.entries(jd)) await incrementInventory2(pid,-qty);
+    }
+    if (isStoreWaDelivery2(job,stores)) {
+      await patchJob2(job.id,{wa_needs_send:true,wa_sent_at:null});
+    }
+  }
+}
+
+// expose full products for bottling concentrate lookup
+window.__OPS_PRODUCTS_FULL__ = {
+  classic_liter:{concentrate:'classic'}, sweetened_classic:{concentrate:'classic'},
+  house_blend:{concentrate:'houseBlend'}, colombia_liter:{concentrate:'colombia'}, decaf_liter:{concentrate:'decaf'},
+  classic_mini:{concentrate:'classic'}, house_blend_mini:{concentrate:'houseBlend'},
+  vanilla_mini:{concentrate:'classic'}, original_mini:{concentrate:'classic'}, caramel_mini:{concentrate:'classic'},
+  jerry_can:{concentrate:'classic'}, jerry_can_houseblend:{concentrate:'houseBlend'},
+  jerry_can_colombia:{concentrate:'colombia'}, jerry_can_decaf:{concentrate:'decaf'},
+};
+
+// ── styles ─────────────────────────────────────────────────
+const TS = {
+  screen: { background:'#141414', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#efefef', paddingBottom:120 },
+  card: { background:'#252525', border:'1px solid #454545', borderRadius:6, padding:'14px 16px', margin:'10px 12px' },
+  hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#efefef', marginBottom:10 },
+  jobRow: { display:'flex', alignItems:'flex-start', gap:8, padding:'8px 0', borderBottom:'1px solid #303030', cursor:'pointer' },
+  checkbox: (color) => ({ width:22, height:22, borderRadius:5, border:`1.5px solid ${color}`, background:'transparent', cursor:'pointer', flexShrink:0, marginTop:2, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color }),
+  label: (color) => ({ fontSize:13, fontWeight:600, color, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }),
+  meta: { fontSize:11, color:'#9a9a9a', marginTop:2 },
+  pill: (bg,color) => ({ fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', padding:'2px 7px', borderRadius:10, background:bg, color, display:'inline-block', marginLeft:6 }),
+  calGrid: { display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, padding:'0 4px' },
+  calHdr: { fontSize:9, color:'#9a9a9a', textAlign:'center', padding:'4px 0', letterSpacing:1 },
+  calCell: { borderRadius:4, padding:'4px 2px', textAlign:'center', minHeight:34, cursor:'pointer' },
+  btn: (bg,color) => ({ background:bg, color, border:'none', borderRadius:8, padding:'10px 14px', fontSize:13, fontWeight:600, cursor:'pointer', flex:1 }),
+  modal: { position:'fixed', inset:0, background:'rgba(0,0,0,.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 },
+  modalBox: { background:'#252525', border:'1px solid #454545', borderRadius:12, padding:22, width:'100%', maxWidth:440 },
+  modalTitle: { fontFamily:"'Playfair Display',serif", fontSize:'1.3rem', color:'#efefef', marginBottom:14 },
+  inp: { width:'100%', background:'#1e1e1e', border:'1px solid #454545', borderRadius:6, padding:'10px 12px', color:'#efefef', fontSize:15, boxSizing:'border-box' },
+  qRow: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 0', borderBottom:'1px solid #303030' },
+  qBtn: { width:28, height:28, borderRadius:5, background:'#303030', border:'1px solid #454545', color:'#efefef', fontSize:16, cursor:'pointer' },
+  qInp: { width:54, background:'#1e1e1e', border:'1px solid #454545', borderRadius:5, padding:'5px', color:'#efefef', fontSize:14, textAlign:'center' },
+  drawerBackdrop: { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:200 },
+  drawer: { position:'fixed', bottom:0, left:0, right:0, background:'#1e1e1e', border:'1px solid #454545', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:201 },
+  drawerTitle: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', marginBottom:14 },
+  waBtn: { display:'block', background:'#25D366', color:'#fff', textAlign:'center', padding:'11px', borderRadius:8, textDecoration:'none', fontWeight:700, fontSize:14 },
+};
+
+function jobColor2(job) {
+  if (job.type==='drain') return '#9B6FC8';
+  if (job.type==='brew') return '#6aa8e8';
+  if (job.type==='bottling') return '#e0a030';
+  if (job.type==='labeling') return '#8a7060';
+  if (job.deliveryType==='store') return '#d0d0d0';
+  return '#4caf72';
+}
+function jobLabel2(job) {
+  if (job.type==='delivery') {
+    if (job.deliveryType==='store') return job.storeName||'Store';
+    if (job.deliveryType==='coffeebar') return job.cbName||'Coffee Bar';
+    return job.privateName||'Private';
+  }
+  return job.label||job.type;
+}
+
+// ── CheckoffModal ──────────────────────────────────────────
+function CheckoffModal2({ job, onConfirm, onCancel }) {
+  const LABELED = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+  const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
+  const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
+  const PRODS = window.__OPS_PRODUCTS_FULL__;
+  const planned = job.liters||job.plannedTotal||0;
+  const [actual, setActual] = useState2(planned);
+  const [confirmedQtys, setConfirmedQtys] = useState2(Object.fromEntries(Object.entries(job.quantities||{}).map(([pid,qty])=>[pid,qty])));
+  const [allCorrect, setAllCorrect] = useState2(null);
+  const [askLabeled, setAskLabeled] = useState2(false);
+  const [labeledUsed, setLabeledUsed] = useState2({});
+  const [cbPeople, setCbPeople] = useState2(job.people||25);
+  const [cbDispensers, setCbDispensers] = useState2(job.dispensers||0);
+  const [cbSyrups, setCbSyrups] = useState2(job.cbSyrups||{vanilla_syrup:0,caramel_syrup:0,sugar_syrup:0});
+  const PROD_LABELS = {
+    classic_liter:'Classic', sweetened_classic:'Sweetened Classic', house_blend:'House Blend',
+    colombia_liter:'Colombia', decaf_liter:'Decaf', classic_mini:'Classic Mini',
+    house_blend_mini:'House Blend Mini', vanilla_mini:'Vanilla Mini', original_mini:'Original Mini',
+    caramel_mini:'Caramel Mini', jerry_can:'Jerry Can Classic', jerry_can_houseblend:'Jerry Can House Blend',
+    jerry_can_colombia:'Jerry Can Colombia', jerry_can_decaf:'Jerry Can Decaf',
+    vanilla_syrup:'Vanilla Syrup', caramel_syrup:'Caramel Syrup', sugar_syrup:'Sugar Syrup', dispenser:'Dispenser',
+  };
+  function getBottledUnits(liters) {
+    if (MINI_P.includes(job.product)) return Math.round(liters*4);
+    if (JERRY_P.includes(job.product)) return Math.round(liters/5);
+    return Math.round(liters);
+  }
+
+  // delivery — ask if correct
+  if (job.type==='delivery' && allCorrect===null) {
+    const itemList = job.deliveryType==='coffeebar'
+      ? `Coffee Bar — ${job.people} people, ${(job.jerryCans||[]).length} jerry cans`
+      : Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty}× ${PROD_LABELS[pid]||pid}`).join(', ');
+    return (
+      <div style={TS.modal} onClick={onCancel}>
+        <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+          <div style={TS.modalTitle}>Confirm Delivery</div>
+          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>Did you deliver exactly:<br/><strong style={{color:'#efefef'}}>{itemList||'nothing listed'}</strong>?</div>
+          <div style={{display:'flex',gap:10,marginTop:14}}>
+            <button style={TS.btn('#303030','#efefef')} onClick={()=>setAllCorrect(false)}>No, change it</button>
+            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm(job,planned,null)}>Yes ✓</button>
+          </div>
+          <button style={{...TS.btn('#1e1e1e','#9a9a9a'), marginTop:8, border:'1px solid #454545'}} onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  // delivery — adjust quantities
+  if (job.type==='delivery' && allCorrect===false) {
+    if (job.deliveryType==='coffeebar') {
+      return (
+        <div style={TS.modal} onClick={onCancel}>
+          <div style={{...TS.modalBox,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+            <div style={TS.modalTitle}>What did you deliver?</div>
+            <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Jerry Cans</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbPeople(p=>Math.max(25,p-25))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{Math.floor(cbPeople/25)}</span><button style={TS.qBtn} onClick={()=>setCbPeople(p=>p+25)}>+</button></div></div>
+            <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Dispensers</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbDispensers}</span><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
+            {['vanilla_syrup','caramel_syrup','sugar_syrup'].map(pid=>(
+              <div key={pid} style={TS.qRow}><span style={{color:'#c4c4c4'}}>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}}))}>+</button></div></div>
+            ))}
+            <div style={{display:'flex',gap:10,marginTop:14}}>
+              <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
+              <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm({...job,people:cbPeople,dispensers:cbDispensers,cbSyrups,jerryCans:Array(Math.floor(cbPeople/25)).fill('classic')},cbPeople,null)}>Confirm ✓</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={TS.modal} onClick={onCancel}>
+        <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+          <div style={TS.modalTitle}>What did you deliver?</div>
+          {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(
+            <div key={pid} style={TS.qRow}>
+              <span style={{color:'#c4c4c4',flex:1}}>{PROD_LABELS[pid]||pid}</span>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,(q[pid]??qty)-1)}))}>−</button>
+                <input style={TS.qInp} type="number" value={confirmedQtys[pid]??qty} onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
+                <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:(q[pid]??qty)+1}))}>+</button>
+              </div>
+            </div>
+          ))}
+          <div style={{display:'flex',gap:10,marginTop:14}}>
+            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
+            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>{const total=Object.values(confirmedQtys).reduce((s,v)=>s+(v||0),0);onConfirm(job,total,confirmedQtys);}}>Confirm ✓</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // bottling
+  if (job.type==='bottling' && !askLabeled) {
+    return (
+      <div style={TS.modal}>
+        <div style={TS.modalBox}>
+          <div style={TS.modalTitle}>Confirm Bottling</div>
+          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>Planned: {planned}L. How much did you actually make?</div>
+          <input style={{...TS.inp,fontSize:22,textAlign:'center',marginBottom:8}} type="number" value={actual} onChange={e=>setActual(Number(e.target.value))}/>
+          <div style={{display:'flex',gap:10,marginTop:14}}>
+            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
+            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>{
+              if (LABELED.includes(job.product)) { setLabeledUsed({[job.product]:getBottledUnits(actual)}); setAskLabeled(true); }
+              else onConfirm(job,actual,null);
+            }}>Next →</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (job.type==='bottling' && askLabeled) {
+    return (
+      <div style={TS.modal}>
+        <div style={TS.modalBox}>
+          <div style={TS.modalTitle}>Labeled Bottles Used?</div>
+          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>How many labeled {PROD_LABELS[job.product]||job.product} bottles did you use?</div>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+            <button style={TS.qBtn} onClick={()=>setLabeledUsed(p=>({...p,[job.product]:Math.max(0,(p[job.product]||0)-1)}))}>−</button>
+            <input style={{...TS.inp,fontSize:22,textAlign:'center'}} type="number" value={labeledUsed[job.product]||0} onChange={e=>setLabeledUsed(p=>({...p,[job.product]:Number(e.target.value)||0}))}/>
+            <button style={TS.qBtn} onClick={()=>setLabeledUsed(p=>({...p,[job.product]:(p[job.product]||0)+1}))}>+</button>
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <button style={TS.btn('#303030','#efefef')} onClick={()=>setAskLabeled(false)}>← Back</button>
+            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm({...job,labeledUsed},actual,null)}>Confirm ✓</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // generic
+  return (
+    <div style={TS.modal}>
+      <div style={TS.modalBox}>
+        <div style={TS.modalTitle}>Confirm Check-off</div>
+        <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>Planned: {planned}. Actual?</div>
+        <input style={{...TS.inp,fontSize:22,textAlign:'center',marginBottom:8}} type="number" value={actual} onChange={e=>setActual(Number(e.target.value))}/>
+        <div style={{display:'flex',gap:10,marginTop:14}}>
+          <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
+          <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm(job,actual,null)}>Confirm ✓</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Job row components ─────────────────────────────────────
+function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
+  const color = jobColor2(job);
+  const label = jobLabel2(job);
+  const overdue = isJobOverdue2(job);
+  const detail = job.type==='delivery'
+    ? Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty}× ${pid.replace(/_/g,' ')}`).join(', ')
+    : job.type==='brew'?`${job.kg}kg`
+    : job.type==='bottling'?`${job.liters}L`
+    : '';
+  return (
+    <div style={{...TS.jobRow}} onClick={()=>onTap&&onTap(job)}>
+      {onCheckoff&&(
+        <button style={TS.checkbox(overdue?'#e57368':color)} onClick={e=>{e.stopPropagation();onCheckoff(job);}}>
+          {job.brewStarted&&job.type==='brew'?'·':''}
+        </button>
+      )}
+      <div style={{flex:1,minWidth:0}}>
+        <div style={TS.label(overdue?'#e57368':color)}>{label}</div>
+        {detail&&<div style={TS.meta}>{detail}</div>}
+        <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
+        {job.privateAddress&&<div style={{...TS.meta,color:'#6aa8e8'}}>📍 {job.privateAddress}</div>}
+      </div>
+      {showDelete&&<button style={{background:'none',border:'none',color:'#e57368',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
+    </div>
+  );
+}
+
+// ── Calendar ───────────────────────────────────────────────
+function MiniCalendar2({ year, month, jobs, today, onDayTap }) {
+  const days = monthDates2(year, month);
+  const first = days[0].getDay();
+  const cells = [...Array(first).fill(null), ...days];
+  return (
+    <div>
+      <div style={TS.calGrid}>
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} style={TS.calHdr}>{d}</div>)}
+        {cells.map((d,i)=>{
+          if (!d) return <div key={'e'+i}/>;
+          const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const dj=jobs.filter(j=>j.date===iso&&!j.done&&!j.brewStarted);
+          const isT=iso===today;
+          return (
+            <div key={iso} style={{...TS.calCell,background:isT?'rgba(208,208,208,.12)':'transparent'}} onClick={()=>onDayTap(iso)}>
+              <div style={{fontSize:11,color:isT?'#efefef':'#9a9a9a'}}>{parseInt(iso.split('-')[2],10)}</div>
+              <div style={{display:'flex',justifyContent:'center',gap:2,marginTop:2}}>
+                {dj.some(j=>j.type==='delivery')&&<div style={{width:4,height:4,borderRadius:'50%',background:'#d0d0d0'}}/>}
+                {dj.some(j=>j.type!=='delivery')&&<div style={{width:4,height:4,borderRadius:'50%',background:'#6aa8e8'}}/>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{display:'flex',gap:14,fontSize:10,color:'#9a9a9a',padding:'8px 4px',alignItems:'center'}}>
+        <span><span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#d0d0d0',marginRight:4}}/>Delivery</span>
+        <span><span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#6aa8e8',marginRight:4}}/>Production</span>
+      </div>
+    </div>
+  );
+}
+
+// ── DayPopup ───────────────────────────────────────────────
+function DayPopup2({ date, jobs, onClose, onCheckoff }) {
+  const dayJobs = jobs.filter(j=>j.date===date&&!j.done&&!j.brewStarted);
+  return (
+    <div style={TS.modal} onClick={onClose}>
+      <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+        <div style={TS.modalTitle}>{formatDate2(date)}</div>
+        {dayJobs.length===0?<div style={{color:'#9a9a9a',fontSize:14,padding:'12px 0'}}>Nothing scheduled</div>
+          :dayJobs.map(j=><JobRowComp key={j.id} job={j} onCheckoff={onCheckoff} onTap={()=>{}}/>)}
+        <button style={{...TS.btn('#303030','#efefef'),marginTop:14}} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+// ── WA Drawer ──────────────────────────────────────────────
+function WaDrawer2({ jobs, stores, onMarkSent, onClose }) {
+  return (
+    <>
+      <div style={TS.drawerBackdrop} onClick={onClose}/>
+      <div style={TS.drawer}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{...TS.drawerTitle,color:'#25D366'}}>💬 WhatsApp Notes</span>
+          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+        </div>
+        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All sent!</div>}
+        {jobs.map(job=>{
+          const waLink = buildStoreWaLink2(job, stores);
+          return (
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
+              <div style={{fontWeight:600,color:'#efefef',marginBottom:6}}>{job.storeName}</div>
+              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{formatDate2(job.date)}</div>
+              <div style={{display:'flex',gap:8}}>
+                {waLink&&<a href={waLink} target="_blank" rel="noreferrer" style={{...TS.waBtn,flex:1}}>💬 Send</a>}
+                <button style={{...TS.btn('#303030','#efefef'),flex:1}} onClick={()=>onMarkSent(job.id)}>✓ Sent</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ── Billing Drawer ─────────────────────────────────────────
+function BillingDrawer2({ jobs, onMarkBilled, onMarkPaid, onClose }) {
+  const PROD_LABELS = {classic_liter:'Classic',sweetened_classic:'Sweetened Classic',house_blend:'House Blend',colombia_liter:'Colombia',decaf_liter:'Decaf',classic_mini:'Classic Mini',house_blend_mini:'House Blend Mini',vanilla_mini:'Vanilla Mini',original_mini:'Original Mini',caramel_mini:'Caramel Mini',jerry_can:'Jerry Can',vanilla_syrup:'Vanilla Syrup',caramel_syrup:'Caramel Syrup',sugar_syrup:'Sugar Syrup'};
+  return (
+    <>
+      <div style={TS.drawerBackdrop} onClick={onClose}/>
+      <div style={TS.drawer}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{...TS.drawerTitle,color:'#e0a030'}}>💰 Billing</span>
+          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+        </div>
+        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All billed!</div>}
+        {jobs.map(job=>{
+          const name = job.deliveryType==='coffeebar'?`Coffee Bar${job.cbName?' — '+job.cbName:''}`:job.privateName||'Private Delivery';
+          const detail = Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty} ${PROD_LABELS[pid]||pid}`).join(', ');
+          return (
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
+              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{name}</div>
+              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:4}}>{formatDate2(job.date)}</div>
+              {detail&&<div style={{fontSize:11,color:'#9a9a9a',marginBottom:8}}>{detail}</div>}
+              {!job.billed&&<button style={{...TS.btn('#e0a030','#fff'),width:'100%'}} onClick={()=>onMarkBilled(job.id)}>✓ Mark Billed</button>}
+              {job.billed&&!job.paid&&(
+                <div style={{background:'#1a2a1a',border:'1px solid #4caf72',borderRadius:6,padding:10,marginTop:4}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#4caf72',marginBottom:6}}>✓ Billed — awaiting payment</div>
+                  <button style={{...TS.btn('#4caf72','#fff'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ── Website Queue Drawer ───────────────────────────────────
+function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
+  return (
+    <>
+      <div style={TS.drawerBackdrop} onClick={onClose}/>
+      <div style={TS.drawer}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{...TS.drawerTitle,color:'#6aa8e8'}}>📦 Website Orders</span>
+          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+        </div>
+        {orders.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>Nothing to schedule!</div>}
+        {orders.map(o=>{
+          const label = websiteOrderDisplayLabel2(o);
+          const items = (o.items||[]).map(i=>`${i.name_en||'Item'} ×${i.qty||1}`).join(', ');
+          const unpaid = o.payment_status&&o.payment_status!=='paid';
+          return (
+            <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
+              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{label}{unpaid&&<span style={TS.pill('rgba(224,160,48,.15)','#e0a030')}>Awaiting payment</span>}</div>
+              {o.delivery_address&&<div style={{fontSize:11,color:'#6aa8e8',marginBottom:4}}>📍 {o.delivery_address}</div>}
+              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{items}</div>
+              <button style={{...TS.btn('#6aa8e8','#fff'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
+              <button style={{...TS.btn('#303030','#e57368'),width:'100%',border:'1px solid #454545'}} onClick={()=>onDismiss(o)}>Remove</button>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// ── SCHEDULE TAB ROOT ──────────────────────────────────────
+function ScheduleTab() {
+  const [jobs, setJobs] = useState2([]);
+  const [stores, setStores] = useState2([]);
+  const [pendingWeb, setPendingWeb] = useState2([]);
+  const [loading, setLoading] = useState2(true);
+  const [checkoffJob, setCheckoffJob] = useState2(null);
+  const [calDay, setCalDay] = useState2(null);
+  const [monthView, setMonthView] = useState2({ year:new Date().getFullYear(), month:new Date().getMonth() });
+  const [waOpen, setWaOpen] = useState2(false);
+  const [billingOpen, setBillingOpen] = useState2(false);
+  const [webQueueOpen, setWebQueueOpen] = useState2(false);
+  const [showCompleted, setShowCompleted] = useState2(false);
+  const checkoffInProgress = useRef2(new Set());
+  const today = todayISO2();
+  const tomorrow = tomorrowISO2();
+
+  async function reload() {
+    const [allJobs, storeRows, webRows] = await Promise.all([
+      loadAllJobs2(),
+      opsFetch('stores?select=*&is_active=eq.true&order=sort_order'),
+      loadPendingWebDeliveries2(),
+    ]);
+    setJobs(allJobs);
+    setStores(storeRows||[]);
+    setPendingWeb(webRows||[]);
+    setLoading(false);
+  }
+  useEffect2(()=>{ reload(); },[]);
+
+  // derived
+  const overdueJobs = jobs.filter(j=>!j.done&&!j.brewStarted&&isJobOverdue2(j)).sort((a,b)=>a.date.localeCompare(b.date));
+  const todayJobs = jobs.filter(j=>j.date===today&&!j.done&&!j.brewStarted);
+  const tomorrowJobs = jobs.filter(j=>j.date===tomorrow&&!j.done&&!j.brewStarted);
+  const brewingJobs = jobs.filter(j=>j.brewStarted&&!j.done);
+  const upcomingJobs = jobs.filter(j=>!j.done&&!j.brewStarted&&j.date>tomorrow).sort((a,b)=>a.date.localeCompare(b.date));
+  const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
+  const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid);
+  const weekStart = new Date(); weekStart.setDate(weekStart.getDate()-weekStart.getDay()); weekStart.setHours(0,0,0,0);
+  const weekStartISO = weekStart.toISOString().split('T')[0];
+  const completedThisWeek = jobs.filter(j=>j.done&&j.date>=weekStartISO&&j.type!=='brew').sort((a,b)=>b.date.localeCompare(a.date));
+
+  // group upcoming by date
+  const grouped = {};
+  upcomingJobs.forEach(j=>{ if(!grouped[j.date])grouped[j.date]=[]; grouped[j.date].push(j); });
+
+  async function handleCheckoff(job) {
+    if (checkoffInProgress.current.has(job.id)) return;
+    checkoffInProgress.current.add(job.id);
+    try {
+      if (job.type==='brew') {
+        if (job.brewStarted) return;
+        setJobs(prev=>prev.map(j=>j.id===job.id?{...j,brewStarted:true}:j));
+        await patchJob2(job.id,{brew_started:true});
+        await applyJobSideEffects2(job,null,stores);
+        await reload();
+      } else if (job.type==='drain') {
+        setJobs(prev=>prev.map(j=>j.id===job.id?{...j,done:true}:j));
+        await patchJob2(job.id,{done:true});
+        await applyJobSideEffects2(job,null,stores);
+        await reload();
+      } else {
+        setCheckoffJob(job);
+      }
+    } finally {
+      setTimeout(()=>checkoffInProgress.current.delete(job.id),2000);
+    }
+  }
+
+  async function confirmCheckoff(job, actual, confirmedQtys) {
+    setCheckoffJob(null);
+    const finalJob = { ...job, done:true, actualQty:actual, needsConfirmation:false, waSentAt:null,
+      waNeedsSend: isStoreWaDelivery2({...job,done:true},stores)?true:job.waNeedsSend,
+      ...(confirmedQtys?{quantities:confirmedQtys}:{}) };
+    setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
+    const patch = { done:true, actual_qty:actual, wa_sent_at:null };
+    if (isStoreWaDelivery2(finalJob,stores)) patch.wa_needs_send=true;
+    await patchJob2(job.id, patch);
+    await applyJobSideEffects2(finalJob, confirmedQtys, stores);
+    await reload();
+  }
+
+  async function handleDelete(job) {
+    if (!window.confirm('Delete this job?')) return;
+    setJobs(prev=>prev.filter(j=>j.id!==job.id));
+    await deleteJobFromDB2(job.id);
+    await reload();
+  }
+
+  async function markWaSent(jobId) {
+    const sentAt = new Date().toISOString();
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:sentAt}:j));
+    await patchJob2(jobId,{wa_needs_send:false,wa_sent_at:sentAt});
+  }
+  async function markBilled(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,billed:true}:j));
+    await patchJob2(jobId,{billed:true});
+  }
+  async function markPaid(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,paid:true}:j));
+    await patchJob2(jobId,{paid:true});
+  }
+  async function dismissWebOrder(order) {
+    if (!window.confirm(`Remove "${websiteOrderDisplayLabel2(order)}" from queue?`)) return;
+    await opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});
+    await reload();
+  }
+
+  function DaySection({ label, dayJobs, overdue }) {
+    const deliveries = dayJobs.filter(j=>j.type==='delivery');
+    const production = dayJobs.filter(j=>j.type!=='delivery');
+    return (
+      <div style={{...TS.card,border:overdue?'1px solid #e57368':undefined,background:overdue?'#1e1010':undefined}}>
+        <div style={{...TS.hdr,color:overdue?'#e57368':'#efefef'}}>{overdue?'⚠ Overdue':label}</div>
+        <div style={{display:'flex',gap:10}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
+            {deliveries.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              :deliveries.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}} showDelete={overdue} onDelete={handleDelete}/>)}
+          </div>
+          <div style={{width:1,background:'#303030',flexShrink:0}}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
+            {production.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              :production.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}} showDelete={overdue} onDelete={handleDelete}/>)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return <div style={{...TS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#9a9a9a'}}><div style={{width:20,height:20,border:'2px solid #454545',borderTopColor:'#d0d0d0',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div>;
+
+  return (
+    <div style={TS.screen}>
+      <div style={{padding:'16px 12px 0'}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#efefef',marginBottom:14}}>Schedule</div>
+      </div>
+
+      {/* brewing banner */}
+      {brewingJobs.length>0&&(
+        <div style={{...TS.card,border:'1px solid #6aa8e8',background:'#0e1a2a',margin:'10px 12px'}}>
+          <div style={{...TS.hdr,color:'#6aa8e8'}}>🧪 Brewing Now</div>
+          {brewingJobs.map(j=>(
+            <div key={j.id} style={{fontSize:13,color:'#6aa8e8',fontWeight:600,padding:'4px 0'}}>
+              ☕ {j.product} — {j.kg}kg — tap drain job when ready
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* overdue */}
+      {overdueJobs.length>0&&<DaySection label="Overdue" dayJobs={overdueJobs} overdue/>}
+
+      {/* today / tomorrow */}
+      <DaySection label="Today" dayJobs={todayJobs}/>
+      <DaySection label="Tomorrow" dayJobs={tomorrowJobs}/>
+
+      {/* upcoming grouped by date */}
+      {Object.keys(grouped).sort().map(date=>(
+        <div key={date} style={TS.card}>
+          <div style={TS.hdr}>{formatDate2(date)}</div>
+          <div style={{display:'flex',gap:10}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
+              {grouped[date].filter(j=>j.type==='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+                :grouped[date].filter(j=>j.type==='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}}/>)}
+            </div>
+            <div style={{width:1,background:'#303030',flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
+              {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+                :grouped[date].filter(j=>j.type!=='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}}/>)}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {/* calendar */}
+      <div style={{...TS.card,margin:'10px 12px'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+          <button style={{background:'none',border:'none',color:'#efefef',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month-1);return{year:d.getFullYear(),month:d.getMonth()};})}>‹</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1rem',color:'#efefef'}}>{new Date(monthView.year,monthView.month).toLocaleDateString('en',{month:'long',year:'numeric'})}</div>
+          <button style={{background:'none',border:'none',color:'#efefef',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month+1);return{year:d.getFullYear(),month:d.getMonth()};})}>›</button>
+        </div>
+        <MiniCalendar2 year={monthView.year} month={monthView.month} jobs={jobs} today={today} onDayTap={setCalDay}/>
+      </div>
+
+      {/* completed this week */}
+      {completedThisWeek.length>0&&(
+        <div style={TS.card}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:showCompleted?10:0}}>
+            <div style={TS.hdr}>✓ Completed This Week ({completedThisWeek.length})</div>
+            <button style={{background:'none',border:'none',color:'#d0d0d0',fontSize:13,cursor:'pointer',fontWeight:600}} onClick={()=>setShowCompleted(v=>!v)}>{showCompleted?'Hide':'Show'}</button>
+          </div>
+          {showCompleted&&completedThisWeek.map(j=>(
+            <div key={j.id} style={{...TS.jobRow,opacity:0.65}}>
+              <div style={{width:20,height:20,borderRadius:4,background:'#4caf72',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{color:'#fff',fontSize:10}}>✓</span></div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,color:'#c4c4c4',fontWeight:500}}>{jobLabel2(j)}</div>
+                <div style={TS.meta}>{formatDate2(j.date)}</div>
+              </div>
+              <button style={{background:'none',border:'none',color:'#e57368',fontSize:16,cursor:'pointer'}} onClick={()=>handleDelete(j)}>🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* floating drawer pills */}
+      {waPending.length>0&&!waOpen&&(
+        <button style={{position:'fixed',bottom:170,right:16,background:'#25D366',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>
+      )}
+      {unbilled.length>0&&!billingOpen&&(
+        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
+      )}
+      {pendingWeb.length>0&&!webQueueOpen&&(
+        <button style={{position:'fixed',bottom:130,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
+      )}
+
+      {/* drawers */}
+      {waOpen&&<WaDrawer2 jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
+      {billingOpen&&<BillingDrawer2 jobs={unbilled} onMarkBilled={async(id)=>{await markBilled(id);}} onMarkPaid={async(id)=>{await markPaid(id);}} onClose={()=>setBillingOpen(false)}/>}
+      {webQueueOpen&&<WebsiteQueueDrawer2 orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={(o)=>{setWebQueueOpen(false);window.alert('Open the Schedule tab in ops or add a job manually — full schedule form coming in next phase.');}} onDismiss={dismissWebOrder}/>}
+
+      {/* modals */}
+      {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
+      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
+    </div>
+  );
+}
+
+const schedRoot = document.getElementById('ops-schedule-root');
+if (schedRoot) ReactDOM.createRoot(schedRoot).render(<ScheduleTab />);
+</script>
+  
 </body>
 </html>
 </script>
