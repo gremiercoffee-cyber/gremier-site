@@ -500,10 +500,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <!-- SIDEBAR -->
     <div class="sidebar">
       <div class="sidebar-logo"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></div>
-      <div class="hub-switch hub-switch-sidebar" id="hubSwitchSidebar">
-        <button type="button" class="hub-btn active" data-mode="website" onclick="setHubMode('website')">Website</button>
-        <button type="button" class="hub-btn" data-mode="ops" onclick="setHubMode('ops')">Operations</button>
-      </div>
       <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
@@ -530,12 +526,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="mobile-header">
         <img src="logo.png" alt="Gremier Coffee Co."/>
         <span>Gremier Hub</span>
-        <div class="hub-switch hub-switch-mobile" id="hubSwitchMobile">
-          <button type="button" class="hub-btn active" data-mode="website" onclick="setHubMode('website')">Website</button>
-          <button type="button" class="hub-btn" data-mode="ops" onclick="setHubMode('ops')">Ops</button>
-        </div>
       </div>
-      <div id="opsPanel"><iframe id="opsFrame" class="ops-frame" src="about:blank" title="Gremier Operations"></iframe></div>
       <div id="websiteMain">
         <!-- STOCK (ops) TAB -->
       <div id="tab-stock" class="tab-content" style="display:none">
@@ -1560,33 +1551,6 @@ async function signInAdmin() {
 }
 async function signOut() { await sb.auth.signOut(); location.reload(); }
 
-function setHubMode(mode) {
-  const isOps = mode === 'ops';
-
-  localStorage.setItem('gremier_hub_mode', 'website');
-  document.body.classList.toggle('hub-ops-mode', isOps);
-
-  const websiteNav = document.getElementById('websiteNav');
-  const websiteMain = document.getElementById('websiteMain');
-  const opsPanel = document.getElementById('opsPanel');
-  const bottomBar = document.getElementById('bottomTabBar');
-
-  if (websiteNav) websiteNav.style.display = isOps ? 'none' : '';
-  if (websiteMain) websiteMain.style.display = isOps ? 'none' : '';
-  if (opsPanel) opsPanel.style.display = isOps ? 'block' : 'none';
-  if (bottomBar) bottomBar.style.display = isOps ? 'none' : '';
-
-  document.querySelectorAll('.hub-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
-  });
-
-  if (isOps) {
-    const frame = document.getElementById('opsFrame');
-    if (frame && (!frame.src || frame.src === 'about:blank')) {
-      frame.src = '/ops/';
-    }
-  }
-}
 
 // ══ TABS ══
 function showTab(tab) {
