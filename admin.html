@@ -1238,8 +1238,13 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--cream)" id="deliveryPreviewTotal">₪0</div>
       <div style="font-size:.78rem;color:var(--text2);margin-top:4px" id="deliveryPreviewBreakdown"></div>
     </div>
-    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>
-    <div style="display:flex;gap:10px;margin-top:8px">
+<!-- product quantities -->
+    <div class="form-group">
+      <label class="form-label">Products</label>
+      <button type="button" class="btn btn-outline btn-sm" style="margin-bottom:10px" onclick="ldFillDefaultCase()">⚡ Default Case</button>
+      <div id="ldProductRows"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>    <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-amber" onclick="saveDelivery()">Save Delivery</button>
       <button class="btn btn-outline" onclick="closeLogDeliveryModal()">Cancel</button>
       <button class="btn btn-red btn-sm" id="deleteDeliveryBtn" style="margin-left:auto;display:none" onclick="deleteDelivery()">Delete</button>
@@ -4289,7 +4294,75 @@ async function deleteStore() {
 }
 
 // ── Log delivery modal ──
+const LD_PRODUCTS = {
+  classic_liter:        { label:'Classic',               category:'liter' },
+  sweetened_classic:    { label:'Sweetened Classic',     category:'liter' },
+  house_blend:          { label:'House Blend',           category:'liter' },
+  colombia_liter:       { label:'Colombia',              category:'liter' },
+  decaf_liter:          { label:'Decaf',                 category:'liter' },
+  classic_mini:         { label:'Classic Mini',          category:'mini'  },
+  house_blend_mini:     { label:'House Blend Mini',      category:'mini'  },
+  vanilla_mini:         { label:'Vanilla Mini',          category:'mini'  },
+  original_mini:        { label:'Original Mini',         category:'mini'  },
+  caramel_mini:         { label:'Caramel Mini',          category:'mini'  },
+  vanilla_syrup:        { label:'Vanilla Syrup',         category:'syrup' },
+  caramel_syrup:        { label:'Caramel Syrup',         category:'syrup' },
+  sugar_syrup:          { label:'Sugar Syrup',           category:'syrup' },
+};
+const LD_DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
+
+let ldQuantities = {};
+
+function ldRenderProductRows() {
+  const el = document.getElementById('ldProductRows');
+  if (!el) return;
+  const groups = [
+    { label:'Liter Bottles', cat:'liter' },
+    { label:'Mini Bottles',  cat:'mini'  },
+    { label:'Syrups',        cat:'syrup' },
+  ];
+  el.innerHTML = groups.map(g => {
+    const items = Object.entries(LD_PRODUCTS).filter(([,p])=>p.category===g.cat);
+    return `<div style="margin-bottom:10px">
+      <div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;font-weight:600">${g.label}</div>
+      ${items.map(([pid,p])=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:1;font-size:.82rem;color:var(--cream2)">${p.label}</span>
+          <button type="button" onclick="ldChangeQty('${pid}',-1)" style="width:24px;height:24px;border-radius:4px;background:var(--highlight);border:1px solid var(--border);color:var(--cream);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">−</button>
+          <input type="number" min="0" value="${ldQuantities[pid]||0}" onchange="ldSetQty('${pid}',this.value)" style="width:48px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--cream);font-size:13px;text-align:center"/>
+          <button type="button" onclick="ldChangeQty('${pid}',1)" style="width:24px;height:24px;border-radius:4px;background:var(--highlight);border:1px solid var(--border);color:var(--cream);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">+</button>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function ldChangeQty(pid, delta) {
+  ldQuantities[pid] = Math.max(0, (ldQuantities[pid]||0) + delta);
+  ldRenderProductRows();
+  updateDeliveryPreview();
+}
+function ldSetQty(pid, val) {
+  ldQuantities[pid] = Math.max(0, parseInt(val)||0);
+  updateDeliveryPreview();
+}
+function ldFillDefaultCase() {
+  ldQuantities = { ...LD_DEFAULT_CASE };
+  ldRenderProductRows();
+  updateDeliveryPreview();
+}
+function ldGetAggregated() {
+  let large=0, small=0, syrup=0;
+  Object.entries(ldQuantities).forEach(([pid,qty])=>{
+    const cat = LD_PRODUCTS[pid]?.category;
+    if (cat==='liter') large += qty||0;
+    if (cat==='mini')  small += qty||0;
+    if (cat==='syrup') syrup += qty||0;
+  });
+  return { large, small, syrup };
+}
+
 function openLogDeliveryModal() {
+  ldQuantities = {};
   document.getElementById('editDeliveryId').value = '';
   document.getElementById('ldDate').value = new Date().toISOString().split('T')[0];
   document.getElementById('ldLarge').value = '0';
@@ -4299,6 +4372,7 @@ function openLogDeliveryModal() {
   document.getElementById('deleteDeliveryBtn').style.display = 'none';
   document.getElementById('deliveryPreview').style.display = 'none';
   populateStoreSelects();
+  ldRenderProductRows();
   document.getElementById('logDeliveryModal').classList.add('open');
 }
 
@@ -4347,22 +4421,62 @@ async function saveDelivery() {
   const storeId = document.getElementById('ldStore').value;
   const store = allStores.find(s => s.id === storeId);
   if (!store) { showToast('Please select a store'); return; }
+  const { large, small, syrup } = ldGetAggregated();
+  const deliveryDate = document.getElementById('ldDate').value;
+  if (!deliveryDate) { showToast('Please pick a date'); return; }
   const data = {
     store_id: storeId,
     store_name: store.name,
-    qty_large: parseInt(document.getElementById('ldLarge').value) || 0,
-    qty_small: parseInt(document.getElementById('ldSmall').value) || 0,
-    qty_syrup: parseInt(document.getElementById('ldSyrup').value) || 0,
-    delivery_date: document.getElementById('ldDate').value,
+    qty_large: large,
+    qty_small: small,
+    qty_syrup: syrup,
+    delivery_date: deliveryDate,
+    source: 'admin',
     notes: document.getElementById('ldNotes').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
-  if (!data.delivery_date) { showToast('Please pick a date'); return; }
   if (id) {
     await sb.from('store_deliveries').update(data).eq('id', id);
     showToast('Delivery updated ✓');
   } else {
-    await sb.from('store_deliveries').insert(data);
+    const { data: inserted } = await sb.from('store_deliveries').insert(data).select('id').single();
+    // create Schedule job with full per-product quantities
+    const hasQtys = Object.values(ldQuantities).some(q=>q>0);
+    if (hasQtys) {
+      const jobId = 'admin_del_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const itemsLabel = Object.entries(ldQuantities).filter(([,q])=>q>0)
+        .map(([pid,qty])=>`${qty} ${LD_PRODUCTS[pid]?.label||pid}`).join(', ');
+      const schedJob = {
+        id: jobId,
+        type: 'delivery',
+        delivery_type: 'store',
+        store_name: store.name,
+        quantities: ldQuantities,
+        planned_total: large + small + syrup,
+        date: deliveryDate,
+        time: null,
+        done: true,
+        needs_confirmation: false,
+        wa_needs_send: !!store.phone,
+        wa_sent_at: null,
+        billed: false,
+        paid: false,
+        label: `${store.name} — ${itemsLabel}`,
+        created_at: new Date().toISOString(),
+        source: 'admin_store_log',
+      };
+      const { data: { session } } = await sb.auth.getSession();
+      await fetch('https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/jobs', {
+        method: 'POST',
+        headers: {
+          'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify(schedJob),
+      });
+    }
     showToast('Delivery logged ✓');
   }
   closeLogDeliveryModal();
