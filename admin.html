@@ -19,7 +19,7 @@
 </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com; form-action 'self'; upgrade-insecure-requests"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com https://cdn.jsdelivr.net; form-action 'self'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co. — Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
@@ -5380,7 +5380,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
             <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Jerry Cans</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbPeople(p=>Math.max(25,p-25))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{Math.floor(cbPeople/25)}</span><button style={TS.qBtn} onClick={()=>setCbPeople(p=>p+25)}>+</button></div></div>
             <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Dispensers</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbDispensers}</span><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
             {['vanilla_syrup','caramel_syrup','sugar_syrup'].map(pid=>(
-              <div key={pid} style={TS.qRow}><span style={{color:'#c4c4c4'}}>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}}))}>+</button></div></div>
+              <div key={pid} style={TS.qRow}><span style={{color:'#c4c4c4'}}>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
             ))}
             <div style={{display:'flex',gap:10,marginTop:14}}>
               <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
