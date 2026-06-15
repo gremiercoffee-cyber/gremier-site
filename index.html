@@ -2889,10 +2889,13 @@ function prepareCheckoutContent() {
   document.getElementById('coSummary').innerHTML = `
     <div class="order-summary-title">${lang === 'he' ? 'סיכום הזמנה' : 'Order Summary'}</div>
     ${lines}${redeemLine}
-<div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span id="coSummaryTotal">₪${Math.max(0, cartTotal - redeemDiscount)}</span></div>`;  selectedCheckoutCity = null;
-  const cityInput = document.getElementById('coCityInput');
-  if (cityInput) cityInput.value = '';
-  hideCitySuggestions();
+<div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span id="coSummaryTotal">₪${Math.max(0, cartTotal - redeemDiscount)}</span></div>`;  
+  if (!appliedRedeem) {
+    selectedCheckoutCity = null;
+    const cityInput = document.getElementById('coCityInput');
+    if (cityInput) cityInput.value = '';
+    hideCitySuggestions();
+  }
   setTimeout(() => updateDeliveryPrice(), 50);
 }
 function showCheckoutResultUI(kind) {
@@ -3314,11 +3317,17 @@ function updateDeliveryPrice() {
   const isExpedited = document.getElementById('shipExpedited')?.checked;
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
-  if (!selectedCheckoutCity) {
+ if (!selectedCheckoutCity) {
     if (feeRow) feeRow.style.display = 'none';
     if (freeNote) freeNote.style.display = 'none';
     document.getElementById('shipRegularPrice').textContent = '—';
     document.getElementById('shipExpeditedPrice').textContent = '—';
+    const summaryTotal = document.getElementById('coSummaryTotal');
+    if (summaryTotal) {
+      const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+      const redeemDiscount = appliedRedeem ? Number(appliedRedeem.discount) || 0 : 0;
+      summaryTotal.textContent = `₪${Math.max(0, cartTotal - redeemDiscount)}`;
+    }
     return 0;
   }
 
