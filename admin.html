@@ -4429,20 +4429,45 @@ async function saveDelivery() {
   const { large, small, syrup } = ldGetAggregated();
   const deliveryDate = document.getElementById('ldDate').value;
   if (!deliveryDate) { showToast('Please pick a date'); return; }
-  const data = {
+const data = {
     store_id: storeId,
     store_name: store.name,
     qty_large: large,
     qty_small: small,
     qty_syrup: syrup,
+    quantities: Object.keys(ldQuantities).length ? ldQuantities : null,
     delivery_date: deliveryDate,
     notes: document.getElementById('ldNotes').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
-  if (id) {
+if (id) {
+    // reverse old quantities before saving new ones
+    const { data: oldRow } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
+    if (oldRow?.quantities) {
+      for (const [pid, qty] of Object.entries(oldRow.quantities)) {
+        if (qty > 0) {
+          const rows = await sb.from('inventory').select('qty').eq('product', pid).single();
+          if (rows.data) {
+            await sb.from('inventory').update({ qty: Math.max(0, (rows.data.qty || 0) + qty) }).eq('product', pid);
+          }
+        }
+      }
+    }
+    // apply new quantities
+    if (Object.keys(ldQuantities).length) {
+      for (const [pid, qty] of Object.entries(ldQuantities)) {
+        if (qty > 0) {
+          const rows = await sb.from('inventory').select('qty').eq('product', pid).single();
+          if (rows.data) {
+            await sb.from('inventory').update({ qty: Math.max(0, (rows.data.qty || 0) - qty) }).eq('product', pid);
+          }
+        }
+      }
+    }
     await sb.from('store_deliveries').update(data).eq('id', id);
     showToast('Delivery updated ✓');
-  } else {
+  }
+  else {
     await sb.from('store_deliveries').insert(data);
     const hasQtys = Object.values(ldQuantities).some(q => q > 0);
     const { data: { session } } = await sb.auth.getSession();
@@ -4511,6 +4536,18 @@ async function saveDelivery() {
 async function deleteDelivery() {
   const id = document.getElementById('editDeliveryId').value;
   if (!id || !confirm('Delete this delivery?')) return;
+  // reverse inventory if quantities were recorded
+  const { data: row } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
+  if (row?.quantities) {
+    for (const [pid, qty] of Object.entries(row.quantities)) {
+      if (qty > 0) {
+        const { data: inv } = await sb.from('inventory').select('qty').eq('product', pid).single();
+        if (inv) {
+          await sb.from('inventory').update({ qty: Math.max(0, (inv.qty || 0) + qty) }).eq('product', pid);
+        }
+      }
+    }
+  }
   await sb.from('store_deliveries').delete().eq('id', id);
   showToast('Delivery deleted');
   closeLogDeliveryModal();
@@ -4519,6 +4556,18 @@ async function deleteDelivery() {
 
 async function deleteDeliveryById(id) {
   if (!confirm('Delete this delivery?')) return;
+  // reverse inventory if quantities were recorded
+  const { data: row } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
+  if (row?.quantities) {
+    for (const [pid, qty] of Object.entries(row.quantities)) {
+      if (qty > 0) {
+        const { data: inv } = await sb.from('inventory').select('qty').eq('product', pid).single();
+        if (inv) {
+          await sb.from('inventory').update({ qty: Math.max(0, (inv.qty || 0) + qty) }).eq('product', pid);
+        }
+      }
+    }
+  }
   await sb.from('store_deliveries').delete().eq('id', id);
   showToast('Delivery deleted');
   await loadStoreDeliveries();
@@ -5311,12 +5360,13 @@ async function syncStoreDeliveryToAdmin(job, qtys) {
   const stores = await opsFetch('stores?select=id,name&is_active=eq.true');
   const store = (stores||[]).find(s=>s.name===job.storeName);
   if (!store) return;
-  await opsFetch('store_deliveries',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
+await opsFetch('store_deliveries',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
     store_id: store.id,
     store_name: job.storeName,
     qty_large: large,
     qty_small: mini,
     qty_syrup: syrup,
+    quantities: Object.keys(qtys).length ? qtys : null,
     delivery_date: job.date,
     source: 'ops_checkoff',
     notes: null,
@@ -5406,7 +5456,141 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     }
   }
 }
+async function reverseJobSideEffects2(job, stores) {
+  const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
+  const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
+  const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
+  const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
+  const CONC_TYPES = {classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
 
+  // BREW — beans were deducted at brew-start
+  if (job.type==='brew' && job.brewStarted) {
+    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const newKg = parseFloat(((beanRows?.[0]?.kg||0) + (job.kg||3)).toFixed(1));
+    await opsFetch(`beans?type=eq.${job.product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg})});
+    // remove the auto-created pending drain so it can't add phantom concentrate
+    const drains = await opsFetch(`jobs?type=eq.drain&product=eq.${job.product}&done=eq.false&select=id`);
+    if (drains?.length) await deleteJobFromDB2(drains[0].id);
+  }
+
+  // DRAIN — concentrate was added
+  if (job.type==='drain' && job.done) {
+    await incrementConcentrate2(job.product, -(kgToL[job.kg]||19));
+  }
+
+  // BOTTLING — concentrate consumed, inventory + labeled produced
+  if (job.type==='bottling' && job.done) {
+    const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
+    if (concType) {
+      const liters = job.actualQty!=null ? job.actualQty : (job.liters||0);
+      const ratio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio||0.44);
+      await incrementConcentrate2(concType, +(liters*ratio));           // give concentrate back
+      const units = MINI_P.includes(job.product) ? Math.round(liters*4)
+                  : JERRY_P.includes(job.product) ? Math.round(liters/5)
+                  : Math.round(liters);
+      await incrementInventory2(job.product, -units);                   // remove produced bottles
+    }
+    if (job.labeledUsed) {
+      for (const [pid,qty] of Object.entries(job.labeledUsed)) {
+        if (qty>0) await incrementLabeledStock2(pid, +qty);             // give labels back
+      }
+    }
+  }
+
+  // LABELING — labeled stock added
+  if (job.type==='labeling' && job.done) {
+    const LABELED = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+    if (LABELED.includes(job.product)) await incrementLabeledStock2(job.product, -(job.qty||0));
+  }
+
+  // DELIVERY — inventory deducted
+  if (job.type==='delivery' && job.done) {
+    for (const [pid,qty] of Object.entries(job.quantities||{})) {
+      if (qty>0) await incrementInventory2(pid, +qty);                  // give bottles back
+    }
+    if (job.deliveryType==='coffeebar') {
+      if (job.dispensers) await incrementInventory2('dispenser', +job.dispensers);
+      for (const [pid,qty] of Object.entries(job.cbSyrups||{})) {
+        if (qty>0) await incrementInventory2(pid, +qty);
+      }
+      const jd={};
+      (job.jerryCans||[]).forEach(ct=>{const pid=JERRY_MAP[ct]||'jerry_can';jd[pid]=(jd[pid]||0)+1;});
+      for (const [pid,qty] of Object.entries(jd)) await incrementInventory2(pid, +qty);
+    }
+  }
+}
+    async function reverseJobSideEffects2(job, stores) {
+  const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
+  const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
+  const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
+  const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
+  const CONC_TYPES = {classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+
+  // BREW — beans were deducted at brew-start, restore them
+  if (job.type === 'brew' && job.brewStarted) {
+    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const newKg = parseFloat(((beanRows?.[0]?.kg || 0) + (job.kg || 3)).toFixed(1));
+    await opsFetch(`beans?type=eq.${job.product}`, {
+      method: 'PATCH', prefer: 'return=minimal',
+      body: JSON.stringify({ kg: newKg }),
+    });
+    // remove the auto-created pending drain so it can't add phantom concentrate
+    const drains = await opsFetch(`jobs?type=eq.drain&product=eq.${job.product}&done=eq.false&select=id`);
+    if (drains?.length) await deleteJobFromDB2(drains[0].id);
+  }
+
+  // DRAIN — concentrate was added, remove it
+  if (job.type === 'drain' && job.done) {
+    await incrementConcentrate2(job.product, -(kgToL[job.kg] || 19));
+  }
+
+  // BOTTLING — concentrate was consumed, inventory was added, labeled bottles were used
+  if (job.type === 'bottling' && job.done) {
+    const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
+    if (concType) {
+      const liters = job.actualQty != null ? job.actualQty : (job.liters || 0);
+      const ratio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.44);
+      await incrementConcentrate2(concType, +(liters * ratio));  // give concentrate back
+      const units = MINI_P.includes(job.product) ? Math.round(liters * 4)
+                  : JERRY_P.includes(job.product) ? Math.round(liters / 5)
+                  : Math.round(liters);
+      await incrementInventory2(job.product, -units);             // remove the bottles that were produced
+    }
+    if (job.labeledUsed) {
+      for (const [pid, qty] of Object.entries(job.labeledUsed)) {
+        if (qty > 0) await incrementLabeledStock2(pid, +qty);    // give labels back
+      }
+    }
+  }
+
+  // LABELING — labeled stock was added, remove it
+  if (job.type === 'labeling' && job.done) {
+    const LABELED = ['classic_liter','sweetened_classic','house_blend','colombia_liter',
+                     'vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+    if (LABELED.includes(job.product)) {
+      await incrementLabeledStock2(job.product, -(job.qty || 0));
+    }
+  }
+
+  // DELIVERY — inventory was deducted, restore it
+  if (job.type === 'delivery' && job.done) {
+    for (const [pid, qty] of Object.entries(job.quantities || {})) {
+      if (qty > 0) await incrementInventory2(pid, +qty);
+    }
+    if (job.deliveryType === 'coffeebar') {
+      if (job.dispensers) await incrementInventory2('dispenser', +job.dispensers);
+      for (const [pid, qty] of Object.entries(job.cbSyrups || {})) {
+        if (qty > 0) await incrementInventory2(pid, +qty);
+      }
+      const jd = {};
+      (job.jerryCans || []).forEach(ct => {
+        const pid = JERRY_MAP[ct] || 'jerry_can';
+        jd[pid] = (jd[pid] || 0) + 1;
+      });
+      for (const [pid, qty] of Object.entries(jd)) await incrementInventory2(pid, +qty);
+    }
+  }
+}
 // expose full products for bottling concentrate lookup
 window.__OPS_PRODUCTS_FULL__ = {
   classic_liter:{concentrate:'classic'}, sweetened_classic:{concentrate:'classic'},
@@ -5779,6 +5963,148 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
 }
 
 // ── SCHEDULE TAB ROOT ──────────────────────────────────────
+    function ScheduleForm({ mode, stores, onClose, onSubmit }) {
+  const logNow = mode === 'lognow';
+  const FP = {
+    classic_liter:{label:'Classic',category:'liter'}, sweetened_classic:{label:'Sweetened Classic',category:'liter'},
+    house_blend:{label:'House Blend',category:'liter'}, colombia_liter:{label:'Colombia',category:'liter'}, decaf_liter:{label:'Decaf',category:'liter'},
+    classic_mini:{label:'Classic Mini',category:'mini'}, house_blend_mini:{label:'House Blend Mini',category:'mini'},
+    vanilla_mini:{label:'Vanilla Mini',category:'mini'}, original_mini:{label:'Original Mini',category:'mini'}, caramel_mini:{label:'Caramel Mini',category:'mini'},
+    jerry_can:{label:'Jerry Can Classic',category:'jerry'}, jerry_can_houseblend:{label:'Jerry Can House Blend',category:'jerry'},
+    jerry_can_colombia:{label:'Jerry Can Colombia',category:'jerry'}, jerry_can_decaf:{label:'Jerry Can Decaf',category:'jerry'},
+    vanilla_syrup:{label:'Vanilla Syrup',category:'syrup'}, caramel_syrup:{label:'Caramel Syrup',category:'syrup'}, sugar_syrup:{label:'Sugar Syrup',category:'syrup'},
+  };
+  const CONC = { classic:'Classic (Dark Roast)', houseBlend:'House Blend', colombia:'Colombia (Light Roast)', decaf:'Decaf' };
+  const DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
+  const bottleProducts = Object.entries(FP).filter(([,p])=>p.category!=='syrup'&&p.category!=='dispenser');
+  const labelProducts = Object.entries(FP).filter(([,p])=>['liter','mini','jerry'].includes(p.category));
+
+  const [jobType,setJobType] = useState2('delivery');
+  const [subType,setSubType] = useState2('store');
+  const [prodType,setProdType] = useState2('brew');
+  const [date,setDate] = useState2(todayISO2());
+  const [time,setTime] = useState2('');
+  const [storeName,setStoreName] = useState2('');
+  const [privateName,setPrivateName] = useState2('');
+  const [privateAddress,setPrivateAddress] = useState2('');
+  const [quantities,setQuantities] = useState2({});
+  const [people,setPeople] = useState2(25);
+  const [cbName,setCbName] = useState2('');
+  const [dispensers,setDispensers] = useState2(1);
+  const [brewConc,setBrewConc] = useState2('classic');
+  const [kg,setKg] = useState2(3);
+  const [bottleProduct,setBottleProduct] = useState2('classic_liter');
+  const [liters,setLiters] = useState2('');
+  const [labelProduct,setLabelProduct] = useState2('classic_liter');
+  const [labelQty,setLabelQty] = useState2('');
+
+  function changeQty(pid, delta) { setQuantities(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)})); }
+  function setQty(pid, val) { setQuantities(q=>({...q,[pid]:Math.max(0,parseInt(val)||0)})); }
+
+  function build() {
+    const base = { date: logNow?todayISO2():(date||todayISO2()), time: logNow?(time||new Date().toTimeString().slice(0,5)):time };
+    if (jobType==='delivery') {
+      if (subType==='coffeebar') {
+        const canCount = Math.floor(people/25);
+        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, dispensers, cbSyrups:{}, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
+      }
+      const total = Object.values(quantities).reduce((s,v)=>s+(v||0),0);
+      return { ...base, type:'delivery', deliveryType:subType,
+        storeName: subType==='store'?storeName:undefined,
+        privateName: subType==='private'?privateName:undefined,
+        privateAddress: subType==='private'?privateAddress:undefined,
+        quantities, plannedTotal:total,
+        label: subType==='store'?(storeName||'Store'):(privateName||'Private') };
+    }
+    if (prodType==='brew') return { ...base, type:'brew', product:brewConc, kg, label:`Brew ${CONC[brewConc]} (${kg}kg)` };
+    if (prodType==='label') return { ...base, type:'labeling', product:labelProduct, qty:Number(labelQty), label:`Label ${labelQty} ${FP[labelProduct]?.label||''}` };
+    const isJerry = FP[bottleProduct]?.category==='jerry';
+    const actualLiters = isJerry?Number(liters)*5:Number(liters);
+    return { ...base, type:'bottling', product:bottleProduct, liters:actualLiters, qty:isJerry?Number(liters):undefined, label:`Bottle ${liters}${isJerry?' cans':'L'} ${FP[bottleProduct]?.label||''}` };
+  }
+
+  const tog = (active,color) => ({ flex:1, padding:'9px 4px', background:active?(color||'#d0d0d0'):'#303030', color:active?'#121212':'#9a9a9a', border:'none', borderRadius:6, fontSize:13, fontWeight:active?700:400, cursor:'pointer', fontFamily:"'DM Sans',sans-serif" });
+  const lbl = { fontSize:10, letterSpacing:1, textTransform:'uppercase', color:'#9a9a9a', marginBottom:6, display:'block' };
+
+  function QtyRows({ cat, title }) {
+    const items = Object.entries(FP).filter(([,p])=>p.category===cat);
+    if (!items.length) return null;
+    return (
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:9,color:'#9a9a9a',letterSpacing:1,textTransform:'uppercase',fontWeight:700,marginTop:8,marginBottom:4,borderBottom:'1px solid #303030',paddingBottom:3}}>{title}</div>
+        {items.map(([pid,p])=>(
+          <div key={pid} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #303030'}}>
+            <span style={{flex:1,fontSize:13,color:'#c4c4c4'}}>{p.label}</span>
+            <button style={TS.qBtn} onClick={()=>changeQty(pid,-1)}>−</button>
+            <input style={TS.qInp} type="number" value={quantities[pid]||0} onChange={e=>setQty(pid,e.target.value)}/>
+            <button style={TS.qBtn} onClick={()=>changeQty(pid,1)}>+</button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={TS.modal} onClick={onClose}>
+      <div style={{...TS.modalBox,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'}</div>
+
+        <div style={{display:'flex',gap:8,marginBottom:14}}>
+          <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
+          <button style={tog(jobType==='production','#6aa8e8')} onClick={()=>setJobType('production')}>Production</button>
+        </div>
+
+        {jobType==='delivery'&&(
+          <>
+            <div style={{display:'flex',gap:6,marginBottom:12}}>
+              {['store','private','coffeebar'].map(t=>(
+                <button key={t} style={tog(subType===t)} onClick={()=>setSubType(t)}>{t==='coffeebar'?'Coffee Bar':t[0].toUpperCase()+t.slice(1)}</button>
+              ))}
+            </div>
+            {subType==='store'&&<div style={{marginBottom:12}}><span style={lbl}>Store</span><select style={TS.inp} value={storeName} onChange={e=>setStoreName(e.target.value)}><option value="">Select store…</option>{stores.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}</select></div>}
+            {subType==='private'&&<><div style={{marginBottom:12}}><span style={lbl}>Recipient</span><input style={TS.inp} value={privateName} onChange={e=>setPrivateName(e.target.value)} placeholder="Name"/></div><div style={{marginBottom:12}}><span style={lbl}>Address</span><input style={TS.inp} value={privateAddress} onChange={e=>setPrivateAddress(e.target.value)} placeholder="Delivery address"/></div></>}
+            {subType!=='coffeebar'&&(
+              <>
+                {subType==='store'&&<button style={{...TS.btn('#303030','#efefef'),marginBottom:10,border:'1px solid #454545'}} onClick={()=>setQuantities({...DEFAULT_CASE})}>⚡ Default Case</button>}
+                <QtyRows cat="liter" title="Liter Bottles"/>
+                <QtyRows cat="mini" title="Mini Bottles"/>
+                <QtyRows cat="jerry" title="Jerry Cans"/>
+                <QtyRows cat="syrup" title="Syrups"/>
+              </>
+            )}
+            {subType==='coffeebar'&&(
+              <>
+                <div style={{marginBottom:12}}><span style={lbl}>People</span><select style={TS.inp} value={people} onChange={e=>setPeople(Number(e.target.value))}>{[25,50,75,100,125,150].map(n=><option key={n} value={n}>{n} people ({Math.floor(n/25)} cans)</option>)}</select></div>
+                <div style={{marginBottom:12}}><span style={lbl}>Client (optional)</span><input style={TS.inp} value={cbName} onChange={e=>setCbName(e.target.value)} placeholder="Event / who for"/></div>
+                <div style={{marginBottom:12}}><span style={lbl}>Dispensers</span><input style={TS.inp} type="number" value={dispensers} onChange={e=>setDispensers(Number(e.target.value)||0)}/></div>
+              </>
+            )}
+          </>
+        )}
+
+        {jobType==='production'&&(
+          <>
+            <div style={{display:'flex',gap:6,marginBottom:12}}>
+              <button style={tog(prodType==='brew','#6aa8e8')} onClick={()=>setProdType('brew')}>Brew</button>
+              <button style={tog(prodType==='bottle','#e0a030')} onClick={()=>setProdType('bottle')}>Bottle</button>
+              <button style={tog(prodType==='label','#8a7060')} onClick={()=>setProdType('label')}>Label</button>
+            </div>
+            {prodType==='brew'&&<><div style={{marginBottom:12}}><span style={lbl}>Concentrate</span><select style={TS.inp} value={brewConc} onChange={e=>setBrewConc(e.target.value)}>{Object.entries(CONC).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Kilos</span><select style={TS.inp} value={kg} onChange={e=>setKg(Number(e.target.value))}><option value={3}>3kg → ~19L</option><option value={2}>2kg → ~12.7L</option><option value={1.5}>1.5kg → ~9.5L</option><option value={1}>1kg → ~6.4L</option></select></div></>}
+            {prodType==='bottle'&&<><div style={{marginBottom:12}}><span style={lbl}>Product</span><select style={TS.inp} value={bottleProduct} onChange={e=>setBottleProduct(e.target.value)}>{bottleProducts.map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>{FP[bottleProduct]?.category==='jerry'?'Number of Cans':'Liters to Produce'}</span><input style={TS.inp} type="number" value={liters} onChange={e=>setLiters(e.target.value)}/></div></>}
+            {prodType==='label'&&<><div style={{marginBottom:12}}><span style={lbl}>Product</span><select style={TS.inp} value={labelProduct} onChange={e=>setLabelProduct(e.target.value)}>{labelProducts.map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Quantity</span><input style={TS.inp} type="number" value={labelQty} onChange={e=>setLabelQty(e.target.value)}/></div></>}
+          </>
+        )}
+
+        {!logNow&&<><div style={{marginBottom:12}}><span style={lbl}>Date</span><input style={TS.inp} type="date" value={date} onChange={e=>setDate(e.target.value)}/></div><div style={{marginBottom:12}}><span style={lbl}>Time (optional)</span><input style={TS.inp} type="time" value={time} onChange={e=>setTime(e.target.value)}/></div></>}
+
+        <div style={{display:'flex',gap:10,marginTop:14}}>
+          <button style={TS.btn('#303030','#efefef')} onClick={onClose}>Cancel</button>
+          <button style={TS.btn(logNow?'#4caf72':'#d0d0d0',logNow?'#fff':'#121212')} onClick={()=>onSubmit(build())}>{logNow?'✓ Log as Done':'Save to Schedule'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function ScheduleTab() {
   const [jobs, setJobs] = useState2([]);
   const [stores, setStores] = useState2([]);
@@ -5791,6 +6117,8 @@ function ScheduleTab() {
   const [billingOpen, setBillingOpen] = useState2(false);
   const [webQueueOpen, setWebQueueOpen] = useState2(false);
   const [showCompleted, setShowCompleted] = useState2(false);
+  const [showForm, setShowForm] = useState2(false);
+  const [formMode, setFormMode] = useState2('lognow');
   const checkoffInProgress = useRef2(new Set());
   const today = todayISO2();
   const tomorrow = tomorrowISO2();
@@ -5860,9 +6188,10 @@ function ScheduleTab() {
     await reload();
   }
 
-  async function handleDelete(job) {
+async function handleDelete(job) {
     if (!window.confirm('Delete this job?')) return;
     setJobs(prev=>prev.filter(j=>j.id!==job.id));
+    await reverseJobSideEffects2(job, stores);
     await deleteJobFromDB2(job.id);
     await reload();
   }
@@ -5885,7 +6214,13 @@ function ScheduleTab() {
     await opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});
     await reload();
   }
-
+async function addJobFromForm(job, mode) {
+    const newJob = { ...job, id: Date.now()+'_'+Math.random().toString(36).slice(2), brewStarted:false, done:false, createdAt:new Date().toISOString() };
+    await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
+    setShowForm(false);
+    await reload();
+    if (mode==='lognow') handleCheckoff(newJob);
+  }
   function DaySection({ label, dayJobs, overdue }) {
     const deliveries = dayJobs.filter(j=>j.type==='delivery');
     const production = dayJobs.filter(j=>j.type!=='delivery');
@@ -5915,6 +6250,10 @@ function ScheduleTab() {
     <div style={TS.screen}>
       <div style={{padding:'16px 12px 0'}}>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#efefef',marginBottom:14}}>Schedule</div>
+        <div style={{display:'flex',gap:10,marginBottom:14}}>
+          <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#4caf72',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
+          <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#d0d0d0',color:'#121212',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
+        </div>
       </div>
 
       {/* brewing banner */}
@@ -6004,6 +6343,7 @@ function ScheduleTab() {
 
       {/* modals */}
       {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
+      {showForm&&<ScheduleForm mode={formMode} stores={stores} onClose={()=>setShowForm(false)} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}
       {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
     </div>
   );
