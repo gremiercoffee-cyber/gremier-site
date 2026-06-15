@@ -3557,6 +3557,22 @@ async function purchaseGiftCardFromPage() {
     btn.disabled = false; btn.textContent = lang==='he'?'המשך לתשלום':'Continue to Payment';
   }
 }
+  function toggleExpeditedOptions() {
+  const isExpedited = document.getElementById('shipExpedited')?.checked;
+  const opts = document.getElementById('expeditedOptions');
+  if (opts) opts.style.display = isExpedited ? 'block' : 'none';
+  if (!isExpedited) {
+    const dateRow = document.getElementById('datePickerRow');
+    if (dateRow) dateRow.style.display = 'none';
+  }
+}
+function toggleDatePicker() {
+  const isDate = document.getElementById('priorityDate')?.checked;
+  const dateRow = document.getElementById('datePickerRow');
+  if (dateRow) dateRow.style.display = isDate ? 'block' : 'none';
+}
+
+init();
 init();
 window.addEventListener('popstate', handleAppPopState);
 // ══ CHATBOT ══
