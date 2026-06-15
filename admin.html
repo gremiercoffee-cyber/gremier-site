@@ -4431,7 +4431,6 @@ async function saveDelivery() {
     qty_small: small,
     qty_syrup: syrup,
     delivery_date: deliveryDate,
-    source: 'admin',
     notes: document.getElementById('ldNotes').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
@@ -4463,7 +4462,6 @@ async function saveDelivery() {
         paid: false,
         label: `${store.name} — ${itemsLabel}`,
         created_at: new Date().toISOString(),
-        source: 'admin_store_log',
       };
       const { data: { session } } = await sb.auth.getSession();
       await fetch('https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/jobs', {
