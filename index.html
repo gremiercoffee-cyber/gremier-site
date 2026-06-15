@@ -1155,9 +1155,27 @@
             <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-regular">Regular Delivery</div><div style="font-size:.74rem;color:var(--text2)" id="shipRegularPrice">—</div></div>
           </label>
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipExpeditedLabel">
-            <input type="radio" name="shipType" value="expedited" id="shipExpedited" onchange="updateDeliveryPrice()" style="accent-color:#1a1a1a"/>
-            <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-expedited">Expedited</div><div style="font-size:.74rem;color:var(--text2)" id="shipExpeditedPrice">—</div></div>
+            <input type="radio" name="shipType" value="expedited" id="shipExpedited" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
+            <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-expedited">Priority / Specific Day</div><div style="font-size:.74rem;color:var(--text2)" id="shipExpeditedPrice">—</div></div>
           </label>
+        </div>
+        <!-- Priority sub-options -->
+        <div id="expeditedOptions" style="display:none;margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
+          <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;line-height:1.5">We always ship as fast as we can — this option guarantees 1–2 day delivery or locks in a specific date. Extra fee applies.</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:#1a1a1a">
+              <input type="radio" name="priorityType" value="fast" id="priorityFast" checked style="accent-color:#1a1a1a" onchange="toggleDatePicker()"/>
+              ⚡ Guaranteed 1–2 days
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:#1a1a1a">
+              <input type="radio" name="priorityType" value="date" id="priorityDate" style="accent-color:#1a1a1a" onchange="toggleDatePicker()"/>
+              📅 Pick a specific date
+            </label>
+          </div>
+          <div id="datePickerRow" style="display:none">
+            <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px">Delivery date</label>
+            <input type="date" id="coDeliveryDate" class="form-input" style="max-width:220px"/>
+          </div>
         </div>
         <div id="deliveryFeeRow" style="display:none;margin-top:10px;display:flex;justify-content:space-between;font-size:.84rem;padding:8px 0;border-bottom:1px solid var(--border)">
           <span style="color:var(--text2)" id="t-delivery-fee">Delivery fee</span>
@@ -2458,8 +2476,10 @@ async function submitOrder() {
     const giftCardDiscount = (appliedRedeem && appliedRedeem.kind === 'gift_card') ? Number(appliedRedeem.discount) || 0 : 0;
     const total = Math.max(0, cartTotal + deliveryFee - couponDiscount - giftCardDiscount);
     const pricing = resolveDeliveryPricing(selectedCheckoutCity);
-    const shipType = document.getElementById('shipExpedited')?.checked ? 'expedited' : 'regular';
-    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
+const isExpedited = document.getElementById('shipExpedited')?.checked;
+const priorityType = document.getElementById('priorityDate')?.checked ? 'specific_date' : 'fast';
+const deliveryDate = document.getElementById('coDeliveryDate')?.value || null;
+const shipType = isExpedited ? 'expedited' : 'regular';    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
     const orderData = {
       user_id: currentUser?.id || null,
       customer_name: name,
@@ -2488,7 +2508,9 @@ async function submitOrder() {
       gift_card_discount: giftCardDiscount,
       total,
       delivery_info: {
-        delivery_type: shipType,
+       delivery_type: shipType,
+priority_type: isExpedited ? priorityType : null,
+delivery_date: isExpedited && priorityType === 'specific_date' ? deliveryDate : null,,
         delivery_fee: deliveryFee,
         city_en: selectedCheckoutCity.en,
         city_he: selectedCheckoutCity.he,
