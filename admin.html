@@ -574,6 +574,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
         </div>
         <div id="recoverOrdersPanel" style="display:none"></div>
+        <div id="abandonedOrdersPanel" style="margin-bottom:20px"></div>
         <div class="stat-grid" id="orderStats"></div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
@@ -2312,7 +2313,45 @@ function applyClientOrderFilters(orders) {
   else if (orderKindFilter === 'regular') list = list.filter(o => !isSubscriptionOrder(o));
   return list;
 }
+async function dismissAbandonedOrder(orderId) {
+  if (!confirm('Mark this as cancelled and remove from abandoned list?')) return;
+  await sb.from('orders').update({ status:'cancelled', updated_at: new Date().toISOString() }).eq('id', orderId);
+  showToast('Order dismissed ✓');
+  await loadOrders();
+}
 
+function renderAbandonedOrders(orders) {
+  const panel = document.getElementById('abandonedOrdersPanel');
+  if (!panel) return;
+  const abandoned = orders.filter(o =>
+    o.payment_status !== 'paid' &&
+    o.status !== 'cancelled' &&
+    o.status !== 'fulfilled'
+  );
+  if (!abandoned.length) {
+    panel.innerHTML = '';
+    return;
+  }
+  panel.innerHTML = `
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px">
+      <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px;font-weight:600">
+        🛒 Abandoned Checkouts (${abandoned.length})
+      </div>
+      ${abandoned.map(o => {
+        const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
+        const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
+        return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <div style="min-width:0">
+            <div style="font-size:.85rem;color:var(--cream);font-weight:500">${escHtml(o.customer_name||'Unknown')}</div>
+            <div style="font-size:.75rem;color:var(--text2);margin-top:2px">${items||'No items'}</div>
+            <div style="font-size:.72rem;color:var(--text2);margin-top:2px">${date} · ₪${o.total}</div>
+          </div>
+          <button class="btn btn-sm" style="background:none;border:1px solid var(--border);color:var(--text2);flex-shrink:0" onclick="dismissAbandonedOrder('${o.id}')">Dismiss</button>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
 async function loadOrders() {
   const cached = localStorage.getItem('gremier_orders_cache');
   if (cached) { allOrders = JSON.parse(cached); renderOrdersTable(allOrders); renderOrderStats(allOrders); }
@@ -2359,20 +2398,22 @@ async function loadOrders() {
   const { data } = await query;
   allOrders = applyClientOrderFilters(data || []);
   localStorage.setItem('gremier_orders_cache', JSON.stringify(data || []));
-  renderOrdersTable(allOrders);
+renderOrdersTable(allOrders);
   renderOrderStats(allOrders);
+  renderAbandonedOrders(allOrders);
   await loadRecoverableOrdersUI();
 }
 function filterOrders() { loadOrders(); }
 function renderOrderStats(orders) {
-  const total = orders.reduce((s,o)=>s+parseFloat(o.total||0),0);
-  const paid = orders.filter(o=>o.payment_status==='paid').reduce((s,o)=>s+parseFloat(o.total||0),0);
-  const subs = orders.filter(isSubscriptionOrder).length;
+  const paidOrders = orders.filter(o=>o.payment_status==='paid');
+  const total = paidOrders.reduce((s,o)=>s+parseFloat(o.total||0),0);
+  const subs = paidOrders.filter(isSubscriptionOrder).length;
+  const fulfilled = paidOrders.filter(o=>o.status==='fulfilled').length;
   document.getElementById('orderStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">${orders.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Paid Orders</div><div class="stat-value">${paidOrders.length}</div></div>
     <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value">₪${total.toFixed(0)}</div></div>
     <div class="stat-card"><div class="stat-label">Subscriptions</div><div class="stat-value">${subs}</div></div>
-    <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪${paid.toFixed(0)}</div></div>
+    <div class="stat-card"><div class="stat-label">Fulfilled</div><div class="stat-value">${fulfilled}</div></div>
   `;
 }
 function renderOrdersTable(orders) {
