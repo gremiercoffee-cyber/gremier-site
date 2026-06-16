@@ -5615,7 +5615,7 @@ function jobColor2(job) {
 function jobLabel2(job) {
   if (job.type==='delivery') {
     if (job.deliveryType==='store') return job.storeName||'Store';
-    if (job.deliveryType==='coffeebar') return job.cbName||'Coffee Bar';
+    if (job.deliveryType==='coffeebar') return `${job.cbName||job.privateName||'Coffee Bar'} — Coffee Bar`;
     return job.privateName||'Private';
   }
   return job.label||job.type;
@@ -5958,7 +5958,7 @@ function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
 const [jobType,setJobType] = useState2('delivery');
   const [subType,setSubType] = useState2(prefill?.subType || 'store');
   const [prodType,setProdType] = useState2('brew');
-  const [date,setDate] = useState2(todayISO2());
+  const [date,setDate] = useState2(prefill?.date || todayISO2());
   const [time,setTime] = useState2('');
   const [storeName,setStoreName] = useState2('');
   const [privateName,setPrivateName] = useState2(prefill?.privateName || '');
@@ -6116,6 +6116,7 @@ function ScheduleTab() {
 const [showForm, setShowForm] = useState2(false);
   const [formMode, setFormMode] = useState2('lognow');
   const [formPrefill, setFormPrefill] = useState2(null);
+  const [editingJobId, setEditingJobId] = useState2(null);
   const checkoffInProgress = useRef2(new Set());
   const today = todayISO2();
   const tomorrow = tomorrowISO2();
@@ -6212,11 +6213,34 @@ async function handleDelete(job) {
     await reload();
   }
 async function addJobFromForm(job, mode) {
+    if (editingJobId) {
+      const existing = jobs.find(j=>j.id===editingJobId);
+      const updatedJob = { ...existing, ...job };
+      await patchJob2(editingJobId, jobToRow2(updatedJob));
+      setEditingJobId(null);
+      setShowForm(false);
+      setFormPrefill(null);
+      await reload();
+      return;
+    }
     const newJob = { ...job, id: Date.now()+'_'+Math.random().toString(36).slice(2), brewStarted:false, done:false, createdAt:new Date().toISOString() };
     await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
     setShowForm(false);
     await reload();
     if (mode==='lognow') handleCheckoff(newJob);
+  }
+  function openEditJob(job) {
+    setFormPrefill({
+      subType: job.deliveryType || 'store',
+      privateName: job.privateName || '',
+      privateAddress: job.privateAddress || '',
+      quantities: job.quantities || {},
+      date: job.date,
+      time: job.time,
+    });
+    setEditingJobId(job.id);
+    setFormMode('schedule');
+    setShowForm(true);
   }
   function DaySection({ label, dayJobs, overdue }) {
     const deliveries = dayJobs.filter(j=>j.type==='delivery');
@@ -6227,14 +6251,14 @@ async function addJobFromForm(job, mode) {
         <div style={{display:'flex',gap:10}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
-            {deliveries.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
-              :deliveries.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}} showDelete={overdue} onDelete={handleDelete}/>)}
+           {deliveries.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              :deliveries.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob} showDelete={overdue} onDelete={handleDelete}/>)}
           </div>
           <div style={{width:1,background:'#303030',flexShrink:0}}/>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
-            {production.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
-              :production.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}} showDelete={overdue} onDelete={handleDelete}/>)}
+           {production.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              :production.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob} showDelete={overdue} onDelete={handleDelete}/>)}
           </div>
         </div>
       </div>
@@ -6278,15 +6302,15 @@ async function addJobFromForm(job, mode) {
           <div style={TS.hdr}>{formatDate2(date)}</div>
           <div style={{display:'flex',gap:10}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
               {grouped[date].filter(j=>j.type==='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+                :grouped[date].filter(j=>j.type==='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob}/>)}
                 :grouped[date].filter(j=>j.type==='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}}/>)}
             </div>
             <div style={{width:1,background:'#303030',flexShrink:0}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
-              {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
-                :grouped[date].filter(j=>j.type!=='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}}/>)}
+             {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+                :grouped[date].filter(j=>j.type!=='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob}/>)}
             </div>
           </div>
         </div>
@@ -6353,7 +6377,7 @@ async function addJobFromForm(job, mode) {
       }} onDismiss={dismissWebOrder}/>}
       {/* modals */}
       {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
-{showForm&&<ScheduleForm mode={formMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
+{showForm&&<ScheduleForm mode={formMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
     </div>
   );
 }
