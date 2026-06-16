@@ -6536,7 +6536,12 @@ const OPS_SB = window.supabase.createClient(
     },
   });
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = body?.message || body?.hint || body?.error || `Request failed (${res.status})`;
+    throw new Error(`opsFetch ${path}: ${msg}`);
+  }
+  return body;
 };
 
 // ── constants ──────────────────────────────────────────────
@@ -7234,8 +7239,12 @@ Keep replies short — 1-2 sentences.`;
       label: option.label||job.label||job.type,
       brewStarted: false,
     };
-    await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
-    setMessages(prev=>[...prev,{role:'assistant',text:'✓ Saved!'}]);
+    try {
+      await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
+      setMessages(prev=>[...prev,{role:'assistant',text:'✓ Saved!'}]);
+    } catch(err) {
+      setMessages(prev=>[...prev,{role:'assistant',text:`⚠ Save failed: ${err.message}`}]);
+    }
   }
 
   function cancelOption() {
