@@ -1527,16 +1527,55 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
+setHubMode('website');
   const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   showTab(_savedAdminTab);
   loadOrders();
   loadAllProducts();
   loadStores();
+  checkForNewOrders();
   if (!window._recoverPoll) {
     window._recoverPoll = setInterval(() => {
       if (document.getElementById('tab-orders')?.style.display !== 'none') loadRecoverableOrdersUI();
     }, 30000);
   }
+}
+
+async function checkForNewOrders() {
+  const lastCheck = localStorage.getItem('gremier_last_order_check');
+  const now = new Date().toISOString();
+
+  if (!lastCheck) {
+    // First time ever — just set the marker, don't show a toast for all-time history
+    localStorage.setItem('gremier_last_order_check', now);
+    return;
+  }
+
+  const { data, error } = await sb.from('orders')
+    .select('id, order_number, customer_name, total')
+    .eq('payment_status', 'paid')
+    .gt('created_at', lastCheck)
+    .order('created_at', { ascending: false });
+
+  if (error) { console.warn('checkForNewOrders:', error); return; }
+
+  localStorage.setItem('gremier_last_order_check', now);
+
+  if (!data || !data.length) return;
+
+  const count = data.length;
+  const msg = count === 1
+    ? `🛒 New order #${data[0].order_number} — ${data[0].customer_name || 'customer'}`
+    : `🛒 ${count} new orders since you last checked`;
+
+  showNewOrderToast(msg);
+}
+
+function showNewOrderToast(msg) {
+  const t = document.getElementById('toast');
+  t.innerHTML = `<span class="toast-inner"><span>${msg}</span><button type="button" class="toast-undo-btn" onclick="showTab('orders');document.getElementById('toast').classList.remove('show')">View Orders</button></span>`;
+  t.classList.add('show');
+  setTimeout(() => { t.classList.remove('show'); }, 8000);
 }
 async function signInAdmin() {
   localStorage.setItem('gremier_hub_mode', 'website');
@@ -7031,8 +7070,8 @@ Keep replies short — 1-2 sentences.`;
 
       {/* floating button */}
       {!isOpen&&(
-        <button onClick={openChat} style={{
-          position:'fixed', bottom:108, right:14,
+<button onClick={openChat} style={{
+          position:'fixed', bottom:90, right:80,
           width:46, height:46, borderRadius:'50%',
           background:AMBER, color:'#121212',
           border:'none', fontSize:20, cursor:'pointer', zIndex:299,
