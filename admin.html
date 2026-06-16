@@ -5451,6 +5451,17 @@ async function incrementLabeledStock2(product, delta) {
   const newQty = Math.max(0,(rows[0].qty||0)+delta);
   await opsFetch(`labeled_stock?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
 }
+/** Batch-decrement/increment many inventory rows in one read + parallel writes. deltas: {product: delta} */
+async function batchIncrementInventory2(deltas) {
+  const ids = Object.keys(deltas).filter(pid => deltas[pid]);
+  if (!ids.length) return;
+  const rows = await opsFetch(`inventory?product=in.(${ids.join(',')})&select=product,qty`);
+  const current = {}; (rows||[]).forEach(r => { current[r.product] = r.qty||0; });
+  await Promise.all(ids.map(pid => {
+    const newQty = Math.max(0, (current[pid]||0) + deltas[pid]);
+    return opsFetch(`inventory?product=eq.${pid}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  }));
+}
 
 async function applyJobSideEffects2(job, confirmedQtys, stores) {
   const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
@@ -5491,30 +5502,23 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const LABELED = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
     if (LABELED.includes(job.product)) await incrementLabeledStock2(job.product, job.qty||0);
   }
-  if (job.type==='delivery') {
+if (job.type==='delivery') {
     const qtys = confirmedQtys||job.quantities||{};
-    // store delivery → write to store_deliveries table (independent of WA-notify eligibility)
-    if (job.deliveryType==='store' && job.storeName) {
-      await syncStoreDeliveryToAdmin(job, qtys);
-    }
-    for (const [pid,qty] of Object.entries(qtys)) {
-      if (qty>0) await incrementInventory2(pid,-qty);
-    }
-    for (const [pid,qty] of Object.entries(qtys)) {
-      if (qty>0) await incrementInventory2(pid,-qty);
-    }
+    const deltas = {};
+    Object.entries(qtys).forEach(([pid,qty]) => { if (qty>0) deltas[pid] = (deltas[pid]||0) - qty; });
     if (job.deliveryType==='coffeebar') {
-      if (job.dispensers) await incrementInventory2('dispenser',-job.dispensers);
-      for (const [pid,qty] of Object.entries(job.cbSyrups||{})) {
-        if (qty>0) await incrementInventory2(pid,-qty);
-      }
+      if (job.dispensers) deltas.dispenser = (deltas.dispenser||0) - job.dispensers;
+      Object.entries(job.cbSyrups||{}).forEach(([pid,qty]) => { if (qty>0) deltas[pid] = (deltas[pid]||0) - qty; });
       const jd={};
       (job.jerryCans||[]).forEach(ct=>{const pid=JERRY_MAP[ct]||'jerry_can';jd[pid]=(jd[pid]||0)+1;});
-      for (const [pid,qty] of Object.entries(jd)) await incrementInventory2(pid,-qty);
+      Object.entries(jd).forEach(([pid,qty]) => { deltas[pid] = (deltas[pid]||0) - qty; });
     }
-    if (isStoreWaDelivery2(job,stores)) {
-      await patchJob2(job.id,{wa_needs_send:true,wa_sent_at:null});
-    }
+    // run inventory write, store_deliveries sync, and WA flag patch concurrently — they touch different tables
+    await Promise.all([
+      batchIncrementInventory2(deltas),
+      (job.deliveryType==='store' && job.storeName) ? syncStoreDeliveryToAdmin(job, qtys) : Promise.resolve(),
+      isStoreWaDelivery2(job,stores) ? patchJob2(job.id,{wa_needs_send:true,wa_sent_at:null}) : Promise.resolve(),
+    ]);
   }
 }
 
