@@ -1527,7 +1527,6 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-setHubMode('website');
   const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   showTab(_savedAdminTab);
   loadOrders();
@@ -5455,8 +5454,6 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
       await patchJob2(job.id,{wa_needs_send:true,wa_sent_at:null});
     }
   }
-}
-
 }
 
 async function reverseJobSideEffects2(job, stores) {
