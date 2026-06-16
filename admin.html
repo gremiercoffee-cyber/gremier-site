@@ -6302,13 +6302,12 @@ async function addJobFromForm(job, mode) {
       )}
 
       {/* floating drawer pills */}
-      {waPending.length>0&&!waOpen&&(
+      {waPending.length>0&&!waOpen&&!billingOpen&&!webQueueOpen&&!showForm&&!checkoffJob&&!calDay&&(
         <button style={{position:'fixed',bottom:170,right:16,background:'#25D366',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>
       )}
-      {unbilled.length>0&&!billingOpen&&(
-        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
+{unbilled.length>0&&!billingOpen&&!waOpen&&!webQueueOpen&&!showForm&&!checkoffJob&&!calDay&&(        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
       )}
-      {pendingWeb.length>0&&!webQueueOpen&&(
+      {pendingWeb.length>0&&!webQueueOpen&&!waOpen&&!billingOpen&&!showForm&&!checkoffJob&&!calDay&&(
         <button style={{position:'fixed',bottom:130,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
       )}
 
@@ -7074,7 +7073,7 @@ Keep replies short — 1-2 sentences.`;
           position:'fixed', bottom:90, right:80,
           width:46, height:46, borderRadius:'50%',
           background:AMBER, color:'#121212',
-          border:'none', fontSize:20, cursor:'pointer', zIndex:299,
+          border:'none', fontSize:20, cursor:'pointer', zIndex:50,
           display:'flex', alignItems:'center', justifyContent:'center',
           boxShadow:'0 4px 16px rgba(0,0,0,.5)',
         }}>🎙</button>
