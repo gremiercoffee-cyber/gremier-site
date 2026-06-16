@@ -5965,8 +5965,10 @@ const [jobType,setJobType] = useState2('delivery');
   const [privateAddress,setPrivateAddress] = useState2(prefill?.privateAddress || '');
   const [quantities,setQuantities] = useState2(prefill?.quantities || {});
   const [people,setPeople] = useState2(25);
-  const [cbName,setCbName] = useState2('');
+const [cbName,setCbName] = useState2('');
   const [dispensers,setDispensers] = useState2(1);
+  const [cbSyrups,setCbSyrups] = useState2({ vanilla_syrup: true, caramel_syrup: true, sugar_syrup: true });
+  const [cbSyrupQty,setCbSyrupQty] = useState2({ vanilla_syrup: 1, caramel_syrup: 1, sugar_syrup: 1 });
   const [brewConc,setBrewConc] = useState2('classic');
   const [kg,setKg] = useState2(3);
   const [bottleProduct,setBottleProduct] = useState2('classic_liter');
@@ -5982,7 +5984,11 @@ const [jobType,setJobType] = useState2('delivery');
     if (jobType==='delivery') {
       if (subType==='coffeebar') {
         const canCount = Math.floor(people/25);
-        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, dispensers, cbSyrups:{}, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
+        const finalSyrups = {};
+        Object.entries(cbSyrups).forEach(([pid,checked]) => {
+          if (checked) finalSyrups[pid] = cbSyrupQty[pid] || 0;
+        });
+        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, dispensers, cbSyrups:finalSyrups, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
       }
       const total = Object.values(quantities).reduce((s,v)=>s+(v||0),0);
       return { ...base, type:'delivery', deliveryType:subType,
@@ -6053,6 +6059,20 @@ const [jobType,setJobType] = useState2('delivery');
                 <div style={{marginBottom:12}}><span style={lbl}>People</span><select style={TS.inp} value={people} onChange={e=>setPeople(Number(e.target.value))}>{[25,50,75,100,125,150].map(n=><option key={n} value={n}>{n} people ({Math.floor(n/25)} cans)</option>)}</select></div>
                 <div style={{marginBottom:12}}><span style={lbl}>Client (optional)</span><input style={TS.inp} value={cbName} onChange={e=>setCbName(e.target.value)} placeholder="Event / who for"/></div>
                 <div style={{marginBottom:12}}><span style={lbl}>Dispensers</span><input style={TS.inp} type="number" value={dispensers} onChange={e=>setDispensers(Number(e.target.value)||0)}/></div>
+                <div style={{marginBottom:6}}><span style={lbl}>Syrups Included</span></div>
+                {[['vanilla_syrup','Vanilla Syrup'],['caramel_syrup','Caramel Syrup'],['sugar_syrup','Sugar Syrup']].map(([pid,label])=>(
+                  <div key={pid} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid #303030'}}>
+                    <input type="checkbox" checked={cbSyrups[pid]} onChange={e=>setCbSyrups(s=>({...s,[pid]:e.target.checked}))} style={{width:18,height:18,flexShrink:0}}/>
+                    <span style={{flex:1,fontSize:13,color:cbSyrups[pid]?'#c4c4c4':'#6a6a6a'}}>{label}</span>
+                    {cbSyrups[pid]&&(
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <button style={TS.qBtn} onClick={()=>setCbSyrupQty(q=>({...q,[pid]:Math.max(0,(q[pid]||0)-1)}))}>−</button>
+                        <input style={TS.qInp} type="number" value={cbSyrupQty[pid]||0} onChange={e=>setCbSyrupQty(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
+                        <button style={TS.qBtn} onClick={()=>setCbSyrupQty(q=>({...q,[pid]:(q[pid]||0)+1}))}>+</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </>
             )}
           </>
@@ -6309,7 +6329,7 @@ async function addJobFromForm(job, mode) {
 {unbilled.length>0&&!billingOpen&&!waOpen&&!webQueueOpen&&!showForm&&!checkoffJob&&!calDay&&(        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
       )}
       {pendingWeb.length>0&&!webQueueOpen&&!waOpen&&!billingOpen&&!showForm&&!checkoffJob&&!calDay&&(
-        <button style={{position:'fixed',bottom:130,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
+        <button style={{position:'fixed',bottom:170,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
       )}
 
       {/* drawers */}
@@ -7084,7 +7104,7 @@ Keep replies short — 1-2 sentences.`;
       {/* floating button */}
       {!isOpen&&(
 <button onClick={openChat} style={{
-          position:'fixed', bottom:90, right:80,
+          position:'fixed', bottom:130, right:16,
           width:46, height:46, borderRadius:'50%',
           background:AMBER, color:'#121212',
           border:'none', fontSize:20, cursor:'pointer', zIndex:50,
