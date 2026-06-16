@@ -6301,15 +6301,15 @@ async function addJobFromForm(job, mode) {
         <div key={date} style={TS.card}>
           <div style={TS.hdr}>{formatDate2(date)}</div>
           <div style={{display:'flex',gap:10}}>
-            <div style={{flex:1,minWidth:0}}>
+<div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
               {grouped[date].filter(j=>j.type==='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
                 :grouped[date].filter(j=>j.type==='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob}/>)}
-                :grouped[date].filter(j=>j.type==='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={()=>{}}/>)}
             </div>
             <div style={{width:1,background:'#303030',flexShrink:0}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
-             {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
                 :grouped[date].filter(j=>j.type!=='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob}/>)}
             </div>
           </div>
