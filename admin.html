@@ -883,6 +883,15 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
   </div>
 
+  <!-- Daily AI Briefing -->
+  <div class="card" style="padding:18px 20px;margin-bottom:24px" id="dashBriefingCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--cream);margin:0">🤖 Today's Briefing</h3>
+      <button type="button" class="btn btn-outline btn-sm" onclick="loadBriefing()" id="dashBriefingBtn">🤖 Briefing</button>
+    </div>
+    <div id="dashBriefingBody" style="color:var(--text2);font-size:.85rem;margin-top:8px">Tap "Briefing" for a summary of today.</div>
+  </div>
+
   <!-- Top KPI row -->
   <div class="stat-grid" id="dashKPIs" style="margin-bottom:28px"></div>
 
@@ -4688,6 +4697,63 @@ async function sendMonthlyBilling() {
 }
 
 // ══ DASHBOARD ══
+async function loadBriefing() {
+  const btn = document.getElementById('dashBriefingBtn');
+  const body = document.getElementById('dashBriefingBody');
+  if (!body) return;
+  if (btn) { btn.disabled = true; btn.textContent = '⋯'; }
+  body.textContent = 'Thinking…';
+  try {
+    const todayISO = new Date().toISOString().split('T')[0];
+    const ninetyDaysAgo = new Date(Date.now() - 90*24*60*60*1000).toISOString().split('T')[0];
+
+    // today's jobs (deliveries + production) straight from the jobs table
+    const todayJobsRes = await window.opsFetch(`jobs?date=eq.${todayISO}&done=eq.false&select=*`);
+    const todayJobs = todayJobsRes || [];
+
+    // last 90 days of store deliveries, to compute typical frequency per store
+    const { data: recentDeliveries } = await sb.from('store_deliveries')
+      .select('store_name, delivery_date')
+      .gte('delivery_date', ninetyDaysAgo)
+      .order('delivery_date', { ascending: false });
+
+    // build a simple per-store summary: last delivery date + average days between deliveries
+    const byStore = {};
+    (recentDeliveries||[]).forEach(d => {
+      if (!byStore[d.store_name]) byStore[d.store_name] = [];
+      byStore[d.store_name].push(d.delivery_date);
+    });
+    const storePatterns = Object.entries(byStore).map(([name, dates]) => {
+      const sorted = [...dates].sort();
+      const lastDate = sorted[sorted.length-1];
+      let avgGapDays = null;
+      if (sorted.length > 1) {
+        const gaps = [];
+        for (let i=1;i<sorted.length;i++) {
+          gaps.push((new Date(sorted[i]) - new Date(sorted[i-1])) / 86400000);
+        }
+        avgGapDays = Math.round(gaps.reduce((a,b)=>a+b,0)/gaps.length);
+      }
+      const daysSinceLast = Math.round((new Date(todayISO) - new Date(lastDate)) / 86400000);
+      return { store: name, lastDeliveryDate: lastDate, deliveryCount90d: sorted.length, avgGapDays, daysSinceLast };
+    });
+
+    const snapshot = { today: todayISO, todayJobs, storeDeliveryPatterns: storePatterns };
+    const system = `You are the daily operations briefing assistant for Gremier Coffee, a cold brew company in Jerusalem.
+Given today's scheduled jobs and each store's historical delivery frequency (last 90 days), write a short, practical briefing for the owner.
+Cover: 1) what's on the schedule today (deliveries, brews, bottling, etc — be specific about store names / products), 2) any store that looks "due" for a delivery soon based on avgGapDays vs daysSinceLast (only mention if genuinely notable, don't force it), 3) anything else worth a heads-up.
+If there's nothing notable for a section, skip it — don't pad. Keep it tight: 3-6 short sentences, plain text, no markdown headers or bullet symbols beyond simple dashes if needed. Conversational, not corporate.`;
+
+    const data = await opsAI2('smart_alerts', { snapshot, system });
+    const text = data?.content?.[0]?.text || data?.error || 'No response.';
+    body.textContent = text;
+  } catch (err) {
+    body.textContent = `⚠ Briefing failed: ${err.message}`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🤖 Briefing'; }
+  }
+}
+
 async function loadDashboard() {
   const period = document.getElementById('dashPeriod')?.value || 'month';
   const now = new Date();
@@ -7081,7 +7147,7 @@ const { useState: useState3, useEffect: useEffect3, useRef: useRef3 } = React;
 const OPS_AI_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/ops-ai';
 
 async function opsAI2(action, payload, isFormData = false) {
-  const { data: { session } } = await window.ADMIN_SB.auth.getSession();
+  const { data: { session } } = await (window.MAIN_SB || window.ADMIN_SB).auth.getSession();
   const headers = { 'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn' };
   if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
   if (!isFormData) headers['Content-Type'] = 'application/json';
