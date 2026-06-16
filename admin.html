@@ -5939,7 +5939,7 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
 }
 
 // ── SCHEDULE TAB ROOT ──────────────────────────────────────
-    function ScheduleForm({ mode, stores, onClose, onSubmit }) {
+function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
   const logNow = mode === 'lognow';
   const FP = {
     classic_liter:{label:'Classic',category:'liter'}, sweetened_classic:{label:'Sweetened Classic',category:'liter'},
@@ -5955,15 +5955,15 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
   const bottleProducts = Object.entries(FP).filter(([,p])=>p.category!=='syrup'&&p.category!=='dispenser');
   const labelProducts = Object.entries(FP).filter(([,p])=>['liter','mini','jerry'].includes(p.category));
 
-  const [jobType,setJobType] = useState2('delivery');
-  const [subType,setSubType] = useState2('store');
+const [jobType,setJobType] = useState2('delivery');
+  const [subType,setSubType] = useState2(prefill?.subType || 'store');
   const [prodType,setProdType] = useState2('brew');
   const [date,setDate] = useState2(todayISO2());
   const [time,setTime] = useState2('');
   const [storeName,setStoreName] = useState2('');
-  const [privateName,setPrivateName] = useState2('');
-  const [privateAddress,setPrivateAddress] = useState2('');
-  const [quantities,setQuantities] = useState2({});
+  const [privateName,setPrivateName] = useState2(prefill?.privateName || '');
+  const [privateAddress,setPrivateAddress] = useState2(prefill?.privateAddress || '');
+  const [quantities,setQuantities] = useState2(prefill?.quantities || {});
   const [people,setPeople] = useState2(25);
   const [cbName,setCbName] = useState2('');
   const [dispensers,setDispensers] = useState2(1);
@@ -6093,8 +6093,9 @@ function ScheduleTab() {
   const [billingOpen, setBillingOpen] = useState2(false);
   const [webQueueOpen, setWebQueueOpen] = useState2(false);
   const [showCompleted, setShowCompleted] = useState2(false);
-  const [showForm, setShowForm] = useState2(false);
+const [showForm, setShowForm] = useState2(false);
   const [formMode, setFormMode] = useState2('lognow');
+  const [formPrefill, setFormPrefill] = useState2(null);
   const checkoffInProgress = useRef2(new Set());
   const today = todayISO2();
   const tomorrow = tomorrowISO2();
@@ -6314,12 +6315,25 @@ async function addJobFromForm(job, mode) {
       {/* drawers */}
       {waOpen&&<WaDrawer2 jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
       {billingOpen&&<BillingDrawer2 jobs={unbilled} onMarkBilled={async(id)=>{await markBilled(id);}} onMarkPaid={async(id)=>{await markPaid(id);}} onClose={()=>setBillingOpen(false)}/>}
-      {webQueueOpen&&<WebsiteQueueDrawer2 orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={(o)=>{setWebQueueOpen(false);window.alert('Open the Schedule tab in ops or add a job manually — full schedule form coming in next phase.');}} onDismiss={dismissWebOrder}/>}
-
+{webQueueOpen&&<WebsiteQueueDrawer2 orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={(o)=>{
+        setWebQueueOpen(false);
+        const quantities = {};
+        (o.items||[]).forEach(i => {
+          const pid = i.product_id || i.name_en;
+          if (pid) quantities[pid] = (quantities[pid]||0) + (i.qty||1);
+        });
+        setFormPrefill({
+          subType: 'private',
+          privateName: websiteOrderDisplayLabel2(o),
+          privateAddress: o.delivery_address || '',
+          quantities,
+        });
+        setFormMode('schedule');
+        setShowForm(true);
+      }} onDismiss={dismissWebOrder}/>}
       {/* modals */}
       {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
-      {showForm&&<ScheduleForm mode={formMode} stores={stores} onClose={()=>setShowForm(false)} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}
-      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
+{showForm&&<ScheduleForm mode={formMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
     </div>
   );
 }
