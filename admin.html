@@ -5575,23 +5575,21 @@ async function reverseJobSideEffects2(job, stores) {
     }
   }
 
-  // DELIVERY — inventory was deducted, restore it
+// DELIVERY — inventory was deducted, restore it
   if (job.type === 'delivery' && job.done) {
-    for (const [pid, qty] of Object.entries(job.quantities || {})) {
-      if (qty > 0) await incrementInventory2(pid, +qty);
-    }
+    const deltas = {};
+    Object.entries(job.quantities || {}).forEach(([pid, qty]) => { if (qty > 0) deltas[pid] = (deltas[pid]||0) + qty; });
     if (job.deliveryType === 'coffeebar') {
-      if (job.dispensers) await incrementInventory2('dispenser', +job.dispensers);
-      for (const [pid, qty] of Object.entries(job.cbSyrups || {})) {
-        if (qty > 0) await incrementInventory2(pid, +qty);
-      }
+      if (job.dispensers) deltas.dispenser = (deltas.dispenser||0) + job.dispensers;
+      Object.entries(job.cbSyrups || {}).forEach(([pid, qty]) => { if (qty > 0) deltas[pid] = (deltas[pid]||0) + qty; });
       const jd = {};
       (job.jerryCans || []).forEach(ct => {
         const pid = JERRY_MAP[ct] || 'jerry_can';
         jd[pid] = (jd[pid] || 0) + 1;
       });
-      for (const [pid, qty] of Object.entries(jd)) await incrementInventory2(pid, +qty);
+      Object.entries(jd).forEach(([pid, qty]) => { deltas[pid] = (deltas[pid]||0) + qty; });
     }
+    await batchIncrementInventory2(deltas);
   }
 }
 // expose full products for bottling concentrate lookup
@@ -6200,7 +6198,7 @@ const [showForm, setShowForm] = useState2(false);
     }
   }
 
-  async function confirmCheckoff(job, actual, confirmedQtys) {
+ async function confirmCheckoff(job, actual, confirmedQtys) {
     setCheckoffJob(null);
     const finalJob = { ...job, done:true, actualQty:actual, needsConfirmation:false, waSentAt:null,
       waNeedsSend: isStoreWaDelivery2({...job,done:true},stores)?true:job.waNeedsSend,
@@ -6208,9 +6206,10 @@ const [showForm, setShowForm] = useState2(false);
     setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
     const patch = { done:true, actual_qty:actual, wa_sent_at:null };
     if (isStoreWaDelivery2(finalJob,stores)) patch.wa_needs_send=true;
-    await patchJob2(job.id, patch);
-    await applyJobSideEffects2(finalJob, confirmedQtys, stores);
-    await reload();
+    // patch the job row and run inventory/store/WA side effects in the background —
+    // UI is already updated optimistically above, no need to block on a full reload
+    patchJob2(job.id, patch).catch(err => console.error('checkoff patch failed:', err));
+    applyJobSideEffects2(finalJob, confirmedQtys, stores).catch(err => console.error('checkoff side effects failed:', err));
   }
 
 async function handleDelete(job) {
