@@ -4745,7 +4745,18 @@ Cover: 1) what's on the schedule today (deliveries, brews, bottling, etc — be 
 If there's nothing notable for a section, skip it — don't pad. Keep it tight: 3-6 short sentences, plain text, no markdown headers or bullet symbols beyond simple dashes if needed. Conversational, not corporate.`;
 
     const data = await opsAI2('smart_alerts', { snapshot, system });
-    const text = data?.content?.[0]?.text || data?.error || 'No response.';
+    let text;
+    if (data?.content?.[0]?.text) {
+      text = data.content[0].text;
+    } else if (data?.error?.message) {
+      text = `⚠ ${data.error.message}`;
+    } else if (typeof data?.error === 'string') {
+      text = `⚠ ${data.error}`;
+    } else if (data) {
+      text = `⚠ Unexpected response: ${JSON.stringify(data).slice(0,300)}`;
+    } else {
+      text = 'No response.';
+    }
     body.textContent = text;
   } catch (err) {
     body.textContent = `⚠ Briefing failed: ${err.message}`;
