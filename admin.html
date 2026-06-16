@@ -4377,12 +4377,14 @@ function ldRenderProductRows() {
     { label:'Mini Bottles',  cat:'mini'  },
     { label:'Syrups',        cat:'syrup' },
   ];
+  const imgFor = (pid) => (window.getProductImage ? window.getProductImage(pid) : '');
   el.innerHTML = groups.map(g => {
     const items = Object.entries(LD_PRODUCTS).filter(([,p])=>p.category===g.cat);
     return `<div style="margin-bottom:10px">
       <div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;font-weight:600">${g.label}</div>
       ${items.map(([pid,p])=>`
         <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+          <img src="${imgFor(pid)}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;background:var(--bg3);border:1px solid var(--border)"/>
           <span style="flex:1;font-size:.82rem;color:var(--cream2)">${p.label}</span>
           <button type="button" onclick="ldChangeQty('${pid}',-1)" style="width:24px;height:24px;border-radius:4px;background:var(--highlight);border:1px solid var(--border);color:var(--cream);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">−</button>
           <input type="number" min="0" value="${ldQuantities[pid]||0}" onchange="ldSetQty('${pid}',this.value)" style="width:48px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--cream);font-size:13px;text-align:center"/>
@@ -5394,7 +5396,9 @@ async function deleteJobFromDB2(id) {
   await opsFetch(`jobs?id=eq.${id}`,{method:'DELETE',prefer:'return=minimal'});
 }
 async function createDrain2(brewJob) {
-  const existing = await opsFetch(`jobs?type=eq.drain&product=eq.${brewJob.product}&done=eq.false&select=id`);
+  // guard against double-creation only for *this* brew job (retries/double-taps),
+  // not against other concurrent brews of the same product
+  const existing = await opsFetch(`jobs?type=eq.drain&source_brew_id=eq.${brewJob.id}&select=id`);
   if (existing?.length) return;
   const drainHours = brewJob.product==='classic'?22:18;
   const drainTime = new Date(Date.now()+drainHours*60*60*1000);
@@ -5403,7 +5407,7 @@ async function createDrain2(brewJob) {
   await opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
     id:`drain_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     type:'drain', product:brewJob.product, kg:brewJob.kg, date:drainDate, time:drainTimeStr,
-    done:false, needs_confirmation:false,
+    done:false, needs_confirmation:false, source_brew_id: brewJob.id,
     label:`Drain ${brewJob.product} (${drainHours}h brew)`, created_at:new Date().toISOString(),
   })});
 }
@@ -5537,8 +5541,8 @@ async function reverseJobSideEffects2(job, stores) {
       method: 'PATCH', prefer: 'return=minimal',
       body: JSON.stringify({ kg: newKg }),
     });
-    // remove the auto-created pending drain so it can't add phantom concentrate
-    const drains = await opsFetch(`jobs?type=eq.drain&product=eq.${job.product}&done=eq.false&select=id`);
+    // remove the auto-created pending drain tied to this specific brew (not any same-product drain)
+    const drains = await opsFetch(`jobs?type=eq.drain&source_brew_id=eq.${job.id}&done=eq.false&select=id`);
     if (drains?.length) await deleteJobFromDB2(drains[0].id);
   }
 
@@ -5601,6 +5605,46 @@ window.__OPS_PRODUCTS_FULL__ = {
   jerry_can:{concentrate:'classic'}, jerry_can_houseblend:{concentrate:'houseBlend'},
   jerry_can_colombia:{concentrate:'colombia'}, jerry_can_decaf:{concentrate:'decaf'},
 };
+
+// ── Product thumbnail images (Cloudinary, sourced from Products tab) ──────
+// Bottle/jerry-can/syrup keys map directly to a product photo.
+// Concentrate-type keys (classic/houseBlend/colombia/decaf) reuse the matching jerry-can photo per request.
+const PRODUCT_IMAGES = {
+  classic_liter:        'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872197/gremier_products/tdwwgxlgfeuayejcw9xx.png',
+  sweetened_classic:    'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872252/gremier_products/aammabvw2fkatlg0nhgk.jpg',
+  house_blend:          'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872206/gremier_products/wzvelx8f0t8vadobgkki.jpg',
+  colombia_liter:       'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872214/gremier_products/gm5cyhiuvtgziywrlumy.jpg',
+  decaf_liter:          'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780874062/gremier_products/jaflaz532cv4ergzrxyn.png',
+  vanilla_mini:         'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872123/gremier_products/gtsbkdo4vsbvladwxjcv.jpg',
+  original_mini:        'https://res.cloudinary.com/dqhfv5grg/image/upload/v1781218301/gremier_products/do2nx4r7b5bdt2yi4wv2.jpg',
+  caramel_mini:         'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780871990/gremier_products/ztfnvpiv9jmiicthqtjh.jpg',
+  jerry_can:            'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780875936/gremier_products/rhe8sj9ex7vogfpqo5y0.png',
+  jerry_can_houseblend: 'https://res.cloudinary.com/dqhfv5grg/image/upload/v1781437758/gremier_products/fwcoo28ybkfnoc7ypa6h.jpg',
+  jerry_can_colombia:   'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780875948/gremier_products/etnr4i3i3slcdzshn2nm.jpg',
+  vanilla_syrup:        'https://res.cloudinary.com/dqhfv5grg/image/upload/v1781507981/gremier_products/nzm2c9mee7oyzg5qutwv.png',
+  caramel_syrup:        'https://res.cloudinary.com/dqhfv5grg/image/upload/v1781507965/gremier_products/bt6pk2hek5khsctvkxne.png',
+  // concentrate-type keys → matching jerry can photo (no decaf 5L exists, reuse classic jerry shape)
+  classic:              'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780875936/gremier_products/rhe8sj9ex7vogfpqo5y0.png',
+  houseBlend:            'https://res.cloudinary.com/dqhfv5grg/image/upload/v1781437758/gremier_products/fwcoo28ybkfnoc7ypa6h.jpg',
+  colombia:              'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780875948/gremier_products/etnr4i3i3slcdzshn2nm.jpg',
+  decaf:                 'https://res.cloudinary.com/dqhfv5grg/image/upload/v1780874062/gremier_products/jaflaz532cv4ergzrxyn.png',
+};
+// fallbacks for keys with no real photo (classic_mini / house_blend_mini / jerry_can_decaf / dispenser / sugar_syrup)
+const PRODUCT_IMG_FALLBACK_BOTTLE = PRODUCT_IMAGES.classic_liter;
+const PRODUCT_IMG_FALLBACK_JERRY  = PRODUCT_IMAGES.jerry_can;
+const PRODUCT_IMG_FALLBACK_SYRUP  = PRODUCT_IMAGES.vanilla_syrup;
+function getProductImage(pid) {
+  if (PRODUCT_IMAGES[pid]) return PRODUCT_IMAGES[pid];
+  if (!pid) return PRODUCT_IMG_FALLBACK_BOTTLE;
+  if (pid.includes('jerry')) return PRODUCT_IMG_FALLBACK_JERRY;
+  if (pid.includes('syrup')) return PRODUCT_IMG_FALLBACK_SYRUP;
+  return PRODUCT_IMG_FALLBACK_BOTTLE;
+}
+function ProductThumb({ pid, size }) {
+  const s = size || 28;
+  return <img src={getProductImage(pid)} alt="" style={{width:s,height:s,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030'}}/>;
+}
+window.getProductImage = getProductImage; // exposed for the plain-JS Log Delivery modal
 
 // ── styles ─────────────────────────────────────────────────
 const TS = {
@@ -5705,7 +5749,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
             <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Jerry Cans</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbPeople(p=>Math.max(25,p-25))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{Math.floor(cbPeople/25)}</span><button style={TS.qBtn} onClick={()=>setCbPeople(p=>p+25)}>+</button></div></div>
             <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Dispensers</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbDispensers}</span><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
             {['vanilla_syrup','caramel_syrup','sugar_syrup'].map(pid=>(
-              <div key={pid} style={TS.qRow}><span style={{color:'#c4c4c4'}}>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
+              <div key={pid} style={TS.qRow}><span style={{color:'#c4c4c4',display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={22}/>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
             ))}
             <div style={{display:'flex',gap:10,marginTop:14}}>
               <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
@@ -5721,7 +5765,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
           <div style={TS.modalTitle}>What did you deliver?</div>
           {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(
             <div key={pid} style={TS.qRow}>
-              <span style={{color:'#c4c4c4',flex:1}}>{PROD_LABELS[pid]||pid}</span>
+              <span style={{color:'#c4c4c4',flex:1,display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={26}/>{PROD_LABELS[pid]||pid}</span>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,(q[pid]??qty)-1)}))}>−</button>
                 <input style={TS.qInp} type="number" value={confirmedQtys[pid]??qty} onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
@@ -5743,7 +5787,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
     return (
       <div style={TS.modal}>
         <div style={TS.modalBox}>
-          <div style={TS.modalTitle}>Confirm Bottling</div>
+          <div style={{...TS.modalTitle,display:'flex',alignItems:'center',gap:10}}><ProductThumb pid={job.product} size={32}/>Confirm Bottling</div>
           <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>Planned: {planned}L. How much did you actually make?</div>
           <input style={{...TS.inp,fontSize:22,textAlign:'center',marginBottom:8}} type="number" value={actual} onChange={e=>setActual(Number(e.target.value))}/>
           <div style={{display:'flex',gap:10,marginTop:14}}>
@@ -5793,14 +5837,46 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
   );
 }
 
+// ── Reschedule modal (production jobs: brew/bottling/labeling/drain) ──────
+function RescheduleModal2({ job, onSave, onCancel }) {
+  const [date, setDate] = useState2(job.date || todayISO2());
+  const [time, setTime] = useState2(job.time || '');
+  const label = jobLabel2(job);
+  return (
+    <div style={TS.modal} onClick={onCancel}>
+      <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+        <div style={{...TS.modalTitle,display:'flex',alignItems:'center',gap:10}}>
+          {job.product&&<ProductThumb pid={job.product} size={30}/>}
+          Reschedule
+        </div>
+        <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16}}>{label}</div>
+        <div style={{marginBottom:12}}>
+          <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#9a9a9a',marginBottom:6,display:'block'}}>Date</span>
+          <input style={TS.inp} type="date" value={date} onChange={e=>setDate(e.target.value)}/>
+        </div>
+        <div style={{marginBottom:12}}>
+          <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#9a9a9a',marginBottom:6,display:'block'}}>Time (optional)</span>
+          <input style={TS.inp} type="time" value={time} onChange={e=>setTime(e.target.value)}/>
+        </div>
+        <div style={{display:'flex',gap:10,marginTop:14}}>
+          <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
+          <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onSave(job,date,time)}>Save ✓</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Job row components ─────────────────────────────────────
 function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
   const color = jobColor2(job);
   const label = jobLabel2(job);
   const overdue = isJobOverdue2(job);
-  const detail = job.type==='delivery'
-    ? Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty}× ${pid.replace(/_/g,' ')}`).join(', ')
-    : job.type==='brew'?`${job.kg}kg`
+  const deliveryItems = job.type==='delivery'
+    ? Object.entries(job.quantities||{}).filter(([,q])=>q>0)
+    : [];
+  const singleThumbPid = (job.type==='brew'||job.type==='bottling') ? job.product : null;
+  const detail = job.type==='brew'?`${job.kg}kg`
     : job.type==='bottling'?`${job.liters}L`
     : '';
   return (
@@ -5810,8 +5886,19 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
           {job.brewStarted&&job.type==='brew'?'·':''}
         </button>
       )}
+      {singleThumbPid&&<ProductThumb pid={singleThumbPid} size={26}/>}
       <div style={{flex:1,minWidth:0}}>
         <div style={TS.label(overdue?'#e57368':color)}>{label}</div>
+        {deliveryItems.length>0&&(
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:3,marginBottom:2}}>
+            {deliveryItems.map(([pid,qty])=>(
+              <div key={pid} style={{display:'flex',alignItems:'center',gap:3,background:'#1e1e1e',border:'1px solid #303030',borderRadius:5,padding:'2px 6px 2px 2px'}}>
+                <ProductThumb pid={pid} size={18}/>
+                <span style={{fontSize:11,color:'#9a9a9a'}}>{qty}× {pid.replace(/_/g,' ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {detail&&<div style={TS.meta}>{detail}</div>}
         <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
         {job.privateAddress&&<div style={{...TS.meta,color:'#6aa8e8'}}>📍 {job.privateAddress}</div>}
@@ -6041,6 +6128,7 @@ const [cbName,setCbName] = useState2('');
         <div style={{fontSize:9,color:'#9a9a9a',letterSpacing:1,textTransform:'uppercase',fontWeight:700,marginTop:8,marginBottom:4,borderBottom:'1px solid #303030',paddingBottom:3}}>{title}</div>
         {items.map(([pid,p])=>(
           <div key={pid} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #303030'}}>
+            <ProductThumb pid={pid} size={26}/>
             <span style={{flex:1,fontSize:13,color:'#c4c4c4'}}>{p.label}</span>
             <button style={TS.qBtn} onClick={()=>changeQty(pid,-1)}>−</button>
             <input style={TS.qInp} type="number" value={quantities[pid]||0} onChange={e=>setQty(pid,e.target.value)}/>
@@ -6142,6 +6230,7 @@ const [showForm, setShowForm] = useState2(false);
   const [formMode, setFormMode] = useState2('lognow');
   const [formPrefill, setFormPrefill] = useState2(null);
   const [editingJobId, setEditingJobId] = useState2(null);
+  const [rescheduleJob, setRescheduleJob] = useState2(null);
   const checkoffInProgress = useRef2(new Set());
   const today = todayISO2();
   const tomorrow = tomorrowISO2();
@@ -6256,6 +6345,10 @@ async function addJobFromForm(job, mode) {
     if (mode==='lognow') handleCheckoff(newJob);
   }
   function openEditJob(job) {
+    if (job.type!=='delivery') {
+      setRescheduleJob(job);
+      return;
+    }
     setFormPrefill({
       subType: job.deliveryType || 'store',
       privateName: job.privateName || '',
@@ -6267,6 +6360,12 @@ async function addJobFromForm(job, mode) {
     setEditingJobId(job.id);
     setFormMode('schedule');
     setShowForm(true);
+  }
+  async function saveReschedule(job, newDate, newTime) {
+    setJobs(prev=>prev.map(j=>j.id===job.id?{...j,date:newDate,time:newTime}:j));
+    setRescheduleJob(null);
+    await patchJob2(job.id,{date:newDate,time:newTime||null});
+    await reload();
   }
   function DaySection({ label, dayJobs, overdue }) {
     const deliveries = dayJobs.filter(j=>j.type==='delivery');
@@ -6404,6 +6503,7 @@ async function addJobFromForm(job, mode) {
       {/* modals */}
       {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
 {showForm&&<ScheduleForm mode={formMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
+      {rescheduleJob&&<RescheduleModal2 job={rescheduleJob} onSave={saveReschedule} onCancel={()=>setRescheduleJob(null)}/>}
     </div>
   );
 }
@@ -6592,9 +6692,10 @@ const SS = {
   needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#4caf72':'#e57368', whiteSpace:'nowrap' }),
 };
 
-function NumRow({ label, value, onDec, onInc, onChange, suffix, warn }) {
+function NumRow({ label, value, onDec, onInc, onChange, suffix, warn, pid }) {
   return (
     <div style={{ ...SS.row, gap:10 }}>
+      {pid&&<img src={window.getProductImage(pid)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030'}}/>}
       <span style={{ ...SS.lbl, flex:1, color: warn ? '#e57368' : '#c4c4c4' }}>{label}</span>
       {suffix && <span style={{ fontSize:11, color:'#9a9a9a', marginRight:6 }}>{suffix}</span>}
       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -6626,6 +6727,7 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
         <div style={SS.hdr}>Concentrate (Liters)</div>
         {Object.entries(CONCENTRATE_TYPES).map(([k,ct]) => (
           <NumRow key={k}
+            pid={k}
             label={ct.label}
             value={concentrate[k]??''}
             onDec={()=>save(k, Math.max(0,parseFloat(((concentrate[k]||0)-0.5).toFixed(1))))}
@@ -6644,6 +6746,7 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
           if (n===0 && brewing===0) return null;
           return (
             <div key={k} style={SS.row}>
+              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{ct.label}</span>
               {brewing>0&&<span style={{fontSize:11,color:'#6aa8e8'}}>🧪 {brewing.toFixed(1)}L brewing</span>}
               <span style={SS.needBadge(eff===0)}>{eff===0?'✓ Covered':`Brew ${eff.toFixed(1)}L more`}</span>
@@ -6680,6 +6783,7 @@ function BottledScreen({ inventory, setInventory }) {
             <div style={SS.hdr}>{label}</div>
             {items.map(([pid,p]) => (
               <NumRow key={pid}
+                pid={pid}
                 label={p.label}
                 value={inventory[pid]??''}
                 onDec={()=>save(pid,Math.max(0,(inventory[pid]||0)-1))}
@@ -6716,6 +6820,7 @@ function LabelsScreen({ labeledStock, setLabeledStock }) {
             const isLow = warn!==null && qty<warn;
             return (
               <NumRow key={pid}
+                pid={pid}
                 label={PRODUCTS[pid]?.label}
                 value={qty}
                 warn={isLow}
@@ -6763,6 +6868,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>🔥 Needed Today or Tomorrow</div>
           {urgBottles.map(({pid,totalNeeded,inStock,gap})=>(
             <div key={pid} style={SS.row}>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
               <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
               <span style={SS.needBadge(false)}>Make {gap} more</span>
@@ -6770,6 +6876,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           ))}
           {urgConc.map(({k,label,gap,have,effectiveGap})=>(
             <div key={k} style={SS.row}>
+              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{label}</span>
               <span style={{fontSize:11,color:'#9a9a9a'}}>Need {(gap+have).toFixed(1)}L · Have {have.toFixed(1)}L</span>
               <span style={SS.needBadge(false)}>Brew {effectiveGap.toFixed(1)}L</span>
@@ -6782,6 +6889,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>⚠ Bottles to Produce</div>
           {bottleShortfalls.map(({pid,totalNeeded,inStock,gap})=>(
             <div key={pid} style={SS.row}>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
               <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
               <span style={SS.needBadge(false)}>Make {gap}</span>
@@ -6794,6 +6902,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>⚠ Jerry Cans to Make</div>
           {jerryShortfalls.map(({pid,totalNeeded,inStock,gap})=>(
             <div key={pid} style={SS.row}>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
               <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
               <span style={SS.needBadge(false)}>Make {gap}</span>
@@ -6806,6 +6915,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>⚠ Concentrate to Brew</div>
           {concShortfalls.map(({k,label,needed,have,effectiveGap})=>(
             <div key={k} style={SS.row}>
+              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{label}</span>
               <span style={{fontSize:11,color:'#9a9a9a'}}>Need {needed.toFixed(1)}L · Have {have.toFixed(1)}L</span>
               <span style={SS.needBadge(false)}>Brew {effectiveGap.toFixed(1)}L</span>
@@ -6818,6 +6928,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={GHDR}>✓ Covered by Stock</div>
           {bottleCovered.map(({pid,totalNeeded,inStock})=>(
             <div key={pid} style={SS.row}>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
               <span style={SS.needBadge(true)}>✓ {inStock} in stock (need {totalNeeded})</span>
             </div>
