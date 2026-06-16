@@ -1404,6 +1404,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 }
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.MAIN_SB = sb; // shared client — reused by opsFetch (Schedule/Stock/voice logger) to avoid duplicate auth sessions
 let adminUser = null;
 let allProducts = [];
 let allOrders = [];
@@ -6518,7 +6519,9 @@ if (schedRoot) ReactDOM.createRoot(schedRoot).render(<ScheduleTab />);
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useRef } = React;
 
-const OPS_SB = window.supabase.createClient(
+// reuse the single shared, already-authenticated client (set up during sign-in) instead of
+// creating a second independent auth session that never receives a login
+const OPS_SB = window.MAIN_SB || window.supabase.createClient(
   'https://ayuzmwpmhncxrugsyxmw.supabase.co',
   'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
 );
