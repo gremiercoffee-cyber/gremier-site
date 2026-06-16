@@ -1231,9 +1231,16 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div style="font-size:.78rem;color:var(--text2);margin-top:4px" id="deliveryPreviewBreakdown"></div>
     </div>
 <!-- product quantities -->
-    <div class="form-group">
+   <div class="form-group">
       <label class="form-label">Products</label>
-      <button type="button" class="btn btn-outline btn-sm" style="margin-bottom:10px" onclick="ldFillDefaultCase()">⚡ Default Case</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <button type="button" class="btn btn-outline btn-sm" onclick="ldFillDefaultCase()">⚡ Default Case</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="ldFillFlavorCase('classic_liter')">⚡ Classic Case</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="ldFillFlavorCase('sweetened_classic')">⚡ Sweetened Classic Case</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="ldFillFlavorCase('house_blend')">⚡ House Blend Case</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="ldFillFlavorCase('colombia_liter')">⚡ Colombia Case</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="ldFillFlavorCase('decaf_liter')">⚡ Decaf Case</button>
+      </div>
       <div id="ldProductRows"></div>
     </div>
     <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>    <div style="display:flex;gap:10px;margin-top:8px">
@@ -4353,7 +4360,13 @@ const LD_PRODUCTS = {
   sugar_syrup:          { label:'Sugar Syrup',           category:'syrup' },
 };
 const LD_DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
-
+const LD_FLAVOR_CASES = {
+  classic_liter:     { label:'Classic Case',           qty:12 },
+  sweetened_classic: { label:'Sweetened Classic Case',  qty:12 },
+  house_blend:       { label:'House Blend Case',        qty:12 },
+  colombia_liter:    { label:'Colombia Case',           qty:12 },
+  decaf_liter:       { label:'Decaf Case',               qty:12 },
+};
 let ldQuantities = {};
 
 function ldRenderProductRows() {
@@ -4390,6 +4403,13 @@ function ldSetQty(pid, val) {
 }
 function ldFillDefaultCase() {
   ldQuantities = { ...LD_DEFAULT_CASE };
+  ldRenderProductRows();
+  updateDeliveryPreview();
+}
+function ldFillFlavorCase(pid) {
+  const c = LD_FLAVOR_CASES[pid];
+  if (!c) return;
+  ldQuantities[pid] = (ldQuantities[pid]||0) + c.qty;
   ldRenderProductRows();
   updateDeliveryPreview();
 }
@@ -5473,9 +5493,12 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
   }
   if (job.type==='delivery') {
     const qtys = confirmedQtys||job.quantities||{};
-    // store delivery → write to store_deliveries table instead of Google Sheet
-    if (isStoreWaDelivery2(job, stores)) {
+    // store delivery → write to store_deliveries table (independent of WA-notify eligibility)
+    if (job.deliveryType==='store' && job.storeName) {
       await syncStoreDeliveryToAdmin(job, qtys);
+    }
+    for (const [pid,qty] of Object.entries(qtys)) {
+      if (qty>0) await incrementInventory2(pid,-qty);
     }
     for (const [pid,qty] of Object.entries(qtys)) {
       if (qty>0) await incrementInventory2(pid,-qty);
