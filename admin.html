@@ -5502,7 +5502,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
       for (const [pid,qty] of Object.entries(jd)) await incrementInventory2(pid, +qty);
     }
   }
-}
+    
     async function reverseJobSideEffects2(job, stores) {
   const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
