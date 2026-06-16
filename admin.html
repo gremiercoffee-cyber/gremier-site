@@ -1405,6 +1405,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 </div>
 
+  <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
 <script>
@@ -4746,8 +4747,8 @@ If there's nothing notable for a section, skip it — don't pad. Keep it tight: 
 
     const data = await opsAI2('smart_alerts', { snapshot, system });
     let text;
-    if (data?.content?.[0]?.text) {
-      text = data.content[0].text;
+    if (data?.choices?.[0]?.message?.content) {
+      text = data.choices[0].message.content;
     } else if (data?.error?.message) {
       text = `⚠ ${data.error.message}`;
     } else if (typeof data?.error === 'string') {
@@ -6324,7 +6325,18 @@ const [showForm, setShowForm] = useState2(false);
     setPendingWeb(webRows||[]);
     setLoading(false);
   }
-  useEffect2(()=>{ reload(); },[]);
+  useEffect2(()=>{
+    reload();
+    // listen for a prefill handed off from the global website-queue pill (tapped from another tab),
+    // since this component mounts once and stays mounted — a plain mount check would miss later handoffs
+    function onPrefillHandoff(e) {
+      setFormPrefill(e.detail);
+      setFormMode('schedule');
+      setShowForm(true);
+    }
+    window.addEventListener('gremier:schedule-prefill', onPrefillHandoff);
+    return () => window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
+  },[]);
 
   // derived
   const overdueJobs = jobs.filter(j=>!j.done&&!j.brewStarted&&isJobOverdue2(j)).sort((a,b)=>a.date.localeCompare(b.date));
@@ -6549,15 +6561,7 @@ async function addJobFromForm(job, mode) {
         </div>
       )}
 
-      {/* floating drawer pills */}
-      {waPending.length>0&&!waOpen&&!billingOpen&&!webQueueOpen&&!showForm&&!checkoffJob&&!calDay&&(
-        <button style={{position:'fixed',bottom:170,right:16,background:'#25D366',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>
-      )}
-{unbilled.length>0&&!billingOpen&&!waOpen&&!webQueueOpen&&!showForm&&!checkoffJob&&!calDay&&(        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
-      )}
-      {pendingWeb.length>0&&!webQueueOpen&&!waOpen&&!billingOpen&&!showForm&&!checkoffJob&&!calDay&&(
-        <button style={{position:'fixed',bottom:170,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
-      )}
+      {/* floating drawer pills now rendered globally via GlobalPillsFloat — see end of file */}
 
       {/* drawers */}
       {waOpen&&<WaDrawer2 jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
@@ -7170,6 +7174,184 @@ async function opsAI2(action, payload, isFormData = false) {
   return res.json();
 }
 
+// ── Global floating pills (WhatsApp/Billing/Web Queue) — visible on every screen ──
+const GLOBAL_PILL_DRAWER_STYLE = { position:'fixed', bottom:0, left:0, right:0, background:'#1e1e1e', border:'1px solid #454545', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:301 };
+const GLOBAL_PILL_BACKDROP_STYLE = { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:300 };
+function globalPillBtn(bg) { return { background:bg, color:'#fff', border:'none', borderRadius:8, padding:'10px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }; }
+
+function GlobalWaDrawer({ jobs, stores, onMarkSent, onClose }) {
+  return (
+    <>
+      <div style={GLOBAL_PILL_BACKDROP_STYLE} onClick={onClose}/>
+      <div style={GLOBAL_PILL_DRAWER_STYLE}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{fontSize:15,fontWeight:700,color:'#25D366'}}>💬 WhatsApp Notes</span>
+          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+        </div>
+        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All sent!</div>}
+        {jobs.map(job=>{
+          const waLink = buildStoreWaLink2(job, stores);
+          return (
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
+              <div style={{fontWeight:600,color:'#efefef',marginBottom:6}}>{job.storeName}</div>
+              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{formatDate2(job.date)}</div>
+              <div style={{display:'flex',gap:8}}>
+                {waLink&&<a href={waLink} target="_blank" rel="noreferrer" style={{...globalPillBtn('#25D366'),flex:1,textAlign:'center',textDecoration:'none'}}>💬 Send</a>}
+                <button style={{...globalPillBtn('#303030'),flex:1}} onClick={()=>onMarkSent(job.id)}>✓ Sent</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function GlobalBillingDrawer({ jobs, onMarkBilled, onMarkPaid, onClose }) {
+  const PROD_LABELS = {classic_liter:'Classic',sweetened_classic:'Sweetened Classic',house_blend:'House Blend',colombia_liter:'Colombia',decaf_liter:'Decaf',classic_mini:'Classic Mini',house_blend_mini:'House Blend Mini',vanilla_mini:'Vanilla Mini',original_mini:'Original Mini',caramel_mini:'Caramel Mini',jerry_can:'Jerry Can',vanilla_syrup:'Vanilla Syrup',caramel_syrup:'Caramel Syrup',sugar_syrup:'Sugar Syrup'};
+  return (
+    <>
+      <div style={GLOBAL_PILL_BACKDROP_STYLE} onClick={onClose}/>
+      <div style={GLOBAL_PILL_DRAWER_STYLE}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{fontSize:15,fontWeight:700,color:'#e0a030'}}>💰 Billing</span>
+          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+        </div>
+        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All billed!</div>}
+        {jobs.map(job=>{
+          const name = job.deliveryType==='coffeebar'?`Coffee Bar${job.cbName?' — '+job.cbName:''}`:job.privateName||'Private Delivery';
+          const detail = Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty} ${PROD_LABELS[pid]||pid}`).join(', ');
+          return (
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
+              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{name}</div>
+              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:4}}>{formatDate2(job.date)}</div>
+              {detail&&<div style={{fontSize:11,color:'#9a9a9a',marginBottom:8}}>{detail}</div>}
+              {!job.billed&&<button style={{...globalPillBtn('#e0a030'),width:'100%'}} onClick={()=>onMarkBilled(job.id)}>✓ Mark Billed</button>}
+              {job.billed&&!job.paid&&(
+                <div style={{background:'#1a2a1a',border:'1px solid #4caf72',borderRadius:6,padding:10,marginTop:4}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#4caf72',marginBottom:6}}>✓ Billed — awaiting payment</div>
+                  <button style={{...globalPillBtn('#4caf72'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function GlobalWebQueueDrawer({ orders, onClose, onSchedule, onDismiss }) {
+  return (
+    <>
+      <div style={GLOBAL_PILL_BACKDROP_STYLE} onClick={onClose}/>
+      <div style={GLOBAL_PILL_DRAWER_STYLE}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{fontSize:15,fontWeight:700,color:'#6aa8e8'}}>📦 Website Orders</span>
+          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+        </div>
+        {orders.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>Nothing to schedule!</div>}
+        {orders.map(o=>{
+          const label = websiteOrderDisplayLabel2(o);
+          const items = (o.items||[]).map(i=>`${i.name_en||'Item'} ×${i.qty||1}`).join(', ');
+          const unpaid = o.payment_status&&o.payment_status!=='paid';
+          return (
+            <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
+              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{label}{unpaid&&<span style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',padding:'2px 7px',borderRadius:10,background:'rgba(224,160,48,.15)',color:'#e0a030',display:'inline-block',marginLeft:6}}>Awaiting payment</span>}</div>
+              {o.delivery_address&&<div style={{fontSize:11,color:'#6aa8e8',marginBottom:4}}>📍 {o.delivery_address}</div>}
+              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{items}</div>
+              <button style={{...globalPillBtn('#6aa8e8'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
+              <button style={{...globalPillBtn('#303030'),width:'100%',border:'1px solid #454545',color:'#e57368'}} onClick={()=>onDismiss(o)}>Remove</button>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function GlobalPillsFloat() {
+  const [jobs, setJobs] = useState3([]);
+  const [stores, setStores] = useState3([]);
+  const [pendingWeb, setPendingWeb] = useState3([]);
+  const [waOpen, setWaOpen] = useState3(false);
+  const [billingOpen, setBillingOpen] = useState3(false);
+  const [webQueueOpen, setWebQueueOpen] = useState3(false);
+
+  async function reload() {
+    const [allJobs, storeRows, webRows] = await Promise.all([
+      loadAllJobs2(),
+      window.opsFetch('stores?select=*&is_active=eq.true&order=sort_order'),
+      loadPendingWebDeliveries2(),
+    ]);
+    setJobs(allJobs||[]);
+    setStores(storeRows||[]);
+    setPendingWeb(webRows||[]);
+  }
+  useEffect3(()=>{
+    reload();
+    const interval = setInterval(reload, 60000); // refresh every minute so pills stay current across long sessions
+    return () => clearInterval(interval);
+  },[]);
+
+  const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
+  const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid);
+
+  async function markWaSent(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:new Date().toISOString()}:j));
+    await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({wa_needs_send:false,wa_sent_at:new Date().toISOString()})});
+  }
+  async function markBilled(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,billed:true}:j));
+    await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({billed:true})});
+  }
+  async function markPaid(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,paid:true}:j));
+    await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({paid:true})});
+  }
+  async function dismissWebOrder(order) {
+    if (!window.confirm(`Remove "${websiteOrderDisplayLabel2(order)}" from queue?`)) return;
+    await window.opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});
+    await reload();
+  }
+  function scheduleWebOrder(o) {
+    setWebQueueOpen(false);
+    const quantities = {};
+    (o.items||[]).forEach(i => {
+      const pid = i.product_id || i.name_en;
+      if (pid) quantities[pid] = (quantities[pid]||0) + (i.qty||1);
+    });
+    const prefill = {
+      subType: 'private',
+      privateName: websiteOrderDisplayLabel2(o),
+      privateAddress: o.delivery_address || '',
+      quantities,
+    };
+    // ScheduleTab only renders its form while mounted on the Schedule tab itself —
+    // switch there and hand off the prefill via an event so it opens pre-populated
+    window.showTab('schedule');
+    window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
+  }
+
+  const anyDrawerOpen = waOpen || billingOpen || webQueueOpen;
+  return (
+    <>
+      {!anyDrawerOpen&&waPending.length>0&&(
+        <button style={{position:'fixed',bottom:170,right:16,background:'#25D366',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>
+      )}
+      {!anyDrawerOpen&&unbilled.length>0&&(
+        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
+      )}
+      {!anyDrawerOpen&&pendingWeb.length>0&&(
+        <button style={{position:'fixed',bottom:250,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
+      )}
+      {waOpen&&<GlobalWaDrawer jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
+      {billingOpen&&<GlobalBillingDrawer jobs={unbilled} onMarkBilled={markBilled} onMarkPaid={markPaid} onClose={()=>setBillingOpen(false)}/>}
+      {webQueueOpen&&<GlobalWebQueueDrawer orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={scheduleWebOrder} onDismiss={dismissWebOrder}/>}
+    </>
+  );
+}
+
 function VoiceLoggerFloat() {
   const [isOpen, setIsOpen] = useState3(false);
   const [phase, setPhase] = useState3('idle');
@@ -7455,6 +7637,9 @@ Keep replies short — 1-2 sentences.`;
 
 const vlRoot = document.getElementById('ops-voicelogger-root');
 if (vlRoot) ReactDOM.createRoot(vlRoot).render(<VoiceLoggerFloat/>);
+
+const gpRoot = document.getElementById('ops-globalpills-root');
+if (gpRoot) ReactDOM.createRoot(gpRoot).render(<GlobalPillsFloat/>);
 </script>
 
 </body>
