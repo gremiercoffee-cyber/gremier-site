@@ -5457,53 +5457,9 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
   }
 }
 
-  // DRAIN — concentrate was added
-  if (job.type==='drain' && job.done) {
-    await incrementConcentrate2(job.product, -(kgToL[job.kg]||19));
-  }
+}
 
-  // BOTTLING — concentrate consumed, inventory + labeled produced
-  if (job.type==='bottling' && job.done) {
-    const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
-    if (concType) {
-      const liters = job.actualQty!=null ? job.actualQty : (job.liters||0);
-      const ratio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio||0.44);
-      await incrementConcentrate2(concType, +(liters*ratio));           // give concentrate back
-      const units = MINI_P.includes(job.product) ? Math.round(liters*4)
-                  : JERRY_P.includes(job.product) ? Math.round(liters/5)
-                  : Math.round(liters);
-      await incrementInventory2(job.product, -units);                   // remove produced bottles
-    }
-    if (job.labeledUsed) {
-      for (const [pid,qty] of Object.entries(job.labeledUsed)) {
-        if (qty>0) await incrementLabeledStock2(pid, +qty);             // give labels back
-      }
-    }
-  }
-
-  // LABELING — labeled stock added
-  if (job.type==='labeling' && job.done) {
-    const LABELED = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
-    if (LABELED.includes(job.product)) await incrementLabeledStock2(job.product, -(job.qty||0));
-  }
-
-  // DELIVERY — inventory deducted
-  if (job.type==='delivery' && job.done) {
-    for (const [pid,qty] of Object.entries(job.quantities||{})) {
-      if (qty>0) await incrementInventory2(pid, +qty);                  // give bottles back
-    }
-    if (job.deliveryType==='coffeebar') {
-      if (job.dispensers) await incrementInventory2('dispenser', +job.dispensers);
-      for (const [pid,qty] of Object.entries(job.cbSyrups||{})) {
-        if (qty>0) await incrementInventory2(pid, +qty);
-      }
-      const jd={};
-      (job.jerryCans||[]).forEach(ct=>{const pid=JERRY_MAP[ct]||'jerry_can';jd[pid]=(jd[pid]||0)+1;});
-      for (const [pid,qty] of Object.entries(jd)) await incrementInventory2(pid, +qty);
-    }
-  }
-    
-    async function reverseJobSideEffects2(job, stores) {
+async function reverseJobSideEffects2(job, stores) {
   const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
