@@ -5456,22 +5456,6 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     }
   }
 }
-async function reverseJobSideEffects2(job, stores) {
-  const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
-  const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
-  const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
-  const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
-
-  // BREW — beans were deducted at brew-start
-  if (job.type==='brew' && job.brewStarted) {
-    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
-    const newKg = parseFloat(((beanRows?.[0]?.kg||0) + (job.kg||3)).toFixed(1));
-    await opsFetch(`beans?type=eq.${job.product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg})});
-    // remove the auto-created pending drain so it can't add phantom concentrate
-    const drains = await opsFetch(`jobs?type=eq.drain&product=eq.${job.product}&done=eq.false&select=id`);
-    if (drains?.length) await deleteJobFromDB2(drains[0].id);
-  }
 
   // DRAIN — concentrate was added
   if (job.type==='drain' && job.done) {
