@@ -357,8 +357,14 @@
     .city-ac-item:hover, .city-ac-item.active { background:var(--highlight); color:var(--cream); }
     /* DASHBOARD BRIEFING */
     .briefing-card { padding:18px 20px; margin-bottom:24px; }
-    .briefing-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+    .briefing-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; cursor:pointer; }
+    .briefing-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .briefing-title { font-family:'Playfair Display',serif; font-size:1.08rem; color:var(--cream); margin:0; }
+    .briefing-toggle { min-width:92px; justify-content:center; }
+    .briefing-card.collapsed .briefing-content { display:none; }
+    .briefing-collapsed-summary { display:none; margin-top:2px; }
+    .briefing-card.collapsed .briefing-collapsed-summary { display:block; }
+    .briefing-collapsed-summary:empty { display:none !important; }
     .briefing-body { color:var(--text2); font-size:.83rem; line-height:1.45; }
     .briefing-loading { display:flex; align-items:center; gap:10px; padding:12px 0; color:var(--text2); }
     .briefing-priority { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; border:1px solid rgba(229,115,104,.45); background:rgba(229,115,104,.08); border-radius:7px; padding:13px 15px; margin-bottom:14px; }
@@ -925,10 +931,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
   <!-- Daily Operations Briefing -->
   <div class="card briefing-card" id="dashBriefingCard">
-    <div class="briefing-head">
+    <div class="briefing-head" onclick="toggleBriefingCard(event)" title="Click to open or collapse the briefing">
       <h3 class="briefing-title">☕ Today's Briefing</h3>
-      <button type="button" class="btn btn-outline btn-sm" onclick="loadBriefing({ force: true })" id="dashBriefingBtn">Build Briefing</button>
+      <div class="briefing-actions">
+        <button type="button" class="btn btn-outline btn-sm" onclick="loadBriefing({ force: true }); event.stopPropagation();" id="dashBriefingBtn">Build Briefing</button>
+        <button type="button" class="btn btn-outline btn-sm briefing-toggle" onclick="toggleBriefingCard(event)" id="dashBriefingToggle">Collapse</button>
+      </div>
     </div>
+    <div id="dashBriefingCollapsedSummary" class="briefing-collapsed-summary"></div>
     <div id="dashBriefingBody" class="briefing-body">
       <div class="briefing-empty">Tap “Build Briefing” to check today’s schedule, store delivery patterns, and production needs.</div>
     </div>
@@ -4942,7 +4952,7 @@ function briefingBottleTimeline(jobs, inventory) {
 }
 function briefingInProgressBrews(jobs) {
   const map = { classic:0, houseBlend:0, colombia:0, decaf:0 };
-  (jobs || []).filter(j => j.brew_started && !j.done).forEach(j => {
+  (jobs || []).filter(j => !j.done && (j.brew_started || j.type === 'drain')).forEach(j => {
     const ct = BRIEFING_CONCENTRATES[j.product] ? j.product : 'classic';
     const liters = BRIEFING_KG_TO_L[briefingNum(j.kg)] || briefingNum(j.liters) || 0;
     map[ct] = (map[ct] || 0) + liters;
@@ -4987,9 +4997,10 @@ function briefingBuildStoreForecast(deliveries, stores, todayISO) {
     const gaps = [];
     for (let i=1; i<dates.length; i++) gaps.push(briefingDiffDays(dates[i], dates[i-1]));
     const avgGapDays = Math.max(1, Math.round(briefingMedian(gaps)));
-    if (avgGapDays > 60) return null;
     const lastDate = dates[dates.length - 1];
     const daysSinceLast = Math.max(0, briefingDiffDays(todayISO, lastDate));
+    const staleStore = daysSinceLast >= 45;
+    if (avgGapDays > 60 && !staleStore) return null;
     const dueDate = briefingAddDaysISO(lastDate, avgGapDays);
     const daysUntilDue = briefingDiffDays(dueDate, todayISO);
     const recentTotals = dates.slice(-5).map(d => g.byDate[d]);
@@ -4997,11 +5008,12 @@ function briefingBuildStoreForecast(deliveries, stores, todayISO) {
     const avgSmall = briefingAvg(recentTotals.map(x => x.small));
     const avgSyrup = briefingAvg(recentTotals.map(x => x.syrup));
     const dueWindow = Math.max(2, Math.ceil(avgGapDays * 0.25));
-    const shouldMention = daysUntilDue <= 4 || daysSinceLast >= (avgGapDays - dueWindow);
+    const shouldMention = daysUntilDue <= 4 || daysSinceLast >= (avgGapDays - dueWindow) || staleStore;
     if (!shouldMention) return null;
     let tone = 'info';
     let badge = `due in ${daysUntilDue}d`;
-    if (daysUntilDue < 0) { tone = 'danger'; badge = `${Math.abs(daysUntilDue)}d overdue`; }
+    if (staleStore && avgGapDays > 60) { tone = 'warn'; badge = `${daysSinceLast}d no delivery`; }
+    else if (daysUntilDue < 0) { tone = 'danger'; badge = `${Math.abs(daysUntilDue)}d overdue`; }
     else if (daysUntilDue <= 1) { tone = 'warn'; badge = daysUntilDue === 0 ? 'due today' : 'due tomorrow'; }
     return {
       store: g.name,
@@ -5043,7 +5055,32 @@ function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, c
   return actions.slice(0, 3);
 }
 
-const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v1';
+const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v2';
+const DASH_BRIEFING_COLLAPSED_KEY = 'gremier_dash_briefing_collapsed_v1';
+
+function briefingSetCollapsed(collapsed, persist = true) {
+  const card = document.getElementById('dashBriefingCard');
+  const toggle = document.getElementById('dashBriefingToggle');
+  if (!card) return;
+  card.classList.toggle('collapsed', !!collapsed);
+  if (toggle) toggle.textContent = collapsed ? 'Open' : 'Collapse';
+  if (persist) {
+    try { localStorage.setItem(DASH_BRIEFING_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) {}
+  }
+}
+function toggleBriefingCard(event) {
+  if (event) event.stopPropagation();
+  const card = document.getElementById('dashBriefingCard');
+  if (!card) return;
+  briefingSetCollapsed(!card.classList.contains('collapsed'));
+}
+function briefingSavedCollapsed() {
+  try { return localStorage.getItem(DASH_BRIEFING_COLLAPSED_KEY) === '1'; } catch (_) { return false; }
+}
+function briefingRenderCollapsedSummary(html) {
+  const el = document.getElementById('dashBriefingCollapsedSummary');
+  if (el) el.innerHTML = html || '';
+}
 
 function briefingReadCache() {
   try {
@@ -5056,12 +5093,13 @@ function briefingReadCache() {
     return null;
   }
 }
-function briefingWriteCache(html) {
+function briefingWriteCache(html, urgentHtml = '') {
   try {
     localStorage.setItem(DASH_BRIEFING_CACHE_KEY, JSON.stringify({
       date: briefingLocalISO(0),
       generatedAt: new Date().toISOString(),
-      html
+      html,
+      urgentHtml
     }));
   } catch (_) {}
 }
@@ -5070,6 +5108,8 @@ function briefingRenderCache(cache) {
   const btn = document.getElementById('dashBriefingBtn');
   if (!body || !cache?.html) return false;
   body.innerHTML = cache.html;
+  briefingRenderCollapsedSummary(cache.urgentHtml || '');
+  briefingSetCollapsed(briefingSavedCollapsed(), false);
   if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   return true;
 }
@@ -5090,6 +5130,8 @@ async function loadBriefing(options = {}) {
   if (!options.force && briefingRenderCache(briefingReadCache())) return;
 
   window.__dashBriefingLoading = true;
+  briefingSetCollapsed(false);
+  briefingRenderCollapsedSummary('');
   if (btn) { btn.disabled = true; btn.textContent = 'Building…'; }
   body.innerHTML = '<div class="briefing-loading"><div class="spinner"></div><span>Checking schedule, stock, and store patterns…</span></div>';
   try {
@@ -5183,20 +5225,33 @@ async function loadBriefing(options = {}) {
     const labelRowsHtml = lowLabels.length ? lowLabels.map(x => briefingItem(`${x.label} labels low`, `Have ${briefingRound(x.qty)} · warning level ${x.warn}`, 'labels', 'warn')).join('') : briefingEmpty('Labels are above warning levels.');
     const beanRowsHtml = lowBeans.length ? lowBeans.map(x => briefingItem(`${x.label} beans low`, `Have ${briefingRound(x.kg,1)}kg · warning level ${x.warn}kg`, 'order beans', 'warn')).join('') : '';
 
+    const urgentSummaryRows = [];
+    urgentBottleShortfalls.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready`, 'urgent', 'danger')));
+    concentrateGapActions.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `Ready ${briefingRound(x.have,1)}L${x.brewing ? ` · already brewing/draining ${briefingRound(x.brewing,1)}L` : ''} · demand ${briefingRound(x.demand,1)}L`, 'urgent', 'danger')));
+    dueStores.filter(p => p.daysUntilDue <= 1 || p.daysSinceLast >= 45).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago`, p.badge, p.tone)));
+    const urgentHtml = urgentSummaryRows.length
+      ? `<div class="briefing-priority"><div><span>Still showing while collapsed</span><strong>Urgent items</strong></div><small>Open the briefing for the full plan.</small></div><div class="briefing-section">${urgentSummaryRows.join('')}</div>`
+      : '';
+
     body.innerHTML = `
-      <div class="briefing-priority ${actions.length ? '' : 'good'}">
-        <div><span>Today’s focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
-        <small>Calculated from open jobs, ready stock, concentrate, labels, beans, and 180 days of store deliveries.</small>
-      </div>
-      <div class="briefing-grid">
-        <section class="briefing-section"><h4>Today</h4>${todayHtml}</section>
-        <section class="briefing-section"><h4>Likely next store runs</h4>${storesHtml}</section>
-        <section class="briefing-section"><h4>Production watch</h4>${productionRows.join('')}</section>
-        <section class="briefing-section"><h4>Stock snapshot</h4><div class="briefing-mini-grid">${stockStats}</div><div class="briefing-mini-grid concentrate">${concentrateStats}</div>${labelRowsHtml}${beanRowsHtml}</section>
+      <div class="briefing-content">
+        <div class="briefing-priority ${actions.length ? '' : 'good'}">
+          <div><span>Today’s focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
+          <small>Calculated from open jobs, ready stock, concentrate, labels, beans, and 180 days of store deliveries.</small>
+        </div>
+        <div class="briefing-grid">
+          <section class="briefing-section"><h4>Today</h4>${todayHtml}</section>
+          <section class="briefing-section"><h4>Likely next store runs</h4>${storesHtml}</section>
+          <section class="briefing-section"><h4>Production watch</h4>${productionRows.join('')}</section>
+          <section class="briefing-section"><h4>Stock snapshot</h4><div class="briefing-mini-grid">${stockStats}</div><div class="briefing-mini-grid concentrate">${concentrateStats}</div>${labelRowsHtml}${beanRowsHtml}</section>
+        </div>
       </div>
     `;
-    briefingWriteCache(body.innerHTML);
+    briefingRenderCollapsedSummary(urgentHtml);
+    briefingSetCollapsed(false);
+    briefingWriteCache(body.innerHTML, urgentHtml);
   } catch (err) {
+    briefingRenderCollapsedSummary('');
     body.innerHTML = `<div class="briefing-error">⚠ Briefing failed: ${escHtml(err.message || err)}</div>`;
   } finally {
     window.__dashBriefingLoading = false;
