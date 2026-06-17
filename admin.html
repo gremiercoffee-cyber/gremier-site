@@ -849,7 +849,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="openAddStoreModal()">+ Add Store</button>
         <button class="btn btn-amber btn-sm" onclick="openLogDeliveryModal()">+ Log Delivery</button>
-        <button class="btn btn-outline btn-sm" onclick="sendMonthlyBilling()" id="billingBtn">📧 Send Monthly Billing</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleBillingBoard()" id="billingBoardToggleBtn">🧾 Monthly Billing</button>
       </div>
     </div>
   </div>
@@ -864,6 +864,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 
   <!-- Monthly summary stats -->
+  <div id="sdNormalView">
   <div class="stat-grid" id="sdStats" style="margin-bottom:24px"></div>
 
   <!-- Per-store breakdown -->
@@ -908,6 +909,17 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <tbody id="sdStoresPricesBody"><tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr></tbody>
       </table>
     </div>
+  </div>
+  </div>
+
+  <!-- Monthly Billing board (toggle view) -->
+  <div id="sdBillingView" style="display:none">
+    <div class="flex-between" style="margin-bottom:6px">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
+      <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">🔄 Generate / Refresh Images</button>
+    </div>
+    <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Builds a statement image per store from this month's deliveries. Send it over WhatsApp, then mark it billed and paid as you go — regenerating later won't reset either status.</p>
+    <div id="sdBillingBody"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
 
@@ -2587,8 +2599,51 @@ async function callAdminFunction(functionName, body) {
   const data = await res.json().catch(() => ({}));
   return { res, data };
 }
+// asks "lower stock for this delivery?" with a small dynamic modal — returns a promise
+// resolving true/false, since the website order flow has no inventory deduction at all today
+function askLowerStock(order) {
+  return new Promise(resolve => {
+    const itemsList = (order?.items || []).map(i => `${i.qty || 1}× ${i.name_en || i.name_he || 'Item'}`).join(', ') || 'this order';
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop open';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:420px">
+        <h2 class="modal-title">Lower stock for this delivery?</h2>
+        <p style="color:var(--text2);font-size:.85rem;line-height:1.5;margin-bottom:18px">Marking <strong style="color:var(--cream)">${escHtml(itemsList)}</strong> as fulfilled. Subtract these quantities from your bottled inventory now?</p>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-outline" id="stockDeductNo">No, already accounted for</button>
+          <button class="btn btn-amber" id="stockDeductYes">Yes, lower stock</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#stockDeductYes').onclick = () => { modal.remove(); resolve(true); };
+    modal.querySelector('#stockDeductNo').onclick = () => { modal.remove(); resolve(false); };
+  });
+}
+// matches the order's items (keyed by product_id, same convention used elsewhere for these orders)
+// against the inventory table and subtracts the delivered quantities
+async function deductInventoryForOrder(order) {
+  for (const item of (order?.items || [])) {
+    const pid = item.product_id || item.id;
+    const qty = Number(item.qty) || 0;
+    if (!pid || qty <= 0) continue;
+    const rows = await sb.from('inventory').select('qty').eq('product', pid).single();
+    if (rows.data) {
+      await sb.from('inventory').update({ qty: Math.max(0, (rows.data.qty || 0) - qty) }).eq('product', pid);
+    }
+  }
+}
 async function markOrderFulfilled(orderId, forceEmail, skipToast) {
   try {
+    // only ask once — if this order isn't fulfilled yet, this is the moment that decides whether
+    // stock comes off the shelf for it. Resending a fulfillment email later won't ask again.
+    let order = allOrders.find(x => x.id === orderId);
+    if (!order) { const { data } = await sb.from('orders').select('*').eq('id', orderId).maybeSingle(); order = data; }
+    if (order && order.status !== 'fulfilled' && (order.items || []).length) {
+      const shouldDeduct = await askLowerStock(order);
+      if (shouldDeduct) await deductInventoryForOrder(order);
+    }
+
     const { data } = await callAdminFunction('notify-order-fulfilled', {
       order_id: orderId,
       force: !!forceEmail,
@@ -4242,6 +4297,10 @@ function renderStoresPricesTable() {
 }
 
 async function loadStoreDeliveries() {
+  // the month picker is shared between this view and the Monthly Billing board —
+  // keep the billing board in sync too if that's the one currently showing
+  const billingView = document.getElementById('sdBillingView');
+  if (billingView && billingView.style.display !== 'none') loadBillingBoard();
   const monthVal = getSDMonth();
   if (!monthVal) return;
   const [y, m] = monthVal.split('-').map(Number);
@@ -4723,14 +4782,14 @@ function exportDeliveriesCSV() {
   downloadCSV(rows, `gremier-store-deliveries-${getSDMonth()}.csv`);
 }
 
-async function sendMonthlyBilling() {
+async function generateMonthlyBillingImages() {
   const monthVal = getSDMonth();
   const [y, m] = monthVal.split('-').map(Number);
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const label = `${monthNames[m-1]} ${String(y).slice(-2)}`;
-  if (!confirm(`Send monthly billing for ${label}?\n\nThis will email חשבון עסקה invoices for every store that had deliveries.`)) return;
-  const btn = document.getElementById('billingBtn');
-  if (btn) { btn.textContent = 'Sending…'; btn.disabled = true; }
+  if (!confirm(`Generate billing statement images for ${label}?\n\nThis builds one image per store from this month's deliveries — it won't email anyone.`)) return;
+  const btn = document.getElementById('billingGenBtn');
+  if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { showToast('Not signed in'); return; }
@@ -4745,19 +4804,112 @@ async function sendMonthlyBilling() {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast(`✓ Billing sent! ${data.stores} stores · ₪${data.grandTotal?.toFixed(0)}`);
+      showToast(`✓ ${data.stores} statement image${data.stores===1?'':'s'} ready · ₪${data.grandTotal?.toFixed(0)}`);
+      await loadBillingBoard();
     } else if (data.skipped === 'no_deliveries') {
       showToast('No deliveries found for that month');
     } else {
-      showToast('Billing failed — check console');
+      showToast('Billing generation failed — check console');
       console.error(data);
     }
   } catch(e) {
     showToast('Could not reach billing function');
     console.error(e);
   } finally {
-    if (btn) { btn.textContent = '📧 Send Monthly Billing'; btn.disabled = false; }
+    if (btn) { btn.textContent = '🔄 Generate / Refresh Images'; btn.disabled = false; }
   }
+}
+
+function toggleBillingBoard() {
+  const normal = document.getElementById('sdNormalView');
+  const billing = document.getElementById('sdBillingView');
+  const btn = document.getElementById('billingBoardToggleBtn');
+  const showingBilling = billing.style.display === 'none';
+  normal.style.display = showingBilling ? 'none' : '';
+  billing.style.display = showingBilling ? '' : 'none';
+  btn.textContent = showingBilling ? '🏪 Store Deliveries' : '🧾 Monthly Billing';
+  if (showingBilling) loadBillingBoard();
+}
+
+async function loadBillingBoard() {
+  const monthVal = getSDMonth();
+  if (!monthVal) return;
+  const [y, m] = monthVal.split('-').map(Number);
+  const body = document.getElementById('sdBillingBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const { data: rows, error } = await sb
+    .from('store_billing')
+    .select('*, stores(name, phone)')
+    .eq('year', y).eq('month', m)
+    .order('total', { ascending: false });
+  if (error) { body.innerHTML = `<div class="empty-state">Couldn't load billing data: ${escHtml(error.message)}</div>`; return; }
+  if (!rows || !rows.length) {
+    body.innerHTML = `<div class="empty-state">No statements generated for this month yet. Tap "Generate / Refresh Images" above.</div>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const storeName = r.stores?.name || 'Unknown store';
+    const phone = r.stores?.phone || '';
+    const billedTxt = r.billed_at ? `✓ Billed ${new Date(r.billed_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'})}` : 'Not billed';
+    const paidTxt = r.paid_at ? `✓ Paid ${new Date(r.paid_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'})}` : 'Not paid';
+    return `
+      <div class="card" style="padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        ${r.image_url ? `<img src="${r.image_url}" style="width:54px;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="window.open('${r.image_url}','_blank')"/>` : ''}
+        <div style="flex:1;min-width:160px">
+          <div style="font-weight:600;color:var(--cream)">${escHtml(storeName)}</div>
+          <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone?` · ${escHtml(phone)}`:''}</div>
+          <div style="font-size:.74rem;margin-top:4px">
+            <span style="color:${r.billed_at?'var(--green)':'var(--text2)'}">${billedTxt}</span>
+            &nbsp;·&nbsp;
+            <span style="color:${r.paid_at?'var(--green)':'var(--text2)'}">${paidTxt}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url?'':'disabled'}>💬 Send via WhatsApp</button>
+          <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')" ${r.paid_at?'disabled':''}>${r.paid_at?'Paid ✓':'Mark Paid'}</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function shareInvoiceWhatsApp(billingId) {
+  const { data: row } = await sb.from('store_billing').select('*, stores(name)').eq('id', billingId).maybeSingle();
+  if (!row || !row.image_url) { showToast('No statement image for this store'); return; }
+  const storeName = row.stores?.name || 'your store';
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthLabel = `${monthNames[row.month-1]} ${row.year}`;
+  const caption = `Hi ${storeName}! Here's your Gremier Coffee statement for ${monthLabel}. Total: ₪${Number(row.total||0).toFixed(2)}. Thank you!`;
+
+  try {
+    const resp = await fetch(row.image_url);
+    const blob = await resp.blob();
+    const file = new File([blob], `gremier-statement-${monthLabel.replace(' ','-')}.png`, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text: caption, title: 'Gremier Coffee Statement' });
+    } else {
+      // fallback for browsers without native file sharing (e.g. desktop) — open the image
+      // so it can be saved manually, and pre-fill a WhatsApp text as a backup
+      window.open(row.image_url, '_blank');
+      window.open(`https://wa.me/?text=${encodeURIComponent(caption)}`, '_blank');
+      showToast('File sharing isn\u2019t supported in this browser — opened the image to save manually, plus a WhatsApp draft.', 6000);
+    }
+  } catch (e) {
+    console.error('share failed', e);
+    showToast('Could not prepare the share — opening the image instead');
+    window.open(row.image_url, '_blank');
+    return;
+  }
+
+  if (!row.billed_at) {
+    await sb.from('store_billing').update({ billed_at: new Date().toISOString() }).eq('id', billingId);
+    await loadBillingBoard();
+  }
+}
+
+async function markBillingPaid(billingId) {
+  if (!confirm('Mark this store as paid for this month?')) return;
+  await sb.from('store_billing').update({ paid_at: new Date().toISOString() }).eq('id', billingId);
+  await loadBillingBoard();
 }
 
 // ══ DASHBOARD BRIEFING HELPERS ══
@@ -5104,15 +5256,62 @@ function briefingReadCache() {
     return null;
   }
 }
-function briefingWriteCache(html, urgentHtml = '') {
+// unlike briefingReadCache, this ignores the date check — used to diff against whatever briefing
+// ran last (today's earlier one, or yesterday's), not just "is this still valid to show as-is today"
+function briefingReadRawCache() {
+  try {
+    const raw = localStorage.getItem(DASH_BRIEFING_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+function briefingWriteCache(html, urgentHtml = '', snapshot = null) {
   try {
     localStorage.setItem(DASH_BRIEFING_CACHE_KEY, JSON.stringify({
       date: briefingLocalISO(0),
       generatedAt: new Date().toISOString(),
       html,
-      urgentHtml
+      urgentHtml,
+      snapshot,
     }));
   } catch (_) {}
+}
+// compares the comparable bits of two briefings and returns a short list of human-readable
+// changes — new/resolved focus items, due stores, shortfalls, concentrate gaps, and stock deltas
+function briefingDiffSnapshots(prev, curr) {
+  const changes = [];
+  const prevActions = new Set(prev.actions || []);
+  const currActions = new Set(curr.actions || []);
+  (curr.actions || []).forEach(a => { if (!prevActions.has(a)) changes.push(briefingItem(a, '', 'new', 'warn')); });
+  (prev.actions || []).forEach(a => { if (!currActions.has(a)) changes.push(briefingItem(a, 'No longer needs attention', 'resolved', 'good')); });
+
+  const prevDue = new Set(prev.dueStoreNames || []);
+  const currDue = new Set(curr.dueStoreNames || []);
+  (curr.dueStoreNames || []).forEach(s => { if (!prevDue.has(s)) changes.push(briefingItem(s, 'Now showing as due for a delivery', 'new', 'warn')); });
+  (prev.dueStoreNames || []).forEach(s => { if (!currDue.has(s)) changes.push(briefingItem(s, 'No longer flagged as due', 'resolved', 'good')); });
+
+  const prevShort = new Set(prev.bottleShortfallLabels || []);
+  const currShort = new Set(curr.bottleShortfallLabels || []);
+  (curr.bottleShortfallLabels || []).forEach(l => { if (!prevShort.has(l)) changes.push(briefingItem(`${l} now short`, 'New production shortfall', 'new', 'danger')); });
+  (prev.bottleShortfallLabels || []).forEach(l => { if (!currShort.has(l)) changes.push(briefingItem(`${l} shortfall cleared`, '', 'resolved', 'good')); });
+
+  const prevGaps = new Set(prev.concentrateGapLabels || []);
+  const currGaps = new Set(curr.concentrateGapLabels || []);
+  (curr.concentrateGapLabels || []).forEach(l => { if (!prevGaps.has(l)) changes.push(briefingItem(`${l} concentrate now short`, 'New brew gap', 'new', 'danger')); });
+  (prev.concentrateGapLabels || []).forEach(l => { if (!currGaps.has(l)) changes.push(briefingItem(`${l} brew gap cleared`, '', 'resolved', 'good')); });
+
+  [['stockLarge','Ready liters'],['stockSmall','Ready minis'],['stockSyrup','Syrups']].forEach(([key,label]) => {
+    const before = briefingNum(prev[key]); const after = briefingNum(curr[key]);
+    if (before !== after) changes.push(briefingItem(`${label}: ${briefingRound(before)} → ${briefingRound(after)}`, '', 'changed', 'info'));
+  });
+  Object.keys(BRIEFING_CONCENTRATES).forEach(k => {
+    const before = briefingNum(prev.concentrate?.[k]); const after = briefingNum(curr.concentrate?.[k]);
+    if (Math.abs(before - after) >= 0.1) changes.push(briefingItem(`${BRIEFING_CONCENTRATES[k].label.replace(' Dark Roast','')} concentrate: ${briefingRound(before,1)}L → ${briefingRound(after,1)}L`, '', 'changed', 'info'));
+  });
+
+  return changes.slice(0, 10);
 }
 function briefingRenderCache(cache) {
   const body = document.getElementById('dashBriefingBody');
@@ -5244,12 +5443,29 @@ async function loadBriefing(options = {}) {
       ? `<div class="briefing-priority"><div><span>Still showing while collapsed</span><strong>Urgent items</strong></div><small>Open the briefing for the full plan.</small></div><div class="briefing-section">${urgentSummaryRows.join('')}</div>`
       : '';
 
+    // diff against whatever briefing ran last (today's earlier one if this is a manual refresh,
+    // or yesterday's if this is today's first auto-build) and surface what actually changed
+    const snapshot = {
+      actions,
+      stockLarge, stockSmall, stockSyrup,
+      concentrate: Object.fromEntries(Object.keys(BRIEFING_CONCENTRATES).map(k => [k, briefingNum(concentrate[k])])),
+      dueStoreNames: dueStores.map(p => p.store),
+      bottleShortfallLabels: bottleShortfalls.map(x => x.label),
+      concentrateGapLabels: concentrateGapActions.map(x => x.label),
+    };
+    const prevRawCache = briefingReadRawCache();
+    const updateRows = prevRawCache?.snapshot ? briefingDiffSnapshots(prevRawCache.snapshot, snapshot) : null;
+    const updatedSectionHtml = updateRows
+      ? `<section class="briefing-section"><h4>🔄 What's Updated</h4>${updateRows.length ? updateRows.join('') : briefingEmpty('Nothing has changed since your last briefing.')}</section>`
+      : '';
+
     body.innerHTML = `
       <div class="briefing-content">
         <div class="briefing-priority ${actions.length ? '' : 'good'}">
           <div><span>Today’s focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
           <small>Calculated from open jobs, ready stock, concentrate, labels, beans, and 180 days of store deliveries.</small>
         </div>
+        ${updatedSectionHtml}
         <div class="briefing-grid">
           <section class="briefing-section"><h4>Today</h4>${todayHtml}</section>
           <section class="briefing-section"><h4>Likely next store runs</h4>${storesHtml}</section>
@@ -5260,7 +5476,7 @@ async function loadBriefing(options = {}) {
     `;
     briefingRenderCollapsedSummary(urgentHtml);
     briefingSetCollapsed(false);
-    briefingWriteCache(body.innerHTML, urgentHtml);
+    briefingWriteCache(body.innerHTML, urgentHtml, snapshot);
   } catch (err) {
     briefingRenderCollapsedSummary('');
     body.innerHTML = `<div class="briefing-error">⚠ Briefing failed: ${escHtml(err.message || err)}</div>`;
@@ -6170,11 +6386,17 @@ async function syncStoreDeliveryToAdmin(job, qtys) {
   const large = Object.entries(qtys||{}).filter(([p])=>PRODUCTS2[p]?.category==='liter').reduce((s,[,q])=>s+(q||0),0);
   const mini  = Object.entries(qtys||{}).filter(([p])=>PRODUCTS2[p]?.category==='mini' ).reduce((s,[,q])=>s+(q||0),0);
   const syrup = Object.entries(qtys||{}).filter(([p])=>PRODUCTS2[p]?.category==='syrup').reduce((s,[,q])=>s+(q||0),0);
-  // find store_id from stores table
-  const stores = await opsFetch('stores?select=id,name&is_active=eq.true');
-  const store = (stores||[]).find(s=>s.name===job.storeName);
-  if (!store) return;
-await opsFetch('store_deliveries',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
+  // search ALL stores, not just active ones — a store deactivated after a delivery was scheduled
+  // shouldn't silently break that delivery's billing sync. Match fuzzily (same normalization the
+  // voice logger uses) instead of requiring an exact name match, since an exact-only match just
+  // silently drops anything with slightly different casing/spacing rather than erroring.
+  const stores = await opsFetch('stores?select=id,name');
+  const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]/g,'');
+  const target = norm(job.storeName);
+  let store = (stores||[]).find(s=>norm(s.name)===target);
+  if (!store) store = (stores||[]).find(s=>norm(s.name).includes(target)||target.includes(norm(s.name)));
+  if (!store) throw new Error(`Store delivery not logged — no store matches "${job.storeName}". Add it manually in the Store Deliveries tab.`);
+  await opsFetch('store_deliveries',{method:'POST',prefer:'return=minimal',body:JSON.stringify({
     store_id: store.id,
     store_name: job.storeName,
     qty_large: large,
@@ -6513,18 +6735,31 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
     }
     return (
       <div style={TS.modal} onClick={onCancel}>
-        <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+        <div style={{...TS.modalBox,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
           <div style={TS.modalTitle}>What did you deliver?</div>
-          {Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>(
-            <div key={pid} style={TS.qRow}>
-              <span style={{color:'#c4c4c4',flex:1,display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={26}/>{PROD_LABELS[pid]||pid}</span>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,(q[pid]??qty)-1)}))}>−</button>
-                <input style={TS.qInp} type="number" value={confirmedQtys[pid]??qty} onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
-                <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:(q[pid]??qty)+1}))}>+</button>
+          <div style={{color:'#9a9a9a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Adjust anything below — this isn't limited to what was originally planned.</div>
+          {[['liter','Liter Bottles'],['mini','Mini Bottles'],['jerry','Jerry Cans'],['syrup','Syrups']].map(([cat,catLabel])=>{
+            const items = Object.entries(PRODUCTS).filter(([,p])=>p.category===cat);
+            if (!items.length) return null;
+            return (
+              <div key={cat} style={{marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#7a7a7a',textTransform:'uppercase',letterSpacing:'.04em',margin:'8px 0 4px'}}>{catLabel}</div>
+                {items.map(([pid,p])=>{
+                  const qty = confirmedQtys[pid] ?? (job.quantities||{})[pid] ?? 0;
+                  return (
+                    <div key={pid} style={TS.qRow}>
+                      <span style={{color:'#c4c4c4',flex:1,display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={26}/>{p.label}</span>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,qty-1)}))}>−</button>
+                        <input style={TS.qInp} type="number" value={qty} onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
+                        <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:qty+1}))}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div style={{display:'flex',gap:10,marginTop:14}}>
             <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
             <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>{const total=Object.values(confirmedQtys).reduce((s,v)=>s+(v||0),0);onConfirm(job,total,confirmedQtys);}}>Confirm ✓</button>
@@ -6656,7 +6891,7 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
         )}
         {detail&&<div style={TS.meta}>{detail}</div>}
         <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
-        {job.privateAddress&&<div style={{...TS.meta,color:'#6aa8e8'}}>📍 {job.privateAddress}</div>}
+        {(job.privateAddress||job.cbAddress)&&<div style={{...TS.meta,color:'#6aa8e8'}}>📍 {job.privateAddress||job.cbAddress}</div>}
       </div>
       {showDelete&&<button style={{background:'none',border:'none',color:'#e57368',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
     </div>
@@ -6839,11 +7074,31 @@ const [jobType,setJobType] = useState2('delivery');
   const [privateName,setPrivateName] = useState2(prefill?.privateName || '');
   const [privateAddress,setPrivateAddress] = useState2(prefill?.privateAddress || '');
   const [quantities,setQuantities] = useState2(prefill?.quantities || {});
-  const [people,setPeople] = useState2(25);
-const [cbName,setCbName] = useState2('');
-  const [dispensers,setDispensers] = useState2(1);
-  const [cbSyrups,setCbSyrups] = useState2({ vanilla_syrup: true, caramel_syrup: true, sugar_syrup: true });
-  const [cbSyrupQty,setCbSyrupQty] = useState2({ vanilla_syrup: 1, caramel_syrup: 1, sugar_syrup: 1 });
+  const [people,setPeople] = useState2(prefill?.people ?? 25);
+const [cbName,setCbName] = useState2(prefill?.cbName || '');
+  const [cbAddress,setCbAddress] = useState2(prefill?.cbAddress || '');
+  const [dispensers,setDispensers] = useState2(prefill?.dispensers ?? 1);
+  // a brand-new job (no prefill at all) defaults all three syrups to checked/qty 1, same as before.
+  // Editing an existing job instead mirrors exactly what was saved — a syrup absent from the saved
+  // map means it was deliberately left unchecked, not "forgotten", so it should stay unchecked here too.
+  const cbSyrupInit = (() => {
+    const saved = prefill?.cbSyrups;
+    const isEditing = saved !== undefined && saved !== null;
+    const checked = {}, qty = {};
+    ['vanilla_syrup','caramel_syrup','sugar_syrup'].forEach(pid => {
+      if (isEditing) {
+        const has = Object.prototype.hasOwnProperty.call(saved, pid);
+        checked[pid] = has && (saved[pid] || 0) > 0;
+        qty[pid] = has ? (saved[pid] || 0) : 1;
+      } else {
+        checked[pid] = true;
+        qty[pid] = 1;
+      }
+    });
+    return { checked, qty };
+  })();
+  const [cbSyrups,setCbSyrups] = useState2(cbSyrupInit.checked);
+  const [cbSyrupQty,setCbSyrupQty] = useState2(cbSyrupInit.qty);
   const [brewConc,setBrewConc] = useState2('classic');
   const [kg,setKg] = useState2(3);
   const [bottleProduct,setBottleProduct] = useState2('classic_liter');
@@ -6868,7 +7123,7 @@ const [cbName,setCbName] = useState2('');
         Object.entries(cbSyrups).forEach(([pid,checked]) => {
           if (checked) finalSyrups[pid] = cbSyrupQty[pid] || 0;
         });
-        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, dispensers, cbSyrups:finalSyrups, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
+        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, cbAddress, dispensers, cbSyrups:finalSyrups, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
       }
       const total = Object.values(quantities).reduce((s,v)=>s+(v||0),0);
       return { ...base, type:'delivery', deliveryType:subType,
@@ -6946,6 +7201,7 @@ const [cbName,setCbName] = useState2('');
               <>
                 <div style={{marginBottom:12}}><span style={lbl}>People</span><select style={TS.inp} value={people} onChange={e=>setPeople(Number(e.target.value))}>{[25,50,75,100,125,150].map(n=><option key={n} value={n}>{n} people ({Math.floor(n/25)} cans)</option>)}</select></div>
                 <div style={{marginBottom:12}}><span style={lbl}>Client (optional)</span><input style={TS.inp} value={cbName} onChange={e=>setCbName(e.target.value)} placeholder="Event / who for"/></div>
+                <div style={{marginBottom:12}}><span style={lbl}>Address (optional)</span><input style={TS.inp} value={cbAddress} onChange={e=>setCbAddress(e.target.value)} placeholder="Event address"/></div>
                 <div style={{marginBottom:12}}><span style={lbl}>Dispensers</span><input style={TS.inp} type="number" value={dispensers} onChange={e=>setDispensers(Number(e.target.value)||0)}/></div>
                 <div style={{marginBottom:6}}><span style={lbl}>Syrups Included</span></div>
                 {[['vanilla_syrup','Vanilla Syrup'],['caramel_syrup','Caramel Syrup'],['sugar_syrup','Sugar Syrup']].map(([pid,label])=>(
@@ -7091,7 +7347,10 @@ const [showForm, setShowForm] = useState2(false);
     // patch the job row and run inventory/store/WA side effects in the background —
     // UI is already updated optimistically above, no need to block on a full reload
     patchJob2(job.id, patch).catch(err => console.error('checkoff patch failed:', err));
-    applyJobSideEffects2(finalJob, confirmedQtys, stores).catch(err => console.error('checkoff side effects failed:', err));
+    applyJobSideEffects2(finalJob, confirmedQtys, stores).catch(err => {
+      console.error('checkoff side effects failed:', err);
+      showToast(`⚠ ${err.message || 'Something failed saving this delivery — check Store Deliveries and inventory.'}`, 7000);
+    });
   }
 
 async function handleDelete(job) {
@@ -7150,6 +7409,13 @@ async function addJobFromForm(job, mode) {
       quantities: job.quantities || {},
       date: job.date,
       time: job.time,
+      // coffee bar fields — these were missing entirely, so editing a coffee bar delivery
+      // silently reset the client name, people count, dispensers, and syrups to defaults
+      people: job.people || 25,
+      cbName: job.cbName || '',
+      cbAddress: job.cbAddress || '',
+      dispensers: job.dispensers ?? 1,
+      cbSyrups: job.cbSyrups || {},
     });
     setEditingJobId(job.id);
     setFormMode('schedule');
@@ -7553,12 +7819,79 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
 }
 
 // ── BOTTLED COFFEE sub-screen ──────────────────────────────
-function BottledScreen({ inventory, setInventory }) {
+function BottledScreen({ inventory, setInventory, concentrate, setConcentrate }) {
+  const [confirmAdd, setConfirmAdd] = useState2(null); // {pid, label, delta, newQty}
+  const [pendingQty, setPendingQty] = useState2({}); // pid -> live display value while a tap burst is still settling
+  const tapTimers = useRef2({});
+  const TAP_SETTLE_MS = 500;
+
+  function displayValue(pid) {
+    return pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid] ?? '');
+  }
+
   async function save(pid, val) {
     const v = Math.max(0, parseInt(val)||0);
     setInventory(p=>({...p,[pid]:v}));
     await patchInventory(pid, v);
   }
+
+  // "made this now" — same math as the Bottle production flow: units → liters → concentrate used
+  async function saveAsProduction(pid, delta, newQty) {
+    setInventory(p=>({...p,[pid]:newQty}));
+    await patchInventory(pid, newQty);
+    const prod = PRODUCTS[pid];
+    if (prod?.concentrate && delta>0) {
+      const ratio = getProductRatio(pid, prod.concentrate);
+      const liters = delta * (prod.litersPerUnit||0);
+      if (liters>0) {
+        await incrementConcentrate2(prod.concentrate, -(liters*ratio));
+        if (typeof setConcentrate==='function') {
+          setConcentrate(c=>({...c, [prod.concentrate]: Math.max(0, parseFloat(((c[prod.concentrate]||0)-(liters*ratio)).toFixed(1)))}));
+        }
+      }
+    }
+  }
+
+  // called once a burst of taps (or a typed edit) has actually settled — decides whether
+  // this needs the "did you make this now?" question or can just save straight through
+  function settleIncrease(pid, label, newQty) {
+    const current = inventory[pid]||0;
+    const delta = newQty - current;
+    const prod = PRODUCTS[pid];
+    if (delta<=0 || !prod?.concentrate) { save(pid, newQty); return; }
+    setConfirmAdd({ pid, label, delta, newQty });
+  }
+
+  // tapping + repeatedly only bumps a local display number immediately (so it still feels responsive);
+  // the actual save — and the confirm question, if it's needed — only fires once tapping stops for
+  // TAP_SETTLE_MS. Five quick taps = one question at the end, not five.
+  function tapInc(pid, label) {
+    const base = pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid]||0);
+    const next = base + 1;
+    setPendingQty(p=>({...p,[pid]:next}));
+    if (tapTimers.current[pid]) clearTimeout(tapTimers.current[pid]);
+    tapTimers.current[pid] = setTimeout(()=>{
+      delete tapTimers.current[pid];
+      setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
+      settleIncrease(pid, label, next);
+    }, TAP_SETTLE_MS);
+  }
+
+  // a decrease always commits immediately, no waiting and no question — per Yoni, removing stock never needs to ask
+  function tapDec(pid) {
+    if (tapTimers.current[pid]) { clearTimeout(tapTimers.current[pid]); delete tapTimers.current[pid]; }
+    const base = pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid]||0);
+    setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
+    save(pid, Math.max(0, base-1));
+  }
+
+  // typing a number directly is already one deliberate action, so it settles immediately too
+  function handleTypedChange(pid, label, val) {
+    if (tapTimers.current[pid]) { clearTimeout(tapTimers.current[pid]); delete tapTimers.current[pid]; }
+    setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
+    settleIncrease(pid, label, Math.max(0, parseInt(val)||0));
+  }
+
   const groups = [
     { label:'Liter Bottles', cats:['liter'] },
     { label:'Mini Bottles',  cats:['mini']  },
@@ -7578,15 +7911,29 @@ function BottledScreen({ inventory, setInventory }) {
               <NumRow key={pid}
                 pid={pid}
                 label={p.label}
-                value={inventory[pid]??''}
-                onDec={()=>save(pid,Math.max(0,(inventory[pid]||0)-1))}
-                onInc={()=>save(pid,(inventory[pid]||0)+1)}
-                onChange={e=>save(pid,e.target.value)}
+                value={displayValue(pid)}
+                onDec={()=>tapDec(pid)}
+                onInc={()=>tapInc(pid, p.label)}
+                onChange={e=>handleTypedChange(pid, p.label, e.target.value)}
               />
             ))}
           </div>
         );
       })}
+      {confirmAdd&&(
+        <div style={TS.modal} onClick={()=>setConfirmAdd(null)}>
+          <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+            <div style={TS.modalTitle}>Did you make this now?</div>
+            <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
+              Adding {confirmAdd.delta} × <strong style={{color:'#efefef'}}>{confirmAdd.label}</strong>. If you just bottled it, say yes and concentrate gets deducted automatically.
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button style={TS.btn('#303030','#efefef')} onClick={()=>{save(confirmAdd.pid, confirmAdd.newQty); setConfirmAdd(null);}}>No, just adjusting stock</button>
+              <button style={TS.btn('#4caf72','#fff')} onClick={()=>{saveAsProduction(confirmAdd.pid, confirmAdd.delta, confirmAdd.newQty); setConfirmAdd(null);}}>Yes, I made this ✓</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -7848,7 +8195,7 @@ function StockTab() {
       </div>
       <div style={{padding:'0 16px'}}>
         {tab==='concentrate'&&<><ConcentrateScreen concentrate={concentrate} setConcentrate={setConcentrate} jobs={jobs} inventory={inventory}/><BeansSection beans={beans} setBeans={setBeans}/></>}
-        {tab==='bottled'&&<BottledScreen inventory={inventory} setInventory={setInventory}/>}
+        {tab==='bottled'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate}/>}
         {tab==='labels'&&<LabelsScreen labeledStock={labeledStock} setLabeledStock={setLabeledStock}/>}
         {tab==='make'&&<MakeScreen jobs={jobs} inventory={inventory} concentrate={concentrate}/>}
       </div>
@@ -8020,10 +8367,59 @@ function GlobalPillsFloat() {
     await window.opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});
     await reload();
   }
-  function scheduleWebOrder(o) {
+  async function scheduleWebOrder(o) {
     setWebQueueOpen(false);
+    const items = o.items || [];
+    // a coffee bar order is any order containing a product flagged is_coffee_bar in the catalog —
+    // check live rather than relying on the vanilla admin panel's allProducts cache, since that's
+    // only populated once the Products tab has been opened. Pull variations too, since that's
+    // where each guest tier's price lives.
+    const pids = items.map(i => i.product_id).filter(Boolean);
+    let isCoffeeBar = false;
+    let cbProducts = [];
+    if (pids.length) {
+      cbProducts = await window.opsFetch(`products?id=in.(${pids.join(',')})&select=id,is_coffee_bar,variations`) || [];
+      isCoffeeBar = cbProducts.some(p => p.is_coffee_bar === true);
+    }
+
+    if (isCoffeeBar) {
+      // figure out the guest count from what they actually paid — every guest tier (25/50/75/100/125)
+      // has its own fixed price set in the Products tab, so the price on this order's line item maps
+      // straight back to a tier. Only fall back to scanning the item's name if no price match is found.
+      let people = 25;
+      let matched = false;
+      for (const i of items) {
+        const prod = cbProducts.find(p => p.id === i.product_id);
+        const tiers = (prod?.variations || []).find(v => v.type === 'guest_count')?.options || [];
+        if (!tiers.length) continue;
+        const itemPrice = Number(i.price) || 0;
+        let best = null, bestDiff = Infinity;
+        tiers.forEach(t => {
+          const diff = Math.abs((Number(t.price) || 0) - itemPrice);
+          if (diff < bestDiff) { bestDiff = diff; best = t; }
+        });
+        if (best) { people = best.guests; matched = true; break; }
+      }
+      if (!matched) {
+        for (const i of items) {
+          const text = `${i.name_en||''} ${i.name_he||''}`;
+          const m = text.match(/(\d+)\s*(guests?|אורחים)/i);
+          if (m) { people = Math.max(25, Math.round(Number(m[1])/25)*25); break; }
+        }
+      }
+      const prefill = {
+        subType: 'coffeebar',
+        cbName: websiteOrderDisplayLabel2(o),
+        cbAddress: o.delivery_address || '',
+        people,
+      };
+      window.showTab('schedule');
+      window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
+      return;
+    }
+
     const quantities = {};
-    (o.items||[]).forEach(i => {
+    items.forEach(i => {
       const pid = i.product_id || i.name_en;
       if (pid) quantities[pid] = (quantities[pid]||0) + (i.qty||1);
     });
