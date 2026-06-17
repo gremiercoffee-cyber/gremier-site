@@ -7343,6 +7343,10 @@ const [showForm, setShowForm] = useState2(false);
     setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
     const patch = { done:true, actual_qty:actual, wa_sent_at:null };
     if (isStoreWaDelivery2(finalJob,stores)) patch.wa_needs_send=true;
+    // if quantities were adjusted at checkoff, that MUST be saved to the job row too — otherwise the
+    // database keeps the original planned quantities forever, and a later delete reverses that stale
+    // plan instead of whatever was actually decremented here, drifting inventory out of sync
+    if (confirmedQtys) patch.quantities = confirmedQtys;
     // patch the job row and run inventory/store/WA side effects in the background —
     // UI is already updated optimistically above, no need to block on a full reload
     patchJob2(job.id, patch).catch(err => console.error('checkoff patch failed:', err));
