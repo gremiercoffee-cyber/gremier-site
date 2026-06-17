@@ -6050,6 +6050,17 @@ function getStoreWaPhone2(storeName, stores) {
   if (!store?.phone) return null;
   return whatsAppPhone2(store.phone)||String(store.phone).replace(/\D/g,'')||null;
 }
+// snap a loosely-heard store name (from voice) onto the EXACT name in the stores table,
+// so the form dropdown pre-selects it AND the store_deliveries sync can match it — both need an exact ===
+function resolveStoreName2(spoken, stores) {
+  if (!spoken || !Array.isArray(stores) || !stores.length) return spoken;
+  const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]/g,'');
+  const target = norm(spoken);
+  if (!target) return spoken;
+  let hit = stores.find(s=>norm(s.name)===target);                                   // exact (normalized)
+  if (!hit) hit = stores.find(s=>norm(s.name).includes(target)||target.includes(norm(s.name))); // contains either way
+  return hit ? hit.name : spoken;  // fall back to spoken so the user can still pick manually
+}
 function isStoreWaDelivery2(job, stores) {
   if (!job||job.type!=='delivery'||!job.storeName) return false;
   if (job.deliveryType==='private'||job.deliveryType==='coffeebar') return false;
@@ -6802,7 +6813,7 @@ const [jobType,setJobType] = useState2('delivery');
   const [prodType,setProdType] = useState2('brew');
   const [date,setDate] = useState2(prefill?.date || todayISO2());
   const [time,setTime] = useState2('');
-  const [storeName,setStoreName] = useState2('');
+  const [storeName,setStoreName] = useState2(prefill?.storeName || '');
   const [privateName,setPrivateName] = useState2(prefill?.privateName || '');
   const [privateAddress,setPrivateAddress] = useState2(prefill?.privateAddress || '');
   const [quantities,setQuantities] = useState2(prefill?.quantities || {});
@@ -7099,6 +7110,7 @@ async function addJobFromForm(job, mode) {
     }
     setFormPrefill({
       subType: job.deliveryType || 'store',
+      storeName: job.storeName || '',
       privateName: job.privateName || '',
       privateAddress: job.privateAddress || '',
       quantities: job.quantities || {},
@@ -8119,6 +8131,7 @@ clarify: { "intent":"clarify", "reply":"one short question", "choices":["A","B"]
 unknown: { "intent":"unknown", "reply":"I didn't catch that. Try again?" }
 
 EVERY job MUST include a "date" (YYYY-MM-DD). If the user gives no date, use TODAY for log and TOMORROW for schedule.
+For "storeName", copy the EXACT name from the STORES list above, verbatim — do not rephrase or transliterate it. If the spoken store doesn't clearly match one in the list, use the clarify intent and offer the closest names as choices.
 If the user describes more than one job, you MUST return them all in the "options" array — never collapse them into one.
 
 Keep replies short — 1-2 sentences.`;
@@ -8169,8 +8182,14 @@ Keep replies short — 1-2 sentences.`;
     for (let i=0;i<list.length;i++) {
       const it = list[i];
       const job = it.job;
+      // snap a voice-heard store name onto the exact stores-table name so the field fills in
+      // and the store-deliveries sync (which matches on exact name) actually fires on checkoff
+      const resolvedStore = (job.type==='delivery' && job.deliveryType==='store' && job.storeName)
+        ? resolveStoreName2(job.storeName, stores)
+        : job.storeName;
       const newJob = {
         ...job,
+        storeName: resolvedStore,
         date: job.date || fallbackDate,
         id: Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2),
         label: it.label||job.label||job.type,
