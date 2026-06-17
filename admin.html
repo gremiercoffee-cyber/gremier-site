@@ -4516,6 +4516,10 @@ function openEditDeliveryModal(deliveryId) {
   document.getElementById('ldSyrup').value = d.qty_syrup || 0;
   document.getElementById('ldNotes').value = d.notes || '';
   document.getElementById('deleteDeliveryBtn').style.display = 'flex';
+  // load the saved per-product breakdown (if this record has one) and render the picker —
+  // without this the Products section stays blank/stale when editing an existing delivery
+  ldQuantities = (d.quantities && typeof d.quantities === 'object') ? { ...d.quantities } : {};
+  ldRenderProductRows();
   updateDeliveryPreview();
   document.getElementById('logDeliveryModal').classList.add('open');
 }
@@ -4549,7 +4553,14 @@ async function saveDelivery() {
   const storeId = document.getElementById('ldStore').value;
   const store = allStores.find(s => s.id === storeId);
   if (!store) { showToast('Please select a store'); return; }
-  const { large, small, syrup } = ldGetAggregated();
+  // the per-product picker is the source of truth when it's been used — but if it's empty
+  // (e.g. an older record with no saved breakdown), fall back to the plain number boxes
+  // instead of silently zeroing out the bottle counts on save
+  const hasBreakdown = Object.values(ldQuantities).some(q => (q||0) > 0);
+  const aggregated = ldGetAggregated();
+  const large = hasBreakdown ? aggregated.large : (parseInt(document.getElementById('ldLarge').value) || 0);
+  const small = hasBreakdown ? aggregated.small : (parseInt(document.getElementById('ldSmall').value) || 0);
+  const syrup = hasBreakdown ? aggregated.syrup : (parseInt(document.getElementById('ldSyrup').value) || 0);
   const deliveryDate = document.getElementById('ldDate').value;
   if (!deliveryDate) { showToast('Please pick a date'); return; }
 const data = {
@@ -4558,7 +4569,7 @@ const data = {
     qty_large: large,
     qty_small: small,
     qty_syrup: syrup,
-    quantities: Object.keys(ldQuantities).length ? ldQuantities : null,
+    quantities: hasBreakdown ? ldQuantities : null,
     delivery_date: deliveryDate,
     notes: document.getElementById('ldNotes').value.trim() || null,
     updated_at: new Date().toISOString(),
@@ -6616,6 +6627,9 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
   const deliveryItems = job.type==='delivery'
     ? Object.entries(job.quantities||{}).filter(([,q])=>q>0)
     : [];
+  // store deliveries are usually simple (a few standard products) and the thumbnails just eat space;
+  // private orders can get complicated (mix of products/syrups), so keep the visual thumbnail there
+  const showItemThumbs = job.deliveryType!=='store';
   const singleThumbPid = (job.type==='brew'||job.type==='bottling') ? job.product : null;
   const detail = job.type==='brew'?`${job.kg}kg`
     : job.type==='bottling'?`${job.liters}L`
@@ -6633,8 +6647,8 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
         {deliveryItems.length>0&&(
           <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:3,marginBottom:2}}>
             {deliveryItems.map(([pid,qty])=>(
-              <div key={pid} style={{display:'flex',alignItems:'center',gap:3,background:'#1e1e1e',border:'1px solid #303030',borderRadius:5,padding:'2px 6px 2px 2px'}}>
-                <ProductThumb pid={pid} size={18}/>
+              <div key={pid} style={{display:'flex',alignItems:'center',gap:3,background:'#1e1e1e',border:'1px solid #303030',borderRadius:5,padding:showItemThumbs?'2px 6px 2px 2px':'2px 6px'}}>
+                {showItemThumbs&&<ProductThumb pid={pid} size={18}/>}
                 <span style={{fontSize:11,color:'#9a9a9a'}}>{qty}× {pid.replace(/_/g,' ')}</span>
               </div>
             ))}
@@ -6805,6 +6819,14 @@ function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
   };
   const CONC = { classic:'Classic (Dark Roast)', houseBlend:'House Blend', colombia:'Colombia (Light Roast)', decaf:'Decaf' };
   const DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
+  // same flavor-specific quick-fill shortcuts as the Store Deliveries tab's Log Delivery form
+  const FLAVOR_CASES = {
+    classic_liter:     { label:'Classic Case',           qty:12 },
+    sweetened_classic: { label:'Sweetened Classic Case', qty:12 },
+    house_blend:       { label:'House Blend Case',       qty:12 },
+    colombia_liter:    { label:'Colombia Case',          qty:12 },
+    decaf_liter:       { label:'Decaf Case',             qty:12 },
+  };
   const bottleProducts = Object.entries(FP).filter(([,p])=>p.category!=='syrup'&&p.category!=='dispenser');
   const labelProducts = Object.entries(FP).filter(([,p])=>['liter','mini','jerry'].includes(p.category));
 
@@ -6831,6 +6853,11 @@ const [cbName,setCbName] = useState2('');
 
   function changeQty(pid, delta) { setQuantities(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)})); }
   function setQty(pid, val) { setQuantities(q=>({...q,[pid]:Math.max(0,parseInt(val)||0)})); }
+  function fillFlavorCase(pid) {
+    const c = FLAVOR_CASES[pid];
+    if (!c) return;
+    setQuantities(q=>({...q,[pid]:(q[pid]||0)+c.qty}));
+  }
 
   function build() {
     const base = { date: logNow?todayISO2():(date||todayISO2()), time: logNow?(time||new Date().toTimeString().slice(0,5)):time };
@@ -6901,7 +6928,14 @@ const [cbName,setCbName] = useState2('');
             {subType==='private'&&<><div style={{marginBottom:12}}><span style={lbl}>Recipient</span><input style={TS.inp} value={privateName} onChange={e=>setPrivateName(e.target.value)} placeholder="Name"/></div><div style={{marginBottom:12}}><span style={lbl}>Address</span><input style={TS.inp} value={privateAddress} onChange={e=>setPrivateAddress(e.target.value)} placeholder="Delivery address"/></div></>}
             {subType!=='coffeebar'&&(
               <>
-                {subType==='store'&&<button style={{...TS.btn('#303030','#efefef'),marginBottom:10,border:'1px solid #454545'}} onClick={()=>setQuantities({...DEFAULT_CASE})}>⚡ Default Case</button>}
+                {subType==='store'&&(
+                  <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
+                    <button style={{...TS.btn('#303030','#efefef'),flex:'0 1 auto',border:'1px solid #454545'}} onClick={()=>setQuantities({...DEFAULT_CASE})}>⚡ Default Case</button>
+                    {Object.entries(FLAVOR_CASES).map(([pid,c])=>(
+                      <button key={pid} style={{...TS.btn('#303030','#efefef'),flex:'0 1 auto',border:'1px solid #454545'}} onClick={()=>fillFlavorCase(pid)}>⚡ {c.label}</button>
+                    ))}
+                  </div>
+                )}
                 <QtyRows cat="liter" title="Liter Bottles"/>
                 <QtyRows cat="mini" title="Mini Bottles"/>
                 <QtyRows cat="jerry" title="Jerry Cans"/>
