@@ -5055,7 +5055,7 @@ function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, c
   return actions.slice(0, 3);
 }
 
-const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v2';
+const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v1';
 const DASH_BRIEFING_COLLAPSED_KEY = 'gremier_dash_briefing_collapsed_v1';
 
 function briefingSetCollapsed(collapsed, persist = true) {
@@ -5508,12 +5508,45 @@ function renderCouponsTable() {
       <td class="cell-status"><span class="status-pill ${stCss}">${st}</span></td>
       <td class="cell-date hide-mobile">${exp}</td>
       <td class="cell-actions"><div class="cell-actions-wrap">
+        <button class="btn btn-green btn-sm" onclick="shareCoupon('${escAttr(c.id)}')">Share</button>
         <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(c.code)}')">Copy</button>
         <button class="btn btn-outline btn-sm" onclick="openCouponModal('${c.id}')">Edit</button>
         <button class="btn btn-sm ${c.is_active?'btn-red':'btn-green'}" onclick="toggleCoupon('${c.id}',${c.is_active})">${c.is_active?'Off':'On'}</button>
       </div></td>
     </tr>`;
   }).join('');
+}
+async function shareCoupon(id) {
+  const c = allCoupons.find(x => String(x.id) === String(id));
+  if (!c) { showToast('Coupon not found'); return; }
+
+  const amount = c.discount_type === 'percent' ? `${c.discount_value}% off` : `₪${c.discount_value} off`;
+  const minOrder = c.min_order_amount ? ` on orders over ₪${c.min_order_amount}` : '';
+  const expires = c.expires_at ? ` Expires ${new Date(c.expires_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' })}.` : '';
+  const text = `Gremier Coffee coupon: ${c.code} — ${amount}${minOrder}.${expires} Order here: ${SITE_URL}`;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'Gremier Coffee coupon',
+        text,
+        url: SITE_URL
+      });
+      showToast('Coupon shared ✓');
+      return;
+    }
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
+    console.warn('Coupon share failed, falling back to clipboard:', err);
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Coupon text copied — paste it anywhere ✓');
+  } catch (err) {
+    console.error('Coupon copy fallback failed:', err);
+    showToast('Could not share coupon');
+  }
 }
 function cpGenerateCode() {
   const part = () => Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -5643,6 +5676,101 @@ function giftCardStatus(g) {
   if (Number(g.balance) <= 0) return 'empty';
   return 'active';
 }
+function giftCardEmailAmountLabel(amount) {
+  const n = Number(amount || 0);
+  if (!Number.isFinite(n)) return '₪0';
+  return '₪' + n.toFixed(n % 1 === 0 ? 0 : 2);
+}
+function giftCardLogoUrl() {
+  const base = (SITE_URL || '').replace(/\/$/, '');
+  return `${base}/logo.png`;
+}
+function buildGiftCardEmailGraphicHtml({ amount, code, recipient_name, message, expires_at } = {}) {
+  const amountLabel = giftCardEmailAmountLabel(amount);
+  const safeCode = escHtml(code || 'GC-XXXX-XXXX');
+  const safeName = escHtml(recipient_name || '');
+  const safeMsg = escHtml(message || 'A gift of premium cold brew');
+  const expiresText = expires_at ? `Expires ${escHtml(new Date(expires_at).toLocaleDateString('en-IL', { day:'numeric', month:'short', year:'numeric' }))}` : '';
+  const logo = escAttr(giftCardLogoUrl());
+  return `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 auto;max-width:680px;background:#111111;border-radius:22px;overflow:hidden;border:1px solid #5f5f5f;box-shadow:0 18px 48px rgba(0,0,0,.35)">
+  <tr>
+    <td style="padding:34px 28px;background:linear-gradient(135deg,#111 0%,#1e1e1e 55%,#0b0b0b 100%);font-family:Arial,Helvetica,sans-serif;color:#efefef">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <tr>
+          <td width="38%" style="vertical-align:middle;text-align:center;padding:8px 20px 8px 0">
+            <img src="${logo}" alt="Gremier Coffee Co." width="132" style="display:block;margin:0 auto;max-width:132px;height:auto;border-radius:50%"/>
+          </td>
+          <td width="62%" style="vertical-align:middle;text-align:center;padding:8px 0 8px 20px;border-left:1px solid rgba(239,239,239,.18)">
+            <div style="font-family:Georgia,'Times New Roman',serif;font-size:46px;line-height:1;color:#f3f3f3;letter-spacing:.02em;text-shadow:0 1px 0 #777">Gift Card</div>
+            <div style="font-family:Georgia,'Times New Roman',serif;font-size:58px;line-height:1;margin:22px 0 10px;color:#f7f7f7;letter-spacing:.03em">${escHtml(amountLabel)}</div>
+            <div style="font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:#cfcfcf;margin-bottom:22px">A gift of premium cold brew</div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid rgba(239,239,239,.18);border-radius:14px;background:rgba(0,0,0,.18)">
+              <tr>
+                <td style="padding:18px 12px;text-align:center">
+                  <div style="font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#bbbbbb;margin-bottom:8px">Gift card code</div>
+                  <div style="font-size:30px;line-height:1.2;font-weight:700;letter-spacing:.16em;color:#ffffff">${safeCode}</div>
+                </td>
+              </tr>
+            </table>
+            ${safeName ? `<div style="font-size:14px;color:#d7d7d7;margin-top:18px">For ${safeName}</div>` : ''}
+            ${safeMsg ? `<div style="font-size:14px;color:#c9c9c9;margin-top:8px;line-height:1.5">${safeMsg}</div>` : ''}
+            ${expiresText ? `<div style="font-size:12px;color:#a8a8a8;margin-top:12px">${expiresText}</div>` : ''}
+          </td>
+        </tr>
+      </table>
+      <div style="text-align:center;font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:#9f9f9f;margin-top:24px">Redeem at gremiercoffee.co.il</div>
+    </td>
+  </tr>
+</table>`;
+}
+function buildGiftCardEmailHtml({ amount, code, recipient_name, message, expires_at } = {}) {
+  const amountLabel = giftCardEmailAmountLabel(amount);
+  const graphic = buildGiftCardEmailGraphicHtml({ amount, code, recipient_name, message, expires_at });
+  const safeName = escHtml(recipient_name || '');
+  const intro = safeName ? `Hi ${safeName},` : 'Hi,';
+  const expiresLine = expires_at ? `<p style="margin:12px 0 0;color:#777;font-size:13px">Expires: ${escHtml(new Date(expires_at).toLocaleDateString('en-IL', { day:'numeric', month:'short', year:'numeric' }))}</p>` : '';
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f1ec;font-family:Arial,Helvetica,sans-serif;color:#1f1f1f">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#f4f1ec">
+    <tr><td align="center" style="padding:28px 14px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;max-width:720px;background:#ffffff;border-radius:18px;overflow:hidden">
+        <tr><td style="padding:28px 24px 8px;text-align:center">
+          <h1 style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:30px;color:#151515">Your Gremier Gift Card</h1>
+          <p style="margin:0;color:#666;font-size:15px;line-height:1.5">${intro} someone sent you ${escHtml(amountLabel)} to enjoy premium cold brew from Gremier Coffee.</p>
+        </td></tr>
+        <tr><td style="padding:22px 18px">${graphic}</td></tr>
+        <tr><td style="padding:0 28px 28px;text-align:center;color:#555;font-size:14px;line-height:1.6">
+          <p style="margin:0">Use the gift card code at checkout on <strong>gremiercoffee.co.il</strong>.</p>
+          ${expiresLine}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+function buildGiftCardEmailText({ amount, code, recipient_name, message, expires_at } = {}) {
+  const lines = [
+    recipient_name ? `Hi ${recipient_name},` : 'Hi,',
+    '',
+    `You received a Gremier Coffee gift card for ${giftCardEmailAmountLabel(amount)}.`,
+    `Gift card code: ${code || ''}`,
+    message ? `Message: ${message}` : '',
+    expires_at ? `Expires: ${new Date(expires_at).toLocaleDateString('en-IL')}` : '',
+    '',
+    'Redeem at https://gremiercoffee.co.il'
+  ];
+  return lines.filter(line => line !== '').join('\n');
+}
+function buildGiftCardEmailPayload({ amount, code, recipient_email, recipient_name, message, expires_at } = {}) {
+  return {
+    email_subject: `Your ${giftCardEmailAmountLabel(amount)} Gremier Gift Card`,
+    email_html: buildGiftCardEmailHtml({ amount, code, recipient_name, message, expires_at }),
+    email_text: buildGiftCardEmailText({ amount, code, recipient_name, message, expires_at }),
+    email_template: 'gremier_gift_card_v1',
+    recipient_email: recipient_email || null,
+    recipient_name: recipient_name || null,
+  };
+}
 function renderGiftCardsTable() {
   const body = document.getElementById('giftCardsBody');
   if (!body) return;
@@ -5686,17 +5814,46 @@ async function issueGiftCard() {
   const btn = document.getElementById('issueGcBtn');
   btn.disabled = true; btn.textContent = 'Issuing…';
   try {
+    const recipientEmail = document.getElementById('gcRecipientEmail').value.trim() || null;
+    const recipientName = document.getElementById('gcRecipientName').value.trim() || null;
+    const message = document.getElementById('gcMessage').value.trim() || null;
+    const expiresAt = document.getElementById('gcExpires').value || null;
+    const emailDesignPreview = buildGiftCardEmailPayload({
+      amount,
+      code: '{{GIFT_CARD_CODE}}',
+      recipient_email: recipientEmail,
+      recipient_name: recipientName,
+      message,
+      expires_at: expiresAt,
+    });
     const { data } = await callAdminFunction('issue-gift-card', {
       amount,
-      recipient_email: document.getElementById('gcRecipientEmail').value.trim() || null,
-      recipient_name: document.getElementById('gcRecipientName').value.trim() || null,
-      message: document.getElementById('gcMessage').value.trim() || null,
-      expires_at: document.getElementById('gcExpires').value || null,
+      recipient_email: recipientEmail,
+      recipient_name: recipientName,
+      message,
+      expires_at: expiresAt,
+      email_template: 'gremier_gift_card_v1',
+      email_subject: emailDesignPreview.email_subject,
+      email_html_template: emailDesignPreview.email_html,
+      email_text_template: emailDesignPreview.email_text,
     });
     if (data.ok) {
       const res = document.getElementById('gcIssueResult');
+      const issuedAmount = data.amount || amount;
+      const issuedEmail = buildGiftCardEmailPayload({
+        amount: issuedAmount,
+        code: data.code,
+        recipient_email: recipientEmail,
+        recipient_name: recipientName,
+        message,
+        expires_at: expiresAt,
+      });
       res.style.display = 'block';
-      res.innerHTML = `<div class="link-result"><div class="link-url">Code: <strong>${escHtml(data.code)}</strong> · ₪${data.amount}${data.emailed?' · emailed ✓':''}</div><button class="copy-btn" onclick="copyLink('${escAttr(data.code)}')">Copy</button></div>`;
+      res.innerHTML = `<div class="link-result"><div class="link-url">Code: <strong>${escHtml(data.code)}</strong> · ${escHtml(giftCardEmailAmountLabel(issuedAmount))}${data.emailed?' · emailed ✓':''}</div><button class="copy-btn" onclick="copyLink('${escAttr(data.code)}')">Copy</button></div>
+        <div style="margin-top:14px;max-width:100%;overflow:hidden">${buildGiftCardEmailGraphicHtml({ amount: issuedAmount, code: data.code, recipient_name: recipientName, message, expires_at: expiresAt })}</div>`;
+      if (!data.emailed && recipientEmail) {
+        console.warn('Gift card was issued, but the edge function did not report emailed=true. Email payload preview:', issuedEmail);
+      }
       showToast('Gift card issued ✓');
       loadGiftCards();
     } else {
