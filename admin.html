@@ -6903,12 +6903,9 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
   const color = jobColor2(job);
   const label = jobLabel2(job);
   const overdue = isJobOverdue2(job);
-  const deliveryItems = job.type==='delivery'
-    ? Object.entries(job.quantities||{}).filter(([,q])=>q>0)
-    : [];
-  // store deliveries are usually simple (a few standard products) and the thumbnails just eat space;
-  // private orders can get complicated (mix of products/syrups), so keep the visual thumbnail there
-  const showItemThumbs = job.deliveryType!=='store';
+  // Keep the main schedule list clean: product breakdowns are available when opening/checking off the task.
+  const deliveryItems = [];
+  const showItemThumbs = false;
   const singleThumbPid = (job.type==='brew'||job.type==='bottling') ? job.product : null;
   const detail = job.type==='brew'?`${job.kg}kg`
     : job.type==='bottling'?`${job.liters}L`
@@ -7145,10 +7142,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
   const [cbSyrupQty,setCbSyrupQty] = useState2(cbSyrupInit.qty);
   const [brewConc,setBrewConc] = useState2('classic');
   const [kg,setKg] = useState2(3);
-  const [bottleProduct,setBottleProduct] = useState2('classic_liter');
-  const [liters,setLiters] = useState2('');
-  const [labelProduct,setLabelProduct] = useState2('classic_liter');
-  const [labelQty,setLabelQty] = useState2('');
+  const [bottleQuantities,setBottleQuantities] = useState2({});
+  const [labelQuantities,setLabelQuantities] = useState2({});
 
   function changeQty(pid, delta) { setQuantities(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)})); }
   function setQty(pid, val) { setQuantities(q=>({...q,[pid]:Math.max(0,parseInt(val)||0)})); }
@@ -7178,18 +7173,29 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
         label: subType==='store'?(storeName||'Store'):(privateName||'Private') };
     }
     if (prodType==='brew') return { ...base, type:'brew', product:brewConc, kg, label:`Brew ${CONC[brewConc]} (${kg}kg)` };
-    if (prodType==='label') return { ...base, type:'labeling', product:labelProduct, qty:Number(labelQty), label:`Label ${labelQty} ${FP[labelProduct]?.label||''}` };
-    const isJerry = FP[bottleProduct]?.category==='jerry';
-    const actualLiters = isJerry?Number(liters)*5:Number(liters);
-    return { ...base, type:'bottling', product:bottleProduct, liters:actualLiters, qty:isJerry?Number(liters):undefined, label:`Bottle ${liters}${isJerry?' cans':'L'} ${FP[bottleProduct]?.label||''}` };
+    if (prodType==='label') {
+      const entries = Object.entries(labelQuantities).filter(([,qty])=>Number(qty)>0);
+      if (!entries.length) { alert('Pick at least one label quantity.'); return null; }
+      return entries.map(([pid,qty])=>({ ...base, type:'labeling', product:pid, qty:Number(qty), label:`Label ${Number(qty)} ${FP[pid]?.label||''}` }));
+    }
+    const entries = Object.entries(bottleQuantities).filter(([,qty])=>Number(qty)>0);
+    if (!entries.length) { alert('Pick at least one bottling quantity.'); return null; }
+    return entries.map(([pid,qty])=>{
+      const units = Number(qty)||0;
+      const cat = FP[pid]?.category;
+      const actualLiters = cat==='mini' ? units/4 : cat==='jerry' ? units*5 : units;
+      return { ...base, type:'bottling', product:pid, liters:actualLiters, qty:cat==='jerry'?units:undefined, label:`Bottle ${units}× ${FP[pid]?.label||''}` };
+    });
   }
 
   const tog = (active,color) => ({ flex:1, padding:'9px 4px', background:active?(color||'#d0d0d0'):'#303030', color:active?'#121212':'#9a9a9a', border:'none', borderRadius:6, fontSize:13, fontWeight:active?700:400, cursor:'pointer', fontFamily:"'DM Sans',sans-serif" });
   const lbl = { fontSize:10, letterSpacing:1, textTransform:'uppercase', color:'#9a9a9a', marginBottom:6, display:'block' };
 
-  function QtyRows({ cat, title }) {
+  function QtyRows({ cat, title, values=quantities, setValues=setQuantities }) {
     const items = Object.entries(FP).filter(([,p])=>p.category===cat);
     if (!items.length) return null;
+    const bump = (pid, delta) => setValues(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)}));
+    const setOne = (pid, val) => setValues(q=>({...q,[pid]:Math.max(0,parseInt(val)||0)}));
     return (
       <div style={{marginBottom:10}}>
         <div style={{fontSize:9,color:'#9a9a9a',letterSpacing:1,textTransform:'uppercase',fontWeight:700,marginTop:8,marginBottom:4,borderBottom:'1px solid #303030',paddingBottom:3}}>{title}</div>
@@ -7197,9 +7203,9 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
           <div key={pid} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #303030'}}>
             <ProductThumb pid={pid} size={26}/>
             <span style={{flex:1,fontSize:13,color:'#c4c4c4'}}>{p.label}</span>
-            <button style={TS.qBtn} onClick={()=>changeQty(pid,-1)}>−</button>
-            <input style={TS.qInp} type="number" value={quantities[pid]||0} onChange={e=>setQty(pid,e.target.value)}/>
-            <button style={TS.qBtn} onClick={()=>changeQty(pid,1)}>+</button>
+            <button style={TS.qBtn} onClick={()=>bump(pid,-1)}>−</button>
+            <input style={TS.qInp} type="number" value={values[pid]||0} onChange={e=>setOne(pid,e.target.value)}/>
+            <button style={TS.qBtn} onClick={()=>bump(pid,1)}>+</button>
           </div>
         ))}
       </div>
@@ -7274,8 +7280,17 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
               <button style={tog(prodType==='label','#8a7060')} onClick={()=>setProdType('label')}>Label</button>
             </div>
             {prodType==='brew'&&<><div style={{marginBottom:12}}><span style={lbl}>Concentrate</span><select style={TS.inp} value={brewConc} onChange={e=>setBrewConc(e.target.value)}>{Object.entries(CONC).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Kilos</span><select style={TS.inp} value={kg} onChange={e=>setKg(Number(e.target.value))}><option value={3}>3kg → ~19L</option><option value={2}>2kg → ~12.7L</option><option value={1.5}>1.5kg → ~9.5L</option><option value={1}>1kg → ~6.4L</option></select></div></>}
-            {prodType==='bottle'&&<><div style={{marginBottom:12}}><span style={lbl}>Product</span><select style={TS.inp} value={bottleProduct} onChange={e=>setBottleProduct(e.target.value)}>{bottleProducts.map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>{FP[bottleProduct]?.category==='jerry'?'Number of Cans':'Liters to Produce'}</span><input style={TS.inp} type="number" value={liters} onChange={e=>setLiters(e.target.value)}/></div></>}
-            {prodType==='label'&&<><div style={{marginBottom:12}}><span style={lbl}>Product</span><select style={TS.inp} value={labelProduct} onChange={e=>setLabelProduct(e.target.value)}>{labelProducts.map(([k,p])=><option key={k} value={k}>{p.label}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Quantity</span><input style={TS.inp} type="number" value={labelQty} onChange={e=>setLabelQty(e.target.value)}/></div></>}
+            {prodType==='bottle'&&<>
+              <div style={{color:'#9a9a9a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick finished units. Minis automatically convert to liters for concentrate usage; jerry cans count as 5L each.</div>
+              <QtyRows cat="liter" title="Liter Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
+              <QtyRows cat="mini" title="Mini Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
+              <QtyRows cat="jerry" title="Jerry Cans" values={bottleQuantities} setValues={setBottleQuantities}/>
+            </>}
+            {prodType==='label'&&<>
+              <div style={{color:'#9a9a9a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick how many labels/bottles to add for each product.</div>
+              <QtyRows cat="liter" title="Liter Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
+              <QtyRows cat="mini" title="Mini Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
+            </>}
           </>
         )}
 
@@ -7428,9 +7443,13 @@ async function handleDelete(job) {
     await reload();
   }
 async function addJobFromForm(job, mode) {
+    if (!job) return;
+    const incomingJobs = Array.isArray(job) ? job : [job];
+    if (!incomingJobs.length) return;
+
     if (editingJobId) {
       const existing = jobs.find(j=>j.id===editingJobId);
-      const updatedJob = { ...existing, ...job };
+      const updatedJob = { ...existing, ...incomingJobs[0] };
       await patchJob2(editingJobId, jobToRow2(updatedJob));
       setEditingJobId(null);
       setShowForm(false);
@@ -7438,11 +7457,45 @@ async function addJobFromForm(job, mode) {
       await reload();
       return;
     }
-    const newJob = { ...job, id: Date.now()+'_'+Math.random().toString(36).slice(2), brewStarted:false, done:false, createdAt:new Date().toISOString() };
-    await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
+
+    const LABELED_FOR_AUTO_USE = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+    function bottledUnitsFromJob(j) {
+      const cat = (window.__OPS_PRODUCTS__||{})[j.product]?.category;
+      if (cat === 'mini') return Math.round((j.liters||0)*4);
+      if (cat === 'jerry') return j.qty || Math.round((j.liters||0)/5);
+      return Math.round(j.liters||0);
+    }
+
+    const created = incomingJobs.map((j,idx)=>({
+      ...j,
+      id: `${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`,
+      brewStarted:false,
+      done:false,
+      createdAt:new Date().toISOString(),
+    }));
+
+    if (mode === 'lognow' && created.every(j=>j.type==='bottling'||j.type==='labeling')) {
+      const completed = created.map(j=>{
+        const doneJob = { ...j, done:true, actualQty:j.type==='bottling'?(j.liters||0):(j.qty||0), needsConfirmation:false };
+        if (j.type==='bottling' && LABELED_FOR_AUTO_USE.includes(j.product)) {
+          doneJob.labeledUsed = { [j.product]: bottledUnitsFromJob(j) };
+        }
+        return doneJob;
+      });
+      await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(completed.map(jobToRow2))});
+      for (const doneJob of completed) await applyJobSideEffects2(doneJob, null, stores);
+      setShowForm(false);
+      setFormPrefill(null);
+      await reload();
+      showToast(`${completed.length} production task${completed.length===1?'':'s'} logged ✓`);
+      return;
+    }
+
+    await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(created.map(jobToRow2))});
     setShowForm(false);
+    setFormPrefill(null);
     await reload();
-    if (mode==='lognow') handleCheckoff(newJob);
+    if (mode==='lognow' && created.length===1) handleCheckoff(created[0]);
   }
   function openEditJob(job) {
     if (job.type!=='delivery') {
@@ -8341,6 +8394,188 @@ async function opsAI2(action, payload, isFormData = false) {
   return res.json();
 }
 
+
+// ── Voice logger hardening helpers ─────────────────────────
+// These helpers make the voice logger do the same real work as the buttons/forms:
+// save the job, immediately apply stock side effects for "log now", and refresh the other roots.
+const VOICE_PRODUCT_META3 = {
+  classic_liter:{label:'Classic Liter',category:'liter',aliases:['classic liter','classic bottle','dark roast liter','dark roast bottle','classic']},
+  sweetened_classic:{label:'Sweetened Classic Liter',category:'liter',aliases:['sweetened classic','sweet classic','sweetened bottle','sweetened liter']},
+  house_blend:{label:'House Blend Liter',category:'liter',aliases:['house blend','houseblend','medium roast','medium roast liter']},
+  colombia_liter:{label:'Colombia Liter',category:'liter',aliases:['colombia','colombia liter','light roast','light roast liter']},
+  decaf_liter:{label:'Decaf Liter',category:'liter',aliases:['decaf','decaf liter','decaf bottle']},
+  classic_mini:{label:'Classic Mini',category:'mini',aliases:['classic mini','classic minis','dark mini','dark minis']},
+  house_blend_mini:{label:'House Blend Mini',category:'mini',aliases:['house blend mini','house blend minis','houseblend mini','medium mini','medium minis']},
+  vanilla_mini:{label:'Vanilla Mini',category:'mini',aliases:['vanilla mini','vanilla minis']},
+  original_mini:{label:'Original Mini',category:'mini',aliases:['original mini','original minis']},
+  caramel_mini:{label:'Caramel Mini',category:'mini',aliases:['caramel mini','caramel minis','caramel cremier','caramel creamer']},
+  jerry_can:{label:'Classic Jerry Can',category:'jerry',aliases:['jerry can','classic jerry','classic jerry can','classic 5 liter','classic 5l']},
+  jerry_can_houseblend:{label:'House Blend Jerry Can',category:'jerry',aliases:['house blend jerry','house blend jerry can','houseblend jerry','medium jerry']},
+  jerry_can_colombia:{label:'Colombia Jerry Can',category:'jerry',aliases:['colombia jerry','colombia jerry can','light roast jerry']},
+  jerry_can_decaf:{label:'Decaf Jerry Can',category:'jerry',aliases:['decaf jerry','decaf jerry can']},
+  vanilla_syrup:{label:'Vanilla Syrup',category:'syrup',aliases:['vanilla syrup']},
+  caramel_syrup:{label:'Caramel Syrup',category:'syrup',aliases:['caramel syrup']},
+  sugar_syrup:{label:'Sugar Syrup',category:'syrup',aliases:['sugar syrup','simple syrup']},
+  dispenser:{label:'Dispenser',category:'dispenser',aliases:['dispenser','dispensers']},
+};
+window.__OPS_VOICE_PRODUCT_META__ = VOICE_PRODUCT_META3;
+
+function normVoice3(s) {
+  return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9\u0590-\u05ff]+/g,' ').trim();
+}
+function normVoiceCompact3(s) {
+  return normVoice3(s).replace(/\s+/g,'');
+}
+function resolveVoiceProductKey3(value, preferredCategory) {
+  if (!value) return value;
+  const raw = String(value).trim();
+  if (VOICE_PRODUCT_META3[raw]) return raw;
+  const target = normVoiceCompact3(raw);
+  if (!target) return raw;
+  const entries = Object.entries(VOICE_PRODUCT_META3)
+    .filter(([,m]) => !preferredCategory || m.category === preferredCategory);
+  const scoreEntry = ([key,meta]) => {
+    const names = [key.replace(/_/g,' '), meta.label, ...(meta.aliases||[])];
+    let best = 0;
+    for (const name of names) {
+      const n = normVoiceCompact3(name);
+      if (!n) continue;
+      if (n === target) best = Math.max(best, 100);
+      else if (n.includes(target) || target.includes(n)) best = Math.max(best, 70 + Math.min(n.length,target.length));
+    }
+    return best;
+  };
+  let best = null;
+  for (const entry of entries) {
+    const score = scoreEntry(entry);
+    if (!best || score > best.score) best = { key: entry[0], score };
+  }
+  return best && best.score >= 70 ? best.key : raw;
+}
+function voiceProductCategory3(pid) {
+  return VOICE_PRODUCT_META3[pid]?.category || window.__OPS_PRODUCTS__?.[pid]?.category || '';
+}
+function resolveVoiceConcentrate3(value) {
+  const raw = String(value || '').trim();
+  if (['classic','houseBlend','colombia','decaf'].includes(raw)) return raw;
+  const t = normVoiceCompact3(raw);
+  if (!t) return 'classic';
+  const aliases = {
+    classic:['classic','darkroast','dark','regular'],
+    houseBlend:['houseblend','house','mediumroast','medium'],
+    colombia:['colombia','lightroast','light'],
+    decaf:['decaf','decaffeinated'],
+  };
+  for (const [key,vals] of Object.entries(aliases)) {
+    if (vals.some(v => v === t || v.includes(t) || t.includes(v))) return key;
+  }
+  return raw || 'classic';
+}
+function voiceBottleLiters3(product, qty, liters) {
+  const cat = voiceProductCategory3(product);
+  const q = Number(qty || 0);
+  const l = Number(liters || 0);
+  if (q > 0) {
+    if (cat === 'mini') return q / 4;
+    if (cat === 'jerry') return q * 5;
+    return q;
+  }
+  return l > 0 ? l : 0;
+}
+function voiceBottledUnitsFromJob3(job) {
+  const cat = voiceProductCategory3(job.product);
+  if (cat === 'mini') return Math.round((job.liters || 0) * 4);
+  if (cat === 'jerry') return job.qty || Math.round((job.liters || 0) / 5);
+  return Math.round(job.liters || job.qty || 0);
+}
+function voiceProductPrompt3() {
+  return Object.entries(VOICE_PRODUCT_META3).map(([key,meta]) => `${key} = ${meta.label} (${meta.category})`).join('\n');
+}
+function normalizeVoiceJob3(rawJob, intent, idx, fallbackDate, stores) {
+  const job = { ...(rawJob || {}) };
+  const type = String(job.type || '').toLowerCase().trim();
+  const typeMap = { bottle:'bottling', bottles:'bottling', bottled:'bottling', bottling:'bottling', label:'labeling', labels:'labeling', labeled:'labeling', labeling:'labeling', brew:'brew', brewing:'brew', drain:'drain', delivery:'delivery' };
+  job.type = typeMap[type] || type;
+
+  const isLog = intent === 'log';
+  job.date = job.date || fallbackDate;
+  job.id = `${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`;
+  job.createdAt = new Date().toISOString();
+  job.brewStarted = false;
+
+  if (job.type === 'delivery') {
+    job.deliveryType = job.deliveryType || job.subType || (job.storeName ? 'store' : 'private');
+    if (job.deliveryType === 'store' && job.storeName) job.storeName = resolveStoreName2(job.storeName, stores);
+    const fixedQtys = {};
+    Object.entries(job.quantities || {}).forEach(([pid,qty]) => {
+      const key = resolveVoiceProductKey3(pid);
+      const n = Math.max(0, Number(qty) || 0);
+      if (key && n > 0) fixedQtys[key] = (fixedQtys[key] || 0) + n;
+    });
+    job.quantities = fixedQtys;
+    job.plannedTotal = Object.values(fixedQtys).reduce((s,v)=>s+(Number(v)||0),0);
+    job.label = job.label || (job.deliveryType === 'store' ? (job.storeName || 'Store delivery') : (job.privateName || job.cbName || 'Private delivery'));
+    job.done = isLog ? true : false;
+  }
+
+  if (job.type === 'bottling') {
+    job.product = resolveVoiceProductKey3(job.product || job.product_key || job.item, ['mini','jerry','liter'].includes(job.category) ? job.category : null);
+    const qty = Number(job.qty ?? job.units ?? job.count ?? 0);
+    job.qty = qty > 0 ? qty : job.qty;
+    job.liters = voiceBottleLiters3(job.product, qty, job.liters);
+    job.done = isLog ? true : false;
+    if (isLog) job.actualQty = job.liters || 0;
+    const units = voiceBottledUnitsFromJob3(job);
+    job.label = job.label || `Bottle ${units || job.liters || ''}× ${VOICE_PRODUCT_META3[job.product]?.label || job.product || ''}`.trim();
+    const labelEligible = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+    if (isLog && labelEligible.includes(job.product)) job.labeledUsed = { [job.product]: units };
+  }
+
+  if (job.type === 'labeling') {
+    job.product = resolveVoiceProductKey3(job.product || job.product_key || job.item);
+    job.qty = Math.max(0, Number(job.qty ?? job.units ?? job.count ?? 0));
+    job.done = isLog ? true : false;
+    if (isLog) job.actualQty = job.qty || 0;
+    job.label = job.label || `Label ${job.qty || ''}× ${VOICE_PRODUCT_META3[job.product]?.label || job.product || ''}`.trim();
+  }
+
+  if (job.type === 'brew') {
+    job.product = resolveVoiceConcentrate3(job.product || job.concentrate || 'classic');
+    job.kg = Number(job.kg || 3);
+    job.brewStarted = isLog ? true : false;
+    job.done = false;
+    job.label = job.label || `Brew ${job.product} (${job.kg}kg)`;
+  }
+
+  if (job.type === 'drain') {
+    job.product = resolveVoiceConcentrate3(job.product || job.concentrate || 'classic');
+    job.kg = Number(job.kg || 3);
+    job.done = isLog ? true : false;
+    job.label = job.label || `Drain ${job.product}`;
+  }
+
+  return job;
+}
+function validateVoiceJob3(job) {
+  if (!job || !job.type) return 'No job type found.';
+  if (job.type === 'delivery') {
+    if (job.deliveryType === 'store' && !job.storeName) return 'Store delivery is missing the store name.';
+    if (job.deliveryType !== 'coffeebar' && !Object.keys(job.quantities || {}).length) return 'Delivery is missing product quantities.';
+  }
+  if ((job.type === 'bottling' || job.type === 'labeling') && !VOICE_PRODUCT_META3[job.product]) return `I could not match the product "${job.product || ''}" to a real stock item.`;
+  if (job.type === 'bottling' && !(Number(job.liters) > 0)) return 'Bottling is missing the amount.';
+  if (job.type === 'labeling' && !(Number(job.qty) > 0)) return 'Labeling is missing the quantity.';
+  if ((job.type === 'brew' || job.type === 'drain') && !job.product) return 'Production is missing the concentrate type.';
+  return null;
+}
+async function saveVoiceJobAndEffects3(job, intent, stores) {
+  await window.opsFetch('jobs', { method:'POST', prefer:'return=minimal', body:JSON.stringify(jobToRow2(job)) });
+  if (intent === 'log') {
+    await applyJobSideEffects2(job, job.type === 'delivery' ? job.quantities : null, stores);
+    window.notifyGremierStockChanged?.();
+  }
+}
+
 // ── Global floating pills (WhatsApp/Billing/Web Queue) — visible on every screen ──
 const GLOBAL_PILL_DRAWER_STYLE = { position:'fixed', bottom:0, left:0, right:0, background:'#1e1e1e', border:'1px solid #454545', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:301 };
 const GLOBAL_PILL_BACKDROP_STYLE = { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:300 };
@@ -8649,10 +8884,12 @@ function VoiceLoggerFloat() {
   async function parseIntent2(text) {
     const today = todayISO2();
     const tomorrow = tomorrowISO2();
+    const productCatalog = voiceProductPrompt3();
     const systemPrompt = `You are the voice assistant for Gremier Coffee, a cold brew company in Jerusalem.
 TODAY: ${today} TOMORROW: ${tomorrow}
 STORES: ${stores.map(s=>s.name).join(', ')}
-PRODUCTS: ${Object.entries(window.__OPS_PRODUCTS_FULL__||{}).map(([k])=>k).join(', ')}
+PRODUCT CATALOG — use these exact product keys:
+${productCatalog}
 
 PICK ONE INTENT:
 1. log — something already happened. done=true, date=today.
@@ -8665,7 +8902,8 @@ JOB SHAPES:
 - delivery store: { type:"delivery", deliveryType:"store", storeName, quantities:{product_key:qty}, done, date }
 - delivery private: { type:"delivery", deliveryType:"private", privateName, privateAddress, quantities, done, date }
 - brew: { type:"brew", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:1|1.5|2|3, done, date }
-- bottling: { type:"bottling", product:product_key, liters:number, done, date }
+- bottling: { type:"bottling", product:product_key, qty:number, liters:number, done, date }
+  For bottling, if the user says a number of bottles/minis/jerry cans, put that number in qty. Also compute liters: liter qty = qty liters; mini qty = qty/4 liters; jerry qty = qty*5 liters.
 - labeling: { type:"labeling", product:product_key, qty:number, done, date }
 - drain: { type:"drain", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
 
@@ -8677,6 +8915,7 @@ clarify: { "intent":"clarify", "reply":"one short question", "choices":["A","B"]
 unknown: { "intent":"unknown", "reply":"I didn't catch that. Try again?" }
 
 EVERY job MUST include a "date" (YYYY-MM-DD). If the user gives no date, use TODAY for log and TOMORROW for schedule.
+For log intent, the app will immediately apply stock changes after the user confirms, so do not invent vague products. Use exact product keys only.
 For "storeName", copy the EXACT name from the STORES list above, verbatim — do not rephrase or transliterate it. If the spoken store doesn't clearly match one in the list, use the clarify intent and offer the closest names as choices.
 If the user describes more than one job, you MUST return them all in the "options" array — never collapse them into one.
 
@@ -8719,40 +8958,45 @@ Keep replies short — 1-2 sentences.`;
   async function confirmOption() {
     if (!pendingOption) return;
     const { items, intent } = pendingOption;
-    setPendingOption(null); setPhase('idle');
+    setPendingOption(null);
+    setPhase('thinking');
     const list = (items||[]).filter(it=>it&&it.job);
-    if (!list.length) return;
-    // schedules default to tomorrow, logs to today — a job with no date is invisible in every view
+    if (!list.length) { setPhase('idle'); return; }
+
+    // schedules default to tomorrow, logs to today. Log intent now applies inventory/concentrate/label side effects immediately.
     const fallbackDate = intent==='schedule' ? tomorrowISO2() : todayISO2();
     let saved = 0;
+    const errors = [];
+
     for (let i=0;i<list.length;i++) {
       const it = list[i];
-      const job = it.job;
-      // snap a voice-heard store name onto the exact stores-table name so the field fills in
-      // and the store-deliveries sync (which matches on exact name) actually fires on checkoff
-      const resolvedStore = (job.type==='delivery' && job.deliveryType==='store' && job.storeName)
-        ? resolveStoreName2(job.storeName, stores)
-        : job.storeName;
-      const newJob = {
-        ...job,
-        storeName: resolvedStore,
-        date: job.date || fallbackDate,
-        id: Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2),
-        label: it.label||job.label||job.type,
-        brewStarted: false,
-      };
+      const newJob = normalizeVoiceJob3({ ...it.job, label: it.label || it.job.label }, intent, i, fallbackDate, stores);
+      const validation = validateVoiceJob3(newJob);
+      if (validation) {
+        errors.push(validation);
+        continue;
+      }
       try {
-        await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
+        await saveVoiceJobAndEffects3(newJob, intent, stores);
         saved++;
       } catch(err) {
-        setMessages(prev=>[...prev,{role:'assistant',text:`⚠ Save failed: ${err.message}`}]);
+        console.error('Voice logger save/effects failed:', err, newJob);
+        errors.push(err.message || 'Save failed');
       }
     }
+
     if (saved>0) {
-      // the Scheduler/pills live in separate React roots — tell them to re-fetch so the new jobs actually appear
+      // Scheduler, global pills, and Stock live in separate React roots — tell all of them to re-fetch.
       window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
-      setMessages(prev=>[...prev,{role:'assistant',text:saved>1?`✓ Saved ${saved} jobs!`:'✓ Saved!'}]);
+      window.notifyGremierStockChanged?.();
+      setMessages(prev=>[...prev,{role:'assistant',text:intent==='log'
+        ? (saved>1?`✓ Logged ${saved} jobs and updated stock.`:'✓ Logged and updated stock.')
+        : (saved>1?`✓ Scheduled ${saved} jobs.`:'✓ Scheduled.') }]);
     }
+    if (errors.length) {
+      setMessages(prev=>[...prev,{role:'assistant',text:`⚠ ${errors.join(' ')}`}]);
+    }
+    setPhase('done');
   }
 
   function cancelOption() {
