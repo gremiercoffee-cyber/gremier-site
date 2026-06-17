@@ -6985,8 +6985,15 @@ const [showForm, setShowForm] = useState2(false);
       setFormMode('schedule');
       setShowForm(true);
     }
+    // the voice logger lives in a separate React root; when it saves a job it fires this
+    // event so the calendar/task lists re-fetch instead of staying stale until a page reload
+    function onJobsChanged() { reload(); }
     window.addEventListener('gremier:schedule-prefill', onPrefillHandoff);
-    return () => window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
+    window.addEventListener('gremier:jobs-changed', onJobsChanged);
+    return () => {
+      window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
+      window.removeEventListener('gremier:jobs-changed', onJobsChanged);
+    };
   },[]);
 
   // derived
@@ -7942,7 +7949,9 @@ function GlobalPillsFloat() {
   useEffect3(()=>{
     reload();
     const interval = setInterval(reload, 60000); // refresh every minute so pills stay current across long sessions
-    return () => clearInterval(interval);
+    function onJobsChanged() { reload(); }
+    window.addEventListener('gremier:jobs-changed', onJobsChanged);
+    return () => { clearInterval(interval); window.removeEventListener('gremier:jobs-changed', onJobsChanged); };
   },[]);
 
   const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
@@ -8103,10 +8112,14 @@ JOB SHAPES:
 - drain: { type:"drain", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
 
 RESPONSE — return ONLY JSON:
-log/schedule: { "intent":"log"|"schedule", "reply":"short confirmation", "option":{ "label":"...", "job":{...} } }
+log/schedule (ONE job): { "intent":"log"|"schedule", "reply":"short confirmation", "option":{ "label":"...", "job":{...} } }
+log/schedule (TWO OR MORE jobs — e.g. "schedule two deliveries"): { "intent":"log"|"schedule", "reply":"short confirmation", "options":[ {"label":"...","job":{...}}, {"label":"...","job":{...}} ] }
 ask: { "intent":"ask", "reply":"your answer" }
 clarify: { "intent":"clarify", "reply":"one short question", "choices":["A","B"] }
 unknown: { "intent":"unknown", "reply":"I didn't catch that. Try again?" }
+
+EVERY job MUST include a "date" (YYYY-MM-DD). If the user gives no date, use TODAY for log and TOMORROW for schedule.
+If the user describes more than one job, you MUST return them all in the "options" array — never collapse them into one.
 
 Keep replies short — 1-2 sentences.`;
 
@@ -8123,12 +8136,16 @@ Keep replies short — 1-2 sentences.`;
       catch { setMessages(prev=>[...prev,{role:'assistant',text:'Sorry, trouble understanding. Try again.'}]); setPhase('idle'); return; }
       const reply = obj.reply||'Done.';
       const choices = obj.choices||null;
+      // accept either a single {option} or a multi {options:[...]} — both normalize to one array
+      const items = Array.isArray(obj.options)
+        ? obj.options.filter(o=>o&&o.job)
+        : (obj.option&&obj.option.job ? [obj.option] : []);
       if (obj.intent==='ask'||obj.intent==='unknown'||obj.intent==='clarify') {
         setMessages(prev=>[...prev,{role:'assistant',text:reply,choices}]);
         setPhase('done');
-      } else if (obj.option) {
-        setMessages(prev=>[...prev,{role:'assistant',text:reply,option:obj.option,intent:obj.intent,choices}]);
-        setPendingOption({option:obj.option,intent:obj.intent});
+      } else if (items.length) {
+        setMessages(prev=>[...prev,{role:'assistant',text:reply,intent:obj.intent,choices}]);
+        setPendingOption({items,intent:obj.intent});
         setPhase('done');
       } else {
         setMessages(prev=>[...prev,{role:'assistant',text:reply,choices}]);
@@ -8142,21 +8159,34 @@ Keep replies short — 1-2 sentences.`;
 
   async function confirmOption() {
     if (!pendingOption) return;
-    const { option, intent } = pendingOption;
+    const { items, intent } = pendingOption;
     setPendingOption(null); setPhase('idle');
-    const job = option.job;
-    if (!job) return;
-    const newJob = {
-      ...job,
-      id: Date.now()+'_'+Math.random().toString(36).slice(2),
-      label: option.label||job.label||job.type,
-      brewStarted: false,
-    };
-    try {
-      await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
-      setMessages(prev=>[...prev,{role:'assistant',text:'✓ Saved!'}]);
-    } catch(err) {
-      setMessages(prev=>[...prev,{role:'assistant',text:`⚠ Save failed: ${err.message}`}]);
+    const list = (items||[]).filter(it=>it&&it.job);
+    if (!list.length) return;
+    // schedules default to tomorrow, logs to today — a job with no date is invisible in every view
+    const fallbackDate = intent==='schedule' ? tomorrowISO2() : todayISO2();
+    let saved = 0;
+    for (let i=0;i<list.length;i++) {
+      const it = list[i];
+      const job = it.job;
+      const newJob = {
+        ...job,
+        date: job.date || fallbackDate,
+        id: Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2),
+        label: it.label||job.label||job.type,
+        brewStarted: false,
+      };
+      try {
+        await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(jobToRow2(newJob))});
+        saved++;
+      } catch(err) {
+        setMessages(prev=>[...prev,{role:'assistant',text:`⚠ Save failed: ${err.message}`}]);
+      }
+    }
+    if (saved>0) {
+      // the Scheduler/pills live in separate React roots — tell them to re-fetch so the new jobs actually appear
+      window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+      setMessages(prev=>[...prev,{role:'assistant',text:saved>1?`✓ Saved ${saved} jobs!`:'✓ Saved!'}]);
     }
   }
 
@@ -8253,7 +8283,7 @@ Keep replies short — 1-2 sentences.`;
           <div style={{padding:'10px 12px 28px',flexShrink:0,borderTop:'1px solid #303030',background:'#1e1e1e'}}>
             {pendingOption?(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:intentColor(pendingOption.intent),marginBottom:6}}>{intentLabel(pendingOption.intent)}: {pendingOption.option.label}</div>
+                <div style={{fontSize:12,fontWeight:700,color:intentColor(pendingOption.intent),marginBottom:6}}>{intentLabel(pendingOption.intent)}: {(pendingOption.items||[]).map(it=>it.label||(it.job&&it.job.type)||'job').join(', ')}</div>
                 <div style={{display:'flex',gap:8,marginTop:8}}>
                   <button onClick={cancelOption} style={{flex:1,background:'#303030',border:'1px solid #454545',borderRadius:8,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer',color:'#9a9a9a'}}>Cancel</button>
                   <button onClick={confirmOption} style={{flex:2,background:intentColor(pendingOption.intent),border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',color:'#121212'}}>{intentLabel(pendingOption.intent)} ✓</button>
