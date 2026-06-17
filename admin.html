@@ -7885,11 +7885,19 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate })
     save(pid, Math.max(0, base-1));
   }
 
-  // typing a number directly is already one deliberate action, so it settles immediately too
+  // typing was settling on every single keystroke instead of waiting for the number to be
+  // finished — typing "30" would commit/confirm after just the "3". Route it through the same
+  // debounce as the tap buttons: only the display updates live, the real decision waits for
+  // TAP_SETTLE_MS of no further typing.
   function handleTypedChange(pid, label, val) {
-    if (tapTimers.current[pid]) { clearTimeout(tapTimers.current[pid]); delete tapTimers.current[pid]; }
-    setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
-    settleIncrease(pid, label, Math.max(0, parseInt(val)||0));
+    const next = Math.max(0, parseInt(val)||0);
+    setPendingQty(p=>({...p,[pid]:next}));
+    if (tapTimers.current[pid]) clearTimeout(tapTimers.current[pid]);
+    tapTimers.current[pid] = setTimeout(()=>{
+      delete tapTimers.current[pid];
+      setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
+      settleIncrease(pid, label, next);
+    }, TAP_SETTLE_MS);
   }
 
   const groups = [
@@ -7924,6 +7932,11 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate })
         <div style={TS.modal} onClick={()=>setConfirmAdd(null)}>
           <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
             <div style={TS.modalTitle}>Did you make this now?</div>
+            {confirmAdd.delta>=10&&(
+              <div style={{background:'#3a2418',border:'1px solid #e57368',borderRadius:6,padding:'8px 10px',marginBottom:12,color:'#f0a89c',fontSize:13,fontWeight:600}}>
+                ⚠ That's a big jump — double check this is really {confirmAdd.delta} before confirming.
+              </div>
+            )}
             <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
               Adding {confirmAdd.delta} × <strong style={{color:'#efefef'}}>{confirmAdd.label}</strong>. If you just bottled it, say yes and concentrate gets deducted automatically.
             </div>
