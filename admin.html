@@ -1673,6 +1673,31 @@ async function signInAdmin() {
 async function signOut() { await sb.auth.signOut(); location.reload(); }
 
 
+
+// ══ STOCK REFRESH BRIDGE ══
+// Stock changes can happen from Orders, Store Deliveries, Schedule, or the Stock tab itself.
+// The Stock React screen keeps local state, so notify it after DB writes instead of waiting
+// for a full browser refresh.
+(function setupGremierStockRefreshBridge() {
+  if (window.notifyGremierStockChanged) return;
+  let stockChangedTimer = null;
+  window.notifyGremierStockChanged = function notifyGremierStockChanged(delay = 300) {
+    clearTimeout(stockChangedTimer);
+    stockChangedTimer = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('gremier:stock-changed'));
+    }, delay);
+  };
+  window.reloadGremierStockIfVisible = function reloadGremierStockIfVisible() {
+    const stockTab = document.getElementById('tab-stock');
+    if (!stockTab || stockTab.style.display === 'none') return;
+    if (typeof window.__gremierReloadStock === 'function') {
+      window.__gremierReloadStock({ silent: true });
+    } else {
+      window.notifyGremierStockChanged(0);
+    }
+  };
+})();
+
 // ══ TABS ══
 function showTab(tab) {
   localStorage.setItem('gremier_admin_tab', tab);
@@ -1707,6 +1732,10 @@ function showTab(tab) {
   if (tab === 'delivery' && typeof loadDeliverySettings === 'function') loadDeliverySettings();
   if (tab === 'storedeliveries' && typeof loadStoreDeliveries === 'function') loadStoreDeliveries();
   if (tab === 'siteimages' && typeof loadSiteImages === 'function') loadSiteImages();
+  if (tab === 'stock') {
+    if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
+    else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
+  }
 }
 
 // ══ PRODUCTS ══
@@ -2623,6 +2652,7 @@ function askLowerStock(order) {
 // matches the order's items (keyed by product_id, same convention used elsewhere for these orders)
 // against the inventory table and subtracts the delivered quantities
 async function deductInventoryForOrder(order) {
+  let stockChanged = false;
   for (const item of (order?.items || [])) {
     const pid = item.product_id || item.id;
     const qty = Number(item.qty) || 0;
@@ -2630,8 +2660,10 @@ async function deductInventoryForOrder(order) {
     const rows = await sb.from('inventory').select('qty').eq('product', pid).single();
     if (rows.data) {
       await sb.from('inventory').update({ qty: Math.max(0, (rows.data.qty || 0) - qty) }).eq('product', pid);
+      stockChanged = true;
     }
   }
+  if (stockChanged) window.notifyGremierStockChanged?.();
 }
 async function markOrderFulfilled(orderId, forceEmail, skipToast) {
   try {
@@ -4038,6 +4070,10 @@ function showTab(tab) {
     if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
   if (tab==='coupons') loadCoupons();
   if (tab==='giftcards') loadGiftCards();
+  if (tab==='stock') {
+    if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
+    else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
+  }
 if (tab==='dashboard') { loadStores().then(() => loadDashboard()); }
 }
 // ══ SITE IMAGES & CONTENT ══
@@ -4722,6 +4758,7 @@ if (id) {
     }
     showToast('Delivery logged ✓');
   }
+  window.notifyGremierStockChanged?.();
   closeLogDeliveryModal();
   await loadStoreDeliveries();
 }
@@ -4742,6 +4779,7 @@ async function deleteDelivery() {
     }
   }
   await sb.from('store_deliveries').delete().eq('id', id);
+  if (row?.quantities) window.notifyGremierStockChanged?.();
   showToast('Delivery deleted');
   closeLogDeliveryModal();
   await loadStoreDeliveries();
@@ -4762,6 +4800,7 @@ async function deleteDeliveryById(id) {
     }
   }
   await sb.from('store_deliveries').delete().eq('id', id);
+  if (row?.quantities) window.notifyGremierStockChanged?.();
   showToast('Delivery deleted');
   await loadStoreDeliveries();
 }
@@ -6415,18 +6454,21 @@ async function incrementInventory2(product, delta) {
   if (!rows?.length) return;
   const newQty = Math.max(0,(rows[0].qty||0)+delta);
   await opsFetch(`inventory?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  window.notifyGremierStockChanged?.();
 }
 async function incrementConcentrate2(type, delta) {
   const rows = await opsFetch(`concentrate?type=eq.${type}&select=liters`);
   if (!rows?.length) return;
   const newLiters = Math.max(0,parseFloat(((rows[0].liters||0)+delta).toFixed(1)));
   await opsFetch(`concentrate?type=eq.${type}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({liters:newLiters})});
+  window.notifyGremierStockChanged?.();
 }
 async function incrementLabeledStock2(product, delta) {
   const rows = await opsFetch(`labeled_stock?product=eq.${product}&select=qty`);
   if (!rows?.length) return;
   const newQty = Math.max(0,(rows[0].qty||0)+delta);
   await opsFetch(`labeled_stock?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  window.notifyGremierStockChanged?.();
 }
 /** Batch-decrement/increment many inventory rows in one read + parallel writes. deltas: {product: delta} */
 async function batchIncrementInventory2(deltas) {
@@ -6438,6 +6480,7 @@ async function batchIncrementInventory2(deltas) {
     const newQty = Math.max(0, (current[pid]||0) + deltas[pid]);
     return opsFetch(`inventory?product=eq.${pid}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
   }));
+  window.notifyGremierStockChanged?.();
 }
 
 async function applyJobSideEffects2(job, confirmedQtys, stores) {
@@ -6453,6 +6496,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const currentKg = beanRows?.[0]?.kg||0;
     const newKg = parseFloat(Math.max(0,currentKg-(job.kg||3)).toFixed(1));
     await opsFetch(`beans?type=eq.${job.product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg})});
+    window.notifyGremierStockChanged?.();
     await createDrain2(job);
   }
   if (job.type==='drain') {
@@ -6514,6 +6558,7 @@ async function reverseJobSideEffects2(job, stores) {
       method: 'PATCH', prefer: 'return=minimal',
       body: JSON.stringify({ kg: newKg }),
     });
+    window.notifyGremierStockChanged?.();
     // remove the auto-created pending drain tied to this specific brew (not any same-product drain)
     const drains = await opsFetch(`jobs?type=eq.drain&source_brew_id=eq.${job.id}&done=eq.false&select=id`);
     if (drains?.length) await deleteJobFromDB2(drains[0].id);
@@ -7662,18 +7707,23 @@ async function loadUpcomingJobs() {
 }
 async function patchInventory(product, qty) {
   await opsFetch(`inventory?product=eq.${product}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+  window.notifyGremierStockChanged?.();
 }
 async function patchConcentrate(type, liters) {
   await opsFetch(`concentrate?type=eq.${type}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ liters }) });
+  window.notifyGremierStockChanged?.();
 }
 async function patchBeans(type, kg) {
   await opsFetch(`beans?type=eq.${type}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ kg }) });
+  window.notifyGremierStockChanged?.();
 }
 async function patchBeanOrdered(type, ordered, orderedKg) {
   await opsFetch(`beans?type=eq.${type}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ ordered, ordered_kg: orderedKg }) });
+  window.notifyGremierStockChanged?.();
 }
 async function patchLabeledStock(product, qty) {
   await opsFetch(`labeled_stock?product=eq.${product}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+  window.notifyGremierStockChanged?.();
 }
 
 // ── Need-to-make calculation ───────────────────────────────
@@ -8116,6 +8166,7 @@ function BeansSection({ beans, setBeans }) {
     const newKg = parseFloat(((current.kg||0)+(current.orderedKg||0)).toFixed(1));
     setBeans(p=>({...p,[type]:{kg:newKg,ordered:false,orderedKg:0}}));
     await opsFetch(`beans?type=eq.${type}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg,ordered:false,ordered_kg:0})});
+    window.notifyGremierStockChanged?.();
   }
   async function cancelOrder(type) {
     setBeans(p=>({...p,[type]:{...(p[type]||{}),ordered:false,orderedKg:0}}));
@@ -8179,16 +8230,65 @@ function StockTab() {
   const [labeledStock, setLabeledStock] = useState({});
   const [jobs, setJobs] = useState([]);
 
-  useEffect(() => {
-    Promise.all([loadStockData(), loadUpcomingJobs()]).then(([stock, j]) => {
+  const reloadStock = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const [stock, j] = await Promise.all([loadStockData(), loadUpcomingJobs()]);
       setInventory(stock.inventory);
       setConcentrate(stock.concentrate);
       setBeans(stock.beans);
       setLabeledStock(stock.labeledStock);
       setJobs(j);
+    } catch (err) {
+      console.error('Stock reload failed:', err);
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
+
+  useEffect(() => {
+    reloadStock({ silent: false });
+  }, [reloadStock]);
+
+  useEffect(() => {
+    let inFlight = false;
+    let queued = false;
+
+    const runReload = async (opts = { silent: true }) => {
+      if (inFlight) {
+        queued = true;
+        return;
+      }
+      inFlight = true;
+      try {
+        await reloadStock(opts);
+      } finally {
+        inFlight = false;
+        if (queued) {
+          queued = false;
+          runReload({ silent: true });
+        }
+      }
+    };
+
+    const onStockChanged = () => runReload({ silent: true });
+    const onFocusOrVisible = () => {
+      const stockTab = document.getElementById('tab-stock');
+      if (!document.hidden && stockTab && stockTab.style.display !== 'none') runReload({ silent: true });
+    };
+
+    window.__gremierReloadStock = runReload;
+    window.addEventListener('gremier:stock-changed', onStockChanged);
+    window.addEventListener('focus', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
+    return () => {
+      window.removeEventListener('gremier:stock-changed', onStockChanged);
+      window.removeEventListener('focus', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+      if (window.__gremierReloadStock === runReload) delete window.__gremierReloadStock;
+    };
+  }, [reloadStock]);
 
   const TABS = [
     { id:'concentrate', label:'Concentrate' },
