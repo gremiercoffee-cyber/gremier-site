@@ -6404,7 +6404,6 @@ async function syncStoreDeliveryToAdmin(job, qtys) {
     qty_syrup: syrup,
     quantities: Object.keys(qtys).length ? qtys : null,
     delivery_date: job.date,
-    source: 'ops_checkoff',
     notes: null,
     updated_at: new Date().toISOString(),
   })});
