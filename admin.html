@@ -5058,6 +5058,94 @@ const BRIEFING_PRODUCTS = {
 const BRIEFING_LABEL_WARN = { classic_liter:30, sweetened_classic:25, house_blend:20, colombia_liter:20, vanilla_mini:80, original_mini:80, caramel_mini:100 };
 const BRIEFING_JERRY_MAP = { classic:'jerry_can', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
 const BRIEFING_KG_TO_L = { 3:19, 2:12.7, 1.5:9.5, 1:6.4 };
+const BRIEFING_PRODUCT_UUID_ALIASES = {
+  // Website catalog product IDs → stock keys used by inventory / schedule.
+  // These stop Daily Briefing from showing raw UUIDs when jobs came from website/pay-link products.
+  '5553dae1-d35d-4d02-b3a1-3633e9ca6bfc': { stockKey: 'classic_liter', multiplier: 1, label: 'Classic Dark Roast' },
+  '1c28055f-79b8-4d99-b7f2-38c270b47af7': { stockKey: 'caramel_mini', multiplier: 4, label: 'Caramel Cremier 4 Pack' },
+  'd14c3808-0f14-439d-b978-69bf6e35e9b4': { stockKey: 'house_blend', multiplier: 1, label: 'House Blend Medium Roast' },
+  'd59ad233-5090-40bc-b984-ed326ca8460d': { stockKey: 'colombia_liter', multiplier: 1, label: 'Colombia Light Roast' },
+};
+let briefingProductCatalogById = {};
+
+function briefingNormProductText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, ' ').trim();
+}
+function briefingPackMultiplierFromText(text, stockKey) {
+  const t = briefingNormProductText(text);
+  if (!stockKey || !String(stockKey).includes('mini')) return 1;
+  const m = t.match(/(?:^|\s)(\d{1,2})\s*(?:pack|pk|x|×|מארז)(?:\s|$)/i) || t.match(/(?:pack|מארז)\s*(?:of\s*)?(\d{1,2})/i);
+  const n = m ? Number(m[1]) : 1;
+  return Number.isFinite(n) && n > 1 && n <= 24 ? n : 1;
+}
+function briefingStockKeyFromText(text) {
+  const t = briefingNormProductText(text);
+  const c = t.replace(/\s+/g, '');
+  if (!t) return '';
+  for (const key of Object.keys(BRIEFING_PRODUCTS)) {
+    const k = key.toLowerCase();
+    if (k === c || k === t.replace(/\s+/g, '_')) return key;
+  }
+  const isMini = /mini|מיני|cremier|קרמייר|קרמיירים/.test(t);
+  const isJerry = /jerry|ג׳רי|ג'רי|5l|5 l|5 liter|5 litre|5 ליטר|bulk/.test(t);
+  const isSyrup = /syrup|סירופ/.test(t);
+  if (isSyrup) {
+    if (/caramel|קרמל/.test(t)) return 'caramel_syrup';
+    if (/vanilla|וניל/.test(t)) return 'vanilla_syrup';
+    if (/sugar|simple|סוכר/.test(t)) return 'sugar_syrup';
+  }
+  if (isMini) {
+    if (/caramel|קרמל/.test(t)) return 'caramel_mini';
+    if (/vanilla|וניל/.test(t)) return 'vanilla_mini';
+    if (/house|blend|האוס|בלנד/.test(t)) return 'house_blend_mini';
+    if (/classic|dark|original|קלאס|קלאסי|מקורי/.test(t)) return 'original_mini';
+    return 'original_mini';
+  }
+  if (isJerry) {
+    if (/house|blend|האוס|בלנד/.test(t)) return 'jerry_can_houseblend';
+    if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(t)) return 'jerry_can_colombia';
+    if (/decaf|נטול/.test(t)) return 'jerry_can_decaf';
+    return 'jerry_can';
+  }
+  if (/sweet|sweetened|מתוק|ממותק/.test(t)) return 'sweetened_classic';
+  if (/house|blend|האוס|בלנד/.test(t)) return 'house_blend';
+  if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(t)) return 'colombia_liter';
+  if (/decaf|נטול/.test(t)) return 'decaf_liter';
+  if (/classic|dark|קלאס|קלאסי|כהה/.test(t)) return 'classic_liter';
+  return '';
+}
+function briefingRegisterCatalogProducts(rows) {
+  briefingProductCatalogById = { ...BRIEFING_PRODUCT_UUID_ALIASES };
+  (rows || []).forEach(p => {
+    const id = String(p?.id || '').trim();
+    if (!id || briefingProductCatalogById[id]) return;
+    const text = [p.name_en, p.name_he, p.name, p.title, p.category].filter(Boolean).join(' ');
+    const stockKey = briefingStockKeyFromText(text);
+    if (!stockKey) return;
+    briefingProductCatalogById[id] = {
+      stockKey,
+      multiplier: briefingPackMultiplierFromText(text, stockKey),
+      label: p.name_en || p.name_he || BRIEFING_PRODUCTS[stockKey]?.label || stockKey,
+    };
+  });
+}
+function briefingResolveProduct(pid) {
+  const raw = String(pid || '').trim();
+  if (!raw) return { key:'', multiplier:1, label:'Item', meta:null };
+  if (BRIEFING_PRODUCTS[raw]) return { key: raw, multiplier: 1, label: BRIEFING_PRODUCTS[raw].label, meta: BRIEFING_PRODUCTS[raw] };
+  const alias = briefingProductCatalogById[raw] || BRIEFING_PRODUCT_UUID_ALIASES[raw];
+  if (alias?.stockKey && BRIEFING_PRODUCTS[alias.stockKey]) {
+    return { key: alias.stockKey, multiplier: alias.multiplier || 1, label: alias.label || BRIEFING_PRODUCTS[alias.stockKey].label, meta: BRIEFING_PRODUCTS[alias.stockKey] };
+  }
+  const textKey = briefingStockKeyFromText(raw);
+  if (textKey && BRIEFING_PRODUCTS[textKey]) return { key: textKey, multiplier: briefingPackMultiplierFromText(raw, textKey), label: BRIEFING_PRODUCTS[textKey].label, meta: BRIEFING_PRODUCTS[textKey] };
+  return { key: raw, multiplier: 1, label: raw.replace(/_/g, ' '), meta: null };
+}
+function briefingAddResolvedDemand(demand, pid, qty) {
+  const resolved = briefingResolveProduct(pid);
+  const q = briefingNum(qty) * (resolved.multiplier || 1);
+  if (resolved.key && q > 0) demand[resolved.key] = (demand[resolved.key] || 0) + q;
+}
 
 function briefingLocalISO(offsetDays = 0) {
   const d = new Date();
@@ -5107,12 +5195,13 @@ function briefingQtyMap(raw) {
   return typeof raw === 'object' ? raw : {};
 }
 function briefingProductLabel(pid) {
-  return BRIEFING_PRODUCTS[pid]?.label || String(pid || '').replace(/_/g, ' ') || 'Item';
+  return briefingResolveProduct(pid).label || 'Item';
 }
 function briefingProductUnitsFromJob(job) {
-  const meta = BRIEFING_PRODUCTS[job.product];
+  const resolved = briefingResolveProduct(job.product);
+  const meta = resolved.meta;
   if (!meta) return 0;
-  if (job.qty) return Math.max(0, briefingNum(job.qty));
+  if (job.qty) return Math.max(0, briefingNum(job.qty) * (resolved.multiplier || 1));
   if (job.liters) return Math.max(0, briefingNum(job.liters) / (meta.litersPerUnit || 1));
   return 0;
 }
@@ -5132,7 +5221,10 @@ function briefingMiniStat(label, value) {
   return `<div class="briefing-mini-stat"><span>${escHtml(label)}</span><strong>${escHtml(value)}</strong></div>`;
 }
 function briefingCategoryTotal(inventory, category) {
-  return Object.entries(BRIEFING_PRODUCTS).reduce((sum, [pid, meta]) => meta.category === category ? sum + briefingNum(inventory[pid]) : sum, 0);
+  return Object.entries(inventory || {}).reduce((sum, [pid, qty]) => {
+    const resolved = briefingResolveProduct(pid);
+    return resolved.meta?.category === category ? sum + briefingNum(qty) * (resolved.multiplier || 1) : sum;
+  }, 0);
 }
 function briefingRowsToMap(rows, keyField, valField) {
   const map = {};
@@ -5178,8 +5270,7 @@ function briefingJobMeta(job) {
 }
 function briefingDeliveryDemandFromJob(job, demand) {
   Object.entries(briefingQtyMap(job.quantities)).forEach(([pid, qty]) => {
-    const q = briefingNum(qty);
-    if (q > 0) demand[pid] = (demand[pid] || 0) + q;
+    briefingAddResolvedDemand(demand, pid, qty);
   });
   if (job.delivery_type === 'coffeebar') {
     const canCount = Math.floor(briefingNum(job.people) / 25);
@@ -5189,8 +5280,7 @@ function briefingDeliveryDemandFromJob(job, demand) {
       demand[pid] = (demand[pid] || 0) + 1;
     });
     Object.entries(briefingQtyMap(job.cb_syrups)).forEach(([pid, qty]) => {
-      const q = briefingNum(qty);
-      if (q > 0) demand[pid] = (demand[pid] || 0) + q;
+      briefingAddResolvedDemand(demand, pid, qty);
     });
     if (job.dispensers) demand.dispenser = (demand.dispenser || 0) + briefingNum(job.dispensers);
   }
@@ -5200,13 +5290,16 @@ function briefingBottleTimeline(jobs, inventory) {
   const short = {};
   const scheduledProduction = {};
   [...jobs].sort((a,b) => String(a.date||'').localeCompare(String(b.date||'')) || String(a.time||'').localeCompare(String(b.time||''))).forEach(job => {
-    if (job.type === 'bottling' && BRIEFING_PRODUCTS[job.product]) {
-      const units = briefingProductUnitsFromJob(job);
-      if (units > 0) {
-        rem[job.product] = (rem[job.product] || 0) + units;
-        scheduledProduction[job.product] = (scheduledProduction[job.product] || 0) + units;
+    if (job.type === 'bottling') {
+      const resolved = briefingResolveProduct(job.product);
+      if (resolved.meta) {
+        const units = briefingProductUnitsFromJob(job);
+        if (units > 0) {
+          rem[resolved.key] = (rem[resolved.key] || 0) + units;
+          scheduledProduction[resolved.key] = (scheduledProduction[resolved.key] || 0) + units;
+        }
+        return;
       }
-      return;
     }
     if (job.type !== 'delivery') return;
     const demand = {};
@@ -5242,13 +5335,15 @@ function briefingConcentrateDemand(jobs, bottleShortfalls) {
   const demand = { classic:0, houseBlend:0, colombia:0, decaf:0 };
   (jobs || []).forEach(job => {
     if (job.type !== 'bottling') return;
-    const meta = BRIEFING_PRODUCTS[job.product];
+    const resolved = briefingResolveProduct(job.product);
+    const meta = resolved.meta;
     if (!meta?.concentrate) return;
     const units = briefingProductUnitsFromJob(job);
     demand[meta.concentrate] += units * (meta.litersPerUnit || 1) * (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
   });
   (bottleShortfalls || []).forEach(({ pid, gap }) => {
-    const meta = BRIEFING_PRODUCTS[pid];
+    const resolved = briefingResolveProduct(pid);
+    const meta = resolved.meta;
     if (!meta?.concentrate) return;
     demand[meta.concentrate] += briefingNum(gap) * (meta.litersPerUnit || 1) * (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
   });
@@ -5334,7 +5429,7 @@ function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, c
   return actions.slice(0, 3);
 }
 
-const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v1';
+const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v2';
 const DASH_BRIEFING_COLLAPSED_KEY = 'gremier_dash_briefing_collapsed_v1';
 
 function briefingSetCollapsed(collapsed, persist = true) {
@@ -5467,12 +5562,13 @@ async function loadBriefing(options = {}) {
     const horizonISO = briefingLocalISO(14);
     const deliveryLookbackISO = briefingLocalISO(-180);
 
-    const [openJobs, inventoryRows, concentrateRows, beansRows, labelRows, storesRes, deliveriesRes] = await Promise.all([
+    const [openJobs, inventoryRows, concentrateRows, beansRows, labelRows, productsRes, storesRes, deliveriesRes] = await Promise.all([
       window.opsFetch('jobs?select=*&done=eq.false&order=date.asc'),
       window.opsFetch('inventory?select=*'),
       window.opsFetch('concentrate?select=*'),
       window.opsFetch('beans?select=*'),
       window.opsFetch('labeled_stock?select=*'),
+      sb.from('products').select('id,name_en,name_he,category,variations'),
       sb.from('stores').select('id,name,is_active').eq('is_active', true).order('sort_order'),
       sb.from('store_deliveries')
         .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_syrup')
@@ -5481,6 +5577,8 @@ async function loadBriefing(options = {}) {
         .order('delivery_date', { ascending: true }),
     ]);
 
+    if (productsRes.error) console.warn('Daily briefing product label lookup failed:', productsRes.error);
+    briefingRegisterCatalogProducts(productsRes.data || []);
     if (storesRes.error) throw storesRes.error;
     if (deliveriesRes.error) throw deliveriesRes.error;
 
