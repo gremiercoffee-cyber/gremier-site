@@ -1533,15 +1533,18 @@ async function initAuth() {
 }
 let userPoints = 0;
 let userCouponAvailable = false;
+let checkoutProfileCache = null;
 async function setUser(user) {
   currentUser = user;
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   isAdmin = profile?.is_admin || false;
   userPoints = profile?.points || 0;
   userCouponAvailable = profile?.coupon_available || false;
+  checkoutProfileCache = profile || {};
   // ensure profile row exists; loyalty columns are server-managed
   if (!profile) {
     await sb.from('profiles').upsert({ id: user.id }, { onConflict: 'id' });
+    checkoutProfileCache = {};
   }
   const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Account';
   const avatar = user.user_metadata?.avatar_url;
@@ -1552,17 +1555,133 @@ async function setUser(user) {
   document.getElementById('myOrdersNav').style.display = 'block';
   document.getElementById('coName').value = user.user_metadata?.full_name || '';
   document.getElementById('coEmail').value = user.email || '';
+  prefillCheckoutForMember();
   // hide banner and popup for members
   hideMemberBanner();
   closeMemberPopup(true);
   // show loyalty pill
   updateLoyaltyPill();
 }
+
+function checkoutProfileKey() {
+  return currentUser?.id ? 'gremier_checkout_profile_' + currentUser.id : '';
+}
+function readSavedCheckoutProfile() {
+  const key = checkoutProfileKey();
+  if (!key) return {};
+  try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (_) { return {}; }
+}
+function writeSavedCheckoutProfile(data) {
+  const key = checkoutProfileKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify(data || {})); } catch (_) {}
+}
+function firstProfileValue(profile, keys) {
+  profile = profile || {};
+  for (const key of keys) {
+    const value = profile[key];
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+function splitSavedDeliveryAddress(value) {
+  const text = String(value || '').trim();
+  if (!text) return { cityText: '', street: '' };
+  const parts = text.split(',').map(x => x.trim()).filter(Boolean);
+  if (parts.length >= 2) return { cityText: parts[0], street: parts.slice(1).join(', ') };
+  return { cityText: '', street: text };
+}
+function findSavedCheckoutCity(saved) {
+  if (saved?.city && typeof saved.city === 'object' && (saved.city.en || saved.city.he)) return saved.city;
+  const profile = checkoutProfileCache || {};
+  const cityText = saved.cityText || saved.city_en || saved.city_he || firstProfileValue(profile, ['city_en','city_he','city','delivery_city','default_city']);
+  const code = saved.city_code || firstProfileValue(profile, ['city_code','delivery_city_code','default_city_code']);
+  if (code && israelCities.length) {
+    const byCode = israelCities.find(c => String(c.code) === String(code));
+    if (byCode) return byCode;
+  }
+  if (cityText && israelCities.length) {
+    const norm = normalizeCityName(cityText);
+    return israelCities.find(c => normalizeCityName(c.en) === norm || normalizeCityName(c.he) === norm || c.he === cityText) || null;
+  }
+  return null;
+}
+async function prefillCheckoutForMember() {
+  if (!currentUser) return;
+  const profile = checkoutProfileCache || {};
+  const savedLocal = readSavedCheckoutProfile();
+  const savedAddress = splitSavedDeliveryAddress(savedLocal.delivery_address || firstProfileValue(profile, ['delivery_address','address','default_address','street_address']));
+  const name = savedLocal.name || firstProfileValue(profile, ['full_name','name','customer_name']) || currentUser.user_metadata?.full_name || '';
+  const email = savedLocal.email || firstProfileValue(profile, ['email','customer_email']) || currentUser.email || '';
+  const phone = savedLocal.phone || firstProfileValue(profile, ['phone','customer_phone','phone_number','mobile']);
+  const street = savedLocal.street || savedAddress.street || firstProfileValue(profile, ['street','street_address','delivery_street','default_street']);
+  const notes = savedLocal.notes || firstProfileValue(profile, ['delivery_notes','default_notes']);
+
+  const setIfEmpty = (id, value) => {
+    const el = document.getElementById(id);
+    if (el && value && !String(el.value || '').trim()) el.value = value;
+  };
+  setIfEmpty('coName', name);
+  setIfEmpty('coEmail', email);
+  setIfEmpty('coPhone', phone);
+  setIfEmpty('coAddr', street);
+  setIfEmpty('coNotes', notes);
+
+  await loadIsraelCities();
+  const city = findSavedCheckoutCity({ ...savedLocal, cityText: savedLocal.cityText || savedAddress.cityText });
+  if (city && !selectedCheckoutCity) selectCheckoutCity(city);
+}
+function rememberMemberCheckoutDetails(details) {
+  if (!currentUser) return;
+  const saved = {
+    name: details.name || '',
+    email: details.email || '',
+    phone: details.phone || '',
+    street: details.street || '',
+    city: selectedCheckoutCity || null,
+    city_en: selectedCheckoutCity?.en || '',
+    city_he: selectedCheckoutCity?.he || '',
+    city_code: selectedCheckoutCity?.code || '',
+    delivery_address: details.delivery_address || '',
+    notes: details.notes || '',
+    saved_at: new Date().toISOString(),
+  };
+  writeSavedCheckoutProfile(saved);
+
+  // If matching optional columns already exist in profiles, update them too.
+  // This avoids breaking older databases that do not have address/phone columns yet.
+  const profile = checkoutProfileCache || {};
+  const patch = {};
+  const maybe = (key, value) => { if (Object.prototype.hasOwnProperty.call(profile, key)) patch[key] = value; };
+  maybe('full_name', saved.name);
+  maybe('name', saved.name);
+  maybe('customer_name', saved.name);
+  maybe('phone', saved.phone);
+  maybe('customer_phone', saved.phone);
+  maybe('phone_number', saved.phone);
+  maybe('mobile', saved.phone);
+  maybe('delivery_address', saved.delivery_address);
+  maybe('address', saved.delivery_address);
+  maybe('street_address', saved.street);
+  maybe('street', saved.street);
+  maybe('delivery_street', saved.street);
+  maybe('city_en', saved.city_en);
+  maybe('city_he', saved.city_he);
+  maybe('city_code', saved.city_code);
+  maybe('city', saved.city_en || saved.city_he);
+  maybe('delivery_notes', saved.notes);
+  if (Object.keys(patch).length) {
+    sb.from('profiles').update(patch).eq('id', currentUser.id).then(({ error }) => {
+      if (error) console.warn('Could not save checkout profile:', error);
+      else checkoutProfileCache = { ...checkoutProfileCache, ...patch };
+    });
+  }
+}
 async function signOut() {
   await sb.auth.signOut();
 }
 function clearUser() {
-  currentUser = null; isAdmin = false; userPoints = 0; userCouponAvailable = false;
+  currentUser = null; isAdmin = false; userPoints = 0; userCouponAvailable = false; checkoutProfileCache = null;
   document.getElementById('authBtn').innerHTML = `<svg class="auth-icon-default" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span id="authBtnLabel">${tr('sign-in')}</span>`;
   document.getElementById('myOrdersNav').style.display = 'none';
   document.getElementById('loyaltyPill').style.display = 'none';
@@ -2482,13 +2601,16 @@ const isExpedited = document.getElementById('shipExpedited')?.checked;
 const priorityType = document.getElementById('priorityDate')?.checked ? 'specific_date' : 'fast';
 const deliveryDate = document.getElementById('coDeliveryDate')?.value || null;
 const shipType = isExpedited ? 'expedited' : 'regular';    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
+    const deliveryAddress = cityLabel + ', ' + addr;
+    const notesValue = document.getElementById('coNotes').value.trim();
+    rememberMemberCheckoutDetails({ name, email, phone, street: addr, delivery_address: deliveryAddress, notes: notesValue });
     const orderData = {
       user_id: currentUser?.id || null,
       customer_name: name,
       customer_email: email,
       customer_phone: phone,
-      delivery_address: cityLabel + ', ' + addr,
-      notes: document.getElementById('coNotes').value.trim(),
+      delivery_address: deliveryAddress,
+      notes: notesValue,
       items: cart.map(i=>({
         product_id: i.base_product_id || String(i.id).split('_')[0],
         name_en: i.name_en,
@@ -2890,12 +3012,6 @@ function prepareCheckoutContent() {
     <div class="order-summary-title">${lang === 'he' ? 'סיכום הזמנה' : 'Order Summary'}</div>
     ${lines}${redeemLine}
 <div class="order-total-line"><span>${lang === 'he' ? 'סה"כ' : 'Total'}</span><span id="coSummaryTotal">₪${Math.max(0, cartTotal - redeemDiscount)}</span></div>`;  
-  if (!appliedRedeem) {
-    selectedCheckoutCity = null;
-    const cityInput = document.getElementById('coCityInput');
-    if (cityInput) cityInput.value = '';
-    hideCitySuggestions();
-  }
   setTimeout(() => updateDeliveryPrice(), 50);
 }
 function showCheckoutResultUI(kind) {
@@ -2925,6 +3041,7 @@ function openCheckoutUI(view = 'form', resultKind) {
     const rc = document.getElementById('coRedeemApplied');
     // keep an applied code if one exists; just refresh the summary
     prepareCheckoutContent();
+    prefillCheckoutForMember();
     if (appliedRedeem && rc) showRedeemApplied(appliedRedeem.message, appliedRedeem.discount);
   } else {
     showCheckoutResultUI(resultKind || 'paid');
