@@ -2,9 +2,6 @@
 <html lang="en">
 <head>
 <script>
-  localStorage.removeItem('gremier_hub_mode');
-  localStorage.removeItem('gremier_admin_tab');
-
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(registrations => {
       registrations.forEach(registration => registration.unregister());
@@ -233,6 +230,13 @@
     th { text-align:left; font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--silver-dim); padding:8px 8px; border-bottom:1px solid var(--border); font-weight:500; background:var(--highlight); }
     td { padding:8px 8px; border-bottom:1px solid var(--border); color:var(--cream2); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; }
     tr:hover td { background:rgba(255,255,255,.05); }
+    tr.order-needs-fulfillment td {
+      background:rgba(224,160,48,.18);
+      border-bottom-color:rgba(224,160,48,.38);
+      color:var(--cream);
+    }
+    tr.order-needs-fulfillment:hover td { background:rgba(224,160,48,.26); }
+    tr.order-needs-fulfillment td:first-child { box-shadow:inset 4px 0 0 #e0a030; }
     .cell-num { width:36px; white-space:nowrap; }
     .cell-total { width:54px; white-space:nowrap; }
     .cell-status { width:76px; }
@@ -1698,6 +1702,48 @@ async function signOut() { await sb.auth.signOut(); location.reload(); }
   };
 })();
 
+// ══ ADMIN IN-APP NAVIGATION ══
+// Keep browser/PWA Back inside the admin screens and keep refresh on the current tab.
+(function setupGremierAdminNavigation() {
+  if (window.__gremierAdminNavigationReady) return;
+  window.__gremierAdminNavigationReady = true;
+
+  window.__gremierAdminHistoryReady = false;
+  window.__gremierShowTabFromHistory = false;
+
+  window.__gremierPushAdminTabState = function __gremierPushAdminTabState(tab, replace) {
+    try {
+      const state = { __gremierAdmin: true, tab: tab };
+      if (replace || !window.__gremierAdminHistoryReady) {
+        history.replaceState(state, '', location.href);
+        window.__gremierAdminHistoryReady = true;
+      } else if (!history.state || history.state.tab !== tab || !history.state.__gremierAdmin) {
+        history.pushState(state, '', location.href);
+      }
+    } catch (e) {
+      console.warn('Admin history state failed:', e);
+    }
+  };
+
+  window.addEventListener('popstate', function onAdminPopState(e) {
+    const state = e.state || {};
+    const fallback = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+    const tab = state.__gremierAdmin && state.tab ? state.tab : fallback;
+    window.__gremierShowTabFromHistory = true;
+    try {
+      if (typeof window.showTab === 'function') window.showTab(tab);
+      window.__gremierPushAdminTabState(tab, !state.__gremierAdmin);
+    } finally {
+      window.__gremierShowTabFromHistory = false;
+    }
+  });
+
+  window.addEventListener('DOMContentLoaded', function rememberCurrentAdminScreen() {
+    const tab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+    window.__gremierPushAdminTabState(tab, true);
+  });
+})();
+
 // ══ TABS ══
 function showTab(tab) {
   localStorage.setItem('gremier_admin_tab', tab);
@@ -1735,6 +1781,9 @@ function showTab(tab) {
   if (tab === 'stock') {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
+  }
+  if (typeof window.__gremierPushAdminTabState === 'function') {
+    window.__gremierPushAdminTabState(tab, !!window.__gremierShowTabFromHistory);
   }
 }
 
@@ -2456,8 +2505,21 @@ function onOrderYearChange() {
   filterOrders();
 }
 
+function isAbandonedCheckoutOrder(o) {
+  if (!o) return false;
+  const payment = String(o.payment_status || '').toLowerCase();
+  const status = String(o.status || '').toLowerCase();
+  // These are orders created only so PayMe can start. Until PayMe confirms paid,
+  // they should not count as real orders or appear in the normal orders table / app queue.
+  return payment !== 'paid' && status !== 'cancelled' && status !== 'fulfilled';
+}
+
+function visibleOrdersOnly(orders) {
+  return (orders || []).filter(o => !isAbandonedCheckoutOrder(o));
+}
+
 function applyClientOrderFilters(orders) {
-  let list = orders;
+  let list = visibleOrdersOnly(orders);
   if (orderKindFilter === 'subscriptions') list = list.filter(isSubscriptionOrder);
   else if (orderKindFilter === 'regular') list = list.filter(o => !isSubscriptionOrder(o));
   return list;
@@ -2472,11 +2534,7 @@ async function dismissAbandonedOrder(orderId) {
 function renderAbandonedOrders(orders) {
   const panel = document.getElementById('abandonedOrdersPanel');
   if (!panel) return;
-  const abandoned = orders.filter(o =>
-    o.payment_status !== 'paid' &&
-    o.status !== 'cancelled' &&
-    o.status !== 'fulfilled'
-  );
+  const abandoned = (orders || []).filter(isAbandonedCheckoutOrder);
   if (!abandoned.length) {
     panel.innerHTML = '';
     return;
@@ -2502,8 +2560,15 @@ function renderAbandonedOrders(orders) {
   `;
 }
 async function loadOrders() {
-  const cached = localStorage.getItem('gremier_orders_cache');
-  if (cached) { allOrders = JSON.parse(cached); renderOrdersTable(allOrders); renderOrderStats(allOrders); }
+  const cacheKey = 'gremier_orders_cache_v2';
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    const cachedRaw = JSON.parse(cached);
+    allOrders = applyClientOrderFilters(cachedRaw);
+    renderOrdersTable(allOrders);
+    renderOrderStats(allOrders);
+    renderAbandonedOrders(cachedRaw);
+  }
   const period = document.getElementById('orderPeriod').value;
   const status = document.getElementById('orderStatus').value;
   const monthVal = document.getElementById('orderMonth')?.value || '';
@@ -2545,11 +2610,12 @@ async function loadOrders() {
 
   if (status !== 'all') query = query.eq('status', status);
   const { data } = await query;
-  allOrders = applyClientOrderFilters(data || []);
-  localStorage.setItem('gremier_orders_cache', JSON.stringify(data || []));
-renderOrdersTable(allOrders);
+  const rawOrders = data || [];
+  allOrders = applyClientOrderFilters(rawOrders);
+  localStorage.setItem(cacheKey, JSON.stringify(rawOrders));
+  renderOrdersTable(allOrders);
   renderOrderStats(allOrders);
-  renderAbandonedOrders(allOrders);
+  renderAbandonedOrders(rawOrders);
   await loadRecoverableOrdersUI();
 }
 function filterOrders() { loadOrders(); }
@@ -2572,10 +2638,12 @@ function renderOrdersTable(orders) {
     const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
     const subBadge = isSubscriptionOrder(o) ? ' <span class="status-pill s-confirmed" style="font-size:.55rem">sub</span>' : '';
+    const needsFulfillmentHighlight = String(o.payment_status || '').toLowerCase() === 'paid'
+      && !['fulfilled','cancelled'].includes(String(o.status || '').toLowerCase());
     const fulfillBtn = o.status !== 'fulfilled' && o.payment_status === 'paid'
       ? `<button class="btn btn-amber btn-sm" onclick="markOrderFulfilled('${o.id}')" title="Mark fulfilled + email">✓</button>`
       : '';
-return `<tr style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
+return `<tr class="${needsFulfillmentHighlight ? 'order-needs-fulfillment' : ''}" style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
       <td class="cell-num" style="color:var(--cream)">#${o.order_number}${subBadge}</td>
       <td class="cell-customer">${escHtml(o.customer_name||'')}${o.customer_phone?`<br><small>${escHtml(o.customer_phone)}</small>`:''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(items)}">${items}</td>
@@ -3929,19 +3997,20 @@ async function deleteZone(id) {
 async function loadWebOrders() {
   const [{ data: webRows }, { data: orderRows }] = await Promise.all([
     sb.from('pending_website_deliveries').select('*').order('created_at', { ascending: false }),
-    sb.from('orders').select('id, order_number'),
+    sb.from('orders').select('id, order_number, payment_status'),
   ]);
-  const orderIds = new Set((orderRows || []).map(o => o.id));
-  const orderNumbers = new Set((orderRows || []).map(o => o.order_number));
-  const data = (webRows || []).filter(w => {
-    if (w.order_id) return orderIds.has(w.order_id);
-    if (w.order_number != null) return orderNumbers.has(w.order_number);
-    return true;
-  });
-  const orphaned = (webRows || []).filter(w => {
-    if (w.order_id) return !orderIds.has(w.order_id);
-    if (w.order_number != null) return !orderNumbers.has(w.order_number);
+  const orderById = new Map((orderRows || []).map(o => [o.id, o]));
+  const orderByNumber = new Map((orderRows || []).map(o => [String(o.order_number), o]));
+  const isPaidWebRow = w => {
+    if (w.order_id) return orderById.get(w.order_id)?.payment_status === 'paid';
+    if (w.order_number != null) return orderByNumber.get(String(w.order_number))?.payment_status === 'paid';
     return false;
+  };
+  const data = (webRows || []).filter(isPaidWebRow);
+  const orphaned = (webRows || []).filter(w => {
+    if (w.order_id) return !orderById.has(w.order_id);
+    if (w.order_number != null) return !orderByNumber.has(String(w.order_number));
+    return true;
   });
   if (orphaned.length) {
     Promise.allSettled(orphaned.map(w =>
@@ -4052,14 +4121,19 @@ async function confirmSchedule() {
   loadWebOrders();
 }
 function showTab(tab) {
+  if (!document.getElementById('tab-' + tab)) tab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
-  document.getElementById('tab-'+tab).style.display='block';
+  const activeTab = document.getElementById('tab-'+tab);
+  if (activeTab) activeTab.style.display='block';
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('nav-'+tab)?.classList.add('active');
   // Update mobile bottom bar
   document.querySelectorAll('.tab-bar-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tbar-'+tab)?.classList.add('active');
   localStorage.setItem('gremier_admin_tab', tab);
+  if (typeof window.__gremierPushAdminTabState === 'function') {
+    window.__gremierPushAdminTabState(tab, !!window.__gremierShowTabFromHistory);
+  }
   if (tab==='orders') loadOrders();
   if (tab==='products') renderProductsList();
   if (tab==='paylinks') loadPayLinks();
@@ -4067,14 +4141,17 @@ function showTab(tab) {
   if (tab==='members') loadMembers();
   if (tab==='delivery') loadDeliverySettings();
   if (tab==='siteimages') loadSiteImages();
-    if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
+  if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
   if (tab==='coupons') loadCoupons();
   if (tab==='giftcards') loadGiftCards();
   if (tab==='stock') {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
   }
-if (tab==='dashboard') { loadStores().then(() => loadDashboard()); }
+  if (tab==='schedule') {
+    if (typeof window.__gremierReloadSchedule === 'function') window.__gremierReloadSchedule({ silent: true });
+  }
+  if (tab==='dashboard') { loadStores().then(() => loadDashboard()); }
 }
 // ══ SITE IMAGES & CONTENT ══
 const SITE_IMAGE_SLOTS = [
@@ -6383,10 +6460,12 @@ async function loadPendingWebDeliveries2() {
   const rows = await opsFetch('pending_website_deliveries?status=eq.pending_schedule&select=*&order=created_at.asc');
   if (!Array.isArray(rows)||!rows.length) return rows||[];
   const ids = [...new Set(rows.map(r=>r.order_id).filter(Boolean))];
-  if (!ids.length) return rows;
+  if (!ids.length) return [];
   const orders = await opsFetch(`orders?id=in.(${ids.join(',')})&select=id,payment_status`);
   const payMap = {}; (orders||[]).forEach(o=>{payMap[o.id]=o.payment_status;});
-  return rows.map(r=>({...r, payment_status: payMap[r.order_id]||null}));
+  return rows
+    .map(r=>({...r, payment_status: payMap[r.order_id]||null}))
+    .filter(r=>r.payment_status==='paid');
 }
 function websiteOrderDisplayLabel2(order) {
   const name = String(order?.customer_name||'').trim();
@@ -6395,6 +6474,131 @@ function websiteOrderDisplayLabel2(order) {
   if (addr) return addr;
   if (order?.order_number!=null) return `Order #${order.order_number}`;
   return 'Delivery';
+}
+
+
+// Convert website/pay-link order items into the inventory product keys used by the Schedule picker.
+// Pay-link items may carry catalog product IDs, display names, or already-normalized stock keys;
+// the Schedule form only understands stock keys like classic_liter / caramel_mini / jerry_can.
+async function buildWebsiteOrderSchedulePrefill2(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const stockKeys = new Set(Object.keys(window.__OPS_PRODUCTS__ || {}));
+  const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, ' ').trim();
+  const compact = value => norm(value).replace(/\s+/g, '');
+
+  function directStockKey(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (stockKeys.has(raw)) return raw;
+    const rawLower = raw.toLowerCase();
+    for (const key of stockKeys) {
+      if (key.toLowerCase() === rawLower) return key;
+    }
+    return '';
+  }
+
+  function packMultiplier(text, pid) {
+    const t = norm(text);
+    if (!pid || !pid.includes('mini')) return 1;
+    const m = t.match(/(?:^|\s)(\d{1,2})\s*(?:pack|pk|x|×|מארז)(?:\s|$)/i) || t.match(/(?:pack|מארז)\s*(?:of\s*)?(\d{1,2})/i);
+    const n = m ? Number(m[1]) : 1;
+    return Number.isFinite(n) && n > 1 && n <= 24 ? n : 1;
+  }
+
+  function resolveByText(text) {
+    const t = norm(text);
+    const c = compact(text);
+    if (!t) return '';
+
+    // exact/near exact product-key text, e.g. "classic_liter" saved as a name
+    const direct = directStockKey(String(text || '').replace(/\s+/g, '_')) || directStockKey(c);
+    if (direct) return direct;
+
+    const isMini = /mini|מיני|cremier|קרמייר|קרמיירים/.test(t);
+    const isJerry = /jerry|ג׳רי|ג'רי|5l|5 l|5 liter|5 litre|5 ליטר|bulk/.test(t);
+    const isSyrup = /syrup|סירופ/.test(t);
+
+    if (isSyrup) {
+      if (/caramel|קרמל/.test(t)) return 'caramel_syrup';
+      if (/vanilla|וניל/.test(t)) return 'vanilla_syrup';
+      if (/sugar|simple|סוכר/.test(t)) return 'sugar_syrup';
+    }
+
+    if (isMini) {
+      if (/caramel|קרמל/.test(t)) return 'caramel_mini';
+      if (/vanilla|וניל/.test(t)) return 'vanilla_mini';
+      if (/house|blend|האוס|בלנד/.test(t)) return 'house_blend_mini';
+      if (/classic|dark|original|קלאס|קלאסי|מקורי/.test(t)) return 'original_mini';
+      return 'original_mini';
+    }
+
+    if (isJerry) {
+      if (/house|blend|האוס|בלנד/.test(t)) return 'jerry_can_houseblend';
+      if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(t)) return 'jerry_can_colombia';
+      if (/decaf|נטול/.test(t)) return 'jerry_can_decaf';
+      return 'jerry_can';
+    }
+
+    if (/sweet|sweetened|מתוק|ממותק/.test(t)) return 'sweetened_classic';
+    if (/house|blend|האוס|בלנד/.test(t)) return 'house_blend';
+    if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(t)) return 'colombia_liter';
+    if (/decaf|נטול/.test(t)) return 'decaf_liter';
+    if (/classic|dark|קלאס|קלאסי|כהה/.test(t)) return 'classic_liter';
+    return '';
+  }
+
+  const catalogById = {};
+  const catalogIds = [...new Set(items.map(i => String(i?.product_id || i?.id || '').trim()).filter(Boolean))]
+    .filter(id => !directStockKey(id));
+  if (catalogIds.length && typeof window.opsFetch === 'function') {
+    try {
+      const rows = await window.opsFetch(`products?id=in.(${catalogIds.join(',')})&select=id,name_en,name_he,category,is_coffee_bar,variations`);
+      (rows || []).forEach(p => { catalogById[String(p.id)] = p; });
+    } catch (err) {
+      console.warn('Could not map website order products for schedule prefill:', err);
+    }
+  }
+
+  const quantities = {};
+  const unresolved = [];
+  items.forEach(item => {
+    const rawId = String(item?.product_id || item?.id || '').trim();
+    const catalog = catalogById[rawId];
+    const text = [
+      rawId,
+      item?.product_key,
+      item?.stock_key,
+      item?.name_en,
+      item?.name_he,
+      item?.name,
+      item?.title,
+      catalog?.name_en,
+      catalog?.name_he,
+      catalog?.category,
+    ].filter(Boolean).join(' ');
+
+    const pid = directStockKey(item?.product_key) || directStockKey(item?.stock_key) || directStockKey(rawId) || resolveByText(text);
+    const qty = Number(item?.qty ?? item?.quantity ?? 1) || 1;
+    if (pid) {
+      quantities[pid] = (quantities[pid] || 0) + qty * packMultiplier(text, pid);
+    } else {
+      unresolved.push(item?.name_en || item?.name || rawId || 'item');
+    }
+  });
+
+  if (unresolved.length) {
+    console.warn('Website order schedule prefill could not map some items:', unresolved, order);
+  }
+
+  return {
+    subType: 'private',
+    privateName: websiteOrderDisplayLabel2(order),
+    privateAddress: order?.delivery_address || '',
+    customerPhone: order?.customer_phone || '',
+    websiteOrderId: order?.order_id || order?.id || null,
+    quantities,
+    unresolvedItems: unresolved,
+  };
 }
 async function patchJob2(id, patch) {
   await opsFetch(`jobs?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify(patch)});
@@ -7169,6 +7373,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
         storeName: subType==='store'?storeName:undefined,
         privateName: subType==='private'?privateName:undefined,
         privateAddress: subType==='private'?privateAddress:undefined,
+        customerPhone: prefill?.customerPhone || undefined,
+        websiteOrderId: prefill?.websiteOrderId || undefined,
         quantities, plannedTotal:total,
         label: subType==='store'?(storeName||'Store'):(privateName||'Private') };
     }
@@ -7637,19 +7843,13 @@ async function addJobFromForm(job, mode) {
       {/* drawers */}
       {waOpen&&<WaDrawer2 jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
       {billingOpen&&<BillingDrawer2 jobs={unbilled} onMarkBilled={async(id)=>{await markBilled(id);}} onMarkPaid={async(id)=>{await markPaid(id);}} onClose={()=>setBillingOpen(false)}/>}
-{webQueueOpen&&<WebsiteQueueDrawer2 orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={(o)=>{
+{webQueueOpen&&<WebsiteQueueDrawer2 orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={async(o)=>{
         setWebQueueOpen(false);
-        const quantities = {};
-        (o.items||[]).forEach(i => {
-          const pid = i.product_id || i.name_en;
-          if (pid) quantities[pid] = (quantities[pid]||0) + (i.qty||1);
-        });
-        setFormPrefill({
-          subType: 'private',
-          privateName: websiteOrderDisplayLabel2(o),
-          privateAddress: o.delivery_address || '',
-          quantities,
-        });
+        const prefill = await buildWebsiteOrderSchedulePrefill2(o);
+        if (!Object.keys(prefill.quantities || {}).length && prefill.unresolvedItems?.length) {
+          showToast('Could not preload products — check console for unmapped item names', 7000);
+        }
+        setFormPrefill(prefill);
         setFormMode('schedule');
         setShowForm(true);
       }} onDismiss={dismissWebOrder}/>}
@@ -8769,21 +8969,16 @@ function GlobalPillsFloat() {
       return;
     }
 
-    const quantities = {};
-    items.forEach(i => {
-      const pid = i.product_id || i.name_en;
-      if (pid) quantities[pid] = (quantities[pid]||0) + (i.qty||1);
-    });
-    const prefill = {
-      subType: 'private',
-      privateName: websiteOrderDisplayLabel2(o),
-      privateAddress: o.delivery_address || '',
-      quantities,
-    };
+    const prefill = await buildWebsiteOrderSchedulePrefill2(o);
+    if (!Object.keys(prefill.quantities || {}).length && prefill.unresolvedItems?.length) {
+      console.warn('Schedule opened without mapped product quantities:', prefill.unresolvedItems);
+    }
     // ScheduleTab only renders its form while mounted on the Schedule tab itself —
     // switch there and hand off the prefill via an event so it opens pre-populated
     window.showTab('schedule');
-    window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
+    }, 0);
   }
 
   const anyDrawerOpen = waOpen || billingOpen || webQueueOpen;
