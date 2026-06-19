@@ -6454,6 +6454,7 @@ function rowToJob2(r) {
     waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups||{}, billed: r.billed,
     paid: r.paid||false, websiteOrderId: r.website_order_id||null,
     customerPhone: r.customer_phone||null, waSentAt: r.wa_sent_at||null,
+    sourceBrewId: r.source_brew_id||null,
   };
 }
 function jobToRow2(job) {
@@ -6471,7 +6472,7 @@ function jobToRow2(job) {
     dispensers: job.dispensers||null, wa_needs_send: job.waNeedsSend||false,
     cb_syrups: job.cbSyrups||null, billed: job.billed||false, paid: job.paid||false,
     website_order_id: job.websiteOrderId||null, customer_phone: job.customerPhone||null,
-    wa_sent_at: job.waSentAt||null,
+    wa_sent_at: job.waSentAt||null, source_brew_id: job.sourceBrewId||job.source_brew_id||null,
   };
 }
 
@@ -6761,7 +6762,9 @@ async function incrementInventory2(product, delta) {
 async function incrementConcentrate2(type, delta) {
   const rows = await opsFetch(`concentrate?type=eq.${type}&select=liters`);
   if (!rows?.length) return;
-  const newLiters = Math.max(0,parseFloat(((rows[0].liters||0)+delta).toFixed(1)));
+  const beforeLiters = rows[0].liters || 0;
+  const newLiters = Math.max(0,parseFloat((beforeLiters+delta).toFixed(1)));
+  console.warn('[Gremier stock] Concentrate changed', { type, delta, before: beforeLiters, after: newLiters, at: new Date().toISOString() });
   await opsFetch(`concentrate?type=eq.${type}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({liters:newLiters})});
   window.notifyGremierStockChanged?.();
 }
@@ -6785,6 +6788,28 @@ async function batchIncrementInventory2(deltas) {
   window.notifyGremierStockChanged?.();
 }
 
+
+function isSuspiciousDrainJob2(job) {
+  if (!job || job.type !== 'drain') return false;
+  const label = String(job.label || '').toLowerCase();
+  // A real drain means a brew finished and concentrate is being added.
+  // Stock corrections often say things like "remove 2 Colombia liter from stock";
+  // those must never be treated as a drain because kg=2 would add 12.7L concentrate.
+  return /\b(remove|deduct|subtract|take away|takeaway|adjust|fix|correction|stock)\b/.test(label)
+    || /\b(bottle|bottles|liter|liters|mini|minis|jerry|can|cans)\b/.test(label) && !/^\s*drain\b/.test(label);
+}
+function isRealDrainJob2(job) {
+  if (!job || job.type !== 'drain') return false;
+  if (isSuspiciousDrainJob2(job)) return false;
+  const productOk = ['classic','houseBlend','colombia','decaf'].includes(job.product);
+  const kgOk = [1, 1.5, 2, 3].includes(Number(job.kg));
+  const label = String(job.label || '').toLowerCase().trim();
+  const labelLooksLikeDrain = /^drain\b/.test(label);
+  // Auto drains created from brews carry source_brew_id. Manually scheduled drains are allowed
+  // only when they are explicitly labeled as Drain, never as a stock removal/correction.
+  return productOk && kgOk && (!!job.sourceBrewId || !!job.source_brew_id || labelLooksLikeDrain);
+}
+
 async function applyJobSideEffects2(job, confirmedQtys, stores) {
   const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
@@ -6802,9 +6827,17 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     await createDrain2(job);
   }
   if (job.type==='drain') {
-    await incrementConcentrate2(job.product, kgToL[job.kg]||19);
-    const brews = await opsFetch(`jobs?type=eq.brew&product=eq.${job.product}&brew_started=eq.true&done=eq.false&select=id`);
-    if (brews?.length) await patchJob2(brews[0].id,{done:true});
+    if (!isRealDrainJob2(job)) {
+      console.warn('[Gremier safety] Blocked suspicious drain side effect', job);
+      return;
+    }
+    await incrementConcentrate2(job.product, kgToL[Number(job.kg)]||19);
+    if (job.sourceBrewId || job.source_brew_id) {
+      await patchJob2(job.sourceBrewId || job.source_brew_id, {done:true});
+    } else {
+      const brews = await opsFetch(`jobs?type=eq.brew&product=eq.${job.product}&brew_started=eq.true&done=eq.false&select=id`);
+      if (brews?.length) await patchJob2(brews[0].id,{done:true});
+    }
   }
   if (job.type==='bottling') {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
@@ -6866,9 +6899,14 @@ async function reverseJobSideEffects2(job, stores) {
     if (drains?.length) await deleteJobFromDB2(drains[0].id);
   }
 
-  // DRAIN — concentrate was added, remove it
+  // DRAIN — concentrate was added, remove it. Only reverse real drains; stock corrections
+  // that were mistakenly saved as drain jobs should never touch concentrate.
   if (job.type === 'drain' && job.done) {
-    await incrementConcentrate2(job.product, -(kgToL[job.kg] || 19));
+    if (!isRealDrainJob2(job)) {
+      console.warn('[Gremier safety] Blocked suspicious drain reversal', job);
+    } else {
+      await incrementConcentrate2(job.product, -(kgToL[Number(job.kg)] || 19));
+    }
   }
 
   // BOTTLING — concentrate was consumed, inventory was added, labeled bottles were used
@@ -7109,6 +7147,45 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
           <div style={{display:'flex',gap:10,marginTop:14}}>
             <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
             <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>{const total=Object.values(confirmedQtys).reduce((s,v)=>s+(v||0),0);onConfirm(job,total,confirmedQtys);}}>Confirm ✓</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // drain — this changes concentrate by a full brew amount, so require an explicit confirmation.
+  if (job.type==='drain') {
+    if (!isRealDrainJob2(job)) {
+      return (
+        <div style={TS.modal} onClick={onCancel}>
+          <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+            <div style={TS.modalTitle}>Blocked Unsafe Drain</div>
+            <div style={{background:'#3a2418',border:'1px solid #e57368',borderRadius:6,padding:'10px 12px',marginBottom:14,color:'#f0a89c',fontSize:13,fontWeight:700,lineHeight:1.5}}>
+              This task looks like a stock correction, not a real drain. It will not change concentrate.
+            </div>
+            <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
+              Use the Stock tab to add/remove bottles. Only tasks explicitly labeled “Drain …” from a brew should add concentrate.
+            </div>
+            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Close</button>
+          </div>
+        </div>
+      );
+    }
+    const drainLiters = ({3:19,2:12.7,1.5:9.5,1:6.4}[Number(job.kg)] || 19);
+    const concLabels = { classic:'Classic', houseBlend:'House Blend', colombia:'Colombia', decaf:'Decaf' };
+    return (
+      <div style={TS.modal} onClick={onCancel}>
+        <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
+          <div style={TS.modalTitle}>Confirm Drain</div>
+          <div style={{background:'#3a2418',border:'1px solid #e57368',borderRadius:6,padding:'10px 12px',marginBottom:14,color:'#f0a89c',fontSize:13,fontWeight:700,lineHeight:1.5}}>
+            This will add {drainLiters}L of {concLabels[job.product] || job.product} concentrate.
+          </div>
+          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
+            Only confirm if you actually drained this brew. If you are only fixing bottle stock, cancel and use the Stock tab.
+          </div>
+          <div style={{display:'flex',gap:10,marginTop:14}}>
+            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
+            <button style={TS.btn('#e0a030','#121212')} onClick={()=>onConfirm(job,drainLiters,null)}>Yes, add concentrate ✓</button>
           </div>
         </div>
       </div>
@@ -7687,10 +7764,9 @@ const [showForm, setShowForm] = useState2(false);
         await applyJobSideEffects2(job,null,stores);
         await reload();
       } else if (job.type==='drain') {
-        setJobs(prev=>prev.map(j=>j.id===job.id?{...j,done:true}:j));
-        await patchJob2(job.id,{done:true});
-        await applyJobSideEffects2(job,null,stores);
-        await reload();
+        // Drains add a full brew amount of concentrate (for example 12.7L for a 2kg brew),
+        // so do not complete them from a single checkbox tap. Open the confirmation modal.
+        setCheckoffJob(job);
       } else {
         setCheckoffJob(job);
       }
@@ -8259,11 +8335,10 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate })
   // called once a burst of taps (or a typed edit) has actually settled — decides whether
   // this needs the "did you make this now?" question or can just save straight through
   function settleIncrease(pid, label, newQty) {
-    const current = inventory[pid]||0;
-    const delta = newQty - current;
-    const prod = PRODUCTS[pid];
-    if (delta<=0 || !prod?.concentrate) { save(pid, newQty); return; }
-    setConfirmAdd({ pid, label, delta, newQty });
+    // Stock tab adjustments must be stock-only.
+    // Production/bottling side effects belong in Schedule/Log Now, not in a manual inventory edit.
+    // This prevents a simple +2 bottles adjustment from silently consuming concentrate.
+    save(pid, newQty);
   }
 
   // tapping + repeatedly only bumps a local display number immediately (so it still feels responsive);
@@ -8850,6 +8925,7 @@ function normalizeVoiceJob3(rawJob, intent, idx, fallbackDate, stores) {
     job.kg = Number(job.kg || 3);
     job.done = isLog ? true : false;
     job.label = job.label || `Drain ${job.product}`;
+    if (isSuspiciousDrainJob2(job)) job._unsafeDrain = true;
   }
 
   return job;
@@ -8864,6 +8940,8 @@ function validateVoiceJob3(job) {
   if (job.type === 'bottling' && !(Number(job.liters) > 0)) return 'Bottling is missing the amount.';
   if (job.type === 'labeling' && !(Number(job.qty) > 0)) return 'Labeling is missing the quantity.';
   if ((job.type === 'brew' || job.type === 'drain') && !job.product) return 'Production is missing the concentrate type.';
+  if (job.type === 'drain' && (job._unsafeDrain || isSuspiciousDrainJob2(job))) return 'That sounds like a bottle stock correction, not a real drain. Use the Stock tab; I will not save it as a drain.';
+  if (job.type === 'drain' && job.done) return 'Drain changes concentrate by a full brew amount. Please check off the Drain task from the Schedule tab so it shows the liters before changing stock.';
   return null;
 }
 async function saveVoiceJobAndEffects3(job, intent, stores) {
@@ -9199,6 +9277,11 @@ JOB SHAPES:
   For bottling, if the user says a number of bottles/minis/jerry cans, put that number in qty. Also compute liters: liter qty = qty liters; mini qty = qty/4 liters; jerry qty = qty*5 liters.
 - labeling: { type:"labeling", product:product_key, qty:number, done, date }
 - drain: { type:"drain", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
+
+IMPORTANT SAFETY RULES:
+- "Drain" means finished brewing concentrate and will add a full brew amount of concentrate.
+- If the user says remove/take away/deduct/fix/adjust stock, bottles, minis, liters, or jerry cans, DO NOT use type "drain". Return clarify/unknown and tell them to use the Stock tab.
+- Never use kg to mean number of bottles or liters removed from stock.
 
 RESPONSE — return ONLY JSON:
 log/schedule (ONE job): { "intent":"log"|"schedule", "reply":"short confirmation", "option":{ "label":"...", "job":{...} } }
