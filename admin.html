@@ -5654,7 +5654,7 @@ async function loadBriefing(options = {}) {
     concentrateGapActions.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `Ready ${briefingRound(x.have,1)}L${x.brewing ? ` · already brewing/draining ${briefingRound(x.brewing,1)}L` : ''} · demand ${briefingRound(x.demand,1)}L`, 'urgent', 'danger')));
     dueStores.filter(p => p.daysUntilDue <= 1 || p.daysSinceLast >= 45).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago`, p.badge, p.tone)));
     const urgentHtml = urgentSummaryRows.length
-      ? `<div class="briefing-priority"><div><span>Still showing while collapsed</span><strong>Urgent items</strong></div><small>Open the briefing for the full plan.</small></div><div class="briefing-section">${urgentSummaryRows.join('')}</div>`
+      ? `<div class="briefing-section">${urgentSummaryRows.join('')}</div>`
       : '';
 
     // diff against whatever briefing ran last (today's earlier one if this is a manual refresh,
