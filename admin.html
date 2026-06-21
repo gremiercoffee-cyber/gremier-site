@@ -16,7 +16,7 @@
 </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com https://cdn.jsdelivr.net; form-action 'self'; upgrade-insecure-requests"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com https://cdn.jsdelivr.net; form-action 'self'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co. — Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
@@ -521,6 +521,30 @@
     .mobile-header span { font-family:'Playfair Display',serif; font-size:1rem; color:var(--cream); letter-spacing:.02em; }
     @media(max-width:768px){ .mobile-header { display:flex; } }
   </style>
+
+<script>
+window.addEventListener('error', function(e){
+  var box = document.getElementById('globalAdminError');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'globalAdminError';
+    box.style.cssText = 'position:fixed;z-index:99999;left:12px;right:12px;top:80px;background:#2a1515;color:#ffb4ad;border:1px solid #8a4b4b;border-radius:8px;padding:12px 14px;font-family:sans-serif;font-size:13px;white-space:pre-wrap;';
+    document.body && document.body.appendChild(box);
+  }
+  box.textContent = 'Admin JS error: ' + (e.message || e.error || e);
+});
+window.addEventListener('unhandledrejection', function(e){
+  var msg = (e.reason && (e.reason.message || e.reason.toString())) || String(e.reason);
+  var box = document.getElementById('globalAdminError');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'globalAdminError';
+    box.style.cssText = 'position:fixed;z-index:99999;left:12px;right:12px;top:80px;background:#2a1515;color:#ffb4ad;border:1px solid #8a4b4b;border-radius:8px;padding:12px 14px;font-family:sans-serif;font-size:13px;white-space:pre-wrap;';
+    document.body && document.body.appendChild(box);
+  }
+  box.textContent = 'Admin promise error: ' + msg;
+});
+</script>
 </head>
 <body>
 <!-- CONFIG -->
@@ -6441,7 +6465,7 @@ window.opsFetch = window.opsFetch || async function opsFetch(path, options = {})
   return txt ? JSON.parse(txt) : null;
 };
 </script>
-<script type="text/babel" data-type="script" data-presets='[["react",{"runtime":"classic"}]]'>
+<script type="text/babel" data-presets="react">
 const { useState: useState2, useEffect: useEffect2, useCallback: useCallback2, useRef: useRef2 } = React;
 
 // ── helpers ────────────────────────────────────────────────
@@ -8075,7 +8099,7 @@ async function addJobFromForm(job, mode) {
 const schedRoot = document.getElementById('ops-schedule-root');
 if (schedRoot) ReactDOM.createRoot(schedRoot).render(<ScheduleTab />);
 </script>
-<script type="text/babel" data-type="script" data-presets='[["react",{"runtime":"classic"}]]'>
+<script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useRef } = React;
 
 // reuse the single shared, already-authenticated client (set up during sign-in) instead of
@@ -8782,7 +8806,7 @@ const stockRoot = document.getElementById('ops-stock-root');
 if (stockRoot) ReactDOM.createRoot(stockRoot).render(<StockTab />);
 </script>
 
-<script type="text/babel" data-type="script" data-presets='[["react",{"runtime":"classic"}]]'>
+<script type="text/babel" data-presets="react">
 const { useState: useState3, useEffect: useEffect3, useRef: useRef3 } = React;
 
 const OPS_AI_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/ops-ai';
