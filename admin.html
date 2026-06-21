@@ -3684,18 +3684,59 @@ async function downloadQuotePngData(data) {
 }
 function shareCurrentQuotePNG() { return shareQuotePngData(plQuoteDataFromCart()); }
 function downloadCurrentQuotePNG() { return downloadQuotePngData(plQuoteDataFromCart()); }
+async function getSavedPayLinkForQuote(id) {
+  let link = (payLinks || []).find(l => String(l.id) === String(id));
+  if (!link || !Array.isArray(link.items)) {
+    const { data, error } = await sb.from('payment_links').select('*').eq('id', id).single();
+    if (error) throw error;
+    link = { ...(link || {}), ...(data || {}) };
+  }
+  return link;
+}
+
+function closeSavedQuotePNGMenu() {
+  const existing = document.getElementById('savedQuotePngMenu');
+  if (existing) existing.remove();
+}
+
+async function openSavedQuotePNGMenu(id) {
+  try {
+    const link = await getSavedPayLinkForQuote(id);
+    const data = plQuoteDataFromSavedLink(link);
+    window.__savedQuotePngData = data;
+    closeSavedQuotePNGMenu();
+    const overlay = document.createElement('div');
+    overlay.id = 'savedQuotePngMenu';
+    overlay.className = 'modal-backdrop open';
+    overlay.style.zIndex = '900';
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:420px;margin:auto">
+        <h2 class="modal-title" style="margin-bottom:10px">Share PNG Quote</h2>
+        <p style="color:var(--text2);font-size:.85rem;line-height:1.45;margin-bottom:18px">
+          ${escHtml(data.title || 'Gremier Coffee Quote')}<br>
+          Total: <strong style="color:var(--cream)">₪${Number(data.total || 0).toFixed(0)}</strong>
+        </p>
+        <div style="display:grid;grid-template-columns:1fr;gap:10px">
+          <button type="button" class="btn btn-amber btn-full" onclick="shareQuotePngData(window.__savedQuotePngData)">📲 Share PNG</button>
+          <button type="button" class="btn btn-outline btn-full" onclick="downloadQuotePngData(window.__savedQuotePngData)">📸 Download PNG</button>
+          <button type="button" class="btn btn-outline btn-full" onclick="closeSavedQuotePNGMenu()">Close</button>
+        </div>
+      </div>`;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) closeSavedQuotePNGMenu(); });
+    document.body.appendChild(overlay);
+  } catch (err) {
+    console.error('openSavedQuotePNGMenu:', err);
+    showToast(err.message || 'Could not open PNG menu');
+  }
+}
+
 async function shareSavedQuotePNG(id) {
   try {
-    let link = (payLinks || []).find(l => String(l.id) === String(id));
-    if (!link) {
-      const { data, error } = await sb.from('payment_links').select('*').eq('id', id).single();
-      if (error) throw error;
-      link = data;
-    }
+    const link = await getSavedPayLinkForQuote(id);
     await shareQuotePngData(plQuoteDataFromSavedLink(link));
   } catch (err) {
     console.error('shareSavedQuotePNG:', err);
-    showToast('Could not create PNG quote');
+    showToast(err.message || 'Could not create PNG quote');
   }
 }
 
@@ -3837,7 +3878,7 @@ If this looks good, I can send the payment link.`);
         <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
         <a href="${quoteWaUrl}" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none">Quote</a>
         <a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">Pay</a>
-        <button class="btn btn-outline btn-sm" onclick="shareSavedQuotePNG('${l.id}')">PNG</button>
+        <button class="btn btn-outline btn-sm" onclick="openSavedQuotePNGMenu('${l.id}')">PNG</button>
         <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
       </div>
     </td>
