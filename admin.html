@@ -27,7 +27,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
 <script>
   window.ADMIN_SB = null;
 
@@ -100,14 +100,7 @@
             setHubMode('website');
           }
           if (typeof showTab === 'function') {
-            {
-            let bootTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
-            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches && ['stock','schedule'].includes(bootTab)) {
-              bootTab = 'dashboard';
-              localStorage.setItem('gremier_admin_tab', 'dashboard');
-            }
-            showTab(bootTab);
-          }
+            showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
           }
           if (typeof loadOrders === 'function') loadOrders();
           if (typeof loadAllProducts === 'function') loadAllProducts();
@@ -527,11 +520,6 @@
     .mobile-header img { width:36px; height:36px; object-fit:contain; }
     .mobile-header span { font-family:'Playfair Display',serif; font-size:1rem; color:var(--cream); letter-spacing:.02em; }
     @media(max-width:768px){ .mobile-header { display:flex; } }
-    @media(max-width:768px){
-      #tab-stock, #tab-schedule { min-height:calc(100vh - 132px); background:var(--bg); }
-      #ops-stock-root, #ops-schedule-root { min-height:calc(100vh - 132px); background:var(--bg); display:block; }
-    }
-
   </style>
 </head>
 <body>
@@ -1626,11 +1614,7 @@ async function checkAdminAccess(user) {
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
 setHubMode('website');
-  let _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
-  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches && ['stock','schedule'].includes(_savedAdminTab)) {
-    _savedAdminTab = 'dashboard';
-    localStorage.setItem('gremier_admin_tab', 'dashboard');
-  }
+  const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   showTab(_savedAdminTab);
   loadOrders();
   loadAllProducts();
@@ -6420,45 +6404,44 @@ async function generateCouponForMember(userId, memberEmail) {
 }
 </script>
 
-  <script>
-// Shared Ops REST helper. Must exist before Schedule/Briefing/Stock React tabs run.
-(function setupOpsFetchEarly(){
-  if (window.opsFetch) return;
-  window.opsFetch = async function opsFetch(path, options = {}) {
-    const client = window.MAIN_SB || window.ADMIN_SB || (window.supabase && window.supabase.createClient && window.supabase.createClient(
-      'https://ayuzmwpmhncxrugsyxmw.supabase.co',
-      'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
-    ));
-    let token = '';
-    try {
-      const sessionResult = await client?.auth?.getSession?.();
-      token = sessionResult?.data?.session?.access_token || '';
-    } catch (e) {
-      console.warn('opsFetch session lookup failed:', e);
-    }
-    const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
-      ...options,
-      headers: {
-        'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        'Content-Type': 'application/json',
-        'Prefer': options.prefer || 'return=representation',
-        ...(options.headers || {}),
-      },
-    });
-    const text = await res.text();
-    let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
-    if (!res.ok) {
-      const msg = body?.message || body?.hint || body?.error || text || `Request failed (${res.status})`;
-      throw new Error(`opsFetch ${path}: ${msg}`);
-    }
-    return body;
-  };
-})();
-</script>
+  
+<script>
+// Shared Ops REST helper: define this BEFORE the Stock/Schedule/Dashboard React tabs.
+// This prevents mobile from loading Schedule before Stock has created window.opsFetch.
+window.getOpsSupabase = function getOpsSupabase() {
+  if (window.MAIN_SB) return window.MAIN_SB;
+  if (window.ADMIN_SB) return window.ADMIN_SB;
+  if (typeof getAdminSupabase === 'function') return getAdminSupabase();
+  if (window.supabase && window.supabase.createClient) {
+    window.ADMIN_SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return window.ADMIN_SB;
+  }
+  return null;
+};
 
-<script type="text/babel" data-presets="react">
+window.opsFetch = window.opsFetch || async function opsFetch(path, options = {}) {
+  const client = window.getOpsSupabase && window.getOpsSupabase();
+  const { data: { session } = { session: null } } = client && client.auth
+    ? await client.auth.getSession()
+    : { data: { session: null } };
+  const token = session && session.access_token;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      Prefer: options.prefer || 'return=representation',
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (res.status === 204) return null;
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : null;
+};
+</script>
+<script type="text/babel" data-type="script" data-presets='[["react",{"runtime":"classic"}]]'>
 const { useState: useState2, useEffect: useEffect2, useCallback: useCallback2, useRef: useRef2 } = React;
 
 // ── helpers ────────────────────────────────────────────────
@@ -8092,8 +8075,7 @@ async function addJobFromForm(job, mode) {
 const schedRoot = document.getElementById('ops-schedule-root');
 if (schedRoot) ReactDOM.createRoot(schedRoot).render(<ScheduleTab />);
 </script>
-
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-type="script" data-presets='[["react",{"runtime":"classic"}]]'>
 const { useState, useEffect, useCallback, useRef } = React;
 
 // reuse the single shared, already-authenticated client (set up during sign-in) instead of
@@ -8800,7 +8782,7 @@ const stockRoot = document.getElementById('ops-stock-root');
 if (stockRoot) ReactDOM.createRoot(stockRoot).render(<StockTab />);
 </script>
 
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-type="script" data-presets='[["react",{"runtime":"classic"}]]'>
 const { useState: useState3, useEffect: useEffect3, useRef: useRef3 } = React;
 
 const OPS_AI_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/ops-ai';
@@ -9557,18 +9539,6 @@ if (vlRoot) ReactDOM.createRoot(vlRoot).render(<VoiceLoggerFloat/>);
 
 const gpRoot = document.getElementById('ops-globalpills-root');
 if (gpRoot) ReactDOM.createRoot(gpRoot).render(<GlobalPillsFloat/>);
-</script>
-
-
-<script>
-window.addEventListener('error', function(e){
-  const tab = localStorage.getItem('gremier_admin_tab');
-  if (!['stock','schedule','dashboard'].includes(tab)) return;
-  const root = tab === 'schedule' ? document.getElementById('ops-schedule-root') : document.getElementById('ops-stock-root');
-  if (root && !root.textContent.trim()) {
-    root.innerHTML = '<div style="padding:18px;color:#ffb4ad;background:#2a1d1d;border:1px solid rgba(229,115,104,.45);border-radius:8px;margin:12px;font-family:DM Sans,sans-serif">This tab failed to load: '+String(e.message||e.error||'Unknown error')+'</div>';
-  }
-});
 </script>
 
 </body>
