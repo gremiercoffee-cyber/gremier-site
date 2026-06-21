@@ -16,7 +16,7 @@
 </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com https://cdn.jsdelivr.net; form-action 'self'; upgrade-insecure-requests"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com https://cdn.jsdelivr.net; form-action 'self'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co. — Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
@@ -6405,41 +6405,20 @@ async function generateCouponForMember(userId, memberEmail) {
 </script>
 
   <script>
-// Shared Ops REST helper must exist before Schedule, Stock, and Dashboard Briefing load.
-// Schedule is rendered before the Stock script, so defining opsFetch only inside Stock can
-// black-screen Schedule and make the daily briefing say Stock/Schedule tools are still loading.
 (function setupEarlyOpsFetch(){
-  if (window.opsFetch) return;
+  if (typeof window.opsFetch === 'function') return;
   window.opsFetch = async function opsFetch(path, options = {}) {
-    const client = window.MAIN_SB || window.ADMIN_SB || (window.supabase && window.supabase.createClient && window.supabase.createClient(
-      'https://ayuzmwpmhncxrugsyxmw.supabase.co',
-      'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
-    ));
+    const client = window.MAIN_SB || window.ADMIN_SB || (window.supabase && window.supabase.createClient && window.supabase.createClient('https://ayuzmwpmhncxrugsyxmw.supabase.co','sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'));
     const sessionResult = client?.auth?.getSession ? await client.auth.getSession() : { data: { session: null } };
     const token = sessionResult?.data?.session?.access_token;
-    const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
-      ...options,
-      headers: {
-        'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
-        'Authorization': token ? `Bearer ${token}` : '',
-        'Content-Type': 'application/json',
-        'Prefer': options.prefer || 'return=representation',
-        ...(options.headers || {}),
-      },
-    });
-    const text = await res.text();
-    let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
-    if (!res.ok) {
-      const msg = body?.message || body?.hint || body?.error || `Request failed (${res.status})`;
-      throw new Error(`opsFetch ${path}: ${msg}`);
-    }
+    const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, { ...options, headers:{ 'apikey':'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn', 'Authorization': token ? `Bearer ${token}` : '', 'Content-Type':'application/json', 'Prefer': options.prefer || 'return=representation', ...(options.headers||{}) } });
+    const text = await res.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
+    if (!res.ok) throw new Error(`opsFetch ${path}: ${body?.message || body?.hint || body?.error || `Request failed (${res.status})`}`);
     return body;
   };
 })();
 </script>
-
-  <script type="text/babel" data-presets="react">
+<script type="text/babel" data-presets="react">
 const { useState: useState2, useEffect: useEffect2, useCallback: useCallback2, useRef: useRef2 } = React;
 
 // ── helpers ────────────────────────────────────────────────
@@ -8083,30 +8062,27 @@ const OPS_SB = window.MAIN_SB || window.supabase.createClient(
   'https://ayuzmwpmhncxrugsyxmw.supabase.co',
   'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
 );
-// opsFetch is defined before Schedule/Briefing above. Keep this as a fallback only.
-if (!window.opsFetch) {
   window.opsFetch = async function opsFetch(path, options = {}) {
-    const { data: { session } } = await OPS_SB.auth.getSession();
-    const token = session?.access_token;
-    const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
-      ...options,
-      headers: {
-        'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
-        'Authorization': token ? `Bearer ${token}` : '',
-        'Content-Type': 'application/json',
-        'Prefer': options.prefer || 'return=representation',
-        ...(options.headers || {}),
-      },
-    });
-    const text = await res.text();
-    const body = text ? JSON.parse(text) : null;
-    if (!res.ok) {
-      const msg = body?.message || body?.hint || body?.error || `Request failed (${res.status})`;
-      throw new Error(`opsFetch ${path}: ${msg}`);
-    }
-    return body;
-  };
-}
+  const { data: { session } } = await OPS_SB.auth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
+      'Authorization': token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      'Prefer': options.prefer || 'return=representation',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = body?.message || body?.hint || body?.error || `Request failed (${res.status})`;
+    throw new Error(`opsFetch ${path}: ${msg}`);
+  }
+  return body;
+};
 
 // ── constants ──────────────────────────────────────────────
 const CONCENTRATE_TYPES = {
