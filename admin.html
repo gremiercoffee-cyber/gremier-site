@@ -6405,20 +6405,44 @@ async function generateCouponForMember(userId, memberEmail) {
 </script>
 
   <script>
-(function setupEarlyOpsFetch(){
+// Shared Ops REST helper must exist before the React Schedule/Stock/Briefing scripts run.
+// Schedule and Daily Briefing call opsFetch immediately on mount; when opsFetch was only
+// defined later inside the Stock JSX script, those screens could crash to a black panel.
+(function installOpsFetchEarly(){
   if (typeof window.opsFetch === 'function') return;
+  const opsClient = window.MAIN_SB || window.ADMIN_SB || window.supabase?.createClient?.(
+    'https://ayuzmwpmhncxrugsyxmw.supabase.co',
+    'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
+  );
+  window.OPS_SB_SHARED = opsClient;
   window.opsFetch = async function opsFetch(path, options = {}) {
-    const client = window.MAIN_SB || window.ADMIN_SB || (window.supabase && window.supabase.createClient && window.supabase.createClient('https://ayuzmwpmhncxrugsyxmw.supabase.co','sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'));
-    const sessionResult = client?.auth?.getSession ? await client.auth.getSession() : { data: { session: null } };
-    const token = sessionResult?.data?.session?.access_token;
-    const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, { ...options, headers:{ 'apikey':'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn', 'Authorization': token ? `Bearer ${token}` : '', 'Content-Type':'application/json', 'Prefer': options.prefer || 'return=representation', ...(options.headers||{}) } });
-    const text = await res.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
-    if (!res.ok) throw new Error(`opsFetch ${path}: ${body?.message || body?.hint || body?.error || `Request failed (${res.status})`}`);
+    if (!opsClient) throw new Error('Supabase client is not loaded yet');
+    const { data: { session } } = await opsClient.auth.getSession();
+    const token = session?.access_token;
+    const headers = {
+      apikey: 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
+      Authorization: token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      Prefer: options.prefer || 'return=representation',
+      ...(options.headers || {}),
+    };
+    const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/${path}`, {
+      ...options,
+      headers,
+    });
+    const text = await res.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
+    if (!res.ok) {
+      const msg = body?.message || body?.hint || body?.error || body || `Request failed (${res.status})`;
+      throw new Error(`opsFetch ${path}: ${msg}`);
+    }
     return body;
   };
 })();
 </script>
-<script type="text/babel" data-presets="react">
+
+  <script type="text/babel" data-presets="react">
 const { useState: useState2, useEffect: useEffect2, useCallback: useCallback2, useRef: useRef2 } = React;
 
 // ── helpers ────────────────────────────────────────────────
@@ -8058,7 +8082,7 @@ const { useState, useEffect, useCallback, useRef } = React;
 
 // reuse the single shared, already-authenticated client (set up during sign-in) instead of
 // creating a second independent auth session that never receives a login
-const OPS_SB = window.MAIN_SB || window.supabase.createClient(
+const OPS_SB = window.OPS_SB_SHARED || window.MAIN_SB || window.supabase.createClient(
   'https://ayuzmwpmhncxrugsyxmw.supabase.co',
   'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn'
 );
