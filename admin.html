@@ -1645,7 +1645,6 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-setHubMode('website');
   const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   showTab(_savedAdminTab);
   loadOrders();
