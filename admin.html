@@ -3685,13 +3685,14 @@ async function downloadQuotePngData(data) {
 function shareCurrentQuotePNG() { return shareQuotePngData(plQuoteDataFromCart()); }
 function downloadCurrentQuotePNG() { return downloadQuotePngData(plQuoteDataFromCart()); }
 async function getSavedPayLinkForQuote(id) {
-  let link = (payLinks || []).find(l => String(l.id) === String(id));
-  if (!link || !Array.isArray(link.items)) {
-    const { data, error } = await sb.from('payment_links').select('*').eq('id', id).single();
-    if (error) throw error;
-    link = { ...(link || {}), ...(data || {}) };
-  }
-  return link;
+  // Always fetch the saved link directly. Do not rely on a global payLinks array,
+  // because the table renderer uses a local links variable and saved/draft links may
+  // not have an order attached yet.
+  const { data, error } = await sb.from('payment_links').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Payment link not found');
+  if (!Array.isArray(data.items)) data.items = [];
+  return data;
 }
 
 function closeSavedQuotePNGMenu() {
