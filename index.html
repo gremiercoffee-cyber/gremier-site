@@ -2390,16 +2390,41 @@ function closeCheckout(fromNav) {
   if (document.getElementById('checkoutOverlay').classList.contains('open')) navBack();
   else document.getElementById('checkoutOverlay').classList.remove('open');
 }
+async function getCheckoutAuthHeaders() {
+  // Loyalty points depend on create-website-order seeing the real member JWT.
+  // Never silently create a member checkout with only the anon key, because then orders.user_id stays null.
+  let { data: { session } } = await sb.auth.getSession();
+
+  if (!session?.access_token && currentUser) {
+    try {
+      const refreshed = await sb.auth.refreshSession();
+      session = refreshed?.data?.session || session;
+    } catch (err) {
+      console.warn('Could not refresh checkout session:', err);
+    }
+  }
+
+  if (currentUser && !session?.access_token) {
+    throw new Error(lang === 'he'
+      ? 'ההתחברות פגה. התחברו שוב כדי לצבור נקודות על ההזמנה.'
+      : 'Your member session expired. Please sign in again so points can be added to your account.');
+  }
+
+  return {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + (session?.access_token || SUPABASE_ANON_KEY),
+    ...(currentUser?.id ? { 'x-gremier-user-id': currentUser.id } : {}),
+  };
+}
+
 async function createWebsiteOrder(orderData) {
-  const { data: { session } } = await sb.auth.getSession();
-  const bearer = session?.access_token || SUPABASE_ANON_KEY;
+  const headers = await getCheckoutAuthHeaders();
+  if (currentUser?.id && !orderData.user_id) orderData.user_id = currentUser.id;
+
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': 'Bearer ' + bearer,
-    },
+    headers,
     body: JSON.stringify(orderData),
   });
   const data = await res.json().catch(() => ({}));
@@ -2435,15 +2460,12 @@ async function callCreatePayment(orderId) {
   return { ...payData, sale_url: saleUrl };
 }
   async function callCreateWebsiteOrder(orderPayload) {
-  const { data: { session } } = await sb.auth.getSession();
+  const headers = await getCheckoutAuthHeaders();
+  if (currentUser?.id && !orderPayload.user_id) orderPayload.user_id = currentUser.id;
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': 'Bearer ' + (session?.access_token || SUPABASE_ANON_KEY),
-    },
+    headers,
     body: JSON.stringify(orderPayload),
   });
 
