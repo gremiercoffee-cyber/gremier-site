@@ -97,6 +97,7 @@
       setTimeout(() => {
         try {
           if (typeof setHubMode === 'function') {
+            setHubMode('website');
           }
           if (typeof showTab === 'function') {
             showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
@@ -578,13 +579,13 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
         <div class="nav-item" onclick="showTab('schedule')" id="nav-schedule"><span class="icon">📅</span><span>Schedule</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
-      <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
+      <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
       <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
       <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
       </div>
@@ -890,6 +891,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="btn btn-outline btn-sm" onclick="exportDeliveriesCSV()">⬇ Export CSV</button>
   </div>
 
+  <!-- Billing mini dashboard: billed - paid = money owed -->
+  <div class="stat-grid" id="sdBillingMiniStats" style="margin-bottom:20px">
+    <div class="stat-card"><div class="stat-label">Money Owed</div><div class="stat-value">₪0</div><div class="stat-sub">billed, not paid</div></div>
+    <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">₪0</div><div class="stat-sub">statements sent</div></div>
+    <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪0</div><div class="stat-sub">marked paid</div></div>
+    <div class="stat-card"><div class="stat-label">Unbilled</div><div class="stat-value">₪0</div><div class="stat-sub">not owed yet</div></div>
+  </div>
+
   <!-- Monthly summary stats -->
   <div id="sdNormalView">
   <div class="stat-grid" id="sdStats" style="margin-bottom:24px"></div>
@@ -1101,9 +1110,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="tab-bar-btn active" id="tbar-orders" onclick="showTab('orders')">
       <span class="tab-icon">🛒</span>Orders
     </button>
-       <button class="tab-bar-btn" id="tbar-storedeliveries" onclick="showTab('storedeliveries')">
-  <span class="tab-icon">🏪</span>Stores
-</button>
     <button class="tab-bar-btn" id="tbar-products" onclick="showTab('products')">
       <span class="tab-icon">📦</span>Products
     </button>
@@ -1122,6 +1128,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="tab-bar-btn" id="tbar-delivery" onclick="showTab('delivery')">
       <span class="tab-icon">🚚</span>Delivery
     </button>
+       <button class="tab-bar-btn" id="tbar-storedeliveries" onclick="showTab('storedeliveries')">
+  <span class="tab-icon">🏪</span>Stores
+</button>
     <button class="tab-bar-btn" id="tbar-coupons" onclick="showTab('coupons')">
   <span class="tab-icon">🎟️</span>Coupons
 </button>
@@ -1636,6 +1645,7 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
+setHubMode('website');
   const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
   showTab(_savedAdminTab);
   loadOrders();
@@ -4455,6 +4465,7 @@ async function loadStoreDeliveries() {
   renderDeliveriesTable();
   renderSDStats();
   renderStoreBlocks();
+  loadBillingMiniStats();
 }
 
 function deliveryTotal(d) {
@@ -4463,6 +4474,65 @@ function deliveryTotal(d) {
   return (d.qty_large || 0) * (store.price_large || 0) +
          (d.qty_small || 0) * (store.price_small || 0) +
          (d.qty_syrup || 0) * (store.price_syrup || 0);
+}
+
+async function loadBillingMiniStats() {
+  const el = document.getElementById('sdBillingMiniStats');
+  if (!el) return;
+  const monthVal = getSDMonth();
+  if (!monthVal) return;
+  const [y, m] = monthVal.split('-').map(Number);
+  try {
+    const { data: rows, error } = await sb
+      .from('store_billing')
+      .select('total,billed_at,paid_at')
+      .eq('year', y)
+      .eq('month', m);
+    if (error) throw error;
+    renderBillingMiniStats(rows || []);
+  } catch (err) {
+    console.warn('Could not load billing mini stats', err);
+    el.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Money Owed</div><div class="stat-value">—</div><div class="stat-sub">billing unavailable</div></div>
+      <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">—</div><div class="stat-sub">check store_billing</div></div>
+      <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">—</div><div class="stat-sub">check store_billing</div></div>
+      <div class="stat-card"><div class="stat-label">Unbilled</div><div class="stat-value">—</div><div class="stat-sub">check store_billing</div></div>`;
+  }
+}
+
+function renderBillingMiniStats(rows) {
+  const el = document.getElementById('sdBillingMiniStats');
+  if (!el) return;
+  const amount = r => Number(r.total || 0);
+  const billedRows = rows.filter(r => !!r.billed_at);
+  const paidRows = rows.filter(r => !!r.paid_at);
+  const owedRows = rows.filter(r => !!r.billed_at && !r.paid_at);
+  const unbilledRows = rows.filter(r => !r.billed_at);
+  const billedTotal = billedRows.reduce((sum, r) => sum + amount(r), 0);
+  const paidTotal = paidRows.reduce((sum, r) => sum + amount(r), 0);
+  const owedTotal = owedRows.reduce((sum, r) => sum + amount(r), 0);
+  const unbilledTotal = unbilledRows.reduce((sum, r) => sum + amount(r), 0);
+  el.innerHTML = `
+    <div class="stat-card" style="border-color:${owedTotal > 0 ? 'rgba(224,160,48,.55)' : 'var(--border)'}">
+      <div class="stat-label">Money Owed</div>
+      <div class="stat-value">₪${owedTotal.toFixed(0)}</div>
+      <div class="stat-sub">${owedRows.length} billed · not paid</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Billed</div>
+      <div class="stat-value">₪${billedTotal.toFixed(0)}</div>
+      <div class="stat-sub">${billedRows.length} statement${billedRows.length === 1 ? '' : 's'} sent</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Paid</div>
+      <div class="stat-value">₪${paidTotal.toFixed(0)}</div>
+      <div class="stat-sub">${paidRows.length} paid</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Unbilled</div>
+      <div class="stat-value">₪${unbilledTotal.toFixed(0)}</div>
+      <div class="stat-sub">${unbilledRows.length} not owed yet</div>
+    </div>`;
 }
 
 function renderDeliveriesTable() {
@@ -4981,6 +5051,7 @@ async function loadBillingBoard() {
     .eq('year', y).eq('month', m)
     .order('total', { ascending: false });
   if (error) { body.innerHTML = `<div class="empty-state">Couldn't load billing data: ${escHtml(error.message)}</div>`; return; }
+  renderBillingMiniStats(rows || []);
   if (!rows || !rows.length) {
     body.innerHTML = `<div class="empty-state">No statements generated for this month yet. Tap "Generate / Refresh Images" above.</div>`;
     return;
@@ -5435,6 +5506,106 @@ function briefingForecastTotals(patterns) {
     return t;
   }, { large:0, small:0, syrup:0 });
 }
+
+function briefingBuildStoreForecastFromTable(forecastRows, todayISO) {
+  return (forecastRows || []).map(row => {
+    const enabled = row.forecast_enabled !== false;
+    const lifecycle = String(row.lifecycle_status || 'active').toLowerCase();
+    if (!enabled || lifecycle === 'inactive') return null;
+
+    const lastDate = String(row.last_delivery_date || '').slice(0,10);
+    if (!lastDate) return null;
+
+    const cycle = Math.max(7, Math.round(
+      briefingNum(row.avg_days_between_deliveries) ||
+      briefingNum(row.default_cycle_days) ||
+      14
+    ));
+    const daysSinceLast = Math.max(0, briefingDiffDays(todayISO, lastDate));
+    const dueDate = briefingAddDaysISO(lastDate, cycle);
+    const daysUntilDue = briefingDiffDays(dueDate, todayISO);
+    const dueScore = cycle ? daysSinceLast / cycle : 0;
+
+    // Active stores show when they are close to due. Dormant stores only show if they are very overdue,
+    // so old/no-longer-active stores do not make the briefing panic.
+    const isDormant = lifecycle === 'dormant';
+    const shouldMention = isDormant ? dueScore >= 1.35 : dueScore >= 0.85 || daysUntilDue <= 4;
+    if (!shouldMention) return null;
+
+    const avgLarge = Math.max(0, briefingNum(row.expected_large_next_delivery, briefingNum(row.avg_large_per_delivery, 12)));
+    const avgSmall = Math.max(0, briefingNum(row.expected_mini_next_delivery, briefingNum(row.avg_mini_per_delivery, 12)));
+
+    let tone = isDormant ? 'info' : 'warn';
+    let badge = daysUntilDue > 1 ? `due in ${daysUntilDue}d` : (daysUntilDue === 1 ? 'due tomorrow' : (daysUntilDue === 0 ? 'due today' : `${Math.abs(daysUntilDue)}d overdue`));
+    if (!isDormant && dueScore >= 1.2) tone = 'danger';
+    if (isDormant) badge = 'dormant?';
+
+    return {
+      store: row.store_name || 'Store',
+      lastDate,
+      daysSinceLast,
+      avgGapDays: cycle,
+      dueDate,
+      daysUntilDue,
+      dueScore,
+      avgLarge,
+      avgSmall,
+      avgSyrup: 0,
+      runs: briefingNum(row.total_deliveries),
+      confidence: row.confidence || 'low',
+      lifecycleStatus: lifecycle,
+      tone,
+      badge,
+      source: 'forecast_table',
+    };
+  }).filter(Boolean).sort((a,b) => b.dueScore - a.dueScore || a.daysUntilDue - b.daysUntilDue || b.daysSinceLast - a.daysSinceLast);
+}
+
+function briefingBuildNewStoreDefaults(deliveries, stores, existingForecasts, todayISO) {
+  const existingNames = new Set((existingForecasts || []).map(r => String(r.store_name || '').toLowerCase().trim()).filter(Boolean));
+  const storeById = {};
+  (stores || []).forEach(s => { storeById[s.id] = s; });
+  const groups = {};
+  (deliveries || []).forEach(d => {
+    const date = String(d.delivery_date || '').slice(0,10);
+    if (!date) return;
+    const name = d.store_name || storeById[d.store_id]?.name || '';
+    if (!name || existingNames.has(String(name).toLowerCase().trim())) return;
+    const key = d.store_id || `name:${String(name).toLowerCase()}`;
+    if (!groups[key]) groups[key] = { name, rows: [] };
+    groups[key].rows.push(d);
+  });
+  return Object.values(groups).map(g => {
+    g.rows.sort((a,b)=>String(a.delivery_date||'').localeCompare(String(b.delivery_date||'')));
+    const last = g.rows[g.rows.length - 1];
+    const lastDate = String(last.delivery_date || '').slice(0,10);
+    const daysSinceLast = Math.max(0, briefingDiffDays(todayISO, lastDate));
+    const cycle = 14;
+    if (daysSinceLast < 12) return null;
+    const avgLarge = Math.max(12, Math.round(briefingAvg(g.rows.slice(-3).map(x => briefingNum(x.qty_large)))) || 12);
+    const avgSmall = Math.max(12, Math.round(briefingAvg(g.rows.slice(-3).map(x => briefingNum(x.qty_small)))) || 12);
+    const dueDate = briefingAddDaysISO(lastDate, cycle);
+    const daysUntilDue = briefingDiffDays(dueDate, todayISO);
+    return {
+      store: g.name,
+      lastDate,
+      daysSinceLast,
+      avgGapDays: cycle,
+      dueDate,
+      daysUntilDue,
+      dueScore: daysSinceLast / cycle,
+      avgLarge,
+      avgSmall,
+      avgSyrup: 0,
+      runs: g.rows.length,
+      confidence: 'low',
+      lifecycleStatus: 'new/default',
+      tone: daysUntilDue < 0 ? 'warn' : 'info',
+      badge: daysUntilDue < 0 ? `${Math.abs(daysUntilDue)}d overdue` : 'default cycle',
+      source: 'new_store_default',
+    };
+  }).filter(Boolean);
+}
 function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, concentrateGaps, forecastGaps }) {
   const actions = [];
   if (concentrateGaps.length) {
@@ -5451,7 +5622,7 @@ function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, c
   return actions.slice(0, 3);
 }
 
-const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v2';
+const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v3_forecasts';
 const DASH_BRIEFING_COLLAPSED_KEY = 'gremier_dash_briefing_collapsed_v1';
 
 function briefingSetCollapsed(collapsed, persist = true) {
@@ -5584,7 +5755,7 @@ async function loadBriefing(options = {}) {
     const horizonISO = briefingLocalISO(14);
     const deliveryLookbackISO = briefingLocalISO(-180);
 
-    const [openJobs, inventoryRows, concentrateRows, beansRows, labelRows, productsRes, storesRes, deliveriesRes] = await Promise.all([
+    const [openJobs, inventoryRows, concentrateRows, beansRows, labelRows, productsRes, storesRes, deliveriesRes, forecastsRes] = await Promise.all([
       window.opsFetch('jobs?select=*&done=eq.false&order=date.asc'),
       window.opsFetch('inventory?select=*'),
       window.opsFetch('concentrate?select=*'),
@@ -5597,12 +5768,16 @@ async function loadBriefing(options = {}) {
         .gte('delivery_date', deliveryLookbackISO)
         .lte('delivery_date', todayISO)
         .order('delivery_date', { ascending: true }),
+      sb.from('store_delivery_forecasts')
+        .select('*')
+        .eq('forecast_enabled', true),
     ]);
 
     if (productsRes.error) console.warn('Daily briefing product label lookup failed:', productsRes.error);
     briefingRegisterCatalogProducts(productsRes.data || []);
     if (storesRes.error) throw storesRes.error;
     if (deliveriesRes.error) throw deliveriesRes.error;
+    if (forecastsRes.error) console.warn('Daily briefing forecast table lookup failed; falling back to delivery history:', forecastsRes.error);
 
     const jobs14 = briefingOpenJobsWithin(openJobs || [], todayISO, horizonISO);
     const todayJobs = jobs14.filter(j => String(j.date || '').slice(0,10) === todayISO);
@@ -5613,7 +5788,14 @@ async function loadBriefing(options = {}) {
     const beans = briefingBeansMap(beansRows);
     const inProgressBrews = briefingInProgressBrews(openJobs || []);
 
-    const dueStores = briefingBuildStoreForecast(deliveriesRes.data || [], storesRes.data || [], todayISO).slice(0, 8);
+    const forecastRows = !forecastsRes.error ? (forecastsRes.data || []) : [];
+    const dueStoresFromForecasts = briefingBuildStoreForecastFromTable(forecastRows, todayISO);
+    const dueStoresFromNewDefaults = briefingBuildNewStoreDefaults(deliveriesRes.data || [], storesRes.data || [], forecastRows, todayISO);
+    const dueStores = (dueStoresFromForecasts.length
+      ? [...dueStoresFromForecasts, ...dueStoresFromNewDefaults]
+      : briefingBuildStoreForecast(deliveriesRes.data || [], storesRes.data || [], todayISO)
+    ).slice(0, 8);
+    const usingForecastTable = dueStoresFromForecasts.length > 0 || forecastRows.length > 0;
     const forecastTotals = briefingForecastTotals(dueStores);
     const stockLarge = briefingCategoryTotal(inventory, 'liter');
     const stockSmall = briefingCategoryTotal(inventory, 'mini');
@@ -5649,10 +5831,12 @@ async function loadBriefing(options = {}) {
           if (Math.round(p.avgLarge)) qty.push(`${Math.round(p.avgLarge)} large`);
           if (Math.round(p.avgSmall)) qty.push(`${Math.round(p.avgSmall)} small`);
           if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)} syrup`);
-          const meta = `Usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago · next estimate ${briefingDateLabel(p.dueDate)}${qty.length ? ' · avg ' + qty.join(', ') : ''}`;
+          const confidence = p.confidence ? ` · ${p.confidence} confidence` : '';
+          const lifecycle = p.lifecycleStatus && p.lifecycleStatus !== 'active' ? ` · ${p.lifecycleStatus}` : '';
+          const meta = `Needs about ${qty.length ? qty.join(', ') : 'a normal restock'} per delivery · usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago · next estimate ${briefingDateLabel(p.dueDate)}${confidence}${lifecycle}`;
           return briefingItem(p.store, meta, p.badge, p.tone);
         }).join('')
-      : briefingEmpty('No store looks due from the last 180 days of delivery patterns.');
+      : briefingEmpty(usingForecastTable ? 'No active store looks due from the forecast table right now.' : 'No store looks due from the last 180 days of delivery patterns.');
 
     const productionRows = [];
     urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} already scheduled` : ''}`, 'urgent', 'danger')));
@@ -5674,7 +5858,7 @@ async function loadBriefing(options = {}) {
     const urgentSummaryRows = [];
     urgentBottleShortfalls.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready`, 'urgent', 'danger')));
     concentrateGapActions.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `Ready ${briefingRound(x.have,1)}L${x.brewing ? ` · already brewing/draining ${briefingRound(x.brewing,1)}L` : ''} · demand ${briefingRound(x.demand,1)}L`, 'urgent', 'danger')));
-    dueStores.filter(p => p.daysUntilDue <= 1 || p.daysSinceLast >= 45).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago`, p.badge, p.tone)));
+    dueStores.filter(p => p.daysUntilDue <= 1 || p.dueScore >= 1.2).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Needs about ${Math.round(p.avgLarge || 0)} large / ${Math.round(p.avgSmall || 0)} minis · usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago`, p.badge, p.tone)));
     const urgentHtml = urgentSummaryRows.length
       ? `<div class="briefing-section">${urgentSummaryRows.join('')}</div>`
       : '';
@@ -5699,7 +5883,7 @@ async function loadBriefing(options = {}) {
       <div class="briefing-content">
         <div class="briefing-priority ${actions.length ? '' : 'good'}">
           <div><span>Today’s focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
-          <small>Calculated from open jobs, ready stock, concentrate, labels, beans, and 180 days of store deliveries.</small>
+          <small>Calculated from open jobs, ready stock, concentrate, labels, beans, and ${usingForecastTable ? 'store delivery forecasts' : '180 days of store deliveries'}.</small>
         </div>
         ${updatedSectionHtml}
         <div class="briefing-grid">
