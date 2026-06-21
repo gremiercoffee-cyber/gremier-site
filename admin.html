@@ -1375,8 +1375,40 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 </div>
     <div class="form-group"><label class="form-label">Email <span style="font-weight:400;color:var(--text2)">(for order confirmation)</span></label><input class="form-input" id="plEmail" type="email" placeholder="customer@example.com"/></div>
     <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
+
+    <div class="card" style="padding:14px 16px;margin:12px 0 16px;background:var(--bg3)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div>
+          <div style="font-family:'Playfair Display',serif;color:var(--cream);font-size:1.05rem">☕ Coffee Bar Builder</div>
+          <div style="font-size:.76rem;color:var(--text2);margin-top:3px">Start from your website coffee bar packages, then add extras or custom notes.</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="plLoadCoffeeBarTemplates()">Refresh Packages</button>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">Package</label><select class="form-input" id="plCoffeeBarProduct"></select></div>
+        <div class="form-group"><label class="form-label">People</label><select class="form-input" id="plCoffeeBarGuests"><option value="25">25</option><option value="50">50</option><option value="75">75</option><option value="100">100</option><option value="125">125</option><option value="150">150</option></select></div>
+        <div class="form-group"><label class="form-label">Upgrade</label><select class="form-input" id="plCoffeeBarUpgrade"><option value="">No upgrade</option><option value="house_blend">House Blend Upgrade</option></select></div>
+      </div>
+      <button type="button" class="btn btn-amber btn-sm" onclick="plAddCoffeeBarTemplate()">+ Add Coffee Bar</button>
+    </div>
+
     <div class="form-group">
-      <label class="form-label">Add Products</label>
+      <label class="form-label">Delivery Fee</label>
+      <input class="form-input" type="number" id="plDeliveryFee" placeholder="Optional — adds as a line item" oninput="plSetDeliveryFee(this.value)"/>
+    </div>
+
+    <div class="card" style="padding:14px 16px;margin:12px 0 16px;background:var(--bg3)">
+      <div style="font-family:'Playfair Display',serif;color:var(--cream);font-size:1.05rem;margin-bottom:10px">＋ Custom Item / Adjustment</div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">Item / Note</label><input class="form-input" id="plCustomItemName" placeholder="e.g. Replace syrup with extra coffee"/></div>
+        <div class="form-group"><label class="form-label">Price</label><input class="form-input" type="number" id="plCustomItemPrice" placeholder="0"/></div>
+        <div class="form-group"><label class="form-label">Qty</label><input class="form-input" type="number" id="plCustomItemQty" value="1" min="1"/></div>
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="plAddCustomItem()">+ Add Custom Item</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Add Products / Extras</label>
       <input type="text" class="form-input" placeholder="Search products…" oninput="searchPayLinkProducts(this.value)" id="plProductSearch"/>
       <div id="plProductResults" class="pl-product-grid"></div>
     </div>
@@ -3019,6 +3051,10 @@ document.getElementById('plCustomer').value = '';
   document.getElementById('plEmail').value = '';
   document.getElementById('plAddress').value = '';
   document.getElementById('plProductSearch').value = '';
+  if (document.getElementById('plDeliveryFee')) document.getElementById('plDeliveryFee').value = '';
+  if (document.getElementById('plCustomItemName')) document.getElementById('plCustomItemName').value = '';
+  if (document.getElementById('plCustomItemPrice')) document.getElementById('plCustomItemPrice').value = '';
+  if (document.getElementById('plCustomItemQty')) document.getElementById('plCustomItemQty').value = '1';
   document.getElementById('plFinalPrice').value = '';
   document.getElementById('plDiscountNote').value = '';
   document.getElementById('plCreateOrderNow').checked = false;
@@ -3027,6 +3063,7 @@ document.getElementById('plCustomer').value = '';
   plSetLinkError('');
   renderPlItems();
   if (!allProducts.length) await loadAllProducts();
+  plLoadCoffeeBarTemplates();
   searchPayLinkProducts('');
   document.getElementById('payLinkModal').classList.add('open');
 }
@@ -3061,6 +3098,10 @@ async function editPayLink(id) {
   document.getElementById('plEmail').value = link.customer_email || '';
   document.getElementById('plAddress').value = link.delivery_address || '';
   document.getElementById('plProductSearch').value = '';
+  if (document.getElementById('plDeliveryFee')) document.getElementById('plDeliveryFee').value = '';
+  if (document.getElementById('plCustomItemName')) document.getElementById('plCustomItemName').value = '';
+  if (document.getElementById('plCustomItemPrice')) document.getElementById('plCustomItemPrice').value = '';
+  if (document.getElementById('plCustomItemQty')) document.getElementById('plCustomItemQty').value = '1';
   document.getElementById('plFinalPrice').value = '';
   document.getElementById('plDiscountNote').value = link.discount_note || '';
   document.getElementById('plCreateOrderNow').checked = false;
@@ -3068,7 +3109,7 @@ async function editPayLink(id) {
   plSetLinkError('');
 
   plCartItems = (link.items || []).map(i => ({
-    id: i.product_id || i.id || Math.random().toString(36).slice(2),
+    id: i.product_id || i.id || i.custom_id || Math.random().toString(36).slice(2),
     name_en: i.name_en || i.name || 'Item',
     name_he: i.name_he || '',
     price: Number(i.price) || 0,
@@ -3076,10 +3117,15 @@ async function editPayLink(id) {
     image: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
     image_url: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
     category: i.category || 'bottles',
+    meta: i.meta || null,
+    custom_id: i.custom_id || null,
   }));
+  const deliveryLine = plCartItems.find(i => i.category === 'delivery_fee' || String(i.name_en || '').toLowerCase() === 'delivery fee');
+  if (deliveryLine && document.getElementById('plDeliveryFee')) document.getElementById('plDeliveryFee').value = Number(deliveryLine.price || 0) * Number(deliveryLine.qty || 1);
 
   renderPlItems();
   if (!allProducts.length) await loadAllProducts();
+  plLoadCoffeeBarTemplates();
   searchPayLinkProducts('');
   document.getElementById('payLinkModal').classList.add('open');
 }
@@ -3122,6 +3168,88 @@ function getPayLinkDisplayName(link) {
   const customer = String(link?.customer_name || '').trim();
   if (customer) return customer;
   return 'Untitled link';
+}
+function plCoffeeBarProducts() {
+  return (allProducts || []).filter(p => (p.category === 'coffeebars' || p.is_coffee_bar) && p.is_active !== false)
+    .sort((a,b) => String(a.name_en || '').localeCompare(String(b.name_en || '')));
+}
+function plLoadCoffeeBarTemplates() {
+  const sel = document.getElementById('plCoffeeBarProduct');
+  if (!sel) return;
+  const bars = plCoffeeBarProducts();
+  if (!bars.length) {
+    sel.innerHTML = '<option value="">No coffee bar products found</option>';
+    return;
+  }
+  sel.innerHTML = bars.map(p => `<option value="${escAttr(p.id)}">${escHtml(p.name_en || 'Coffee Bar')}</option>`).join('');
+}
+function plGuestPrice(product, guests) {
+  const g = Number(guests) || 25;
+  const guestVar = (product?.variations || []).find(v => v.type === 'guest_count');
+  const options = guestVar?.options || [];
+  const exact = options.find(o => Number(o.guests) === g || String(o.label || '').includes(String(g)));
+  if (exact && Number(exact.price) > 0) return Number(exact.price);
+  const lower = options.filter(o => Number(o.guests) <= g && Number(o.price) > 0).sort((a,b)=>Number(b.guests)-Number(a.guests))[0];
+  if (lower) return Number(lower.price);
+  return Number(product?.price || 0);
+}
+function plAddCoffeeBarTemplate() {
+  const productId = document.getElementById('plCoffeeBarProduct')?.value;
+  const guests = Number(document.getElementById('plCoffeeBarGuests')?.value || 25);
+  const upgrade = document.getElementById('plCoffeeBarUpgrade')?.value || '';
+  const product = (allProducts || []).find(p => p.id === productId);
+  if (!product) { showToast('Choose a coffee bar package first'); return; }
+  const basePrice = plGuestPrice(product, guests);
+  const upgradeLabel = upgrade === 'house_blend' ? ' · House Blend upgrade' : '';
+  const id = `${product.id}:guests:${guests}:upgrade:${upgrade || 'none'}:${Math.random().toString(36).slice(2,7)}`;
+  plCartItems.push({
+    id,
+    product_id: product.id,
+    name_en: `${product.name_en || 'Coffee Bar'} (${guests} people)${upgradeLabel}`,
+    name_he: product.name_he || '',
+    price: basePrice,
+    qty: 1,
+    image: product.images?.[0] || null,
+    image_url: product.images?.[0] || null,
+    category: 'coffeebars',
+    meta: { service_type:'coffee_bar', guests, upgrade, source_product_id: product.id }
+  });
+  renderPlItems();
+}
+function plSetDeliveryFee(value) {
+  const fee = Number(value || 0);
+  plCartItems = plCartItems.filter(i => i.category !== 'delivery_fee');
+  if (fee > 0) {
+    plCartItems.push({ id:'delivery_fee', custom_id:'delivery_fee', name_en:'Delivery Fee', name_he:'', price:fee, qty:1, category:'delivery_fee', meta:{type:'delivery_fee'} });
+  }
+  renderPlItems();
+}
+function plAddCustomItem() {
+  const name = (document.getElementById('plCustomItemName')?.value || '').trim();
+  const price = Number(document.getElementById('plCustomItemPrice')?.value || 0);
+  const qty = Math.max(1, Number(document.getElementById('plCustomItemQty')?.value || 1));
+  if (!name) { showToast('Add a custom item name or note'); return; }
+  plCartItems.push({ id:'custom_'+Math.random().toString(36).slice(2), custom_id:'custom', name_en:name, name_he:'', price, qty, category:'custom_adjustment', meta:{type:'custom_adjustment'} });
+  document.getElementById('plCustomItemName').value = '';
+  document.getElementById('plCustomItemPrice').value = '';
+  document.getElementById('plCustomItemQty').value = '1';
+  renderPlItems();
+}
+function plShareText(total, linkUrl, mode='payment') {
+  const customer = (document.getElementById('plCustomer')?.value || '').trim();
+  const title = (document.getElementById('plLinkName')?.value || '').trim() || 'Gremier Coffee';
+  const lines = plCartItems.map(i => `• ${i.name_en} ×${i.qty || 1} — ₪${Number((i.price || 0) * (i.qty || 1)).toFixed(0)}`);
+  const subtotal = plCartItems.reduce((s,i)=>s+(Number(i.price)||0)*(Number(i.qty)||1),0);
+  const note = (document.getElementById('plDiscountNote')?.value || '').trim();
+  if (mode === 'quote') {
+    return `${customer ? 'Hi '+customer+',\n\n' : ''}Here is your Gremier Coffee price quote:\n\n${title}\n${lines.join('\n')}\n\nSubtotal: ₪${subtotal.toFixed(0)}\nTotal: ₪${Number(total).toFixed(0)}${note ? '\n\nNote: '+note : ''}\n\nIf this looks good, I can send you the payment link.`;
+  }
+  return `${customer ? 'Hi '+customer+',\n\n' : ''}Here is your Gremier Coffee payment link for ₪${Number(total).toFixed(0)}:\n${linkUrl}`;
+}
+function plWhatsAppShareButton(label, text, phone, extraClass='btn-green') {
+  const encoded = encodeURIComponent(text);
+  const url = whatsAppHref(phone, encoded) || `https://wa.me/?text=${encoded}`;
+  return `<a href="${url}" target="_blank" class="btn ${extraClass} btn-full" style="margin-top:10px;text-decoration:none">${label}</a>`;
 }
 function searchPayLinkProducts(query) {
   const q = (query || '').trim().toLowerCase();
@@ -3258,7 +3386,8 @@ async function generatePayLink() {
   const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
 
  const linkItems = plCartItems.map(i=>({
-  product_id: i.id,
+  product_id: i.product_id || (String(i.id || '').startsWith('custom_') || i.category === 'delivery_fee' ? null : i.id),
+  custom_id: i.custom_id || (String(i.id || '').startsWith('custom_') ? i.id : null),
   name_en: i.name_en,
   name_he: i.name_he,
   price: Number(i.price) || 0,
@@ -3266,6 +3395,7 @@ async function generatePayLink() {
   image: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
   image_url: i.image || i.image_url || i.thumbnail || i.thumbnail_url || null,
   category: i.category || 'bottles',
+  meta: i.meta || null,
 }));
   const createOrderNow = document.getElementById('plCreateOrderNow')?.checked === true;
   const reusable = plLinkType === 'recurring';
@@ -3352,20 +3482,21 @@ if (saveError) {
   }
 
   const linkUrl = `${SITE_URL}/pay.html?code=${linkCode}`;
-  const whatsappMsg = encodeURIComponent(`Hi! Here's your payment link for your Gremier Coffee order (₪${total}):\n${linkUrl}`);
-  const waUrl = whatsAppHref(customerPhone, whatsappMsg);
+  const quoteText = plShareText(total, linkUrl, 'quote');
+  const paymentText = plShareText(total, linkUrl, 'payment');
   document.getElementById('plLinkResult').style.display = 'block';
   document.getElementById('plLinkResult').innerHTML = `
     <div class="link-result">
       <div class="link-url">${linkUrl}</div>
       <button class="copy-btn" onclick="copyLink('${linkUrl}')">Copy</button>
     </div>
-    ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-green btn-full" style="margin-top:10px;text-decoration:none">📲 Send on WhatsApp</a>` : ''}
+    ${plWhatsAppShareButton('💬 Share as Price Quote', quoteText, customerPhone, 'btn-outline')}
+    ${plWhatsAppShareButton('📲 Share as Payment Link', paymentText, customerPhone, 'btn-green')}
     <div style="font-size:.76rem;color:var(--text2);margin-top:8px;text-align:center">
       ${discount>0?`Discount: ₪${discount.toFixed(2)} — ${linkData.discount_note||''}`:''}<br/>
       ${createOrderNow && createdOrderNumber ? `📦 Order #${createdOrderNumber} is in Ops — schedule delivery now<br/>` : ''}
       ${reusable ? '🔁 Recurring — this link stays open after each payment<br/>' : 'One-time — closes after payment<br/>'}
-      💳 Customer pays via PayMe at this link
+      Same saved link can be shared first as a quote, then later as payment.
     </div>`;
   if (plEditingLinkId) {   showToast('Payment link updated ✓'); } else if (!createOrderNow || !createdOrderNumber) {   showToast('Payment link created ✓'); }
   loadPayLinks();
@@ -3459,7 +3590,15 @@ function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecu
   const date = new Date(l.created_at).toLocaleDateString();
   const linkUrl = `${SITE_URL}/pay.html?code=${l.link_code}`;
   const waMsg = encodeURIComponent(`Here's your payment link: ${linkUrl}`);
+  const quoteMsg = encodeURIComponent(`Here is your Gremier Coffee price quote:
+
+${(l.items||[]).map(i => `• ${i.name_en || i.name || 'Item'} ×${i.qty || 1} — ₪${Number((i.price||0)*(i.qty||1)).toFixed(0)}`).join('\n')}
+
+Total: ₪${Number(l.total||0).toFixed(0)}
+
+If this looks good, I can send the payment link.`);
   const waUrl = whatsAppHref(l.customer_phone, waMsg);
+  const quoteWaUrl = whatsAppHref(l.customer_phone, quoteMsg);
   const missingOrder = paymentLinkMissingOrder(l, existingOrderIds);
   const recreateBtn = missingOrder
     ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
@@ -3505,7 +3644,8 @@ function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecu
         ${recreateBtn}
         <button class="btn btn-outline btn-sm" onclick="editPayLink('${l.id}')">Edit</button>
         <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
-        ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">WA</a>`:''}
+        ${quoteWaUrl?`<a href="${quoteWaUrl}" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none">Quote</a>`:''}
+        ${waUrl?`<a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">Pay</a>`:''}
         <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
       </div>
     </td>
@@ -5505,28 +5645,44 @@ function briefingForecastTotals(patterns) {
     return t;
   }, { large:0, small:0, syrup:0 });
 }
+function briefingNormStoreName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9א-ת]+/g, ' ')
+    .replace(/\brbs\b/g, 'rbs')
+    .replace(/machaneyuda/g, 'machaneyuda')
+    .replace(/machane yuda/g, 'machaneyuda')
+    .trim();
+}
 function briefingBuildRecentStoreSignals(deliveries, stores, todayISO) {
   const storeById = {};
   (stores || []).forEach(s => { storeById[String(s.id)] = s; });
   const groups = {};
+  function ensureGroup(key, name, storeId) {
+    if (!groups[key]) groups[key] = { storeId:storeId || '', name:name || '', rows:[], productMix:{}, specificRuns:0 };
+    return groups[key];
+  }
   (deliveries || []).forEach(d => {
     const date = String(d.delivery_date || '').slice(0,10);
     if (!date) return;
+    const joinedName = d.stores?.name || '';
+    const name = d.store_name || joinedName || storeById[String(d.store_id)]?.name || '';
     const idKey = d.store_id ? `id:${String(d.store_id)}` : '';
-    const name = d.store_name || storeById[String(d.store_id)]?.name || '';
-    const nameKey = name ? `name:${String(name).toLowerCase().trim()}` : '';
+    const norm = briefingNormStoreName(name);
+    const nameKey = norm ? `name:${norm}` : '';
     const key = idKey || nameKey;
     if (!key) return;
-    if (!groups[key]) groups[key] = { storeId:d.store_id || '', name, rows:[], productMix:{}, specificRuns:0 };
-    groups[key].rows.push(d);
+    const g = ensureGroup(key, name, d.store_id || '');
+    g.rows.push(d);
     const qtyMap = briefingQtyMap(d.quantities);
     if (Object.keys(qtyMap).some(k => briefingNum(qtyMap[k]) > 0)) {
-      groups[key].specificRuns += 1;
+      g.specificRuns += 1;
       Object.entries(qtyMap).forEach(([pid, qty]) => {
         const q = briefingNum(qty);
         if (q <= 0) return;
         const label = briefingProductLabel(pid);
-        groups[key].productMix[label] = (groups[key].productMix[label] || 0) + q;
+        g.productMix[label] = (g.productMix[label] || 0) + q;
       });
     }
   });
@@ -5546,17 +5702,19 @@ function briefingBuildRecentStoreSignals(deliveries, stores, todayISO) {
       productMix: g.productMix,
     };
     if (g.storeId) byId[String(g.storeId)] = signal;
-    if (g.name) byName[String(g.name).toLowerCase().trim()] = signal;
+    const norm = briefingNormStoreName(g.name);
+    if (norm) byName[norm] = signal;
   });
   return { byId, byName };
 }
 function briefingStoreProductMixText(pattern) {
-  if (!pattern || !pattern.productMix || pattern.specificRuns < 2) return '';
+  if (!pattern || !pattern.productMix || pattern.specificRuns < 3) return '';
   const parts = Object.entries(pattern.productMix)
+    .map(([label, qty]) => [label, qty / Math.max(1, pattern.specificRuns)])
     .sort((a,b) => b[1] - a[1])
-    .slice(0, 4)
+    .slice(0, 3)
     .map(([label, qty]) => `${Math.round(qty)} ${label}`);
-  return parts.length ? ` · recent specific mix: ${parts.join(', ')}` : '';
+  return parts.length ? `• Specific mix: ${parts.join(', ')}` : '';
 }
 function briefingForecastDailyDemand(forecastRows, recentSignals, todayISO) {
   const rows = (forecastRows || []).filter(row => row.forecast_enabled !== false && String(row.lifecycle_status || 'active').toLowerCase() !== 'inactive');
@@ -5573,12 +5731,17 @@ function briefingShortageText(label, stockQty, dailyDemand, dueDemand) {
   const stock = briefingNum(stockQty);
   const daily = briefingNum(dailyDemand);
   const due = briefingNum(dueDemand);
-  if (due > stock) return `${label} short now by ${Math.ceil(due - stock)}`;
-  if (daily <= 0) return '';
-  const days = Math.floor(stock / daily);
-  if (days <= 14) return `${label} short in about ${Math.max(0, days)}d`;
+  const simpleLabel = String(label || '').replace(/^Forecast\s+/i, '');
+  if (daily <= 0 && due <= stock) return '';
+  const daysLeft = daily > 0 ? Math.floor(stock / daily) : 0;
+  const shortDate = briefingAddDaysISO(briefingLocalISO(0), Math.max(0, daysLeft));
+  if (due > stock) {
+    return `${simpleLabel}: likely short by ${Math.ceil(due - stock)} for near-term store runs · at forecast pace stock lasts ~${Math.max(0, daysLeft)}d (${briefingDateLabel(shortDate)})`;
+  }
+  if (daysLeft <= 14) return `${simpleLabel}: likely lasts ~${Math.max(0, daysLeft)}d · watch by ${briefingDateLabel(shortDate)}`;
   return '';
 }
+
 
 function briefingBuildStoreForecastFromTable(forecastRows, todayISO, recentSignals = { byId:{}, byName:{} }) {
   return (forecastRows || []).map(row => {
@@ -5587,7 +5750,9 @@ function briefingBuildStoreForecastFromTable(forecastRows, todayISO, recentSigna
     if (!enabled || lifecycle === 'inactive') return null;
 
     let lastDate = String(row.last_delivery_date || '').slice(0,10);
-    const recent = recentSignals.byId?.[String(row.id || row.store_id || '')] || recentSignals.byName?.[String(row.store_name || '').toLowerCase().trim()];
+    const recent = recentSignals.byId?.[String(row.id || row.store_id || '')]
+      || recentSignals.byName?.[briefingNormStoreName(row.store_name)]
+      || Object.entries(recentSignals.byName || {}).find(([k]) => k && briefingNormStoreName(row.store_name) && (k.includes(briefingNormStoreName(row.store_name)) || briefingNormStoreName(row.store_name).includes(k)))?.[1];
     if (recent?.lastDate && (!lastDate || briefingDiffDays(recent.lastDate, lastDate) > 0)) lastDate = recent.lastDate;
     if (!lastDate) return null;
 
@@ -5698,7 +5863,7 @@ function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, c
   return actions.slice(0, 3);
 }
 
-const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v3_forecasts';
+const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v4_recent_mix_quotes';
 const DASH_BRIEFING_COLLAPSED_KEY = 'gremier_dash_briefing_collapsed_v1';
 
 function briefingSetCollapsed(collapsed, persist = true) {
@@ -5840,7 +6005,7 @@ async function loadBriefing(options = {}) {
       sb.from('products').select('id,name_en,name_he,category,variations'),
       sb.from('stores').select('id,name,is_active').eq('is_active', true).order('sort_order'),
       sb.from('store_deliveries')
-        .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_syrup,quantities')
+        .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_syrup,quantities,stores(name)')
         .gte('delivery_date', deliveryLookbackISO)
         .lte('delivery_date', todayISO)
         .order('delivery_date', { ascending: true }),
@@ -5907,16 +6072,20 @@ async function loadBriefing(options = {}) {
       : briefingEmpty('Nothing scheduled for today.');
 
     const storesHtml = dueStores.length
-      ? dueStores.map(p => {
-          const qty = [];
-          if (Math.round(p.avgLarge)) qty.push(`${Math.round(p.avgLarge)} large`);
-          if (Math.round(p.avgSmall)) qty.push(`${Math.round(p.avgSmall)} small`);
-          if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)} syrup`);
-          const confidence = p.confidence ? ` · ${p.confidence} confidence` : '';
-          const lifecycle = p.lifecycleStatus && p.lifecycleStatus !== 'active' ? ` · ${p.lifecycleStatus}` : '';
-          const meta = `Needs about ${qty.length ? qty.join(', ') : 'a normal restock'} per delivery · usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago · next estimate ${briefingDateLabel(p.dueDate)}${confidence}${lifecycle}${p.productMixText || ''}`;
-          return briefingItem(p.store, meta, p.badge, p.tone);
-        }).join('')
+      ? (() => {
+          const thisWeek = dueStores.filter(p => p.daysUntilDue <= 7 || p.dueScore >= 0.85).slice(0, 5);
+          const watch = dueStores.filter(p => !thisWeek.includes(p)).slice(0, 4);
+          const renderStore = p => {
+            const qty = [];
+            if (Math.round(p.avgLarge)) qty.push(`${Math.round(p.avgLarge)} large`);
+            if (Math.round(p.avgSmall)) qty.push(`${Math.round(p.avgSmall)} mini`);
+            if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)} syrup`);
+            const lines = [`• Avg: ${qty.length ? qty.join(', ') : 'normal restock'}`, `• Every ${p.avgGapDays}d · last ${p.daysSinceLast}d ago`];
+            if (p.productMixText) lines.push(p.productMixText);
+            return briefingItem(p.store, lines.join('<br>'), p.badge, p.tone);
+          };
+          return `${thisWeek.length ? '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);margin:0 0 6px">Deliver this week</div>' + thisWeek.map(renderStore).join('') : ''}${watch.length ? '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);margin:12px 0 6px">Keep an eye on</div>' + watch.map(renderStore).join('') : ''}`;
+        })()
       : briefingEmpty(usingForecastTable ? 'No active store looks due from the forecast table right now.' : 'No store looks due from the last 180 days of delivery patterns.');
 
     const productionRows = [];
@@ -5939,7 +6108,7 @@ async function loadBriefing(options = {}) {
     const urgentSummaryRows = [];
     urgentBottleShortfalls.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready`, 'urgent', 'danger')));
     concentrateGapActions.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `Ready ${briefingRound(x.have,1)}L${x.brewing ? ` · already brewing/draining ${briefingRound(x.brewing,1)}L` : ''} · demand ${briefingRound(x.demand,1)}L`, 'urgent', 'danger')));
-    dueStores.filter(p => p.daysUntilDue <= 1 || p.dueScore >= 1.2).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Needs about ${Math.round(p.avgLarge || 0)} large / ${Math.round(p.avgSmall || 0)} minis · usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago`, p.badge, p.tone)));
+    dueStores.filter(p => p.daysUntilDue <= 1 || p.dueScore >= 1.2).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Avg ${Math.round(p.avgLarge || 0)} large / ${Math.round(p.avgSmall || 0)} minis · every ${p.avgGapDays}d`, p.badge, p.tone)));
     const urgentHtml = urgentSummaryRows.length
       ? `<div class="briefing-section">${urgentSummaryRows.join('')}</div>`
       : '';
