@@ -5505,14 +5505,90 @@ function briefingForecastTotals(patterns) {
     return t;
   }, { large:0, small:0, syrup:0 });
 }
+function briefingBuildRecentStoreSignals(deliveries, stores, todayISO) {
+  const storeById = {};
+  (stores || []).forEach(s => { storeById[String(s.id)] = s; });
+  const groups = {};
+  (deliveries || []).forEach(d => {
+    const date = String(d.delivery_date || '').slice(0,10);
+    if (!date) return;
+    const idKey = d.store_id ? `id:${String(d.store_id)}` : '';
+    const name = d.store_name || storeById[String(d.store_id)]?.name || '';
+    const nameKey = name ? `name:${String(name).toLowerCase().trim()}` : '';
+    const key = idKey || nameKey;
+    if (!key) return;
+    if (!groups[key]) groups[key] = { storeId:d.store_id || '', name, rows:[], productMix:{}, specificRuns:0 };
+    groups[key].rows.push(d);
+    const qtyMap = briefingQtyMap(d.quantities);
+    if (Object.keys(qtyMap).some(k => briefingNum(qtyMap[k]) > 0)) {
+      groups[key].specificRuns += 1;
+      Object.entries(qtyMap).forEach(([pid, qty]) => {
+        const q = briefingNum(qty);
+        if (q <= 0) return;
+        const label = briefingProductLabel(pid);
+        groups[key].productMix[label] = (groups[key].productMix[label] || 0) + q;
+      });
+    }
+  });
+  const byId = {}, byName = {};
+  Object.values(groups).forEach(g => {
+    g.rows.sort((a,b) => String(a.delivery_date||'').localeCompare(String(b.delivery_date||'')));
+    const last = g.rows[g.rows.length - 1];
+    const lastDate = String(last?.delivery_date || '').slice(0,10);
+    const recentRows = g.rows.slice(-4);
+    const signal = {
+      lastDate,
+      daysSinceLast: lastDate ? Math.max(0, briefingDiffDays(todayISO, lastDate)) : 999,
+      avgLarge: briefingAvg(recentRows.map(x => briefingNum(x.qty_large))),
+      avgSmall: briefingAvg(recentRows.map(x => briefingNum(x.qty_small))),
+      avgSyrup: briefingAvg(recentRows.map(x => briefingNum(x.qty_syrup))),
+      specificRuns: g.specificRuns,
+      productMix: g.productMix,
+    };
+    if (g.storeId) byId[String(g.storeId)] = signal;
+    if (g.name) byName[String(g.name).toLowerCase().trim()] = signal;
+  });
+  return { byId, byName };
+}
+function briefingStoreProductMixText(pattern) {
+  if (!pattern || !pattern.productMix || pattern.specificRuns < 2) return '';
+  const parts = Object.entries(pattern.productMix)
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([label, qty]) => `${Math.round(qty)} ${label}`);
+  return parts.length ? ` · recent specific mix: ${parts.join(', ')}` : '';
+}
+function briefingForecastDailyDemand(forecastRows, recentSignals, todayISO) {
+  const rows = (forecastRows || []).filter(row => row.forecast_enabled !== false && String(row.lifecycle_status || 'active').toLowerCase() !== 'inactive');
+  return rows.reduce((t, row) => {
+    const cycle = Math.max(7, Math.round(briefingNum(row.avg_days_between_deliveries) || briefingNum(row.default_cycle_days) || 14));
+    const largePerRun = Math.max(0, briefingNum(row.expected_large_next_delivery, briefingNum(row.avg_large_per_delivery, 0)));
+    const miniPerRun = Math.max(0, briefingNum(row.expected_mini_next_delivery, briefingNum(row.avg_mini_per_delivery, 0)));
+    t.large += largePerRun / cycle;
+    t.small += miniPerRun / cycle;
+    return t;
+  }, { large:0, small:0, syrup:0 });
+}
+function briefingShortageText(label, stockQty, dailyDemand, dueDemand) {
+  const stock = briefingNum(stockQty);
+  const daily = briefingNum(dailyDemand);
+  const due = briefingNum(dueDemand);
+  if (due > stock) return `${label} short now by ${Math.ceil(due - stock)}`;
+  if (daily <= 0) return '';
+  const days = Math.floor(stock / daily);
+  if (days <= 14) return `${label} short in about ${Math.max(0, days)}d`;
+  return '';
+}
 
-function briefingBuildStoreForecastFromTable(forecastRows, todayISO) {
+function briefingBuildStoreForecastFromTable(forecastRows, todayISO, recentSignals = { byId:{}, byName:{} }) {
   return (forecastRows || []).map(row => {
     const enabled = row.forecast_enabled !== false;
     const lifecycle = String(row.lifecycle_status || 'active').toLowerCase();
     if (!enabled || lifecycle === 'inactive') return null;
 
-    const lastDate = String(row.last_delivery_date || '').slice(0,10);
+    let lastDate = String(row.last_delivery_date || '').slice(0,10);
+    const recent = recentSignals.byId?.[String(row.id || row.store_id || '')] || recentSignals.byName?.[String(row.store_name || '').toLowerCase().trim()];
+    if (recent?.lastDate && (!lastDate || briefingDiffDays(recent.lastDate, lastDate) > 0)) lastDate = recent.lastDate;
     if (!lastDate) return null;
 
     const cycle = Math.max(7, Math.round(
@@ -5531,8 +5607,8 @@ function briefingBuildStoreForecastFromTable(forecastRows, todayISO) {
     const shouldMention = isDormant ? dueScore >= 1.35 : dueScore >= 0.85 || daysUntilDue <= 4;
     if (!shouldMention) return null;
 
-    const avgLarge = Math.max(0, briefingNum(row.expected_large_next_delivery, briefingNum(row.avg_large_per_delivery, 12)));
-    const avgSmall = Math.max(0, briefingNum(row.expected_mini_next_delivery, briefingNum(row.avg_mini_per_delivery, 12)));
+    const avgLarge = Math.max(0, briefingNum(row.expected_large_next_delivery, briefingNum(row.avg_large_per_delivery, recent?.avgLarge || 12)));
+    const avgSmall = Math.max(0, briefingNum(row.expected_mini_next_delivery, briefingNum(row.avg_mini_per_delivery, recent?.avgSmall || 12)));
 
     let tone = isDormant ? 'info' : 'warn';
     let badge = daysUntilDue > 1 ? `due in ${daysUntilDue}d` : (daysUntilDue === 1 ? 'due tomorrow' : (daysUntilDue === 0 ? 'due today' : `${Math.abs(daysUntilDue)}d overdue`));
@@ -5553,6 +5629,7 @@ function briefingBuildStoreForecastFromTable(forecastRows, todayISO) {
       runs: briefingNum(row.total_deliveries),
       confidence: row.confidence || 'low',
       lifecycleStatus: lifecycle,
+      productMixText: briefingStoreProductMixText(recent),
       tone,
       badge,
       source: 'forecast_table',
@@ -5763,7 +5840,7 @@ async function loadBriefing(options = {}) {
       sb.from('products').select('id,name_en,name_he,category,variations'),
       sb.from('stores').select('id,name,is_active').eq('is_active', true).order('sort_order'),
       sb.from('store_deliveries')
-        .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_syrup')
+        .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_syrup,quantities')
         .gte('delivery_date', deliveryLookbackISO)
         .lte('delivery_date', todayISO)
         .order('delivery_date', { ascending: true }),
@@ -5788,7 +5865,8 @@ async function loadBriefing(options = {}) {
     const inProgressBrews = briefingInProgressBrews(openJobs || []);
 
     const forecastRows = !forecastsRes.error ? (forecastsRes.data || []) : [];
-    const dueStoresFromForecasts = briefingBuildStoreForecastFromTable(forecastRows, todayISO);
+    const recentStoreSignals = briefingBuildRecentStoreSignals(deliveriesRes.data || [], storesRes.data || [], todayISO);
+    const dueStoresFromForecasts = briefingBuildStoreForecastFromTable(forecastRows, todayISO, recentStoreSignals);
     const dueStoresFromNewDefaults = briefingBuildNewStoreDefaults(deliveriesRes.data || [], storesRes.data || [], forecastRows, todayISO);
     const dueStores = (dueStoresFromForecasts.length
       ? [...dueStoresFromForecasts, ...dueStoresFromNewDefaults]
@@ -5800,9 +5878,13 @@ async function loadBriefing(options = {}) {
     const stockSmall = briefingCategoryTotal(inventory, 'mini');
     const stockSyrup = briefingCategoryTotal(inventory, 'syrup');
     const forecastGaps = [];
-    if (forecastTotals.large > stockLarge) forecastGaps.push(`Forecast large bottles short ${Math.ceil(forecastTotals.large - stockLarge)}`);
-    if (forecastTotals.small > stockSmall) forecastGaps.push(`Forecast minis short ${Math.ceil(forecastTotals.small - stockSmall)}`);
-    if (forecastTotals.syrup > stockSyrup) forecastGaps.push(`Forecast syrups short ${Math.ceil(forecastTotals.syrup - stockSyrup)}`);
+    const forecastDailyDemand = briefingForecastDailyDemand(forecastRows, recentStoreSignals, todayISO);
+    const largeShortText = briefingShortageText('Forecast large bottles', stockLarge, forecastDailyDemand.large, forecastTotals.large);
+    const miniShortText = briefingShortageText('Forecast minis', stockSmall, forecastDailyDemand.small, forecastTotals.small);
+    const syrupShortText = briefingShortageText('Forecast syrups', stockSyrup, forecastDailyDemand.syrup, forecastTotals.syrup);
+    if (largeShortText) forecastGaps.push(largeShortText);
+    if (miniShortText) forecastGaps.push(miniShortText);
+    if (syrupShortText) forecastGaps.push(syrupShortText);
 
     const bottleShortfalls = briefingBottleTimeline(jobs14, inventory).filter(x => x.gap > 0);
     const urgentBottleShortfalls = briefingBottleTimeline(next7, inventory).filter(x => x.gap > 0);
@@ -5832,7 +5914,7 @@ async function loadBriefing(options = {}) {
           if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)} syrup`);
           const confidence = p.confidence ? ` · ${p.confidence} confidence` : '';
           const lifecycle = p.lifecycleStatus && p.lifecycleStatus !== 'active' ? ` · ${p.lifecycleStatus}` : '';
-          const meta = `Needs about ${qty.length ? qty.join(', ') : 'a normal restock'} per delivery · usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago · next estimate ${briefingDateLabel(p.dueDate)}${confidence}${lifecycle}`;
+          const meta = `Needs about ${qty.length ? qty.join(', ') : 'a normal restock'} per delivery · usually every ${p.avgGapDays}d · last delivery ${p.daysSinceLast}d ago · next estimate ${briefingDateLabel(p.dueDate)}${confidence}${lifecycle}${p.productMixText || ''}`;
           return briefingItem(p.store, meta, p.badge, p.tone);
         }).join('')
       : briefingEmpty(usingForecastTable ? 'No active store looks due from the forecast table right now.' : 'No store looks due from the last 180 days of delivery patterns.');
@@ -5841,7 +5923,7 @@ async function loadBriefing(options = {}) {
     urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} already scheduled` : ''}`, 'urgent', 'danger')));
     if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed within 14 days · have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} already scheduled` : ''}`, 'plan', 'warn')));
     concentrateGapActions.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `14-day demand ${briefingRound(x.demand,1)}L · ready ${briefingRound(x.have,1)}L${x.brewing ? ` · brewing ${briefingRound(x.brewing,1)}L` : ''}`, 'brew first', 'danger')));
-    forecastGaps.slice(0, 3).forEach(x => productionRows.push(briefingItem(x, 'Based on stores that look due soon. Store-delivery rows are generic, so check exact flavors before bottling.', 'forecast', 'warn')));
+    forecastGaps.slice(0, 3).forEach(x => productionRows.push(briefingItem(x, 'Based on active store forecast demand. As more store deliveries are logged with exact bottle types, this will become flavor-specific.', 'forecast', 'warn')));
     if (!productionRows.length) productionRows.push(briefingEmpty('Scheduled production and ready stock cover the next 7–14 days.'));
 
     const stockStats = [
