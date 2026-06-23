@@ -1550,6 +1550,115 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 window.MAIN_SB = sb; // shared client — reused by opsFetch (Schedule/Stock/voice logger) to avoid duplicate auth sessions
 let adminUser = null;
 let allProducts = [];
+
+
+// ── Catalog → Ops picker sync ─────────────────────────────
+// Website Products are the source of truth. Physical products added there are
+// automatically exposed to Store Deliveries, Schedule, Stock, and related pickers.
+// Existing hard-coded stock keys still work; new catalog products use their
+// Supabase product UUID as the inventory key.
+function gremierOpsNormText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, ' ').trim();
+}
+function gremierOpsPhysicalCategory(product) {
+  const cat = String(product?.category || '').toLowerCase();
+  const text = gremierOpsNormText([product?.name_en, product?.name_he, product?.description_en, product?.description_he, cat].filter(Boolean).join(' '));
+  if (product?.is_coffee_bar || cat === 'coffeebars' || cat === 'coffee_bar') return '';
+  if (/syrup|סירופ/.test(text)) return 'syrup';
+  if (/dispenser|דיספנסר|pump/.test(text)) return 'dispenser';
+  if (/jerry|ג.?רי|5\s*l|5l|5 ליטר|bulk/.test(text) || cat === 'bulk') return 'jerry';
+  if (/mini|מיני|קרמייר|cremier/.test(text) || cat === 'minis') return 'mini';
+  if (cat === 'bottles' || /liter|litre|1\s*l|1l|בקבוק גדול|ליטר/.test(text)) return 'liter';
+  return '';
+}
+function gremierOpsConcentrateForProduct(product, category) {
+  if (!['liter','mini','jerry'].includes(category)) return null;
+  const text = gremierOpsNormText([product?.name_en, product?.name_he, product?.description_en, product?.description_he].filter(Boolean).join(' '));
+  if (/house|blend|האוס|בלנד/.test(text)) return 'houseBlend';
+  if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(text)) return 'colombia';
+  if (/decaf|נטול/.test(text)) return 'decaf';
+  return 'classic';
+}
+function gremierOpsLitersPerUnit(category) {
+  if (category === 'mini') return 0.25;
+  if (category === 'jerry') return 5;
+  if (category === 'liter') return 1;
+  return 0;
+}
+function gremierBuildOpsProductMeta(product) {
+  const category = gremierOpsPhysicalCategory(product);
+  if (!category) return null;
+  const key = String(product?.stock_key || product?.id || '').trim();
+  if (!key) return null;
+  const label = String(product?.name_en || product?.name_he || 'Product').trim();
+  const concentrate = gremierOpsConcentrateForProduct(product, category);
+  const image = Array.isArray(product?.images) ? product.images[0] : (product?.image_url || product?.image || null);
+  return { key, label, category, concentrate, litersPerUnit: gremierOpsLitersPerUnit(category), image: image || null };
+}
+window.gremierLoadDynamicOpsProductCatalog = async function gremierLoadDynamicOpsProductCatalog(force = false) {
+  if (!force && window.__OPS_DYNAMIC_PRODUCT_CATALOG__) return window.__OPS_DYNAMIC_PRODUCT_CATALOG__;
+  let rows = [];
+  try {
+    if (Array.isArray(allProducts) && allProducts.length) rows = allProducts;
+    if (!rows.length) {
+      const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
+      if (error) throw error;
+      rows = data || [];
+    }
+  } catch (err) {
+    console.warn('Could not load website products for ops pickers:', err);
+    rows = Array.isArray(allProducts) ? allProducts : [];
+  }
+  const products = {}, full = {}, images = {}, labeled = [];
+  rows.forEach(raw => {
+    const p = typeof normalizeProduct === 'function' ? normalizeProduct(raw) : raw;
+    const meta = gremierBuildOpsProductMeta(p);
+    if (!meta) return;
+    products[meta.key] = { label: meta.label, category: meta.category };
+    full[meta.key] = { label: meta.label, category: meta.category, concentrate: meta.concentrate, litersPerUnit: meta.litersPerUnit };
+    if (meta.image) images[meta.key] = meta.image;
+    if (['liter','mini'].includes(meta.category)) labeled.push(meta.key);
+  });
+  window.__OPS_DYNAMIC_PRODUCTS__ = products;
+  window.__OPS_DYNAMIC_PRODUCTS_FULL__ = full;
+  window.__OPS_DYNAMIC_PRODUCT_IMAGES__ = images;
+  window.__OPS_DYNAMIC_LABELED_PRODUCTS__ = labeled;
+  window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = { products, full, images, labeled };
+  return window.__OPS_DYNAMIC_PRODUCT_CATALOG__;
+};
+window.gremierMergeDynamicOpsProducts = async function gremierMergeDynamicOpsProducts(productTarget, fullTarget, imageTarget, labeledArray, labeledWarn) {
+  const catalog = await window.gremierLoadDynamicOpsProductCatalog(true);
+  if (productTarget) Object.assign(productTarget, catalog.products || {});
+  if (fullTarget) Object.assign(fullTarget, catalog.full || {});
+  if (imageTarget) Object.assign(imageTarget, catalog.images || {});
+  if (Array.isArray(labeledArray)) (catalog.labeled || []).forEach(pid => { if (!labeledArray.includes(pid)) labeledArray.push(pid); });
+  if (labeledWarn) (catalog.labeled || []).forEach(pid => { if (!(pid in labeledWarn)) labeledWarn[pid] = null; });
+  window.__OPS_PRODUCT_IMAGES__ = { ...(window.__OPS_PRODUCT_IMAGES__ || {}), ...(catalog.images || {}) };
+  window.__OPS_PRODUCTS__ = { ...(window.__OPS_PRODUCTS__ || {}), ...(catalog.products || {}) };
+  window.__OPS_PRODUCTS_FULL__ = { ...(window.__OPS_PRODUCTS_FULL__ || {}), ...(catalog.full || {}) };
+  return catalog;
+};
+window.gremierEnsureDynamicOpsStockRows = async function gremierEnsureDynamicOpsStockRows() {
+  const catalog = await window.gremierLoadDynamicOpsProductCatalog(true);
+  const ids = Object.keys(catalog.products || {});
+  if (!ids.length || typeof window.opsFetch !== 'function') return;
+  try {
+    const enc = ids.map(encodeURIComponent).join(',');
+    const existing = await window.opsFetch(`inventory?product=in.(${enc})&select=product`);
+    const have = new Set((existing || []).map(r => String(r.product)));
+    const missing = ids.filter(pid => !have.has(pid)).map(product => ({ product, qty: 0 }));
+    if (missing.length) await window.opsFetch('inventory', { method:'POST', prefer:'return=minimal', body:JSON.stringify(missing) });
+  } catch (err) { console.warn('Could not auto-create inventory rows for catalog products:', err); }
+  try {
+    const labelIds = catalog.labeled || [];
+    if (!labelIds.length) return;
+    const enc = labelIds.map(encodeURIComponent).join(',');
+    const existing = await window.opsFetch(`labeled_stock?product=in.(${enc})&select=product`);
+    const have = new Set((existing || []).map(r => String(r.product)));
+    const missing = labelIds.filter(pid => !have.has(pid)).map(product => ({ product, qty: 0 }));
+    if (missing.length) await window.opsFetch('labeled_stock', { method:'POST', prefer:'return=minimal', body:JSON.stringify(missing) });
+  } catch (err) { console.warn('Could not auto-create labeled-stock rows for catalog products:', err); }
+};
 let allOrders = [];
 let orderKindFilter = 'all';
 let allMembers = [];
@@ -1864,6 +1973,14 @@ async function loadAllProducts() {
   allProducts = (data || []).map(normalizeProduct);
   localStorage.setItem('gremier_products_cache', JSON.stringify(data || []));
   renderProductsList();
+  try {
+    window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = null;
+    await window.gremierLoadDynamicOpsProductCatalog?.(true);
+    await window.gremierEnsureDynamicOpsStockRows?.();
+    window.dispatchEvent(new CustomEvent('gremier:catalog-products-changed'));
+  } catch (err) {
+    console.warn('Catalog product sync after product load failed:', err);
+  }
 }
 let prodFilter = { search:'', cat:'all' };
 function filterProducts(val) { prodFilter.search = val.toLowerCase(); renderProductsList(); }
@@ -5060,6 +5177,14 @@ const LD_PRODUCTS = {
   sugar_syrup:          { label:'Sugar Syrup',           category:'syrup' },
 };
 const LD_DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
+async function ldSyncProductsFromWebsite() {
+  try {
+    const catalog = await window.gremierLoadDynamicOpsProductCatalog?.(true);
+    if (catalog?.products) Object.assign(LD_PRODUCTS, catalog.products);
+  } catch (err) {
+    console.warn('Could not sync website products into Store Delivery picker:', err);
+  }
+}
 const LD_FLAVOR_CASES = {
   classic_liter:     { label:'Classic Case',           qty:12 },
   sweetened_classic: { label:'Sweetened Classic Case',  qty:12 },
@@ -5126,7 +5251,8 @@ function ldGetAggregated() {
   return { large, small, syrup };
 }
 
-function openLogDeliveryModal() {
+async function openLogDeliveryModal() {
+  await ldSyncProductsFromWebsite();
   ldQuantities = {};
   document.getElementById('editDeliveryId').value = '';
   document.getElementById('ldDate').value = new Date().toISOString().split('T')[0];
@@ -5141,7 +5267,8 @@ function openLogDeliveryModal() {
   document.getElementById('logDeliveryModal').classList.add('open');
 }
 
-function openEditDeliveryModal(deliveryId) {
+async function openEditDeliveryModal(deliveryId) {
+  await ldSyncProductsFromWebsite();
   const d = allDeliveries.find(x => x.id === deliveryId);
   if (!d) return;
   document.getElementById('editDeliveryId').value = d.id;
@@ -7507,10 +7634,11 @@ async function syncStoreDeliveryToAdmin(job, qtys) {
 
 // inventory helpers (reuse opsFetch from phase 1)
 async function incrementInventory2(product, delta) {
-  const rows = await opsFetch(`inventory?product=eq.${product}&select=qty`);
-  if (!rows?.length) return;
-  const newQty = Math.max(0,(rows[0].qty||0)+delta);
-  await opsFetch(`inventory?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  const enc = encodeURIComponent(product);
+  const rows = await opsFetch(`inventory?product=eq.${enc}&select=qty`);
+  const newQty = Math.max(0,((rows?.[0]?.qty)||0)+delta);
+  if (rows?.length) await opsFetch(`inventory?product=eq.${enc}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  else await opsFetch('inventory',{method:'POST',prefer:'return=minimal',body:JSON.stringify({product,qty:newQty})});
   window.notifyGremierStockChanged?.();
 }
 async function incrementConcentrate2(type, delta) {
@@ -7523,10 +7651,11 @@ async function incrementConcentrate2(type, delta) {
   window.notifyGremierStockChanged?.();
 }
 async function incrementLabeledStock2(product, delta) {
-  const rows = await opsFetch(`labeled_stock?product=eq.${product}&select=qty`);
-  if (!rows?.length) return;
-  const newQty = Math.max(0,(rows[0].qty||0)+delta);
-  await opsFetch(`labeled_stock?product=eq.${product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  const enc = encodeURIComponent(product);
+  const rows = await opsFetch(`labeled_stock?product=eq.${enc}&select=qty`);
+  const newQty = Math.max(0,((rows?.[0]?.qty)||0)+delta);
+  if (rows?.length) await opsFetch(`labeled_stock?product=eq.${enc}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+  else await opsFetch('labeled_stock',{method:'POST',prefer:'return=minimal',body:JSON.stringify({product,qty:newQty})});
   window.notifyGremierStockChanged?.();
 }
 /** Batch-decrement/increment many inventory rows in one read + parallel writes. deltas: {product: delta} */
@@ -7746,6 +7875,8 @@ const PRODUCT_IMG_FALLBACK_BOTTLE = PRODUCT_IMAGES.classic_liter;
 const PRODUCT_IMG_FALLBACK_JERRY  = PRODUCT_IMAGES.jerry_can;
 const PRODUCT_IMG_FALLBACK_SYRUP  = PRODUCT_IMAGES.vanilla_syrup;
 function getProductImage(pid) {
+  if (window.__OPS_PRODUCT_IMAGES__?.[pid]) return window.__OPS_PRODUCT_IMAGES__[pid];
+  if (window.__OPS_DYNAMIC_PRODUCT_IMAGES__?.[pid]) return window.__OPS_DYNAMIC_PRODUCT_IMAGES__[pid];
   if (PRODUCT_IMAGES[pid]) return PRODUCT_IMAGES[pid];
   if (!pid) return PRODUCT_IMG_FALLBACK_BOTTLE;
   if (pid.includes('jerry')) return PRODUCT_IMG_FALLBACK_JERRY;
@@ -7825,6 +7956,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
     jerry_can_colombia:'Jerry Can Colombia', jerry_can_decaf:'Jerry Can Decaf',
     vanilla_syrup:'Vanilla Syrup', caramel_syrup:'Caramel Syrup', sugar_syrup:'Sugar Syrup', dispenser:'Dispenser',
   };
+  Object.entries(window.__OPS_DYNAMIC_PRODUCTS__ || {}).forEach(([pid,p]) => { PROD_LABELS[pid] = p.label || pid; });
   function getBottledUnits(liters) {
     if (MINI_P.includes(job.product)) return Math.round(liters*4);
     if (JERRY_P.includes(job.product)) return Math.round(liters/5);
@@ -8226,6 +8358,7 @@ function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
     jerry_can_colombia:{label:'Jerry Can Colombia',category:'jerry'}, jerry_can_decaf:{label:'Jerry Can Decaf',category:'jerry'},
     vanilla_syrup:{label:'Vanilla Syrup',category:'syrup'}, caramel_syrup:{label:'Caramel Syrup',category:'syrup'}, sugar_syrup:{label:'Sugar Syrup',category:'syrup'},
   };
+  Object.assign(FP, window.__OPS_DYNAMIC_PRODUCTS__ || {});
   const CONC = { classic:'Classic (Dark Roast)', houseBlend:'House Blend', colombia:'Colombia (Light Roast)', decaf:'Decaf' };
   const DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
   // same flavor-specific quick-fill shortcuts as the Store Deliveries tab's Log Delivery form
@@ -8461,6 +8594,8 @@ const [showForm, setShowForm] = useState2(false);
   const tomorrow = tomorrowISO2();
 
   async function reload() {
+    await window.gremierMergeDynamicOpsProducts?.(window.__OPS_PRODUCTS__, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__);
+    await window.gremierEnsureDynamicOpsStockRows?.();
     const [allJobs, storeRows, webRows] = await Promise.all([
       loadAllJobs2(),
       opsFetch('stores?select=*&is_active=eq.true&order=sort_order'),
@@ -8483,11 +8618,14 @@ const [showForm, setShowForm] = useState2(false);
     // the voice logger lives in a separate React root; when it saves a job it fires this
     // event so the calendar/task lists re-fetch instead of staying stale until a page reload
     function onJobsChanged() { reload(); }
+    function onCatalogChanged() { reload(); }
     window.addEventListener('gremier:schedule-prefill', onPrefillHandoff);
     window.addEventListener('gremier:jobs-changed', onJobsChanged);
+    window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
+      window.removeEventListener('gremier:catalog-products-changed', onCatalogChanged);
     };
   },[]);
 
@@ -8850,6 +8988,7 @@ const PRODUCTS = {
   sugar_syrup:          { label: 'Sugar Syrup',           category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
   dispenser:            { label: 'Dispenser',             category: 'dispenser', concentrate: null,         litersPerUnit: 0    },
 };
+Object.assign(PRODUCTS, window.__OPS_DYNAMIC_PRODUCTS_FULL__ || {});
 const BEAN_TYPES = {
   classic:    { label: 'Classic (Dark Roast)',   warnKg: 9 },
   houseBlend: { label: 'House Blend',             warnKg: 3 },
@@ -8883,7 +9022,13 @@ async function loadUpcomingJobs() {
   return rows || [];
 }
 async function patchInventory(product, qty) {
-  await opsFetch(`inventory?product=eq.${product}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+  const enc = encodeURIComponent(product);
+  const existing = await opsFetch(`inventory?product=eq.${enc}&select=product`);
+  if (existing?.length) {
+    await opsFetch(`inventory?product=eq.${enc}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+  } else {
+    await opsFetch('inventory', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify({ product, qty }) });
+  }
   window.notifyGremierStockChanged?.();
 }
 async function patchConcentrate(type, liters) {
@@ -8899,7 +9044,13 @@ async function patchBeanOrdered(type, ordered, orderedKg) {
   window.notifyGremierStockChanged?.();
 }
 async function patchLabeledStock(product, qty) {
-  await opsFetch(`labeled_stock?product=eq.${product}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+  const enc = encodeURIComponent(product);
+  const existing = await opsFetch(`labeled_stock?product=eq.${enc}&select=product`);
+  if (existing?.length) {
+    await opsFetch(`labeled_stock?product=eq.${enc}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ qty }) });
+  } else {
+    await opsFetch('labeled_stock', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify({ product, qty }) });
+  }
   window.notifyGremierStockChanged?.();
 }
 
@@ -9188,8 +9339,8 @@ function LabelsScreen({ labeledStock, setLabeledStock }) {
     await patchLabeledStock(pid, v);
   }
   const groups = [
-    { label:'Liter Bottles', pids:['classic_liter','sweetened_classic','house_blend','colombia_liter'] },
-    { label:'Mini Bottles',  pids:['vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'] },
+    { label:'Liter Bottles', pids:Object.keys(PRODUCTS).filter(pid => PRODUCTS[pid]?.category === 'liter') },
+    { label:'Mini Bottles',  pids:Object.keys(PRODUCTS).filter(pid => PRODUCTS[pid]?.category === 'mini') },
   ];
   return (
     <div>
@@ -9409,6 +9560,8 @@ function StockTab() {
   const reloadStock = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
+      await window.gremierMergeDynamicOpsProducts?.(PRODUCTS, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__, LABELED_PRODUCTS, LABELED_WARN);
+      await window.gremierEnsureDynamicOpsStockRows?.();
       const [stock, j] = await Promise.all([loadStockData(), loadUpcomingJobs()]);
       setInventory(stock.inventory);
       setConcentrate(stock.concentrate);
@@ -9455,11 +9608,13 @@ function StockTab() {
 
     window.__gremierReloadStock = runReload;
     window.addEventListener('gremier:stock-changed', onStockChanged);
+    window.addEventListener('gremier:catalog-products-changed', onStockChanged);
     window.addEventListener('focus', onFocusOrVisible);
     document.addEventListener('visibilitychange', onFocusOrVisible);
 
     return () => {
       window.removeEventListener('gremier:stock-changed', onStockChanged);
+      window.removeEventListener('gremier:catalog-products-changed', onStockChanged);
       window.removeEventListener('focus', onFocusOrVisible);
       document.removeEventListener('visibilitychange', onFocusOrVisible);
       if (window.__gremierReloadStock === runReload) delete window.__gremierReloadStock;
@@ -9807,6 +9962,8 @@ function GlobalPillsFloat() {
   const [webQueueOpen, setWebQueueOpen] = useState3(false);
 
   async function reload() {
+    await window.gremierMergeDynamicOpsProducts?.(window.__OPS_PRODUCTS__, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__);
+    await window.gremierEnsureDynamicOpsStockRows?.();
     const [allJobs, storeRows, webRows] = await Promise.all([
       loadAllJobs2(),
       window.opsFetch('stores?select=*&is_active=eq.true&order=sort_order'),
