@@ -243,6 +243,16 @@
     .cell-status { width:76px; }
     .cell-date { width:64px; white-space:nowrap; font-size:.72rem; }
     .cell-actions { width:72px; overflow:visible; }
+    .pl-menu-wrap { position:relative; display:inline-block; }
+    .pl-menu-btn { background:var(--highlight); border:1px solid var(--border); color:var(--cream); width:32px; height:32px; border-radius:4px; cursor:pointer; font-size:1.1rem; display:flex; align-items:center; justify-content:center; transition:background .15s; }
+    .pl-menu-btn:hover { background:var(--bg3); border-color:var(--silver-dim); }
+    .pl-menu-drop { position:fixed; z-index:9999; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 0; min-width:148px; box-shadow:0 4px 20px rgba(0,0,0,.5); display:none; }
+    .pl-menu-drop.open { display:block; }
+    .pl-menu-item { display:block; width:100%; padding:8px 14px; font-family:'DM Sans',sans-serif; font-size:.82rem; color:var(--cream2); background:none; border:none; text-align:left; cursor:pointer; white-space:nowrap; text-decoration:none; transition:background .12s; }
+    .pl-menu-item:hover { background:var(--highlight); color:var(--cream); }
+    .pl-menu-item.danger { color:var(--red); }
+    .pl-menu-item.danger:hover { background:rgba(229,115,104,.1); }
+    .pl-menu-sep { height:1px; background:var(--border); margin:4px 0; }
     .cell-customer { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cell-customer small { display:block; font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cell-actions-wrap { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
@@ -3973,6 +3983,30 @@ async function shareSavedQuotePNG(id) {
   }
 }
 
+// ── Paylink ⋯ dropdown menu ──────────────────────────────
+function togglePayLinkMenu(e, menuId) {
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+  const wasOpen = menu.classList.contains('open');
+  closeAllPayLinkMenus();
+  if (!wasOpen) {
+    menu.classList.add('open');
+    // position the dropdown relative to the button, avoiding viewport overflow
+    const r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 4) + 'px';
+    const right = window.innerWidth - r.right;
+    menu.style.right = right + 'px';
+    menu.style.left = 'auto';
+  }
+}
+function closeAllPayLinkMenus() {
+  document.querySelectorAll('.pl-menu-drop.open').forEach(m => m.classList.remove('open'));
+}
+// Close on any outside click
+document.addEventListener('click', closeAllPayLinkMenus);
+
 function copyLink(url) {
   navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
 }
@@ -4103,16 +4137,20 @@ If this looks good, I can send the payment link.`);
     <td class="cell-total" style="color:var(--cream)">₪${l.total}${l.discount>0?`<br><small style="color:var(--text2)">-₪${l.discount}</small>`:''}</td>
     <td class="cell-status">${statusCell}</td>
     <td class="cell-date hide-mobile">${date}</td>
-    <td class="cell-actions">
-      <div class="cell-actions-wrap">
-        ${opsBtn}
-        ${recreateBtn}
-        <button class="btn btn-outline btn-sm" onclick="editPayLink('${l.id}')">Edit</button>
-        <button class="btn btn-outline btn-sm" onclick="copyLink('${linkUrl}')">Copy</button>
-        <a href="${quoteWaUrl}" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none">Quote</a>
-        <a href="${waUrl}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none">Pay</a>
-        <button class="btn btn-outline btn-sm" onclick="openSavedQuotePNGMenu('${l.id}')">PNG</button>
-        <button class="btn btn-red btn-sm" onclick="deletePayLink('${l.id}','${l.order_id||''}')" title="Delete link">✕</button>
+    <td class="cell-actions" style="overflow:visible">
+      <div class="pl-menu-wrap">
+        <button class="pl-menu-btn" onclick="togglePayLinkMenu(event,'plm_${l.id}')">⋯</button>
+        <div class="pl-menu-drop" id="plm_${l.id}">
+          ${opsBtn ? `<button class="pl-menu-item" onclick="closeAllPayLinkMenus();queuePaymentLinkForOps('${l.link_code}')">📦 Send to Ops</button>` : ""}
+          ${recreateBtn ? `<button class="pl-menu-item" onclick="closeAllPayLinkMenus();recreateOrderFromPaymentLink('${l.link_code}')">♻ Recreate Order</button>` : ""}
+          <button class="pl-menu-item" onclick="closeAllPayLinkMenus();editPayLink('${l.id}')">✏ Edit</button>
+          <button class="pl-menu-item" onclick="closeAllPayLinkMenus();copyLink('${linkUrl}')">🔗 Copy Link</button>
+          <a href="${quoteWaUrl}" target="_blank" class="pl-menu-item" onclick="closeAllPayLinkMenus()">💬 Send Quote</a>
+          <a href="${waUrl}" target="_blank" class="pl-menu-item" onclick="closeAllPayLinkMenus()">💳 Send Pay Link</a>
+          <button class="pl-menu-item" onclick="closeAllPayLinkMenus();openSavedQuotePNGMenu('${l.id}')">🖼 PNG Quote</button>
+          <div class="pl-menu-sep"></div>
+          <button class="pl-menu-item danger" onclick="closeAllPayLinkMenus();deletePayLink('${l.id}','${l.order_id||''}')">✕ Delete</button>
+        </div>
       </div>
     </td>
   </tr>`;
@@ -8546,6 +8584,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
   })();
   const [cbSyrups,setCbSyrups] = useState2(cbSyrupInit.checked);
   const [cbSyrupQty,setCbSyrupQty] = useState2(cbSyrupInit.qty);
+  const [cbExtras,setCbExtras] = useState2(prefill?.cbExtras || {});
+  const [showCbExtras,setShowCbExtras] = useState2(Object.values(prefill?.cbExtras||{}).some(v=>v>0));
   const [brewConc,setBrewConc] = useState2('classic');
   const [kg,setKg] = useState2(3);
   const [bottleQuantities,setBottleQuantities] = useState2({});
@@ -8568,7 +8608,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
         Object.entries(cbSyrups).forEach(([pid,checked]) => {
           if (checked) finalSyrups[pid] = cbSyrupQty[pid] || 0;
         });
-        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, cbAddress, dispensers, cbSyrups:finalSyrups, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
+        const cbExtrasClean = Object.fromEntries(Object.entries(cbExtras).filter(([,v])=>Number(v)>0));
+        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, cbAddress, dispensers, cbSyrups:finalSyrups, quantities:Object.keys(cbExtrasClean).length?cbExtrasClean:undefined, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
       }
       const total = Object.values(quantities).reduce((s,v)=>s+(v||0),0);
       return { ...base, type:'delivery', deliveryType:subType,
@@ -8623,7 +8664,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
   return (
     <div style={TS.modal} onClick={onClose}>
       <div style={{...TS.modalBox,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-        <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'}</div>
+        <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'} <span style={{fontSize:11,color:'#4caf72',fontWeight:400}}>v2</span></div>
 
         <div style={{display:'flex',gap:8,marginBottom:14}}>
           <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
@@ -8675,6 +8716,24 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
                     )}
                   </div>
                 ))}
+                {/* ── Extra items (bottles etc.) ── */}
+                <div style={{marginTop:14}}>
+                  {!showCbExtras&&(
+                    <button style={{width:'100%',background:'#252525',border:'1px dashed #454545',borderRadius:8,padding:'10px',fontSize:13,color:'#9a9a9a',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
+                      onClick={()=>setShowCbExtras(true)}>+ More Items</button>
+                  )}
+                  {showCbExtras&&(
+                    <>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                        <span style={lbl}>Extra Items</span>
+                        <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:12,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}} onClick={()=>{setShowCbExtras(false);setCbExtras({})}}>✕ Remove</button>
+                      </div>
+                      <QtyRows cat="liter"  title="Liter Bottles" values={cbExtras} setValues={setCbExtras}/>
+                      <QtyRows cat="mini"   title="Mini Bottles"  values={cbExtras} setValues={setCbExtras}/>
+                      <QtyRows cat="jerry"  title="Jerry Cans"    values={cbExtras} setValues={setCbExtras}/>
+                    </>
+                  )}
+                </div>
               </>
             )}
           </>
@@ -8935,6 +8994,8 @@ async function addJobFromForm(job, mode) {
       cbAddress: job.cbAddress || '',
       dispensers: job.dispensers ?? 1,
       cbSyrups: job.cbSyrups || {},
+      // extra items added via '+ More Items' on coffeebar jobs
+      cbExtras: job.quantities || {},
     });
     setEditingJobId(job.id);
     setFormMode('schedule');
