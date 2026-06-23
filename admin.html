@@ -7721,6 +7721,9 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
       const brews = await opsFetch(`jobs?type=eq.brew&product=eq.${job.product}&brew_started=eq.true&done=eq.false&select=id`);
       if (brews?.length) await patchJob2(brews[0].id,{done:true});
     }
+    // Notify all React roots (ScheduleTab, GlobalPills, StockTab) to re-fetch so the
+    // linked brew job's done=true is reflected in the UI without a manual page reload.
+    window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
   }
   if (job.type==='bottling') {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
@@ -8763,11 +8766,17 @@ async function addJobFromForm(job, mode) {
       return;
     }
 
-    await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(created.map(jobToRow2))});
+    try {
+      await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(created.map(jobToRow2))});
+    } catch(err) {
+      console.error('addJobFromForm: DB insert failed', err);
+      showToast(`⚠ Could not save job: ${err.message || 'Unknown error'}`);
+      return;
+    }
     setShowForm(false);
     setFormPrefill(null);
     await reload();
-    if (mode==='lognow' && created.length===1) handleCheckoff(created[0]);
+    if (mode==='lognow' && created.length===1) await handleCheckoff(created[0]);
   }
   function openEditJob(job) {
     if (job.type!=='delivery') {
