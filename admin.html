@@ -1260,8 +1260,15 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <input class="form-input" id="pStockKey" placeholder="e.g. house_blend, classic_liter, vanilla_mini"/>
         <small style="color:var(--text2);font-size:.72rem;display:block;margin-top:4px">Leave blank for new products — they will create their own inventory row. Set this to merge a website product with an existing stock item so they don't duplicate.</small>
       </div>
+      <div class="form-row-2" style="margin-bottom:10px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Pack Size <small style="font-weight:300;text-transform:none;letter-spacing:0;color:var(--text2)">— units per pack (e.g. 4 for a 4-pack)</small></label>
+          <input class="form-input" type="number" id="pOpsPackSize" min="1" step="1" placeholder="1 (default)"/>
+          <small style="color:var(--text2);font-size:.72rem;display:block;margin-top:4px">A 4-pack of Original Mini with Stock Key <code style="background:var(--bg);padding:1px 5px;border-radius:3px">original_mini</code> and Pack Size <code style="background:var(--bg);padding:1px 5px;border-radius:3px">4</code> will deduct 4 minis per unit ordered.</small>
+        </div>
+      </div>
       <div class="toggle-row" style="border-bottom:none;padding-bottom:0">
-        <span class="toggle-label">Exclude from Stock &amp; Ops <small style="color:var(--text2)">— for bundles, gift sets, or anything that is not a real inventory unit (e.g. a 4-pack is just 4 minis)</small></span>
+        <span class="toggle-label">Bundle / non-standalone <small style="color:var(--text2)">— hides from Stock &amp; Ops inventory lists (uses Stock Key + Pack Size above to still track correctly)</small></span>
         <label class="toggle"><input type="checkbox" id="pOpsExclude"/><span class="toggle-slider"></span></label>
       </div>
     </div>
@@ -1617,18 +1624,20 @@ function gremierOpsLitersPerUnit(category) {
   return 0;
 }
 function gremierBuildOpsProductMeta(product) {
-  // Products explicitly marked as excluded (e.g. 4-packs, gift bundles) are not real inventory units.
-  if (product?.ops_exclude) return null;
+  // Products explicitly marked as excluded AND with no stock_key are not standalone inventory items.
+  // If they DO have a stock_key (e.g. a 4-pack pointing to original_mini), they still need a catalog
+  // entry so orders resolve correctly — but we skip creating a new inventory row for them.
   const category = gremierOpsPhysicalCategory(product);
   if (!category) return null;
   // Use the explicit stock_key if set — maps the website product to an existing inventory row
   // (e.g. 'House Blend Medium Roast' -> stock key 'house_blend') preventing duplication.
-  const key = String(product?.stock_key || product?.id || '').trim();
+  const key = String(product?.stock_key || (product?.ops_exclude ? '' : product?.id) || '').trim();
   if (!key) return null;
   const label = String(product?.name_en || product?.name_he || 'Product').trim();
   const concentrate = gremierOpsConcentrateForProduct(product, category);
   const image = Array.isArray(product?.images) ? product.images[0] : (product?.image_url || product?.image || null);
-  return { key, label, category, concentrate, litersPerUnit: gremierOpsLitersPerUnit(category), image: image || null };
+  const packSize = Number(product?.ops_pack_size) || 1;
+  return { key, label, category, concentrate, litersPerUnit: gremierOpsLitersPerUnit(category), image: image || null, packSize, isBundle: !!(product?.ops_exclude) };
 }
 // Known stock keys and aliases for auto-suggest when opening an existing product in the editor.
 // If the product name matches one of these, we pre-fill the Stock Key field to prevent duplication.
@@ -1679,6 +1688,9 @@ window.gremierLoadDynamicOpsProductCatalog = async function gremierLoadDynamicOp
     const p = typeof normalizeProduct === 'function' ? normalizeProduct(raw) : raw;
     const meta = gremierBuildOpsProductMeta(p);
     if (!meta) return;
+    // Bundle products (ops_exclude=true with a stock_key) map orders to existing rows but
+    // should NOT create their own inventory row or appear in stock pickers.
+    if (meta.isBundle) { if (meta.image) images[meta.key] = meta.image; return; }
     products[meta.key] = { label: meta.label, category: meta.category };
     full[meta.key] = { label: meta.label, category: meta.category, concentrate: meta.concentrate, litersPerUnit: meta.litersPerUnit };
     if (meta.image) images[meta.key] = meta.image;
@@ -2073,6 +2085,7 @@ function renderProductsList() {
       </div>
       <div class="product-row-actions">
         <button class="btn btn-sm ${p.is_coffee_bar?'btn-amber':'btn-outline'}" onclick="toggleCoffeeBar('${p.id}',${!!p.is_coffee_bar})" title="Show in Coffee Bar section on the website">${p.is_coffee_bar?'☕ Coffee Bar ✓':'☕ Coffee Bar'}</button>
+        <button class="btn btn-sm ${p.ops_exclude?'btn-red':'btn-outline'}" onclick="toggleOpsExclude('${p.id}',${!!p.ops_exclude})" title="Exclude from Stock &amp; Ops (e.g. 4-packs, bundles)">${p.ops_exclude?'📦 Bundle ✓':'📦 Bundle'}</button>
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">Edit</button>
         <button class="btn btn-sm ${p.is_active?'btn-red':'btn-green'}" onclick="toggleProductActive('${p.id}',${p.is_active})">${p.is_active?'Hide':'Show'}</button>
       </div>
@@ -2310,6 +2323,7 @@ function normalizeProduct(p) {
     delivery_price: getProductDeliveryPrice(p),
     stock_key: opsVar?.stock_key || p.stock_key || '',
     ops_exclude: !!(opsVar?.exclude),
+    ops_pack_size: Number(opsVar?.pack_size) || 1,
   };
 }
 function buildProductVariations() {
@@ -2326,8 +2340,24 @@ function buildProductVariations() {
   // ops settings — stock key mapping and exclude flag
   const stockKey = (document.getElementById('pStockKey')?.value || '').trim();
   const opsExclude = document.getElementById('pOpsExclude')?.checked || false;
-  if (stockKey || opsExclude) vars.push({ type: 'ops_settings', stock_key: stockKey || null, exclude: opsExclude });
+  const opsPackSize = parseInt(document.getElementById('pOpsPackSize')?.value) || 1;
+  if (stockKey || opsExclude || opsPackSize > 1) vars.push({ type: 'ops_settings', stock_key: stockKey || null, exclude: opsExclude, pack_size: opsPackSize > 1 ? opsPackSize : undefined });
   return vars;
+}
+async function toggleOpsExclude(id, current) {
+  const next = !current;
+  const p = allProducts.find(x => x.id === id);
+  if (!p) return;
+  // update ops_settings variation in-place
+  const variations = (p.variations || []).filter(v => v.type !== 'ops_settings');
+  const opsVar = (p.variations || []).find(v => v.type === 'ops_settings') || {};
+  if (next || opsVar.stock_key) variations.push({ type: 'ops_settings', stock_key: opsVar.stock_key || null, exclude: next });
+  const { error } = await sb.from('products').update({ variations, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { showToast('Could not update — ' + (error.message || 'check console')); console.error(error); return; }
+  showToast(next ? 'Marked as bundle — excluded from stock/ops ✓' : 'Now treated as a standalone stock item ✓');
+  window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = null; // bust cache so ops pickers re-sync
+  window.dispatchEvent(new CustomEvent('gremier:catalog-products-changed'));
+  await loadAllProducts();
 }
 async function toggleCoffeeBar(id, current) {
   const next = !current;
@@ -2370,6 +2400,7 @@ function openProductModal(productId) {
     const existingStockKey = p.stock_key || '';
     document.getElementById('pStockKey').value = existingStockKey || gremierAutoSuggestStockKey(p);
     document.getElementById('pOpsExclude').checked = !!p.ops_exclude;
+    document.getElementById('pOpsPackSize').value = p.ops_pack_size > 1 ? p.ops_pack_size : '';
     renderVariationGroupsEditor(loadVariationGroupsFromProduct(p.variations));
     renderAddonsEditor(loadAddonsFromProduct(p.variations));
     subscriptionBundleProductIds = loadSubscriptionBundleFromProduct(p.variations);
@@ -2391,6 +2422,7 @@ function openProductModal(productId) {
     document.getElementById('pCoffeeBar').checked=false;
     document.getElementById('pStockKey').value='';
     document.getElementById('pOpsExclude').checked=false;
+    document.getElementById('pOpsPackSize').value='';
     onCategoryChange('bottles');
     renderSubscriptionBundleEditor();
   }
@@ -7616,7 +7648,16 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
   if (catalogIds.length && typeof window.opsFetch === 'function') {
     try {
       const rows = await window.opsFetch(`products?id=in.(${catalogIds.join(',')})&select=id,name_en,name_he,category,is_coffee_bar,variations`);
-      (rows || []).forEach(p => { catalogById[String(p.id)] = p; });
+      (rows || []).forEach(p => {
+        // extract ops_settings so we can use stock_key and pack_size directly
+        const opsVar = (p.variations || []).find(v => v.type === 'ops_settings');
+        catalogById[String(p.id)] = {
+          ...p,
+          _ops_stock_key: (opsVar?.stock_key || '').trim(),
+          _ops_pack_size: Number(opsVar?.pack_size) || 1,
+          _ops_exclude: !!(opsVar?.exclude),
+        };
+      });
     } catch (err) {
       console.warn('Could not map website order products for schedule prefill:', err);
     }
@@ -7627,6 +7668,16 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
   items.forEach(item => {
     const rawId = String(item?.product_id || item?.id || '').trim();
     const catalog = catalogById[rawId];
+
+    // If the product has an explicit stock_key set (e.g. 'original_mini' for a 4-pack), use it
+    // directly and skip name-matching entirely — it's the most reliable mapping.
+    const catalogStockKey = catalog?._ops_stock_key ? directStockKey(catalog._ops_stock_key) || catalog._ops_stock_key : '';
+    const catalogPackSize = catalog?._ops_pack_size || 1;
+
+    // If the catalog product is marked as a bundle/exclude AND has no stock_key mapping,
+    // skip it entirely — it's something like a gift set with no single inventory equivalent.
+    if (catalog?._ops_exclude && !catalogStockKey) return;
+
     const text = [
       rawId,
       item?.product_key,
@@ -7640,10 +7691,13 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
       catalog?.category,
     ].filter(Boolean).join(' ');
 
-    const pid = directStockKey(item?.product_key) || directStockKey(item?.stock_key) || directStockKey(rawId) || resolveByText(text);
+    // Priority: catalog stock_key > item-level keys > name resolution
+    const pid = catalogStockKey || directStockKey(item?.product_key) || directStockKey(item?.stock_key) || directStockKey(rawId) || resolveByText(text);
     const qty = Number(item?.qty ?? item?.quantity ?? 1) || 1;
+    // Pack size from catalog ops_settings takes priority over text-pattern detection
+    const packMult = catalogPackSize > 1 ? catalogPackSize : packMultiplier(text, pid);
     if (pid) {
-      quantities[pid] = (quantities[pid] || 0) + qty * packMultiplier(text, pid);
+      quantities[pid] = (quantities[pid] || 0) + qty * packMult;
     } else {
       unresolved.push(item?.name_en || item?.name || rawId || 'item');
     }
@@ -9219,8 +9273,8 @@ const SS = {
   val: { fontSize:15, fontWeight:600, color:'#efefef' },
   btn: { width:28, height:28, borderRadius:5, background:'#303030', border:'1px solid #454545', color:'#efefef', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' },
   inp: { width:64, background:'#1e1e1e', border:'1px solid #454545', borderRadius:5, padding:'4px 6px', color:'#efefef', fontSize:14, textAlign:'center' },
-  toggleRow: { display:'flex', gap:0, border:'1px solid #454545', borderRadius:5, overflow:'hidden', marginBottom:18 },
-  toggleBtn: (active) => ({ flex:1, padding:'10px 6px', background:active?'#d0d0d0':'transparent', color:active?'#121212':'#9a9a9a', border:'none', fontFamily:"'DM Sans',sans-serif", fontSize:13, fontWeight:active?700:400, cursor:'pointer', transition:'all .2s' }),
+  toggleRow: { display:'flex', gap:0, border:'1px solid #454545', borderRadius:5, overflow:'hidden', marginBottom:18, flexWrap:'wrap' },
+  toggleBtn: (active) => ({ flex:'1 1 auto', padding:'9px 5px', background:active?'#d0d0d0':'transparent', color:active?'#121212':'#9a9a9a', border:'none', fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:active?700:400, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' }),
   needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#4caf72':'#e57368', whiteSpace:'nowrap' }),
 };
 
@@ -9292,7 +9346,7 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
 }
 
 // ── BOTTLED COFFEE sub-screen ──────────────────────────────
-function BottledScreen({ inventory, setInventory, concentrate, setConcentrate }) {
+function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, filterCats }) {
   const [confirmAdd, setConfirmAdd] = useState2(null); // {pid, label, delta, newQty}
   const [pendingQty, setPendingQty] = useState2({}); // pid -> live display value while a tap burst is still settling
   const tapTimers = useRef2({});
@@ -9372,17 +9426,22 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate })
     }, TAP_SETTLE_MS);
   }
 
-  const groups = [
+  const allGroups = [
     { label:'Liter Bottles', cats:['liter'] },
     { label:'Mini Bottles',  cats:['mini']  },
     { label:'Jerry Cans',    cats:['jerry'] },
-    { label:'Syrups',        cats:['syrup'] },
-    { label:'Dispensers',    cats:['dispenser'] },
+    { label:'Syrups & Dispensers', cats:['syrup','dispenser'] },
   ];
+  // When filterCats is provided (split tabs), only show that category group.
+  // When omitted (e.g. old callers), show everything.
+  const groups = filterCats
+    ? allGroups.filter(g => g.cats.some(c => filterCats.includes(c)))
+    : allGroups;
   return (
     <div>
       {groups.map(({label,cats}) => {
-        const items = Object.entries(PRODUCTS).filter(([,p])=>cats.includes(p.category));
+        const cats_active = filterCats ? cats.filter(c => filterCats.includes(c)) : cats;
+        const items = Object.entries(PRODUCTS).filter(([,p])=>cats_active.includes(p.category));
         if (!items.length) return null;
         return (
           <div key={label} style={SS.card}>
@@ -9715,9 +9774,11 @@ function StockTab() {
 
   const TABS = [
     { id:'concentrate', label:'Concentrate' },
-    { id:'bottled',     label:'Bottled' },
+    { id:'liters',      label:'Liters' },
+    { id:'minis',       label:'Minis' },
+    { id:'jerries',     label:'Jerries' },
+    { id:'syrups',      label:'Syrups' },
     { id:'labels',      label:'Labels' },
-    { id:'make',        label:'Make' },
   ];
 
   if (loading) return <div style={{...SS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#9a9a9a'}}><div style={{width:20,height:20,border:'2px solid #454545',borderTopColor:'#d0d0d0',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading stock…</div>;
@@ -9734,9 +9795,11 @@ function StockTab() {
       </div>
       <div style={{padding:'0 16px'}}>
         {tab==='concentrate'&&<><ConcentrateScreen concentrate={concentrate} setConcentrate={setConcentrate} jobs={jobs} inventory={inventory}/><BeansSection beans={beans} setBeans={setBeans}/></>}
-        {tab==='bottled'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate}/>}
+        {tab==='liters'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['liter']}/>}
+        {tab==='minis'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['mini']}/>}
+        {tab==='jerries'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['jerry']}/>}
+        {tab==='syrups'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['syrup','dispenser']}/>}
         {tab==='labels'&&<LabelsScreen labeledStock={labeledStock} setLabeledStock={setLabeledStock}/>}
-        {tab==='make'&&<MakeScreen jobs={jobs} inventory={inventory} concentrate={concentrate}/>}
       </div>
     </div>
   );
