@@ -8664,7 +8664,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
   return (
     <div style={TS.modal} onClick={onClose}>
       <div style={{...TS.modalBox,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-        <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'}</div>
+        <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'} <span style={{fontSize:11,color:'#4caf72',fontWeight:400}}>v2</span></div>
 
         <div style={{display:'flex',gap:8,marginBottom:14}}>
           <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
