@@ -1745,14 +1745,46 @@ function cloudinaryOptimize(url, width) {
   return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_' + w + '/');
 }
 async function loadProducts() {
-  const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
-  if (error || !data) { products = []; return; }
-  products = data.map(p => {
+  const CACHE_KEY = 'gremier_products_v1';
+  const CACHE_TTL = 5 * 60 * 1000;
+  function mapProduct(p) {
     const dv = (p.variations || []).find(v => v.type === 'delivery_price');
     const fromVar = dv != null && dv.price != null ? parseFloat(dv.price) : null;
     const fromCol = p.delivery_price != null ? parseFloat(p.delivery_price) : null;
     return { ...p, delivery_price: fromCol != null && !isNaN(fromCol) ? fromCol : fromVar };
-  });
+  }
+  async function fetchAndCache() {
+    try {
+      const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
+      if (error || !data) return null;
+      const mapped = data.map(mapProduct);
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: mapped })); } catch(e) {}
+      return mapped;
+    } catch(e) { return null; }
+  }
+  let cached = null;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) cached = JSON.parse(raw);
+  } catch(e) {}
+  if (cached && cached.data && (Date.now() - cached.ts < CACHE_TTL)) {
+    products = cached.data;
+    fetchAndCache().then(fresh => { if (fresh) products = fresh; });
+  } else if (cached && cached.data) {
+    products = cached.data;
+    fetchAndCache().then(fresh => {
+      if (fresh) {
+        products = fresh;
+        if (document.getElementById('featuredGrid')) renderFeatured();
+        if (document.getElementById('shopGrid') && document.getElementById('shopPage')?.classList.contains('active')) renderShop();
+        if (document.getElementById('coffeeBarGrid')) renderCoffeeBars();
+      }
+    });
+  } else {
+    const fresh = await fetchAndCache();
+    if (fresh) products = fresh;
+    else products = [];
+  }
 }
 function productIcon(cat) {
   return { bottles:'🫙', minis:'📦', bulk:'🪣', subscriptions:'🔄', coffeebars:'🎉' }[cat] || '☕';
