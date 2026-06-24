@@ -1728,7 +1728,25 @@ window.gremierMergeDynamicOpsProducts = async function gremierMergeDynamicOpsPro
 window.gremierEnsureDynamicOpsStockRows = async function gremierEnsureDynamicOpsStockRows() {
   const catalog = await window.gremierLoadDynamicOpsProductCatalog(true);
   const ids = Object.keys(catalog.products || {});
-  if (!ids.length || typeof window.opsFetch !== 'function') return;
+  if (typeof window.opsFetch !== 'function') return;
+  // Clean up any orphaned inventory rows for bundle products (ops_exclude=true, no shared stock_key).
+  // These rows get created before the bundle flag is set, and need to be removed retroactively.
+  try {
+    const allRows = await window.opsFetch('inventory?select=product');
+    const validKeys = new Set(ids);
+    const orphans = (allRows || []).map(r => r.product).filter(pid => {
+      // Only delete rows whose key is a UUID (dynamic product that is now a bundle)
+      // Never delete hardcoded keys like classic_liter, house_blend etc.
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid);
+      return isUUID && !validKeys.has(pid);
+    });
+    for (const pid of orphans) {
+      await window.opsFetch(`inventory?product=eq.${encodeURIComponent(pid)}`, { method:'DELETE' });
+      await window.opsFetch(`labeled_stock?product=eq.${encodeURIComponent(pid)}`, { method:'DELETE' }).catch(()=>{});
+    }
+    if (orphans.length) console.log('[Gremier] Cleaned up', orphans.length, 'orphaned bundle inventory row(s)');
+  } catch(e) { console.warn('Bundle cleanup failed (non-critical):', e); }
+  if (!ids.length) return;
   try {
     const enc = ids.map(encodeURIComponent).join(',');
     const existing = await window.opsFetch(`inventory?product=in.(${enc})&select=product`);
@@ -2364,9 +2382,19 @@ async function toggleOpsExclude(id, current) {
   if (next || opsVar.stock_key) variations.push({ type: 'ops_settings', stock_key: opsVar.stock_key || null, exclude: next });
   const { error } = await sb.from('products').update({ variations, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) { showToast('Could not update — ' + (error.message || 'check console')); console.error(error); return; }
-  showToast(next ? 'Marked as bundle — excluded from stock/ops ✓' : 'Now treated as a standalone stock item ✓');
+  // When marking as a bundle, remove any orphaned inventory/labeled_stock rows for this product
+  // so it stops appearing in the Stock tab immediately.
+  if (next && typeof window.opsFetch === 'function') {
+    const productKey = (opsVar.stock_key || id).trim();
+    // Only delete if the key is NOT shared with another real product (i.e. it's the UUID-based row)
+    if (!opsVar.stock_key) {
+      try { await window.opsFetch(`inventory?product=eq.${encodeURIComponent(productKey)}`, { method:'DELETE' }); } catch(e) {}
+      try { await window.opsFetch(`labeled_stock?product=eq.${encodeURIComponent(productKey)}`, { method:'DELETE' }); } catch(e) {}
+    }
+  }
   window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = null; // bust cache so ops pickers re-sync
   window.dispatchEvent(new CustomEvent('gremier:catalog-products-changed'));
+  showToast(next ? 'Marked as bundle — removed from stock ✓' : 'Now treated as a standalone stock item ✓');
   await loadAllProducts();
 }
 async function toggleCoffeeBar(id, current) {
