@@ -1711,6 +1711,8 @@ window.gremierLoadDynamicOpsProductCatalog = async function gremierLoadDynamicOp
   window.__OPS_DYNAMIC_PRODUCT_IMAGES__ = images;
   window.__OPS_DYNAMIC_LABELED_PRODUCTS__ = labeled;
   window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = { products, full, images, labeled };
+  // Notify ProductThumb components (and any other listeners) that images are ready
+  window.dispatchEvent(new CustomEvent('gremier:catalog-products-changed'));
   return window.__OPS_DYNAMIC_PRODUCT_CATALOG__;
 };
 window.gremierMergeDynamicOpsProducts = async function gremierMergeDynamicOpsProducts(productTarget, fullTarget, imageTarget, labeledArray, labeledWarn) {
@@ -8081,8 +8083,10 @@ const PRODUCT_IMG_FALLBACK_BOTTLE = PRODUCT_IMAGES.classic_liter;
 const PRODUCT_IMG_FALLBACK_JERRY  = PRODUCT_IMAGES.jerry_can;
 const PRODUCT_IMG_FALLBACK_SYRUP  = PRODUCT_IMAGES.vanilla_syrup;
 function getProductImage(pid) {
-  if (window.__OPS_PRODUCT_IMAGES__?.[pid]) return window.__OPS_PRODUCT_IMAGES__[pid];
+  // Dynamic catalog images (from the website) always take priority over hardcoded URLs,
+  // so updating a product photo on the website is immediately reflected here.
   if (window.__OPS_DYNAMIC_PRODUCT_IMAGES__?.[pid]) return window.__OPS_DYNAMIC_PRODUCT_IMAGES__[pid];
+  if (window.__OPS_PRODUCT_IMAGES__?.[pid]) return window.__OPS_PRODUCT_IMAGES__[pid];
   if (PRODUCT_IMAGES[pid]) return PRODUCT_IMAGES[pid];
   if (!pid) return PRODUCT_IMG_FALLBACK_BOTTLE;
   if (pid.includes('jerry')) return PRODUCT_IMG_FALLBACK_JERRY;
@@ -8091,6 +8095,15 @@ function getProductImage(pid) {
 }
 function ProductThumb({ pid, size }) {
   const s = size || 28;
+  // tick forces re-render when the async catalog finishes loading images
+  const [tick, setTick] = useState2(0);
+  useEffect2(() => {
+    const refresh = () => setTick(t => t + 1);
+    window.addEventListener('gremier:catalog-products-changed', refresh);
+    // Also refresh once on mount in case catalog already loaded
+    if (window.__OPS_DYNAMIC_PRODUCT_IMAGES__?.[pid]) setTick(t => t + 1);
+    return () => window.removeEventListener('gremier:catalog-products-changed', refresh);
+  }, [pid]);
   return <img src={getProductImage(pid)} alt="" style={{width:s,height:s,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030'}}/>;
 }
 window.getProductImage = getProductImage; // exposed for the plain-JS Log Delivery modal
