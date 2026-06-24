@@ -574,6 +574,32 @@ window.addEventListener('unhandledrejection', function(e){
   if (isTransientNetworkError(msg)) { console.warn('[Gremier] transient network rejection ignored:', msg); return; }
   showGlobalAdminError('Admin promise error: ' + msg);
 });
+
+// ── Lightweight UI caches (stale-while-revalidate) ──────────
+// JSON value cache (used by React tabs to hydrate state instantly).
+window.gremierCacheGet = function (key) {
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch { return null; }
+};
+window.gremierCacheSet = function (key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+};
+// HTML-snapshot cache (used by vanilla tabs that render into element innerHTML).
+window.gremierUiCacheRestore = function (key, ids) {
+  try {
+    const m = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!m) return false;
+    let any = false;
+    ids.forEach(id => { const el = document.getElementById(id); if (el && m[id] != null) { el.innerHTML = m[id]; any = true; } });
+    return any;
+  } catch { return false; }
+};
+window.gremierUiCacheSave = function (key, ids) {
+  try {
+    const m = {};
+    ids.forEach(id => { const el = document.getElementById(id); if (el) m[id] = el.innerHTML; });
+    localStorage.setItem(key, JSON.stringify(m));
+  } catch {}
+};
 </script>
 </head>
 <body>
@@ -4070,6 +4096,15 @@ async function loadPayLinks() {
   const recurringBody = document.getElementById('payLinksRecurringBody');
   if (!oneTimeBody || !recurringBody) return;
 
+  // Show last-known links instantly from cache, then revalidate below.
+  if (window.gremierUiCacheRestore('gremier_paylinks_cache_v1', ['payLinksOneTimeBody', 'payLinksRecurringBody', 'payLinksArchivedBody'])) {
+    const hasArch = !!document.querySelector('#payLinksArchivedBody td:not(.empty-state)');
+    const archWrap = document.getElementById('archivedToggleWrap');
+    if (archWrap) archWrap.style.display = hasArch ? 'block' : 'none';
+    const archCard = document.getElementById('archivedCard');
+    if (archCard) archCard.style.display = (showArchivedPayLinks && hasArch) ? 'block' : 'none';
+  }
+
   const { data } = await sb.from('payment_links').select('*').order('created_at',{ascending:false});
   const links = data || [];
   const oneTimeLinks = links.filter(l => !isRecurringPayLink(l));
@@ -4152,6 +4187,8 @@ async function loadPayLinks() {
   if (archWrap) archWrap.style.display = oneTimeArchived.length ? 'block' : 'none';
   if (archCard) archCard.style.display = (showArchivedPayLinks && oneTimeArchived.length) ? 'block' : 'none';
   if (archBtn) archBtn.textContent = (showArchivedPayLinks ? 'Hide archived' : 'Show archived') + ` (${oneTimeArchived.length})`;
+
+  window.gremierUiCacheSave('gremier_paylinks_cache_v1', ['payLinksOneTimeBody', 'payLinksRecurringBody', 'payLinksArchivedBody']);
 }
 
 function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecurringSection) {
@@ -6776,6 +6813,9 @@ async function loadBriefing(options = {}) {
 }
 async function loadDashboard() {
   const period = document.getElementById('dashPeriod')?.value || 'month';
+  const DASH_IDS = ['dashKPIs', 'dashChart', 'dashRecentOrders', 'dashRecentDeliveries', 'dashStoreBreakdown'];
+  const DASH_CACHE_KEY = 'gremier_dashboard_cache_v1_' + period;
+  window.gremierUiCacheRestore(DASH_CACHE_KEY, DASH_IDS);
   const now = new Date();
   let since;
   if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
@@ -6814,6 +6854,8 @@ if (!allStores.length) await loadStores();
 renderDashboardRecentOrders(ordersFinal);
   renderDashboardRecentDeliveries(deliveriesFinal);
   renderDashboardStoreBreakdown(deliveriesFinal);
+
+  window.gremierUiCacheSave(DASH_CACHE_KEY, DASH_IDS);
 
   ensureDailyBriefing();
 }
@@ -8865,11 +8907,21 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
     </div>
   );
 }
+const SCHEDULE_CACHE_KEY = 'gremier_schedule_cache_v1';
+function scheduleSignature(p) {
+  if (!p) return '';
+  const norm = (arr) => JSON.stringify((arr || []).slice().sort((a, b) => String(a.id).localeCompare(String(b.id))));
+  return norm(p.jobs) + '~' + norm(p.stores) + '~' + norm(p.pendingWeb);
+}
 function ScheduleTab() {
-  const [jobs, setJobs] = useState2([]);
-  const [stores, setStores] = useState2([]);
-  const [pendingWeb, setPendingWeb] = useState2([]);
-  const [loading, setLoading] = useState2(true);
+  const schedCacheRef = useRef2();
+  if (schedCacheRef.current === undefined) schedCacheRef.current = window.gremierCacheGet(SCHEDULE_CACHE_KEY);
+  const schedCache = schedCacheRef.current;
+  const lastSchedSigRef = useRef2(schedCache ? scheduleSignature(schedCache) : null);
+  const [jobs, setJobs] = useState2(schedCache?.jobs || []);
+  const [stores, setStores] = useState2(schedCache?.stores || []);
+  const [pendingWeb, setPendingWeb] = useState2(schedCache?.pendingWeb || []);
+  const [loading, setLoading] = useState2(!schedCache);
   const [checkoffJob, setCheckoffJob] = useState2(null);
   const [calDay, setCalDay] = useState2(null);
   const [monthView, setMonthView] = useState2({ year:new Date().getFullYear(), month:new Date().getMonth() });
@@ -8887,16 +8939,25 @@ const [showForm, setShowForm] = useState2(false);
   const tomorrow = tomorrowISO2();
 
   async function reload() {
-    await window.gremierMergeDynamicOpsProducts?.(window.__OPS_PRODUCTS__, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__);
-    await window.gremierEnsureDynamicOpsStockRows?.();
+    if (!window.__opsScheduleSetupDone) {
+      await window.gremierMergeDynamicOpsProducts?.(window.__OPS_PRODUCTS__, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__);
+      await window.gremierEnsureDynamicOpsStockRows?.();
+      window.__opsScheduleSetupDone = true;
+    }
     const [allJobs, storeRows, webRows] = await Promise.all([
       loadAllJobs2(),
       opsFetch('stores?select=*&is_active=eq.true&order=sort_order'),
       loadPendingWebDeliveries2(),
     ]);
-    setJobs(allJobs);
-    setStores(storeRows||[]);
-    setPendingWeb(webRows||[]);
+    const next = { jobs: allJobs || [], stores: storeRows || [], pendingWeb: webRows || [] };
+    const sig = scheduleSignature(next);
+    if (sig !== lastSchedSigRef.current) {
+      lastSchedSigRef.current = sig;
+      setJobs(next.jobs);
+      setStores(next.stores);
+      setPendingWeb(next.pendingWeb);
+      window.gremierCacheSet(SCHEDULE_CACHE_KEY, next);
+    }
     setLoading(false);
   }
   useEffect2(()=>{
@@ -8911,7 +8972,7 @@ const [showForm, setShowForm] = useState2(false);
     // the voice logger lives in a separate React root; when it saves a job it fires this
     // event so the calendar/task lists re-fetch instead of staying stale until a page reload
     function onJobsChanged() { reload(); }
-    function onCatalogChanged() { reload(); }
+    function onCatalogChanged() { window.__opsScheduleSetupDone = false; reload(); }
     window.addEventListener('gremier:schedule-prefill', onPrefillHandoff);
     window.addEventListener('gremier:jobs-changed', onJobsChanged);
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
