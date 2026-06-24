@@ -2469,7 +2469,7 @@ async function createWebsiteOrder(orderData) {
   if (!res.ok || !data.id) {
     throw new Error(data.error || data.message || 'Could not create order');
   }
-  return data.id;
+  return data; // { id, paid?: boolean, total?: number }
 }
 async function callCreatePayment(orderId) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
@@ -2600,14 +2600,27 @@ delivery_date: isExpedited && priorityType === 'specific_date' ? deliveryDate : 
       },
       status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
     };
-    const orderId = await createWebsiteOrder(orderData);
+    const orderResult = await createWebsiteOrder(orderData);
+    const orderId = orderResult.id;
+
+    // Fully covered by a gift card (and/or coupon) — no card payment needed.
+    if (orderResult.paid) {
+      cart = [];
+      clearCartFromStorage();
+      updateCartCount();
+      sessionStorage.removeItem('gremier_pending_order');
+      try { queueNotifyPaidOrder(orderId, false); } catch (_) {}
+      if (currentUser) { try { await refreshUserProfile(); } catch (_) {} }
+      showCheckoutResult('paid');
+      return;
+    }
 
     let payData;
     try {
       payData = await callCreatePayment(orderId);
     } catch (payErr) {
       console.error(payErr);
-      alert(payErr.message || (lang==='he' ? '?? ???? ????? ?????' : 'Could not start payment'));
+      alert(payErr.message || (lang==='he' ? 'לא ניתן להתחיל תשלום' : 'Could not start payment'));
       return;
     }
 
