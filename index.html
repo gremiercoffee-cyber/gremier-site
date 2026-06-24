@@ -2617,8 +2617,10 @@ delivery_date: isExpedited && priorityType === 'specific_date' ? deliveryDate : 
     }
     window.location.href = payData.sale_url;
   } catch (err) {
-    console.error(err);
-    alert(lang==='he' ? 'משהו השתבש. נסו שוב.' : 'Something went wrong. Please try again.');
+    console.error('Checkout failed:', err);
+    const realMsg = (err && err.message) ? String(err.message) : '';
+    const fallback = lang==='he' ? 'משהו השתבש. נסו שוב.' : 'Something went wrong. Please try again.';
+    alert(realMsg || fallback);
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = prevLabel;
