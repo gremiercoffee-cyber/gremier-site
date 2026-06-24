@@ -25,8 +25,8 @@
   <link rel="apple-touch-icon" href="logo.png"/>
   <meta name="theme-color" content="#141414"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script>
@@ -4083,20 +4083,26 @@ async function loadPayLinks() {
   }
 
   const linkLatestOrder = {};
-  for (const l of links) {
-    if (!l.order_id && !l.last_order_id) {
-      const { data: linked } = await sb.from('orders')
-        .select('id, status, payment_status')
-        .filter('delivery_info->>payment_link_code', 'eq', l.link_code)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (linked?.[0]) {
-        orderMap[linked[0].id] = linked[0];
-        linkLatestOrder[l.link_code] = linked[0].id;
-      }
+  // Batch the lookup for links that have no cached order id: one query for all
+  // their codes instead of one query per link (was the main paylinks slowdown).
+  const codesNeeding = [...new Set(
+    links.filter(l => !l.order_id && !l.last_order_id && l.link_code).map(l => l.link_code)
+  )];
+  if (codesNeeding.length) {
+    const { data: linkedOrders } = await sb.from('orders')
+      .select('id, status, payment_status, created_at, delivery_info')
+      .filter('delivery_info->>payment_link_code', 'in', `(${codesNeeding.join(',')})`)
+      .order('created_at', { ascending: false });
+    // Already sorted newest-first, so the first time we see a code is its latest order.
+    for (const o of (linkedOrders || [])) {
+      const code = o.delivery_info && o.delivery_info.payment_link_code;
+      if (!code || linkLatestOrder[code]) continue;
+      orderMap[o.id] = { id: o.id, status: o.status, payment_status: o.payment_status };
+      linkLatestOrder[code] = o.id;
     }
   }
 
+  const pendingLinkUpdates = [];
   for (const l of links) {
     const refId = isRecurringPayLink(l)
       ? (l.last_order_id || l.order_id || linkLatestOrder[l.link_code])
@@ -4109,14 +4115,16 @@ async function loadPayLinks() {
         const now = new Date().toISOString();
         const patch = { status: expected, order_id: order.id, updated_at: now };
         if (needsArchive) { patch.archived_at = now; l.archived_at = now; }
-        await sb.from('payment_links').update(patch).eq('id', l.id);
+        pendingLinkUpdates.push(sb.from('payment_links').update(patch).eq('id', l.id));
         l.status = expected;
       }
     } else if (order && isRecurringPayLink(l) && l.last_order_id !== order.id) {
-      await sb.from('payment_links').update({ last_order_id: order.id, updated_at: new Date().toISOString() }).eq('id', l.id);
+      pendingLinkUpdates.push(sb.from('payment_links').update({ last_order_id: order.id, updated_at: new Date().toISOString() }).eq('id', l.id));
       l.last_order_id = order.id;
     }
   }
+  // Fire the status/archive writes in parallel rather than one-by-one.
+  if (pendingLinkUpdates.length) await Promise.all(pendingLinkUpdates);
 
   const existingOrderIds = await fetchExistingOrderIds(links.map(l => l.order_id || l.last_order_id || linkLatestOrder[l.link_code]));
 
@@ -7486,27 +7494,43 @@ window.getOpsSupabase = function getOpsSupabase() {
   return null;
 };
 
-window.opsFetch = window.opsFetch || async function opsFetch(path, options = {}) {
-  const client = window.getOpsSupabase && window.getOpsSupabase();
-  const { data: { session } = { session: null } } = client && client.auth
-    ? await client.auth.getSession()
-    : { data: { session: null } };
-  const token = session && session.access_token;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: token ? `Bearer ${token}` : '',
-      'Content-Type': 'application/json',
-      Prefer: options.prefer || 'return=representation',
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  if (res.status === 204) return null;
-  const txt = await res.text();
-  return txt ? JSON.parse(txt) : null;
-};
+window.opsFetch = window.opsFetch || (function () {
+  const cache = { token: null, expMs: 0 };
+  async function getToken(force) {
+    const now = Date.now();
+    if (!force && cache.token && now < cache.expMs - 30000) return cache.token;
+    const client = window.getOpsSupabase && window.getOpsSupabase();
+    const { data: { session } = { session: null } } = client && client.auth
+      ? await client.auth.getSession()
+      : { data: { session: null } };
+    cache.token = (session && session.access_token) || null;
+    cache.expMs = session && session.expires_at ? session.expires_at * 1000 : now + 60000;
+    return cache.token;
+  }
+  return async function opsFetch(path, options = {}, _retry) {
+    const token = await getToken(false);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      ...options,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json',
+        Prefer: options.prefer || 'return=representation',
+        ...(options.headers || {}),
+      },
+    });
+    // Token may have expired mid-session — refresh once and retry.
+    if (res.status === 401 && !_retry) {
+      cache.token = null; cache.expMs = 0;
+      await getToken(true);
+      return opsFetch(path, options, true);
+    }
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    if (res.status === 204) return null;
+    const txt = await res.text();
+    return txt ? JSON.parse(txt) : null;
+  };
+})();
 </script>
 <script type="text/babel" data-presets="react">
 const { useState: useState2, useEffect: useEffect2, useCallback: useCallback2, useRef: useRef2 } = React;
@@ -9208,7 +9232,7 @@ const schedRoot = document.getElementById('ops-schedule-root');
 if (schedRoot) ReactDOM.createRoot(schedRoot).render(<ScheduleTab />);
 </script>
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // reuse the single shared, already-authenticated client (set up during sign-in) instead of
 // creating a second independent auth session that never receives a login
@@ -9830,26 +9854,76 @@ function BeanOrderRow({ beanKey, onOrder }) {
 }
 
 // ── ROOT STOCK TAB ─────────────────────────────────────────
-function StockTab() {
-  const [tab, setTab] = useState('concentrate');
-  const [loading, setLoading] = useState(true);
-  const [inventory, setInventory] = useState({});
-  const [concentrate, setConcentrate] = useState({classic:0,houseBlend:0,colombia:0,decaf:0});
-  const [beans, setBeans] = useState({classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
-  const [labeledStock, setLabeledStock] = useState({});
-  const [jobs, setJobs] = useState([]);
+const STOCK_CACHE_KEY = 'gremier_stock_cache_v1';
+function readStockCache() {
+  try { const raw = localStorage.getItem(STOCK_CACHE_KEY); return raw ? JSON.parse(raw) : null; }
+  catch { return null; }
+}
+function writeStockCache(payload) {
+  try { localStorage.setItem(STOCK_CACHE_KEY, JSON.stringify(payload)); } catch {}
+}
+// Order-independent signature so re-fetches that return the same data in a
+// different row order don't count as a "change" and don't trigger a repaint.
+function stockSignature(p) {
+  if (!p) return '';
+  const sortKeys = (o) => (o && typeof o === 'object' && !Array.isArray(o))
+    ? Object.keys(o).sort().reduce((a, k) => { a[k] = o[k]; return a; }, {})
+    : o;
+  const beans = {};
+  Object.keys(p.beans || {}).sort().forEach(k => {
+    const b = p.beans[k] || {};
+    beans[k] = { kg: b.kg || 0, ordered: !!b.ordered, orderedKg: b.orderedKg || 0 };
+  });
+  const jobs = (p.jobs || []).map(j => [j.id, j.done, j.date, j.type].join('|')).sort();
+  return JSON.stringify({
+    inventory: sortKeys(p.inventory),
+    concentrate: sortKeys(p.concentrate),
+    beans,
+    labeledStock: sortKeys(p.labeledStock),
+    jobs,
+  });
+}
 
-  const reloadStock = useCallback(async ({ silent = false } = {}) => {
+function StockTab() {
+  const cachedInit = useMemo(() => readStockCache(), []);
+  const lastSigRef = useRef(cachedInit ? stockSignature(cachedInit) : null);
+  const [tab, setTab] = useState('concentrate');
+  const [loading, setLoading] = useState(!cachedInit);
+  const [inventory, setInventory] = useState(() => cachedInit?.inventory || {});
+  const [concentrate, setConcentrate] = useState(() => cachedInit?.concentrate || {classic:0,houseBlend:0,colombia:0,decaf:0});
+  const [beans, setBeans] = useState(() => cachedInit?.beans || {classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
+  const [labeledStock, setLabeledStock] = useState(() => cachedInit?.labeledStock || {});
+  const [jobs, setJobs] = useState(() => cachedInit?.jobs || []);
+
+  const reloadStock = useCallback(async ({ silent = false, setup = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      await window.gremierMergeDynamicOpsProducts?.(PRODUCTS, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__, LABELED_PRODUCTS, LABELED_WARN);
-      await window.gremierEnsureDynamicOpsStockRows?.();
+      // Catalog merge + inventory-row creation only need to happen once per
+      // session (or when the catalog changes) — not on every focus/visibility reload.
+      if (setup || !window.__opsStockSetupDone) {
+        await window.gremierMergeDynamicOpsProducts?.(PRODUCTS, window.__OPS_PRODUCTS_FULL__, window.__OPS_PRODUCT_IMAGES__, LABELED_PRODUCTS, LABELED_WARN);
+        await window.gremierEnsureDynamicOpsStockRows?.();
+        window.__opsStockSetupDone = true;
+      }
       const [stock, j] = await Promise.all([loadStockData(), loadUpcomingJobs()]);
-      setInventory(stock.inventory);
-      setConcentrate(stock.concentrate);
-      setBeans(stock.beans);
-      setLabeledStock(stock.labeledStock);
-      setJobs(j);
+      const next = {
+        inventory: stock.inventory,
+        concentrate: stock.concentrate,
+        beans: stock.beans,
+        labeledStock: stock.labeledStock,
+        jobs: j,
+      };
+      // Only repaint + rewrite cache if the data actually changed.
+      const sig = stockSignature(next);
+      if (sig !== lastSigRef.current) {
+        lastSigRef.current = sig;
+        setInventory(next.inventory);
+        setConcentrate(next.concentrate);
+        setBeans(next.beans);
+        setLabeledStock(next.labeledStock);
+        setJobs(next.jobs);
+        writeStockCache(next);
+      }
     } catch (err) {
       console.error('Stock reload failed:', err);
     } finally {
@@ -9858,8 +9932,10 @@ function StockTab() {
   }, []);
 
   useEffect(() => {
-    reloadStock({ silent: false });
-  }, [reloadStock]);
+    // If we have cached data, show it instantly and revalidate silently in the
+    // background; only fall back to a blocking spinner when there's no cache.
+    reloadStock({ silent: !!cachedInit });
+  }, [reloadStock, cachedInit]);
 
   useEffect(() => {
     let inFlight = false;
@@ -9883,6 +9959,7 @@ function StockTab() {
     };
 
     const onStockChanged = () => runReload({ silent: true });
+    const onCatalogChanged = () => { window.__opsStockSetupDone = false; runReload({ silent: true, setup: true }); };
     const onFocusOrVisible = () => {
       const stockTab = document.getElementById('tab-stock');
       if (!document.hidden && stockTab && stockTab.style.display !== 'none') runReload({ silent: true });
@@ -9890,13 +9967,13 @@ function StockTab() {
 
     window.__gremierReloadStock = runReload;
     window.addEventListener('gremier:stock-changed', onStockChanged);
-    window.addEventListener('gremier:catalog-products-changed', onStockChanged);
+    window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     window.addEventListener('focus', onFocusOrVisible);
     document.addEventListener('visibilitychange', onFocusOrVisible);
 
     return () => {
       window.removeEventListener('gremier:stock-changed', onStockChanged);
-      window.removeEventListener('gremier:catalog-products-changed', onStockChanged);
+      window.removeEventListener('gremier:catalog-products-changed', onCatalogChanged);
       window.removeEventListener('focus', onFocusOrVisible);
       document.removeEventListener('visibilitychange', onFocusOrVisible);
       if (window.__gremierReloadStock === runReload) delete window.__gremierReloadStock;
