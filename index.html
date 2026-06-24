@@ -2448,11 +2448,13 @@ async function getCheckoutAuthHeaders() {
       : 'Your member session expired. Please sign in again so points can be added to your account.');
   }
 
+  // NOTE: do not add custom headers (e.g. x-gremier-user-id) here. The edge
+  // function reads the member from the JWT in Authorization, and any header not
+  // listed in the function's Access-Control-Allow-Headers will fail CORS preflight.
   return {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON_KEY,
     'Authorization': 'Bearer ' + (session?.access_token || SUPABASE_ANON_KEY),
-    ...(currentUser?.id ? { 'x-gremier-user-id': currentUser.id } : {}),
   };
 }
 
