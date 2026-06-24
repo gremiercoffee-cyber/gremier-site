@@ -732,6 +732,15 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
               <tbody id="payLinksOneTimeBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
             </table></div>
           </div>
+          <div id="archivedToggleWrap" style="display:none;margin-top:12px">
+            <button class="btn btn-outline btn-sm" id="archivedToggleBtn" onclick="togglePayLinkArchived()">Show archived (0)</button>
+          </div>
+          <div class="card" id="archivedCard" style="padding:0;margin-top:12px;display:none">
+            <div class="table-wrap"><table>
+              <thead><tr><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th><th class="cell-status">Status</th><th class="cell-date hide-mobile">Created</th><th class="cell-actions">Actions</th></tr></thead>
+              <tbody id="payLinksArchivedBody"></tbody>
+            </table></div>
+          </div>
         </div>
 
         <div class="paylinks-section">
@@ -1711,8 +1720,6 @@ window.gremierLoadDynamicOpsProductCatalog = async function gremierLoadDynamicOp
   window.__OPS_DYNAMIC_PRODUCT_IMAGES__ = images;
   window.__OPS_DYNAMIC_LABELED_PRODUCTS__ = labeled;
   window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = { products, full, images, labeled };
-  // Notify ProductThumb components (and any other listeners) that images are ready
-  window.dispatchEvent(new CustomEvent('gremier:catalog-products-changed'));
   return window.__OPS_DYNAMIC_PRODUCT_CATALOG__;
 };
 window.gremierMergeDynamicOpsProducts = async function gremierMergeDynamicOpsProducts(productTarget, fullTarget, imageTarget, labeledArray, labeledWarn) {
@@ -1730,25 +1737,7 @@ window.gremierMergeDynamicOpsProducts = async function gremierMergeDynamicOpsPro
 window.gremierEnsureDynamicOpsStockRows = async function gremierEnsureDynamicOpsStockRows() {
   const catalog = await window.gremierLoadDynamicOpsProductCatalog(true);
   const ids = Object.keys(catalog.products || {});
-  if (typeof window.opsFetch !== 'function') return;
-  // Clean up any orphaned inventory rows for bundle products (ops_exclude=true, no shared stock_key).
-  // These rows get created before the bundle flag is set, and need to be removed retroactively.
-  try {
-    const allRows = await window.opsFetch('inventory?select=product');
-    const validKeys = new Set(ids);
-    const orphans = (allRows || []).map(r => r.product).filter(pid => {
-      // Only delete rows whose key is a UUID (dynamic product that is now a bundle)
-      // Never delete hardcoded keys like classic_liter, house_blend etc.
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid);
-      return isUUID && !validKeys.has(pid);
-    });
-    for (const pid of orphans) {
-      await window.opsFetch(`inventory?product=eq.${encodeURIComponent(pid)}`, { method:'DELETE' });
-      await window.opsFetch(`labeled_stock?product=eq.${encodeURIComponent(pid)}`, { method:'DELETE' }).catch(()=>{});
-    }
-    if (orphans.length) console.log('[Gremier] Cleaned up', orphans.length, 'orphaned bundle inventory row(s)');
-  } catch(e) { console.warn('Bundle cleanup failed (non-critical):', e); }
-  if (!ids.length) return;
+  if (!ids.length || typeof window.opsFetch !== 'function') return;
   try {
     const enc = ids.map(encodeURIComponent).join(',');
     const existing = await window.opsFetch(`inventory?product=in.(${enc})&select=product`);
@@ -1833,7 +1822,10 @@ async function syncPaymentLinkForOrder(orderId) {
   if (isReusablePayLink(link)) {
     await sb.from('payment_links').update({ last_order_id: orderId, updated_at: now }).eq('id', link.id);
   } else {
-    await sb.from('payment_links').update({ status: derived, order_id: orderId, updated_at: now }).eq('id', link.id);
+    const patch = { status: derived, order_id: orderId, updated_at: now };
+    // One-time links auto-archive once their order is fulfilled.
+    if (derived === 'fulfilled' && !link.archived_at) patch.archived_at = now;
+    await sb.from('payment_links').update(patch).eq('id', link.id);
   }
 }
 
@@ -2384,19 +2376,9 @@ async function toggleOpsExclude(id, current) {
   if (next || opsVar.stock_key) variations.push({ type: 'ops_settings', stock_key: opsVar.stock_key || null, exclude: next });
   const { error } = await sb.from('products').update({ variations, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) { showToast('Could not update — ' + (error.message || 'check console')); console.error(error); return; }
-  // When marking as a bundle, remove any orphaned inventory/labeled_stock rows for this product
-  // so it stops appearing in the Stock tab immediately.
-  if (next && typeof window.opsFetch === 'function') {
-    const productKey = (opsVar.stock_key || id).trim();
-    // Only delete if the key is NOT shared with another real product (i.e. it's the UUID-based row)
-    if (!opsVar.stock_key) {
-      try { await window.opsFetch(`inventory?product=eq.${encodeURIComponent(productKey)}`, { method:'DELETE' }); } catch(e) {}
-      try { await window.opsFetch(`labeled_stock?product=eq.${encodeURIComponent(productKey)}`, { method:'DELETE' }); } catch(e) {}
-    }
-  }
+  showToast(next ? 'Marked as bundle — excluded from stock/ops ✓' : 'Now treated as a standalone stock item ✓');
   window.__OPS_DYNAMIC_PRODUCT_CATALOG__ = null; // bust cache so ops pickers re-sync
   window.dispatchEvent(new CustomEvent('gremier:catalog-products-changed'));
-  showToast(next ? 'Marked as bundle — removed from stock ✓' : 'Now treated as a standalone stock item ✓');
   await loadAllProducts();
 }
 async function toggleCoffeeBar(id, current) {
@@ -3091,6 +3073,7 @@ async function markOrderFulfilled(orderId, forceEmail, skipToast) {
     });
     if (data.ok || data.skipped === 'already_notified') {
       if (!skipToast) showToast(data.emailed ? 'Fulfilled + customer emailed ✓' : 'Marked fulfilled ✓');
+      await syncPaymentLinkForOrder(orderId);
       await loadOrders();
       await refreshPayLinksIfVisible();
       if (document.getElementById('orderModal').classList.contains('open')) openOrderDetail(orderId);
@@ -3255,7 +3238,7 @@ function openOrderDetail(id) {
       ${(o.delivery_info && o.delivery_info.fulfilled_notified_at) ? '<span style="font-size:.78rem;color:var(--text2)">✓ Fulfillment email sent</span>' : ''}
       <button class="btn btn-sm btn-outline" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-send paid email' : 'Send paid email (Resend)'}</button>
     </div>` : ''}
-    ${order.customer_email ? `<button class="btn btn-outline btn-sm" onclick="sendCustomerReceipt('${o.id}')" style="margin-top:14px">📄 Send Receipt to Customer</button>` : ''}
+    ${o.customer_email ? `<button class="btn btn-outline btn-sm" onclick="sendCustomerReceipt('${o.id}')" style="margin-top:14px">📄 Send Receipt to Customer</button>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
   document.getElementById('orderModal').classList.add('open');
 }
@@ -4055,6 +4038,33 @@ async function deletePayLink(id, orderId) {
   loadPayLinks();
   loadOrders();
 }
+let showArchivedPayLinks = false;
+function togglePayLinkArchived() {
+  showArchivedPayLinks = !showArchivedPayLinks;
+  const card = document.getElementById('archivedCard');
+  const btn = document.getElementById('archivedToggleBtn');
+  const hasArchived = !!document.querySelector('#payLinksArchivedBody td:not(.empty-state)');
+  if (card) card.style.display = (showArchivedPayLinks && hasArchived) ? 'block' : 'none';
+  if (btn) {
+    const count = (btn.textContent.match(/\((\d+)\)/) || [])[1] || '0';
+    btn.textContent = (showArchivedPayLinks ? 'Hide archived' : 'Show archived') + ` (${count})`;
+  }
+}
+async function archivePayLink(id) {
+  const now = new Date().toISOString();
+  const { error } = await sb.from('payment_links').update({ archived_at: now, updated_at: now }).eq('id', id);
+  if (error) { showToast('Could not archive — ' + (error.message || 'check console')); return; }
+  showToast('Link archived ✓');
+  await loadPayLinks();
+}
+async function unarchivePayLink(id) {
+  const now = new Date().toISOString();
+  const { error } = await sb.from('payment_links').update({ archived_at: null, updated_at: now }).eq('id', id);
+  if (error) { showToast('Could not unarchive — ' + (error.message || 'check console')); return; }
+  showToast('Link restored ✓');
+  await loadPayLinks();
+}
+
 async function loadPayLinks() {
   const oneTimeBody = document.getElementById('payLinksOneTimeBody');
   const recurringBody = document.getElementById('payLinksRecurringBody');
@@ -4094,8 +4104,12 @@ async function loadPayLinks() {
     const order = refId ? orderMap[refId] : null;
     if (order && !isRecurringPayLink(l)) {
       const expected = payLinkStatusFromOrder(order);
-      if (l.status !== expected) {
-        await sb.from('payment_links').update({ status: expected, order_id: order.id, updated_at: new Date().toISOString() }).eq('id', l.id);
+      const needsArchive = expected === 'fulfilled' && !l.archived_at;
+      if (l.status !== expected || needsArchive) {
+        const now = new Date().toISOString();
+        const patch = { status: expected, order_id: order.id, updated_at: now };
+        if (needsArchive) { patch.archived_at = now; l.archived_at = now; }
+        await sb.from('payment_links').update(patch).eq('id', l.id);
         l.status = expected;
       }
     } else if (order && isRecurringPayLink(l) && l.last_order_id !== order.id) {
@@ -4105,12 +4119,31 @@ async function loadPayLinks() {
   }
 
   const existingOrderIds = await fetchExistingOrderIds(links.map(l => l.order_id || l.last_order_id || linkLatestOrder[l.link_code]));
-  oneTimeBody.innerHTML = oneTimeLinks.length
-    ? oneTimeLinks.map(l => renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, false)).join('')
+
+  const oneTimeActive = oneTimeLinks.filter(l => !l.archived_at);
+  const oneTimeArchived = oneTimeLinks.filter(l => l.archived_at)
+    .sort((a, b) => new Date(b.archived_at) - new Date(a.archived_at));
+
+  oneTimeBody.innerHTML = oneTimeActive.length
+    ? oneTimeActive.map(l => renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, false)).join('')
     : '<tr><td colspan="6" class="empty-state">No one-time links yet.</td></tr>';
   recurringBody.innerHTML = recurringLinks.length
     ? recurringLinks.map(l => renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, true)).join('')
     : '<tr><td colspan="6" class="empty-state">No recurring links yet.</td></tr>';
+
+  // Archived one-time links (auto-archived once fulfilled, or archived manually).
+  const archBody = document.getElementById('payLinksArchivedBody');
+  const archWrap = document.getElementById('archivedToggleWrap');
+  const archCard = document.getElementById('archivedCard');
+  const archBtn = document.getElementById('archivedToggleBtn');
+  if (archBody) {
+    archBody.innerHTML = oneTimeArchived.length
+      ? oneTimeArchived.map(l => renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, false)).join('')
+      : '<tr><td colspan="6" class="empty-state">No archived links.</td></tr>';
+  }
+  if (archWrap) archWrap.style.display = oneTimeArchived.length ? 'block' : 'none';
+  if (archCard) archCard.style.display = (showArchivedPayLinks && oneTimeArchived.length) ? 'block' : 'none';
+  if (archBtn) archBtn.textContent = (showArchivedPayLinks ? 'Hide archived' : 'Show archived') + ` (${oneTimeArchived.length})`;
 }
 
 function renderPayLinkRow(l, orderMap, linkLatestOrder, existingOrderIds, isRecurringSection) {
@@ -4129,6 +4162,12 @@ If this looks good, I can send the payment link.`);
   const waUrl = whatsAppShareHref(l.customer_phone, waMsg);
   const quoteWaUrl = whatsAppShareHref(l.customer_phone, quoteMsg);
   const missingOrder = paymentLinkMissingOrder(l, existingOrderIds);
+  const isArchived = !!l.archived_at;
+  const archiveBtn = !isRecurringSection
+    ? (isArchived
+        ? `<button class="pl-menu-item" onclick="closeAllPayLinkMenus();unarchivePayLink('${l.id}')">♻ Unarchive</button>`
+        : `<button class="pl-menu-item" onclick="closeAllPayLinkMenus();archivePayLink('${l.id}')">🗄 Archive</button>`)
+    : '';
   const recreateBtn = missingOrder
     ? `<button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')" title="Order missing — recreate from link">Recreate</button>`
     : '';
@@ -4178,6 +4217,7 @@ If this looks good, I can send the payment link.`);
           <a href="${quoteWaUrl}" target="_blank" class="pl-menu-item" onclick="closeAllPayLinkMenus()">💬 Send Quote</a>
           <a href="${waUrl}" target="_blank" class="pl-menu-item" onclick="closeAllPayLinkMenus()">💳 Send Pay Link</a>
           <button class="pl-menu-item" onclick="closeAllPayLinkMenus();openSavedQuotePNGMenu('${l.id}')">🖼 PNG Quote</button>
+          ${archiveBtn}
           <div class="pl-menu-sep"></div>
           <button class="pl-menu-item danger" onclick="closeAllPayLinkMenus();deletePayLink('${l.id}','${l.order_id||''}')">✕ Delete</button>
         </div>
@@ -8083,10 +8123,8 @@ const PRODUCT_IMG_FALLBACK_BOTTLE = PRODUCT_IMAGES.classic_liter;
 const PRODUCT_IMG_FALLBACK_JERRY  = PRODUCT_IMAGES.jerry_can;
 const PRODUCT_IMG_FALLBACK_SYRUP  = PRODUCT_IMAGES.vanilla_syrup;
 function getProductImage(pid) {
-  // Dynamic catalog images (from the website) always take priority over hardcoded URLs,
-  // so updating a product photo on the website is immediately reflected here.
-  if (window.__OPS_DYNAMIC_PRODUCT_IMAGES__?.[pid]) return window.__OPS_DYNAMIC_PRODUCT_IMAGES__[pid];
   if (window.__OPS_PRODUCT_IMAGES__?.[pid]) return window.__OPS_PRODUCT_IMAGES__[pid];
+  if (window.__OPS_DYNAMIC_PRODUCT_IMAGES__?.[pid]) return window.__OPS_DYNAMIC_PRODUCT_IMAGES__[pid];
   if (PRODUCT_IMAGES[pid]) return PRODUCT_IMAGES[pid];
   if (!pid) return PRODUCT_IMG_FALLBACK_BOTTLE;
   if (pid.includes('jerry')) return PRODUCT_IMG_FALLBACK_JERRY;
@@ -8095,15 +8133,6 @@ function getProductImage(pid) {
 }
 function ProductThumb({ pid, size }) {
   const s = size || 28;
-  // tick forces re-render when the async catalog finishes loading images
-  const [tick, setTick] = useState2(0);
-  useEffect2(() => {
-    const refresh = () => setTick(t => t + 1);
-    window.addEventListener('gremier:catalog-products-changed', refresh);
-    // Also refresh once on mount in case catalog already loaded
-    if (window.__OPS_DYNAMIC_PRODUCT_IMAGES__?.[pid]) setTick(t => t + 1);
-    return () => window.removeEventListener('gremier:catalog-products-changed', refresh);
-  }, [pid]);
   return <img src={getProductImage(pid)} alt="" style={{width:s,height:s,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030'}}/>;
 }
 window.getProductImage = getProductImage; // exposed for the plain-JS Log Delivery modal
@@ -9227,7 +9256,6 @@ const PRODUCTS = {
   vanilla_mini:         { label: 'Vanilla Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   original_mini:        { label: 'Original Mini',         category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   caramel_mini:         { label: 'Caramel Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
-  dairy_free_mini:      { label: 'Dairy Free Mini',       category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   jerry_can:            { label: 'Jerry Can Classic',     category: 'jerry',     concentrate: 'classic',    litersPerUnit: 5    },
   jerry_can_houseblend: { label: 'Jerry Can House Blend', category: 'jerry',     concentrate: 'houseBlend', litersPerUnit: 5    },
   jerry_can_colombia:   { label: 'Jerry Can Colombia',    category: 'jerry',     concentrate: 'colombia',   litersPerUnit: 5    },
@@ -9237,27 +9265,15 @@ const PRODUCTS = {
   sugar_syrup:          { label: 'Sugar Syrup',           category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
   dispenser:            { label: 'Dispenser',             category: 'dispenser', concentrate: null,         litersPerUnit: 0    },
 };
-// Smart dynamic product merge:
-// - If the dynamic product's key already exists in the hardcoded map, skip it (prevents renaming classic_liter to "Classic Dark Roast" etc.)
-// - If it's a new key (not UUID-based), add it so new website products automatically appear in stock
-(function() {
-  const dynamic = window.__OPS_DYNAMIC_PRODUCTS_FULL__ || {};
-  const hardcodedKeys = new Set(Object.keys(PRODUCTS));
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  Object.entries(dynamic).forEach(([key, meta]) => {
-    if (hardcodedKeys.has(key)) return; // hardcoded entry takes priority
-    if (uuidRe.test(key)) return;       // skip UUID-keyed entries (unresolved/bundle products)
-    PRODUCTS[key] = meta;               // new named product — add it
-  });
-})();
+Object.assign(PRODUCTS, window.__OPS_DYNAMIC_PRODUCTS_FULL__ || {});
 const BEAN_TYPES = {
   classic:    { label: 'Classic (Dark Roast)',   warnKg: 9 },
   houseBlend: { label: 'House Blend',             warnKg: 3 },
   colombia:   { label: 'Colombia (Light Roast)',  warnKg: 3 },
   decaf:      { label: 'Decaf',                   warnKg: 1 },
 };
-const LABELED_PRODUCTS = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini','dairy_free_mini'];
-const LABELED_WARN = { classic_liter:30, sweetened_classic:25, house_blend:20, colombia_liter:20, vanilla_mini:80, original_mini:80, caramel_mini:100, classic_mini:null, house_blend_mini:null, dairy_free_mini:null };
+const LABELED_PRODUCTS = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
+const LABELED_WARN = { classic_liter:30, sweetened_classic:25, house_blend:20, colombia_liter:20, vanilla_mini:80, original_mini:80, caramel_mini:100, classic_mini:null, house_blend_mini:null };
 const MINI_PRODUCTS = ['vanilla_mini','original_mini','caramel_mini'];
 function getProductRatio(pid, concType) {
   return MINI_PRODUCTS.includes(pid) ? 0.29 : (CONCENTRATE_TYPES[concType]?.ratio || 0.44);
