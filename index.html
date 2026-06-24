@@ -8,6 +8,7 @@
   <title>Gremier Coffee Co.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="preconnect" href="https://res.cloudinary.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;700&display=swap" rel="stylesheet"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
   <script src="/vendor/supabase-js.min.js?v=2"></script>
@@ -1738,6 +1739,11 @@ function getFeaturedProducts() {
     return true;
   }).slice(0, 4);
 }
+function cloudinaryOptimize(url, width) {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  var w = width || 600;
+  return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_' + w + '/');
+}
 async function loadProducts() {
   const { data, error } = await sb.from('products').select('*').eq('is_active', true).order('sort_order');
   if (error || !data) { products = []; return; }
@@ -1796,7 +1802,7 @@ function getSubscriptionSelection() {
         name_he: item.name_he || item.name_en,
         price: parseFloat(item.price) || 0,
         qty: Math.max(1, parseInt(state.qty, 10) || 1),
-        image: item.images?.[0] || '',
+        image: cloudinaryOptimize(item.images?.[0] || '', 100),
       } : null;
     })
     .filter(Boolean);
@@ -1987,7 +1993,7 @@ function renderPdSubscriptionSection(p, keepState) {
     const state = pdSubscriptionItems[String(item.id)] || { selected: false, qty: 1 };
     const name = lang === 'he' ? (item.name_he || item.name_en) : item.name_en;
     const thumb = item.images?.[0]
-      ? `<img src="${escAttr(item.images[0])}" alt="${escAttr(name)}"/>`
+      ? `<img src="${escAttr(cloudinaryOptimize(item.images[0], 100))}" alt="${escAttr(name)}"/>`
       : productIcon(item.category);
     return `<div class="sub-bundle-item">
       <div class="sub-bundle-thumb">${thumb}</div>
@@ -2026,14 +2032,14 @@ function openProductDrawerUI(productId) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const imgWrap = document.getElementById('pdImgWrap');
   if (p.images && p.images.length > 0) {
-    imgWrap.innerHTML = `<img id="pdMainImg" src="${escAttr(p.images[0])}" alt="${escAttr(name)}"/>`;
+    imgWrap.innerHTML = `<img id="pdMainImg" src="${escAttr(cloudinaryOptimize(p.images[0], 800))}" alt="${escAttr(name)}"/>`;
   } else {
     imgWrap.innerHTML = `<span style="font-size:4rem">${productIcon(p.category)}</span>`;
   }
   const thumbs = document.getElementById('pdThumbs');
   if (p.images && p.images.length > 1) {
     thumbs.innerHTML = p.images.map((url, i) =>
-      `<img class="pd-thumb${i===0?' active':''}" src="${escAttr(url)}" onclick="pdSwitchImg(${i})" alt=""/>`
+      `<img class="pd-thumb${i===0?' active':''}" src="${escAttr(cloudinaryOptimize(url, 120))}" onclick="pdSwitchImg(${i})" alt=""/>`
     ).join('');
   } else {
     thumbs.innerHTML = '';
@@ -2128,7 +2134,7 @@ function pdSwitchImg(idx) {
   pdActiveImg = idx;
   const main = document.getElementById('pdMainImg');
   const url = pdCurrentProduct?.images?.[idx] || '';
-  if (main) main.src = url;
+  if (main) main.src = cloudinaryOptimize(url, 800);
   document.querySelectorAll('.pd-thumb').forEach((t, i) => t.classList.toggle('active', i === idx));
 }
 function pdChangeQty(delta) {
@@ -2229,7 +2235,7 @@ function productCardHTML(p) {
   const name = lang === 'he' ? (p.name_he || p.name_en) : p.name_en;
   const desc = productCardDesc(p);
   const img = (p.images && p.images.length > 0)
-    ? `<img src="${escAttr(p.images[0])}" alt="${escAttr(name)}" loading="lazy" draggable="false"/>`
+    ? `<img src="${escAttr(cloudinaryOptimize(p.images[0], 600))}" alt="${escAttr(name)}" loading="lazy" draggable="false"/>`
     : `<div class="product-img-placeholder">${productIcon(p.category)}</div>`;
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
   return `
@@ -2335,7 +2341,7 @@ function renderCartDrawer() {
   body.innerHTML = cart.map(item => {
     const name = lang==='he' ? (item.name_he||item.name_en) : item.name_en;
     const thumb = (item.images && item.images.length)
-      ? `<img src="${escAttr(item.images[0])}" alt="${escAttr(name)}"/>`
+      ? `<img src="${escAttr(cloudinaryOptimize(item.images[0], 100))}" alt="${escAttr(name)}"/>`
       : productIcon(item.category);
     const subDetail = item.is_subscription
       ? `<div style="font-size:.74rem;color:var(--text2);line-height:1.45;margin-top:4px">${subscriptionIntervalLabel(item.subscription_interval)} · ${(item.subscription_items || []).map(si => `${lang === 'he' ? (si.name_he || si.name_en) : si.name_en} ×${si.qty}`).join(', ')}</div>`
@@ -3753,7 +3759,7 @@ function appendProductSuggestions() {
   grid.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:6px;width:100%';
   suggested.forEach(p => {
     const name = lang==='he' ? (p.name_he||p.name_en) : p.name_en;
-    const img = p.images?.length ? `<img src="${p.images[0]}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0" alt=""/>` : `<div style="width:44px;height:44px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">${productIcon(p.category)}</div>`;
+    const img = p.images?.length ? `<img src="${cloudinaryOptimize(p.images[0], 88)}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0" alt=""/>` : `<div style="width:44px;height:44px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">${productIcon(p.category)}</div>`;
     const card = document.createElement('div');
     card.style.cssText = 'display:flex;align-items:center;gap:10px;background:#f7f5f2;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;transition:border-color .2s';
     card.innerHTML = `${img}<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:#1a1a1a;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div><div style="font-size:.76rem;color:var(--text2)">₪${p.price}</div></div><button style="background:#1a1a1a;color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>`;
