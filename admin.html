@@ -9214,6 +9214,7 @@ const PRODUCTS = {
   vanilla_mini:         { label: 'Vanilla Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   original_mini:        { label: 'Original Mini',         category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   caramel_mini:         { label: 'Caramel Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
+  dairy_free_mini:      { label: 'Dairy Free Mini',       category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   jerry_can:            { label: 'Jerry Can Classic',     category: 'jerry',     concentrate: 'classic',    litersPerUnit: 5    },
   jerry_can_houseblend: { label: 'Jerry Can House Blend', category: 'jerry',     concentrate: 'houseBlend', litersPerUnit: 5    },
   jerry_can_colombia:   { label: 'Jerry Can Colombia',    category: 'jerry',     concentrate: 'colombia',   litersPerUnit: 5    },
@@ -9223,15 +9224,27 @@ const PRODUCTS = {
   sugar_syrup:          { label: 'Sugar Syrup',           category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
   dispenser:            { label: 'Dispenser',             category: 'dispenser', concentrate: null,         litersPerUnit: 0    },
 };
-Object.assign(PRODUCTS, window.__OPS_DYNAMIC_PRODUCTS_FULL__ || {});
+// Smart dynamic product merge:
+// - If the dynamic product's key already exists in the hardcoded map, skip it (prevents renaming classic_liter to "Classic Dark Roast" etc.)
+// - If it's a new key (not UUID-based), add it so new website products automatically appear in stock
+(function() {
+  const dynamic = window.__OPS_DYNAMIC_PRODUCTS_FULL__ || {};
+  const hardcodedKeys = new Set(Object.keys(PRODUCTS));
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  Object.entries(dynamic).forEach(([key, meta]) => {
+    if (hardcodedKeys.has(key)) return; // hardcoded entry takes priority
+    if (uuidRe.test(key)) return;       // skip UUID-keyed entries (unresolved/bundle products)
+    PRODUCTS[key] = meta;               // new named product — add it
+  });
+})();
 const BEAN_TYPES = {
   classic:    { label: 'Classic (Dark Roast)',   warnKg: 9 },
   houseBlend: { label: 'House Blend',             warnKg: 3 },
   colombia:   { label: 'Colombia (Light Roast)',  warnKg: 3 },
   decaf:      { label: 'Decaf',                   warnKg: 1 },
 };
-const LABELED_PRODUCTS = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
-const LABELED_WARN = { classic_liter:30, sweetened_classic:25, house_blend:20, colombia_liter:20, vanilla_mini:80, original_mini:80, caramel_mini:100, classic_mini:null, house_blend_mini:null };
+const LABELED_PRODUCTS = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini','dairy_free_mini'];
+const LABELED_WARN = { classic_liter:30, sweetened_classic:25, house_blend:20, colombia_liter:20, vanilla_mini:80, original_mini:80, caramel_mini:100, classic_mini:null, house_blend_mini:null, dairy_free_mini:null };
 const MINI_PRODUCTS = ['vanilla_mini','original_mini','caramel_mini'];
 function getProductRatio(pid, concType) {
   return MINI_PRODUCTS.includes(pid) ? 0.29 : (CONCENTRATE_TYPES[concType]?.ratio || 0.44);
