@@ -1604,26 +1604,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 </div>
  
-<!-- GIFT CARD EDIT BALANCE MODAL -->
-<div class="modal-backdrop" id="gcEditModal" style="display:none" onclick="if(event.target===this)closeEditGiftCardBalance()">
-  <div class="modal-box" style="max-width:380px">
-    <h2 class="modal-title">Edit Balance — <span id="gcEditCode" style="color:var(--accent)"></span></h2>
-    <input type="hidden" id="gcEditId"/>
-    <div class="form-group">
-      <label class="form-label">New balance (₪)</label>
-      <input class="form-input" type="number" id="gcEditBalance" min="0" step="1" placeholder="0"/>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Reason / note (optional)</label>
-      <input class="form-input" id="gcEditNote" placeholder="e.g. Manual correction"/>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <button class="btn btn-outline" style="flex:1" onclick="closeEditGiftCardBalance()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" id="gcEditSaveBtn" onclick="saveGiftCardBalance()">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- GIFT CARD MODAL -->
 <div class="modal-backdrop" id="giftCardModal">
   <div class="modal-box" style="max-width:480px">
@@ -7451,54 +7431,34 @@ async function toggleGiftCard(id, current) {
   loadGiftCards();
 }
 
-function openEditGiftCardBalance(id, currentBalance) {
+async function openEditGiftCardBalance(id, currentBalance) {
   const gc = allGiftCards.find(g => g.id === id);
   if (!gc) return;
-  document.getElementById('gcEditCode').textContent = gc.code;
-  document.getElementById('gcEditBalance').value = Number(currentBalance).toFixed(0);
-  document.getElementById('gcEditId').value = id;
-  document.getElementById('gcEditNote').value = '';
-  document.getElementById('gcEditModal').style.display = 'flex';
-  setTimeout(() => document.getElementById('gcEditBalance').focus(), 50);
-}
-
-function closeEditGiftCardBalance() {
-  document.getElementById('gcEditModal').style.display = 'none';
-}
-
-async function saveGiftCardBalance() {
-  const id = document.getElementById('gcEditId').value;
-  const newBalance = parseFloat(document.getElementById('gcEditBalance').value);
-  if (isNaN(newBalance) || newBalance < 0) { showToast('Enter a valid balance'); return; }
-  const btn = document.getElementById('gcEditSaveBtn');
-  btn.disabled = true; btn.textContent = 'Saving…';
+  const input = window.prompt(`New balance for ${gc.code} (current: ₪${Number(currentBalance).toFixed(0)}):`, Number(currentBalance).toFixed(0));
+  if (input === null) return; // cancelled
+  const newBalance = parseFloat(input);
+  if (isNaN(newBalance) || newBalance < 0) { showToast('Invalid amount'); return; }
   try {
-    const gc = allGiftCards.find(g => g.id === id);
-    const oldBalance = Number(gc?.balance || 0);
+    const oldBalance = Number(currentBalance);
     const amountUsed = oldBalance - newBalance;
     await sb.from('gift_cards').update({
       balance: newBalance,
       is_active: newBalance > 0,
       updated_at: new Date().toISOString()
     }).eq('id', id);
-    // log the manual adjustment as a transaction for the audit trail
     if (amountUsed !== 0) {
-      const note = document.getElementById('gcEditNote').value.trim() || 'Manual balance adjustment';
       await sb.from('gift_card_transactions').insert({
         gift_card_id: id,
         amount_used: amountUsed,
         balance_after: newBalance,
-        note,
-      }).then(() => {}).catch(e => console.warn('gc transaction log skipped:', e));
+        note: 'Manual balance adjustment',
+      }).catch(e => console.warn('gc transaction log skipped:', e));
     }
-    closeEditGiftCardBalance();
     loadGiftCards();
     showToast('Balance updated ✓');
   } catch(e) {
     showToast('Could not update balance');
     console.error(e);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Save';
   }
 }
 
