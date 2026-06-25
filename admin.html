@@ -7350,7 +7350,7 @@ function renderGiftCardsTable() {
       <td style="color:var(--cream)"><strong>${escHtml(g.code)}</strong>${g.message?`<br><small style="color:var(--text2)">${escHtml(g.message)}</small>`:''}</td>
       <td class="cell-total" style="color:var(--cream)">₪${Number(g.balance).toFixed(0)}</td>
       <td class="hide-mobile">₪${Number(g.initial_amount).toFixed(0)}</td>
-      <td class="hide-mobile">${escHtml(g.recipient_email||g.recipient_name||'—')}</td>
+      <td>${g.recipient_name ? `<span style="color:var(--cream)">${escHtml(g.recipient_name)}</span>` : ''}${g.recipient_name && g.recipient_email ? `<br>` : ''}${g.recipient_email ? `<small style="color:var(--text2)">${escHtml(g.recipient_email)}</small>` : ''}${!g.recipient_name && !g.recipient_email ? `<span style="color:var(--text2)">—</span>` : ''}</td>
       <td class="cell-status"><span class="status-pill ${stCss}">${st}</span></td>
       <td class="cell-date hide-mobile">${created}</td>
       <td class="cell-actions"><div class="cell-actions-wrap">
@@ -7753,11 +7753,20 @@ async function loadPendingWebDeliveries2() {
   if (!Array.isArray(rows)||!rows.length) return rows||[];
   const ids = [...new Set(rows.map(r=>r.order_id).filter(Boolean))];
   if (!ids.length) return [];
-  const orders = await opsFetch(`orders?id=in.(${ids.join(',')})&select=id,payment_status`);
-  const payMap = {}; (orders||[]).forEach(o=>{payMap[o.id]=o.payment_status;});
+  const orders = await opsFetch(`orders?id=in.(${ids.join(',')})&select=id,payment_status,items,delivery_info`);
+  const orderMap = {};
+  (orders||[]).forEach(o=>{ orderMap[o.id] = o; });
   return rows
-    .map(r=>({...r, payment_status: payMap[r.order_id]||null}))
-    .filter(r=>r.payment_status==='paid');
+    .map(r => {
+      const o = orderMap[r.order_id] || {};
+      return {
+        ...r,
+        payment_status: o.payment_status || null,
+        items: o.items || r.items || [],
+        delivery_info: o.delivery_info || r.delivery_info || null,
+      };
+    })
+    .filter(r => r.payment_status === 'paid');
 }
 function websiteOrderDisplayLabel2(order) {
   const name = String(order?.customer_name||'').trim();
@@ -7904,6 +7913,8 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     console.warn('Website order schedule prefill could not map some items:', unresolved, order);
   }
 
+  const requestedDate = String(order?.delivery_info?.delivery_date || '').slice(0, 10);
+
   return {
     subType: 'private',
     privateName: websiteOrderDisplayLabel2(order),
@@ -7912,6 +7923,7 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     websiteOrderId: order?.order_id || order?.id || null,
     quantities,
     unresolvedItems: unresolved,
+    ...(requestedDate ? { date: requestedDate } : {}),
   };
 }
 async function patchJob2(id, patch) {
