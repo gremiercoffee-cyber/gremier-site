@@ -2542,7 +2542,17 @@ async function submitOrder() {
   const submitBtn = document.getElementById('t-co-submit');
   const prevLabel = submitBtn.textContent;
   submitBtn.disabled = true;
-  submitBtn.textContent = lang==='he' ? 'מעביר לתשלום…' : 'Redirecting to payment…';
+
+  const previewCartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const previewDeliveryFee = updateDeliveryPrice() || 0;
+  const previewGcDiscount = (appliedRedeem && appliedRedeem.kind === 'gift_card') ? Number(appliedRedeem.discount) || 0 : 0;
+  const previewCouponDiscount = (appliedRedeem && appliedRedeem.kind === 'coupon') ? Number(appliedRedeem.discount) || 0 : 0;
+  const previewTotal = Math.max(0, previewCartTotal + previewDeliveryFee - previewGcDiscount - previewCouponDiscount);
+  const fullyCoveredByGiftCard = previewTotal === 0 && previewGcDiscount > 0;
+
+  submitBtn.textContent = fullyCoveredByGiftCard
+    ? (lang==='he' ? 'שלם עם כרטיס מתנה' : 'Pay with gift card')
+    : (lang==='he' ? 'מעביר לתשלום…' : 'Redirecting to payment…');
 
   try {
 const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
@@ -2987,6 +2997,19 @@ function prepareCheckoutContent() {
     hideCitySuggestions();
   }
   setTimeout(() => updateDeliveryPrice(), 50);
+
+  // Update submit button label: if a gift card covers the full amount, say so.
+  const submitBtn = document.getElementById('t-co-submit');
+  if (submitBtn && appliedRedeem?.kind === 'gift_card') {
+    const deliveryFee = updateDeliveryPrice() || 0;
+    const gcDiscount = Number(appliedRedeem.discount) || 0;
+    const previewTotal = Math.max(0, cartTotal + deliveryFee - gcDiscount);
+    submitBtn.textContent = previewTotal === 0
+      ? (lang==='he' ? 'שלם עם כרטיס מתנה' : 'Pay with gift card')
+      : (lang==='he' ? 'המשך לתשלום' : 'Proceed to payment');
+  } else if (submitBtn) {
+    submitBtn.textContent = lang==='he' ? 'המשך לתשלום' : 'Proceed to payment';
+  }
 }
 function showCheckoutResultUI(kind) {
   document.getElementById('checkoutFormView').style.display = 'none';
