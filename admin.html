@@ -7435,31 +7435,21 @@ async function openEditGiftCardBalance(id, currentBalance) {
   const gc = allGiftCards.find(g => g.id === id);
   if (!gc) return;
   const input = window.prompt(`New balance for ${gc.code} (current: ₪${Number(currentBalance).toFixed(0)}):`, Number(currentBalance).toFixed(0));
-  if (input === null) return; // cancelled
+  if (input === null) return;
   const newBalance = parseFloat(input);
   if (isNaN(newBalance) || newBalance < 0) { showToast('Invalid amount'); return; }
-  try {
-    const oldBalance = Number(currentBalance);
-    const amountUsed = oldBalance - newBalance;
-    await sb.from('gift_cards').update({
-      balance: newBalance,
-      is_active: newBalance > 0,
-      updated_at: new Date().toISOString()
-    }).eq('id', id);
-    if (amountUsed !== 0) {
-      await sb.from('gift_card_transactions').insert({
-        gift_card_id: id,
-        amount_used: amountUsed,
-        balance_after: newBalance,
-        note: 'Manual balance adjustment',
-      }).catch(e => console.warn('gc transaction log skipped:', e));
-    }
-    loadGiftCards();
-    showToast('Balance updated ✓');
-  } catch(e) {
-    showToast('Could not update balance');
-    console.error(e);
+  const { error } = await sb.from('gift_cards').update({
+    balance: newBalance,
+    is_active: newBalance > 0,
+    updated_at: new Date().toISOString()
+  }).eq('id', id);
+  if (error) {
+    showToast('Update failed: ' + (error.message || error.code || 'unknown'));
+    console.error('gift_cards balance update error:', error);
+    return;
   }
+  loadGiftCards();
+  showToast('Balance updated ✓');
 }
 
 initAdmin();
