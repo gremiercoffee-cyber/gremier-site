@@ -8008,11 +8008,17 @@ async function incrementLabeledStock2(product, delta) {
 async function batchIncrementInventory2(deltas) {
   const ids = Object.keys(deltas).filter(pid => deltas[pid]);
   if (!ids.length) return;
-  const rows = await opsFetch(`inventory?product=in.(${ids.join(',')})&select=product,qty`);
+  const rows = await opsFetch(`inventory?product=in.(${ids.map(encodeURIComponent).join(',')})&select=product,qty`);
   const current = {}; (rows||[]).forEach(r => { current[r.product] = r.qty||0; });
   await Promise.all(ids.map(pid => {
     const newQty = Math.max(0, (current[pid]||0) + deltas[pid]);
-    return opsFetch(`inventory?product=eq.${pid}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+    if (current[pid] !== undefined) {
+      // row exists — patch it
+      return opsFetch(`inventory?product=eq.${encodeURIComponent(pid)}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({qty:newQty})});
+    } else {
+      // row missing — insert it so the deduction isn't silently lost
+      return opsFetch('inventory',{method:'POST',prefer:'return=minimal',body:JSON.stringify({product:pid,qty:newQty})});
+    }
   }));
   window.notifyGremierStockChanged?.();
 }
