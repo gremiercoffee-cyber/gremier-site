@@ -1097,6 +1097,17 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </table>
     </div>
   </div>
+
+  <!-- Bottles sold by product this month -->
+  <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Bottles Sold This Month</h3>
+  <div class="card" style="padding:0;margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Product</th><th class="cell-num">Online</th><th class="cell-num">Store</th><th class="cell-num" style="color:var(--cream)">Total</th></tr></thead>
+        <tbody id="dashBottlesSold"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
  
 <!-- COUPONS TAB -->
@@ -4718,8 +4729,9 @@ function openZoneModal(zoneId) {
     + '<div class="form-row-3">'
     + '<div class="form-group"><label class="form-label">Regular (₪)</label><input class="form-input" type="number" id="zRegular" value="' + (z ? z.regular_price||'' : '') + '"/></div>'
     + '<div class="form-group"><label class="form-label">Expedited (₪)</label><input class="form-input" type="number" id="zExpedited" value="' + (z ? z.expedited_price||'' : '') + '"/></div>'
-    + '<div class="form-group"><label class="form-label">Free Above (₪)</label><input class="form-input" type="number" id="zFreeAbove" value="' + (z ? z.free_above||'' : '') + '" placeholder="Never free"/></div>'
+    + '<div class="form-group"><label class="form-label">Event (₪)</label><input class="form-input" type="number" id="zEvent" value="' + (z && z.event_price!=null ? z.event_price : '') + '" placeholder="Expedited price"/></div>'
     + '</div>'
+    + '<div class="form-group"><label class="form-label">Free Above (₪)</label><input class="form-input" type="number" id="zFreeAbove" value="' + (z ? z.free_above||'' : '') + '" placeholder="Never free"/></div>'
     + '<div class="toggle-row">'
     + '<span class="toggle-label">Zone active at checkout</span>'
     + '<label class="toggle"><input type="checkbox" id="zActive" ' + (z && z.is_active===false ? '' : 'checked') + '/><span class="toggle-slider"></span></label>'
@@ -4742,6 +4754,7 @@ async function saveZone() {
     region: document.getElementById('zRegion').value,
     regular_price: parseFloat(document.getElementById('zRegular').value)||0,
     expedited_price: parseFloat(document.getElementById('zExpedited').value)||0,
+    event_price: document.getElementById('zEvent')?.value.trim() !== '' ? (parseFloat(document.getElementById('zEvent').value)||0) : null,
     free_above: parseFloat(document.getElementById('zFreeAbove').value)||null,
     is_active: document.getElementById('zActive').checked,
     city_code: document.getElementById('zCityCode')?.value || null,
@@ -6785,22 +6798,41 @@ async function loadBriefing(options = {}) {
       ? `<section class="briefing-section"><h4>🔄 What's Updated</h4>${updateRows.length ? updateRows.join('') : briefingEmpty('Nothing has changed since your last briefing.')}</section>`
       : '';
 
-    body.innerHTML = `
-      <div class="briefing-content">
-        <div class="briefing-priority ${actions.length ? '' : 'good'}">
-          <div><span>Today’s focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
-          <small>Calculated from open jobs, ready stock, concentrate, labels, beans, and ${usingForecastTable ? 'store delivery forecasts' : '180 days of store deliveries'}.</small>
-        </div>
-        ${updatedSectionHtml}
-        <div class="briefing-grid">
-          <section class="briefing-section"><h4>Today</h4>${todayHtml}</section>
-          <section class="briefing-section"><h4>Likely next store runs</h4>${storesHtml}</section>
-          <section class="briefing-section"><h4>Production watch</h4>${productionRows.join('')}</section>
-          <section class="briefing-section"><h4>Stock snapshot</h4><div class="briefing-mini-grid">${stockStats}</div><div class="briefing-mini-grid concentrate">${concentrateStats}</div>${labelRowsHtml}${beanRowsHtml}</section>
-        </div>
-      </div>
-    `;
-    briefingRenderCollapsedSummary(urgentHtml);
+    // compact bullet briefing
+    const bullets = [];
+    if (todayJobs.length) {
+      bullets.push('Today: ' + todayJobs.map(j => briefingJobTitle(j)).join(', '));
+    } else {
+      bullets.push('Today: nothing scheduled');
+    }
+    const dueThisWeek = dueStores.filter(p => p.daysUntilDue <= 7 || p.dueScore >= 0.85).slice(0, 5);
+    if (dueThisWeek.length) {
+      dueThisWeek.forEach(p => {
+        const qty = [];
+        if (Math.round(p.avgLarge)) qty.push(Math.round(p.avgLarge) + ' large');
+        if (Math.round(p.avgSmall)) qty.push(Math.round(p.avgSmall) + ' mini');
+        if (Math.round(p.avgSyrup)) qty.push(Math.round(p.avgSyrup) + ' syrup');
+        bullets.push('Store ' + p.store + (qty.length ? ': ~' + qty.join(', ') : ''));
+      });
+    } else {
+      bullets.push('Stores: none due this week');
+    }
+    const makeList = urgentBottleShortfalls.length ? urgentBottleShortfalls : bottleShortfalls;
+    makeList.slice(0, 4).forEach(x =>
+      bullets.push('Make ' + Math.ceil(x.gap) + ' ' + x.label + ' — need in ' + (urgentBottleShortfalls.length ? '7' : '14') + 'd (have ' + briefingRound(x.inStock) + ')')
+    );
+    concentrateGapActions.slice(0, 3).forEach(x =>
+      bullets.push('Brew ' + briefingRound(x.gap, 1) + 'L ' + x.label + ' — have ' + briefingRound(x.have, 1) + 'L, need ' + briefingRound(x.demand, 1) + 'L')
+    );
+    const concParts = Object.entries(BRIEFING_CONCENTRATES).map(([k, c]) => c.label.replace(' Dark Roast','') + ' ' + briefingRound(concentrate[k]||0,1) + 'L').join(' / ');
+    bullets.push('Stock: ' + briefingRound(stockLarge) + ' large / ' + briefingRound(stockSmall) + ' mini / ' + briefingRound(briefingCategoryTotal(inventory,'jerry')) + ' jerry / ' + briefingRound(stockSyrup) + ' syrup');
+    if (concParts) bullets.push('Conc: ' + concParts);
+    if (lowLabels.length) bullets.push('Labels low: ' + lowLabels.map(x => x.label + ' (' + briefingRound(x.qty) + ')').join(', '));
+    if (lowBeans.length) bullets.push('Beans low: ' + lowBeans.map(x => x.label + ' (' + briefingRound(x.kg,1) + 'kg)').join(', '));
+    const bulletHtml = bullets.map(b => '<div style="padding:5px 0 4px;border-bottom:1px solid rgba(255,255,255,.06);font-size:.84rem;color:var(--text1)">• ' + escHtml(b) + '</div>').join('');
+    const focusLine = actions.length ? escHtml(actions.join(' · ')) : '✓ Everything looks covered right now.';
+    body.innerHTML = '<div class="briefing-content"><div class="briefing-priority ' + (actions.length ? '' : 'good') + '"><strong>' + focusLine + '</strong></div><div style="margin-top:10px">' + bulletHtml + '</div></div>';
+        briefingRenderCollapsedSummary(urgentHtml);
     briefingSetCollapsed(false);
     briefingWriteCache(body.innerHTML, urgentHtml, snapshot);
   } catch (err) {
@@ -6813,7 +6845,7 @@ async function loadBriefing(options = {}) {
 }
 async function loadDashboard() {
   const period = document.getElementById('dashPeriod')?.value || 'month';
-  const DASH_IDS = ['dashKPIs', 'dashChart', 'dashRecentOrders', 'dashRecentDeliveries', 'dashStoreBreakdown'];
+  const DASH_IDS = ['dashKPIs', 'dashChart', 'dashRecentOrders', 'dashRecentDeliveries', 'dashStoreBreakdown', 'dashBottlesSold'];
   const DASH_CACHE_KEY = 'gremier_dashboard_cache_v1_' + period;
   window.gremierUiCacheRestore(DASH_CACHE_KEY, DASH_IDS);
   const now = new Date();
@@ -6854,6 +6886,7 @@ if (!allStores.length) await loadStores();
 renderDashboardRecentOrders(ordersFinal);
   renderDashboardRecentDeliveries(deliveriesFinal);
   renderDashboardStoreBreakdown(deliveriesFinal);
+  renderDashboardBottlesSold(ordersFinal, deliveriesFinal);
 
   window.gremierUiCacheSave(DASH_CACHE_KEY, DASH_IDS);
 
@@ -6963,6 +6996,54 @@ function renderDashboardRecentDeliveries(deliveries) {
         <td class="cell-total" style="color:var(--cream);font-size:.78rem">₪${deliveryTotal(d).toFixed(0)}</td>
       </tr>`).join('')
     : '<tr><td colspan="4" class="empty-state">No deliveries yet.</td></tr>';
+}
+
+function renderDashboardBottlesSold(orders, deliveries) {
+  const body = document.getElementById('dashBottlesSold');
+  if (!body) return;
+
+  // Tally online order items by product name
+  const online = {};
+  (orders || []).forEach(o => {
+    if (!Array.isArray(o.items)) return;
+    o.items.forEach(item => {
+      const key = String(item.name_en || item.name_he || item.product_id || 'Unknown').trim();
+      online[key] = (online[key] || 0) + (Number(item.qty) || 1);
+    });
+  });
+
+  // Tally store delivery quantities by product key, map to display name
+  const PROD_DISPLAY = {};
+  Object.entries(window.__OPS_PRODUCTS_FULL__ || window.PRODUCTS || {}).forEach(([pid, p]) => {
+    PROD_DISPLAY[pid] = p.label || p.name_en || pid;
+  });
+  const store = {};
+  (deliveries || []).forEach(d => {
+    if (d.quantities && typeof d.quantities === 'object' && Object.keys(d.quantities).length) {
+      Object.entries(d.quantities).forEach(([pid, qty]) => {
+        if (Number(qty) > 0) {
+          const label = PROD_DISPLAY[pid] || pid;
+          store[label] = (store[label] || 0) + Number(qty);
+        }
+      });
+    } else {
+      if (d.qty_large) store['Large bottles'] = (store['Large bottles'] || 0) + Number(d.qty_large);
+      if (d.qty_small) store['Mini bottles'] = (store['Mini bottles'] || 0) + Number(d.qty_small);
+    }
+  });
+
+  const allKeys = [...new Set([...Object.keys(online), ...Object.keys(store)])];
+  const rows = allKeys.map(k => ({ name: k, online: online[k] || 0, store: store[k] || 0 }));
+  rows.sort((a, b) => (b.online + b.store) - (a.online + a.store));
+
+  body.innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td style="font-size:.78rem;color:var(--cream)">${escHtml(r.name)}</td>
+        <td class="cell-num" style="font-size:.78rem">${r.online || '—'}</td>
+        <td class="cell-num" style="font-size:.78rem">${r.store || '—'}</td>
+        <td class="cell-num" style="font-size:.78rem;color:var(--cream);font-weight:600">${r.online + r.store}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">No bottles sold yet this period.</td></tr>';
 }
 
 function renderDashboardStoreBreakdown(deliveries) {
@@ -9608,6 +9689,9 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, f
   const [pendingQty, setPendingQty] = useState2({}); // pid -> live display value while a tap burst is still settling
   const tapTimers = useRef2({});
   const TAP_SETTLE_MS = 500;
+  // Tracks in-flight saves so a concurrent reloadStock can't flash the stale
+  // server value over an optimistic update that hasn't persisted yet.
+  const savesInFlight = useRef2({});
 
   function displayValue(pid) {
     return pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid] ?? '');
@@ -9615,8 +9699,20 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, f
 
   async function save(pid, val) {
     const v = Math.max(0, parseInt(val)||0);
-    setInventory(p=>({...p,[pid]:v}));
-    await patchInventory(pid, v);
+    // Pin the confirmed value in pendingQty for the whole network round-trip so
+    // any concurrent reloadStock can't overwrite it with the pre-save server value.
+    savesInFlight.current[pid] = v;
+    setPendingQty(p=>({...p,[pid]:v}));
+    try {
+      await patchInventory(pid, v);
+      setInventory(p=>({...p,[pid]:v}));
+    } finally {
+      // Only clear the pin if nothing newer has superseded it while we were waiting.
+      if (savesInFlight.current[pid] === v) {
+        delete savesInFlight.current[pid];
+        setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
+      }
+    }
   }
 
   // "made this now" — same math as the Bottle production flow: units → liters → concentrate used
