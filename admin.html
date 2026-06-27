@@ -7995,6 +7995,8 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
   }
 
   const requestedDate = String(order?.delivery_info?.delivery_date || '').slice(0, 10);
+  const requestedTime = String(order?.delivery_info?.event_time || '').slice(0, 5);
+  const isEventDelivery = String(order?.delivery_info?.delivery_type || '') === 'event';
 
   return {
     subType: 'private',
@@ -8005,6 +8007,8 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     quantities,
     unresolvedItems: unresolved,
     ...(requestedDate ? { date: requestedDate } : {}),
+    ...(requestedTime ? { time: requestedTime } : {}),
+    ...(isEventDelivery ? { label: `Event delivery${requestedDate ? ' — ' + requestedDate : ''}${requestedTime ? ' @ ' + requestedTime : ''}` } : {}),
   };
 }
 async function patchJob2(id, patch) {
@@ -8812,7 +8816,7 @@ const [jobType,setJobType] = useState2('delivery');
   const [subType,setSubType] = useState2(prefill?.subType || 'store');
   const [prodType,setProdType] = useState2('brew');
   const [date,setDate] = useState2(prefill?.date || todayISO2());
-  const [time,setTime] = useState2('');
+  const [time,setTime] = useState2(prefill?.time || '');
   const [storeName,setStoreName] = useState2(prefill?.storeName || '');
   const [privateName,setPrivateName] = useState2(prefill?.privateName || '');
   const [privateAddress,setPrivateAddress] = useState2(prefill?.privateAddress || '');
