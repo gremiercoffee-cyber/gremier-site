@@ -6532,18 +6532,41 @@ function briefingBuildNewStoreDefaults(deliveries, stores, existingForecasts, to
 }
 function briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls, concentrateGaps, forecastGaps }) {
   const actions = [];
+
+  // Build store context string — first 2 store names + overflow count
+  const dueThisWeek = dueStores.filter(p => p.daysUntilDue <= 7 || p.dueScore >= 0.85);
+  const storeNames = dueThisWeek.slice(0, 2).map(s => s.store.split(' ')[0]);
+  const storeCtx = dueThisWeek.length
+    ? `(${storeNames.join(', ')}${dueThisWeek.length > 2 ? ` +${dueThisWeek.length - 2} more` : ''})`
+    : dueStores.length ? `(${dueStores.length} store${dueStores.length > 1 ? 's' : ''} due soon)` : '';
+
+  // Concentrate: most urgent — must brew before you can bottle
   if (concentrateGaps.length) {
     const c = concentrateGaps[0];
-    actions.push(`Brew ${briefingRound(c.gap,1)}L ${c.label}`);
+    const extra = concentrateGaps.length > 1 ? ` + ${concentrateGaps.length - 1} more` : '';
+    actions.push(`Brew ${briefingRound(c.gap, 1)}L ${c.label}${extra} — urgent ${storeCtx}`);
   }
+
+  // Bottles: urgent (7d) or upcoming (14d)
   if (bottleShortfalls.length) {
     const b = bottleShortfalls[0];
-    actions.push(`Make ${Math.ceil(b.gap)} ${b.label}`);
+    const extra = bottleShortfalls.length > 1 ? ` + ${bottleShortfalls.length - 1} more` : '';
+    const urgency = b.daysUntilNeeded <= 7 ? 'needed this week' : 'needed in 14d';
+    actions.push(`Make ${Math.ceil(b.gap)} ${b.label}${extra} — ${urgency} ${storeCtx}`);
   }
-  if (forecastGaps.length) actions.push(forecastGaps[0]);
-  if (dueStores.length) actions.push(`${dueStores.length} store${dueStores.length === 1 ? '' : 's'} likely due soon`);
-  if (!actions.length && todayJobs.length) actions.push(`${todayJobs.length} scheduled job${todayJobs.length === 1 ? '' : 's'} today`);
-  return actions.slice(0, 3);
+
+  // Forecast gap (no specific bottle match yet)
+  if (forecastGaps.length && actions.length < 2) actions.push(`${forecastGaps[0]} ${storeCtx}`);
+
+  // Stores only if nothing else flagged
+  if (!actions.length && dueStores.length) {
+    actions.push(`${dueStores.length} store run${dueStores.length > 1 ? 's' : ''} due soon ${storeCtx}`);
+  }
+  if (!actions.length && todayJobs.length) {
+    actions.push(`${todayJobs.filter(j => !j.done).length} job${todayJobs.length > 1 ? 's' : ''} scheduled today`);
+  }
+
+  return actions.slice(0, 2);
 }
 
 const DASH_BRIEFING_CACHE_KEY = 'gremier_dash_briefing_cache_v6_store_alias_options';
@@ -6778,15 +6801,10 @@ async function loadBriefing(options = {}) {
     forecastGaps.slice(0, 3).forEach(x => productionRows.push(briefingItem(x, 'based on store forecast', 'forecast', 'warn')));
     if (!productionRows.length) productionRows.push(briefingEmpty('Scheduled production and ready stock cover the next 7–14 days.'));
 
-    const stockStats = [
-      briefingMiniStat('Ready liters', briefingRound(stockLarge)),
-      briefingMiniStat('Ready minis', briefingRound(stockSmall)),
-      briefingMiniStat('Jerry cans', briefingRound(briefingCategoryTotal(inventory, 'jerry'))),
-      briefingMiniStat('Syrups', briefingRound(stockSyrup)),
-    ].join('');
+    const stockStats = ''; // removed — stock snapshot no longer shown
     const concentrateStats = Object.entries(BRIEFING_CONCENTRATES).map(([k, c]) => briefingMiniStat(c.label.replace(' Dark Roast',''), `${briefingRound(concentrate[k] || 0,1)}L`)).join('');
-    const labelRowsHtml = lowLabels.length ? lowLabels.map(x => briefingItem(`${x.label} labels`, `${briefingRound(x.qty)} left`, 'low', 'warn')).join('') : briefingEmpty('Labels are above warning levels.');
-    const beanRowsHtml = lowBeans.length ? lowBeans.map(x => briefingItem(`${x.label} beans`, `${briefingRound(x.kg,1)}kg left`, 'low', 'warn')).join('') : '';
+    const labelRowsHtml = '';
+    const beanRowsHtml = '';
 
     const urgentSummaryRows = [];
     urgentBottleShortfalls.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `have ${briefingRound(x.inStock)} ready · needed in 7d`, 'urgent', 'danger')));
@@ -6808,21 +6826,18 @@ async function loadBriefing(options = {}) {
     };
     const prevRawCache = briefingReadRawCache();
     const updateRows = prevRawCache?.snapshot ? briefingDiffSnapshots(prevRawCache.snapshot, snapshot) : null;
-    const updatedSectionHtml = updateRows
-      ? `<section class="briefing-section"><h4>🔄 What's Updated</h4>${updateRows.length ? updateRows.join('') : briefingEmpty('Nothing has changed since your last briefing.')}</section>`
-      : '';
+    const updatedSectionHtml = ''; // What's Updated section removed
 
     body.innerHTML = `
       <div class="briefing-content">
         <div class="briefing-priority ${actions.length ? '' : 'good'}">
-          <div><span>Today's focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
+          <strong>${actions.length ? escHtml(actions.join(' · ')) : '✓ Everything looks covered right now.'}</strong>
         </div>
-        ${updatedSectionHtml}
         <div class="briefing-grid">
           <section class="briefing-section"><h4>Today</h4>${todayHtml}</section>
           <section class="briefing-section"><h4>Likely next store runs</h4>${storesHtml}</section>
           <section class="briefing-section"><h4>Production watch</h4>${productionRows.join('')}</section>
-          <section class="briefing-section"><h4>Stock snapshot</h4><div class="briefing-mini-grid">${stockStats}</div><div class="briefing-mini-grid concentrate">${concentrateStats}</div>${labelRowsHtml}${beanRowsHtml}</section>
+          <section class="briefing-section"><h4>Concentrate</h4><div class="briefing-mini-grid concentrate">${concentrateStats}</div></section>
         </div>
       </div>
     `;
