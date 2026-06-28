@@ -1098,16 +1098,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
   </div>
 
-  <!-- Bottles sold by product this month -->
+  <!-- Bottles sold this month -->
   <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Bottles Sold This Month</h3>
-  <div class="card" style="padding:0;margin-bottom:24px">
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Product</th><th class="cell-num">Online</th><th class="cell-num">Store</th><th class="cell-num" style="color:var(--cream)">Total</th></tr></thead>
-        <tbody id="dashBottlesSold"></tbody>
-      </table>
-    </div>
-  </div>
+  <div class="card" style="padding:16px 20px;margin-bottom:24px" id="dashBottlesSold"></div>
 </div>
  
 <!-- COUPONS TAB -->
@@ -1973,12 +1966,33 @@ async function checkForNewOrders() {
   showNewOrderToast(msg);
 }
 
+let __newOrderToastTimer = null;
+let __newOrderToastShownAt = 0;
+
 function showNewOrderToast(msg) {
   const t = document.getElementById('toast');
-  t.innerHTML = `<span class="toast-inner"><span>${msg}</span><button type="button" class="toast-undo-btn" onclick="showTab('orders');document.getElementById('toast').classList.remove('show')">View Orders</button></span>`;
+  t.innerHTML = `<span class="toast-inner"><span>${msg}</span><button type="button" class="toast-undo-btn" onclick="showTab('orders');dismissNewOrderToast()">View Orders</button><button type="button" class="toast-undo-btn" style="background:transparent;color:#888;padding:5px 8px;margin-left:4px" onclick="dismissNewOrderToast()">✕</button></span>`;
   t.classList.add('show');
-  setTimeout(() => { t.classList.remove('show'); }, 8000);
+  __newOrderToastShownAt = Date.now();
+  clearTimeout(__newOrderToastTimer);
+  __newOrderToastTimer = setTimeout(dismissNewOrderToast, 9000);
 }
+function dismissNewOrderToast() {
+  clearTimeout(__newOrderToastTimer);
+  __newOrderToastTimer = null;
+  __newOrderToastShownAt = 0;
+  const t = document.getElementById('toast');
+  if (t) t.classList.remove('show');
+}
+// Mobile browsers pause JS when backgrounded, so the 9s timer may not fire.
+// Re-evaluate on page focus: if toast has been showing > 9s, dismiss it.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && __newOrderToastShownAt) {
+    const elapsed = Date.now() - __newOrderToastShownAt;
+    if (elapsed > 9000) { dismissNewOrderToast(); }
+    else { clearTimeout(__newOrderToastTimer); __newOrderToastTimer = setTimeout(dismissNewOrderToast, 9000 - elapsed); }
+  }
+});
 async function signInAdmin() {
   localStorage.setItem('gremier_hub_mode', 'website');
   localStorage.setItem('gremier_admin_tab', 'dashboard');
@@ -6749,7 +6763,7 @@ async function loadBriefing(options = {}) {
             if (Math.round(p.avgLarge)) qty.push(`${Math.round(p.avgLarge)} large`);
             if (Math.round(p.avgSmall)) qty.push(`${Math.round(p.avgSmall)} mini`);
             if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)} syrup`);
-            const lines = [`• Avg: ${qty.length ? qty.join(', ') : 'normal restock'}`, `• Every ${p.avgGapDays}d · last ${p.daysSinceLast}d ago`];
+            const lines = [`~${qty.length ? qty.join(', ') : 'usual'} · every ${p.avgGapDays}d · last ${p.daysSinceLast}d ago`];
             if (p.productMixText) lines.push(p.productMixText);
             return briefingItem(p.store, lines.join('<br>'), p.badge, p.tone);
           };
@@ -6758,10 +6772,10 @@ async function loadBriefing(options = {}) {
       : briefingEmpty(usingForecastTable ? 'No active store looks due from the forecast table right now.' : 'No store looks due from the last 180 days of delivery patterns.');
 
     const productionRows = [];
-    urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} already scheduled` : ''}`, 'urgent', 'danger')));
-    if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed within 14 days · have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} already scheduled` : ''}`, 'plan', 'warn')));
-    concentrateGapActions.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `14-day demand ${briefingRound(x.demand,1)}L · ready ${briefingRound(x.have,1)}L${x.brewing ? ` · brewing ${briefingRound(x.brewing,1)}L` : ''}`, 'brew first', 'danger')));
-    forecastGaps.slice(0, 3).forEach(x => productionRows.push(briefingItem(x, 'Based on active store forecast demand. As more store deliveries are logged with exact bottle types, this will become flavor-specific.', 'forecast', 'warn')));
+    urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} · needed in 7d`, 'urgent', 'danger')));
+    if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} · needed in 14d`, 'plan', 'warn')));
+    concentrateGapActions.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `have ${briefingRound(x.have,1)}L${x.brewing ? ` · brewing ${briefingRound(x.brewing,1)}L` : ''} · need ${briefingRound(x.demand,1)}L`, 'brew first', 'danger')));
+    forecastGaps.slice(0, 3).forEach(x => productionRows.push(briefingItem(x, 'based on store forecast', 'forecast', 'warn')));
     if (!productionRows.length) productionRows.push(briefingEmpty('Scheduled production and ready stock cover the next 7–14 days.'));
 
     const stockStats = [
@@ -6771,12 +6785,12 @@ async function loadBriefing(options = {}) {
       briefingMiniStat('Syrups', briefingRound(stockSyrup)),
     ].join('');
     const concentrateStats = Object.entries(BRIEFING_CONCENTRATES).map(([k, c]) => briefingMiniStat(c.label.replace(' Dark Roast',''), `${briefingRound(concentrate[k] || 0,1)}L`)).join('');
-    const labelRowsHtml = lowLabels.length ? lowLabels.map(x => briefingItem(`${x.label} labels low`, `Have ${briefingRound(x.qty)} · warning level ${x.warn}`, 'labels', 'warn')).join('') : briefingEmpty('Labels are above warning levels.');
-    const beanRowsHtml = lowBeans.length ? lowBeans.map(x => briefingItem(`${x.label} beans low`, `Have ${briefingRound(x.kg,1)}kg · warning level ${x.warn}kg`, 'order beans', 'warn')).join('') : '';
+    const labelRowsHtml = lowLabels.length ? lowLabels.map(x => briefingItem(`${x.label} labels`, `${briefingRound(x.qty)} left`, 'low', 'warn')).join('') : briefingEmpty('Labels are above warning levels.');
+    const beanRowsHtml = lowBeans.length ? lowBeans.map(x => briefingItem(`${x.label} beans`, `${briefingRound(x.kg,1)}kg left`, 'low', 'warn')).join('') : '';
 
     const urgentSummaryRows = [];
-    urgentBottleShortfalls.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `Needed by scheduled deliveries in the next 7 days · have ${briefingRound(x.inStock)} ready`, 'urgent', 'danger')));
-    concentrateGapActions.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `Ready ${briefingRound(x.have,1)}L${x.brewing ? ` · already brewing/draining ${briefingRound(x.brewing,1)}L` : ''} · demand ${briefingRound(x.demand,1)}L`, 'urgent', 'danger')));
+    urgentBottleShortfalls.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `have ${briefingRound(x.inStock)} ready · needed in 7d`, 'urgent', 'danger')));
+    concentrateGapActions.slice(0, 3).forEach(x => urgentSummaryRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `have ${briefingRound(x.have,1)}L · need ${briefingRound(x.demand,1)}L`, 'urgent', 'danger')));
     dueStores.filter(p => p.daysUntilDue <= 1 || p.dueScore >= 1.2).slice(0, 3).forEach(p => urgentSummaryRows.push(briefingItem(p.store, `Avg ${Math.round(p.avgLarge || 0)} large / ${Math.round(p.avgSmall || 0)} minis · every ${p.avgGapDays}d`, p.badge, p.tone)));
     const urgentHtml = urgentSummaryRows.length
       ? `<div class="briefing-section">${urgentSummaryRows.join('')}</div>`
@@ -6798,40 +6812,20 @@ async function loadBriefing(options = {}) {
       ? `<section class="briefing-section"><h4>🔄 What's Updated</h4>${updateRows.length ? updateRows.join('') : briefingEmpty('Nothing has changed since your last briefing.')}</section>`
       : '';
 
-    // compact bullet briefing
-    const bullets = [];
-    if (todayJobs.length) {
-      bullets.push('Today: ' + todayJobs.map(j => briefingJobTitle(j)).join(', '));
-    } else {
-      bullets.push('Today: nothing scheduled');
-    }
-    const dueThisWeek = dueStores.filter(p => p.daysUntilDue <= 7 || p.dueScore >= 0.85).slice(0, 5);
-    if (dueThisWeek.length) {
-      dueThisWeek.forEach(p => {
-        const qty = [];
-        if (Math.round(p.avgLarge)) qty.push(Math.round(p.avgLarge) + ' large');
-        if (Math.round(p.avgSmall)) qty.push(Math.round(p.avgSmall) + ' mini');
-        if (Math.round(p.avgSyrup)) qty.push(Math.round(p.avgSyrup) + ' syrup');
-        bullets.push('Store ' + p.store + (qty.length ? ': ~' + qty.join(', ') : ''));
-      });
-    } else {
-      bullets.push('Stores: none due this week');
-    }
-    const makeList = urgentBottleShortfalls.length ? urgentBottleShortfalls : bottleShortfalls;
-    makeList.slice(0, 4).forEach(x =>
-      bullets.push('Make ' + Math.ceil(x.gap) + ' ' + x.label + ' — need in ' + (urgentBottleShortfalls.length ? '7' : '14') + 'd (have ' + briefingRound(x.inStock) + ')')
-    );
-    concentrateGapActions.slice(0, 3).forEach(x =>
-      bullets.push('Brew ' + briefingRound(x.gap, 1) + 'L ' + x.label + ' — have ' + briefingRound(x.have, 1) + 'L, need ' + briefingRound(x.demand, 1) + 'L')
-    );
-    const concParts = Object.entries(BRIEFING_CONCENTRATES).map(([k, c]) => c.label.replace(' Dark Roast','') + ' ' + briefingRound(concentrate[k]||0,1) + 'L').join(' / ');
-    bullets.push('Stock: ' + briefingRound(stockLarge) + ' large / ' + briefingRound(stockSmall) + ' mini / ' + briefingRound(briefingCategoryTotal(inventory,'jerry')) + ' jerry / ' + briefingRound(stockSyrup) + ' syrup');
-    if (concParts) bullets.push('Conc: ' + concParts);
-    if (lowLabels.length) bullets.push('Labels low: ' + lowLabels.map(x => x.label + ' (' + briefingRound(x.qty) + ')').join(', '));
-    if (lowBeans.length) bullets.push('Beans low: ' + lowBeans.map(x => x.label + ' (' + briefingRound(x.kg,1) + 'kg)').join(', '));
-    const bulletHtml = bullets.map(b => '<div style="padding:5px 0 4px;border-bottom:1px solid rgba(255,255,255,.06);font-size:.84rem;color:var(--text1)">• ' + escHtml(b) + '</div>').join('');
-    const focusLine = actions.length ? escHtml(actions.join(' · ')) : '✓ Everything looks covered right now.';
-    body.innerHTML = '<div class="briefing-content"><div class="briefing-priority ' + (actions.length ? '' : 'good') + '"><strong>' + focusLine + '</strong></div><div style="margin-top:10px">' + bulletHtml + '</div></div>';
+    body.innerHTML = `
+      <div class="briefing-content">
+        <div class="briefing-priority ${actions.length ? '' : 'good'}">
+          <div><span>Today's focus</span><strong>${actions.length ? escHtml(actions.join(' · ')) : 'Everything looks covered right now.'}</strong></div>
+        </div>
+        ${updatedSectionHtml}
+        <div class="briefing-grid">
+          <section class="briefing-section"><h4>Today</h4>${todayHtml}</section>
+          <section class="briefing-section"><h4>Likely next store runs</h4>${storesHtml}</section>
+          <section class="briefing-section"><h4>Production watch</h4>${productionRows.join('')}</section>
+          <section class="briefing-section"><h4>Stock snapshot</h4><div class="briefing-mini-grid">${stockStats}</div><div class="briefing-mini-grid concentrate">${concentrateStats}</div>${labelRowsHtml}${beanRowsHtml}</section>
+        </div>
+      </div>
+    `;
         briefingRenderCollapsedSummary(urgentHtml);
     briefingSetCollapsed(false);
     briefingWriteCache(body.innerHTML, urgentHtml, snapshot);
@@ -6999,52 +6993,82 @@ function renderDashboardRecentDeliveries(deliveries) {
 }
 
 function renderDashboardBottlesSold(orders, deliveries) {
-  const body = document.getElementById('dashBottlesSold');
-  if (!body) return;
+  const wrap = document.getElementById('dashBottlesSold');
+  if (!wrap) return;
 
-  // Tally online order items by product name
-  const online = {};
+  // ── Tally online orders by category and by product ───────────────────────
+  let onlineLarge = 0, onlineMini = 0, onlineSyrup = 0, onlineJerry = 0, onlineCB = 0;
+  const onlineByProduct = {};
   (orders || []).forEach(o => {
     if (!Array.isArray(o.items)) return;
     o.items.forEach(item => {
-      const key = String(item.name_en || item.name_he || item.product_id || 'Unknown').trim();
-      online[key] = (online[key] || 0) + (Number(item.qty) || 1);
+      const qty = Number(item.qty) || 1;
+      const pid = String(item.product_id || '').toLowerCase();
+      const name = String(item.name_en || item.name_he || '').toLowerCase();
+      const label = String(item.name_en || item.name_he || item.product_id || 'Unknown').trim();
+      onlineByProduct[label] = (onlineByProduct[label] || 0) + qty;
+      if (/jerry/.test(pid) || /jerry|ג'ר/.test(name)) onlineJerry += qty;
+      else if (/mini/.test(pid) || /mini|מיני/.test(name)) onlineMini += qty;
+      else if (/syrup/.test(pid) || /syrup|סירופ/.test(name)) onlineSyrup += qty;
+      else if (/coffee.*bar|coffeebar/.test(pid)) onlineCB += qty;
+      else onlineLarge += qty;
     });
   });
 
-  // Tally store delivery quantities by product key, map to display name
+  // ── Tally store deliveries by category and by product ────────────────────
+  let storeLarge = 0, storeMini = 0, storeSyrup = 0, storeJerry = 0;
   const PROD_DISPLAY = {};
   Object.entries(window.__OPS_PRODUCTS_FULL__ || window.PRODUCTS || {}).forEach(([pid, p]) => {
     PROD_DISPLAY[pid] = p.label || p.name_en || pid;
   });
-  const store = {};
+  const storeByProduct = {};
   (deliveries || []).forEach(d => {
     if (d.quantities && typeof d.quantities === 'object' && Object.keys(d.quantities).length) {
       Object.entries(d.quantities).forEach(([pid, qty]) => {
-        if (Number(qty) > 0) {
-          const label = PROD_DISPLAY[pid] || pid;
-          store[label] = (store[label] || 0) + Number(qty);
-        }
+        if (!(Number(qty) > 0)) return;
+        const n = Number(qty);
+        const label = PROD_DISPLAY[pid] || pid;
+        storeByProduct[label] = (storeByProduct[label] || 0) + n;
+        if (/jerry/.test(pid)) storeJerry += n;
+        else if (/mini/.test(pid)) storeMini += n;
+        else if (/syrup|dispenser/.test(pid)) storeSyrup += n;
+        else storeLarge += n;
       });
     } else {
-      if (d.qty_large) store['Large bottles'] = (store['Large bottles'] || 0) + Number(d.qty_large);
-      if (d.qty_small) store['Mini bottles'] = (store['Mini bottles'] || 0) + Number(d.qty_small);
+      storeLarge += Number(d.qty_large) || 0;
+      storeMini  += Number(d.qty_small) || 0;
+      storeSyrup += Number(d.qty_syrup) || 0;
     }
   });
 
-  const allKeys = [...new Set([...Object.keys(online), ...Object.keys(store)])];
-  const rows = allKeys.map(k => ({ name: k, online: online[k] || 0, store: store[k] || 0 }));
-  rows.sort((a, b) => (b.online + b.store) - (a.online + a.store));
+  // ── KPI cards ─────────────────────────────────────────────────────────────
+  const kpiCards = [
+    { label: 'Large Bottles', val: onlineLarge + storeLarge },
+    { label: 'Mini Bottles',  val: onlineMini  + storeMini  },
+    { label: 'Syrups',        val: onlineSyrup + storeSyrup },
+    { label: 'Jerry Cans',    val: onlineJerry + storeJerry },
+    ...(onlineCB ? [{ label: 'Coffee Bar', val: onlineCB }] : []),
+  ];
+  const kpiHtml = '<div class="kpi-grid">' +
+    kpiCards.map(c => '<div class="kpi-card"><div class="kpi-label">' + escHtml(c.label) + '</div><div class="kpi-value">' + c.val + '</div></div>').join('') +
+    '</div>';
 
-  body.innerHTML = rows.length
-    ? rows.map(r => `<tr>
-        <td style="font-size:.78rem;color:var(--cream)">${escHtml(r.name)}</td>
-        <td class="cell-num" style="font-size:.78rem">${r.online || '—'}</td>
-        <td class="cell-num" style="font-size:.78rem">${r.store || '—'}</td>
-        <td class="cell-num" style="font-size:.78rem;color:var(--cream);font-weight:600">${r.online + r.store}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="4" class="empty-state">No bottles sold yet this period.</td></tr>';
+  // ── Collapsible per-product table ─────────────────────────────────────────
+  const allKeys = [...new Set([...Object.keys(onlineByProduct), ...Object.keys(storeByProduct)])];
+  const rows = allKeys.map(k => ({ name: k, online: onlineByProduct[k] || 0, store: storeByProduct[k] || 0 }));
+  rows.sort((a, b) => (b.online + b.store) - (a.online + a.store));
+  const tableHtml = rows.length
+    ? '<table><thead><tr><th>Product</th><th class="cell-num">Online</th><th class="cell-num">Store</th><th class="cell-num" style="color:var(--cream)">Total</th></tr></thead><tbody>' +
+      rows.map(r => '<tr><td style="font-size:.78rem;color:var(--cream)">' + escHtml(r.name) + '</td><td class="cell-num" style="font-size:.78rem">' + (r.online||'—') + '</td><td class="cell-num" style="font-size:.78rem">' + (r.store||'—') + '</td><td class="cell-num" style="font-size:.78rem;color:var(--cream);font-weight:600">' + (r.online+r.store) + '</td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="empty-state">No bottles sold yet this period.</div>';
+
+  wrap.innerHTML = kpiHtml +
+    '<div style="margin-top:14px">' +
+    '<button class="btn btn-outline btn-sm" style="margin-bottom:10px" onclick="var d=this.nextElementSibling;var open=d.style.display!==\'none\';d.style.display=open?\'none\':\'block\';this.textContent=open?\'Show breakdown ▼\':\'Hide breakdown ▲\';">Show breakdown ▼</button>' +
+    '<div style="display:none" class="table-wrap">' + tableHtml + '</div></div>';
 }
+
 
 function renderDashboardStoreBreakdown(deliveries) {
   const body = document.getElementById('dashStoreBreakdown');
@@ -9049,6 +9073,7 @@ function ScheduleTab() {
   const [pendingWeb, setPendingWeb] = useState2(schedCache?.pendingWeb || []);
   const [loading, setLoading] = useState2(!schedCache);
   const [checkoffJob, setCheckoffJob] = useState2(null);
+  const [fulfillOrderId, setFulfillOrderId] = useState2(null);
   const [calDay, setCalDay] = useState2(null);
   const [monthView, setMonthView] = useState2({ year:new Date().getFullYear(), month:new Date().getMonth() });
   const [waOpen, setWaOpen] = useState2(false);
@@ -9166,6 +9191,10 @@ const [showForm, setShowForm] = useState2(false);
       console.error('checkoff side effects failed:', err);
       showToast(`⚠ ${err.message || 'Something failed saving this delivery — check Store Deliveries and inventory.'}`, 7000);
     });
+    // If this delivery is linked to a website order, offer to mark it as fulfilled.
+    if (job.websiteOrderId) {
+      setFulfillOrderId(job.websiteOrderId);
+    }
   }
 
 async function handleDelete(job) {
@@ -9409,6 +9438,20 @@ async function addJobFromForm(job, mode) {
       }} onDismiss={dismissWebOrder}/>}
       {/* modals */}
       {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
+      {fulfillOrderId&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 20px'}}>
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'24px 20px',maxWidth:360,width:'100%'}}>
+          <div style={{fontSize:'1rem',fontWeight:700,color:'var(--cream)',marginBottom:8}}>Mark order as fulfilled?</div>
+          <div style={{fontSize:'.82rem',color:'var(--text2)',marginBottom:20,lineHeight:1.5}}>This will send the customer a fulfilment confirmation email. You can skip if the email was already sent or isn't needed.</div>
+          <div style={{display:'flex',gap:10}}>
+            <button style={{flex:1}} className="btn btn-outline" onClick={()=>setFulfillOrderId(null)}>Skip</button>
+            <button style={{flex:1}} className="btn btn-primary" onClick={async()=>{
+              const oid=fulfillOrderId;
+              setFulfillOrderId(null);
+              await (window.markOrderFulfilled||markOrderFulfilled)(oid,false,false);
+            }}>Yes, mark fulfilled</button>
+          </div>
+        </div>
+      </div>}
 {showForm&&<ScheduleForm mode={formMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
       {rescheduleJob&&<RescheduleModal2 job={rescheduleJob} onSave={saveReschedule} onCancel={()=>setRescheduleJob(null)}/>}
     </div>
