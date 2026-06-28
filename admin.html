@@ -1004,10 +1004,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <th>Store Name</th>
           <th>Large (₪)</th>
           <th>Small (₪)</th>
+          <th>Dairy Free (₪)</th>
           <th>Syrup (₪)</th>
           <th class="cell-actions">Edit</th>
         </tr></thead>
-        <tbody id="sdStoresPricesBody"><tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr></tbody>
+        <tbody id="sdStoresPricesBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
       </table>
     </div>
   </div>
@@ -1092,7 +1093,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="card" style="padding:0;margin-bottom:24px">
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Syrup</th><th class="cell-total">Revenue</th></tr></thead>
+        <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Dairy Free</th><th>Syrup</th><th class="cell-total">Revenue</th></tr></thead>
         <tbody id="dashStoreBreakdown"></tbody>
       </table>
     </div>
@@ -1393,6 +1394,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="form-row-3">
       <div class="form-group"><label class="form-label">Large Bottle (₪)</label><input class="form-input" type="number" step="0.5" id="sPriceLarge" placeholder="30"/></div>
       <div class="form-group"><label class="form-label">Small Bottle (₪)</label><input class="form-input" type="number" step="0.5" id="sPriceSmall" placeholder="10"/></div>
+      <div class="form-group"><label class="form-label">Dairy Free (₪)</label><input class="form-input" type="number" step="0.5" id="sPriceDairyFree" placeholder="11"/></div>
       <div class="form-group"><label class="form-label">Syrup (₪) — optional</label><input class="form-input" type="number" step="0.5" id="sPriceSyrup" placeholder="0"/></div>
     </div>
     <div class="toggle-row">
@@ -1420,6 +1422,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="form-row-3">
       <div class="form-group"><label class="form-label">Large Bottles</label><input class="form-input" type="number" min="0" id="ldLarge" value="0" oninput="updateDeliveryPreview()"/></div>
       <div class="form-group"><label class="form-label">Small Bottles</label><input class="form-input" type="number" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()"/></div>
+      <div class="form-group"><label class="form-label">Dairy Free</label><input class="form-input" type="number" min="0" id="ldDairyFree" value="0" oninput="updateDeliveryPreview()"/></div>
       <div class="form-group"><label class="form-label">Syrups</label><input class="form-input" type="number" min="0" id="ldSyrup" value="0" oninput="updateDeliveryPreview()"/></div>
     </div>
     <div id="deliveryPreview" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:16px;display:none">
@@ -5221,6 +5224,7 @@ function renderStoresPricesTable() {
     <td style="color:var(--cream)">${escHtml(s.name)}${!s.is_active ? ' <span style="color:var(--text2);font-size:.72rem">(inactive)</span>' : ''}</td>
     <td>₪${parseFloat(s.price_large || 0).toFixed(2)}</td>
     <td>₪${parseFloat(s.price_small || 0).toFixed(2)}</td>
+    <td>${s.price_dairy_free > 0 ? '₪' + parseFloat(s.price_dairy_free).toFixed(2) : '—'}</td>
     <td>${s.price_syrup > 0 ? '₪' + parseFloat(s.price_syrup).toFixed(2) : '—'}</td>
     <td class="cell-actions"><button class="btn btn-outline btn-sm" onclick="openAddStoreModal('${s.id}')">Edit</button></td>
   </tr>`).join('');
@@ -5258,6 +5262,7 @@ function deliveryTotal(d) {
   if (!store) return 0;
   return (d.qty_large || 0) * (store.price_large || 0) +
          (d.qty_small || 0) * (store.price_small || 0) +
+         (d.qty_dairy_free || 0) * (store.price_dairy_free || 0) +
          (d.qty_syrup || 0) * (store.price_syrup || 0);
 }
 
@@ -5377,12 +5382,13 @@ function renderStoreBlocks() {
         name: d.store_name || store?.name || '—',
         store,
         deliveries: [],
-        totalLarge: 0, totalSmall: 0, totalSyrup: 0, totalRevenue: 0,
+        totalLarge: 0, totalSmall: 0, totalDairyFree: 0, totalSyrup: 0, totalRevenue: 0,
       };
     }
     map[sid].deliveries.push(d);
     map[sid].totalLarge += d.qty_large || 0;
     map[sid].totalSmall += d.qty_small || 0;
+    map[sid].totalDairyFree += d.qty_dairy_free || 0;
     map[sid].totalSyrup += d.qty_syrup || 0;
     map[sid].totalRevenue += deliveryTotal(d);
   });
@@ -5393,6 +5399,7 @@ function renderStoreBlocks() {
       const lines = [];
       if (g.totalLarge > 0) lines.push(`${g.totalLarge} large × ₪${s?.price_large||0} = ₪${(g.totalLarge*(s?.price_large||0)).toFixed(0)}`);
       if (g.totalSmall > 0) lines.push(`${g.totalSmall} small × ₪${s?.price_small||0} = ₪${(g.totalSmall*(s?.price_small||0)).toFixed(0)}`);
+      if (g.totalDairyFree > 0) lines.push(`${g.totalDairyFree} dairy free × ₪${s?.price_dairy_free||0} = ₪${(g.totalDairyFree*(s?.price_dairy_free||0)).toFixed(0)}`);
       if (g.totalSyrup > 0) lines.push(`${g.totalSyrup} syrup × ₪${s?.price_syrup||0} = ₪${(g.totalSyrup*(s?.price_syrup||0)).toFixed(0)}`);
       return `<div class="card" style="padding:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
@@ -5414,6 +5421,7 @@ function openAddStoreModal(storeId) {
   document.getElementById('sPhone').value = s?.phone || '';
   document.getElementById('sPriceLarge').value = s?.price_large || '';
   document.getElementById('sPriceSmall').value = s?.price_small || '';
+  document.getElementById('sPriceDairyFree').value = s?.price_dairy_free || '';
   document.getElementById('sPriceSyrup').value = s?.price_syrup || '';
   document.getElementById('sActive').checked = s ? s.is_active : true;
   document.getElementById('deleteStoreBtn').style.display = storeId ? 'flex' : 'none';
@@ -5428,6 +5436,7 @@ async function saveStore() {
     phone: document.getElementById('sPhone').value.trim() || null,
     price_large: parseFloat(document.getElementById('sPriceLarge').value) || 0,
     price_small: parseFloat(document.getElementById('sPriceSmall').value) || 0,
+    price_dairy_free: parseFloat(document.getElementById('sPriceDairyFree').value) || 0,
     price_syrup: parseFloat(document.getElementById('sPriceSyrup').value) || 0,
     is_active: document.getElementById('sActive').checked,
     updated_at: new Date().toISOString(),
@@ -5536,14 +5545,15 @@ function ldFillFlavorCase(pid) {
   updateDeliveryPreview();
 }
 function ldGetAggregated() {
-  let large=0, small=0, syrup=0;
+  let large=0, small=0, dairyFree=0, syrup=0;
   Object.entries(ldQuantities).forEach(([pid,qty])=>{
     const cat = LD_PRODUCTS[pid]?.category;
-    if (cat==='liter') large += qty||0;
-    if (cat==='mini')  small += qty||0;
-    if (cat==='syrup') syrup += qty||0;
+    if (cat==='liter')      large     += qty||0;
+    if (cat==='mini')       small     += qty||0;
+    if (cat==='dairy_free') dairyFree += qty||0;
+    if (cat==='syrup')      syrup     += qty||0;
   });
-  return { large, small, syrup };
+  return { large, small, dairyFree, syrup };
 }
 
 async function openLogDeliveryModal() {
@@ -5553,6 +5563,7 @@ async function openLogDeliveryModal() {
   document.getElementById('ldDate').value = new Date().toISOString().split('T')[0];
   document.getElementById('ldLarge').value = '0';
   document.getElementById('ldSmall').value = '0';
+  document.getElementById('ldDairyFree').value = '0';
   document.getElementById('ldSyrup').value = '0';
   document.getElementById('ldNotes').value = '';
   document.getElementById('deleteDeliveryBtn').style.display = 'none';
@@ -5572,6 +5583,7 @@ async function openEditDeliveryModal(deliveryId) {
   document.getElementById('ldDate').value = d.delivery_date;
   document.getElementById('ldLarge').value = d.qty_large || 0;
   document.getElementById('ldSmall').value = d.qty_small || 0;
+  document.getElementById('ldDairyFree').value = d.qty_dairy_free || 0;
   document.getElementById('ldSyrup').value = d.qty_syrup || 0;
   document.getElementById('ldNotes').value = d.notes || '';
   document.getElementById('deleteDeliveryBtn').style.display = 'flex';
@@ -5591,14 +5603,16 @@ function updateDeliveryPreview() {
   if (!store) return;
   const large = parseInt(document.getElementById('ldLarge').value) || 0;
   const small = parseInt(document.getElementById('ldSmall').value) || 0;
+  const dairyFree = parseInt(document.getElementById('ldDairyFree').value) || 0;
   const syrup = parseInt(document.getElementById('ldSyrup').value) || 0;
-  const total = (large * store.price_large) + (small * store.price_small) + (syrup * (store.price_syrup || 0));
+  const total = (large * store.price_large) + (small * store.price_small) + (dairyFree * (store.price_dairy_free || 0)) + (syrup * (store.price_syrup || 0));
   const preview = document.getElementById('deliveryPreview');
   const lines = [];
   if (large > 0) lines.push(`${large} large × ₪${store.price_large} = ₪${(large*store.price_large).toFixed(0)}`);
   if (small > 0) lines.push(`${small} small × ₪${store.price_small} = ₪${(small*store.price_small).toFixed(0)}`);
+  if (dairyFree > 0) lines.push(`${dairyFree} dairy free × ₪${store.price_dairy_free||0} = ₪${(dairyFree*(store.price_dairy_free||0)).toFixed(0)}`);
   if (syrup > 0) lines.push(`${syrup} syrup × ₪${store.price_syrup||0} = ₪${(syrup*(store.price_syrup||0)).toFixed(0)}`);
-  if (total > 0 || large > 0 || small > 0 || syrup > 0) {
+  if (total > 0 || large > 0 || small > 0 || dairyFree > 0 || syrup > 0) {
     preview.style.display = 'block';
     document.getElementById('deliveryPreviewTotal').textContent = `₪${total.toFixed(2)}`;
     document.getElementById('deliveryPreviewBreakdown').innerHTML = lines.join(' · ');
@@ -5619,6 +5633,7 @@ async function saveDelivery() {
   const aggregated = ldGetAggregated();
   const large = hasBreakdown ? aggregated.large : (parseInt(document.getElementById('ldLarge').value) || 0);
   const small = hasBreakdown ? aggregated.small : (parseInt(document.getElementById('ldSmall').value) || 0);
+  const dairyFree = hasBreakdown ? (aggregated.dairyFree || 0) : (parseInt(document.getElementById('ldDairyFree').value) || 0);
   const syrup = hasBreakdown ? aggregated.syrup : (parseInt(document.getElementById('ldSyrup').value) || 0);
   const deliveryDate = document.getElementById('ldDate').value;
   if (!deliveryDate) { showToast('Please pick a date'); return; }
@@ -5627,6 +5642,7 @@ const data = {
     store_name: store.name,
     qty_large: large,
     qty_small: small,
+    qty_dairy_free: dairyFree,
     qty_syrup: syrup,
     quantities: hasBreakdown ? ldQuantities : null,
     delivery_date: deliveryDate,
@@ -5770,13 +5786,14 @@ async function deleteDeliveryById(id) {
 }
 
 function exportDeliveriesCSV() {
-  const rows = [['Store','Date','Large','Small','Syrup','Total (₪)','Notes']];
+  const rows = [['Store','Date','Large','Small','Dairy Free','Syrup','Total (₪)','Notes']];
   allDeliveries.forEach(d => {
     rows.push([
       d.store_name || '—',
       d.delivery_date,
       d.qty_large || 0,
       d.qty_small || 0,
+      d.qty_dairy_free || 0,
       d.qty_syrup || 0,
       deliveryTotal(d).toFixed(2),
       d.notes || '',
@@ -6711,7 +6728,7 @@ async function loadBriefing(options = {}) {
       sb.from('products').select('id,name_en,name_he,category,variations'),
       sb.from('stores').select('id,name,is_active').eq('is_active', true).order('sort_order'),
       sb.from('store_deliveries')
-        .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_syrup,quantities,stores(name)')
+        .select('id,store_id,store_name,delivery_date,qty_large,qty_small,qty_dairy_free,qty_syrup,quantities,stores(name)')
         .gte('delivery_date', deliveryLookbackISO)
         .lte('delivery_date', todayISO)
         .order('delivery_date', { ascending: true }),
@@ -6879,7 +6896,7 @@ async function loadDashboard() {
   dEnd = new Date(now.getFullYear(), now.getMonth()+1, 1).toISOString().split('T')[0];
 
   let delivQ = sb.from('store_deliveries')
-    .select('*, stores(price_large, price_small, price_syrup)')
+    .select('*, stores(price_large, price_small, price_dairy_free, price_syrup)')
     .order('delivery_date', { ascending: false });
   if (dStart) delivQ = delivQ.gte('delivery_date', dStart);
   delivQ = delivQ.lt('delivery_date', dEnd);
@@ -7053,6 +7070,7 @@ function renderDashboardBottlesSold(orders, deliveries) {
       storeLarge += Number(d.qty_large) || 0;
       storeMini  += Number(d.qty_small) || 0;
       storeSyrup += Number(d.qty_syrup) || 0;
+      if (Number(d.qty_dairy_free) > 0) { storeByProduct['Dairy Free Mini'] = (storeByProduct['Dairy Free Mini']||0) + Number(d.qty_dairy_free); }
     }
   });
 
@@ -9525,6 +9543,7 @@ const PRODUCTS = {
   vanilla_mini:         { label: 'Vanilla Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   original_mini:        { label: 'Original Mini',         category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
   caramel_mini:         { label: 'Caramel Mini',          category: 'mini',      concentrate: 'classic',    litersPerUnit: 0.25 },
+  dairy_free_mini:      { label: 'Dairy Free Mini',       category: 'dairy_free', concentrate: null,         litersPerUnit: 0    },
   jerry_can:            { label: 'Jerry Can Classic',     category: 'jerry',     concentrate: 'classic',    litersPerUnit: 5    },
   jerry_can_houseblend: { label: 'Jerry Can House Blend', category: 'jerry',     concentrate: 'houseBlend', litersPerUnit: 5    },
   jerry_can_colombia:   { label: 'Jerry Can Colombia',    category: 'jerry',     concentrate: 'colombia',   litersPerUnit: 5    },
