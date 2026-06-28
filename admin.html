@@ -6430,9 +6430,9 @@ function briefingShortageText(label, stockQty, dailyDemand, dueDemand) {
   const daysLeft = daily > 0 ? Math.floor(stock / daily) : 0;
   const shortDate = briefingAddDaysISO(briefingLocalISO(0), Math.max(0, daysLeft));
   if (due > stock) {
-    return `${simpleLabel}: likely short by ${Math.ceil(due - stock)} for near-term store runs · at forecast pace stock lasts ~${Math.max(0, daysLeft)}d (${briefingDateLabel(shortDate)})`;
+    return `${simpleLabel}: short by ${Math.ceil(due - stock)} (${briefingDateLabel(shortDate)})`;
   }
-  if (daysLeft <= 14) return `${simpleLabel}: likely lasts ~${Math.max(0, daysLeft)}d · watch by ${briefingDateLabel(shortDate)}`;
+  if (daysLeft <= 14) return `${simpleLabel}: ~${Math.max(0, daysLeft)}d left (${briefingDateLabel(shortDate)})`;
   return '';
 }
 
@@ -6812,11 +6812,33 @@ async function loadBriefing(options = {}) {
       : briefingEmpty(usingForecastTable ? 'No active store looks due from the forecast table right now.' : 'No store looks due from the last 180 days of delivery patterns.');
 
     const productionRows = [];
-    urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} · needed in 7d`, 'urgent', 'danger')));
-    if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Make ${Math.ceil(x.gap)} ${x.label}`, `have ${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} · needed in 14d`, 'plan', 'warn')));
-    concentrateGapActions.slice(0, 4).forEach(x => productionRows.push(briefingItem(`Brew ${briefingRound(x.gap,1)}L ${x.label}`, `have ${briefingRound(x.have,1)}L${x.brewing ? ` · brewing ${briefingRound(x.brewing,1)}L` : ''} · need ${briefingRound(x.demand,1)}L`, 'brew first', 'danger')));
-    forecastGaps.slice(0, 3).forEach(x => productionRows.push(briefingItem(x, 'based on store forecast', 'forecast', 'warn')));
-    if (!productionRows.length) productionRows.push(briefingEmpty('Scheduled production and ready stock cover the next 7–14 days.'));
+    // Concentrate first — must brew before you can bottle
+    concentrateGapActions.slice(0, 4).forEach(x => productionRows.push(briefingItem(
+      `Brew ${briefingRound(x.gap,1)}L ${x.label}`,
+      `${briefingRound(x.have,1)}L ready${x.brewing ? ` · ${briefingRound(x.brewing,1)}L brewing` : ''} — do this first`,
+      'brew first', 'danger'
+    )));
+    // Urgent bottle shortfalls (needed in 7 days)
+    urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(
+      `Bottle ${Math.ceil(x.gap)} ${x.label}`,
+      `${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} — by ${briefingDateLabel(briefingAddDaysISO(briefingLocalISO(0), 7))}`,
+      'urgent', 'danger'
+    )));
+    // 14-day bottle shortfalls (only if nothing urgent)
+    if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(
+      `Bottle ${Math.ceil(x.gap)} ${x.label}`,
+      `${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} — by ${briefingDateLabel(briefingAddDaysISO(briefingLocalISO(0), 14))}`,
+      'plan', 'warn'
+    )));
+    // Forecast gaps — parse the concise string into a directive title
+    forecastGaps.slice(0, 3).forEach(x => {
+      const mShort = x.match(/^(.+?):\s*short by (\d+)\s*\((.+?)\)/);
+      const mLeft  = x.match(/^(.+?):\s*~(\d+)d left\s*\((.+?)\)/);
+      if (mShort) productionRows.push(briefingItem(`Bottle ~${mShort[2]} ${mShort[1]}`, `by ${mShort[3]} — store forecast`, 'forecast', 'warn'));
+      else if (mLeft) productionRows.push(briefingItem(`${mLeft[1]}: ~${mLeft[2]}d left`, `by ${mLeft[3]}`, 'watch', 'warn'));
+      else productionRows.push(briefingItem(x, 'store forecast', 'forecast', 'warn'));
+    });
+    if (!productionRows.length) productionRows.push(briefingEmpty('Production and stock cover the next 7–14 days.'));
 
     const stockStats = ''; // removed — stock snapshot no longer shown
     const concentrateStats = Object.entries(BRIEFING_CONCENTRATES).map(([k, c]) => briefingMiniStat(c.label.replace(' Dark Roast',''), `${briefingRound(concentrate[k] || 0,1)}L`)).join('');
