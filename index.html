@@ -1164,6 +1164,10 @@
             <input type="radio" name="shipType" value="expedited" id="shipExpedited" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
             <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-expedited">Priority / Specific Day</div><div style="font-size:.74rem;color:var(--text2)" id="shipExpeditedPrice">—</div></div>
           </label>
+          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipEventLabel">
+            <input type="radio" name="shipType" value="event" id="shipEvent" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
+            <div><div style="font-size:.85rem;color:var(--cream)">Event Delivery</div><div style="font-size:.74rem;color:var(--text2)" id="shipEventPrice">—</div></div>
+          </label>
         </div>
         <!-- Priority sub-options -->
         <div id="expeditedOptions" style="display:none;margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
@@ -1181,6 +1185,20 @@
           <div id="datePickerRow" style="display:none">
             <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px">Delivery date</label>
             <input type="date" id="coDeliveryDate" class="form-input" style="max-width:220px"/>
+          </div>
+        </div>
+        <!-- Event delivery options -->
+        <div id="eventOptions" style="display:none;margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
+          <div style="font-size:.74rem;color:var(--text2);margin-bottom:12px;line-height:1.5">We'll arrive at your event venue at the requested time. Please provide the date and arrival time.</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:140px">
+              <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px">Event date</label>
+              <input type="date" id="coEventDate" class="form-input" onchange="updateDeliveryPrice()"/>
+            </div>
+            <div style="flex:1;min-width:120px">
+              <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px">Arrival time</label>
+              <input type="time" id="coEventTime" class="form-input"/>
+            </div>
           </div>
         </div>
         <div id="deliveryFeeRow" style="display:none;margin-top:10px;display:flex;justify-content:space-between;font-size:.84rem;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -2564,9 +2582,12 @@ const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
     console.log('Order total breakdown:', { cartTotal, deliveryFee, couponDiscount, giftCardDiscount, totalDiscount, total });
     const pricing = resolveDeliveryPricing(selectedCheckoutCity);
 const isExpedited = document.getElementById('shipExpedited')?.checked;
+const isEvent = document.getElementById('shipEvent')?.checked;
 const priorityType = document.getElementById('priorityDate')?.checked ? 'specific_date' : 'fast';
 const deliveryDate = document.getElementById('coDeliveryDate')?.value || null;
-const shipType = isExpedited ? 'expedited' : 'regular';    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
+const eventDate = document.getElementById('coEventDate')?.value || null;
+const eventTime = document.getElementById('coEventTime')?.value || null;
+const shipType = isEvent ? 'event' : (isExpedited ? 'expedited' : 'regular');    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
     const orderData = {
       user_id: currentUser?.id || null,
       customer_name: name,
@@ -2597,7 +2618,8 @@ const shipType = isExpedited ? 'expedited' : 'regular';    const cityLabel = lan
       delivery_info: {
        delivery_type: shipType,
 priority_type: isExpedited ? priorityType : null,
-delivery_date: isExpedited && priorityType === 'specific_date' ? deliveryDate : null,
+delivery_date: isExpedited && priorityType === 'specific_date' ? deliveryDate : (isEvent ? eventDate : null),
+event_time: isEvent ? eventTime : null,
         delivery_fee: deliveryFee,
         city_en: selectedCheckoutCity.en,
         city_he: selectedCheckoutCity.he,
@@ -3009,6 +3031,7 @@ function prepareCheckoutContent() {
       : (lang==='he' ? 'המשך לתשלום' : 'Proceed to payment');
   } else if (submitBtn) {
     submitBtn.textContent = lang==='he' ? 'המשך לתשלום' : 'Proceed to payment';
+  toggleExpeditedOptions?.();
   }
 }
 function showCheckoutResultUI(kind) {
@@ -3328,12 +3351,19 @@ function findZoneForCity(city) {
 
 function resolveDeliveryPricing(city) {
   const zone = findZoneForCity(city);
-  if (zone) return { zone, source: 'zone', regular: Number(zone.regular_price) || 0, expedited: Number(zone.expedited_price) || 0, freeAbove: zone.free_above ? Number(zone.free_above) : null };
+  if (zone) return {
+    zone, source: 'zone',
+    regular: Number(zone.regular_price) || 0,
+    expedited: Number(zone.expedited_price) || 0,
+    event: zone.event_price != null ? Number(zone.event_price) : (Number(zone.expedited_price) || deliveryDefaults.default_event_price || 80),
+    freeAbove: zone.free_above ? Number(zone.free_above) : null,
+  };
   return {
     zone: null,
     source: 'default',
     regular: deliveryDefaults.default_regular_price,
     expedited: deliveryDefaults.default_expedited_price,
+    event: deliveryDefaults.default_event_price || 80,
     freeAbove: null,
   };
 }
@@ -3455,12 +3485,16 @@ function updateDeliveryPrice() {
   const regularFee = hasProductFee ? productFee : zoneRegular;
   const expeditedSurcharge = Math.max(0, zoneExpedited - pricing.regular);
   const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
-  const fee = isExpedited ? expeditedFee : regularFee;
+  const isEvent = document.getElementById('shipEvent')?.checked;
+  const eventFee = hasProductFee ? (productFee + expeditedSurcharge) : (pricing.event || pricing.expedited);
+  const fee = isEvent ? eventFee : (isExpedited ? expeditedFee : regularFee);
 
   document.getElementById('shipRegularPrice').textContent = regularFee === 0 ? (lang==='he'?'חינם!':'Free!') : `₪${regularFee}`;
   document.getElementById('shipExpeditedPrice').textContent = `₪${expeditedFee}`;
+  const evtEl = document.getElementById('shipEventPrice');
+  if (evtEl) evtEl.textContent = `₪${eventFee}`;
   if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
-  if (freeNote) freeNote.style.display = (!hasProductFee && isFree && !isExpedited) ? 'block' : 'none';
+  if (freeNote) freeNote.style.display = (!hasProductFee && isFree && !isExpedited && !isEvent) ? 'block' : 'none';
 const summaryTotal = document.getElementById('coSummaryTotal');
 if (summaryTotal) {
     const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
@@ -3681,8 +3715,11 @@ async function purchaseGiftCardFromPage() {
 }
   function toggleExpeditedOptions() {
   const isExpedited = document.getElementById('shipExpedited')?.checked;
+  const isEvent = document.getElementById('shipEvent')?.checked;
   const opts = document.getElementById('expeditedOptions');
+  const eventOpts = document.getElementById('eventOptions');
   if (opts) opts.style.display = isExpedited ? 'block' : 'none';
+  if (eventOpts) eventOpts.style.display = isEvent ? 'block' : 'none';
   if (!isExpedited) {
     const dateRow = document.getElementById('datePickerRow');
     if (dateRow) dateRow.style.display = 'none';
