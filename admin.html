@@ -3291,6 +3291,8 @@ function openOrderDetail(id) {
       ${o.status !== 'fulfilled' ? `<button class="btn btn-amber btn-sm" onclick="markOrderFulfilled('${o.id}')">Mark fulfilled + email customer</button>` : ''}
       ${(o.delivery_info && o.delivery_info.fulfilled_notified_at) ? '<span style="font-size:.78rem;color:var(--text2)">✓ Fulfillment email sent</span>' : ''}
       <button class="btn btn-sm btn-outline" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-send paid email' : 'Send paid email (Resend)'}</button>
+      ${(o.delivery_info && o.delivery_info.payme_sale_id) ? `<button class="btn btn-sm btn-outline" onclick="openPayMeRefund('${o.delivery_info.payme_sale_id}')">↩ Refund via PayMe</button>` : ''}
+      ${o.payment_method === 'gift_card' && o.gift_card_code ? `<button class="btn btn-sm btn-outline" onclick="refundGiftCardOrder('${o.id}')">↩ Refund to Gift Card</button>` : ''}
     </div>` : ''}
     ${o.customer_email ? `<button class="btn btn-outline btn-sm" onclick="sendCustomerReceipt('${o.id}')" style="margin-top:14px">📄 Send Receipt to Customer</button>` : ''}
     <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
@@ -3332,6 +3334,60 @@ async function updatePaymentStatus(id, status) {
   }
 }
 function closeOrderModal() { document.getElementById('orderModal').classList.remove('open'); }
+
+function openPayMeRefund(paymeSaleId) {
+  navigator.clipboard?.writeText(paymeSaleId).catch(()=>{});
+  window.open('https://app.payme.io/transactions', '_blank');
+  showToast('Sale ID copied — paste it into PayMe\'s search to find the transaction', 5000);
+}
+
+async function refundGiftCardOrder(orderId) {
+  const o = allOrders.find(x => x.id === orderId);
+  if (!o) return;
+  const maxRefund = Number(o.total) || 0;
+  const giftCardCode = o.gift_card_code;
+  if (!giftCardCode) { showToast('No gift card code on file for this order'); return; }
+
+  const input = window.prompt(`Refund amount (₪) — max ₪${maxRefund}:`, maxRefund.toFixed(0));
+  if (input === null) return;
+  const amount = parseFloat(input);
+  if (isNaN(amount) || amount <= 0 || amount > maxRefund) {
+    showToast(`Invalid — must be between ₪1 and ₪${maxRefund}`);
+    return;
+  }
+
+  const { data: gc, error: gcErr } = await sb.from('gift_cards')
+    .select('id, balance, code').ilike('code', giftCardCode).maybeSingle();
+  if (gcErr || !gc) { showToast('Could not find gift card ' + giftCardCode); return; }
+
+  const newBalance = Number(gc.balance) + amount;
+  const { error: updateErr } = await sb.from('gift_cards').update({
+    balance: newBalance,
+    is_active: true,
+    updated_at: new Date().toISOString(),
+  }).eq('id', gc.id);
+  if (updateErr) { showToast('Could not update gift card: ' + (updateErr.message || updateErr.code)); return; }
+
+  // Log the refund in gift_card_transactions (negative amount = refund)
+  await sb.from('gift_card_transactions').insert({
+    gift_card_id: gc.id,
+    order_id: orderId,
+    amount_used: -amount,
+    balance_after: newBalance,
+    note: `Refund from order #${o.order_number || orderId.slice(0,8)}`,
+  }).catch(e => console.warn('gift_card_transactions refund log skipped:', e));
+
+  // Note refund on the order
+  const prevInfo = o.delivery_info && typeof o.delivery_info === 'object' ? o.delivery_info : {};
+  await sb.from('orders').update({
+    delivery_info: { ...prevInfo, refunded_at: new Date().toISOString(), refund_amount: amount, refund_type: 'gift_card' },
+    updated_at: new Date().toISOString(),
+  }).eq('id', orderId).catch(e => console.warn('order refund note:', e));
+
+  closeOrderModal();
+  await loadOrders();
+  showToast(`₪${amount} refunded to ${gc.code} — new balance ₪${newBalance.toFixed(0)} ✓`, 4000);
+}
 function exportOrdersCSV() {
   const rows = [['Order#','Customer','Phone','Email','Address','Items','Subtotal','Discount','Total','Status','Payment','Date']];
   allOrders.forEach(o=>{
