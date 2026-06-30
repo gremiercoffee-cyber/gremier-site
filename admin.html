@@ -5931,16 +5931,20 @@ async function loadBillingBoard() {
   body.innerHTML = rows.map(r => {
     const storeName = r.stores?.name || 'Unknown store';
     const phone = r.stores?.phone || '';
-    const billedTxt = r.billed_at ? `✓ Billed ${new Date(r.billed_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'})}` : 'Not billed';
-    const paidTxt = r.paid_at ? `✓ Paid ${new Date(r.paid_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'})}` : 'Not paid';
+    const isBilled = !!r.billed_at;
+    const billedDateTxt = isBilled ? new Date(r.billed_at).toLocaleDateString('he-IL',{day:'numeric',month:'short'}) : '';
+    const paidTxt = r.paid_at ? `✓ Paid ${new Date(r.paid_at).toLocaleDateString('he-IL',{day:'numeric',month:'short'})}` : 'Not paid';
+    const rowStyle = isBilled
+      ? 'padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:rgba(234,196,53,.16);border:1px solid rgba(234,196,53,.45)'
+      : 'padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap';
     return `
-      <div class="card" style="padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div class="card" style="${rowStyle}">
         ${r.image_url ? `<img src="${r.image_url}" style="width:54px;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="window.open('${r.image_url}','_blank')"/>` : ''}
         <div style="flex:1;min-width:160px">
           <div style="font-weight:600;color:var(--cream)">${escHtml(storeName)}</div>
           <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone?` · ${escHtml(phone)}`:''}</div>
           <div style="font-size:.74rem;margin-top:4px">
-            <span style="color:${r.billed_at?'var(--green)':'var(--text2)'}">${billedTxt}</span>
+            ${isBilled ? `<span style="color:#eac435;font-weight:600">📋 Billed ${billedDateTxt}</span> <a href="#" onclick="event.preventDefault();unmarkBillingBilled('${r.id}')" style="color:var(--text2);font-size:.72rem;text-decoration:underline">undo</a>` : `<span style="color:var(--text2)">Not billed</span>`}
             &nbsp;·&nbsp;
             <span style="color:${r.paid_at?'var(--green)':'var(--text2)'}">${paidTxt}</span>
           </div>
@@ -5956,10 +5960,10 @@ async function loadBillingBoard() {
 async function shareInvoiceWhatsApp(billingId) {
   const { data: row } = await sb.from('store_billing').select('*, stores(name)').eq('id', billingId).maybeSingle();
   if (!row || !row.image_url) { showToast('No statement image for this store'); return; }
-  const storeName = row.stores?.name || 'your store';
-  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const monthLabel = `${monthNames[row.month-1]} ${row.year}`;
-  const caption = `Hi ${storeName}! Here's your Gremier Coffee statement for ${monthLabel}. Total: ₪${Number(row.total||0).toFixed(2)}. Thank you!`;
+  const storeName = row.stores?.name || 'החנות שלך';
+  const monthNamesHe = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const monthLabel = `${monthNamesHe[row.month-1]} ${row.year}`;
+  const caption = `שלום ${storeName}! מצורף חשבון גרמיר קפה לחודש ${monthLabel}. סה"כ לתשלום: ₪${Number(row.total||0).toFixed(2)}. תודה!`;
 
   try {
     const resp = await fetch(row.image_url);
@@ -5990,6 +5994,12 @@ async function shareInvoiceWhatsApp(billingId) {
 async function markBillingPaid(billingId) {
   if (!confirm('Mark this store as paid for this month?')) return;
   await sb.from('store_billing').update({ paid_at: new Date().toISOString() }).eq('id', billingId);
+  await loadBillingBoard();
+}
+
+async function unmarkBillingBilled(billingId) {
+  if (!confirm('Undo billed status for this store? This does not un-send the WhatsApp message, it just clears the billed mark.')) return;
+  await sb.from('store_billing').update({ billed_at: null }).eq('id', billingId);
   await loadBillingBoard();
 }
 
