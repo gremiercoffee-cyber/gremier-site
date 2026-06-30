@@ -1444,7 +1444,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="ldProductRows"></div>
     </div>
     <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-amber" onclick="saveDelivery()">Save Delivery</button>
+      <button class="btn btn-amber" id="saveDeliveryBtn" onclick="saveDelivery()">Save Delivery</button>
       <button class="btn btn-outline" onclick="closeLogDeliveryModal()">Cancel</button>
       <button class="btn btn-red btn-sm" id="deleteDeliveryBtn" style="margin-left:auto;display:none" onclick="deleteDelivery()">Delete</button>
     </div>
@@ -1634,6 +1634,15 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <script>
   function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// Returns a Date's LOCAL calendar date as YYYY-MM-DD, with no UTC conversion.
+// Use this (never `.toISOString().split('T')[0]`) when building a boundary to
+// compare against a plain DATE column like store_deliveries.delivery_date —
+// going through .toISOString() shifts the date back a day in timezones ahead
+// of UTC (e.g. Israel), which silently moved last-day-of-month deliveries into
+// the next month's bucket.
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -4923,7 +4932,7 @@ async function loadWebOrders() {
 }
 function openScheduleModal(id) {
   const o = (window._webOrders||[]).find(x=>x.id===id);
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr(new Date());
   const itemsText = (o?.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
   document.getElementById('schedModalContent').innerHTML = `
     <h2 class="modal-title">Schedule Delivery</h2>
@@ -5294,8 +5303,14 @@ async function loadStoreDeliveries() {
   const monthVal = getSDMonth();
   if (!monthVal) return;
   const [y, m] = monthVal.split('-').map(Number);
-  const start = new Date(y, m - 1, 1).toISOString().split('T')[0];
-  const end   = new Date(y, m, 1).toISOString().split('T')[0];
+  // Build YYYY-MM-DD boundaries directly from y/m — going through `new Date(...).toISOString()`
+  // converts through UTC and shifts the boundary back a day in timezones ahead of UTC (like Israel),
+  // which silently moved last-day-of-month deliveries into the next month's bucket.
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const start = `${y}-${pad2(m)}-01`;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const end = `${nextY}-${pad2(nextM)}-01`;
   const storeFilter = document.getElementById('sdStoreFilter')?.value || 'all';
 
   let query = sb.from('store_deliveries')
@@ -5616,7 +5631,7 @@ async function openLogDeliveryModal() {
   await ldSyncProductsFromWebsite();
   ldQuantities = {};
   document.getElementById('editDeliveryId').value = '';
-  document.getElementById('ldDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ldDate').value = localDateStr(new Date());
   document.getElementById('ldLarge').value = '0';
   document.getElementById('ldSmall').value = '0';
   document.getElementById('ldDairyFree').value = '0';
@@ -5678,125 +5693,114 @@ function updateDeliveryPreview() {
 }
 
 async function saveDelivery() {
-  const id = document.getElementById('editDeliveryId').value;
-  const storeId = document.getElementById('ldStore').value;
-  const store = allStores.find(s => s.id === storeId);
-  if (!store) { showToast('Please select a store'); return; }
-  // the per-product picker is the source of truth when it's been used — but if it's empty
-  // (e.g. an older record with no saved breakdown), fall back to the plain number boxes
-  // instead of silently zeroing out the bottle counts on save
-  const hasBreakdown = Object.values(ldQuantities).some(q => (q||0) > 0);
-  const aggregated = ldGetAggregated();
-  const large = hasBreakdown ? aggregated.large : (parseInt(document.getElementById('ldLarge').value) || 0);
-  const small = hasBreakdown ? aggregated.small : (parseInt(document.getElementById('ldSmall').value) || 0);
-  const dairyFree = hasBreakdown ? (aggregated.dairyFree || 0) : (parseInt(document.getElementById('ldDairyFree').value) || 0);
-  const syrup = hasBreakdown ? aggregated.syrup : (parseInt(document.getElementById('ldSyrup').value) || 0);
-  const deliveryDate = document.getElementById('ldDate').value;
-  if (!deliveryDate) { showToast('Please pick a date'); return; }
-const data = {
-    store_id: storeId,
-    store_name: store.name,
-    qty_large: large,
-    qty_small: small,
-    qty_dairy_free: dairyFree,
-    qty_syrup: syrup,
-    quantities: hasBreakdown ? ldQuantities : null,
-    delivery_date: deliveryDate,
-    notes: document.getElementById('ldNotes').value.trim() || null,
-    updated_at: new Date().toISOString(),
-  };
-if (id) {
-    // reverse old quantities before saving new ones
-    const { data: oldRow } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
-    if (oldRow?.quantities) {
-      for (const [pid, qty] of Object.entries(oldRow.quantities)) {
-        if (qty > 0) {
-          const rows = await sb.from('inventory').select('qty').eq('product', pid).single();
-          if (rows.data) {
-            await sb.from('inventory').update({ qty: Math.max(0, (rows.data.qty || 0) + qty) }).eq('product', pid);
-          }
-        }
-      }
-    }
-    // apply new quantities
-    if (Object.keys(ldQuantities).length) {
-      for (const [pid, qty] of Object.entries(ldQuantities)) {
-        if (qty > 0) {
-          const rows = await sb.from('inventory').select('qty').eq('product', pid).single();
-          if (rows.data) {
-            await sb.from('inventory').update({ qty: Math.max(0, (rows.data.qty || 0) - qty) }).eq('product', pid);
-          }
-        }
-      }
-    }
-    await sb.from('store_deliveries').update(data).eq('id', id);
-    showToast('Delivery updated ✓');
-  }
-  else {
-    await sb.from('store_deliveries').insert(data);
-    const hasQtys = Object.values(ldQuantities).some(q => q > 0);
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
-    // deduct inventory for each product
-    if (hasQtys) {
-      const headers = {
-        'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      };
-      for (const [pid, qty] of Object.entries(ldQuantities)) {
-        if (!qty || qty <= 0) continue;
-        const res = await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/inventory?product=eq.${pid}`, { headers });
-        const rows = await res.json();
-        if (!rows?.length) continue;
-        const newQty = Math.max(0, (rows[0].qty || 0) - qty);
-        await fetch(`https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/inventory?product=eq.${pid}`, {
-          method: 'PATCH',
-          headers: { ...headers, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ qty: newQty }),
-        });
-      }
-    }
-    showToast('Delivery logged ✓');    // create Schedule job with full per-product quantities
-    if (hasQtys) {
-      const jobId = 'admin_del_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-      const itemsLabel = Object.entries(ldQuantities).filter(([,q])=>q>0)
-        .map(([pid,qty])=>`${qty} ${LD_PRODUCTS[pid]?.label||pid}`).join(', ');
-      const schedJob = {
-        id: jobId,
-        type: 'delivery',
-        delivery_type: 'store',
-        store_name: store.name,
-        quantities: ldQuantities,
-        planned_total: large + small + syrup,
-        date: deliveryDate,
-        time: null,
-        done: true,
-        needs_confirmation: false,
-        wa_needs_send: !!store.phone,
-        wa_sent_at: null,
-        billed: false,
-        paid: false,
-        label: `${store.name} — ${itemsLabel}`,
-        created_at: new Date().toISOString(),
-      };
-      await fetch('https://ayuzmwpmhncxrugsyxmw.supabase.co/rest/v1/jobs', {
-        method: 'POST',
-        headers: {
-          'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn',
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal',
-        },
-        body: JSON.stringify(schedJob),
+  const btn = document.getElementById('saveDeliveryBtn');
+  if (btn?.disabled) return; // guard against double-tap while a save is already in flight
+  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = 'Saving…'; }
+  try {
+    const id = document.getElementById('editDeliveryId').value;
+    const storeId = document.getElementById('ldStore').value;
+    const store = allStores.find(s => s.id === storeId);
+    if (!store) { showToast('Please select a store'); return; }
+    // the per-product picker is the source of truth when it's been used — but if it's empty
+    // (e.g. an older record with no saved breakdown), fall back to the plain number boxes
+    // instead of silently zeroing out the bottle counts on save
+    const hasBreakdown = Object.values(ldQuantities).some(q => (q||0) > 0);
+    const aggregated = ldGetAggregated();
+    const large = hasBreakdown ? aggregated.large : (parseInt(document.getElementById('ldLarge').value) || 0);
+    const small = hasBreakdown ? aggregated.small : (parseInt(document.getElementById('ldSmall').value) || 0);
+    const dairyFree = hasBreakdown ? (aggregated.dairyFree || 0) : (parseInt(document.getElementById('ldDairyFree').value) || 0);
+    const syrup = hasBreakdown ? aggregated.syrup : (parseInt(document.getElementById('ldSyrup').value) || 0);
+    const deliveryDate = document.getElementById('ldDate').value;
+    if (!deliveryDate) { showToast('Please pick a date'); return; }
+    const hasAnyQty = (large + small + dairyFree + syrup) > 0;
+
+    const data = {
+      store_id: storeId,
+      store_name: store.name,
+      qty_large: large,
+      qty_small: small,
+      qty_dairy_free: dairyFree,
+      qty_syrup: syrup,
+      // When the simple number boxes were used (no per-product breakdown), still record the
+      // aggregate counts under synthetic keys so the WhatsApp delivery note and Schedule tab
+      // have something to read — these keys are never matched against real product IDs
+      // (LD_PRODUCTS/PRODUCTS lookups simply return undefined for them) so they can never
+      // cause a wrong inventory deduction.
+      quantities: hasBreakdown ? ldQuantities : (hasAnyQty ? {
+        _agg_large: large, _agg_small: small, _agg_dairy_free: dairyFree, _agg_syrup: syrup,
+      } : null),
+      delivery_date: deliveryDate,
+      notes: document.getElementById('ldNotes').value.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (id) {
+      // Merge old (to reverse) and new (to apply) per-product quantities into ONE net delta per
+      // product, then write inventory in a single batched call instead of sequential GET+PATCH
+      // round trips per product per direction (previously up to 4 awaited requests per product).
+      const { data: oldRow } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
+      const oldQ = (oldRow?.quantities && typeof oldRow.quantities === 'object') ? oldRow.quantities : {};
+      const newQ = hasBreakdown ? ldQuantities : {};
+      const deltas = {};
+      new Set([...Object.keys(oldQ), ...Object.keys(newQ)]).forEach(pid => {
+        if (pid.startsWith('_agg_')) return; // synthetic aggregate keys never touch real inventory
+        const net = (Number(oldQ[pid]) || 0) - (Number(newQ[pid]) || 0); // add back old, subtract new
+        if (net) deltas[pid] = net;
       });
+      if (Object.keys(deltas).length) await batchIncrementInventory2(deltas);
+
+      await sb.from('store_deliveries').update(data).eq('id', id);
+      showToast('Delivery updated ✓');
+    } else {
+      await sb.from('store_deliveries').insert(data);
+
+      // Deduct inventory in one batched call (was: sequential GET+PATCH per product).
+      if (hasBreakdown) {
+        const deltas = {};
+        Object.entries(ldQuantities).forEach(([pid, qty]) => { if (qty > 0) deltas[pid] = -qty; });
+        if (Object.keys(deltas).length) await batchIncrementInventory2(deltas);
+      }
+
+      // Create the Schedule job whenever ANY quantity was entered — whether via the per-product
+      // breakdown picker or the simple Large/Small/Dairy Free/Syrup boxes. Previously this only
+      // fired for the breakdown picker, so deliveries logged with the simple boxes never got a
+      // Schedule entry and therefore never got a WhatsApp delivery-note button.
+      if (hasAnyQty) {
+        const jobId = 'admin_del_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const itemsLabel = hasBreakdown
+          ? Object.entries(ldQuantities).filter(([,q])=>q>0).map(([pid,qty])=>`${qty} ${LD_PRODUCTS[pid]?.label||pid}`).join(', ')
+          : [large&&`${large} large`, small&&`${small} small`, dairyFree&&`${dairyFree} dairy free`, syrup&&`${syrup} syrup`].filter(Boolean).join(', ');
+        const schedJob = {
+          id: jobId,
+          type: 'delivery',
+          delivery_type: 'store',
+          store_name: store.name,
+          quantities: data.quantities,
+          planned_total: large + small + dairyFree + syrup,
+          date: deliveryDate,
+          time: null,
+          done: true,
+          needs_confirmation: false,
+          wa_needs_send: !!store.phone,
+          wa_sent_at: null,
+          billed: false,
+          paid: false,
+          label: `${store.name} — ${itemsLabel}`,
+          created_at: new Date().toISOString(),
+        };
+        await opsFetch('jobs', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(schedJob) });
+      }
+      showToast('Delivery logged ✓');
     }
-    showToast('Delivery logged ✓');
+    window.notifyGremierStockChanged?.();
+    closeLogDeliveryModal();
+    await loadStoreDeliveries();
+  } catch (err) {
+    console.error('saveDelivery failed:', err);
+    showToast('⚠ Could not save delivery: ' + (err.message || err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || 'Save Delivery'; }
   }
-  window.notifyGremierStockChanged?.();
-  closeLogDeliveryModal();
-  await loadStoreDeliveries();
 }
 
 async function deleteDelivery() {
@@ -6965,13 +6969,13 @@ async function loadDashboard() {
   let dStart, dEnd;
   if (period === 'week') {
     const d = new Date(now); d.setDate(d.getDate()-7);
-    dStart = d.toISOString().split('T')[0];
+    dStart = localDateStr(d);
   } else if (period === 'month') {
-    dStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    dStart = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
   } else if (period === 'year') {
-    dStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+    dStart = localDateStr(new Date(now.getFullYear(), 0, 1));
   }
-  dEnd = new Date(now.getFullYear(), now.getMonth()+1, 1).toISOString().split('T')[0];
+  dEnd = localDateStr(new Date(now.getFullYear(), now.getMonth()+1, 1));
 
   let delivQ = sb.from('store_deliveries')
     .select('*, stores(price_large, price_small, price_dairy_free, price_syrup)')
@@ -7927,14 +7931,23 @@ function jobWaDrawerEligible2(job, stores) {
 }
 function generateWAMessage2(storeName, job) {
   const dateStr = new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
-  const PRODUCTS2 = window.__OPS_PRODUCTS__ || {};
-  const large = Object.entries(job.quantities||{}).filter(([p])=>PRODUCTS2[p]?.category==='liter').reduce((s,[,q])=>s+(q||0),0);
-  const mini  = Object.entries(job.quantities||{}).filter(([p])=>PRODUCTS2[p]?.category==='mini' ).reduce((s,[,q])=>s+(q||0),0);
-  const syrup = Object.entries(job.quantities||{}).filter(([p])=>PRODUCTS2[p]?.category==='syrup').reduce((s,[,q])=>s+(q||0),0);
-  const total = large+mini+syrup;
+  const q = job.quantities || {};
+  let large, mini, dairyFree, syrup;
+  if (q._agg_large !== undefined || q._agg_small !== undefined || q._agg_dairy_free !== undefined || q._agg_syrup !== undefined) {
+    // Logged via the simple number boxes — no per-product breakdown, use the aggregate counts.
+    large = q._agg_large || 0; mini = q._agg_small || 0; dairyFree = q._agg_dairy_free || 0; syrup = q._agg_syrup || 0;
+  } else {
+    const PRODUCTS2 = window.__OPS_PRODUCTS__ || {};
+    large = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='liter').reduce((s,[,qty])=>s+(qty||0),0);
+    mini  = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='mini' ).reduce((s,[,qty])=>s+(qty||0),0);
+    dairyFree = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='dairy_free').reduce((s,[,qty])=>s+(qty||0),0);
+    syrup = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='syrup').reduce((s,[,qty])=>s+(qty||0),0);
+  }
+  const total = large+mini+dairyFree+syrup;
   const lines = [`תעודת משלוח - גרמיר קפה`,`תאריך: ${dateStr}`,`לכבוד: ${storeName}`,`----------------------------`];
   if (large>0) lines.push(`בקבוק גדול: ${large} יחידות`);
   if (mini>0)  lines.push(`בקבוק קטן: ${mini} יחידות`);
+  if (dairyFree>0) lines.push(`ללא חלב: ${dairyFree} יחידות`);
   if (syrup>0) lines.push(`סירופ: ${syrup} יחידות`);
   lines.push(`----------------------------`,`סה"כ: ${total} יחידות`,`תודה! גרמיר קפה`);
   return lines.join('\n');
@@ -9254,7 +9267,7 @@ const [showForm, setShowForm] = useState2(false);
   const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
   const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid);
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate()-weekStart.getDay()); weekStart.setHours(0,0,0,0);
-  const weekStartISO = weekStart.toISOString().split('T')[0];
+  const weekStartISO = localDateStr(weekStart);
   const completedThisWeek = jobs.filter(j=>j.done&&j.date>=weekStartISO&&j.type!=='brew').sort((a,b)=>b.date.localeCompare(a.date));
 
   // group upcoming by date
@@ -9660,7 +9673,7 @@ async function loadStockData() {
   return { inventory: inventoryMap, concentrate: concentrateMap, beans: beansMap, labeledStock: labeledMap };
 }
 async function loadUpcomingJobs() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr(new Date());
   const rows = await opsFetch(`jobs?select=*&done=eq.false&date=gte.${today}&order=date.asc`);
   return rows || [];
 }
@@ -10035,8 +10048,8 @@ function LabelsScreen({ labeledStock, setLabeledStock }) {
 
 // ── MAKE sub-screen ────────────────────────────────────────
 function MakeScreen({ jobs, inventory, concentrate }) {
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now()+86400000).toISOString().split('T')[0];
+  const today = localDateStr(new Date());
+  const tomorrow = localDateStr(new Date(Date.now()+86400000));
   const upcoming = jobs.filter(j=>!j.done);
   const urgent = jobs.filter(j=>!j.done&&(j.date===today||j.date===tomorrow));
   const concNeeds = concentrateNeeded(upcoming, inventory, concentrate);
