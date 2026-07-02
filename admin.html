@@ -9008,7 +9008,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
   const [showCbExtras,setShowCbExtras] = useState2(Object.values(prefill?.cbExtras||{}).some(v=>v>0));
   const [brewConc,setBrewConc] = useState2('classic');
   const [kg,setKg] = useState2(3);
-  const [bottleQuantities,setBottleQuantities] = useState2({});
+  const [bottleQuantities,setBottleQuantities] = useState2(prefill?.quantities || {});
   const [labelQuantities,setLabelQuantities] = useState2({});
 
   function changeQty(pid, delta) { setQuantities(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)})); }
@@ -9064,7 +9064,13 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
     const items = Object.entries(FP).filter(([,p])=>p.category===cat);
     if (!items.length) return null;
     const bump = (pid, delta) => setValues(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)}));
-    const setOne = (pid, val) => setValues(q=>({...q,[pid]:Math.max(0,parseInt(val)||0)}));
+    // Keep the raw text the user is typing so intermediate states (e.g. clearing the field,
+    // or typing "10" one digit at a time) don't get clamped/reset mid-keystroke — that clamping
+    // was what caused the input to flicker and the page to jump while editing quantities.
+    const setOne = (pid, val) => {
+      const digits = val.replace(/[^0-9]/g, '');
+      setValues(q=>({...q, [pid]: digits === '' ? '' : Math.max(0, parseInt(digits, 10))}));
+    };
     return (
       <div style={{marginBottom:10}}>
         <div style={{fontSize:9,color:'#9a9a9a',letterSpacing:1,textTransform:'uppercase',fontWeight:700,marginTop:8,marginBottom:4,borderBottom:'1px solid #303030',paddingBottom:3}}>{title}</div>
@@ -9072,9 +9078,9 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
           <div key={pid} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #303030'}}>
             <ProductThumb pid={pid} size={26}/>
             <span style={{flex:1,fontSize:13,color:'#c4c4c4'}}>{p.label}</span>
-            <button style={TS.qBtn} onClick={()=>bump(pid,-1)}>−</button>
-            <input style={TS.qInp} type="number" value={values[pid]||0} onChange={e=>setOne(pid,e.target.value)}/>
-            <button style={TS.qBtn} onClick={()=>bump(pid,1)}>+</button>
+            <button type="button" style={TS.qBtn} onClick={()=>bump(pid,-1)}>−</button>
+            <input style={TS.qInp} type="text" inputMode="numeric" pattern="[0-9]*" value={values[pid]===''?'':(values[pid]||0)} onChange={e=>setOne(pid,e.target.value)} onBlur={()=>{ if(values[pid]==='') setValues(q=>({...q,[pid]:0})); }}/>
+            <button type="button" style={TS.qBtn} onClick={()=>bump(pid,1)}>+</button>
           </div>
         ))}
       </div>
