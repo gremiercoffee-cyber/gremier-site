@@ -47,7 +47,7 @@
   window.signInAdmin = async function signInAdmin() {
     try {
       const sbLogin = getAdminSupabase();
-      const adminUrl = 'https://gremier-site.vercel.app/admin.html';
+      const adminUrl = 'https://gremiercoffee.co.il/admin.html';
 
       const { error } = await sbLogin.auth.signInWithOAuth({
         provider: 'google',
@@ -609,7 +609,7 @@ window.gremierUiCacheSave = function (key, ids) {
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
   const ADMIN_EMAIL = 'gremiercoffee@gmail.com';
   const SITE_URL = 'https://gremiercoffee.co.il';
-const ADMIN_URL = 'https://gremier-site.vercel.app/admin.html';
+const ADMIN_URL = 'https://gremiercoffee.co.il/admin.html';
 const OPS_URL = 'https://gremier-coffee.vercel.app/';
 </script>
 <!-- AUTH SCREEN -->
@@ -2012,7 +2012,7 @@ async function signInAdmin() {
   await sb.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: 'https://gremier-site.vercel.app/admin.html'
+      redirectTo: 'https://gremiercoffee.co.il/admin.html'
     }
   });
 }
