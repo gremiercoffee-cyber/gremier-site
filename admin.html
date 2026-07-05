@@ -3024,13 +3024,19 @@ function renderOrdersTable(orders) {
     const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
     const subBadge = isSubscriptionOrder(o) ? ' <span class="status-pill s-confirmed" style="font-size:.55rem">sub</span>' : '';
+    // Badge non-regular delivery types so expedited/event orders stand out in the list
+    const dTypeRow = String((o.delivery_info && o.delivery_info.delivery_type) || '').toLowerCase();
+    const dTypeBadge = dTypeRow === 'event' ? ' <span class="status-pill s-pending" style="font-size:.55rem">event</span>'
+      : dTypeRow === 'expedited' ? ' <span class="status-pill s-pending" style="font-size:.55rem">expedited</span>'
+      : dTypeRow === 'pickup' ? ' <span class="status-pill s-confirmed" style="font-size:.55rem">pickup</span>'
+      : '';
     const needsFulfillmentHighlight = String(o.payment_status || '').toLowerCase() === 'paid'
       && !['fulfilled','cancelled'].includes(String(o.status || '').toLowerCase());
     const fulfillBtn = o.status !== 'fulfilled' && o.payment_status === 'paid'
       ? `<button class="btn btn-amber btn-sm" onclick="markOrderFulfilled('${o.id}')" title="Mark fulfilled + email">✓</button>`
       : '';
 return `<tr class="${needsFulfillmentHighlight ? 'order-needs-fulfillment' : ''}" style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
-      <td class="cell-num" style="color:var(--cream)">#${o.order_number}${subBadge}</td>
+      <td class="cell-num" style="color:var(--cream)">#${o.order_number}${subBadge}${dTypeBadge}</td>
       <td class="cell-customer">${escHtml(o.customer_name||'')}${o.customer_phone?`<br><small>${escHtml(o.customer_phone)}</small>`:''}</td>
       <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(items)}">${items}</td>
       <td class="cell-total" style="color:var(--cream)">₪${o.total}${o.discount>0?`<br><small style="color:var(--text2)">-₪${o.discount}</small>`:''}</td>
@@ -3271,6 +3277,12 @@ function openOrderDetail(id) {
   const o = allOrders.find(x=>x.id===id);
   if (!o) return;
   const items = (o.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${i.name_en} ×${i.qty}</span><span style="color:var(--cream)">₪${i.price*i.qty}</span></div>`).join('');
+  // Surface the delivery type the customer chose at checkout (stored in delivery_info by the storefront)
+  const di = (o.delivery_info && typeof o.delivery_info === 'object') ? o.delivery_info : {};
+  const DELIVERY_TYPE_LABELS = { regular:'Regular', expedited:'Expedited', event:'Event Delivery', pickup:'Pickup' };
+  const dTypeRaw = String(di.delivery_type || '').toLowerCase();
+  const dType = DELIVERY_TYPE_LABELS[dTypeRaw] || (di.delivery_type ? escHtml(String(di.delivery_type)) : '—');
+  const dWhen = [di.delivery_date ? String(di.delivery_date).slice(0,10) : '', di.event_time ? String(di.event_time).slice(0,5) : ''].filter(Boolean).join(' @ ');
   document.getElementById('orderModalTitle').textContent = `Order #${o.order_number}`;
  document.getElementById('orderModalContent').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
@@ -3278,6 +3290,7 @@ function openOrderDetail(id) {
       <div><div class="form-label">Phone</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_phone||'—')}</div></div>
       <div><div class="form-label">Email</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_email||'—')}</div></div>
       <div><div class="form-label">Address</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.delivery_address||'—')}</div></div>
+      <div><div class="form-label">Delivery Type</div><div style="font-size:.9rem;color:var(--cream)">${dType}${dWhen?`<br><small style="color:var(--text2)">${escHtml(dWhen)}</small>`:''}</div></div>
       <div><div class="form-label">Status</div><span class="status-pill s-${escHtml(o.status||'')}">${escHtml(o.status||'')}</span></div>
       <div><div class="form-label">Payment</div><span class="status-pill s-${escHtml(o.payment_status||'')}">${escHtml(o.payment_status||'')}</span></div>
     </div>
