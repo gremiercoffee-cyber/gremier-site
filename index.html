@@ -1857,10 +1857,18 @@ function getSubscriptionSelection() {
     })
     .filter(Boolean);
 }
+const SUBSCRIPTION_DISCOUNT_RATE = 0.10;
 function pdGetSubscriptionTotal() {
+  const bundleProducts = getSubscriptionBundleProducts(pdCurrentProduct);
   const selected = getSubscriptionSelection();
-  if (selected.length) return selected.reduce((sum, item) => sum + item.price * item.qty, 0);
-  return parseFloat(pdCurrentProduct?.price) || 0;
+  let raw;
+  if (bundleProducts.length) {
+    // Build-your-own subscription: total is purely what's selected (0 if nothing selected yet).
+    raw = selected.reduce((sum, item) => sum + item.price * item.qty, 0);
+  } else {
+    raw = parseFloat(pdCurrentProduct?.price) || 0;
+  }
+  return Math.round(raw * (1 - SUBSCRIPTION_DISCOUNT_RATE) * 100) / 100;
 }
 function pdSetSubscriptionInterval(interval) {
   pdSubscriptionInterval = interval === 'weekly' ? 'weekly' : 'monthly';
@@ -2030,7 +2038,7 @@ function renderPdSubscriptionSection(p, keepState) {
     pdSubscriptionInterval = 'monthly';
     pdSubscriptionItems = {};
     bundleProducts.forEach(item => {
-      pdSubscriptionItems[String(item.id)] = { selected: true, qty: 1 };
+      pdSubscriptionItems[String(item.id)] = { selected: false, qty: 1 };
     });
   }
   const intervalButtons = [
@@ -2061,10 +2069,21 @@ function renderPdSubscriptionSection(p, keepState) {
       </div>
     </div>`;
   }).join('') : `<div style="font-size:.84rem;color:var(--text2);line-height:1.55">${lang === 'he' ? 'עדיין לא נבחרו מוצרים למנוי בממשק הניהול.' : 'No subscription items have been selected in admin yet.'}</div>`;
+  const anySelected = bundleProducts.some(item => (pdSubscriptionItems[String(item.id)] || {}).selected);
+  const warningText = lang === 'he'
+    ? 'לא נבחר כלום — יש לבחור לפחות פריט אחד כדי להרכיב את המנוי'
+    : 'Nothing selected — please select at least 1 item to build your subscription';
+  const warningHtml = (bundleProducts.length && !anySelected)
+    ? `<div id="pdSubWarning" style="color:#c0392b;font-weight:600;font-size:.82rem;line-height:1.4;margin-top:12px;padding:10px 12px;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.28);border-radius:4px">${warningText}</div>`
+    : '';
+  const discountNote = lang === 'he'
+    ? 'הנחת מנוי 10% מופעלת אוטומטית על הסכום הכולל'
+    : '10% subscription discount is applied automatically to your total';
   section.style.display = 'block';
   section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${freqTitle}</div>
     <div class="sub-frequency-row">${intervalButtons}</div>
-    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px">${title}</div>${rows}`;
+    <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px">${title}</div>${rows}${warningHtml}
+    <div style="font-size:.74rem;color:var(--text2);margin-top:10px">${discountNote}</div>`;
 }
 function escAttr(s) {
   return escHtml(s).replace(/'/g,'&#39;');
