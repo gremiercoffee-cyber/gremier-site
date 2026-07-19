@@ -1158,15 +1158,15 @@
         <div style="display:flex;gap:10px;margin-top:4px">
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipRegularLabel">
             <input type="radio" name="shipType" value="regular" id="shipRegular" onchange="updateDeliveryPrice()" checked style="accent-color:#1a1a1a"/>
-            <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-regular">Regular Delivery</div><div style="font-size:.74rem;color:var(--text2)" id="shipRegularPrice">—</div></div>
+            <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-regular">Regular Delivery</div><div style="font-size:.74rem;color:var(--text2)">2-5 days <span id="shipRegularPrice">—</span></div></div>
           </label>
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipExpeditedLabel">
             <input type="radio" name="shipType" value="expedited" id="shipExpedited" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
-            <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-expedited">Priority / Specific Day</div><div style="font-size:.74rem;color:var(--text2)" id="shipExpeditedPrice">—</div></div>
+            <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-expedited">Expedited Delivery</div><div style="font-size:.74rem;color:var(--text2)">1-2 days <span id="shipExpeditedPrice">—</span></div></div>
           </label>
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipEventLabel">
             <input type="radio" name="shipType" value="event" id="shipEvent" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
-            <div><div style="font-size:.85rem;color:var(--cream)">Event Delivery</div><div style="font-size:.74rem;color:var(--text2)" id="shipEventPrice">—</div></div>
+            <div><div style="font-size:.85rem;color:var(--cream)">Event Delivery</div><div style="font-size:.74rem;color:var(--text2)">Choose your date &amp; time <span id="shipEventPrice">—</span></div></div>
           </label>
         </div>
         <!-- Priority sub-options -->

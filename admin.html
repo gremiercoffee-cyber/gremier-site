@@ -351,8 +351,8 @@
     .spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--cream); border-radius:50%; animation:spin .7s linear infinite; }
     @keyframes spin { to{transform:rotate(360deg)} }
     /* TOAST */
-    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--silver); border:1px solid var(--silver); color:#121212; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; transition:transform .3s; font-weight:500; max-width:min(92vw,520px); }
-    .toast.show { transform:translateX(-50%) translateY(0); }
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--silver); border:1px solid var(--silver); color:#121212; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; opacity:0; pointer-events:none; visibility:hidden; transition:transform .3s,opacity .2s,visibility 0s linear .3s; font-weight:500; max-width:min(92vw,520px); }
+    .toast.show { transform:translateX(-50%) translateY(0); opacity:1; pointer-events:auto; visibility:visible; transition:transform .3s,opacity .2s; }
     .toast-inner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; }
     .toast-undo-btn { background:#121212; color:#efefef; border:none; padding:5px 14px; border-radius:3px; cursor:pointer; font-weight:600; font-size:.8rem; font-family:'DM Sans',sans-serif; }
     .toast-undo-btn:hover { background:#333; }
@@ -5964,10 +5964,81 @@ async function loadBillingBoard() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url?'':'disabled'}>💬 Send via WhatsApp</button>
+          <button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download Balance PNG</button>
           <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')" ${r.paid_at?'disabled':''}>${r.paid_at?'Paid ✓':'Mark Paid'}</button>
         </div>
       </div>`;
   }).join('');
+}
+
+async function downloadOutstandingBalancePNG(storeId) {
+  if (!window.html2canvas) {
+    showToast('PNG renderer is still loading. Try again in a moment.');
+    return;
+  }
+  try {
+    const { data: rows, error } = await sb
+      .from('store_billing')
+      .select('year,month,total,billed_at,stores(name)')
+      .eq('store_id', storeId)
+      .is('paid_at', null)
+      .order('year', { ascending: true })
+      .order('month', { ascending: true });
+    if (error) throw error;
+    if (!rows?.length) {
+      showToast('This store has no unpaid balance.');
+      return;
+    }
+
+    const storeName = rows[0].stores?.name || 'Store';
+    const total = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    const monthLabel = row => new Date(Number(row.year), Number(row.month) - 1, 1)
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const statement = document.createElement('div');
+    statement.style.cssText = 'width:1080px;background:#f8f5ef;color:#171717;padding:54px 58px;font-family:Arial,sans-serif;box-sizing:border-box;';
+    const rowsHtml = rows.map(row => `
+      <div style="display:flex;justify-content:space-between;gap:24px;padding:18px 0;border-bottom:1px solid #ddd;font-size:27px">
+        <div><strong>${escHtml(monthLabel(row))}</strong><div style="font-size:20px;color:#666;margin-top:5px">${row.billed_at ? 'Statement sent' : 'Statement pending'}</div></div>
+        <strong style="white-space:nowrap">&#8362;${Number(row.total || 0).toFixed(2)}</strong>
+      </div>`).join('');
+    statement.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #171717;padding-bottom:24px;margin-bottom:28px">
+        <div><div style="font-family:Georgia,serif;font-size:48px;font-weight:700">Gremier Coffee</div><div style="font-size:24px;color:#555;margin-top:6px">Outstanding Balance</div></div>
+        <div style="font-size:22px;color:#555;text-align:right">As of ${new Date().toLocaleDateString()}</div>
+      </div>
+      <div style="font-size:34px;margin-bottom:26px">Store: <strong>${escHtml(storeName)}</strong></div>
+      <div style="font-size:21px;color:#555;margin-bottom:10px">Unpaid monthly statements</div>
+      <div>${rowsHtml}</div>
+      <div style="margin-top:30px;border-top:3px solid #171717;padding-top:24px;display:flex;justify-content:space-between;font-size:42px;font-weight:800"><span>Total outstanding</span><span>&#8362;${total.toFixed(2)}</span></div>
+      <div style="margin-top:32px;font-size:21px;color:#555">Thank you, Gremier Coffee</div>`;
+    statement.style.position = 'fixed';
+    statement.style.left = '-2000px';
+    statement.style.top = '0';
+    statement.style.zIndex = '-1';
+    document.body.appendChild(statement);
+    try {
+      const canvas = await html2canvas(statement, { backgroundColor: '#f8f5ef', scale: 1, logging: false });
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(
+        value => value ? resolve(value) : reject(new Error('PNG creation failed')),
+        'image/png'
+      ));
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeName = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'store';
+      link.href = url;
+      link.download = `gremier-${safeName}-outstanding-balance.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      showToast('Outstanding balance PNG downloaded.');
+    } finally {
+      statement.remove();
+    }
+  } catch (err) {
+    console.error('downloadOutstandingBalancePNG:', err);
+    showToast(err.message || 'Could not create the balance PNG.');
+  }
 }
 
 async function shareInvoiceWhatsApp(billingId) {
