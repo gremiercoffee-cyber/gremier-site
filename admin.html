@@ -8107,6 +8107,14 @@ function websiteOrderDisplayLabel2(order) {
 async function buildWebsiteOrderSchedulePrefill2(order) {
   const items = Array.isArray(order?.items) ? order.items : [];
   const stockKeys = new Set(Object.keys(window.__OPS_PRODUCTS__ || {}));
+  // Stable website catalog IDs for the core products. These provide a reliable
+  // fallback even when an order was saved without a descriptive product name.
+  const knownProductIds = {
+    '5553dae1-d35d-4d02-b3a1-3633e9ca6bfc': 'classic_liter',
+    'd14c3808-0f14-439d-b978-69bf6e35e9b4': 'house_blend',
+    'd59ad233-5090-40bc-b984-ed326ca8460d': 'colombia_liter',
+    '1c28055f-79b8-4d99-b7f2-38c270b47af7': 'caramel_mini',
+  };
   const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, ' ').trim();
   const compact = value => norm(value).replace(/\s+/g, '');
 
@@ -8167,7 +8175,10 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     if (/house|blend|האוס|בלנד/.test(t)) return 'house_blend';
     if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(t)) return 'colombia_liter';
     if (/decaf|נטול/.test(t)) return 'decaf_liter';
-    if (/classic|dark|קלאס|קלאסי|כהה/.test(t)) return 'classic_liter';
+    if (/classic|dark|original|קלאס|קלאסי|מקורי|כהה/.test(t)) return 'classic_liter';
+    // Catalog category is included in the text above. Fall back to Classic for
+    // unflavoured bottle names such as "Cold Brew Bottle".
+    if (/bottles?|liter|litre|1\s*l|1l|בקבוק|ליטר/.test(t)) return 'classic_liter';
     return '';
   }
 
@@ -8178,13 +8189,14 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     try {
       const rows = await window.opsFetch(`products?id=in.(${catalogIds.join(',')})&select=id,name_en,name_he,category,is_coffee_bar,variations`);
       (rows || []).forEach(p => {
-        // extract ops_settings so we can use stock_key and pack_size directly
-        const opsVar = (p.variations || []).find(v => v.type === 'ops_settings');
+        // Normalize the catalog row so its ops settings work whether they are
+        // stored in the variation or already exposed as top-level fields.
+        const normalized = typeof normalizeProduct === 'function' ? normalizeProduct(p) : p;
         catalogById[String(p.id)] = {
-          ...p,
-          _ops_stock_key: (opsVar?.stock_key || '').trim(),
-          _ops_pack_size: Number(opsVar?.pack_size) || 1,
-          _ops_exclude: !!(opsVar?.exclude),
+          ...normalized,
+          _ops_stock_key: String(normalized?.stock_key || '').trim(),
+          _ops_pack_size: Number(normalized?.ops_pack_size) || 1,
+          _ops_exclude: !!normalized?.ops_exclude,
         };
       });
     } catch (err) {
@@ -8221,7 +8233,7 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     ].filter(Boolean).join(' ');
 
     // Priority: catalog stock_key > item-level keys > name resolution
-    const pid = catalogStockKey || directStockKey(item?.product_key) || directStockKey(item?.stock_key) || directStockKey(rawId) || resolveByText(text);
+    const pid = catalogStockKey || directStockKey(knownProductIds[rawId]) || directStockKey(item?.product_key) || directStockKey(item?.stock_key) || directStockKey(rawId) || resolveByText(text);
     const qty = Number(item?.qty ?? item?.quantity ?? 1) || 1;
     // Pack size from catalog ops_settings takes priority over text-pattern detection
     const packMult = catalogPackSize > 1 ? catalogPackSize : packMultiplier(text, pid);
