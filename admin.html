@@ -1477,9 +1477,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">Package</label><select class="form-input" id="plCoffeeBarProduct" onchange="plRenderCoffeeBarOptions()"></select></div>
-        <div class="form-group"><label class="form-label">People</label><select class="form-input" id="plCoffeeBarGuests"><option value="25">25</option><option value="50">50</option><option value="75">75</option><option value="100">100</option><option value="125">125</option><option value="150">150</option></select></div>
+        <div class="form-group"><label class="form-label">People</label><select class="form-input" id="plCoffeeBarGuests" onchange="plUpdateCoffeeBarPrice()"><option value="25">25</option><option value="50">50</option><option value="75">75</option><option value="100">100</option><option value="125">125</option><option value="150">150</option></select></div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Upgrades / Options <span style="font-weight:400;color:var(--text2)">(choose as many as needed)</span></label><div id="plCoffeeBarOptions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px"></div></div>
       </div>
+      <div id="plCoffeeBarPrice" style="margin:-2px 0 12px;color:var(--cream);font-size:.84rem;font-weight:600"></div>
       <button type="button" class="btn btn-amber btn-sm" onclick="plAddCoffeeBarTemplate()">+ Add Coffee Bar</button>
     </div>
 
@@ -3584,9 +3585,15 @@ function plGuestPrice(product, guests) {
   const g = Number(guests) || 25;
   const guestVar = (product?.variations || []).find(v => v.type === 'guest_count');
   const options = guestVar?.options || [];
-  const exact = options.find(o => Number(o.guests) === g || String(o.label || '').includes(String(g)));
+  const tierGuests = option => {
+    const direct = Number(option?.guests ?? option?.value);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const match = String(option?.label || '').match(/\d+/);
+    return match ? Number(match[0]) : 0;
+  };
+  const exact = options.find(o => tierGuests(o) === g);
   if (exact && Number(exact.price) > 0) return Number(exact.price);
-  const lower = options.filter(o => Number(o.guests) <= g && Number(o.price) > 0).sort((a,b)=>Number(b.guests)-Number(a.guests))[0];
+  const lower = options.filter(o => tierGuests(o) <= g && Number(o.price) > 0).sort((a,b)=>tierGuests(b)-tierGuests(a))[0];
   if (lower) return Number(lower.price);
   return Number(product?.price || 0);
 }
@@ -3636,6 +3643,7 @@ function plRenderCoffeeBarOptions() {
     <input type="checkbox" class="pl-cb-option" data-idx="${idx}" data-label="${escAttr(c.label)}" data-price="${Number(c.price)||0}" data-group="${escAttr(c.group)}" data-type="${escAttr(c.type)}" style="margin-top:2px"/>
     <span style="min-width:0"><strong style="display:block;color:var(--cream);font-size:.8rem;line-height:1.25">${escHtml(c.label)}</strong><small style="display:block;color:var(--text2);font-size:.68rem;margin-top:2px">${escHtml(c.group)}${Number(c.price) ? ` · +₪${Number(c.price).toFixed(0)}` : ''}</small></span>
   </label>`).join('');
+  plUpdateCoffeeBarPrice();
 }
 function plSelectedCoffeeBarOptions() {
   return Array.from(document.querySelectorAll('#plCoffeeBarOptions .pl-cb-option:checked')).map(cb => ({
@@ -3645,6 +3653,25 @@ function plSelectedCoffeeBarOptions() {
     type: cb.dataset.type || 'option',
   })).filter(o => o.label);
 }
+function plUpdateCoffeeBarPrice() {
+  const priceEl = document.getElementById('plCoffeeBarPrice');
+  if (!priceEl) return;
+  const productId = document.getElementById('plCoffeeBarProduct')?.value;
+  const guests = Number(document.getElementById('plCoffeeBarGuests')?.value || 25);
+  const product = (allProducts || []).find(p => String(p.id) === String(productId));
+  if (!product) {
+    priceEl.textContent = '';
+    return;
+  }
+  const basePrice = plGuestPrice(product, guests);
+  const optionsPrice = plSelectedCoffeeBarOptions().reduce((sum, option) => sum + (Number(option.price) || 0), 0);
+  const total = basePrice + optionsPrice;
+  priceEl.textContent = guests + ' people: ₪' + total.toFixed(0)
+    + (optionsPrice ? ' (₪' + basePrice.toFixed(0) + ' package + ₪' + optionsPrice.toFixed(0) + ' upgrades)' : '');
+}
+document.addEventListener('change', event => {
+  if (event.target?.matches('#plCoffeeBarOptions .pl-cb-option')) plUpdateCoffeeBarPrice();
+});
 function plAddCoffeeBarTemplate() {
   const productId = document.getElementById('plCoffeeBarProduct')?.value;
   const guests = Number(document.getElementById('plCoffeeBarGuests')?.value || 25);
