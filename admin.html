@@ -1549,23 +1549,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="form-group"><label class="form-label">Email <span style="font-weight:400;color:var(--text2)">(for order confirmation)</span></label><input class="form-input" id="plEmail" type="email" placeholder="customer@example.com"/></div>
     <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
 
-    <div class="card" style="padding:14px 16px;margin:12px 0 16px;background:var(--bg3)">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-        <div>
-          <div style="font-family:'Playfair Display',serif;color:var(--cream);font-size:1.05rem">☕ Coffee Bar Builder</div>
-          <div style="font-size:.76rem;color:var(--text2);margin-top:3px">Start from your website coffee bar packages, then add extras or custom notes.</div>
-        </div>
-        <button type="button" class="btn btn-outline btn-sm" onclick="plLoadCoffeeBarTemplates()">Refresh Packages</button>
-      </div>
-      <div class="form-row-3">
-        <div class="form-group"><label class="form-label">Package</label><select class="form-input" id="plCoffeeBarProduct" onchange="plRenderCoffeeBarOptions()"></select></div>
-        <div class="form-group"><label class="form-label">People</label><select class="form-input" id="plCoffeeBarGuests" onchange="plUpdateCoffeeBarPrice()"><option value="25">25</option><option value="50">50</option><option value="75">75</option><option value="100">100</option><option value="125">125</option><option value="150">150</option></select></div>
-        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Upgrades / Options <span style="font-weight:400;color:var(--text2)">(choose as many as needed)</span></label><div id="plCoffeeBarOptions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px"></div></div>
-      </div>
-      <div id="plCoffeeBarPrice" style="margin:-2px 0 12px;color:var(--cream);font-size:.84rem;font-weight:600"></div>
-      <button type="button" class="btn btn-amber btn-sm" onclick="plAddCoffeeBarTemplate()">+ Add Coffee Bar</button>
-    </div>
-
     <div class="form-group">
       <label class="form-label">Delivery Fee</label>
       <input class="form-input" type="number" id="plDeliveryFee" placeholder="Optional — adds as a line item" oninput="plSetDeliveryFee(this.value)"/>
@@ -3627,7 +3610,6 @@ document.getElementById('plCustomer').value = '';
   plSetLinkError('');
   renderPlItems();
   if (!allProducts.length) await loadAllProducts();
-  plLoadCoffeeBarTemplates();
   searchPayLinkProducts('');
   document.getElementById('payLinkModal').classList.add('open');
 }
@@ -3689,7 +3671,6 @@ async function editPayLink(id) {
 
   renderPlItems();
   if (!allProducts.length) await loadAllProducts();
-  plLoadCoffeeBarTemplates();
   searchPayLinkProducts('');
   document.getElementById('payLinkModal').classList.add('open');
 }
@@ -3733,24 +3714,6 @@ function getPayLinkDisplayName(link) {
   if (customer) return customer;
   return 'Untitled link';
 }
-function plCoffeeBarProducts() {
-  return (allProducts || []).filter(p => (p.category === 'coffeebars' || p.is_coffee_bar) && p.is_active !== false)
-    .sort((a,b) => String(a.name_en || '').localeCompare(String(b.name_en || '')));
-}
-function plLoadCoffeeBarTemplates() {
-  const sel = document.getElementById('plCoffeeBarProduct');
-  if (!sel) return;
-  const bars = plCoffeeBarProducts();
-  if (!bars.length) {
-    sel.innerHTML = '<option value="">No coffee bar products found</option>';
-    plRenderCoffeeBarOptions();
-    return;
-  }
-  const previous = sel.value;
-  sel.innerHTML = bars.map(p => `<option value="${escAttr(p.id)}">${escHtml(p.name_en || 'Coffee Bar')}</option>`).join('');
-  if (previous && bars.some(p => String(p.id) === String(previous))) sel.value = previous;
-  plRenderCoffeeBarOptions();
-}
 function plGuestPrice(product, guests) {
   const g = Number(guests) || 25;
   const guestVar = (product?.variations || []).find(v => v.type === 'guest_count');
@@ -3766,105 +3729,6 @@ function plGuestPrice(product, guests) {
   const lower = options.filter(o => tierGuests(o) <= g && Number(o.price) > 0).sort((a,b)=>tierGuests(b)-tierGuests(a))[0];
   if (lower) return Number(lower.price);
   return Number(product?.price || 0);
-}
-function plCoffeeBarOptionChoices(product) {
-  const choices = [];
-  const seen = new Set();
-  function addChoice(label, price = 0, group = 'Upgrade', type = 'option') {
-    const clean = String(label || '').trim();
-    if (!clean) return;
-    const key = `${group}:${clean}`.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    choices.push({ label: clean, price: Number(price) || 0, group, type });
-  }
-  (product?.variations || []).forEach(v => {
-    if (!v || v.type === 'guest_count' || v.type === 'delivery_price' || v.type === 'subscription_bundle') return;
-    if (v.type === 'addons') {
-      (v.items || []).forEach(a => addChoice(a.name || a.label, a.price, 'Add-on', 'addon'));
-      return;
-    }
-    if (Array.isArray(v.options)) {
-      (v.options || []).forEach(o => {
-        if (typeof o === 'string') addChoice(o, 0, v.name || 'Option', 'choice');
-        else addChoice(o.label || o.name, o.price, v.name || 'Option', 'choice');
-      });
-    }
-  });
-  // Safety fallback for older coffee-bar products that do not have website options saved in variations yet.
-  if (!choices.some(c => /house\s*blend/i.test(c.label))) addChoice('House Blend Upgrade', 0, 'Upgrade', 'fallback');
-  return choices;
-}
-function plRenderCoffeeBarOptions() {
-  const box = document.getElementById('plCoffeeBarOptions');
-  if (!box) return;
-  const productId = document.getElementById('plCoffeeBarProduct')?.value;
-  const product = (allProducts || []).find(p => String(p.id) === String(productId));
-  if (!product) {
-    box.innerHTML = '<div style="color:var(--text2);font-size:.78rem">Choose a coffee bar package first.</div>';
-    return;
-  }
-  const choices = plCoffeeBarOptionChoices(product);
-  if (!choices.length) {
-    box.innerHTML = '<div style="color:var(--text2);font-size:.78rem">No optional upgrades saved for this package.</div>';
-    return;
-  }
-  box.innerHTML = choices.map((c, idx) => `<label style="display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(20,20,20,.28);cursor:pointer">
-    <input type="checkbox" class="pl-cb-option" data-idx="${idx}" data-label="${escAttr(c.label)}" data-price="${Number(c.price)||0}" data-group="${escAttr(c.group)}" data-type="${escAttr(c.type)}" style="margin-top:2px"/>
-    <span style="min-width:0"><strong style="display:block;color:var(--cream);font-size:.8rem;line-height:1.25">${escHtml(c.label)}</strong><small style="display:block;color:var(--text2);font-size:.68rem;margin-top:2px">${escHtml(c.group)}${Number(c.price) ? ` · +₪${Number(c.price).toFixed(0)}` : ''}</small></span>
-  </label>`).join('');
-  plUpdateCoffeeBarPrice();
-}
-function plSelectedCoffeeBarOptions() {
-  return Array.from(document.querySelectorAll('#plCoffeeBarOptions .pl-cb-option:checked')).map(cb => ({
-    label: cb.dataset.label || '',
-    price: Number(cb.dataset.price || 0) || 0,
-    group: cb.dataset.group || 'Option',
-    type: cb.dataset.type || 'option',
-  })).filter(o => o.label);
-}
-function plUpdateCoffeeBarPrice() {
-  const priceEl = document.getElementById('plCoffeeBarPrice');
-  if (!priceEl) return;
-  const productId = document.getElementById('plCoffeeBarProduct')?.value;
-  const guests = Number(document.getElementById('plCoffeeBarGuests')?.value || 25);
-  const product = (allProducts || []).find(p => String(p.id) === String(productId));
-  if (!product) {
-    priceEl.textContent = '';
-    return;
-  }
-  const basePrice = plGuestPrice(product, guests);
-  const optionsPrice = plSelectedCoffeeBarOptions().reduce((sum, option) => sum + (Number(option.price) || 0), 0);
-  const total = basePrice + optionsPrice;
-  priceEl.textContent = guests + ' people: ₪' + total.toFixed(0)
-    + (optionsPrice ? ' (₪' + basePrice.toFixed(0) + ' package + ₪' + optionsPrice.toFixed(0) + ' upgrades)' : '');
-}
-document.addEventListener('change', event => {
-  if (event.target?.matches('#plCoffeeBarOptions .pl-cb-option')) plUpdateCoffeeBarPrice();
-});
-function plAddCoffeeBarTemplate() {
-  const productId = document.getElementById('plCoffeeBarProduct')?.value;
-  const guests = Number(document.getElementById('plCoffeeBarGuests')?.value || 25);
-  const product = (allProducts || []).find(p => String(p.id) === String(productId));
-  if (!product) { showToast('Choose a coffee bar package first'); return; }
-  const selectedOptions = plSelectedCoffeeBarOptions();
-  const basePrice = plGuestPrice(product, guests);
-  const optionsPrice = selectedOptions.reduce((s,o)=>s + (Number(o.price)||0), 0);
-  const optionLabel = selectedOptions.length ? ' · ' + selectedOptions.map(o => o.label).join(' · ') : '';
-  const id = `${product.id}:guests:${guests}:opts:${selectedOptions.map(o=>o.label).join('|') || 'none'}:${Math.random().toString(36).slice(2,7)}`;
-  plCartItems.push({
-    id,
-    product_id: product.id,
-    name_en: `${product.name_en || 'Coffee Bar'} (${guests} people)${optionLabel}`,
-    name_he: product.name_he || '',
-    price: basePrice + optionsPrice,
-    qty: 1,
-    image: product.images?.[0] || null,
-    image_url: product.images?.[0] || null,
-    category: 'coffeebars',
-    meta: { service_type:'coffee_bar', guests, options:selectedOptions, source_product_id: product.id, base_price:basePrice, options_price:optionsPrice }
-  });
-  renderPlItems();
 }
 function plSetDeliveryFee(value) {
   const fee = Number(value || 0);
@@ -3915,13 +3779,56 @@ function searchPayLinkProducts(query) {
     el.innerHTML = '<div style="color:var(--text2);font-size:.83rem;padding:8px 0;grid-column:1/-1">No products found.</div>';
     return;
   }
-  el.innerHTML = list.map(p => `
+  // Coffee bars appear as one card per guest tier (25/50/… people), priced from guest_pricing.
+  el.innerHTML = list.map(p => {
+    const isBar = p.category === 'coffeebars' || p.is_coffee_bar;
+    if (isBar) {
+      const guestVar = (p.variations || []).find(v => v.type === 'guest_count');
+      const tiers = (guestVar?.options || [])
+        .map(o => ({ guests: Number(o.guests ?? o.value) || Number(String(o.label||'').match(/\d+/)?.[0]) || 0, price: Number(o.price) || 0 }))
+        .filter(t => t.guests > 0 && t.price > 0);
+      if (!tiers.length) return `
+        <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlCoffeeBarTier('${p.id}',25)" title="${escAttr(p.name_en)}">
+          <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
+          <div class="pl-product-name">${p.name_en}</div>
+          <div class="pl-product-price">₪${p.price}</div>
+        </button>`;
+      return tiers.map(t => `
+        <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlCoffeeBarTier('${p.id}',${t.guests})" title="${escAttr(p.name_en)} — ${t.guests} people">
+          <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
+          <div class="pl-product-name">${p.name_en} — ${t.guests} people</div>
+          <div class="pl-product-price">₪${t.price}</div>
+        </button>`).join('');
+    }
+    return `
     <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlItem('${p.id}')" title="${escAttr(p.name_en)}">
       <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
       <div class="pl-product-name">${p.name_en}</div>
       <div class="pl-product-price">₪${p.price}</div>
-    </button>
-  `).join('');
+    </button>`;
+  }).join('');
+}
+function addPlCoffeeBarTier(productId, guests) {
+  const product = allProducts.find(x => x.id === productId);
+  if (!product) return;
+  const g = Number(guests) || 25;
+  const price = plGuestPrice(product, g);
+  const id = `${product.id}:guests:${g}`;
+  const existing = plCartItems.find(x => x.id === id);
+  if (existing) { existing.qty++; renderPlItems(); return; }
+  plCartItems.push({
+    id,
+    product_id: product.id,
+    name_en: `${product.name_en || 'Coffee Bar'} (${g} people)`,
+    name_he: product.name_he || '',
+    price,
+    qty: 1,
+    image: product.images?.[0] || null,
+    image_url: product.images?.[0] || null,
+    category: 'coffeebars',
+    meta: { service_type:'coffee_bar', guests:g, source_product_id: product.id, base_price:price },
+  });
+  renderPlItems();
 }
 function addPlItem(productId) {
   const p = allProducts.find(x=>x.id===productId);
