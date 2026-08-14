@@ -7236,9 +7236,13 @@ Return JSON:
       }
     } catch (aiErr) {
       console.warn('AI briefing failed, using computed fallback:', aiErr);
+      window.__briefingAiError = aiErr?.message || String(aiErr);
     }
 
-    body.innerHTML = aiHtml || `
+    const aiErrorNote = !aiHtml && window.__briefingAiError
+      ? `<div style="font-size:.68rem;color:var(--text2);margin-bottom:8px">⚠ AI briefing unavailable (${escHtml(window.__briefingAiError)}) — showing computed view</div>`
+      : '';
+    body.innerHTML = aiHtml || aiErrorNote + `
       <div class="briefing-content">
         <div class="briefing-priority ${actions.length ? '' : 'good'}">
           <strong>${actions.length ? escHtml(actions.join(' · ')) : '✓ Everything looks covered right now.'}</strong>
