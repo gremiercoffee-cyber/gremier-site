@@ -10684,6 +10684,9 @@ const { useState: useState3, useEffect: useEffect3, useRef: useRef3 } = React;
 
 const OPS_AI_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/ops-ai';
 
+// Exposed on window so plain scripts (e.g. the dashboard briefing) can reach it —
+// Babel-compiled scripts run in their own function scope, not global.
+window.opsAI2 = opsAI2;
 async function opsAI2(action, payload, isFormData = false) {
   const { data: { session } } = await (window.MAIN_SB || window.ADMIN_SB).auth.getSession();
   const headers = { 'apikey': 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn' };
