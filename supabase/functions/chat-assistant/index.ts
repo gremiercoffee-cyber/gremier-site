@@ -215,7 +215,7 @@ Use cart_items:[] when not adding anything yet.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-5.6-luna",
         messages: openaiMessages,
         temperature: 0.3,
         max_tokens: 500,
