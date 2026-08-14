@@ -7183,7 +7183,7 @@ async function loadBriefing(options = {}) {
       }
       if (typeof window.opsAI2 !== 'function') throw new Error('AI helper not loaded yet');
       const aiData = await window.opsAI2('parse_intent', {
-        model: 'gpt-5.6-luna', max_completion_tokens: 400,
+        model: 'gpt-5.6-luna', max_completion_tokens: 4000,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: `You are the operations brain for Gremier Coffee (cold brew, Jerusalem). You get a JSON snapshot of today's schedule, stock, store delivery patterns, and production gaps. The owner knows their business — do NOT recite inventory or explain context. Tell them ONLY what needs action or attention, and anything coming up they might not have thought about.
@@ -11368,7 +11368,7 @@ Keep replies short — 1-2 sentences.`;
     try {
       const history = messages.filter(m=>m.text&&m.text!=='⋯').map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const data = await opsAI2('parse_intent', {
-        model:'gpt-5.6-luna', max_completion_tokens:600,
+        model:'gpt-5.6-luna', max_completion_tokens:4000,
         response_format:{type:'json_object'},
         messages:[{role:'system',content:systemPrompt},...history,{role:'user',content:text}],
       });
