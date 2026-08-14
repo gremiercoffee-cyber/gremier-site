@@ -7192,7 +7192,46 @@ async function loadBriefing(options = {}) {
     const updateRows = prevRawCache?.snapshot ? briefingDiffSnapshots(prevRawCache.snapshot, snapshot) : null;
     const updatedSectionHtml = ''; // What's Updated section removed
 
-    body.innerHTML = `
+    // ── AI briefing: send the computed snapshot to Luna for a short, prioritized
+    // read. Falls back to the computed grid if the AI call fails.
+    let aiHtml = '';
+    try {
+      const ctx = {
+        today: todayISO,
+        today_jobs: todayJobs.map(j => briefingJobTitle(j)),
+        urgent_actions: actions,
+        stores_due: dueStores.slice(0, 6).map(p => ({ store: p.store, days_since_last: p.daysSinceLast, usual_gap_days: p.avgGapDays, avg_order: `${Math.round(p.avgLarge||0)}L/${Math.round(p.avgSmall||0)}m/${Math.round(p.avgSyrup||0)}s` })),
+        bottle_shortfalls: bottleShortfalls.map(x => ({ product: x.label, short_by: Math.ceil(x.gap), ready: briefingRound(x.inStock), urgent_7d: urgentBottleShortfalls.includes(x) })),
+        concentrate: Object.entries(BRIEFING_CONCENTRATES).map(([k,c]) => ({ type: c.label, liters_ready: briefingRound(concentrate[k]||0,1), liters_needed_14d: briefingRound(concentrateDemand[k]||0,1), brewing_now: briefingRound(inProgressBrews[k]||0,1) })),
+        low_labels: lowLabels.map(x => `${x.label}: ${x.qty}`),
+        low_beans: lowBeans.map(x => `${x.label}: ${x.kg}kg`),
+        forecast_gaps: forecastGaps,
+      };
+      const aiData = await opsAI2('parse_intent', {
+        model: 'gpt-5.6-luna', max_tokens: 400, temperature: 0.3,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: `You are the operations brain for Gremier Coffee (cold brew, Jerusalem). You get a JSON snapshot of today's schedule, stock, store delivery patterns, and production gaps. The owner knows their business — do NOT recite inventory or explain context. Tell them ONLY what needs action or attention, most urgent first, and anything coming up they might not have thought about. Be direct and specific ("Brew 12L Classic today — bottling Thursday needs it"), max ~10 words per bullet. 2-6 bullets. If genuinely nothing needs attention, say so in one line. Return JSON: {"headline":"one short sentence — the single most important thing today","bullets":[{"text":"...","tone":"danger"|"warn"|"info"|"good"}]}` },
+          { role: 'user', content: JSON.stringify(ctx) },
+        ],
+      });
+      const rawAi = aiData.choices?.[0]?.message?.content || '';
+      const parsedAi = JSON.parse(rawAi.replace(/```json|```/g, '').trim());
+      if (parsedAi && parsedAi.headline) {
+        const toneColor = { danger:'var(--red)', warn:'#b8860b', info:'var(--blue)', good:'var(--green)' };
+        aiHtml = `
+          <div class="briefing-content">
+            <div class="briefing-priority ${(parsedAi.bullets||[]).some(b=>b.tone==='danger'||b.tone==='warn') ? '' : 'good'}">
+              <strong>${escHtml(parsedAi.headline)}</strong>
+            </div>
+            ${(parsedAi.bullets||[]).slice(0,6).map(b => `<div style="display:flex;align-items:baseline;gap:8px;padding:6px 2px;font-size:.86rem;color:var(--cream2)"><span style="color:${toneColor[b.tone]||'var(--text2)'};font-size:.7rem">●</span>${escHtml(b.text||'')}</div>`).join('')}
+          </div>`;
+      }
+    } catch (aiErr) {
+      console.warn('AI briefing failed, using computed fallback:', aiErr);
+    }
+
+    body.innerHTML = aiHtml || `
       <div class="briefing-content">
         <div class="briefing-priority ${actions.length ? '' : 'good'}">
           <strong>${actions.length ? escHtml(actions.join(' · ')) : '✓ Everything looks covered right now.'}</strong>
