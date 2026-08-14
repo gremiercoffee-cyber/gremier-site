@@ -96,7 +96,7 @@
             setHubMode('website');
           }
           if (typeof showTab === 'function') {
-            showTab(localStorage.getItem('gremier_admin_tab') || 'schedule');
+            showTab('schedule');
           }
           if (typeof loadOrders === 'function') loadOrders();
           if (typeof loadAllProducts === 'function') loadAllProducts();
@@ -2064,8 +2064,8 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-  const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'schedule';
-  showTab(_savedAdminTab);
+  // App launch always opens Schedule — the main daily screen.
+  showTab('schedule');
   loadOrders();
   loadAllProducts();
   loadStores();
@@ -7115,7 +7115,7 @@ async function loadBriefing(options = {}) {
         forecast_gaps: forecastGaps,
       };
       const aiData = await opsAI2('parse_intent', {
-        model: 'gpt-5.6-luna', max_tokens: 400, temperature: 0.3,
+        model: 'gpt-5.6-luna', max_completion_tokens: 400,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: `You are the operations brain for Gremier Coffee (cold brew, Jerusalem). You get a JSON snapshot of today's schedule, stock, store delivery patterns, and production gaps. The owner knows their business — do NOT recite inventory or explain context. Tell them ONLY what needs action or attention, and anything coming up they might not have thought about. Be direct and specific, max ~10 words per item. 2-6 items. If genuinely nothing needs attention, return one "good" item saying so.
@@ -11257,7 +11257,7 @@ Keep replies short — 1-2 sentences.`;
     try {
       const history = messages.filter(m=>m.text&&m.text!=='⋯').map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const data = await opsAI2('parse_intent', {
-        model:'gpt-5.6-luna', max_tokens:600, temperature:0.2,
+        model:'gpt-5.6-luna', max_completion_tokens:600,
         response_format:{type:'json_object'},
         messages:[{role:'system',content:systemPrompt},...history,{role:'user',content:text}],
       });

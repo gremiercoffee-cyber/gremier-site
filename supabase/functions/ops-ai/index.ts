@@ -64,7 +64,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           model: "gpt-5.6-luna",
-          max_tokens: 600,
+          max_completion_tokens: 600,
           messages: [
             { role: "system", content: system },
             { role: "user", content: JSON.stringify(snapshot) },
