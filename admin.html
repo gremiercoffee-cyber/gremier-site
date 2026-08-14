@@ -6930,7 +6930,7 @@ function briefingReadRawCache() {
     return null;
   }
 }
-function briefingWriteCache(html, urgentHtml = '', snapshot = null) {
+function briefingWriteCache(html, urgentHtml = '', snapshot = null, ai = false) {
   try {
     localStorage.setItem(DASH_BRIEFING_CACHE_KEY, JSON.stringify({
       date: briefingLocalISO(0),
@@ -6938,6 +6938,7 @@ function briefingWriteCache(html, urgentHtml = '', snapshot = null) {
       html,
       urgentHtml,
       snapshot,
+      ai,
     }));
   } catch (_) {}
 }
@@ -7175,7 +7176,13 @@ async function loadBriefing(options = {}) {
         low_beans: lowBeans.map(x => `${x.label}: ${x.kg}kg`),
         forecast_gaps: forecastGaps,
       };
-      const aiData = await opsAI2('parse_intent', {
+      // The ops script (which defines opsAI2) compiles after page load — on an
+      // auto-build this can race, so wait up to 8s for it before giving up.
+      for (let i = 0; typeof window.opsAI2 !== 'function' && i < 80; i++) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (typeof window.opsAI2 !== 'function') throw new Error('AI helper not loaded yet');
+      const aiData = await window.opsAI2('parse_intent', {
         model: 'gpt-5.6-luna', max_completion_tokens: 400,
         response_format: { type: 'json_object' },
         messages: [
@@ -7246,7 +7253,15 @@ Return JSON:
     `;
         briefingRenderCollapsedSummary(urgentHtml);
     briefingSetCollapsed(false);
-    briefingWriteCache(body.innerHTML, urgentHtml, snapshot);
+    // Never overwrite today's successful AI briefing with a fallback build.
+    const prevCacheForToday = briefingReadCache();
+    const prevWasAi = !!(prevCacheForToday && prevCacheForToday.ai);
+    if (aiHtml || !prevWasAi) {
+      briefingWriteCache(body.innerHTML, urgentHtml, snapshot, !!aiHtml);
+    } else if (prevCacheForToday?.html) {
+      body.innerHTML = prevCacheForToday.html;
+      briefingRenderCollapsedSummary(prevCacheForToday.urgentHtml || '');
+    }
   } catch (err) {
     briefingRenderCollapsedSummary('');
     body.innerHTML = `<div class="briefing-error">⚠ Briefing failed: ${escHtml(err.message || err)}</div>`;
