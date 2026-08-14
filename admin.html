@@ -7211,20 +7211,43 @@ async function loadBriefing(options = {}) {
         model: 'gpt-5.6-luna', max_tokens: 400, temperature: 0.3,
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: `You are the operations brain for Gremier Coffee (cold brew, Jerusalem). You get a JSON snapshot of today's schedule, stock, store delivery patterns, and production gaps. The owner knows their business — do NOT recite inventory or explain context. Tell them ONLY what needs action or attention, most urgent first, and anything coming up they might not have thought about. Be direct and specific ("Brew 12L Classic today — bottling Thursday needs it"), max ~10 words per bullet. 2-6 bullets. If genuinely nothing needs attention, say so in one line. Return JSON: {"headline":"one short sentence — the single most important thing today","bullets":[{"text":"...","tone":"danger"|"warn"|"info"|"good"}]}` },
+          { role: 'system', content: `You are the operations brain for Gremier Coffee (cold brew, Jerusalem). You get a JSON snapshot of today's schedule, stock, store delivery patterns, and production gaps. The owner knows their business — do NOT recite inventory or explain context. Tell them ONLY what needs action or attention, and anything coming up they might not have thought about. Be direct and specific, max ~10 words per item. 2-6 items. If genuinely nothing needs attention, return one "good" item saying so.
+Return JSON:
+{"headline":"one short sentence — the single most important thing today",
+ "items":[{"group":"now"|"soon"|"fyi","tag":"BREW"|"BOTTLE"|"DELIVER"|"ORDER"|"LABEL"|"WATCH"|"OK","text":"...","tone":"danger"|"warn"|"info"|"good"}]}
+"now" = act today; "soon" = next few days; "fyi" = worth knowing. Order items most-urgent first.` },
           { role: 'user', content: JSON.stringify(ctx) },
         ],
       });
       const rawAi = aiData.choices?.[0]?.message?.content || '';
       const parsedAi = JSON.parse(rawAi.replace(/```json|```/g, '').trim());
-      if (parsedAi && parsedAi.headline) {
-        const toneColor = { danger:'var(--red)', warn:'#b8860b', info:'var(--blue)', good:'var(--green)' };
+      const aiItems = (parsedAi?.items || parsedAi?.bullets || []).slice(0, 6);
+      if (parsedAi && parsedAi.headline && aiItems.length) {
+        const TONE = {
+          danger: { bar:'var(--red)',   bg:'rgba(213,84,74,.07)',  chip:'rgba(213,84,74,.14)',  text:'var(--red)' },
+          warn:   { bar:'#b8860b',      bg:'rgba(184,134,11,.07)', chip:'rgba(184,134,11,.14)', text:'#b8860b' },
+          info:   { bar:'var(--blue)',  bg:'rgba(63,127,196,.06)', chip:'rgba(63,127,196,.13)', text:'var(--blue)' },
+          good:   { bar:'var(--green)', bg:'rgba(46,139,87,.07)',  chip:'rgba(46,139,87,.14)',  text:'var(--green)' },
+        };
+        const GROUP_LABEL = { now:'⚡ Now', soon:'📅 Soon', fyi:'👀 FYI' };
+        const renderItem = it => {
+          const t = TONE[it.tone] || TONE.info;
+          return `<div style="display:flex;align-items:center;gap:10px;background:${t.bg};border-left:3px solid ${t.bar};border-radius:8px;padding:10px 12px;margin-bottom:6px">
+            <span style="flex-shrink:0;font-size:.6rem;font-weight:800;letter-spacing:.08em;padding:3px 8px;border-radius:10px;background:${t.chip};color:${t.text}">${escHtml(it.tag||'')}</span>
+            <span style="font-size:.87rem;color:var(--cream);font-weight:500">${escHtml(it.text||'')}</span>
+          </div>`;
+        };
+        const groupsHtml = ['now','soon','fyi'].map(g => {
+          const rows = aiItems.filter(it => (it.group||'now') === g);
+          if (!rows.length) return '';
+          return `<div style="font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);font-weight:700;margin:12px 0 6px">${GROUP_LABEL[g]}</div>${rows.map(renderItem).join('')}`;
+        }).join('');
         aiHtml = `
           <div class="briefing-content">
-            <div class="briefing-priority ${(parsedAi.bullets||[]).some(b=>b.tone==='danger'||b.tone==='warn') ? '' : 'good'}">
+            <div class="briefing-priority ${aiItems.some(b=>b.tone==='danger'||b.tone==='warn') ? '' : 'good'}">
               <strong>${escHtml(parsedAi.headline)}</strong>
             </div>
-            ${(parsedAi.bullets||[]).slice(0,6).map(b => `<div style="display:flex;align-items:baseline;gap:8px;padding:6px 2px;font-size:.86rem;color:var(--cream2)"><span style="color:${toneColor[b.tone]||'var(--text2)'};font-size:.7rem">●</span>${escHtml(b.text||'')}</div>`).join('')}
+            ${groupsHtml}
           </div>`;
       }
     } catch (aiErr) {
