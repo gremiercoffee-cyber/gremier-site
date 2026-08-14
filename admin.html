@@ -23,7 +23,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com https://cdn.jsdelivr.net; form-action 'self'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co. — Admin</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <!-- PWA for admin -->
   <link rel="manifest" href="admin-manifest.json"/>
   <link rel="icon" type="image/png" href="logo.png"/>
@@ -187,14 +187,14 @@
     .page-header { margin-bottom:28px; }
     .page-header > .flex-between { margin-bottom:0; }
     .page-header .header-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .page-title { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); margin-bottom:4px; }
+    .page-title { font-family:'DM Sans',sans-serif; font-weight:700; font-size:1.6rem; letter-spacing:-.01em; color:var(--cream); margin-bottom:4px; }
     .page-sub { font-size:.85rem; color:var(--text2); }
     /* CARDS */
     .card { background:var(--card); border:1px solid var(--border); border-radius:4px; }
     .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; margin-bottom:28px; }
     .stat-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.05); }
     .stat-label { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:8px; }
-    .stat-value { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); }
+    .stat-value { font-family:'DM Sans',sans-serif; font-size:1.8rem; color:var(--cream); }
     .stat-sub { font-size:.75rem; color:var(--text2); margin-top:3px; }
     /* BUTTONS */
     .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:600; letter-spacing:0; cursor:pointer; border-radius:10px; transition:background .15s ease, border-color .15s ease, transform .1s ease; border:none; padding:9px 16px; line-height:1.2; }
@@ -303,7 +303,7 @@
     .modal-backdrop.open { opacity:1; pointer-events:all; }
     .modal-box { background:var(--card); border:1px solid var(--border); border-radius:4px; width:100%; max-width:620px; padding:32px; transform:scale(.97); transition:transform .3s; margin:auto; }
     .modal-backdrop.open .modal-box { transform:scale(1); }
-    .modal-title { font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--cream); margin-bottom:22px; }
+    .modal-title { font-family:'DM Sans',sans-serif; font-size:1.5rem; color:var(--cream); margin-bottom:22px; }
     /* PAYMENT LINK */
     .pl-items { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
     .pl-item { display:flex; align-items:center; gap:12px; background:var(--highlight); padding:10px 14px; border-radius:4px; border:1px solid var(--border); }
@@ -343,7 +343,7 @@
     .qty-inline { display:flex; align-items:center; gap:6px; }
     .qty-inline-btn { background:var(--bg); border:1px solid var(--border); color:var(--cream); width:22px; height:22px; border-radius:3px; cursor:pointer; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
     .pl-total-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-top:1px solid var(--border); font-size:.9rem; }
-    .pl-total-amt { font-family:'Playfair Display',serif; font-size:1.4rem; color:var(--cream); }
+    .pl-total-amt { font-family:'DM Sans',sans-serif; font-size:1.4rem; color:var(--cream); }
     .link-result { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:14px; margin-top:14px; display:flex; align-items:center; gap:10px; }
     .link-url { flex:1; font-size:.78rem; color:var(--cream2); word-break:break-all; }
     .copy-btn { background:var(--silver); border:none; color:#ffffff; padding:7px 14px; border-radius:3px; font-size:.76rem; cursor:pointer; white-space:nowrap; font-weight:500; transition:background .2s; }
@@ -370,11 +370,12 @@
     .recover-orders-card h3 { font-size:.85rem; color:var(--cream); margin-bottom:8px; font-weight:500; }
     .recover-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.82rem; flex-wrap:wrap; }
     .recover-row:last-child { border-bottom:none; }
-    .order-kind-toggle { display:inline-flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
-    .order-kind-toggle .kind-btn { background:var(--bg3); border:none; color:var(--text2); padding:8px 12px; font-size:.72rem; cursor:pointer; font-family:'DM Sans',sans-serif; }
-    .order-kind-toggle .kind-btn.active { background:var(--cream); color:#ffffff; font-weight:500; }
+    /* Monochrome segmented control — model taken from the Stock tab sub-tabs */
+    .seg-control { display:inline-flex; gap:4px; background:#ffffff; border:1px solid var(--border); border-radius:12px; padding:3px; flex-wrap:wrap; }
+    .seg-control .seg-btn { flex:1 1 auto; background:transparent; border:none; color:var(--text2); padding:8px 12px; font-size:.72rem; font-weight:500; border-radius:9px; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:all .2s; letter-spacing:.04em; }
+    .seg-control .seg-btn.active { background:#1a1a1a; color:#ffffff; font-weight:700; }
     .paylinks-section { margin-bottom:28px; }
-    .paylinks-section-title { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--cream); margin:0 0 4px; }
+    .paylinks-section-title { font-family:'DM Sans',sans-serif; font-size:1.05rem; color:var(--cream); margin:0 0 4px; }
     .paylinks-section-sub { font-size:.78rem; color:var(--text2); margin:0; }
     .city-ac-wrap { position:relative; }
     .city-ac-list { position:absolute; left:0; right:0; top:100%; z-index:50; background:var(--bg2); border:1px solid var(--border); border-radius:4px; max-height:180px; overflow-y:auto; margin-top:4px; }
@@ -384,7 +385,7 @@
     .briefing-card { padding:18px 20px; margin-bottom:24px; }
     .briefing-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; cursor:pointer; }
     .briefing-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .briefing-title { font-family:'Playfair Display',serif; font-size:1.08rem; color:var(--cream); margin:0; }
+    .briefing-title { font-family:'DM Sans',sans-serif; font-weight:700; font-size:1.02rem; color:var(--cream); margin:0; }
     .briefing-toggle { min-width:92px; justify-content:center; }
     .briefing-card.collapsed .briefing-content { display:none; }
     .briefing-collapsed-summary { display:none; margin-top:2px; }
@@ -392,7 +393,7 @@
     .briefing-collapsed-summary:empty { display:none !important; }
     /* SHARED COLLAPSE CARD */
     .collapse-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; cursor:pointer; user-select:none; }
-    .collapse-head-title { font-family:'Playfair Display',serif; font-size:1.02rem; color:var(--cream); margin:0; display:flex; align-items:center; gap:8px; }
+    .collapse-head-title { font-family:'DM Sans',sans-serif; font-size:1.02rem; color:var(--cream); margin:0; display:flex; align-items:center; gap:8px; }
     .collapse-summary { font-size:.75rem; color:var(--text2); margin-left:auto; text-align:right; }
     .collapse-chevron { color:var(--text2); font-size:.8rem; display:inline-block; transition:transform .15s ease; flex-shrink:0; }
     .collapse-card.collapsed .collapse-chevron { transform:rotate(-90deg); }
@@ -421,7 +422,7 @@
     .briefing-mini-grid.concentrate { grid-template-columns:repeat(2,minmax(0,1fr)); border-top:1px solid rgba(0,0,0,.08); padding-top:12px; }
     .briefing-mini-stat { background:rgba(0,0,0,.04); border:1px solid rgba(0,0,0,.07); border-radius:6px; padding:8px 10px; }
     .briefing-mini-stat span { display:block; font-size:.62rem; color:var(--text2); margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .briefing-mini-stat strong { display:block; color:var(--cream); font-size:.95rem; font-family:'Playfair Display',serif; }
+    .briefing-mini-stat strong { display:block; color:var(--cream); font-size:.95rem; font-family:'DM Sans',sans-serif; }
     .briefing-empty { color:var(--text2); font-size:.78rem; font-style:italic; padding:6px 0; }
     .briefing-error { color:#b3372c; background:rgba(229,115,104,.1); border:1px solid rgba(229,115,104,.35); border-radius:6px; padding:12px 14px; }
     @media(max-width:768px){
@@ -541,7 +542,7 @@
     .member-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:22px; }
     .member-detail-item .form-label { margin-bottom:4px; }
     .member-detail-value { font-size:.88rem; color:var(--cream); word-break:break-word; }
-    .member-orders-title { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--cream); margin-bottom:12px; padding-top:4px; border-top:1px solid var(--border); }
+    .member-orders-title { font-family:'DM Sans',sans-serif; font-size:1.05rem; color:var(--cream); margin-bottom:12px; padding-top:4px; border-top:1px solid var(--border); }
     .member-order-row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:.82rem; cursor:pointer; transition:background .15s; }
     .member-order-row:hover { background:rgba(0,0,0,.03); margin:0 -8px; padding:10px 8px; border-radius:3px; }
     .member-order-row:last-child { border-bottom:none; }
@@ -551,7 +552,7 @@
     /* MOBILE HEADER */
     .mobile-header { display:none; align-items:center; gap:12px; padding:14px 16px; background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; margin:-12px -12px 16px; }
     .mobile-header img { width:36px; height:36px; object-fit:contain; }
-    .mobile-header span { font-family:'Playfair Display',serif; font-size:1rem; color:var(--cream); letter-spacing:.02em; }
+    .mobile-header span { font-family:'DM Sans',sans-serif; font-size:1rem; color:var(--cream); letter-spacing:.02em; }
     @media(max-width:768px){ .mobile-header { display:flex; } }
   </style>
 
@@ -728,10 +729,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <option value="fulfilled">Fulfilled</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <div class="order-kind-toggle" id="orderKindToggle">
-            <button type="button" class="kind-btn active" data-kind="all" onclick="setOrderKind('all')">All</button>
-            <button type="button" class="kind-btn" data-kind="subscriptions" onclick="setOrderKind('subscriptions')">Subscriptions</button>
-            <button type="button" class="kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
+          <div class="seg-control" id="orderKindToggle">
+            <button type="button" class="seg-btn kind-btn active" data-kind="all" onclick="setOrderKind('all')">All</button>
+            <button type="button" class="seg-btn kind-btn" data-kind="subscriptions" onclick="setOrderKind('subscriptions')">Subscriptions</button>
+            <button type="button" class="seg-btn kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
           </div>
         </div>
           </div>
@@ -846,7 +847,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <div class="reports-stats" id="reportStats"></div>
         <div class="chart-placeholder" id="revenueChart"></div>
         <div class="flex-between section-spacer">
-          <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Per-Product Breakdown</h3>
+          <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Per-Product Breakdown</h3>
         </div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="productBreakTable">
@@ -921,7 +922,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           </div>
         </div>
         <div class="flex-between" style="margin-bottom:16px">
-          <h3 style="font-family:Playfair Display,serif;font-size:1.1rem;color:var(--cream)">Delivery Zones</h3>
+          <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Delivery Zones</h3>
           <button class="btn btn-amber btn-sm" onclick="openZoneModal()">+ Add Zone</button>
         </div>
         <div class="card" style="padding:0">
@@ -938,11 +939,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <p class="page-sub">Edit text and images — changes go live on the website immediately.</p>
         </div>
         <!-- Sub-tab toggles -->
-        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:28px;flex-wrap:wrap">
-          <button type="button" class="si-sub-btn active" data-panel="cb-gallery" onclick="showSIPanel('cb-gallery')" style="flex:1;padding:11px 14px;background:rgba(208,208,208,.12);border:none;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:500;cursor:pointer;border-right:1px solid var(--border);letter-spacing:.04em">☕ Coffee Bars — In Action</button>
-          <button type="button" class="si-sub-btn" data-panel="cb-steps" onclick="showSIPanel('cb-steps')" style="flex:1;padding:11px 14px;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.78rem;cursor:pointer;border-right:1px solid var(--border);letter-spacing:.04em">🔢 How It Works Steps</button>
-          <button type="button" class="si-sub-btn" data-panel="cb-text" onclick="showSIPanel('cb-text')" style="flex:1;padding:11px 14px;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.78rem;cursor:pointer;border-right:1px solid var(--border);letter-spacing:.04em">📝 Coffee Bars Text</button>
-          <button type="button" class="si-sub-btn" data-panel="why-cards" onclick="showSIPanel('why-cards')" style="flex:1;padding:11px 14px;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:.04em">✦ Why Gremier Cards</button>
+        <div class="seg-control" style="display:flex;margin-bottom:28px">
+          <button type="button" class="seg-btn si-sub-btn active" data-panel="cb-gallery" onclick="showSIPanel('cb-gallery')">☕ Coffee Bars — In Action</button>
+          <button type="button" class="seg-btn si-sub-btn" data-panel="cb-steps" onclick="showSIPanel('cb-steps')">🔢 How It Works Steps</button>
+          <button type="button" class="seg-btn si-sub-btn" data-panel="cb-text" onclick="showSIPanel('cb-text')">📝 Coffee Bars Text</button>
+          <button type="button" class="seg-btn si-sub-btn" data-panel="why-cards" onclick="showSIPanel('why-cards')">✦ Why Gremier Cards</button>
         </div>
 
         <!-- Panel: Coffee Bars gallery images -->
@@ -1051,7 +1052,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
   <!-- All deliveries table -->
   <div class="flex-between" style="margin-top:28px;margin-bottom:14px">
-    <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">All Deliveries This Month</h3>
+    <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">All Deliveries This Month</h3>
   </div>
   <div class="card" style="padding:0">
     <div class="table-wrap">
@@ -1098,7 +1099,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <!-- Monthly Billing board (toggle view) -->
   <div id="sdBillingView" style="display:none">
     <div class="flex-between" style="margin-bottom:6px">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
+      <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
       <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">🔄 Generate / Refresh Images</button>
     </div>
     <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Builds a statement image per store from this month's deliveries. Send it over WhatsApp, then mark it billed and paid as you go — regenerating later won't reset either status.</p>
@@ -1156,7 +1157,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <!-- Recent orders (full width) -->
   <div style="margin-bottom:24px" id="dashCols">
     <div>
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Orders</h3>
+      <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Orders</h3>
       <div class="card" style="padding:0">
         <table>
           <thead><tr><th>#</th><th>Customer</th><th class="cell-total">Total</th><th class="cell-status">Status</th></tr></thead>
@@ -1529,7 +1530,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
     <div id="deliveryPreview" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:16px;display:none">
       <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">Delivery Total</div>
-      <div style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--cream)" id="deliveryPreviewTotal">₪0</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:1.6rem;color:var(--cream)" id="deliveryPreviewTotal">₪0</div>
       <div style="font-size:.78rem;color:var(--text2);margin-top:4px" id="deliveryPreviewBreakdown"></div>
     </div>
 <!-- product quantities -->
@@ -1575,7 +1576,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
 
     <div class="card" style="padding:14px 16px;margin:12px 0 16px;background:var(--bg3)">
-      <div style="font-family:'Playfair Display',serif;color:var(--cream);font-size:1.05rem;margin-bottom:10px">＋ Custom Item / Adjustment</div>
+      <div style="font-family:'DM Sans',sans-serif;color:var(--cream);font-size:1.05rem;margin-bottom:10px">＋ Custom Item / Adjustment</div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">Item / Note</label><input class="form-input" id="plCustomItemName" placeholder="e.g. Replace syrup with extra coffee"/></div>
         <div class="form-group"><label class="form-label">Price</label><input class="form-input" type="number" id="plCustomItemPrice" placeholder="0"/></div>
@@ -4750,7 +4751,7 @@ function openMemberDetail(memberId) {
       <div class="member-detail-item"><div class="form-label">Loyalty Points</div><div class="member-detail-value">${m.points} pts${m.couponAvailable ? ' <span class="member-points-badge member-coupon-badge">10% coupon ready</span>' : ''}</div></div>
       <div class="member-detail-item"><div class="form-label">Member Since</div><div class="member-detail-value">${joined}</div></div>
       <div class="member-detail-item"><div class="form-label">Total Orders</div><div class="member-detail-value">${m.orderCount}</div></div>
-      <div class="member-detail-item"><div class="form-label">Total Spent</div><div class="member-detail-value" style="font-family:'Playfair Display',serif;font-size:1.2rem">₪${m.totalSpent.toFixed(0)}</div></div>
+      <div class="member-detail-item"><div class="form-label">Total Spent</div><div class="member-detail-value" style="font-family:'DM Sans',sans-serif;font-size:1.2rem">₪${m.totalSpent.toFixed(0)}</div></div>
       <div class="member-detail-item"><div class="form-label">Avg Order</div><div class="member-detail-value">₪${avgOrder.toFixed(0)}</div></div>
       <div class="member-detail-item"><div class="form-label">Last Order</div><div class="member-detail-value">${lastDate}</div></div>
     </div>
@@ -5136,9 +5137,7 @@ function showSIPanel(id) {
   document.querySelectorAll('[id^="si-panel-"]').forEach(p => p.style.display = 'none');
   document.getElementById('si-panel-' + id).style.display = 'block';
   document.querySelectorAll('.si-sub-btn').forEach(b => {
-    const active = b.dataset.panel === id;
-    b.style.background = active ? 'rgba(208,208,208,.12)' : 'transparent';
-    b.style.color = active ? 'var(--cream)' : 'var(--text2)';
+    b.classList.toggle('active', b.dataset.panel === id);
   });
 }
 
@@ -5560,7 +5559,7 @@ function renderStoreBlocks() {
       return `<div class="card" style="padding:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
           <div style="font-weight:600;color:var(--cream)">${escHtml(g.name)}</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--cream)">₪${g.totalRevenue.toFixed(0)}</div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:1.2rem;color:var(--cream)">₪${g.totalRevenue.toFixed(0)}</div>
         </div>
         <div style="font-size:.78rem;color:var(--text2);line-height:1.8">${lines.join('<br>') || 'No deliveries'}</div>
         <div style="margin-top:10px;font-size:.72rem;color:var(--text2)">${g.deliveries.length} delivery run${g.deliveries.length !== 1 ? 's' : ''}</div>
@@ -8759,7 +8758,7 @@ const TS = {
   btn: (bg,color) => ({ background:bg, color, border:'none', borderRadius:8, padding:'10px 14px', fontSize:13, fontWeight:600, cursor:'pointer', flex:1 }),
   modal: { position:'fixed', inset:0, background:'rgba(0,0,0,.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 },
   modalBox: { background:'#ffffff', border:'1px solid #cccccc', borderRadius:12, padding:22, width:'100%', maxWidth:440 },
-  modalTitle: { fontFamily:"'Playfair Display',serif", fontSize:'1.3rem', color:'#121212', marginBottom:14 },
+  modalTitle: { fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:'1.2rem', color:'#121212', marginBottom:14 },
   inp: { width:'100%', background:'#fafafa', border:'1px solid #cccccc', borderRadius:6, padding:'10px 12px', color:'#121212', fontSize:15, boxSizing:'border-box' },
   qRow: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 0', borderBottom:'1px solid #e0e0e0' },
   qBtn: { width:28, height:28, borderRadius:5, background:'#eeeeee', border:'1px solid #cccccc', color:'#121212', fontSize:16, cursor:'pointer' },
@@ -9159,7 +9158,7 @@ function BillingDrawer2({ jobs, onMarkBilled, onMarkPaid, onClose }) {
               {job.billed&&!job.paid&&(
                 <div style={{background:'#e9f6ee',border:'1px solid #2e8b57',borderRadius:6,padding:10,marginTop:4}}>
                   <div style={{fontSize:12,fontWeight:700,color:'#2e8b57',marginBottom:6}}>✓ Billed — awaiting payment</div>
-                  <button style={{...TS.btn('#2e8b57','#fff'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
+                  <button style={{...TS.btn('#1a1a1a','#fff'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
                 </div>
               )}
             </div>
@@ -9190,7 +9189,7 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
               <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{label}{unpaid&&<span style={TS.pill('rgba(224,160,48,.15)','#b8860b')}>Awaiting payment</span>}</div>
               {o.delivery_address&&<div style={{fontSize:11,color:'#3f7fc4',marginBottom:4}}>📍 {o.delivery_address}</div>}
               <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{items}</div>
-              <button style={{...TS.btn('#3f7fc4','#fff'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
+              <button style={{...TS.btn('#1a1a1a','#fff'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
               <button style={{...TS.btn('#eeeeee','#d5544a'),width:'100%',border:'1px solid #cccccc'}} onClick={()=>onDismiss(o)}>Remove</button>
             </div>
           );
@@ -9375,7 +9374,9 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
     });
   }
 
-  const tog = (active,color) => ({ flex:1, padding:'9px 4px', background:active?(color||'#1a1a1a'):'#eeeeee', color:active?'#ffffff':'#6a6a6a', border:'none', borderRadius:6, fontSize:13, fontWeight:active?700:400, cursor:'pointer', fontFamily:"'DM Sans',sans-serif" });
+  // Monochrome segmented control (matches the Stock tab model) — `color` kept for call-site compatibility, intentionally unused.
+  const tog = (active,color) => ({ flex:1, padding:'8px 4px', background:active?'#1a1a1a':'transparent', color:active?'#ffffff':'#6a6a6a', border:'none', borderRadius:9, fontSize:13, fontWeight:active?700:500, cursor:'pointer', fontFamily:"'DM Sans',sans-serif", transition:'all .2s', whiteSpace:'nowrap' });
+  const togRow = { display:'flex', gap:4, background:'#ffffff', border:'1px solid #e0e0e0', borderRadius:12, padding:3 };
   const lbl = { fontSize:10, letterSpacing:1, textTransform:'uppercase', color:'#6a6a6a', marginBottom:6, display:'block' };
 
   return (
@@ -9383,14 +9384,14 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
       <div style={{...TS.modalBox,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'}</div>
 
-        <div style={{display:'flex',gap:8,marginBottom:14}}>
+        <div style={{...togRow,marginBottom:14}}>
           <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
           <button style={tog(jobType==='production','#3f7fc4')} onClick={()=>setJobType('production')}>Production</button>
         </div>
 
         {jobType==='delivery'&&(
           <>
-            <div style={{display:'flex',gap:6,marginBottom:12}}>
+            <div style={{...togRow,marginBottom:12}}>
               {['store','private','coffeebar'].map(t=>(
                 <button key={t} style={tog(subType===t)} onClick={()=>setSubType(t)}>{t==='coffeebar'?'Coffee Bar':t[0].toUpperCase()+t.slice(1)}</button>
               ))}
@@ -9458,7 +9459,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
 
         {jobType==='production'&&(
           <>
-            <div style={{display:'flex',gap:6,marginBottom:12}}>
+            <div style={{...togRow,marginBottom:12}}>
               <button style={tog(prodType==='brew','#3f7fc4')} onClick={()=>setProdType('brew')}>Brew</button>
               <button style={tog(prodType==='bottle','#b8860b')} onClick={()=>setProdType('bottle')}>Bottle</button>
               {(window.gremierLabelsEnabled()||prefill?.type==='labeling')&&<button style={tog(prodType==='label','#8a7060')} onClick={()=>setProdType('label')}>Label</button>}
@@ -9482,7 +9483,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
 
         <div style={{display:'flex',gap:10,marginTop:14}}>
           <button style={TS.btn('#eeeeee','#121212')} onClick={onClose}>Cancel</button>
-          <button style={TS.btn(logNow?'#2e8b57':'#1a1a1a',logNow?'#fff':'#ffffff')} onClick={()=>onSubmit(build())}>{logNow?'✓ Log as Done':'Save to Schedule'}</button>
+          <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onSubmit(build())}>{logNow?'✓ Log as Done':'Save to Schedule'}</button>
         </div>
       </div>
     </div>
@@ -9757,10 +9758,10 @@ async function addJobFromForm(job, mode) {
   return (
     <div style={TS.screen}>
       <div style={{padding:'16px 12px 0'}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Schedule</div>
+        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Schedule</div>
         <div style={{display:'flex',gap:10,marginBottom:14}}>
-          <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#2e8b57',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
-          <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#1a1a1a',color:'#ffffff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
+          <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#1a1a1a',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
+          <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#ffffff',color:'#333333',border:'1px solid #e0e0e0',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
         </div>
       </div>
 
@@ -9817,7 +9818,7 @@ async function addJobFromForm(job, mode) {
         {calOpen&&<>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
           <button style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month-1);return{year:d.getFullYear(),month:d.getMonth()};})}>‹</button>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1rem',color:'#121212'}}>{new Date(monthView.year,monthView.month).toLocaleDateString('en',{month:'long',year:'numeric'})}</div>
+          <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1rem',color:'#121212'}}>{new Date(monthView.year,monthView.month).toLocaleDateString('en',{month:'long',year:'numeric'})}</div>
           <button style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month+1);return{year:d.getFullYear(),month:d.getMonth()};})}>›</button>
         </div>
         <MiniCalendar2 year={monthView.year} month={monthView.month} jobs={jobs} today={today} onDayTap={setCalDay}/>
@@ -10082,8 +10083,8 @@ const SS = {
   val: { fontSize:15, fontWeight:600, color:'#121212' },
   btn: { width:28, height:28, borderRadius:5, background:'#eeeeee', border:'1px solid #cccccc', color:'#121212', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' },
   inp: { width:64, background:'#fafafa', border:'1px solid #cccccc', borderRadius:5, padding:'4px 6px', color:'#121212', fontSize:14, textAlign:'center' },
-  toggleRow: { display:'flex', gap:0, border:'1px solid #cccccc', borderRadius:5, overflow:'hidden', marginBottom:18, flexWrap:'wrap' },
-  toggleBtn: (active) => ({ flex:'1 1 auto', padding:'9px 5px', background:active?'#1a1a1a':'transparent', color:active?'#ffffff':'#6a6a6a', border:'none', fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:active?700:400, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' }),
+  toggleRow: { display:'flex', gap:4, background:'#ffffff', border:'1px solid #e0e0e0', borderRadius:12, padding:3, marginBottom:18, flexWrap:'wrap' },
+  toggleBtn: (active) => ({ flex:'1 1 auto', padding:'8px 5px', background:active?'#1a1a1a':'transparent', color:active?'#ffffff':'#6a6a6a', border:'none', borderRadius:9, fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:active?700:500, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' }),
   needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#2e8b57':'#d5544a', whiteSpace:'nowrap' }),
 };
 
@@ -10297,7 +10298,7 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, f
             </div>
             <div style={{display:'flex',gap:10}}>
               <button style={TS.btn('#eeeeee','#121212')} onClick={()=>{save(confirmAdd.pid, confirmAdd.newQty); setConfirmAdd(null);}}>No, just adjusting stock</button>
-              <button style={TS.btn('#2e8b57','#fff')} onClick={()=>{saveAsProduction(confirmAdd.pid, confirmAdd.delta, confirmAdd.newQty); setConfirmAdd(null);}}>Yes, I made this ✓</button>
+              <button style={TS.btn('#1a1a1a','#fff')} onClick={()=>{saveAsProduction(confirmAdd.pid, confirmAdd.delta, confirmAdd.newQty); setConfirmAdd(null);}}>Yes, I made this ✓</button>
             </div>
           </div>
         </div>
@@ -10501,7 +10502,7 @@ function BeansSection({ beans, setBeans }) {
                   <div style={{fontSize:11,color:'#6a6a6a',marginTop:3}}>Tap Delivered when stock arrives</div>
                 </div>
                 <div style={{display:'flex',gap:6}}>
-                  <button style={{background:'#2e8b57',color:'#fff',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={()=>markDelivered(k)}>📦 Delivered</button>
+                  <button style={{background:'#1a1a1a',color:'#fff',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={()=>markDelivered(k)}>📦 Delivered</button>
                   <button style={{background:'#eeeeee',color:'#6a6a6a',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,cursor:'pointer'}} onClick={()=>cancelOrder(k)}>✕</button>
                 </div>
               </div>
@@ -10680,7 +10681,7 @@ function StockTab() {
   return (
     <div style={SS.screen}>
       <div style={{padding:'16px 16px 0'}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Stock</div>
+        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Stock</div>
         <div style={SS.toggleRow}>
           {TABS.map(t=>(
             <button key={t.id} style={SS.toggleBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>
@@ -10977,7 +10978,7 @@ function GlobalBillingDrawer({ jobs, onMarkBilled, onMarkPaid, onClose }) {
               {job.billed&&!job.paid&&(
                 <div style={{background:'#e9f6ee',border:'1px solid #2e8b57',borderRadius:6,padding:10,marginTop:4}}>
                   <div style={{fontSize:12,fontWeight:700,color:'#2e8b57',marginBottom:6}}>✓ Billed — awaiting payment</div>
-                  <button style={{...globalPillBtn('#2e8b57'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
+                  <button style={{...globalPillBtn('#1a1a1a'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
                 </div>
               )}
             </div>
@@ -11007,7 +11008,7 @@ function GlobalWebQueueDrawer({ orders, onClose, onSchedule, onDismiss }) {
               <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{label}{unpaid&&<span style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',padding:'2px 7px',borderRadius:10,background:'rgba(224,160,48,.15)',color:'#b8860b',display:'inline-block',marginLeft:6}}>Awaiting payment</span>}</div>
               {o.delivery_address&&<div style={{fontSize:11,color:'#3f7fc4',marginBottom:4}}>📍 {o.delivery_address}</div>}
               <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{items}</div>
-              <button style={{...globalPillBtn('#3f7fc4'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
+              <button style={{...globalPillBtn('#1a1a1a'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
               <button style={{...globalPillBtn('#eeeeee'),width:'100%',border:'1px solid #cccccc',color:'#d5544a'}} onClick={()=>onDismiss(o)}>Remove</button>
             </div>
           );
@@ -11497,7 +11498,7 @@ Keep replies short — 1-2 sentences.`;
                 <div style={{fontSize:12,fontWeight:700,color:intentColor(pendingOption.intent),marginBottom:6}}>{intentLabel(pendingOption.intent)}: {(pendingOption.items||[]).map(it=>it.label||(it.job&&it.job.type)||'job').join(', ')}</div>
                 <div style={{display:'flex',gap:8,marginTop:8}}>
                   <button onClick={cancelOption} style={{flex:1,background:'#eeeeee',border:'1px solid #cccccc',borderRadius:8,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer',color:'#6a6a6a'}}>Cancel</button>
-                  <button onClick={confirmOption} style={{flex:2,background:intentColor(pendingOption.intent),border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',color:'#ffffff'}}>{intentLabel(pendingOption.intent)} ✓</button>
+                  <button onClick={confirmOption} style={{flex:2,background:'#1a1a1a',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',color:'#ffffff'}}>{intentLabel(pendingOption.intent)} ✓</button>
                 </div>
               </div>
             ):(
