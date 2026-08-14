@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
+import { sendWebPushToAdmins } from "./web-push.ts";
 
 export type OrderNotifyRow = {
   id: string;
@@ -14,7 +15,34 @@ export type OrderNotifyRow = {
   total?: number | null;
   source?: string | null;
   notes?: string | null;
+  delivery_info?: Record<string, unknown> | null;
 };
+
+/** Human-readable delivery choice + requested date/time from delivery_info. */
+export function describeDelivery(info: Record<string, unknown> | null | undefined): {
+  typeLabel: string;
+  requested: string;
+} {
+  const row = info && typeof info === "object" ? info : {};
+  const type = String(row.delivery_type || "regular");
+  const priority = String(row.priority_type || "");
+  const date = String(row.delivery_date || "").trim();
+  const time = String(row.event_time || "").trim();
+
+  let typeLabel = "Regular (within 2 days)";
+  if (type === "event") typeLabel = "Event delivery";
+  else if (type === "expedited") {
+    typeLabel = priority === "specific_date" ? "Expedited — specific date" : "Expedited (next day)";
+  }
+  if (row.is_gift_card) typeLabel = "Gift card";
+
+  const formatDate = (iso: string) => {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+  };
+  const requested = date ? formatDate(date) + (time ? ` at ${time}` : "") : "";
+  return { typeLabel, requested };
+}
 
 function formatItems(items: OrderNotifyRow["items"]): string {
   if (!Array.isArray(items) || !items.length) return "—";
@@ -26,6 +54,7 @@ function formatItems(items: OrderNotifyRow["items"]): string {
 function buildOrderPayload(order: OrderNotifyRow) {
   const adminUrl = `${(Deno.env.get("SITE_URL") || "https://gremier-site.vercel.app").replace(/\/$/, "")}/admin.html`;
   const orderLabel = order.order_number ? String(order.order_number) : order.id.slice(0, 8);
+  const delivery = describeDelivery(order.delivery_info);
   return {
     order_id: order.id,
     order_number: order.order_number ?? null,
@@ -34,6 +63,8 @@ function buildOrderPayload(order: OrderNotifyRow) {
     customer_phone: order.customer_phone || "",
     customer_email: order.customer_email || "",
     delivery_address: order.delivery_address || "",
+    delivery_type: delivery.typeLabel,
+    delivery_requested: delivery.requested,
     items_summary: formatItems(order.items),
     subtotal: Number(order.subtotal) || 0,
     discount: Number(order.discount) || 0,
@@ -57,6 +88,8 @@ function buildOrderMessage(order: OrderNotifyRow) {
     `Phone: ${payload.customer_phone || "—"}`,
     `Email: ${payload.customer_email || "—"}`,
     `Address: ${payload.delivery_address || "—"}`,
+    `Delivery: ${payload.delivery_type}`,
+    payload.delivery_requested ? `Requested for: ${payload.delivery_requested}` : null,
     "",
     "Items:",
     payload.items_summary,
@@ -254,6 +287,25 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
   }
 
   const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
+
+  // Native PWA push to all admin devices (best-effort, alongside email).
+  try {
+    const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);
+    const label = order.order_number ? `#${order.order_number}` : String(order.id).slice(0, 8);
+    await sendWebPushToAdmins(supabase, {
+      title: `New paid order ${label} — ₪${Number(order.total) || 0}`,
+      body: [
+        order.customer_name || "",
+        delivery.typeLabel + (delivery.requested ? ` · ${delivery.requested}` : ""),
+        order.delivery_address || "",
+      ].filter(Boolean).join("\n"),
+      url: "/admin.html",
+      tag: `order-${order.id}`,
+    });
+  } catch (e) {
+    console.error("web push (paid order) failed:", e);
+  }
+
   if (!result.ok) {
     return {
       sent: false,

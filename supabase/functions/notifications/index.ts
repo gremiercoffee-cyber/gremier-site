@@ -8,6 +8,7 @@
 //   { "type": "morning" }  /  { "type": "afternoon" }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://ayuzmwpmhncxrugsyxmw.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -65,6 +66,8 @@ function isActiveJob(j: any): boolean {
   return true;
 }
 
+const pushClient = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+
 async function sendPushover(title: string, message: string, priority = 0) {
   await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
@@ -77,6 +80,12 @@ async function sendPushover(title: string, message: string, priority = 0) {
       priority,
     }),
   });
+  // Mirror every reminder/digest to the admin PWA as a native push.
+  try {
+    await sendWebPushToAdmins(pushClient, { title, body: message, url: "/admin.html" });
+  } catch (e) {
+    console.error("web push mirror failed:", e);
+  }
 }
 
 function jobDisplayName(j: any): string {

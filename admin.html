@@ -2,16 +2,10 @@
 <html lang="en">
 <head>
 <script>
+  // Register the root service worker (needed for Web Push notifications).
+  // Skip the /ops/ scope — the ops app manages its own worker.
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      registrations.forEach(registration => registration.unregister());
-    });
-  }
-
-  if (window.caches) {
-    caches.keys().then(keys => {
-      keys.forEach(key => caches.delete(key));
-    });
+    navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW registration failed:', err));
   }
 </script>
   <meta charset="UTF-8"/>
@@ -21,9 +15,10 @@
   <title>Gremier Coffee Co. — Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   <!-- PWA for admin -->
+  <link rel="manifest" href="admin-manifest.json"/>
   <link rel="icon" type="image/png" href="logo.png"/>
   <link rel="apple-touch-icon" href="logo.png"/>
-  <meta name="theme-color" content="#141414"/>
+  <meta name="theme-color" content="#ffffff"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -101,7 +96,7 @@
             setHubMode('website');
           }
           if (typeof showTab === 'function') {
-            showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
+            showTab(localStorage.getItem('gremier_admin_tab') || 'schedule');
           }
           if (typeof loadOrders === 'function') loadOrders();
           if (typeof loadAllProducts === 'function') loadAllProducts();
@@ -120,20 +115,20 @@
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     :root {
-      --bg:#141414; --bg2:#1e1e1e; --bg3:#2a2a2a; --card:#252525; --highlight:#303030;
-      --border:#454545; --silver:#d0d0d0; --silver-dim:#9a9a9a;
-      --cream:#efefef; --cream2:#c4c4c4;
-      --amber:#e0e0e0; --amber2:#c0c0c0; --text:#efefef; --text2:#9a9a9a;
-      --red:#e57368; --green:#4caf72; --blue:#6aa8e8;
+      --bg:#ffffff; --bg2:#f7f7f7; --bg3:#f0f0f0; --card:#ffffff; --highlight:#f2f2f2;
+      --border:#e0e0e0; --silver:#1a1a1a; --silver-dim:#6a6a6a;
+      --cream:#121212; --cream2:#333333;
+      --amber:#1a1a1a; --amber2:#333333; --text:#121212; --text2:#6a6a6a;
+      --red:#d5544a; --green:#2e8b57; --blue:#3f7fc4;
     }
     body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; }
     /* AUTH SCREEN */
     #authScreen { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; background:var(--bg); }
-    .auth-box { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:48px 40px; width:100%; max-width:400px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+    .auth-box { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:48px 40px; width:100%; max-width:400px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.08); }
     .auth-logo img { width:120px; height:120px; object-fit:contain; margin-bottom:16px; display:block; margin-left:auto; margin-right:auto; }
     .auth-tag { font-size:.72rem; letter-spacing:.25em; text-transform:uppercase; color:var(--silver-dim); margin-bottom:36px; font-weight:400; }
     .google-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:13px; background:var(--bg3); color:var(--cream); border:1px solid var(--border); border-radius:4px; font-family:'DM Sans',sans-serif; font-size:.9rem; cursor:pointer; transition:all .2s; }
-    .google-btn:hover { border-color:var(--silver); box-shadow:0 2px 12px rgba(0,0,0,.4); }
+    .google-btn:hover { border-color:var(--silver); box-shadow:0 2px 12px rgba(0,0,0,.1); }
     .access-denied { color:var(--red); font-size:.85rem; margin-top:16px; display:none; }
     /* LAYOUT */
     #appScreen { display:none; min-height:100vh; }
@@ -149,10 +144,10 @@
     .hub-switch { display:flex; margin:0 14px 14px; border:1px solid var(--border); border-radius:4px; overflow:hidden; flex-shrink:0; }
     .hub-btn { flex:1; padding:9px 6px; font-family:'DM Sans',sans-serif; font-size:.68rem; font-weight:500; letter-spacing:.06em; text-transform:uppercase; background:transparent; border:none; color:var(--text2); cursor:pointer; transition:all .2s; }
     .hub-btn:hover { color:var(--cream); background:var(--highlight); }
-    .hub-btn.active { color:var(--cream); background:rgba(208,208,208,.12); }
+    .hub-btn.active { color:var(--cream); background:rgba(0,0,0,.07); }
     .hub-switch-mobile { display:none; margin:0 0 0 auto; flex-shrink:0; }
     #opsPanel { display:none; width:100%; }
-    #opsPanel .ops-frame { width:100%; border:none; background:#101010; display:block; }
+    #opsPanel .ops-frame { width:100%; border:none; background:#ffffff; display:block; }
     body.hub-ops-mode .main { padding:0; max-width:none; }
     body.hub-ops-mode #opsPanel .ops-frame { height:calc(100vh - 0px); min-height:100vh; }
     body.hub-ops-mode .mobile-header { margin:0; border-radius:0; }
@@ -170,7 +165,7 @@
     }
     .nav-item { display:flex; align-items:center; gap:10px; padding:11px 20px; color:var(--text2); font-size:.85rem; cursor:pointer; transition:all .2s; border-left:3px solid transparent; }
     .nav-item:hover { color:var(--cream); background:var(--highlight); }
-    .nav-item.active { color:var(--cream); border-left-color:var(--silver); background:rgba(208,208,208,.1); }
+    .nav-item.active { color:var(--cream); border-left-color:var(--silver); background:rgba(0,0,0,.06); }
     .nav-item .icon { font-size:1rem; width:20px; text-align:center; }
     .sidebar-bottom { flex-shrink:0; padding:16px 20px; border-top:1px solid var(--border); background:var(--bg2); }
     .user-info { font-size:.78rem; color:var(--text2); margin-bottom:10px; word-break:break-all; }
@@ -185,14 +180,14 @@
     /* CARDS */
     .card { background:var(--card); border:1px solid var(--border); border-radius:4px; }
     .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; margin-bottom:28px; }
-    .stat-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.2); }
+    .stat-card { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.05); }
     .stat-label { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:8px; }
     .stat-value { font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--cream); }
     .stat-sub { font-size:.75rem; color:var(--text2); margin-top:3px; }
     /* BUTTONS */
     .btn { display:inline-flex; align-items:center; gap:7px; font-family:'DM Sans',sans-serif; font-size:.8rem; font-weight:500; letter-spacing:.08em; cursor:pointer; border-radius:3px; transition:all .2s; border:none; padding:9px 18px; }
-    .btn-amber { background:var(--silver); color:#121212; font-weight:500; }
-    .btn-amber:hover { background:var(--cream); }
+    .btn-amber { background:var(--silver); color:#ffffff; font-weight:500; }
+    .btn-amber:hover { background:#333333; }
     .btn-outline { background:transparent; color:var(--cream2); border:1px solid var(--border); }
     .btn-outline:hover { border-color:var(--cream); color:var(--cream); }
     .btn-green { background:var(--green); color:#fff; }
@@ -223,14 +218,14 @@
     .toggle input { opacity:0; width:0; height:0; }
     .toggle-slider { position:absolute; inset:0; background:var(--bg3); border:1px solid var(--border); border-radius:11px; cursor:pointer; transition:.3s; }
     .toggle-slider::before { content:''; position:absolute; width:16px; height:16px; left:2px; top:2px; background:var(--text2); border-radius:50%; transition:.3s; }
-    .toggle input:checked + .toggle-slider { background:rgba(192,192,192,.15); border-color:var(--silver); }
+    .toggle input:checked + .toggle-slider { background:rgba(26,26,26,.15); border-color:var(--silver); }
     .toggle input:checked + .toggle-slider::before { transform:translateX(18px); background:var(--silver); }
     /* TABLES */
     .table-wrap { overflow-x:hidden; max-width:100%; }
     table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:.78rem; }
     th { text-align:left; font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--silver-dim); padding:8px 8px; border-bottom:1px solid var(--border); font-weight:500; background:var(--highlight); }
     td { padding:8px 8px; border-bottom:1px solid var(--border); color:var(--cream2); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; }
-    tr:hover td { background:rgba(255,255,255,.05); }
+    tr:hover td { background:rgba(0,0,0,.03); }
     tr.order-needs-fulfillment td {
       background:rgba(224,160,48,.18);
       border-bottom-color:rgba(224,160,48,.38);
@@ -260,10 +255,10 @@
     .table-select { padding:4px 4px; font-size:.65rem; width:100%; max-width:76px; min-width:0; }
     .status-pill { font-size:.6rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:2px 6px; border-radius:10px; white-space:nowrap; display:inline-block; }
     .s-pending { background:rgba(192,192,192,.1); color:var(--silver); }
-    .s-confirmed { background:rgba(74,144,217,.15); color:#6aa8e8; }
-    .s-fulfilled { background:rgba(45,138,78,.15); color:#4caf72; }
-    .s-cancelled { background:rgba(192,57,43,.15); color:#e57368; }
-    .s-paid { background:rgba(45,138,78,.15); color:#4caf72; }
+    .s-confirmed { background:rgba(74,144,217,.15); color:#3f7fc4; }
+    .s-fulfilled { background:rgba(45,138,78,.15); color:#2e8b57; }
+    .s-cancelled { background:rgba(192,57,43,.15); color:#d5544a; }
+    .s-paid { background:rgba(45,138,78,.15); color:#2e8b57; }
     .s-unpaid { background:rgba(192,192,192,.1); color:var(--silver); }
     /* FILTERS BAR */
     .filter-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px; }
@@ -289,7 +284,7 @@
     .product-row-actions { display:flex; gap:8px; flex-shrink:0; }
     .inactive-row { opacity:.5; }
     /* MODAL */
-    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; opacity:0; pointer-events:none; transition:opacity .3s; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; opacity:0; pointer-events:none; transition:opacity .3s; }
     .modal-backdrop.open { opacity:1; pointer-events:all; }
     .modal-box { background:var(--card); border:1px solid var(--border); border-radius:4px; width:100%; max-width:620px; padding:32px; transform:scale(.97); transition:transform .3s; margin:auto; }
     .modal-backdrop.open .modal-box { transform:scale(1); }
@@ -328,7 +323,7 @@
     .pl-order-now-switch::after { content:''; position:absolute; width:24px; height:24px; border-radius:50%; background:var(--text2); top:3px; left:3px; transition:transform .25s,background .25s; }
     .pl-order-now-toggle input:checked + .pl-order-now-box .pl-order-now-switch { background:var(--blue); }
     .pl-order-now-toggle input:checked + .pl-order-now-box .pl-order-now-switch::after { transform:translateX(22px); background:#fff; }
-    .pl-link-error { display:none; margin-top:14px; padding:12px 14px; border-radius:6px; background:rgba(229,115,104,.12); border:1px solid rgba(229,115,104,.45); color:#ffb4ad; font-size:.82rem; line-height:1.45; word-break:break-word; }
+    .pl-link-error { display:none; margin-top:14px; padding:12px 14px; border-radius:6px; background:rgba(229,115,104,.12); border:1px solid rgba(229,115,104,.45); color:#b3372c; font-size:.82rem; line-height:1.45; word-break:break-word; }
     .pl-link-error.show { display:block; }
     .qty-inline { display:flex; align-items:center; gap:6px; }
     .qty-inline-btn { background:var(--bg); border:1px solid var(--border); color:var(--cream); width:22px; height:22px; border-radius:3px; cursor:pointer; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
@@ -336,7 +331,7 @@
     .pl-total-amt { font-family:'Playfair Display',serif; font-size:1.4rem; color:var(--cream); }
     .link-result { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:14px; margin-top:14px; display:flex; align-items:center; gap:10px; }
     .link-url { flex:1; font-size:.78rem; color:var(--cream2); word-break:break-all; }
-    .copy-btn { background:var(--silver); border:none; color:#121212; padding:7px 14px; border-radius:3px; font-size:.76rem; cursor:pointer; white-space:nowrap; font-weight:500; transition:background .2s; }
+    .copy-btn { background:var(--silver); border:none; color:#ffffff; padding:7px 14px; border-radius:3px; font-size:.76rem; cursor:pointer; white-space:nowrap; font-weight:500; transition:background .2s; }
     .copy-btn:hover { background:var(--cream); }
     /* REPORTS */
     .reports-stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
@@ -351,18 +346,18 @@
     .spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--cream); border-radius:50%; animation:spin .7s linear infinite; }
     @keyframes spin { to{transform:rotate(360deg)} }
     /* TOAST */
-    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--silver); border:1px solid var(--silver); color:#121212; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; opacity:0; pointer-events:none; visibility:hidden; transition:transform .3s,opacity .2s,visibility 0s linear .3s; font-weight:500; max-width:min(92vw,520px); }
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--silver); border:1px solid var(--silver); color:#ffffff; padding:11px 22px; border-radius:4px; font-size:.84rem; z-index:500; opacity:0; pointer-events:none; visibility:hidden; transition:transform .3s,opacity .2s,visibility 0s linear .3s; font-weight:500; max-width:min(92vw,520px); }
     .toast.show { transform:translateX(-50%) translateY(0); opacity:1; pointer-events:auto; visibility:visible; transition:transform .3s,opacity .2s; }
     .toast-inner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; }
-    .toast-undo-btn { background:#121212; color:#efefef; border:none; padding:5px 14px; border-radius:3px; cursor:pointer; font-weight:600; font-size:.8rem; font-family:'DM Sans',sans-serif; }
-    .toast-undo-btn:hover { background:#333; }
+    .toast-undo-btn { background:#ffffff; color:#121212; border:none; padding:5px 14px; border-radius:3px; cursor:pointer; font-weight:600; font-size:.8rem; font-family:'DM Sans',sans-serif; }
+    .toast-undo-btn:hover { background:#dddddd; }
     .recover-orders-card { background:var(--bg3); border:1px solid var(--amber,#c8873a); border-radius:6px; padding:14px 18px; margin-bottom:16px; }
     .recover-orders-card h3 { font-size:.85rem; color:var(--cream); margin-bottom:8px; font-weight:500; }
     .recover-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.82rem; flex-wrap:wrap; }
     .recover-row:last-child { border-bottom:none; }
     .order-kind-toggle { display:inline-flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
     .order-kind-toggle .kind-btn { background:var(--bg3); border:none; color:var(--text2); padding:8px 12px; font-size:.72rem; cursor:pointer; font-family:'DM Sans',sans-serif; }
-    .order-kind-toggle .kind-btn.active { background:var(--cream); color:#121212; font-weight:500; }
+    .order-kind-toggle .kind-btn.active { background:var(--cream); color:#ffffff; font-weight:500; }
     .paylinks-section { margin-bottom:28px; }
     .paylinks-section-title { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--cream); margin:0 0 4px; }
     .paylinks-section-sub { font-size:.78rem; color:var(--text2); margin:0; }
@@ -380,6 +375,13 @@
     .briefing-collapsed-summary { display:none; margin-top:2px; }
     .briefing-card.collapsed .briefing-collapsed-summary { display:block; }
     .briefing-collapsed-summary:empty { display:none !important; }
+    /* SHARED COLLAPSE CARD */
+    .collapse-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; cursor:pointer; user-select:none; }
+    .collapse-head-title { font-family:'Playfair Display',serif; font-size:1.02rem; color:var(--cream); margin:0; display:flex; align-items:center; gap:8px; }
+    .collapse-summary { font-size:.75rem; color:var(--text2); margin-left:auto; text-align:right; }
+    .collapse-chevron { color:var(--text2); font-size:.8rem; display:inline-block; transition:transform .15s ease; flex-shrink:0; }
+    .collapse-card.collapsed .collapse-chevron { transform:rotate(-90deg); }
+    .collapse-card.collapsed .collapse-body { display:none; }
     .briefing-body { color:var(--text2); font-size:.83rem; line-height:1.45; }
     .briefing-loading { display:flex; align-items:center; gap:10px; padding:12px 0; color:var(--text2); }
     .briefing-priority { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; border:1px solid rgba(229,115,104,.45); background:rgba(229,115,104,.08); border-radius:7px; padding:13px 15px; margin-bottom:14px; }
@@ -390,7 +392,7 @@
     .briefing-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .briefing-section { background:var(--bg3); border:1px solid var(--border); border-radius:7px; padding:14px; min-width:0; }
     .briefing-section h4 { font-size:.68rem; letter-spacing:.12em; text-transform:uppercase; color:var(--silver); margin:0 0 10px; font-weight:700; }
-    .briefing-item { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.08); }
+    .briefing-item { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid rgba(0,0,0,.08); }
     .briefing-item:last-child { border-bottom:none; padding-bottom:0; }
     .briefing-item-main { min-width:0; }
     .briefing-item strong { display:block; color:var(--cream); font-size:.84rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -401,12 +403,12 @@
     .briefing-item.good em { background:rgba(76,175,114,.14); color:var(--green); }
     .briefing-item.info em { background:rgba(106,168,232,.14); color:var(--blue); }
     .briefing-mini-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
-    .briefing-mini-grid.concentrate { grid-template-columns:repeat(2,minmax(0,1fr)); border-top:1px solid rgba(255,255,255,.08); padding-top:12px; }
-    .briefing-mini-stat { background:rgba(20,20,20,.36); border:1px solid rgba(255,255,255,.07); border-radius:6px; padding:8px 10px; }
+    .briefing-mini-grid.concentrate { grid-template-columns:repeat(2,minmax(0,1fr)); border-top:1px solid rgba(0,0,0,.08); padding-top:12px; }
+    .briefing-mini-stat { background:rgba(0,0,0,.04); border:1px solid rgba(0,0,0,.07); border-radius:6px; padding:8px 10px; }
     .briefing-mini-stat span { display:block; font-size:.62rem; color:var(--text2); margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .briefing-mini-stat strong { display:block; color:var(--cream); font-size:.95rem; font-family:'Playfair Display',serif; }
     .briefing-empty { color:var(--text2); font-size:.78rem; font-style:italic; padding:6px 0; }
-    .briefing-error { color:#ffb4ad; background:rgba(229,115,104,.1); border:1px solid rgba(229,115,104,.35); border-radius:6px; padding:12px 14px; }
+    .briefing-error { color:#b3372c; background:rgba(229,115,104,.1); border:1px solid rgba(229,115,104,.35); border-radius:6px; padding:12px 14px; }
     @media(max-width:768px){
       .briefing-card { padding:15px 14px; }
       .briefing-head { align-items:flex-start; }
@@ -521,7 +523,7 @@
     .member-detail-value { font-size:.88rem; color:var(--cream); word-break:break-word; }
     .member-orders-title { font-family:'Playfair Display',serif; font-size:1.05rem; color:var(--cream); margin-bottom:12px; padding-top:4px; border-top:1px solid var(--border); }
     .member-order-row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:.82rem; cursor:pointer; transition:background .15s; }
-    .member-order-row:hover { background:rgba(255,255,255,.03); margin:0 -8px; padding:10px 8px; border-radius:3px; }
+    .member-order-row:hover { background:rgba(0,0,0,.03); margin:0 -8px; padding:10px 8px; border-radius:3px; }
     .member-order-row:last-child { border-bottom:none; }
     .member-order-meta { color:var(--text2); font-size:.74rem; margin-top:3px; }
     .member-points-badge { display:inline-block; font-size:.65rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:2px 7px; border-radius:10px; background:rgba(192,192,192,.12); color:var(--silver); }
@@ -553,7 +555,7 @@ function showGlobalAdminError(text) {
   if (!box) {
     box = document.createElement('div');
     box.id = 'globalAdminError';
-    box.style.cssText = 'position:fixed;z-index:99999;left:12px;right:12px;top:80px;background:#2a1515;color:#ffb4ad;border:1px solid #8a4b4b;border-radius:8px;padding:12px 14px;font-family:sans-serif;font-size:13px;white-space:pre-wrap;';
+    box.style.cssText = 'position:fixed;z-index:99999;left:12px;right:12px;top:80px;background:#fdecea;color:#a02020;border:1px solid #e5b0aa;border-radius:8px;padding:12px 14px;font-family:sans-serif;font-size:13px;white-space:pre-wrap;';
     document.body && document.body.appendChild(box);
   }
   box.textContent = text;
@@ -646,6 +648,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
       </div>
       <div class="sidebar-bottom">
+        <button class="view-site-btn" id="pushToggleBtn" onclick="togglePushNotifications()" style="width:100%;margin-bottom:6px;cursor:pointer">🔔 Enable Notifications</button>
         <div class="user-info" id="adminEmail">—</div>
         <a href="index.html" target="_blank" class="view-site-btn">View Site ↗</a>
         <button class="signout-btn" onclick="signOut()">Sign Out</button>
@@ -656,6 +659,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="mobile-header">
         <img src="logo.png" alt="Gremier Coffee Co."/>
         <span>Gremier Hub</span>
+        <button onclick="togglePushNotifications()" style="margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;padding:4px 8px" title="Toggle notifications">🔔</button>
       </div>
       <div id="websiteMain">
         <!-- STOCK (ops) TAB -->
@@ -672,7 +676,15 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <h1 class="page-title">Orders</h1>
           <p class="page-sub">All customer orders — filter by date, status, or subscriptions</p>
         </div>
-        <div class="filter-bar" style="flex-wrap:wrap;gap:8px">
+        <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
+          <div class="collapse-head">
+            <h3 class="collapse-head-title">Filters</h3>
+            <span class="collapse-summary" id="orderFilterSummary"></span>
+            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();exportOrdersCSV()">⬇ Export CSV</button>
+            <span class="collapse-chevron">▾</span>
+          </div>
+          <div class="collapse-body" style="padding:0 16px 14px">
+        <div class="filter-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:0">
           <select class="form-input" style="width:auto" onchange="onOrderPeriodChange()" id="orderPeriod">
             <option value="month" selected>This Month</option>
             <option value="today">Today</option>
@@ -701,11 +713,20 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <button type="button" class="kind-btn" data-kind="subscriptions" onclick="setOrderKind('subscriptions')">Subscriptions</button>
             <button type="button" class="kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
+        </div>
+          </div>
         </div>
         <div id="recoverOrdersPanel" style="display:none"></div>
         <div id="abandonedOrdersPanel" style="margin-bottom:20px"></div>
-        <div class="stat-grid" id="orderStats"></div>
+        <div class="card collapse-card" data-collapse-key="orders_stats" data-collapse-default="collapsed" style="margin-bottom:20px">
+          <div class="collapse-head">
+            <h3 class="collapse-head-title">Stats</h3>
+            <span class="collapse-chevron">▾</span>
+          </div>
+          <div class="collapse-body" style="padding:0 16px 16px">
+            <div class="stat-grid" id="orderStats" style="margin-bottom:0"></div>
+          </div>
+        </div>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
             <thead><tr>
@@ -813,14 +834,17 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <tbody id="productBreakBody"></tbody>
           </table></div>
         </div>
-        <div class="flex-between section-spacer" style="margin-top:24px">
-          <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Customer History</h3>
-        </div>
-        <div class="card" style="padding:0">
-          <div class="table-wrap"><table id="customerTable">
-            <thead><tr><th>Customer</th><th>Email / Phone</th><th>Orders</th><th>Total Spent</th><th>Last Order</th></tr></thead>
-            <tbody id="customerBody"></tbody>
-          </table></div>
+        <div class="card collapse-card" data-collapse-key="reports_customers" data-collapse-default="collapsed" style="margin-top:24px">
+          <div class="collapse-head">
+            <h3 class="collapse-head-title">Customer History</h3>
+            <span class="collapse-chevron">▾</span>
+          </div>
+          <div class="collapse-body" style="padding:0">
+            <div class="table-wrap"><table id="customerTable">
+              <thead><tr><th>Customer</th><th>Email / Phone</th><th>Orders</th><th>Total Spent</th><th>Last Order</th></tr></thead>
+              <tbody id="customerBody"></tbody>
+            </table></div>
+          </div>
         </div>
       </div>
       <!-- MEMBERS -->
@@ -863,12 +887,17 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <button class="btn btn-amber" onclick="saveDeliverySettings()">Save Settings</button>
           </div>
         </div>
-        <div class="card" style="padding:24px 28px;margin-bottom:24px">
-          <h3 style="font-family:Playfair Display,serif;font-size:1.1rem;color:var(--cream);margin-bottom:18px">Global Settings</h3>
+        <div class="card collapse-card" data-collapse-key="delivery_global" data-collapse-default="collapsed" style="margin-bottom:24px">
+          <div class="collapse-head">
+            <h3 class="collapse-head-title">Global Settings</h3>
+            <span class="collapse-chevron">▾</span>
+          </div>
+          <div class="collapse-body" style="padding:0 28px 24px">
           <div class="form-row-3">
             <div class="form-group"><label class="form-label">Expedited Surcharge (₪)</label><input class="form-input" type="number" id="gsExpedited" placeholder="20"/></div>
             <div class="form-group"><label class="form-label">Default Regular Fee (₪)</label><input class="form-input" type="number" id="gsRegular" placeholder="30"/></div>
             <div class="form-group"><label class="form-label">Default Expedited Fee (₪)</label><input class="form-input" type="number" id="gsExpDefault" placeholder="50"/></div>
+          </div>
           </div>
         </div>
         <div class="flex-between" style="margin-bottom:16px">
@@ -898,16 +927,22 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
         <!-- Panel: Coffee Bars gallery images -->
         <div id="si-panel-cb-gallery">
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
-            <strong style="color:var(--cream)">In Action gallery</strong> — 4 photos shown in the Coffee Bars page gallery section.
+          <div class="collapse-card" data-collapse-key="si_info_gallery" data-collapse-default="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:20px">
+            <div class="collapse-head" style="padding:10px 18px"><span style="font-size:.8rem;color:var(--text2)">ℹ️ How this works</span><span class="collapse-chevron">▾</span></div>
+            <div class="collapse-body" style="padding:0 18px 12px;font-size:.84rem;color:var(--text2);line-height:1.6">
+              <strong style="color:var(--cream)">In Action gallery</strong> — 4 photos shown in the Coffee Bars page gallery section.
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px" id="siteImagesCB"></div>
         </div>
 
         <!-- Panel: How It Works steps -->
         <div id="si-panel-cb-steps" style="display:none">
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
-            <strong style="color:var(--cream)">How It Works</strong> — The 3 numbered steps shown under "The Process" on the Coffee Bars page.
+          <div class="collapse-card" data-collapse-key="si_info_steps" data-collapse-default="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:20px">
+            <div class="collapse-head" style="padding:10px 18px"><span style="font-size:.8rem;color:var(--text2)">ℹ️ How this works</span><span class="collapse-chevron">▾</span></div>
+            <div class="collapse-body" style="padding:0 18px 12px;font-size:.84rem;color:var(--text2);line-height:1.6">
+              <strong style="color:var(--cream)">How It Works</strong> — The 3 numbered steps shown under "The Process" on the Coffee Bars page.
+            </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:16px" id="cbStepsEditor"></div>
           <button class="btn btn-amber" style="margin-top:18px" onclick="saveCBSteps()">Save Steps</button>
@@ -915,8 +950,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
         <!-- Panel: Coffee Bars page text -->
         <div id="si-panel-cb-text" style="display:none">
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
-            <strong style="color:var(--cream)">Coffee Bars page text</strong> — Hero subtitle, packages intro, and CTA band copy.
+          <div class="collapse-card" data-collapse-key="si_info_text" data-collapse-default="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:20px">
+            <div class="collapse-head" style="padding:10px 18px"><span style="font-size:.8rem;color:var(--text2)">ℹ️ How this works</span><span class="collapse-chevron">▾</span></div>
+            <div class="collapse-body" style="padding:0 18px 12px;font-size:.84rem;color:var(--text2);line-height:1.6">
+              <strong style="color:var(--cream)">Coffee Bars page text</strong> — Hero subtitle, packages intro, and CTA band copy.
+            </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:16px" id="cbTextEditor"></div>
           <button class="btn btn-amber" style="margin-top:18px" onclick="saveCBText()">Save Text</button>
@@ -924,8 +962,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
         <!-- Panel: Why Gremier cards -->
         <div id="si-panel-why-cards" style="display:none">
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:20px;font-size:.84rem;color:var(--text2);line-height:1.6">
-            <strong style="color:var(--cream)">Why Gremier cards</strong> — The 4 feature cards on the home page (Slow Cold Brew, Delivered Fresh, etc).
+          <div class="collapse-card" data-collapse-key="si_info_why" data-collapse-default="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:20px">
+            <div class="collapse-head" style="padding:10px 18px"><span style="font-size:.8rem;color:var(--text2)">ℹ️ How this works</span><span class="collapse-chevron">▾</span></div>
+            <div class="collapse-body" style="padding:0 18px 12px;font-size:.84rem;color:var(--text2);line-height:1.6">
+              <strong style="color:var(--cream)">Why Gremier cards</strong> — The 4 feature cards on the home page (Slow Cold Brew, Delivered Fresh, etc).
+            </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:16px" id="whyCardsEditor"></div>
           <button class="btn btn-amber" style="margin-top:18px" onclick="saveWhyCards()">Save Cards</button>
@@ -956,20 +997,38 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="btn btn-outline btn-sm" onclick="exportDeliveriesCSV()">⬇ Export CSV</button>
   </div>
 
-  <!-- Billing mini dashboard: billed - paid = money owed -->
-  <div class="stat-grid" id="sdBillingMiniStats" style="margin-bottom:20px">
-    <div class="stat-card"><div class="stat-label">Money Owed</div><div class="stat-value">₪0</div><div class="stat-sub">billed, not paid</div></div>
-    <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">₪0</div><div class="stat-sub">statements sent</div></div>
-    <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪0</div><div class="stat-sub">marked paid</div></div>
-    <div class="stat-card"><div class="stat-label">Unbilled</div><div class="stat-value">₪0</div><div class="stat-sub">not owed yet</div></div>
+  <!-- Merged billing + monthly summary stats -->
+  <div class="card collapse-card" data-collapse-key="sd_stats" style="margin-bottom:20px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Month stats</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0 16px 16px">
+      <div class="stat-grid" style="margin-bottom:0">
+        <div id="sdBillingMiniStats" style="display:contents">
+          <div class="stat-card"><div class="stat-label">Money Owed</div><div class="stat-value">₪0</div><div class="stat-sub">billed, not paid</div></div>
+          <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">₪0</div><div class="stat-sub">statements sent</div></div>
+          <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪0</div><div class="stat-sub">marked paid</div></div>
+          <div class="stat-card"><div class="stat-label">Unbilled</div><div class="stat-value">₪0</div><div class="stat-sub">not owed yet</div></div>
+        </div>
+        <div id="sdStats" style="display:contents"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Monthly summary stats -->
+  <!-- Monthly summary -->
   <div id="sdNormalView">
-  <div class="stat-grid" id="sdStats" style="margin-bottom:24px"></div>
 
   <!-- Per-store breakdown -->
-  <div id="sdStoreBlocks"></div>
+  <div class="card collapse-card" data-collapse-key="sd_store_blocks" data-collapse-default="collapsed" style="margin-bottom:20px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Store totals</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0 16px 16px">
+      <div id="sdStoreBlocks"></div>
+    </div>
+  </div>
 
   <!-- All deliveries table -->
   <div class="flex-between" style="margin-top:28px;margin-bottom:14px">
@@ -993,23 +1052,25 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 
   <!-- Stores management -->
-  <div class="flex-between" style="margin-top:36px;margin-bottom:14px">
-    <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream)">Store Prices</h3>
-    <button class="btn btn-outline btn-sm" onclick="openAddStoreModal()">+ Add Store</button>
-  </div>
-  <div class="card" style="padding:0">
-    <div class="table-wrap">
-      <table>
-        <thead><tr>
-          <th>Store Name</th>
-          <th>Large (₪)</th>
-          <th>Small (₪)</th>
-          <th>Dairy Free (₪)</th>
-          <th>Syrup (₪)</th>
-          <th class="cell-actions">Edit</th>
-        </tr></thead>
-        <tbody id="sdStoresPricesBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
-      </table>
+  <div class="card collapse-card" data-collapse-key="sd_prices" data-collapse-default="collapsed" style="margin-top:36px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Store Prices</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Store Name</th>
+            <th>Large (₪)</th>
+            <th>Small (₪)</th>
+            <th>Dairy Free (₪)</th>
+            <th>Syrup (₪)</th>
+            <th class="cell-actions">Edit</th>
+          </tr></thead>
+          <tbody id="sdStoresPricesBody"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
     </div>
   </div>
   </div>
@@ -1062,12 +1123,18 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="stat-grid" id="dashKPIs" style="margin-bottom:28px"></div>
 
   <!-- Revenue chart -->
-  <div class="card" style="padding:20px;margin-bottom:24px" id="dashChart">
-    <div class="loading"><div class="spinner"></div></div>
+  <div class="card collapse-card" data-collapse-key="dash_chart" data-collapse-default="collapsed" style="margin-bottom:24px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Revenue chart</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0 20px 20px" id="dashChart">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
   </div>
 
-  <!-- Two column layout: recent orders + recent store deliveries -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px" id="dashCols">
+  <!-- Recent orders (full width) -->
+  <div style="margin-bottom:24px" id="dashCols">
     <div>
       <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Orders</h3>
       <div class="card" style="padding:0">
@@ -1077,31 +1144,46 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         </table>
       </div>
     </div>
-    <div>
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Store Deliveries</h3>
-      <div class="card" style="padding:0">
+  </div>
+
+  <!-- Recent store deliveries -->
+  <div class="card collapse-card" data-collapse-key="dash_recent_deliveries" data-collapse-default="collapsed" style="margin-bottom:24px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Recent Store Deliveries</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0">
+      <table>
+        <thead><tr><th>Store</th><th class="cell-num">🫙L</th><th class="cell-num">🫙S</th><th class="cell-total">₪</th></tr></thead>
+        <tbody id="dashRecentDeliveries"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Store monthly breakdown -->
+  <div class="card collapse-card" data-collapse-key="dash_store_totals" data-collapse-default="collapsed" style="margin-bottom:24px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Store Totals This Month</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0">
+      <div class="table-wrap">
         <table>
-          <thead><tr><th>Store</th><th class="cell-num">🫙L</th><th class="cell-num">🫙S</th><th class="cell-total">₪</th></tr></thead>
-          <tbody id="dashRecentDeliveries"></tbody>
+          <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Dairy Free</th><th>Syrup</th><th class="cell-total">Revenue</th></tr></thead>
+          <tbody id="dashStoreBreakdown"></tbody>
         </table>
       </div>
     </div>
   </div>
 
-  <!-- Store monthly breakdown -->
-  <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Store Totals This Month</h3>
-  <div class="card" style="padding:0;margin-bottom:24px">
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Dairy Free</th><th>Syrup</th><th class="cell-total">Revenue</th></tr></thead>
-        <tbody id="dashStoreBreakdown"></tbody>
-      </table>
-    </div>
-  </div>
-
   <!-- Bottles sold this month -->
-  <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Bottles Sold This Month</h3>
-  <div class="card" style="padding:16px 20px;margin-bottom:24px" id="dashBottlesSold"></div>
+  <div class="card collapse-card" data-collapse-key="dash_bottles" data-collapse-default="collapsed" style="margin-bottom:24px">
+    <div class="collapse-head">
+      <h3 class="collapse-head-title">Bottles Sold This Month</h3>
+      <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapse-body" style="padding:0 20px 16px" id="dashBottlesSold"></div>
+  </div>
 </div>
  
 <!-- COUPONS TAB -->
@@ -1651,6 +1733,71 @@ window.MAIN_SB = sb; // shared client — reused by opsFetch (Schedule/Stock/voi
 let adminUser = null;
 let allProducts = [];
 
+// ── Native push notifications (Web Push via service worker) ──────────
+const PUSH_VAPID_PUBLIC_KEY = 'BFIXYUWDzcaT0UMZKvCI39mt9hi-bwtSJCpcJXBQaRbFVI9AJ70Mg5qJ_2ZQw9_Fq189Knc49EATRWzNL2tOgUM';
+
+function pushUrlB64ToUint8(base64) {
+  const padding = '='.repeat((4 - base64.length % 4) % 4);
+  const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function getPushSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
+async function refreshPushButton() {
+  const btn = document.getElementById('pushToggleBtn');
+  if (!btn) return;
+  if (!('PushManager' in window)) { btn.style.display = 'none'; return; }
+  const sub = await getPushSubscription().catch(() => null);
+  btn.textContent = sub ? '🔕 Disable Notifications' : '🔔 Enable Notifications';
+}
+
+async function togglePushNotifications() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      showToast('Push not supported on this browser'); return;
+    }
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showToast('Sign in first'); return; }
+
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+
+    if (existing) {
+      await fetch(`${SUPABASE_URL}/functions/v1/push-subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ action: 'unsubscribe', endpoint: existing.endpoint }),
+      });
+      await existing.unsubscribe();
+      showToast('Notifications disabled');
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { showToast('Notification permission denied'); return; }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: pushUrlB64ToUint8(PUSH_VAPID_PUBLIC_KEY),
+      });
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/push-subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+      if (!res.ok) throw new Error('Could not save subscription');
+      showToast('Notifications enabled on this device ✓');
+    }
+  } catch (e) {
+    console.error('togglePushNotifications:', e);
+    showToast('Push setup failed — see console');
+  }
+  refreshPushButton();
+}
+if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(refreshPushButton); }
+
 
 // ── Catalog → Ops picker sync ─────────────────────────────
 // Website Products are the source of truth. Physical products added there are
@@ -1934,7 +2081,7 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-  const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+  const _savedAdminTab = localStorage.getItem('gremier_admin_tab') || 'schedule';
   showTab(_savedAdminTab);
   loadOrders();
   loadAllProducts();
@@ -2008,7 +2155,7 @@ document.addEventListener('visibilitychange', () => {
 });
 async function signInAdmin() {
   localStorage.setItem('gremier_hub_mode', 'website');
-  localStorage.setItem('gremier_admin_tab', 'dashboard');
+  localStorage.setItem('gremier_admin_tab', 'schedule');
 
   await sb.auth.signInWithOAuth({
     provider: 'google',
@@ -2070,7 +2217,7 @@ async function signOut() { await sb.auth.signOut(); location.reload(); }
 
   window.addEventListener('popstate', function onAdminPopState(e) {
     const state = e.state || {};
-    const fallback = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+    const fallback = localStorage.getItem('gremier_admin_tab') || 'schedule';
     const tab = state.__gremierAdmin && state.tab ? state.tab : fallback;
     window.__gremierShowTabFromHistory = true;
     try {
@@ -2082,7 +2229,7 @@ async function signOut() { await sb.auth.signOut(); location.reload(); }
   });
 
   window.addEventListener('DOMContentLoaded', function rememberCurrentAdminScreen() {
-    const tab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+    const tab = localStorage.getItem('gremier_admin_tab') || 'schedule';
     window.__gremierPushAdminTabState(tab, true);
   });
 })();
@@ -2170,10 +2317,13 @@ function renderProductsList() {
         <div class="product-row-meta">₪${p.price} · ${p.category}${p.delivery_price != null ? ` · 🚚 ${p.delivery_price === 0 ? 'free delivery' : '₪'+p.delivery_price+' delivery'}` : ''}${p.is_active?'':' · <span style="color:var(--red)">hidden</span>'}${p.is_subscription?' · <span style="color:var(--cream)">subscription</span>':''}${p.is_coffee_bar?' · <span style="color:var(--cream)">coffee bar</span>':''}</div>
       </div>
       <div class="product-row-actions">
-        <button class="btn btn-sm ${p.is_coffee_bar?'btn-amber':'btn-outline'}" onclick="toggleCoffeeBar('${p.id}',${!!p.is_coffee_bar})" title="Show in Coffee Bar section on the website">${p.is_coffee_bar?'☕ Coffee Bar ✓':'☕ Coffee Bar'}</button>
-        <button class="btn btn-sm ${p.ops_exclude?'btn-red':'btn-outline'}" onclick="toggleOpsExclude('${p.id}',${!!p.ops_exclude})" title="Exclude from Stock &amp; Ops (e.g. 4-packs, bundles)">${p.ops_exclude?'📦 Bundle ✓':'📦 Bundle'}</button>
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">Edit</button>
-        <button class="btn btn-sm ${p.is_active?'btn-red':'btn-green'}" onclick="toggleProductActive('${p.id}',${p.is_active})">${p.is_active?'Hide':'Show'}</button>
+        <button class="btn btn-outline btn-sm" title="More actions" onclick="const m=this.nextElementSibling;m.style.display=m.style.display==='none'?'inline-flex':'none'">⋯</button>
+        <span style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-sm ${p.is_coffee_bar?'btn-amber':'btn-outline'}" onclick="toggleCoffeeBar('${p.id}',${!!p.is_coffee_bar})" title="Show in Coffee Bar section on the website">${p.is_coffee_bar?'☕ Coffee Bar ✓':'☕ Coffee Bar'}</button>
+          <button class="btn btn-sm ${p.ops_exclude?'btn-red':'btn-outline'}" onclick="toggleOpsExclude('${p.id}',${!!p.ops_exclude})" title="Exclude from Stock &amp; Ops (e.g. 4-packs, bundles)">${p.ops_exclude?'📦 Bundle ✓':'📦 Bundle'}</button>
+          <button class="btn btn-sm ${p.is_active?'btn-red':'btn-green'}" onclick="toggleProductActive('${p.id}',${p.is_active})">${p.is_active?'Hide':'Show'}</button>
+        </span>
       </div>
     </div>`;
   }).join('')}</div>`;
@@ -2927,10 +3077,14 @@ function renderAbandonedOrders(orders) {
     return;
   }
   panel.innerHTML = `
-    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 18px">
-      <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px;font-weight:600">
-        🛒 Abandoned Checkouts (${abandoned.length})
+    <div class="collapse-card" data-collapse-key="orders_abandoned" data-collapse-default="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px">
+      <div class="collapse-head" style="padding:14px 18px">
+        <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);font-weight:600">
+          🛒 Abandoned Checkouts (${abandoned.length})
+        </div>
+        <span class="collapse-chevron">▾</span>
       </div>
+      <div class="collapse-body" style="padding:0 18px 14px">
       ${abandoned.map(o => {
         const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
         const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
@@ -2943,8 +3097,10 @@ function renderAbandonedOrders(orders) {
           <button class="btn btn-sm" style="background:none;border:1px solid var(--border);color:var(--text2);flex-shrink:0" onclick="dismissAbandonedOrder('${o.id}')">Dismiss</button>
         </div>`;
       }).join('')}
+      </div>
     </div>
   `;
+  initCollapseCards();
 }
 async function loadOrders() {
   const cacheKey = 'gremier_orders_cache_v2';
@@ -3005,7 +3161,21 @@ async function loadOrders() {
   renderAbandonedOrders(rawOrders);
   await loadRecoverableOrdersUI();
 }
-function filterOrders() { loadOrders(); }
+function filterOrders() { updateOrderFilterSummary(); loadOrders(); }
+function updateOrderFilterSummary() {
+  const el = document.getElementById('orderFilterSummary');
+  if (!el) return;
+  const periodEl = document.getElementById('orderPeriod');
+  const periodLabels = { month:'This month', today:'Today', week:'This week', year:'This year', all:'All time', custom:'Custom range' };
+  const period = periodLabels[periodEl?.value] || 'This month';
+  const statusEl = document.getElementById('orderStatus');
+  const status = statusEl && statusEl.value !== 'all'
+    ? (statusEl.options[statusEl.selectedIndex]?.text || statusEl.value)
+    : 'All statuses';
+  const kindBtn = document.querySelector('#orderKindToggle .kind-btn.active');
+  const kind = kindBtn && kindBtn.dataset.kind !== 'all' ? ' · ' + kindBtn.textContent : '';
+  el.textContent = period + ' · ' + status + kind;
+}
 function renderOrderStats(orders) {
   const paidOrders = orders.filter(o=>o.payment_status==='paid');
   const total = paidOrders.reduce((s,o)=>s+parseFloat(o.total||0),0);
@@ -4375,7 +4545,7 @@ If this looks good, I can send the payment link.`);
       <span style="display:inline-flex;align-items:center;gap:8px;max-width:100%">   ${thumbs}   <strong style="color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(displayName)}</strong> </span>
       ${customerLine}
       ${phoneLine}
-      ${missingOrder?'<br><small style="color:#c8873a">⚠ no order</small>':''}
+      ${missingOrder?'<br><small style="color:#a3691c">⚠ no order</small>':''}
       ${latestNote}
     </td>
     <td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(items)}">
@@ -4613,7 +4783,7 @@ function renderMembersList() {
         <div class="cell-actions-wrap">
           <button class="btn btn-outline btn-sm" onclick="openMemberDetail('${m.id}')">View</button>
           <button class="btn btn-outline btn-sm" onclick="openEditMemberPoints('${m.id}',${m.points||0},'${(m.name||'').replace(/'/g,String.fromCharCode(92,39))}')">✏️ Pts</button>
-          <button class="btn btn-outline btn-sm" style="border-color:#c8873a;color:#c8873a" onclick="generateCouponForMember('${m.id}','${(m.email||'').replace(/'/g,String.fromCharCode(92,39))}')">🎁</button>
+          <button class="btn btn-outline btn-sm" style="border-color:#a3691c;color:#a3691c" onclick="generateCouponForMember('${m.id}','${(m.email||'').replace(/'/g,String.fromCharCode(92,39))}')">🎁</button>
         </div>
       </td>    </tr>`;
   }).join('');
@@ -4919,57 +5089,6 @@ async function deleteZone(id) {
   await loadZones();
 }
 // ══ SCHEDULE DELIVERIES ══
-async function loadWebOrders() {
-  const [{ data: webRows }, { data: orderRows }] = await Promise.all([
-    sb.from('pending_website_deliveries').select('*').order('created_at', { ascending: false }),
-    sb.from('orders').select('id, order_number, payment_status'),
-  ]);
-  const orderById = new Map((orderRows || []).map(o => [o.id, o]));
-  const orderByNumber = new Map((orderRows || []).map(o => [String(o.order_number), o]));
-  const isPaidWebRow = w => {
-    if (w.order_id) return orderById.get(w.order_id)?.payment_status === 'paid';
-    if (w.order_number != null) return orderByNumber.get(String(w.order_number))?.payment_status === 'paid';
-    return false;
-  };
-  const data = (webRows || []).filter(isPaidWebRow);
-  const orphaned = (webRows || []).filter(w => {
-    if (w.order_id) return !orderById.has(w.order_id);
-    if (w.order_number != null) return !orderByNumber.has(String(w.order_number));
-    return true;
-  });
-  if (orphaned.length) {
-    Promise.allSettled(orphaned.map(w =>
-      sb.from('pending_website_deliveries').delete().eq('id', w.id)
-    )).then(() => console.log('Cleaned', orphaned.length, 'orphaned schedule entries'));
-  }
-  window._webOrders = data;
-  const pending = (data||[]).filter(x=>x.status==='pending_schedule');
-  const scheduled = (data||[]).filter(x=>x.status==='scheduled');
-  document.getElementById('webOrderStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Pending Scheduling</div><div class="stat-value" style="color:var(--cream)">${pending.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value" style="color:#4caf72">${scheduled.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${(data||[]).length}</div></div>`;
-  const body = document.getElementById('webOrdersBody');
-  if (!data.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No deliveries to schedule.</td></tr>'; return; }
-  body.innerHTML = (data||[]).map(o=>{
-    const itemsText = (o.items||[]).map(i=>i.name_en+' x'+i.qty).join(', ');
-    const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
-    const waMsg = encodeURIComponent('Hi '+o.customer_name+'! Your Gremier Coffee order is confirmed.\n'+itemsText+'\nTotal: ₪'+o.order_total+'\nWe will be in touch about delivery.');
-    const waUrl = whatsAppHref(o.customer_phone, waMsg);
-    return '<tr>'
-      +'<td class="cell-num" style="color:var(--cream)">#'+(o.order_number||'—')+'</td>'
-      +'<td class="cell-customer">'+o.customer_name+(o.customer_phone?'<br><small>'+o.customer_phone+'</small>':'')
-        +(waUrl?'<br><a href="'+waUrl+'" target="_blank" style="font-size:.65rem;color:#25d366">WA</a>':'')
-      +'</td>'
-      +'<td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(o.delivery_address||'')+'">'+(o.delivery_address||'—')+'</td>'
-      +'<td class="hide-mobile" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+itemsText+'">'+itemsText+'</td>'
-      +'<td class="cell-total" style="color:var(--cream)">₪'+o.order_total+'</td>'
-      +'<td class="hide-mobile" style="font-size:.72rem">'+(o.scheduled_date?o.scheduled_date:'—')+'</td>'
-      +'<td class="cell-status"><span class="status-pill '+(o.status==='pending_schedule'?'s-pending':o.status==='scheduled'?'s-confirmed':'s-fulfilled')+'">'+(o.status==='pending_schedule'?'pending':'scheduled')+'</span></td>'
-      +'<td class="cell-actions"><button class="btn btn-amber btn-sm" onclick="openScheduleModal(\"'+o.id+'\")">Set</button></td>'
-      +'</tr>';
-  }).join('');
-}
 function openScheduleModal(id) {
   const o = (window._webOrders||[]).find(x=>x.id===id);
   const today = localDateStr(new Date());
@@ -5043,10 +5162,9 @@ async function confirmSchedule() {
   }
   showToast('Delivery scheduled ✓');
   closeSchedModal();
-  loadWebOrders();
 }
 function showTab(tab) {
-  if (!document.getElementById('tab-' + tab)) tab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
+  if (!document.getElementById('tab-' + tab)) tab = localStorage.getItem('gremier_admin_tab') || 'schedule';
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
   const activeTab = document.getElementById('tab-'+tab);
   if (activeTab) activeTab.style.display='block';
@@ -5627,16 +5745,24 @@ function ldRenderProductRows() {
           <img src="${imgFor(pid)}" alt="" style="width:26px;height:26px;border-radius:5px;object-fit:cover;flex-shrink:0;background:var(--bg3);border:1px solid var(--border)"/>
           <span style="flex:1;font-size:.82rem;color:var(--cream2)">${p.label}</span>
           <button type="button" onclick="ldChangeQty('${pid}',-1)" style="width:24px;height:24px;border-radius:4px;background:var(--highlight);border:1px solid var(--border);color:var(--cream);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">−</button>
-          <input type="number" min="0" value="${ldQuantities[pid]||0}" onchange="ldSetQty('${pid}',this.value)" style="width:48px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--cream);font-size:13px;text-align:center"/>
+          <input type="number" min="0" id="ldQty_${pid}" value="${ldQuantities[pid]||0}" onchange="ldSetQty('${pid}',this.value)" style="width:48px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--cream);font-size:13px;text-align:center"/>
           <button type="button" onclick="ldChangeQty('${pid}',1)" style="width:24px;height:24px;border-radius:4px;background:var(--highlight);border:1px solid var(--border);color:var(--cream);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">+</button>
         </div>`).join('')}
     </div>`;
   }).join('');
 }
 
+// Update inputs in place — a full ldRenderProductRows() rebuild (innerHTML) on
+// every tap destroyed the rows, losing focus and resetting the modal scroll.
+function ldSyncQtyInputs() {
+  Object.keys(LD_PRODUCTS).forEach(pid => {
+    const input = document.getElementById('ldQty_' + pid);
+    if (input) input.value = ldQuantities[pid] || 0;
+  });
+}
 function ldChangeQty(pid, delta) {
   ldQuantities[pid] = Math.max(0, (ldQuantities[pid]||0) + delta);
-  ldRenderProductRows();
+  ldSyncQtyInputs();
   updateDeliveryPreview();
 }
 function ldSetQty(pid, val) {
@@ -5645,14 +5771,14 @@ function ldSetQty(pid, val) {
 }
 function ldFillDefaultCase() {
   ldQuantities = { ...LD_DEFAULT_CASE };
-  ldRenderProductRows();
+  ldSyncQtyInputs();
   updateDeliveryPreview();
 }
 function ldFillFlavorCase(pid) {
   const c = LD_FLAVOR_CASES[pid];
   if (!c) return;
   ldQuantities[pid] = (ldQuantities[pid]||0) + c.qty;
-  ldRenderProductRows();
+  ldSyncQtyInputs();
   updateDeliveryPreview();
 }
 function ldGetAggregated() {
@@ -5984,7 +6110,7 @@ async function loadBillingBoard() {
           <div style="font-weight:600;color:var(--cream)">${escHtml(storeName)}</div>
           <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone?` · ${escHtml(phone)}`:''}</div>
           <div style="font-size:.74rem;margin-top:4px">
-            ${isBilled ? `<span style="color:#eac435;font-weight:600">📋 Billed ${billedDateTxt}</span> <a href="#" onclick="event.preventDefault();unmarkBillingBilled('${r.id}')" style="color:var(--text2);font-size:.72rem;text-decoration:underline">undo</a>` : `<span style="color:var(--text2)">Not billed</span>`}
+            ${isBilled ? `<span style="color:#b8860b;font-weight:600">📋 Billed ${billedDateTxt}</span> <a href="#" onclick="event.preventDefault();unmarkBillingBilled('${r.id}')" style="color:var(--text2);font-size:.72rem;text-decoration:underline">undo</a>` : `<span style="color:var(--text2)">Not billed</span>`}
             &nbsp;·&nbsp;
             <span style="color:${r.paid_at?'var(--green)':'var(--text2)'}">${paidTxt}</span>
           </div>
@@ -6789,6 +6915,26 @@ function toggleBriefingCard(event) {
 function briefingSavedCollapsed() {
   try { return localStorage.getItem(DASH_BRIEFING_COLLAPSED_KEY) === '1'; } catch (_) { return false; }
 }
+// ── Shared collapse-card primitive ──
+function initCollapseCards() {
+  document.querySelectorAll('.collapse-card[data-collapse-key]').forEach(card => {
+    const key = 'gremier_collapse_' + card.dataset.collapseKey;
+    let saved = null;
+    try { saved = localStorage.getItem(key); } catch (_) {}
+    if (saved === '1' || (card.dataset.collapseDefault === 'collapsed' && saved === null)) card.classList.add('collapsed');
+    else if (saved === '0') card.classList.remove('collapsed');
+    const head = card.querySelector('.collapse-head');
+    if (head && !head._wired) {
+      head._wired = true;
+      head.addEventListener('click', () => {
+        card.classList.toggle('collapsed');
+        try { localStorage.setItem(key, card.classList.contains('collapsed') ? '1' : '0'); } catch (_) {}
+      });
+    }
+  });
+}
+document.addEventListener('DOMContentLoaded', () => { initCollapseCards(); if (typeof updateOrderFilterSummary === 'function') updateOrderFilterSummary(); });
+
 function briefingRenderCollapsedSummary(html) {
   const el = document.getElementById('dashBriefingCollapsedSummary');
   if (el) el.innerHTML = html || '';
@@ -6977,38 +7123,36 @@ async function loadBriefing(options = {}) {
 
     const storesHtml = dueStores.length
       ? (() => {
-          const thisWeek = dueStores.filter(p => p.daysUntilDue <= 7 || p.dueScore >= 0.85).slice(0, 5);
-          const watch = dueStores.filter(p => !thisWeek.includes(p)).slice(0, 4);
+          const thisWeek = dueStores.filter(p => p.daysUntilDue <= 7 || p.dueScore >= 0.85).slice(0, 4);
+          const watch = dueStores.filter(p => !thisWeek.includes(p)).slice(0, 2);
           const renderStore = p => {
             const qty = [];
-            if (Math.round(p.avgLarge)) qty.push(`${Math.round(p.avgLarge)} large`);
-            if (Math.round(p.avgSmall)) qty.push(`${Math.round(p.avgSmall)} mini`);
-            if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)} syrup`);
-            const lines = [`~${qty.length ? qty.join(', ') : 'usual'} · every ${p.avgGapDays}d · last ${p.daysSinceLast}d ago`];
-            if (p.productMixText) lines.push(p.productMixText);
-            return briefingItem(p.store, lines.join('<br>'), p.badge, p.tone);
+            if (Math.round(p.avgLarge)) qty.push(`${Math.round(p.avgLarge)}L`);
+            if (Math.round(p.avgSmall)) qty.push(`${Math.round(p.avgSmall)}m`);
+            if (Math.round(p.avgSyrup)) qty.push(`${Math.round(p.avgSyrup)}s`);
+            return briefingItem(p.store, `~${qty.length ? qty.join(' ') : 'usual'} · last ${p.daysSinceLast}d ago`, p.badge, p.tone);
           };
-          return `${thisWeek.length ? '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);margin:0 0 6px">Deliver this week</div>' + thisWeek.map(renderStore).join('') : ''}${watch.length ? '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);margin:12px 0 6px">Keep an eye on</div>' + watch.map(renderStore).join('') : ''}`;
+          return `${thisWeek.length ? '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);margin:0 0 6px">Deliver this week</div>' + thisWeek.map(renderStore).join('') : ''}${watch.length ? '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);margin:12px 0 6px">Watch</div>' + watch.map(renderStore).join('') : ''}`;
         })()
-      : briefingEmpty(usingForecastTable ? 'No active store looks due from the forecast table right now.' : 'No store looks due from the last 180 days of delivery patterns.');
+      : briefingEmpty('No store looks due right now.');
 
     const productionRows = [];
     // Concentrate first — must brew before you can bottle
-    concentrateGapActions.slice(0, 4).forEach(x => productionRows.push(briefingItem(
+    concentrateGapActions.slice(0, 3).forEach(x => productionRows.push(briefingItem(
       `Brew ${briefingRound(x.gap,1)}L ${x.label}`,
-      `${briefingRound(x.have,1)}L ready${x.brewing ? ` · ${briefingRound(x.brewing,1)}L brewing` : ''} — do this first`,
+      `${briefingRound(x.have,1)}L ready${x.brewing ? ` · ${briefingRound(x.brewing,1)}L brewing` : ''}`,
       'brew first', 'danger'
     )));
     // Urgent bottle shortfalls (needed in 7 days)
-    urgentBottleShortfalls.slice(0, 5).forEach(x => productionRows.push(briefingItem(
+    urgentBottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(
       `Bottle ${Math.ceil(x.gap)} ${x.label}`,
-      `${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} — by ${briefingDateLabel(briefingAddDaysISO(briefingLocalISO(0), 7))}`,
+      `${briefingRound(x.inStock)} ready · by ${briefingDateLabel(briefingAddDaysISO(briefingLocalISO(0), 7))}`,
       'urgent', 'danger'
     )));
     // 14-day bottle shortfalls (only if nothing urgent)
-    if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 4).forEach(x => productionRows.push(briefingItem(
+    if (!urgentBottleShortfalls.length) bottleShortfalls.slice(0, 3).forEach(x => productionRows.push(briefingItem(
       `Bottle ${Math.ceil(x.gap)} ${x.label}`,
-      `${briefingRound(x.inStock)} ready${x.scheduledProduction ? ` · ${briefingRound(x.scheduledProduction)} scheduled` : ''} — by ${briefingDateLabel(briefingAddDaysISO(briefingLocalISO(0), 14))}`,
+      `${briefingRound(x.inStock)} ready · by ${briefingDateLabel(briefingAddDaysISO(briefingLocalISO(0), 14))}`,
       'plan', 'warn'
     )));
     // Forecast gaps — parse the concise string into a directive title
@@ -7019,7 +7163,7 @@ async function loadBriefing(options = {}) {
       else if (mLeft) productionRows.push(briefingItem(`${mLeft[1]}: ~${mLeft[2]}d left`, `by ${mLeft[3]}`, 'watch', 'warn'));
       else productionRows.push(briefingItem(x, 'store forecast', 'forecast', 'warn'));
     });
-    if (!productionRows.length) productionRows.push(briefingEmpty('Production and stock cover the next 7–14 days.'));
+    if (!productionRows.length) productionRows.push(briefingEmpty('Stock covers the next 14 days.'));
 
     const stockStats = ''; // removed — stock snapshot no longer shown
     const concentrateStats = Object.entries(BRIEFING_CONCENTRATES).map(([k, c]) => briefingMiniStat(c.label.replace(' Dark Roast',''), `${briefingRound(concentrate[k] || 0,1)}L`)).join('');
@@ -8606,44 +8750,44 @@ function getProductImage(pid) {
 }
 function ProductThumb({ pid, size }) {
   const s = size || 28;
-  return <img src={getProductImage(pid)} alt="" style={{width:s,height:s,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030'}}/>;
+  return <img src={getProductImage(pid)} alt="" style={{width:s,height:s,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0'}}/>;
 }
 window.getProductImage = getProductImage; // exposed for the plain-JS Log Delivery modal
 
 // ── styles ─────────────────────────────────────────────────
 const TS = {
-  screen: { background:'#141414', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#efefef', paddingBottom:120 },
-  card: { background:'#252525', border:'1px solid #454545', borderRadius:6, padding:'14px 16px', margin:'10px 12px' },
-  hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#efefef', marginBottom:10 },
-  jobRow: { display:'flex', alignItems:'flex-start', gap:8, padding:'8px 0', borderBottom:'1px solid #303030', cursor:'pointer' },
+  screen: { background:'#ffffff', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#121212', paddingBottom:120 },
+  card: { background:'#ffffff', border:'1px solid #cccccc', borderRadius:6, padding:'14px 16px', margin:'10px 12px' },
+  hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#121212', marginBottom:10 },
+  jobRow: { display:'flex', alignItems:'flex-start', gap:8, padding:'8px 0', borderBottom:'1px solid #e0e0e0', cursor:'pointer' },
   checkbox: (color) => ({ width:22, height:22, borderRadius:5, border:`1.5px solid ${color}`, background:'transparent', cursor:'pointer', flexShrink:0, marginTop:2, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color }),
   label: (color) => ({ fontSize:13, fontWeight:600, color, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }),
-  meta: { fontSize:11, color:'#9a9a9a', marginTop:2 },
+  meta: { fontSize:11, color:'#6a6a6a', marginTop:2 },
   pill: (bg,color) => ({ fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', padding:'2px 7px', borderRadius:10, background:bg, color, display:'inline-block', marginLeft:6 }),
   calGrid: { display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, padding:'0 4px' },
-  calHdr: { fontSize:9, color:'#9a9a9a', textAlign:'center', padding:'4px 0', letterSpacing:1 },
+  calHdr: { fontSize:9, color:'#6a6a6a', textAlign:'center', padding:'4px 0', letterSpacing:1 },
   calCell: { borderRadius:4, padding:'4px 2px', textAlign:'center', minHeight:34, cursor:'pointer' },
   btn: (bg,color) => ({ background:bg, color, border:'none', borderRadius:8, padding:'10px 14px', fontSize:13, fontWeight:600, cursor:'pointer', flex:1 }),
-  modal: { position:'fixed', inset:0, background:'rgba(0,0,0,.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 },
-  modalBox: { background:'#252525', border:'1px solid #454545', borderRadius:12, padding:22, width:'100%', maxWidth:440 },
-  modalTitle: { fontFamily:"'Playfair Display',serif", fontSize:'1.3rem', color:'#efefef', marginBottom:14 },
-  inp: { width:'100%', background:'#1e1e1e', border:'1px solid #454545', borderRadius:6, padding:'10px 12px', color:'#efefef', fontSize:15, boxSizing:'border-box' },
-  qRow: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 0', borderBottom:'1px solid #303030' },
-  qBtn: { width:28, height:28, borderRadius:5, background:'#303030', border:'1px solid #454545', color:'#efefef', fontSize:16, cursor:'pointer' },
-  qInp: { width:54, background:'#1e1e1e', border:'1px solid #454545', borderRadius:5, padding:'5px', color:'#efefef', fontSize:14, textAlign:'center' },
-  drawerBackdrop: { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:200 },
-  drawer: { position:'fixed', bottom:0, left:0, right:0, background:'#1e1e1e', border:'1px solid #454545', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:201 },
+  modal: { position:'fixed', inset:0, background:'rgba(0,0,0,.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 },
+  modalBox: { background:'#ffffff', border:'1px solid #cccccc', borderRadius:12, padding:22, width:'100%', maxWidth:440 },
+  modalTitle: { fontFamily:"'Playfair Display',serif", fontSize:'1.3rem', color:'#121212', marginBottom:14 },
+  inp: { width:'100%', background:'#fafafa', border:'1px solid #cccccc', borderRadius:6, padding:'10px 12px', color:'#121212', fontSize:15, boxSizing:'border-box' },
+  qRow: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 0', borderBottom:'1px solid #e0e0e0' },
+  qBtn: { width:28, height:28, borderRadius:5, background:'#eeeeee', border:'1px solid #cccccc', color:'#121212', fontSize:16, cursor:'pointer' },
+  qInp: { width:54, background:'#fafafa', border:'1px solid #cccccc', borderRadius:5, padding:'5px', color:'#121212', fontSize:14, textAlign:'center' },
+  drawerBackdrop: { position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:200 },
+  drawer: { position:'fixed', bottom:0, left:0, right:0, background:'#fafafa', border:'1px solid #cccccc', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:201 },
   drawerTitle: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', marginBottom:14 },
   waBtn: { display:'block', background:'#25D366', color:'#fff', textAlign:'center', padding:'11px', borderRadius:8, textDecoration:'none', fontWeight:700, fontSize:14 },
 };
 
 function jobColor2(job) {
-  if (job.type==='drain') return '#9B6FC8';
-  if (job.type==='brew') return '#6aa8e8';
-  if (job.type==='bottling') return '#e0a030';
+  if (job.type==='drain') return '#7d55ab';
+  if (job.type==='brew') return '#3f7fc4';
+  if (job.type==='bottling') return '#b8860b';
   if (job.type==='labeling') return '#8a7060';
-  if (job.deliveryType==='store') return '#d0d0d0';
-  return '#4caf72';
+  if (job.deliveryType==='store') return '#1a1a1a';
+  return '#2e8b57';
 }
 function jobLabel2(job) {
   if (job.type==='delivery') {
@@ -8693,12 +8837,12 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal} onClick={onCancel}>
         <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
           <div style={TS.modalTitle}>Confirm Delivery</div>
-          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>Did you deliver exactly:<br/><strong style={{color:'#efefef'}}>{itemList||'nothing listed'}</strong>?</div>
+          <div style={{color:'#333333',fontSize:14,marginBottom:16,lineHeight:1.6}}>Did you deliver exactly:<br/><strong style={{color:'#121212'}}>{itemList||'nothing listed'}</strong>?</div>
           <div style={{display:'flex',gap:10,marginTop:14}}>
-            <button style={TS.btn('#303030','#efefef')} onClick={()=>setAllCorrect(false)}>No, change it</button>
-            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm(job,planned,null)}>Yes ✓</button>
+            <button style={TS.btn('#eeeeee','#121212')} onClick={()=>setAllCorrect(false)}>No, change it</button>
+            <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onConfirm(job,planned,null)}>Yes ✓</button>
           </div>
-          <button style={{...TS.btn('#1e1e1e','#9a9a9a'), marginTop:8, border:'1px solid #454545'}} onClick={onCancel}>Cancel</button>
+          <button style={{...TS.btn('#fafafa','#6a6a6a'), marginTop:8, border:'1px solid #cccccc'}} onClick={onCancel}>Cancel</button>
         </div>
       </div>
     );
@@ -8711,14 +8855,14 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
         <div style={TS.modal} onClick={onCancel}>
           <div style={{...TS.modalBox,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div style={TS.modalTitle}>What did you deliver?</div>
-            <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Jerry Cans</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbPeople(p=>Math.max(25,p-25))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{Math.floor(cbPeople/25)}</span><button style={TS.qBtn} onClick={()=>setCbPeople(p=>p+25)}>+</button></div></div>
-            <div style={TS.qRow}><span style={{color:'#c4c4c4'}}>Dispensers</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbDispensers}</span><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
+            <div style={TS.qRow}><span style={{color:'#333333'}}>Jerry Cans</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbPeople(p=>Math.max(25,p-25))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{Math.floor(cbPeople/25)}</span><button style={TS.qBtn} onClick={()=>setCbPeople(p=>p+25)}>+</button></div></div>
+            <div style={TS.qRow}><span style={{color:'#333333'}}>Dispensers</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>Math.max(0,p-1))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbDispensers}</span><button style={TS.qBtn} onClick={()=>setCbDispensers(p=>p+1)}>+</button></div></div>
             {['vanilla_syrup','caramel_syrup','sugar_syrup'].map(pid=>(
-              <div key={pid} style={TS.qRow}><span style={{color:'#c4c4c4',display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={22}/>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
+              <div key={pid} style={TS.qRow}><span style={{color:'#333333',display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={22}/>{PROD_LABELS[pid]}</span><div style={{display:'flex',alignItems:'center',gap:8}}><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:Math.max(0,(s[pid]||0)-1)}))}>−</button><span style={{minWidth:30,textAlign:'center'}}>{cbSyrups[pid]||0}</span><button style={TS.qBtn} onClick={()=>setCbSyrups(s=>({...s,[pid]:(s[pid]||0)+1}))}>+</button></div></div>
             ))}
             <div style={{display:'flex',gap:10,marginTop:14}}>
-              <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
-              <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm({...job,people:cbPeople,dispensers:cbDispensers,cbSyrups,jerryCans:Array(Math.floor(cbPeople/25)).fill('classic')},cbPeople,null)}>Confirm ✓</button>
+              <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
+              <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onConfirm({...job,people:cbPeople,dispensers:cbDispensers,cbSyrups,jerryCans:Array(Math.floor(cbPeople/25)).fill('classic')},cbPeople,null)}>Confirm ✓</button>
             </div>
           </div>
         </div>
@@ -8728,7 +8872,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal} onClick={onCancel}>
         <div style={{...TS.modalBox,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
           <div style={TS.modalTitle}>What did you deliver?</div>
-          <div style={{color:'#9a9a9a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Adjust anything below — this isn't limited to what was originally planned.</div>
+          <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Adjust anything below — this isn't limited to what was originally planned.</div>
           {[['liter','Liter Bottles'],['mini','Mini Bottles'],['jerry','Jerry Cans'],['syrup','Syrups']].map(([cat,catLabel])=>{
             const items = Object.entries(PRODUCTS).filter(([,p])=>p.category===cat);
             if (!items.length) return null;
@@ -8739,7 +8883,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
                   const qty = confirmedQtys[pid] ?? (job.quantities||{})[pid] ?? 0;
                   return (
                     <div key={pid} style={TS.qRow}>
-                      <span style={{color:'#c4c4c4',flex:1,display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={26}/>{p.label}</span>
+                      <span style={{color:'#333333',flex:1,display:'flex',alignItems:'center',gap:8}}><ProductThumb pid={pid} size={26}/>{p.label}</span>
                       <div style={{display:'flex',alignItems:'center',gap:6}}>
                         <button style={TS.qBtn} onClick={()=>setConfirmedQtys(q=>({...q,[pid]:Math.max(0,qty-1)}))}>−</button>
                         <input style={TS.qInp} type="number" value={qty} onChange={e=>setConfirmedQtys(q=>({...q,[pid]:Number(e.target.value)||0}))}/>
@@ -8752,8 +8896,8 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
             );
           })}
           <div style={{display:'flex',gap:10,marginTop:14}}>
-            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
-            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>{const total=Object.values(confirmedQtys).reduce((s,v)=>s+(v||0),0);onConfirm(job,total,confirmedQtys);}}>Confirm ✓</button>
+            <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
+            <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>{const total=Object.values(confirmedQtys).reduce((s,v)=>s+(v||0),0);onConfirm(job,total,confirmedQtys);}}>Confirm ✓</button>
           </div>
         </div>
       </div>
@@ -8767,13 +8911,13 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
         <div style={TS.modal} onClick={onCancel}>
           <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
             <div style={TS.modalTitle}>Blocked Unsafe Drain</div>
-            <div style={{background:'#3a2418',border:'1px solid #e57368',borderRadius:6,padding:'10px 12px',marginBottom:14,color:'#f0a89c',fontSize:13,fontWeight:700,lineHeight:1.5}}>
+            <div style={{background:'#fdf1ec',border:'1px solid #d5544a',borderRadius:6,padding:'10px 12px',marginBottom:14,color:'#b3372c',fontSize:13,fontWeight:700,lineHeight:1.5}}>
               This task looks like a stock correction, not a real drain. It will not change concentrate.
             </div>
-            <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
+            <div style={{color:'#333333',fontSize:14,marginBottom:16,lineHeight:1.6}}>
               Use the Stock tab to add/remove bottles. Only tasks explicitly labeled “Drain …” from a brew should add concentrate.
             </div>
-            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Close</button>
+            <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Close</button>
           </div>
         </div>
       );
@@ -8784,15 +8928,15 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal} onClick={onCancel}>
         <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
           <div style={TS.modalTitle}>Confirm Drain</div>
-          <div style={{background:'#3a2418',border:'1px solid #e57368',borderRadius:6,padding:'10px 12px',marginBottom:14,color:'#f0a89c',fontSize:13,fontWeight:700,lineHeight:1.5}}>
+          <div style={{background:'#fdf1ec',border:'1px solid #d5544a',borderRadius:6,padding:'10px 12px',marginBottom:14,color:'#b3372c',fontSize:13,fontWeight:700,lineHeight:1.5}}>
             This will add {drainLiters}L of {concLabels[job.product] || job.product} concentrate.
           </div>
-          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
+          <div style={{color:'#333333',fontSize:14,marginBottom:16,lineHeight:1.6}}>
             Only confirm if you actually drained this brew. If you are only fixing bottle stock, cancel and use the Stock tab.
           </div>
           <div style={{display:'flex',gap:10,marginTop:14}}>
-            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
-            <button style={TS.btn('#e0a030','#121212')} onClick={()=>onConfirm(job,drainLiters,null)}>Yes, add concentrate ✓</button>
+            <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
+            <button style={TS.btn('#b8860b','#ffffff')} onClick={()=>onConfirm(job,drainLiters,null)}>Yes, add concentrate ✓</button>
           </div>
         </div>
       </div>
@@ -8805,11 +8949,11 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal}>
         <div style={TS.modalBox}>
           <div style={{...TS.modalTitle,display:'flex',alignItems:'center',gap:10}}><ProductThumb pid={job.product} size={32}/>Confirm Bottling</div>
-          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>Planned: {planned}L. How much did you actually make?</div>
+          <div style={{color:'#333333',fontSize:14,marginBottom:12}}>Planned: {planned}L. How much did you actually make?</div>
           <input style={{...TS.inp,fontSize:22,textAlign:'center',marginBottom:8}} type="number" value={actual} onChange={e=>setActual(Number(e.target.value))}/>
           <div style={{display:'flex',gap:10,marginTop:14}}>
-            <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
-            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>{
+            <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
+            <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>{
               if (LABELED.includes(job.product)) { setLabeledUsed({[job.product]:getBottledUnits(actual)}); setAskLabeled(true); }
               else onConfirm(job,actual,null);
             }}>Next →</button>
@@ -8823,15 +8967,15 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal}>
         <div style={TS.modalBox}>
           <div style={TS.modalTitle}>Labeled Bottles Used?</div>
-          <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>How many labeled {PROD_LABELS[job.product]||job.product} bottles did you use?</div>
+          <div style={{color:'#333333',fontSize:14,marginBottom:12}}>How many labeled {PROD_LABELS[job.product]||job.product} bottles did you use?</div>
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
             <button style={TS.qBtn} onClick={()=>setLabeledUsed(p=>({...p,[job.product]:Math.max(0,(p[job.product]||0)-1)}))}>−</button>
             <input style={{...TS.inp,fontSize:22,textAlign:'center'}} type="number" value={labeledUsed[job.product]||0} onChange={e=>setLabeledUsed(p=>({...p,[job.product]:Number(e.target.value)||0}))}/>
             <button style={TS.qBtn} onClick={()=>setLabeledUsed(p=>({...p,[job.product]:(p[job.product]||0)+1}))}>+</button>
           </div>
           <div style={{display:'flex',gap:10}}>
-            <button style={TS.btn('#303030','#efefef')} onClick={()=>setAskLabeled(false)}>← Back</button>
-            <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm({...job,labeledUsed},actual,null)}>Confirm ✓</button>
+            <button style={TS.btn('#eeeeee','#121212')} onClick={()=>setAskLabeled(false)}>← Back</button>
+            <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onConfirm({...job,labeledUsed},actual,null)}>Confirm ✓</button>
           </div>
         </div>
       </div>
@@ -8843,11 +8987,11 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
     <div style={TS.modal}>
       <div style={TS.modalBox}>
         <div style={TS.modalTitle}>Confirm Check-off</div>
-        <div style={{color:'#c4c4c4',fontSize:14,marginBottom:12}}>Planned: {planned}. Actual?</div>
+        <div style={{color:'#333333',fontSize:14,marginBottom:12}}>Planned: {planned}. Actual?</div>
         <input style={{...TS.inp,fontSize:22,textAlign:'center',marginBottom:8}} type="number" value={actual} onChange={e=>setActual(Number(e.target.value))}/>
         <div style={{display:'flex',gap:10,marginTop:14}}>
-          <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
-          <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onConfirm(job,actual,null)}>Confirm ✓</button>
+          <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
+          <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onConfirm(job,actual,null)}>Confirm ✓</button>
         </div>
       </div>
     </div>
@@ -8866,18 +9010,18 @@ function RescheduleModal2({ job, onSave, onCancel }) {
           {job.product&&<ProductThumb pid={job.product} size={30}/>}
           Reschedule
         </div>
-        <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16}}>{label}</div>
+        <div style={{color:'#333333',fontSize:14,marginBottom:16}}>{label}</div>
         <div style={{marginBottom:12}}>
-          <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#9a9a9a',marginBottom:6,display:'block'}}>Date</span>
+          <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#6a6a6a',marginBottom:6,display:'block'}}>Date</span>
           <input style={TS.inp} type="date" value={date} onChange={e=>setDate(e.target.value)}/>
         </div>
         <div style={{marginBottom:12}}>
-          <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#9a9a9a',marginBottom:6,display:'block'}}>Time (optional)</span>
+          <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#6a6a6a',marginBottom:6,display:'block'}}>Time (optional)</span>
           <input style={TS.inp} type="time" value={time} onChange={e=>setTime(e.target.value)}/>
         </div>
         <div style={{display:'flex',gap:10,marginTop:14}}>
-          <button style={TS.btn('#303030','#efefef')} onClick={onCancel}>Cancel</button>
-          <button style={TS.btn('#d0d0d0','#121212')} onClick={()=>onSave(job,date,time)}>Save ✓</button>
+          <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
+          <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onSave(job,date,time)}>Save ✓</button>
         </div>
       </div>
     </div>
@@ -8899,28 +9043,28 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
   return (
     <div style={{...TS.jobRow}} onClick={()=>onTap&&onTap(job)}>
       {onCheckoff&&(
-        <button style={TS.checkbox(overdue?'#e57368':color)} onClick={e=>{e.stopPropagation();onCheckoff(job);}}>
+        <button style={TS.checkbox(overdue?'#d5544a':color)} onClick={e=>{e.stopPropagation();onCheckoff(job);}}>
           {job.brewStarted&&job.type==='brew'?'·':''}
         </button>
       )}
       {singleThumbPid&&<ProductThumb pid={singleThumbPid} size={26}/>}
       <div style={{flex:1,minWidth:0}}>
-        <div style={TS.label(overdue?'#e57368':color)}>{label}</div>
+        <div style={TS.label(overdue?'#d5544a':color)}>{label}</div>
         {deliveryItems.length>0&&(
           <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:3,marginBottom:2}}>
             {deliveryItems.map(([pid,qty])=>(
-              <div key={pid} style={{display:'flex',alignItems:'center',gap:3,background:'#1e1e1e',border:'1px solid #303030',borderRadius:5,padding:showItemThumbs?'2px 6px 2px 2px':'2px 6px'}}>
+              <div key={pid} style={{display:'flex',alignItems:'center',gap:3,background:'#fafafa',border:'1px solid #e0e0e0',borderRadius:5,padding:showItemThumbs?'2px 6px 2px 2px':'2px 6px'}}>
                 {showItemThumbs&&<ProductThumb pid={pid} size={18}/>}
-                <span style={{fontSize:11,color:'#9a9a9a'}}>{qty}× {pid.replace(/_/g,' ')}</span>
+                <span style={{fontSize:11,color:'#6a6a6a'}}>{qty}× {pid.replace(/_/g,' ')}</span>
               </div>
             ))}
           </div>
         )}
         {detail&&<div style={TS.meta}>{detail}</div>}
         <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
-        {(job.privateAddress||job.cbAddress)&&<div style={{...TS.meta,color:'#6aa8e8'}}>📍 {job.privateAddress||job.cbAddress}</div>}
+        {(job.privateAddress||job.cbAddress)&&<div style={{...TS.meta,color:'#3f7fc4'}}>📍 {job.privateAddress||job.cbAddress}</div>}
       </div>
-      {showDelete&&<button style={{background:'none',border:'none',color:'#e57368',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
+      {showDelete&&<button style={{background:'none',border:'none',color:'#d5544a',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
     </div>
   );
 }
@@ -8940,19 +9084,19 @@ function MiniCalendar2({ year, month, jobs, today, onDayTap }) {
           const dj=jobs.filter(j=>j.date===iso&&!j.done&&!j.brewStarted);
           const isT=iso===today;
           return (
-            <div key={iso} style={{...TS.calCell,background:isT?'rgba(208,208,208,.12)':'transparent'}} onClick={()=>onDayTap(iso)}>
-              <div style={{fontSize:11,color:isT?'#efefef':'#9a9a9a'}}>{parseInt(iso.split('-')[2],10)}</div>
+            <div key={iso} style={{...TS.calCell,background:isT?'rgba(0,0,0,.07)':'transparent'}} onClick={()=>onDayTap(iso)}>
+              <div style={{fontSize:11,color:isT?'#121212':'#6a6a6a'}}>{parseInt(iso.split('-')[2],10)}</div>
               <div style={{display:'flex',justifyContent:'center',gap:2,marginTop:2}}>
-                {dj.some(j=>j.type==='delivery')&&<div style={{width:4,height:4,borderRadius:'50%',background:'#d0d0d0'}}/>}
-                {dj.some(j=>j.type!=='delivery')&&<div style={{width:4,height:4,borderRadius:'50%',background:'#6aa8e8'}}/>}
+                {dj.some(j=>j.type==='delivery')&&<div style={{width:4,height:4,borderRadius:'50%',background:'#1a1a1a'}}/>}
+                {dj.some(j=>j.type!=='delivery')&&<div style={{width:4,height:4,borderRadius:'50%',background:'#3f7fc4'}}/>}
               </div>
             </div>
           );
         })}
       </div>
-      <div style={{display:'flex',gap:14,fontSize:10,color:'#9a9a9a',padding:'8px 4px',alignItems:'center'}}>
-        <span><span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#d0d0d0',marginRight:4}}/>Delivery</span>
-        <span><span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#6aa8e8',marginRight:4}}/>Production</span>
+      <div style={{display:'flex',gap:14,fontSize:10,color:'#6a6a6a',padding:'8px 4px',alignItems:'center'}}>
+        <span><span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#1a1a1a',marginRight:4}}/>Delivery</span>
+        <span><span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:'#3f7fc4',marginRight:4}}/>Production</span>
       </div>
     </div>
   );
@@ -8965,9 +9109,9 @@ function DayPopup2({ date, jobs, onClose, onCheckoff }) {
     <div style={TS.modal} onClick={onClose}>
       <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
         <div style={TS.modalTitle}>{formatDate2(date)}</div>
-        {dayJobs.length===0?<div style={{color:'#9a9a9a',fontSize:14,padding:'12px 0'}}>Nothing scheduled</div>
+        {dayJobs.length===0?<div style={{color:'#6a6a6a',fontSize:14,padding:'12px 0'}}>Nothing scheduled</div>
           :dayJobs.map(j=><JobRowComp key={j.id} job={j} onCheckoff={onCheckoff} onTap={()=>{}}/>)}
-        <button style={{...TS.btn('#303030','#efefef'),marginTop:14}} onClick={onClose}>Close</button>
+        <button style={{...TS.btn('#eeeeee','#121212'),marginTop:14}} onClick={onClose}>Close</button>
       </div>
     </div>
   );
@@ -8981,18 +9125,18 @@ function WaDrawer2({ jobs, stores, onMarkSent, onClose }) {
       <div style={TS.drawer}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
           <span style={{...TS.drawerTitle,color:'#25D366'}}>💬 WhatsApp Notes</span>
-          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+          <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
         </div>
-        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All sent!</div>}
+        {jobs.length===0&&<div style={{color:'#6a6a6a',fontSize:13}}>All sent!</div>}
         {jobs.map(job=>{
           const waLink = buildStoreWaLink2(job, stores);
           return (
-            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
-              <div style={{fontWeight:600,color:'#efefef',marginBottom:6}}>{job.storeName}</div>
-              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{formatDate2(job.date)}</div>
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
+              <div style={{fontWeight:600,color:'#121212',marginBottom:6}}>{job.storeName}</div>
+              <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{formatDate2(job.date)}</div>
               <div style={{display:'flex',gap:8}}>
                 {waLink&&<a href={waLink} target="_blank" rel="noreferrer" style={{...TS.waBtn,flex:1}}>💬 Send</a>}
-                <button style={{...TS.btn('#303030','#efefef'),flex:1}} onClick={()=>onMarkSent(job.id)}>✓ Sent</button>
+                <button style={{...TS.btn('#eeeeee','#121212'),flex:1}} onClick={()=>onMarkSent(job.id)}>✓ Sent</button>
               </div>
             </div>
           );
@@ -9010,23 +9154,23 @@ function BillingDrawer2({ jobs, onMarkBilled, onMarkPaid, onClose }) {
       <div style={TS.drawerBackdrop} onClick={onClose}/>
       <div style={TS.drawer}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-          <span style={{...TS.drawerTitle,color:'#e0a030'}}>💰 Billing</span>
-          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+          <span style={{...TS.drawerTitle,color:'#b8860b'}}>💰 Billing</span>
+          <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
         </div>
-        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All billed!</div>}
+        {jobs.length===0&&<div style={{color:'#6a6a6a',fontSize:13}}>All billed!</div>}
         {jobs.map(job=>{
           const name = job.deliveryType==='coffeebar'?`Coffee Bar${job.cbName?' — '+job.cbName:''}`:job.privateName||'Private Delivery';
           const detail = Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty} ${PROD_LABELS[pid]||pid}`).join(', ');
           return (
-            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
-              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{name}</div>
-              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:4}}>{formatDate2(job.date)}</div>
-              {detail&&<div style={{fontSize:11,color:'#9a9a9a',marginBottom:8}}>{detail}</div>}
-              {!job.billed&&<button style={{...TS.btn('#e0a030','#fff'),width:'100%'}} onClick={()=>onMarkBilled(job.id)}>✓ Mark Billed</button>}
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
+              <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{name}</div>
+              <div style={{fontSize:11,color:'#6a6a6a',marginBottom:4}}>{formatDate2(job.date)}</div>
+              {detail&&<div style={{fontSize:11,color:'#6a6a6a',marginBottom:8}}>{detail}</div>}
+              {!job.billed&&<button style={{...TS.btn('#b8860b','#fff'),width:'100%'}} onClick={()=>onMarkBilled(job.id)}>✓ Mark Billed</button>}
               {job.billed&&!job.paid&&(
-                <div style={{background:'#1a2a1a',border:'1px solid #4caf72',borderRadius:6,padding:10,marginTop:4}}>
-                  <div style={{fontSize:12,fontWeight:700,color:'#4caf72',marginBottom:6}}>✓ Billed — awaiting payment</div>
-                  <button style={{...TS.btn('#4caf72','#fff'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
+                <div style={{background:'#e9f6ee',border:'1px solid #2e8b57',borderRadius:6,padding:10,marginTop:4}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#2e8b57',marginBottom:6}}>✓ Billed — awaiting payment</div>
+                  <button style={{...TS.btn('#2e8b57','#fff'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
                 </div>
               )}
             </div>
@@ -9044,21 +9188,21 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
       <div style={TS.drawerBackdrop} onClick={onClose}/>
       <div style={TS.drawer}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-          <span style={{...TS.drawerTitle,color:'#6aa8e8'}}>📦 Website Orders</span>
-          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+          <span style={{...TS.drawerTitle,color:'#3f7fc4'}}>📦 Website Orders</span>
+          <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
         </div>
-        {orders.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>Nothing to schedule!</div>}
+        {orders.length===0&&<div style={{color:'#6a6a6a',fontSize:13}}>Nothing to schedule!</div>}
         {orders.map(o=>{
           const label = websiteOrderDisplayLabel2(o);
           const items = (o.items||[]).map(i=>`${i.name_en||'Item'} ×${i.qty||1}`).join(', ');
           const unpaid = o.payment_status&&o.payment_status!=='paid';
           return (
-            <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
-              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{label}{unpaid&&<span style={TS.pill('rgba(224,160,48,.15)','#e0a030')}>Awaiting payment</span>}</div>
-              {o.delivery_address&&<div style={{fontSize:11,color:'#6aa8e8',marginBottom:4}}>📍 {o.delivery_address}</div>}
-              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{items}</div>
-              <button style={{...TS.btn('#6aa8e8','#fff'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
-              <button style={{...TS.btn('#303030','#e57368'),width:'100%',border:'1px solid #454545'}} onClick={()=>onDismiss(o)}>Remove</button>
+            <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
+              <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{label}{unpaid&&<span style={TS.pill('rgba(224,160,48,.15)','#b8860b')}>Awaiting payment</span>}</div>
+              {o.delivery_address&&<div style={{fontSize:11,color:'#3f7fc4',marginBottom:4}}>📍 {o.delivery_address}</div>}
+              <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{items}</div>
+              <button style={{...TS.btn('#3f7fc4','#fff'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
+              <button style={{...TS.btn('#eeeeee','#d5544a'),width:'100%',border:'1px solid #cccccc'}} onClick={()=>onDismiss(o)}>Remove</button>
             </div>
           );
         })}
@@ -9068,6 +9212,68 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
 }
 
 // ── SCHEDULE TAB ROOT ──────────────────────────────────────
+// Module-scope so React keeps the same component identity across ScheduleForm
+// re-renders. When this was declared inside ScheduleForm, every keystroke made a
+// "new" component type, so React unmounted/remounted every row — losing input
+// focus and resetting the modal's scroll position to the top.
+function QtyRows({ FP, cat, title, values, setValues }) {
+  const items = Object.entries(FP).filter(([,p])=>p.category===cat);
+  if (!items.length) return null;
+  const bump = (pid, delta) => setValues(q=>({...q,[pid]:Math.max(0,(Number(q[pid])||0)+delta)}));
+  // Keep the raw text the user is typing so intermediate states (e.g. clearing the field,
+  // or typing "10" one digit at a time) don't get clamped/reset mid-keystroke.
+  const setOne = (pid, val) => {
+    const digits = val.replace(/[^0-9]/g, '');
+    setValues(q=>({...q, [pid]: digits === '' ? '' : Math.max(0, parseInt(digits, 10))}));
+  };
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{fontSize:9,color:'#6a6a6a',letterSpacing:1,textTransform:'uppercase',fontWeight:700,marginTop:8,marginBottom:4,borderBottom:'1px solid #e0e0e0',paddingBottom:3}}>{title}</div>
+      {items.map(([pid,p])=>(
+        <div key={pid} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #e0e0e0'}}>
+          <ProductThumb pid={pid} size={26}/>
+          <span style={{flex:1,fontSize:13,color:'#333333'}}>{p.label}</span>
+          <button type="button" style={TS.qBtn} onClick={()=>bump(pid,-1)}>−</button>
+          <input style={TS.qInp} type="text" inputMode="numeric" pattern="[0-9]*" value={values[pid]===''?'':(values[pid]||0)} onChange={e=>setOne(pid,e.target.value)} onBlur={()=>{ if(values[pid]==='') setValues(q=>({...q,[pid]:0})); }}/>
+          <button type="button" style={TS.qBtn} onClick={()=>bump(pid,1)}>+</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Module-scope for the same component-identity reason as QtyRows above.
+function DaySection({ label, dayJobs, overdue, onCheckoff, onTap, onDelete }) {
+  const deliveries = dayJobs.filter(j=>j.type==='delivery');
+  const production = dayJobs.filter(j=>j.type!=='delivery');
+  if (!overdue && deliveries.length===0 && production.length===0) {
+    return (
+      <div style={{...TS.card,display:'flex',alignItems:'center',gap:8,padding:'10px 14px'}}>
+        <span style={{fontSize:12,fontWeight:700,color:'#121212'}}>{label}</span>
+        <span style={{fontSize:12,color:'#6a6a6a',fontStyle:'italic'}}>— nothing scheduled</span>
+      </div>
+    );
+  }
+  const showDel = deliveries.length>0;
+  const showProd = production.length>0;
+  return (
+    <div style={{...TS.card,border:overdue?'1px solid #d5544a':undefined,background:overdue?'#fdecea':undefined}}>
+      <div style={{...TS.hdr,color:overdue?'#d5544a':'#121212'}}>{overdue?'⚠ Overdue':label}</div>
+      <div style={{display:'flex',gap:10}}>
+        {showDel&&<div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#121212',background:'#eeeeee',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
+         {deliveries.map(j=><JobRowComp key={j.id} job={j} onCheckoff={onCheckoff} onTap={onTap} showDelete={true} onDelete={onDelete}/>)}
+        </div>}
+        {showDel&&showProd&&<div style={{width:1,background:'#eeeeee',flexShrink:0}}/>}
+        {showProd&&<div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
+         {production.map(j=><JobRowComp key={j.id} job={j} onCheckoff={onCheckoff} onTap={onTap} showDelete={true} onDelete={onDelete}/>)}
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
   const logNow = mode === 'lognow';
   const FP = {
@@ -9180,35 +9386,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
     });
   }
 
-  const tog = (active,color) => ({ flex:1, padding:'9px 4px', background:active?(color||'#d0d0d0'):'#303030', color:active?'#121212':'#9a9a9a', border:'none', borderRadius:6, fontSize:13, fontWeight:active?700:400, cursor:'pointer', fontFamily:"'DM Sans',sans-serif" });
-  const lbl = { fontSize:10, letterSpacing:1, textTransform:'uppercase', color:'#9a9a9a', marginBottom:6, display:'block' };
-
-  function QtyRows({ cat, title, values=quantities, setValues=setQuantities }) {
-    const items = Object.entries(FP).filter(([,p])=>p.category===cat);
-    if (!items.length) return null;
-    const bump = (pid, delta) => setValues(q=>({...q,[pid]:Math.max(0,(q[pid]||0)+delta)}));
-    // Keep the raw text the user is typing so intermediate states (e.g. clearing the field,
-    // or typing "10" one digit at a time) don't get clamped/reset mid-keystroke — that clamping
-    // was what caused the input to flicker and the page to jump while editing quantities.
-    const setOne = (pid, val) => {
-      const digits = val.replace(/[^0-9]/g, '');
-      setValues(q=>({...q, [pid]: digits === '' ? '' : Math.max(0, parseInt(digits, 10))}));
-    };
-    return (
-      <div style={{marginBottom:10}}>
-        <div style={{fontSize:9,color:'#9a9a9a',letterSpacing:1,textTransform:'uppercase',fontWeight:700,marginTop:8,marginBottom:4,borderBottom:'1px solid #303030',paddingBottom:3}}>{title}</div>
-        {items.map(([pid,p])=>(
-          <div key={pid} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #303030'}}>
-            <ProductThumb pid={pid} size={26}/>
-            <span style={{flex:1,fontSize:13,color:'#c4c4c4'}}>{p.label}</span>
-            <button type="button" style={TS.qBtn} onClick={()=>bump(pid,-1)}>−</button>
-            <input style={TS.qInp} type="text" inputMode="numeric" pattern="[0-9]*" value={values[pid]===''?'':(values[pid]||0)} onChange={e=>setOne(pid,e.target.value)} onBlur={()=>{ if(values[pid]==='') setValues(q=>({...q,[pid]:0})); }}/>
-            <button type="button" style={TS.qBtn} onClick={()=>bump(pid,1)}>+</button>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const tog = (active,color) => ({ flex:1, padding:'9px 4px', background:active?(color||'#1a1a1a'):'#eeeeee', color:active?'#ffffff':'#6a6a6a', border:'none', borderRadius:6, fontSize:13, fontWeight:active?700:400, cursor:'pointer', fontFamily:"'DM Sans',sans-serif" });
+  const lbl = { fontSize:10, letterSpacing:1, textTransform:'uppercase', color:'#6a6a6a', marginBottom:6, display:'block' };
 
   return (
     <div style={TS.modal} onClick={onClose}>
@@ -9217,7 +9396,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
 
         <div style={{display:'flex',gap:8,marginBottom:14}}>
           <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
-          <button style={tog(jobType==='production','#6aa8e8')} onClick={()=>setJobType('production')}>Production</button>
+          <button style={tog(jobType==='production','#3f7fc4')} onClick={()=>setJobType('production')}>Production</button>
         </div>
 
         {jobType==='delivery'&&(
@@ -9233,16 +9412,16 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
               <>
                 {subType==='store'&&(
                   <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
-                    <button style={{...TS.btn('#303030','#efefef'),flex:'0 1 auto',border:'1px solid #454545'}} onClick={()=>setQuantities({...DEFAULT_CASE})}>⚡ Default Case</button>
+                    <button style={{...TS.btn('#eeeeee','#121212'),flex:'0 1 auto',border:'1px solid #cccccc'}} onClick={()=>setQuantities({...DEFAULT_CASE})}>⚡ Default Case</button>
                     {Object.entries(FLAVOR_CASES).map(([pid,c])=>(
-                      <button key={pid} style={{...TS.btn('#303030','#efefef'),flex:'0 1 auto',border:'1px solid #454545'}} onClick={()=>fillFlavorCase(pid)}>⚡ {c.label}</button>
+                      <button key={pid} style={{...TS.btn('#eeeeee','#121212'),flex:'0 1 auto',border:'1px solid #cccccc'}} onClick={()=>fillFlavorCase(pid)}>⚡ {c.label}</button>
                     ))}
                   </div>
                 )}
-                <QtyRows cat="liter" title="Liter Bottles"/>
-                <QtyRows cat="mini" title="Mini Bottles"/>
-                <QtyRows cat="jerry" title="Jerry Cans"/>
-                <QtyRows cat="syrup" title="Syrups"/>
+                <QtyRows FP={FP} cat="liter" title="Liter Bottles" values={quantities} setValues={setQuantities}/>
+                <QtyRows FP={FP} cat="mini" title="Mini Bottles" values={quantities} setValues={setQuantities}/>
+                <QtyRows FP={FP} cat="jerry" title="Jerry Cans" values={quantities} setValues={setQuantities}/>
+                <QtyRows FP={FP} cat="syrup" title="Syrups" values={quantities} setValues={setQuantities}/>
               </>
             )}
             {subType==='coffeebar'&&(
@@ -9253,9 +9432,9 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
                 <div style={{marginBottom:12}}><span style={lbl}>Dispensers</span><input style={TS.inp} type="number" value={dispensers} onChange={e=>setDispensers(Number(e.target.value)||0)}/></div>
                 <div style={{marginBottom:6}}><span style={lbl}>Syrups Included</span></div>
                 {[['vanilla_syrup','Vanilla Syrup'],['caramel_syrup','Caramel Syrup'],['sugar_syrup','Sugar Syrup']].map(([pid,label])=>(
-                  <div key={pid} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid #303030'}}>
+                  <div key={pid} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid #e0e0e0'}}>
                     <input type="checkbox" checked={cbSyrups[pid]} onChange={e=>setCbSyrups(s=>({...s,[pid]:e.target.checked}))} style={{width:18,height:18,flexShrink:0}}/>
-                    <span style={{flex:1,fontSize:13,color:cbSyrups[pid]?'#c4c4c4':'#6a6a6a'}}>{label}</span>
+                    <span style={{flex:1,fontSize:13,color:cbSyrups[pid]?'#333333':'#999999'}}>{label}</span>
                     {cbSyrups[pid]&&(
                       <div style={{display:'flex',alignItems:'center',gap:6}}>
                         <button style={TS.qBtn} onClick={()=>setCbSyrupQty(q=>({...q,[pid]:Math.max(0,(q[pid]||0)-1)}))}>−</button>
@@ -9268,18 +9447,18 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
                 {/* ── Extra items (bottles etc.) ── */}
                 <div style={{marginTop:14}}>
                   {!showCbExtras&&(
-                    <button style={{width:'100%',background:'#252525',border:'1px dashed #454545',borderRadius:8,padding:'10px',fontSize:13,color:'#9a9a9a',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
+                    <button style={{width:'100%',background:'#ffffff',border:'1px dashed #cccccc',borderRadius:8,padding:'10px',fontSize:13,color:'#6a6a6a',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
                       onClick={()=>setShowCbExtras(true)}>+ More Items</button>
                   )}
                   {showCbExtras&&(
                     <>
                       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
                         <span style={lbl}>Extra Items</span>
-                        <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:12,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}} onClick={()=>{setShowCbExtras(false);setCbExtras({})}}>✕ Remove</button>
+                        <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:12,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}} onClick={()=>{setShowCbExtras(false);setCbExtras({})}}>✕ Remove</button>
                       </div>
-                      <QtyRows cat="liter"  title="Liter Bottles" values={cbExtras} setValues={setCbExtras}/>
-                      <QtyRows cat="mini"   title="Mini Bottles"  values={cbExtras} setValues={setCbExtras}/>
-                      <QtyRows cat="jerry"  title="Jerry Cans"    values={cbExtras} setValues={setCbExtras}/>
+                      <QtyRows FP={FP} cat="liter"  title="Liter Bottles" values={cbExtras} setValues={setCbExtras}/>
+                      <QtyRows FP={FP} cat="mini"   title="Mini Bottles"  values={cbExtras} setValues={setCbExtras}/>
+                      <QtyRows FP={FP} cat="jerry"  title="Jerry Cans"    values={cbExtras} setValues={setCbExtras}/>
                     </>
                   )}
                 </div>
@@ -9291,21 +9470,21 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
         {jobType==='production'&&(
           <>
             <div style={{display:'flex',gap:6,marginBottom:12}}>
-              <button style={tog(prodType==='brew','#6aa8e8')} onClick={()=>setProdType('brew')}>Brew</button>
-              <button style={tog(prodType==='bottle','#e0a030')} onClick={()=>setProdType('bottle')}>Bottle</button>
+              <button style={tog(prodType==='brew','#3f7fc4')} onClick={()=>setProdType('brew')}>Brew</button>
+              <button style={tog(prodType==='bottle','#b8860b')} onClick={()=>setProdType('bottle')}>Bottle</button>
               <button style={tog(prodType==='label','#8a7060')} onClick={()=>setProdType('label')}>Label</button>
             </div>
             {prodType==='brew'&&<><div style={{marginBottom:12}}><span style={lbl}>Concentrate</span><select style={TS.inp} value={brewConc} onChange={e=>setBrewConc(e.target.value)}>{Object.entries(CONC).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Kilos</span><select style={TS.inp} value={kg} onChange={e=>setKg(Number(e.target.value))}><option value={3}>3kg → ~19L</option><option value={2}>2kg → ~12.7L</option><option value={1.5}>1.5kg → ~9.5L</option><option value={1}>1kg → ~6.4L</option></select></div></>}
             {prodType==='bottle'&&<>
-              <div style={{color:'#9a9a9a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick finished units. Minis automatically convert to liters for concentrate usage; jerry cans count as 5L each.</div>
-              <QtyRows cat="liter" title="Liter Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
-              <QtyRows cat="mini" title="Mini Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
-              <QtyRows cat="jerry" title="Jerry Cans" values={bottleQuantities} setValues={setBottleQuantities}/>
+              <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick finished units. Minis automatically convert to liters for concentrate usage; jerry cans count as 5L each.</div>
+              <QtyRows FP={FP} cat="liter" title="Liter Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
+              <QtyRows FP={FP} cat="mini" title="Mini Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
+              <QtyRows FP={FP} cat="jerry" title="Jerry Cans" values={bottleQuantities} setValues={setBottleQuantities}/>
             </>}
             {prodType==='label'&&<>
-              <div style={{color:'#9a9a9a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick how many labels/bottles to add for each product.</div>
-              <QtyRows cat="liter" title="Liter Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
-              <QtyRows cat="mini" title="Mini Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
+              <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick how many labels/bottles to add for each product.</div>
+              <QtyRows FP={FP} cat="liter" title="Liter Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
+              <QtyRows FP={FP} cat="mini" title="Mini Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
             </>}
           </>
         )}
@@ -9313,8 +9492,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
         {!logNow&&<><div style={{marginBottom:12}}><span style={lbl}>Date</span><input style={TS.inp} type="date" value={date} onChange={e=>setDate(e.target.value)}/></div><div style={{marginBottom:12}}><span style={lbl}>Time (optional)</span><input style={TS.inp} type="time" value={time} onChange={e=>setTime(e.target.value)}/></div></>}
 
         <div style={{display:'flex',gap:10,marginTop:14}}>
-          <button style={TS.btn('#303030','#efefef')} onClick={onClose}>Cancel</button>
-          <button style={TS.btn(logNow?'#4caf72':'#d0d0d0',logNow?'#fff':'#121212')} onClick={()=>onSubmit(build())}>{logNow?'✓ Log as Done':'Save to Schedule'}</button>
+          <button style={TS.btn('#eeeeee','#121212')} onClick={onClose}>Cancel</button>
+          <button style={TS.btn(logNow?'#2e8b57':'#1a1a1a',logNow?'#fff':'#ffffff')} onClick={()=>onSubmit(build())}>{logNow?'✓ Log as Done':'Save to Schedule'}</button>
         </div>
       </div>
     </div>
@@ -9343,6 +9522,9 @@ function ScheduleTab() {
   const [billingOpen, setBillingOpen] = useState2(false);
   const [webQueueOpen, setWebQueueOpen] = useState2(false);
   const [showCompleted, setShowCompleted] = useState2(false);
+  const [calOpen, setCalOpen] = useState2(()=>{ try { return localStorage.getItem('gremier_collapse_schedcal')==='0'; } catch(_) { return false; } });
+  const toggleCal = ()=>setCalOpen(o=>{ const n=!o; try { localStorage.setItem('gremier_collapse_schedcal', n?'0':'1'); } catch(_){} return n; });
+  const [showAllDates, setShowAllDates] = useState2(false);
 const [showForm, setShowForm] = useState2(false);
   const [formMode, setFormMode] = useState2('lognow');
   const [formPrefill, setFormPrefill] = useState2(null);
@@ -9580,47 +9762,24 @@ async function addJobFromForm(job, mode) {
     await patchJob2(job.id,{date:newDate,time:newTime||null});
     await reload();
   }
-  function DaySection({ label, dayJobs, overdue }) {
-    const deliveries = dayJobs.filter(j=>j.type==='delivery');
-    const production = dayJobs.filter(j=>j.type!=='delivery');
-    return (
-      <div style={{...TS.card,border:overdue?'1px solid #e57368':undefined,background:overdue?'#1e1010':undefined}}>
-        <div style={{...TS.hdr,color:overdue?'#e57368':'#efefef'}}>{overdue?'⚠ Overdue':label}</div>
-        <div style={{display:'flex',gap:10}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
-           {deliveries.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
-              :deliveries.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob} showDelete={true} onDelete={handleDelete}/>)}
-          </div>
-          <div style={{width:1,background:'#303030',flexShrink:0}}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
-           {production.length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
-              :production.map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob} showDelete={true} onDelete={handleDelete}/>)}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) return <div style={{...TS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#9a9a9a'}}><div style={{width:20,height:20,border:'2px solid #454545',borderTopColor:'#d0d0d0',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div>;
+  if (loading) return <div style={{...TS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a6a6a'}}><div style={{width:20,height:20,border:'2px solid #cccccc',borderTopColor:'#1a1a1a',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div>;
 
   return (
     <div style={TS.screen}>
       <div style={{padding:'16px 12px 0'}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#efefef',marginBottom:14}}>Schedule</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Schedule</div>
         <div style={{display:'flex',gap:10,marginBottom:14}}>
-          <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#4caf72',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
-          <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#d0d0d0',color:'#121212',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
+          <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#2e8b57',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
+          <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#1a1a1a',color:'#ffffff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
         </div>
       </div>
 
       {/* brewing banner */}
       {brewingJobs.length>0&&(
-        <div style={{...TS.card,border:'1px solid #6aa8e8',background:'#0e1a2a',margin:'10px 12px'}}>
-          <div style={{...TS.hdr,color:'#6aa8e8'}}>🧪 Brewing Now</div>
+        <div style={{...TS.card,border:'1px solid #3f7fc4',background:'#eaf2fb',margin:'10px 12px'}}>
+          <div style={{...TS.hdr,color:'#3f7fc4'}}>🧪 Brewing Now</div>
           {brewingJobs.map(j=>(
-            <div key={j.id} style={{fontSize:13,color:'#6aa8e8',fontWeight:600,padding:'4px 0'}}>
+            <div key={j.id} style={{fontSize:13,color:'#3f7fc4',fontWeight:600,padding:'4px 0'}}>
               ☕ {j.product} — {j.kg}kg — tap drain job when ready
             </div>
           ))}
@@ -9628,40 +9787,51 @@ async function addJobFromForm(job, mode) {
       )}
 
       {/* overdue */}
-      {overdueJobs.length>0&&<DaySection label="Overdue" dayJobs={overdueJobs} overdue/>}
+      {overdueJobs.length>0&&<DaySection label="Overdue" dayJobs={overdueJobs} overdue onCheckoff={handleCheckoff} onTap={openEditJob} onDelete={handleDelete}/>}
 
       {/* today / tomorrow */}
-      <DaySection label="Today" dayJobs={todayJobs}/>
-      <DaySection label="Tomorrow" dayJobs={tomorrowJobs}/>
+      <DaySection label="Today" dayJobs={todayJobs} onCheckoff={handleCheckoff} onTap={openEditJob} onDelete={handleDelete}/>
+      <DaySection label="Tomorrow" dayJobs={tomorrowJobs} onCheckoff={handleCheckoff} onTap={openEditJob} onDelete={handleDelete}/>
 
       {/* upcoming grouped by date */}
-      {Object.keys(grouped).sort().map(date=>(
+      {(showAllDates?Object.keys(grouped).sort():Object.keys(grouped).sort().slice(0,3)).map(date=>(
         <div key={date} style={TS.card}>
           <div style={TS.hdr}>{formatDate2(date)}</div>
           <div style={{display:'flex',gap:10}}>
 <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#303030',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
-              {grouped[date].filter(j=>j.type==='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              <div style={{fontSize:11,fontWeight:700,color:'#121212',background:'#eeeeee',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>DELIVERIES</div>
+              {grouped[date].filter(j=>j.type==='delivery').length===0?<div style={{fontSize:11,color:'#6a6a6a',fontStyle:'italic'}}>None</div>
                 :grouped[date].filter(j=>j.type==='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob} showDelete={true} onDelete={handleDelete}/>)}
             </div>
-            <div style={{width:1,background:'#303030',flexShrink:0}}/>
+            <div style={{width:1,background:'#eeeeee',flexShrink:0}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,fontWeight:700,color:'#fff',background:'#3a5a7a',borderRadius:5,padding:'5px 8px',textAlign:'center',marginBottom:8,letterSpacing:1}}>PRODUCTION</div>
-              {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#9a9a9a',fontStyle:'italic'}}>None</div>
+              {grouped[date].filter(j=>j.type!=='delivery').length===0?<div style={{fontSize:11,color:'#6a6a6a',fontStyle:'italic'}}>None</div>
                 :grouped[date].filter(j=>j.type!=='delivery').map(j=><JobRowComp key={j.id} job={j} onCheckoff={handleCheckoff} onTap={openEditJob} showDelete={true} onDelete={handleDelete}/>)}
             </div>
           </div>
         </div>
       ))}
+      {!showAllDates&&Object.keys(grouped).length>3&&(
+        <button style={{display:'block',width:'calc(100% - 24px)',margin:'0 12px 10px',padding:'9px 0',background:'#f4f4f4',border:'1px solid #dddddd',borderRadius:6,color:'#333333',fontSize:13,fontWeight:600,cursor:'pointer'}} onClick={()=>setShowAllDates(true)}>
+          Show {Object.keys(grouped).length-3} more dates ▾
+        </button>
+      )}
 
       {/* calendar */}
       <div style={{...TS.card,margin:'10px 12px'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none',marginBottom:calOpen?10:0}} onClick={toggleCal}>
+          <div style={{fontSize:13,fontWeight:700,color:'#121212'}}>📅 Month view</div>
+          <span style={{fontSize:12,color:'#6a6a6a'}}>{calOpen?'▾':'▸'}</span>
+        </div>
+        {calOpen&&<>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-          <button style={{background:'none',border:'none',color:'#efefef',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month-1);return{year:d.getFullYear(),month:d.getMonth()};})}>‹</button>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1rem',color:'#efefef'}}>{new Date(monthView.year,monthView.month).toLocaleDateString('en',{month:'long',year:'numeric'})}</div>
-          <button style={{background:'none',border:'none',color:'#efefef',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month+1);return{year:d.getFullYear(),month:d.getMonth()};})}>›</button>
+          <button style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month-1);return{year:d.getFullYear(),month:d.getMonth()};})}>‹</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1rem',color:'#121212'}}>{new Date(monthView.year,monthView.month).toLocaleDateString('en',{month:'long',year:'numeric'})}</div>
+          <button style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month+1);return{year:d.getFullYear(),month:d.getMonth()};})}>›</button>
         </div>
         <MiniCalendar2 year={monthView.year} month={monthView.month} jobs={jobs} today={today} onDayTap={setCalDay}/>
+        </>}
       </div>
 
       {/* completed this week */}
@@ -9669,16 +9839,16 @@ async function addJobFromForm(job, mode) {
         <div style={TS.card}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:showCompleted?10:0}}>
             <div style={TS.hdr}>✓ Completed This Week ({completedThisWeek.length})</div>
-            <button style={{background:'none',border:'none',color:'#d0d0d0',fontSize:13,cursor:'pointer',fontWeight:600}} onClick={()=>setShowCompleted(v=>!v)}>{showCompleted?'Hide':'Show'}</button>
+            <button style={{background:'none',border:'none',color:'#1a1a1a',fontSize:13,cursor:'pointer',fontWeight:600}} onClick={()=>setShowCompleted(v=>!v)}>{showCompleted?'Hide':'Show'}</button>
           </div>
           {showCompleted&&completedThisWeek.map(j=>(
             <div key={j.id} style={{...TS.jobRow,opacity:0.65}}>
-              <div style={{width:20,height:20,borderRadius:4,background:'#4caf72',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{color:'#fff',fontSize:10}}>✓</span></div>
+              <div style={{width:20,height:20,borderRadius:4,background:'#2e8b57',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{color:'#fff',fontSize:10}}>✓</span></div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,color:'#c4c4c4',fontWeight:500}}>{jobLabel2(j)}</div>
+                <div style={{fontSize:13,color:'#333333',fontWeight:500}}>{jobLabel2(j)}</div>
                 <div style={TS.meta}>{formatDate2(j.date)}</div>
               </div>
-              <button style={{background:'none',border:'none',color:'#e57368',fontSize:16,cursor:'pointer'}} onClick={()=>handleDelete(j)}>🗑</button>
+              <button style={{background:'none',border:'none',color:'#d5544a',fontSize:16,cursor:'pointer'}} onClick={()=>handleDelete(j)}>🗑</button>
             </div>
           ))}
         </div>
@@ -9701,7 +9871,7 @@ async function addJobFromForm(job, mode) {
       }} onDismiss={dismissWebOrder}/>}
       {/* modals */}
       {checkoffJob&&<CheckoffModal2 job={checkoffJob} onConfirm={confirmCheckoff} onCancel={()=>setCheckoffJob(null)}/>}
-      {fulfillOrderId&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 20px'}}>
+      {fulfillOrderId&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 20px'}}>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'24px 20px',maxWidth:360,width:'100%'}}>
           <div style={{fontSize:'1rem',fontWeight:700,color:'var(--cream)',marginBottom:8}}>Mark order as fulfilled?</div>
           <div style={{fontSize:'.82rem',color:'var(--text2)',marginBottom:20,lineHeight:1.5}}>This will send the customer a fulfilment confirmation email. You can skip if the email was already sent or isn't needed.</div>
@@ -9914,25 +10084,25 @@ function bottleNeeds(jobs, inventory) {
 
 // ── Shared UI components ───────────────────────────────────
 const SS = {
-  screen: { background:'#141414', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#efefef', paddingBottom:80 },
-  card: { background:'#252525', border:'1px solid #454545', borderRadius:6, padding:'16px 18px', margin:'12px 0' },
-  hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#fff', background:'#303030', borderRadius:6, padding:'8px 12px', marginBottom:14 },
-  row: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'1px solid #303030' },
-  lbl: { fontSize:13, color:'#c4c4c4' },
-  val: { fontSize:15, fontWeight:600, color:'#efefef' },
-  btn: { width:28, height:28, borderRadius:5, background:'#303030', border:'1px solid #454545', color:'#efefef', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' },
-  inp: { width:64, background:'#1e1e1e', border:'1px solid #454545', borderRadius:5, padding:'4px 6px', color:'#efefef', fontSize:14, textAlign:'center' },
-  toggleRow: { display:'flex', gap:0, border:'1px solid #454545', borderRadius:5, overflow:'hidden', marginBottom:18, flexWrap:'wrap' },
-  toggleBtn: (active) => ({ flex:'1 1 auto', padding:'9px 5px', background:active?'#d0d0d0':'transparent', color:active?'#121212':'#9a9a9a', border:'none', fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:active?700:400, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' }),
-  needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#4caf72':'#e57368', whiteSpace:'nowrap' }),
+  screen: { background:'#ffffff', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#121212', paddingBottom:80 },
+  card: { background:'#ffffff', border:'1px solid #cccccc', borderRadius:6, padding:'16px 18px', margin:'12px 0' },
+  hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#121212', background:'#eeeeee', borderRadius:6, padding:'8px 12px', marginBottom:14 },
+  row: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'1px solid #e0e0e0' },
+  lbl: { fontSize:13, color:'#333333' },
+  val: { fontSize:15, fontWeight:600, color:'#121212' },
+  btn: { width:28, height:28, borderRadius:5, background:'#eeeeee', border:'1px solid #cccccc', color:'#121212', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' },
+  inp: { width:64, background:'#fafafa', border:'1px solid #cccccc', borderRadius:5, padding:'4px 6px', color:'#121212', fontSize:14, textAlign:'center' },
+  toggleRow: { display:'flex', gap:0, border:'1px solid #cccccc', borderRadius:5, overflow:'hidden', marginBottom:18, flexWrap:'wrap' },
+  toggleBtn: (active) => ({ flex:'1 1 auto', padding:'9px 5px', background:active?'#1a1a1a':'transparent', color:active?'#ffffff':'#6a6a6a', border:'none', fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:active?700:400, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' }),
+  needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#2e8b57':'#d5544a', whiteSpace:'nowrap' }),
 };
 
 function NumRow({ label, value, onDec, onInc, onChange, suffix, warn, pid }) {
   return (
     <div style={{ ...SS.row, gap:10 }}>
-      {pid&&<img src={window.getProductImage(pid)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030'}}/>}
-      <span style={{ ...SS.lbl, flex:1, color: warn ? '#e57368' : '#c4c4c4' }}>{label}</span>
-      {suffix && <span style={{ fontSize:11, color:'#9a9a9a', marginRight:6 }}>{suffix}</span>}
+      {pid&&<img src={window.getProductImage(pid)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0'}}/>}
+      <span style={{ ...SS.lbl, flex:1, color: warn ? '#d5544a' : '#333333' }}>{label}</span>
+      {suffix && <span style={{ fontSize:11, color:'#6a6a6a', marginRight:6 }}>{suffix}</span>}
       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
         <button style={SS.btn} onClick={onDec}>−</button>
         <input style={SS.inp} type="number" value={value??''} onChange={onChange}/>
@@ -9981,14 +10151,14 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
           if (n===0 && brewing===0) return null;
           return (
             <div key={k} style={SS.row}>
-              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{ct.label}</span>
-              {brewing>0&&<span style={{fontSize:11,color:'#6aa8e8'}}>🧪 {brewing.toFixed(1)}L brewing</span>}
+              {brewing>0&&<span style={{fontSize:11,color:'#3f7fc4'}}>🧪 {brewing.toFixed(1)}L brewing</span>}
               <span style={SS.needBadge(eff===0)}>{eff===0?'✓ Covered':`Brew ${eff.toFixed(1)}L more`}</span>
             </div>
           );
         }).filter(Boolean)}
-        {Object.values(needed).every(v=>v===0)&&<div style={{color:'#9a9a9a',fontSize:13}}>All needs covered</div>}
+        {Object.values(needed).every(v=>v===0)&&<div style={{color:'#6a6a6a',fontSize:13}}>All needs covered</div>}
       </div>
     </div>
   );
@@ -10128,16 +10298,16 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, f
           <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
             <div style={TS.modalTitle}>Did you make this now?</div>
             {confirmAdd.delta>=10&&(
-              <div style={{background:'#3a2418',border:'1px solid #e57368',borderRadius:6,padding:'8px 10px',marginBottom:12,color:'#f0a89c',fontSize:13,fontWeight:600}}>
+              <div style={{background:'#fdf1ec',border:'1px solid #d5544a',borderRadius:6,padding:'8px 10px',marginBottom:12,color:'#b3372c',fontSize:13,fontWeight:600}}>
                 ⚠ That's a big jump — double check this is really {confirmAdd.delta} before confirming.
               </div>
             )}
-            <div style={{color:'#c4c4c4',fontSize:14,marginBottom:16,lineHeight:1.6}}>
-              Adding {confirmAdd.delta} × <strong style={{color:'#efefef'}}>{confirmAdd.label}</strong>. If you just bottled it, say yes and concentrate gets deducted automatically.
+            <div style={{color:'#333333',fontSize:14,marginBottom:16,lineHeight:1.6}}>
+              Adding {confirmAdd.delta} × <strong style={{color:'#121212'}}>{confirmAdd.label}</strong>. If you just bottled it, say yes and concentrate gets deducted automatically.
             </div>
             <div style={{display:'flex',gap:10}}>
-              <button style={TS.btn('#303030','#efefef')} onClick={()=>{save(confirmAdd.pid, confirmAdd.newQty); setConfirmAdd(null);}}>No, just adjusting stock</button>
-              <button style={TS.btn('#4caf72','#fff')} onClick={()=>{saveAsProduction(confirmAdd.pid, confirmAdd.delta, confirmAdd.newQty); setConfirmAdd(null);}}>Yes, I made this ✓</button>
+              <button style={TS.btn('#eeeeee','#121212')} onClick={()=>{save(confirmAdd.pid, confirmAdd.newQty); setConfirmAdd(null);}}>No, just adjusting stock</button>
+              <button style={TS.btn('#2e8b57','#fff')} onClick={()=>{saveAsProduction(confirmAdd.pid, confirmAdd.delta, confirmAdd.newQty); setConfirmAdd(null);}}>Yes, I made this ✓</button>
             </div>
           </div>
         </div>
@@ -10207,26 +10377,26 @@ function MakeScreen({ jobs, inventory, concentrate }) {
     k, label:CONCENTRATE_TYPES[k]?.label, gap, have:concentrate[k]||0,
     effectiveGap:Math.max(0,gap-(concentrate[k]||0)),
   })).filter(x=>x.effectiveGap>0);
-  const RHDR = { ...SS.hdr, background:'#e57368', color:'#fff' };
-  const GHDR = { ...SS.hdr, background:'#4caf72', color:'#fff' };
+  const RHDR = { ...SS.hdr, background:'#d5544a', color:'#fff' };
+  const GHDR = { ...SS.hdr, background:'#2e8b57', color:'#fff' };
   return (
     <div>
       {(urgBottles.length>0||urgConc.length>0)&&(
-        <div style={{...SS.card,border:'1px solid #e57368',background:'#1e1010'}}>
+        <div style={{...SS.card,border:'1px solid #d5544a',background:'#fdecea'}}>
           <div style={RHDR}>🔥 Needed Today or Tomorrow</div>
           {urgBottles.map(({pid,totalNeeded,inStock,gap})=>(
             <div key={pid} style={SS.row}>
-              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
-              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
+              <span style={{fontSize:11,color:'#6a6a6a'}}>Need {totalNeeded} · Have {inStock}</span>
               <span style={SS.needBadge(false)}>Make {gap} more</span>
             </div>
           ))}
           {urgConc.map(({k,label,gap,have,effectiveGap})=>(
             <div key={k} style={SS.row}>
-              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{label}</span>
-              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {(gap+have).toFixed(1)}L · Have {have.toFixed(1)}L</span>
+              <span style={{fontSize:11,color:'#6a6a6a'}}>Need {(gap+have).toFixed(1)}L · Have {have.toFixed(1)}L</span>
               <span style={SS.needBadge(false)}>Brew {effectiveGap.toFixed(1)}L</span>
             </div>
           ))}
@@ -10237,9 +10407,9 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>⚠ Bottles to Produce</div>
           {bottleShortfalls.map(({pid,totalNeeded,inStock,gap})=>(
             <div key={pid} style={SS.row}>
-              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
-              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
+              <span style={{fontSize:11,color:'#6a6a6a'}}>Need {totalNeeded} · Have {inStock}</span>
               <span style={SS.needBadge(false)}>Make {gap}</span>
             </div>
           ))}
@@ -10250,9 +10420,9 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>⚠ Jerry Cans to Make</div>
           {jerryShortfalls.map(({pid,totalNeeded,inStock,gap})=>(
             <div key={pid} style={SS.row}>
-              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
-              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {totalNeeded} · Have {inStock}</span>
+              <span style={{fontSize:11,color:'#6a6a6a'}}>Need {totalNeeded} · Have {inStock}</span>
               <span style={SS.needBadge(false)}>Make {gap}</span>
             </div>
           ))}
@@ -10263,9 +10433,9 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={RHDR}>⚠ Concentrate to Brew</div>
           {concShortfalls.map(({k,label,needed,have,effectiveGap})=>(
             <div key={k} style={SS.row}>
-              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(k)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{label}</span>
-              <span style={{fontSize:11,color:'#9a9a9a'}}>Need {needed.toFixed(1)}L · Have {have.toFixed(1)}L</span>
+              <span style={{fontSize:11,color:'#6a6a6a'}}>Need {needed.toFixed(1)}L · Have {have.toFixed(1)}L</span>
               <span style={SS.needBadge(false)}>Brew {effectiveGap.toFixed(1)}L</span>
             </div>
           ))}
@@ -10276,7 +10446,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
           <div style={GHDR}>✓ Covered by Stock</div>
           {bottleCovered.map(({pid,totalNeeded,inStock})=>(
             <div key={pid} style={SS.row}>
-              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#1e1e1e',border:'1px solid #303030',marginRight:8}}/>
+              <img src={window.getProductImage(pid)} alt="" style={{width:24,height:24,borderRadius:5,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0',marginRight:8}}/>
               <span style={SS.lbl}>{PRODUCTS[pid]?.label}</span>
               <span style={SS.needBadge(true)}>✓ {inStock} in stock (need {totalNeeded})</span>
             </div>
@@ -10284,7 +10454,7 @@ function MakeScreen({ jobs, inventory, concentrate }) {
         </div>
       )}
       {bottleShortfalls.length===0&&jerryShortfalls.length===0&&concShortfalls.length===0&&urgBottles.length===0&&urgConc.length===0&&(
-        <div style={{...SS.card,textAlign:'center',color:'#9a9a9a',fontSize:14}}>All production needs covered ✓</div>
+        <div style={{...SS.card,textAlign:'center',color:'#6a6a6a',fontSize:14}}>All production needs covered ✓</div>
       )}
     </div>
   );
@@ -10322,7 +10492,7 @@ function BeansSection({ beans, setBeans }) {
         const isLow = d.kg<=bt.warnKg && !d.ordered;
         const [orderKg, setOrderKg] = [useRef(''), null];
         return (
-          <div key={k} style={{borderBottom:'1px solid #303030',paddingBottom:10,marginBottom:10}}>
+          <div key={k} style={{borderBottom:'1px solid #e0e0e0',paddingBottom:10,marginBottom:10}}>
             <NumRow
               label={bt.label}
               value={d.kg??''}
@@ -10335,14 +10505,14 @@ function BeansSection({ beans, setBeans }) {
               <BeanOrderRow beanKey={k} onOrder={markOrdered}/>
             )}
             {d.ordered&&(
-              <div style={{background:'#1a2a1a',border:'1px solid #4caf72',borderRadius:6,padding:'10px 12px',marginTop:6,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+              <div style={{background:'#e9f6ee',border:'1px solid #2e8b57',borderRadius:6,padding:'10px 12px',marginTop:6,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                 <div>
-                  <div style={{fontSize:12,fontWeight:700,color:'#4caf72'}}>✓ Ordered — {d.orderedKg}kg incoming</div>
-                  <div style={{fontSize:11,color:'#9a9a9a',marginTop:3}}>Tap Delivered when stock arrives</div>
+                  <div style={{fontSize:12,fontWeight:700,color:'#2e8b57'}}>✓ Ordered — {d.orderedKg}kg incoming</div>
+                  <div style={{fontSize:11,color:'#6a6a6a',marginTop:3}}>Tap Delivered when stock arrives</div>
                 </div>
                 <div style={{display:'flex',gap:6}}>
-                  <button style={{background:'#4caf72',color:'#fff',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={()=>markDelivered(k)}>📦 Delivered</button>
-                  <button style={{background:'#303030',color:'#9a9a9a',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,cursor:'pointer'}} onClick={()=>cancelOrder(k)}>✕</button>
+                  <button style={{background:'#2e8b57',color:'#fff',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={()=>markDelivered(k)}>📦 Delivered</button>
+                  <button style={{background:'#eeeeee',color:'#6a6a6a',border:'none',borderRadius:6,padding:'7px 10px',fontSize:12,cursor:'pointer'}} onClick={()=>cancelOrder(k)}>✕</button>
                 </div>
               </div>
             )}
@@ -10357,7 +10527,7 @@ function BeanOrderRow({ beanKey, onOrder }) {
   return (
     <div style={{display:'flex',gap:8,marginTop:6}}>
       <input type="number" placeholder="kg ordered" style={{...SS.inp,flex:1,width:'auto'}} value={kg} onChange={e=>setKg(e.target.value)}/>
-      <button style={{background:'#d0d0d0',color:'#121212',border:'none',borderRadius:6,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={async()=>{const v=parseFloat(kg)||0;if(v<=0)return;await onOrder(beanKey,v);setKg('');}}>✓ Ordered</button>
+      <button style={{background:'#1a1a1a',color:'#ffffff',border:'none',borderRadius:6,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}} onClick={async()=>{const v=parseFloat(kg)||0;if(v<=0)return;await onOrder(beanKey,v);setKg('');}}>✓ Ordered</button>
     </div>
   );
 }
@@ -10391,6 +10561,20 @@ function stockSignature(p) {
     labeledStock: sortKeys(p.labeledStock),
     jobs,
   });
+}
+
+function BeansCollapse({ beans, setBeans }) {
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem('gremier_collapse_stockbeans') === '0'; } catch (_) { return false; } });
+  const toggle = () => setOpen(o => { const n = !o; try { localStorage.setItem('gremier_collapse_stockbeans', n ? '0' : '1'); } catch (_) {} return n; });
+  return (
+    <div>
+      <div onClick={toggle} style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none',padding:'12px 4px'}}>
+        <span style={{fontSize:14,fontWeight:700,color:'#121212'}}>🫘 Beans</span>
+        <span style={{fontSize:12,color:'#6a6a6a'}}>{open ? '▾' : '▸'}</span>
+      </div>
+      {open && <BeansSection beans={beans} setBeans={setBeans}/>}
+    </div>
+  );
 }
 
 function StockTab() {
@@ -10498,12 +10682,12 @@ function StockTab() {
     { id:'labels',      label:'Labels' },
   ];
 
-  if (loading) return <div style={{...SS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#9a9a9a'}}><div style={{width:20,height:20,border:'2px solid #454545',borderTopColor:'#d0d0d0',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading stock…</div>;
+  if (loading) return <div style={{...SS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a6a6a'}}><div style={{width:20,height:20,border:'2px solid #cccccc',borderTopColor:'#1a1a1a',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading stock…</div>;
 
   return (
     <div style={SS.screen}>
       <div style={{padding:'16px 16px 0'}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#efefef',marginBottom:14}}>Stock</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Stock</div>
         <div style={SS.toggleRow}>
           {TABS.map(t=>(
             <button key={t.id} style={SS.toggleBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>
@@ -10511,7 +10695,7 @@ function StockTab() {
         </div>
       </div>
       <div style={{padding:'0 16px'}}>
-        {tab==='concentrate'&&<><ConcentrateScreen concentrate={concentrate} setConcentrate={setConcentrate} jobs={jobs} inventory={inventory}/><BeansSection beans={beans} setBeans={setBeans}/></>}
+        {tab==='concentrate'&&<><ConcentrateScreen concentrate={concentrate} setConcentrate={setConcentrate} jobs={jobs} inventory={inventory}/><BeansCollapse beans={beans} setBeans={setBeans}/></>}
         {tab==='liters'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['liter']}/>}
         {tab==='minis'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['mini']}/>}
         {tab==='jerries'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['jerry']}/>}
@@ -10730,8 +10914,8 @@ async function saveVoiceJobAndEffects3(job, intent, stores) {
 }
 
 // ── Global floating pills (WhatsApp/Billing/Web Queue) — visible on every screen ──
-const GLOBAL_PILL_DRAWER_STYLE = { position:'fixed', bottom:0, left:0, right:0, background:'#1e1e1e', border:'1px solid #454545', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:301 };
-const GLOBAL_PILL_BACKDROP_STYLE = { position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:300 };
+const GLOBAL_PILL_DRAWER_STYLE = { position:'fixed', bottom:0, left:0, right:0, background:'#fafafa', border:'1px solid #cccccc', borderRadius:'16px 16px 0 0', padding:'18px 16px 40px', maxHeight:'72vh', overflowY:'auto', zIndex:301 };
+const GLOBAL_PILL_BACKDROP_STYLE = { position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:300 };
 function globalPillBtn(bg) { return { background:bg, color:'#fff', border:'none', borderRadius:8, padding:'10px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }; }
 
 function GlobalWaDrawer({ jobs, stores, onMarkSent, onClose }) {
@@ -10741,18 +10925,18 @@ function GlobalWaDrawer({ jobs, stores, onMarkSent, onClose }) {
       <div style={GLOBAL_PILL_DRAWER_STYLE}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
           <span style={{fontSize:15,fontWeight:700,color:'#25D366'}}>💬 WhatsApp Notes</span>
-          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+          <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
         </div>
-        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All sent!</div>}
+        {jobs.length===0&&<div style={{color:'#6a6a6a',fontSize:13}}>All sent!</div>}
         {jobs.map(job=>{
           const waLink = buildStoreWaLink2(job, stores);
           return (
-            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
-              <div style={{fontWeight:600,color:'#efefef',marginBottom:6}}>{job.storeName}</div>
-              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{formatDate2(job.date)}</div>
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
+              <div style={{fontWeight:600,color:'#121212',marginBottom:6}}>{job.storeName}</div>
+              <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{formatDate2(job.date)}</div>
               <div style={{display:'flex',gap:8}}>
                 {waLink&&<a href={waLink} target="_blank" rel="noreferrer" style={{...globalPillBtn('#25D366'),flex:1,textAlign:'center',textDecoration:'none'}}>💬 Send</a>}
-                <button style={{...globalPillBtn('#303030'),flex:1}} onClick={()=>onMarkSent(job.id)}>✓ Sent</button>
+                <button style={{...globalPillBtn('#eeeeee'),flex:1}} onClick={()=>onMarkSent(job.id)}>✓ Sent</button>
               </div>
             </div>
           );
@@ -10769,23 +10953,23 @@ function GlobalBillingDrawer({ jobs, onMarkBilled, onMarkPaid, onClose }) {
       <div style={GLOBAL_PILL_BACKDROP_STYLE} onClick={onClose}/>
       <div style={GLOBAL_PILL_DRAWER_STYLE}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-          <span style={{fontSize:15,fontWeight:700,color:'#e0a030'}}>💰 Billing</span>
-          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+          <span style={{fontSize:15,fontWeight:700,color:'#b8860b'}}>💰 Billing</span>
+          <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
         </div>
-        {jobs.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>All billed!</div>}
+        {jobs.length===0&&<div style={{color:'#6a6a6a',fontSize:13}}>All billed!</div>}
         {jobs.map(job=>{
           const name = job.deliveryType==='coffeebar'?`Coffee Bar${job.cbName?' — '+job.cbName:''}`:job.privateName||'Private Delivery';
           const detail = Object.entries(job.quantities||{}).filter(([,q])=>q>0).map(([pid,qty])=>`${qty} ${PROD_LABELS[pid]||pid}`).join(', ');
           return (
-            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
-              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{name}</div>
-              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:4}}>{formatDate2(job.date)}</div>
-              {detail&&<div style={{fontSize:11,color:'#9a9a9a',marginBottom:8}}>{detail}</div>}
-              {!job.billed&&<button style={{...globalPillBtn('#e0a030'),width:'100%'}} onClick={()=>onMarkBilled(job.id)}>✓ Mark Billed</button>}
+            <div key={job.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
+              <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{name}</div>
+              <div style={{fontSize:11,color:'#6a6a6a',marginBottom:4}}>{formatDate2(job.date)}</div>
+              {detail&&<div style={{fontSize:11,color:'#6a6a6a',marginBottom:8}}>{detail}</div>}
+              {!job.billed&&<button style={{...globalPillBtn('#b8860b'),width:'100%'}} onClick={()=>onMarkBilled(job.id)}>✓ Mark Billed</button>}
               {job.billed&&!job.paid&&(
-                <div style={{background:'#1a2a1a',border:'1px solid #4caf72',borderRadius:6,padding:10,marginTop:4}}>
-                  <div style={{fontSize:12,fontWeight:700,color:'#4caf72',marginBottom:6}}>✓ Billed — awaiting payment</div>
-                  <button style={{...globalPillBtn('#4caf72'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
+                <div style={{background:'#e9f6ee',border:'1px solid #2e8b57',borderRadius:6,padding:10,marginTop:4}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#2e8b57',marginBottom:6}}>✓ Billed — awaiting payment</div>
+                  <button style={{...globalPillBtn('#2e8b57'),width:'100%'}} onClick={()=>onMarkPaid(job.id)}>💳 Mark Paid</button>
                 </div>
               )}
             </div>
@@ -10802,21 +10986,21 @@ function GlobalWebQueueDrawer({ orders, onClose, onSchedule, onDismiss }) {
       <div style={GLOBAL_PILL_BACKDROP_STYLE} onClick={onClose}/>
       <div style={GLOBAL_PILL_DRAWER_STYLE}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-          <span style={{fontSize:15,fontWeight:700,color:'#6aa8e8'}}>📦 Website Orders</span>
-          <button style={{background:'none',border:'none',color:'#9a9a9a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
+          <span style={{fontSize:15,fontWeight:700,color:'#3f7fc4'}}>📦 Website Orders</span>
+          <button style={{background:'none',border:'none',color:'#6a6a6a',fontSize:18,cursor:'pointer'}} onClick={onClose}>✕</button>
         </div>
-        {orders.length===0&&<div style={{color:'#9a9a9a',fontSize:13}}>Nothing to schedule!</div>}
+        {orders.length===0&&<div style={{color:'#6a6a6a',fontSize:13}}>Nothing to schedule!</div>}
         {orders.map(o=>{
           const label = websiteOrderDisplayLabel2(o);
           const items = (o.items||[]).map(i=>`${i.name_en||'Item'} ×${i.qty||1}`).join(', ');
           const unpaid = o.payment_status&&o.payment_status!=='paid';
           return (
-            <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #303030'}}>
-              <div style={{fontWeight:600,color:'#efefef',marginBottom:4}}>{label}{unpaid&&<span style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',padding:'2px 7px',borderRadius:10,background:'rgba(224,160,48,.15)',color:'#e0a030',display:'inline-block',marginLeft:6}}>Awaiting payment</span>}</div>
-              {o.delivery_address&&<div style={{fontSize:11,color:'#6aa8e8',marginBottom:4}}>📍 {o.delivery_address}</div>}
-              <div style={{fontSize:11,color:'#9a9a9a',marginBottom:10}}>{items}</div>
-              <button style={{...globalPillBtn('#6aa8e8'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
-              <button style={{...globalPillBtn('#303030'),width:'100%',border:'1px solid #454545',color:'#e57368'}} onClick={()=>onDismiss(o)}>Remove</button>
+            <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
+              <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{label}{unpaid&&<span style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',padding:'2px 7px',borderRadius:10,background:'rgba(224,160,48,.15)',color:'#b8860b',display:'inline-block',marginLeft:6}}>Awaiting payment</span>}</div>
+              {o.delivery_address&&<div style={{fontSize:11,color:'#3f7fc4',marginBottom:4}}>📍 {o.delivery_address}</div>}
+              <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{items}</div>
+              <button style={{...globalPillBtn('#3f7fc4'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
+              <button style={{...globalPillBtn('#eeeeee'),width:'100%',border:'1px solid #cccccc',color:'#d5544a'}} onClick={()=>onDismiss(o)}>Remove</button>
             </div>
           );
         })}
@@ -10944,10 +11128,10 @@ function GlobalPillsFloat() {
         <button style={{position:'fixed',bottom:170,right:16,background:'#25D366',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>
       )}
       {!anyDrawerOpen&&unbilled.length>0&&(
-        <button style={{position:'fixed',bottom:210,right:16,background:'#e0a030',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
+        <button style={{position:'fixed',bottom:210,right:16,background:'#b8860b',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
       )}
       {!anyDrawerOpen&&pendingWeb.length>0&&(
-        <button style={{position:'fixed',bottom:250,right:16,background:'#6aa8e8',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
+        <button style={{position:'fixed',bottom:250,right:16,background:'#3f7fc4',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
       )}
       {waOpen&&<GlobalWaDrawer jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
       {billingOpen&&<GlobalBillingDrawer jobs={unbilled} onMarkBilled={markBilled} onMarkPaid={markPaid} onClose={()=>setBillingOpen(false)}/>}
@@ -11036,18 +11220,40 @@ function VoiceLoggerFloat() {
     const today = todayISO2();
     const tomorrow = tomorrowISO2();
     const productCatalog = voiceProductPrompt3();
+    // Live schedule context — lets the assistant complete/reschedule existing jobs.
+    let openJobsBlock = 'Could not load open jobs.';
+    try {
+      const rows = await window.opsFetch('jobs?done=eq.false&select=id,type,delivery_type,store_name,private_name,cb_name,label,date,time&order=date.asc&limit=50');
+      openJobsBlock = (rows||[]).map(r=>{
+        const who = r.store_name || r.private_name || r.cb_name || '';
+        return `- id:"${r.id}" | ${r.type}${r.delivery_type?'/'+r.delivery_type:''} | ${who} | ${r.date}${r.time?' '+String(r.time).slice(0,5):''}${r.label?' | '+r.label:''}`;
+      }).join('\n') || 'No open jobs.';
+    } catch(e) { console.warn('voice: open jobs fetch failed', e); }
     const systemPrompt = `You are the voice assistant for Gremier Coffee, a cold brew company in Jerusalem.
 TODAY: ${today} TOMORROW: ${tomorrow}
 STORES: ${stores.map(s=>s.name).join(', ')}
 PRODUCT CATALOG — use these exact product keys:
 ${productCatalog}
 
+CURRENT OPEN (NOT-DONE) JOBS ON THE SCHEDULE:
+${openJobsBlock}
+
+WHAT YOU CAN DO (capabilities):
+- Log work that already happened (deliveries, brews, bottling, labeling, drains) — applies stock changes.
+- Schedule future jobs of the same types.
+- Mark an EXISTING open job from the list above as completed.
+- Reschedule an EXISTING open job to a new date/time.
+- Answer questions about the schedule, stock, and planning using the open-jobs list above.
+
 PICK ONE INTENT:
-1. log — something already happened. done=true, date=today.
-2. schedule — planning for later. done=false.
+1. log — something already happened that is NOT one of the open jobs above. done=true, date=today.
+2. schedule — planning a NEW job for later. done=false.
 3. ask — question about stock or planning. Answer conversationally.
 4. clarify — key info missing. Ask one short question with choices.
 5. unknown — cannot tell what they mean.
+6. complete — the user says an EXISTING open job (match it in the list above) is done/finished/delivered. Return its exact id.
+7. reschedule — the user wants to MOVE an existing open job to a different date/time. Return its exact id plus the new date (and time if said).
+If what the user reports matches an open job, PREFER complete/reschedule over log — do not create duplicates.
 
 JOB SHAPES:
 - delivery store: { type:"delivery", deliveryType:"store", storeName, quantities:{product_key:qty}, done, date }
@@ -11069,6 +11275,8 @@ log/schedule (TWO OR MORE jobs — e.g. "schedule two deliveries"): { "intent":"
 ask: { "intent":"ask", "reply":"your answer" }
 clarify: { "intent":"clarify", "reply":"one short question", "choices":["A","B"] }
 unknown: { "intent":"unknown", "reply":"I didn't catch that. Try again?" }
+complete: { "intent":"complete", "reply":"short confirmation of which job", "job_id":"exact-id-from-open-jobs-list" }
+reschedule: { "intent":"reschedule", "reply":"short confirmation", "job_id":"exact-id-from-open-jobs-list", "date":"YYYY-MM-DD", "time":"HH:MM" or null }
 
 EVERY job MUST include a "date" (YYYY-MM-DD). If the user gives no date, use TODAY for log and TOMORROW for schedule.
 For log intent, the app will immediately apply stock changes after the user confirms, so do not invent vague products. Use exact product keys only.
@@ -11080,7 +11288,7 @@ Keep replies short — 1-2 sentences.`;
     try {
       const history = messages.filter(m=>m.text&&m.text!=='⋯').map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const data = await opsAI2('parse_intent', {
-        model:'gpt-4o', max_tokens:600, temperature:0.2,
+        model:'gpt-5.6-luna', max_tokens:600, temperature:0.2,
         response_format:{type:'json_object'},
         messages:[{role:'system',content:systemPrompt},...history,{role:'user',content:text}],
       });
@@ -11096,6 +11304,10 @@ Keep replies short — 1-2 sentences.`;
         : (obj.option&&obj.option.job ? [obj.option] : []);
       if (obj.intent==='ask'||obj.intent==='unknown'||obj.intent==='clarify') {
         setMessages(prev=>[...prev,{role:'assistant',text:reply,choices}]);
+        setPhase('done');
+      } else if ((obj.intent==='complete'||obj.intent==='reschedule')&&obj.job_id) {
+        setMessages(prev=>[...prev,{role:'assistant',text:reply,intent:obj.intent,choices}]);
+        setPendingOption({action:obj,intent:obj.intent});
         setPhase('done');
       } else if (items.length) {
         setMessages(prev=>[...prev,{role:'assistant',text:reply,intent:obj.intent,choices}]);
@@ -11113,9 +11325,34 @@ Keep replies short — 1-2 sentences.`;
 
   async function confirmOption() {
     if (!pendingOption) return;
-    const { items, intent } = pendingOption;
+    const { items, intent, action } = pendingOption;
     setPendingOption(null);
     setPhase('thinking');
+
+    // Existing-job actions: mark complete (with stock side effects) or move date/time.
+    if (action && action.job_id) {
+      try {
+        const rows = await window.opsFetch(`jobs?id=eq.${encodeURIComponent(action.job_id)}&select=*`);
+        const row = rows && rows[0];
+        if (!row) throw new Error('Job not found');
+        if (intent==='complete') {
+          const job = rowToJob2(row);
+          await patchJob2(row.id, { done:true });
+          await applyJobSideEffects2(job, job.type==='delivery' ? job.quantities : null, stores);
+          window.notifyGremierStockChanged?.();
+          setMessages(prev=>[...prev,{role:'assistant',text:'✓ Marked complete.'}]);
+        } else {
+          await patchJob2(row.id, { date:action.date||row.date, time:action.time||row.time||null });
+          setMessages(prev=>[...prev,{role:'assistant',text:'✓ Rescheduled.'}]);
+        }
+        window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+      } catch(err) {
+        console.error('Voice job action failed:', err);
+        setMessages(prev=>[...prev,{role:'assistant',text:'Could not update that job: '+(err.message||'error')}]);
+      }
+      setPhase('done');
+      return;
+    }
     const list = (items||[]).filter(it=>it&&it.job);
     if (!list.length) { setPhase('idle'); return; }
 
@@ -11161,10 +11398,10 @@ Keep replies short — 1-2 sentences.`;
     setPhase('idle');
   }
 
-  const intentColor = i => i==='log'?'#4caf72':i==='schedule'?'#6aa8e8':'#d0d0d0';
+  const intentColor = i => i==='log'?'#2e8b57':i==='schedule'?'#3f7fc4':'#1a1a1a';
   const intentLabel = i => i==='log'?'Log Now':i==='schedule'?'Schedule':'Confirm';
 
-  const AMBER = '#e0a030';
+  const AMBER = '#b8860b';
 
   return (
     <>
@@ -11177,14 +11414,14 @@ Keep replies short — 1-2 sentences.`;
       `}</style>
 
       {/* backdrop */}
-      {isOpen&&<div onClick={closeChat} style={{position:'fixed',inset:0,zIndex:298,background:'rgba(0,0,0,.55)'}}/>}
+      {isOpen&&<div onClick={closeChat} style={{position:'fixed',inset:0,zIndex:298,background:'rgba(0,0,0,.4)'}}/>}
 
       {/* floating button */}
       {!isOpen&&(
 <button onClick={openChat} style={{
           position:'fixed', bottom:115, right:16,
           width:46, height:46, borderRadius:'50%',
-          background:AMBER, color:'#121212',
+          background:AMBER, color:'#ffffff',
           border:'none', fontSize:20, cursor:'pointer', zIndex:50,
           display:'flex', alignItems:'center', justifyContent:'center',
           boxShadow:'0 4px 16px rgba(0,0,0,.5)',
@@ -11195,16 +11432,16 @@ Keep replies short — 1-2 sentences.`;
       {isOpen&&(
         <div onClick={e=>e.stopPropagation()} style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:299,
-          background:'#1e1e1e', borderRadius:'18px 18px 0 0',
+          background:'#fafafa', borderRadius:'18px 18px 0 0',
           boxShadow:'0 -4px 30px rgba(0,0,0,.4)',
           animation:'slideUp2 .22s ease',
           display:'flex', flexDirection:'column', maxHeight:'72vh',
-          border:'1px solid #454545', borderBottom:'none',
+          border:'1px solid #cccccc', borderBottom:'none',
         }}>
           {/* header */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px 10px',borderBottom:'1px solid #303030',flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px 10px',borderBottom:'1px solid #e0e0e0',flexShrink:0}}>
             <div style={{fontSize:13,fontWeight:700,color:AMBER,letterSpacing:.5}}>☕ Gremier Assistant</div>
-            <button onClick={closeChat} style={{background:'none',border:'none',color:'#9a9a9a',fontSize:20,cursor:'pointer'}}>✕</button>
+            <button onClick={closeChat} style={{background:'none',border:'none',color:'#6a6a6a',fontSize:20,cursor:'pointer'}}>✕</button>
           </div>
 
           {/* messages */}
@@ -11214,8 +11451,8 @@ Keep replies short — 1-2 sentences.`;
                 <div style={{
                   padding:'9px 13px',
                   borderRadius:msg.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',
-                  background:msg.role==='user'?AMBER:'#303030',
-                  color:msg.role==='user'?'#121212':'#efefef',
+                  background:msg.role==='user'?AMBER:'#eeeeee',
+                  color:msg.role==='user'?'#ffffff':'#121212',
                   fontSize:14, lineHeight:1.5, maxWidth:'90%',
                 }}>{msg.text}</div>
                 {msg.choices&&i===messages.length-1&&(
@@ -11225,7 +11462,7 @@ Keep replies short — 1-2 sentences.`;
                         setMessages(prev=>[...prev,{role:'user',text:choice}]);
                         setPhase('thinking');
                         parseIntent2(choice);
-                      }} style={{background:'#303030',border:'1px solid #454545',borderRadius:20,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:'pointer',color:'#efefef'}}>
+                      }} style={{background:'#eeeeee',border:'1px solid #cccccc',borderRadius:20,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:'pointer',color:'#121212'}}>
                         {choice}
                       </button>
                     ))}
@@ -11235,23 +11472,23 @@ Keep replies short — 1-2 sentences.`;
             ))}
             {phase==='thinking'&&(
               <div className="vl-msg" style={{display:'flex',alignItems:'flex-start'}}>
-                <div style={{background:'#303030',borderRadius:'16px 16px 16px 4px',padding:'10px 14px',fontSize:18,color:'#9a9a9a'}}>⋯</div>
+                <div style={{background:'#eeeeee',borderRadius:'16px 16px 16px 4px',padding:'10px 14px',fontSize:18,color:'#6a6a6a'}}>⋯</div>
               </div>
             )}
             <div ref={messagesEndRef}/>
           </div>
 
           {/* error */}
-          {errorMsg&&<div style={{padding:'4px 16px',fontSize:12,color:'#e57368',textAlign:'center',flexShrink:0}}>{errorMsg}</div>}
+          {errorMsg&&<div style={{padding:'4px 16px',fontSize:12,color:'#d5544a',textAlign:'center',flexShrink:0}}>{errorMsg}</div>}
 
           {/* bottom bar */}
-          <div style={{padding:'10px 12px 28px',flexShrink:0,borderTop:'1px solid #303030',background:'#1e1e1e'}}>
+          <div style={{padding:'10px 12px 28px',flexShrink:0,borderTop:'1px solid #e0e0e0',background:'#fafafa'}}>
             {pendingOption?(
               <div>
                 <div style={{fontSize:12,fontWeight:700,color:intentColor(pendingOption.intent),marginBottom:6}}>{intentLabel(pendingOption.intent)}: {(pendingOption.items||[]).map(it=>it.label||(it.job&&it.job.type)||'job').join(', ')}</div>
                 <div style={{display:'flex',gap:8,marginTop:8}}>
-                  <button onClick={cancelOption} style={{flex:1,background:'#303030',border:'1px solid #454545',borderRadius:8,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer',color:'#9a9a9a'}}>Cancel</button>
-                  <button onClick={confirmOption} style={{flex:2,background:intentColor(pendingOption.intent),border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',color:'#121212'}}>{intentLabel(pendingOption.intent)} ✓</button>
+                  <button onClick={cancelOption} style={{flex:1,background:'#eeeeee',border:'1px solid #cccccc',borderRadius:8,padding:'12px',fontSize:14,fontWeight:600,cursor:'pointer',color:'#6a6a6a'}}>Cancel</button>
+                  <button onClick={confirmOption} style={{flex:2,background:intentColor(pendingOption.intent),border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer',color:'#ffffff'}}>{intentLabel(pendingOption.intent)} ✓</button>
                 </div>
               </div>
             ):(
@@ -11259,13 +11496,13 @@ Keep replies short — 1-2 sentences.`;
                 <input
                   type="text"
                   placeholder="Or type a message…"
-                  style={{flex:1,background:'#303030',border:'1px solid #454545',borderRadius:20,padding:'10px 14px',color:'#efefef',fontSize:14,outline:'none'}}
+                  style={{flex:1,background:'#eeeeee',border:'1px solid #cccccc',borderRadius:20,padding:'10px 14px',color:'#121212',fontSize:14,outline:'none'}}
                   onKeyDown={e=>{if(e.key==='Enter'&&e.target.value.trim()){const t=e.target.value.trim();e.target.value='';setMessages(prev=>[...prev,{role:'user',text:t}]);setPhase('thinking');parseIntent2(t);}}}
                 />
                 <button onClick={handleMicTap} style={{
                   width:46,height:46,borderRadius:'50%',flexShrink:0,
-                  background:phase==='listening'?'#e57368':phase==='thinking'?'#6aa8e8':AMBER,
-                  color:'#121212',border:'none',fontSize:20,cursor:'pointer',
+                  background:phase==='listening'?'#d5544a':phase==='thinking'?'#3f7fc4':AMBER,
+                  color:'#ffffff',border:'none',fontSize:20,cursor:'pointer',
                   display:'flex',alignItems:'center',justifyContent:'center',
                   animation:phase==='listening'?'micPulse 1s infinite':phase==='thinking'?'micThink 1s infinite':'none',
                   boxShadow:'0 2px 10px rgba(0,0,0,.4)',

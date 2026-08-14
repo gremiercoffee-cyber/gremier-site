@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v23';
+const CACHE = 'gremier-v24';
 const PRECACHE = [
   '/index.html',
   '/admin.html',
@@ -26,6 +26,34 @@ self.addEventListener('activate', e => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Web Push: show native notification (admin PWA)
+self.addEventListener('push', e => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { title: 'Gremier', body: e.data && e.data.text() }; }
+  const title = data.title || 'Gremier';
+  e.waitUntil(self.registration.showNotification(title, {
+    body: data.body || '',
+    tag: data.tag || undefined,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: { url: data.url || '/admin.html' },
+  }));
+});
+
+// Tap on notification → focus/open the admin app
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/admin.html';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if (client.url.includes('admin.html') && 'focus' in client) return client.focus();
+      }
+      return self.clients.openWindow(url);
+    })
   );
 });
 
