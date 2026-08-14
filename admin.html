@@ -7,6 +7,16 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW registration failed:', err));
   }
+  // ── Labels tracking kill switch ─────────────────────────────
+  // Default OFF: anything except the literal string '1' means disabled.
+  // Toggle UI lives in the Stock tab → Labels sub-screen. All label-related
+  // creation paths and low-label warnings check this; saved labeling jobs
+  // still display and their stock side effects still apply/reverse.
+  window.gremierLabelsEnabled = () => localStorage.getItem('gremier_labels_enabled') === '1';
+  window.gremierSetLabelsEnabled = (on) => {
+    localStorage.setItem('gremier_labels_enabled', on ? '1' : '0');
+    window.dispatchEvent(new CustomEvent('gremier:labels-toggled'));
+  };
 </script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -7029,7 +7039,7 @@ async function loadBriefing(options = {}) {
     }).filter(x => x.demand > 0 || x.brewing > 0 || x.gap > 0).sort((a,b) => b.gap - a.gap);
     const concentrateGapActions = concentrateGaps.filter(x => x.gap > 0);
 
-    const lowLabels = Object.entries(BRIEFING_LABEL_WARN).map(([pid, warn]) => ({ pid, label: briefingProductLabel(pid), qty: briefingNum(labels[pid]), warn })).filter(x => x.qty < x.warn).sort((a,b) => a.qty - b.qty).slice(0,5);
+    const lowLabels = !window.gremierLabelsEnabled() ? [] : Object.entries(BRIEFING_LABEL_WARN).map(([pid, warn]) => ({ pid, label: briefingProductLabel(pid), qty: briefingNum(labels[pid]), warn })).filter(x => x.qty < x.warn).sort((a,b) => a.qty - b.qty).slice(0,5);
     const lowBeans = Object.entries(BRIEFING_CONCENTRATES).map(([k, meta]) => ({ key:k, label:meta.label, kg: briefingNum(beans[k]?.kg), ordered: !!beans[k]?.ordered, orderedKg: briefingNum(beans[k]?.orderedKg), warn: k === 'classic' ? 9 : k === 'decaf' ? 1 : 3 })).filter(x => x.kg <= x.warn && !x.ordered).sort((a,b) => a.kg - b.kg);
 
     const actions = briefingBuildSummaryActions({ todayJobs, dueStores, bottleShortfalls: urgentBottleShortfalls.length ? urgentBottleShortfalls : bottleShortfalls, concentrateGaps: concentrateGapActions, forecastGaps });
@@ -8933,7 +8943,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
           <div style={{display:'flex',gap:10,marginTop:14}}>
             <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
             <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>{
-              if (LABELED.includes(job.product)) { setLabeledUsed({[job.product]:getBottledUnits(actual)}); setAskLabeled(true); }
+              if (window.gremierLabelsEnabled() && LABELED.includes(job.product)) { setLabeledUsed({[job.product]:getBottledUnits(actual)}); setAskLabeled(true); }
               else onConfirm(job,actual,null);
             }}>Next →</button>
           </div>
@@ -9451,7 +9461,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
             <div style={{display:'flex',gap:6,marginBottom:12}}>
               <button style={tog(prodType==='brew','#3f7fc4')} onClick={()=>setProdType('brew')}>Brew</button>
               <button style={tog(prodType==='bottle','#b8860b')} onClick={()=>setProdType('bottle')}>Bottle</button>
-              <button style={tog(prodType==='label','#8a7060')} onClick={()=>setProdType('label')}>Label</button>
+              {(window.gremierLabelsEnabled()||prefill?.type==='labeling')&&<button style={tog(prodType==='label','#8a7060')} onClick={()=>setProdType('label')}>Label</button>}
             </div>
             {prodType==='brew'&&<><div style={{marginBottom:12}}><span style={lbl}>Concentrate</span><select style={TS.inp} value={brewConc} onChange={e=>setBrewConc(e.target.value)}>{Object.entries(CONC).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Kilos</span><select style={TS.inp} value={kg} onChange={e=>setKg(Number(e.target.value))}><option value={3}>3kg → ~19L</option><option value={2}>2kg → ~12.7L</option><option value={1.5}>1.5kg → ~9.5L</option><option value={1}>1kg → ~6.4L</option></select></div></>}
             {prodType==='bottle'&&<>
@@ -9565,7 +9575,8 @@ const [showForm, setShowForm] = useState2(false);
   const brewingJobs = jobs.filter(j=>j.brewStarted&&!j.done);
   const upcomingJobs = jobs.filter(j=>!j.done&&!j.brewStarted&&j.date>tomorrow).sort((a,b)=>a.date.localeCompare(b.date));
   const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
-  const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid);
+  // Website orders are paid at checkout — never bill them (websiteOrderId marks them; paid can be toggled manually so it's not the filter).
+  const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid&&!j.websiteOrderId);
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate()-weekStart.getDay()); weekStart.setHours(0,0,0,0);
   const weekStartISO = localDateStr(weekStart);
   const completedThisWeek = jobs.filter(j=>j.done&&j.date>=weekStartISO&&j.type!=='brew').sort((a,b)=>b.date.localeCompare(a.date));
@@ -9682,7 +9693,7 @@ async function addJobFromForm(job, mode) {
     if (mode === 'lognow' && created.every(j=>j.type==='bottling'||j.type==='labeling')) {
       const completed = created.map(j=>{
         const doneJob = { ...j, done:true, actualQty:j.type==='bottling'?(j.liters||0):(j.qty||0), needsConfirmation:false };
-        if (j.type==='bottling' && LABELED_FOR_AUTO_USE.includes(j.product)) {
+        if (window.gremierLabelsEnabled() && j.type==='bottling' && LABELED_FOR_AUTO_USE.includes(j.product)) {
           doneJob.labeledUsed = { [j.product]: bottledUnitsFromJob(j) };
         }
         return doneJob;
@@ -10566,6 +10577,9 @@ function StockTab() {
   const [beans, setBeans] = useState(() => cachedInit?.beans || {classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
   const [labeledStock, setLabeledStock] = useState(() => cachedInit?.labeledStock || {});
   const [jobs, setJobs] = useState(() => cachedInit?.jobs || []);
+  // Labels kill switch: mirror the localStorage flag in state so toggling re-renders this root.
+  const [labelsOn, setLabelsOnState] = useState(() => window.gremierLabelsEnabled());
+  const setLabelsOn = (on) => { window.gremierSetLabelsEnabled(on); setLabelsOnState(on); };
 
   const reloadStock = useCallback(async ({ silent = false, setup = false } = {}) => {
     if (!silent) setLoading(true);
@@ -10679,7 +10693,19 @@ function StockTab() {
         {tab==='minis'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['mini']}/>}
         {tab==='jerries'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['jerry']}/>}
         {tab==='syrups'&&<BottledScreen inventory={inventory} setInventory={setInventory} concentrate={concentrate} setConcentrate={setConcentrate} filterCats={['syrup','dispenser']}/>}
-        {tab==='labels'&&<LabelsScreen labeledStock={labeledStock} setLabeledStock={setLabeledStock}/>}
+        {tab==='labels'&&(labelsOn
+          ? <>
+              <LabelsScreen labeledStock={labeledStock} setLabeledStock={setLabeledStock}/>
+              <div style={{textAlign:'center',padding:'6px 0 26px'}}>
+                <a href="#" style={{color:'#8a7060',fontSize:12,textDecoration:'underline'}} onClick={e=>{e.preventDefault();setLabelsOn(false);}}>Turn off label tracking</a>
+              </div>
+            </>
+          : <div style={{...SS.card,textAlign:'center',padding:'36px 20px'}}>
+              <div style={{fontSize:30,marginBottom:10}}>🏷️</div>
+              <div style={{fontSize:15,fontWeight:600,color:'#121212',marginBottom:6}}>Label tracking is off</div>
+              <div style={{fontSize:12.5,color:'#6a6a6a',lineHeight:1.5,marginBottom:16}}>Label counts, low-label warnings, and labeling jobs are hidden everywhere. Turning it on brings them all back.</div>
+              <button style={{background:'#1a1a1a',color:'#fff',border:'none',borderRadius:10,padding:'10px 22px',fontSize:13,fontWeight:600,cursor:'pointer'}} onClick={()=>setLabelsOn(true)}>Enable</button>
+            </div>)}
       </div>
     </div>
   );
@@ -10844,7 +10870,7 @@ function normalizeVoiceJob3(rawJob, intent, idx, fallbackDate, stores) {
     const units = voiceBottledUnitsFromJob3(job);
     job.label = job.label || `Bottle ${units || job.liters || ''}× ${VOICE_PRODUCT_META3[job.product]?.label || job.product || ''}`.trim();
     const labelEligible = ['classic_liter','sweetened_classic','house_blend','colombia_liter','vanilla_mini','original_mini','caramel_mini','classic_mini','house_blend_mini'];
-    if (isLog && labelEligible.includes(job.product)) job.labeledUsed = { [job.product]: units };
+    if (isLog && window.gremierLabelsEnabled() && labelEligible.includes(job.product)) job.labeledUsed = { [job.product]: units };
   }
 
   if (job.type === 'labeling') {
@@ -11021,7 +11047,8 @@ function GlobalPillsFloat() {
   },[]);
 
   const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
-  const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid);
+  // Website orders are paid at checkout — never bill them (websiteOrderId marks them; paid can be toggled manually so it's not the filter).
+  const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid&&!j.websiteOrderId);
 
   async function markWaSent(jobId) {
     setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:new Date().toISOString()}:j));
@@ -11243,7 +11270,7 @@ JOB SHAPES:
 - brew: { type:"brew", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:1|1.5|2|3, done, date }
 - bottling: { type:"bottling", product:product_key, qty:number, liters:number, done, date }
   For bottling, if the user says a number of bottles/minis/jerry cans, put that number in qty. Also compute liters: liter qty = qty liters; mini qty = qty/4 liters; jerry qty = qty*5 liters.
-- labeling: { type:"labeling", product:product_key, qty:number, done, date }
+${window.gremierLabelsEnabled()?'- labeling: { type:"labeling", product:product_key, qty:number, done, date }':'Labeling is currently disabled — do not create labeling jobs; use clarify if the user asks about labeling.'}
 - drain: { type:"drain", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
 
 IMPORTANT SAFETY RULES:
