@@ -701,7 +701,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <div class="collapse-head">
             <h3 class="collapse-head-title">Filters</h3>
             <span class="collapse-summary" id="orderFilterSummary"></span>
-            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();exportOrdersCSV()">⬇ Export CSV</button>
             <span class="collapse-chevron">▾</span>
           </div>
           <div class="collapse-body" style="padding:0 16px 14px">
@@ -712,10 +711,12 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <option value="week">This Week</option>
             <option value="year">This Year</option>
             <option value="all">All Time</option>
-            <option value="custom">Custom range</option>
+            <option value="pickmonth">Specific month…</option>
+            <option value="pickyear">Specific year…</option>
+            <option value="custom">Custom range…</option>
           </select>
-          <input type="month" class="form-input" style="width:auto" id="orderMonth" onchange="onOrderMonthChange()" title="Pick month"/>
-          <input type="number" class="form-input" style="width:88px" id="orderYear" min="2020" max="2099" placeholder="Year" onchange="onOrderYearChange()"/>
+          <input type="month" class="form-input" style="width:auto;display:none" id="orderMonth" onchange="onOrderMonthChange()" title="Pick month"/>
+          <input type="number" class="form-input" style="width:88px;display:none" id="orderYear" min="2020" max="2099" placeholder="Year" onchange="onOrderYearChange()"/>
           <span id="orderCustomRange" style="display:none;gap:6px;align-items:center">
             <input type="date" class="form-input" style="width:auto" id="orderDateFrom" onchange="filterOrders()"/>
             <span style="color:var(--text2);font-size:.8rem">–</span>
@@ -734,6 +735,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <button type="button" class="seg-btn kind-btn" data-kind="subscriptions" onclick="setOrderKind('subscriptions')">Subscriptions</button>
             <button type="button" class="seg-btn kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
           </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px">
+          <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
         </div>
           </div>
         </div>
@@ -756,6 +760,21 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             </tr></thead>
             <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
+        </div>
+        <div class="card" id="closedOrdersCard" style="padding:0;margin-top:16px;display:none">
+          <div class="collapse-head" style="padding:14px 18px;cursor:pointer" onclick="toggleClosedOrders()">
+            <h3 class="collapse-head-title" id="closedOrdersTitle">✓ Fulfilled &amp; closed</h3>
+            <span class="collapse-chevron" id="closedOrdersChevron" style="transform:rotate(-90deg)">▾</span>
+          </div>
+          <div id="closedOrdersBodyWrap" style="display:none">
+            <div class="table-wrap"><table>
+              <thead><tr>
+                <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
+                <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
+              </tr></thead>
+              <tbody id="closedOrdersBody"></tbody>
+            </table></div>
+          </div>
         </div>
       </div>
       <!-- PRODUCTS -->
@@ -3020,29 +3039,21 @@ function setOrderKind(kind) {
 function onOrderPeriodChange() {
   const period = document.getElementById('orderPeriod').value;
   const custom = document.getElementById('orderCustomRange');
+  const m = document.getElementById('orderMonth');
+  const y = document.getElementById('orderYear');
   if (custom) custom.style.display = period === 'custom' ? 'inline-flex' : 'none';
-  if (period !== 'custom') {
-    const m = document.getElementById('orderMonth');
-    const y = document.getElementById('orderYear');
-    if (m) m.value = '';
-    if (y) y.value = '';
-  }
+  if (m) m.style.display = period === 'pickmonth' ? '' : 'none';
+  if (y) y.style.display = period === 'pickyear' ? '' : 'none';
+  if (period !== 'pickmonth' && m) m.value = '';
+  if (period !== 'pickyear' && y) y.value = '';
   filterOrders();
 }
 
 function onOrderMonthChange() {
-  const y = document.getElementById('orderYear');
-  if (y) y.value = '';
-  document.getElementById('orderPeriod').value = 'all';
-  onOrderPeriodChange();
   filterOrders();
 }
 
 function onOrderYearChange() {
-  const m = document.getElementById('orderMonth');
-  if (m) m.value = '';
-  document.getElementById('orderPeriod').value = 'all';
-  onOrderPeriodChange();
   filterOrders();
 }
 
@@ -3170,8 +3181,10 @@ function updateOrderFilterSummary() {
   const el = document.getElementById('orderFilterSummary');
   if (!el) return;
   const periodEl = document.getElementById('orderPeriod');
-  const periodLabels = { month:'This month', today:'Today', week:'This week', year:'This year', all:'All time', custom:'Custom range' };
-  const period = periodLabels[periodEl?.value] || 'This month';
+  const periodLabels = { month:'This month', today:'Today', week:'This week', year:'This year', all:'All time', custom:'Custom range', pickmonth:'Specific month', pickyear:'Specific year' };
+  let period = periodLabels[periodEl?.value] || 'This month';
+  if (periodEl?.value === 'pickmonth') { const mv = document.getElementById('orderMonth')?.value; if (mv) period = mv; }
+  if (periodEl?.value === 'pickyear') { const yv = document.getElementById('orderYear')?.value; if (yv) period = yv; }
   const statusEl = document.getElementById('orderStatus');
   const status = statusEl && statusEl.value !== 'all'
     ? (statusEl.options[statusEl.selectedIndex]?.text || statusEl.value)
@@ -3192,10 +3205,39 @@ function renderOrderStats(orders) {
     <div class="stat-card"><div class="stat-label">Fulfilled</div><div class="stat-value">${fulfilled}</div></div>
   `;
 }
+const CLOSED_ORDER_STATUSES = ['fulfilled','cancelled','refunded'];
+function toggleClosedOrders() {
+  const wrap = document.getElementById('closedOrdersBodyWrap');
+  const chev = document.getElementById('closedOrdersChevron');
+  const open = wrap.style.display === 'none';
+  wrap.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? '' : 'rotate(-90deg)';
+}
 function renderOrdersTable(orders) {
   const body = document.getElementById('ordersBody');
-  if (!orders.length) { body.innerHTML='<tr><td colspan="8" class="empty-state">No orders found.</td></tr>'; return; }
-  body.innerHTML = orders.map(o=>{
+  const closedCard = document.getElementById('closedOrdersCard');
+  const closedBody = document.getElementById('closedOrdersBody');
+  const open = orders.filter(o => !CLOSED_ORDER_STATUSES.includes(String(o.status || '').toLowerCase()));
+  const closed = orders.filter(o => CLOSED_ORDER_STATUSES.includes(String(o.status || '').toLowerCase()));
+  body.innerHTML = open.length ? open.map(orderRowHtml).join('')
+    : `<tr><td colspan="8" class="empty-state">${orders.length ? 'No open orders — all fulfilled or closed.' : 'No orders found.'}</td></tr>`;
+  if (closedCard && closedBody) {
+    if (closed.length) {
+      closedCard.style.display = '';
+      document.getElementById('closedOrdersTitle').textContent = `✓ Fulfilled & closed (${closed.length})`;
+      closedBody.innerHTML = closed.map(orderRowHtml).join('');
+    } else {
+      closedCard.style.display = 'none';
+      closedBody.innerHTML = '';
+    }
+    // Always start collapsed on every render
+    document.getElementById('closedOrdersBodyWrap').style.display = 'none';
+    const chev = document.getElementById('closedOrdersChevron');
+    if (chev) chev.style.transform = 'rotate(-90deg)';
+  }
+}
+function orderRowHtml(o) {
+  {
     const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
     const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
     const subBadge = isSubscriptionOrder(o) ? ' <span class="status-pill s-confirmed" style="font-size:.55rem">sub</span>' : '';
@@ -3231,7 +3273,7 @@ return `<tr class="${needsFulfillmentHighlight ? 'order-needs-fulfillment' : ''}
         </div>
       </td>
     </tr>`;
-  }).join('');
+  }
 }
 async function updateOrderStatus(id, status) {
   await sb.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
