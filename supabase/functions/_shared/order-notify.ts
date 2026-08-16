@@ -241,10 +241,11 @@ export async function sendOrderPaidNotification(
 
 // Google Sheet webhook removed — Resend + Supabase are source of truth
 
-  if (emailOk || sheetOk) return { ok: true };
-
+  // Pushover always fires alongside email — not as a fallback. Email can succeed
+  // technically but land in spam, which used to leave the owner with no alert at all.
   const pushed = await sendViaPushover(`💳 ${subject}`, text);
-  if (pushed) return { ok: true };
+
+  if (emailOk || sheetOk || pushed) return { ok: true };
 
   return { ok: false, detail: detail || "Resend, sheet, and Pushover all failed" };
 }
