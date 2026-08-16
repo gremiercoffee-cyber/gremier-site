@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +49,17 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+    // Send a test push to every registered device and report exactly what happened.
+    if (body.action === "test") {
+      const result = await sendWebPushToAdmins(admin, {
+        title: "🔔 Test notification",
+        body: "Push notifications are working on this device.",
+        url: "/admin.html",
+        tag: "test-push",
+      });
+      return json({ ok: result.sent > 0, ...result });
+    }
 
     if (body.action === "unsubscribe") {
       const endpoint = String(body.endpoint || "").trim();

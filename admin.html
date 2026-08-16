@@ -670,6 +670,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <div class="sidebar-bottom">
         <button class="view-site-btn" id="pushToggleBtn" onclick="togglePushNotifications()" style="width:100%;margin-bottom:6px;cursor:pointer">🔔 Enable Notifications</button>
+        <button class="view-site-btn" id="pushTestBtn" onclick="sendTestPush()" style="width:100%;margin-bottom:6px;cursor:pointer;display:none;font-size:.72rem">Send test notification</button>
         <div class="user-info" id="adminEmail">—</div>
         <a href="index.html" target="_blank" class="view-site-btn">View Site ↗</a>
         <button class="signout-btn" onclick="signOut()">Sign Out</button>
@@ -1796,12 +1797,34 @@ async function refreshPushButton() {
     btn.style.border = on ? '1px solid #1a1a1a' : '1px solid var(--border)';
     btn.style.opacity = denied ? '.6' : '1';
   }
+  const testBtn = document.getElementById('pushTestBtn');
+  if (testBtn) testBtn.style.display = on ? 'block' : 'none';
   if (bell) {
     bell.style.filter = on ? 'none' : 'grayscale(1)';
     bell.style.opacity = on ? '1' : '.35';
     bell.title = denied
       ? 'Notifications blocked in browser settings'
       : (on ? 'Notifications on — tap to turn off' : 'Notifications off — tap to enable');
+  }
+}
+
+// Fires a real push through the server so failures surface with their reason.
+async function sendTestPush() {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showToast('Sign in first'); return; }
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/push-subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+      body: JSON.stringify({ action: 'test' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) showToast(`Test sent to ${data.sent} device${data.sent === 1 ? '' : 's'} ✓`);
+    else showToast('Push failed: ' + (data.detail || data.error || 'unknown reason'));
+    console.log('Push test result:', data);
+  } catch (e) {
+    console.error('sendTestPush:', e);
+    showToast('Push test failed — see console');
   }
 }
 
@@ -1837,7 +1860,8 @@ async function togglePushNotifications() {
         body: JSON.stringify({ subscription: sub.toJSON() }),
       });
       if (!res.ok) throw new Error('Could not save subscription');
-      showToast('Notifications enabled on this device ✓');
+      showToast('Notifications enabled ✓ — sending test…');
+      setTimeout(sendTestPush, 800);
     }
   } catch (e) {
     console.error('togglePushNotifications:', e);
