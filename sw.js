@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v24';
+const CACHE = 'gremier-v25';
 const PRECACHE = [
   '/index.html',
   '/admin.html',
@@ -8,6 +8,7 @@ const PRECACHE = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-192-maskable.png',
+  '/icon-badge.png',
   '/icon-512-maskable.png',
   '/favicon.png',
   'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&display=swap',
@@ -38,7 +39,9 @@ self.addEventListener('push', e => {
     body: data.body || '',
     tag: data.tag || undefined,
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    // Android draws the badge from the alpha channel only — must be a
+    // transparent silhouette, or it renders as a solid black square.
+    badge: '/icon-badge.png',
     data: { url: data.url || '/admin.html' },
   }));
 });
