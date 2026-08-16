@@ -56,6 +56,19 @@ type OrderRow = {
   delivery_info?: Record<string, unknown> | null;
 };
 
+/** Record why auto-scheduling didn't happen on the pending row, so it's visible in the admin. */
+async function noteAutoScheduleFailure(
+  supabase: SupabaseClient,
+  pendingId: string,
+  note: string,
+): Promise<void> {
+  try {
+    await supabase.from("pending_website_deliveries").update({ notes: note }).eq("id", pendingId);
+  } catch (e) {
+    console.error("noteAutoScheduleFailure failed:", e);
+  }
+}
+
 /**
  * Put the order on the ops schedule automatically: jobs row (drives the ops
  * dashboard + reminder crons) and mark the pending row scheduled. Mirrors the
@@ -70,7 +83,14 @@ async function autoScheduleDelivery(
     ? order.delivery_info as Record<string, unknown>
     : {};
   const slot = computeAutoSchedule(info);
-  if (!slot) return false;
+  if (!slot) {
+    const why = info.is_gift_card
+      ? "gift card order"
+      : `no usable date for delivery_type="${String(info.delivery_type || "")}"`;
+    console.error("autoScheduleDelivery: not scheduled —", why, JSON.stringify(info));
+    await noteAutoScheduleFailure(supabase, pendingId, `Auto-schedule skipped: ${why}`);
+    return false;
+  }
 
   const items = Array.isArray(order.items) ? order.items : [];
   const itemsLabel = items.map((i) => `${i.name_en || "Item"} x${i.qty || 1}`).join(", ");
@@ -102,7 +122,8 @@ async function autoScheduleDelivery(
   });
 
   if (jobErr) {
-    console.error("autoScheduleDelivery: jobs insert failed:", jobErr.message);
+    console.error("autoScheduleDelivery: jobs insert failed:", jobErr.message, jobErr);
+    await noteAutoScheduleFailure(supabase, pendingId, `Auto-schedule failed: ${jobErr.message}`);
     return false;
   }
 
@@ -139,11 +160,23 @@ export async function enqueuePendingWebsiteDelivery(
 
   const { data: existing } = await supabase
     .from("pending_website_deliveries")
-    .select("id, status")
+    .select("id, status, scheduled_date")
     .eq("order_id", orderId)
     .maybeSingle();
 
-  if (existing) return "exists";
+  if (existing) {
+    // Self-heal: a row can be created by an earlier step in the payment flow
+    // (webhook vs return URL) before auto-scheduling ran, or auto-scheduling may
+    // have failed. Retry it here so the order never sits stuck in the pill.
+    if (existing.status === "pending_schedule" && !existing.scheduled_date) {
+      try {
+        await autoScheduleDelivery(supabase, order as OrderRow, String(existing.id));
+      } catch (e) {
+        console.error("autoScheduleDelivery (existing row) threw:", e);
+      }
+    }
+    return "exists";
+  }
 
   const { data: inserted, error } = await supabase.from("pending_website_deliveries").insert({
     order_id: order.id,

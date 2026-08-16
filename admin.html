@@ -680,7 +680,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="mobile-header">
         <img src="logo.png" alt="Gremier Coffee Co."/>
         <span>Gremier Hub</span>
-        <button onclick="togglePushNotifications()" style="margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;padding:4px 8px" title="Toggle notifications">🔔</button>
+        <button id="pushBellBtn" onclick="togglePushNotifications()" style="margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;padding:4px 8px;filter:grayscale(1);opacity:.35" title="Notifications off — tap to enable">🔔</button>
       </div>
       <div id="websiteMain">
         <!-- STOCK (ops) TAB -->
@@ -1771,12 +1771,38 @@ async function getPushSubscription() {
   return reg.pushManager.getSubscription();
 }
 
+// Make the on/off state unmistakable: bright bell + solid button when notifications
+// are live on this device, grayed-out bell + ghost button when they're not.
 async function refreshPushButton() {
   const btn = document.getElementById('pushToggleBtn');
-  if (!btn) return;
-  if (!('PushManager' in window)) { btn.style.display = 'none'; return; }
-  const sub = await getPushSubscription().catch(() => null);
-  btn.textContent = sub ? '🔕 Disable Notifications' : '🔔 Enable Notifications';
+  const bell = document.getElementById('pushBellBtn');
+  const supported = ('PushManager' in window) && ('serviceWorker' in navigator);
+  if (!supported) {
+    if (btn) btn.style.display = 'none';
+    if (bell) bell.style.display = 'none';
+    return;
+  }
+  const denied = typeof Notification !== 'undefined' && Notification.permission === 'denied';
+  const sub = denied ? null : await getPushSubscription().catch(() => null);
+  const on = !!sub;
+
+  if (btn) {
+    btn.textContent = denied ? '🔕 Notifications Blocked' : (on ? '🔔 Notifications On' : '🔕 Notifications Off');
+    btn.title = denied
+      ? 'Blocked in browser settings — allow notifications for this site, then tap again'
+      : (on ? 'Notifications are on for this device — tap to turn off' : 'Tap to turn on notifications for this device');
+    btn.style.background = on ? '#1a1a1a' : '#ffffff';
+    btn.style.color = on ? '#ffffff' : '#6a6a6a';
+    btn.style.border = on ? '1px solid #1a1a1a' : '1px solid var(--border)';
+    btn.style.opacity = denied ? '.6' : '1';
+  }
+  if (bell) {
+    bell.style.filter = on ? 'none' : 'grayscale(1)';
+    bell.style.opacity = on ? '1' : '.35';
+    bell.title = denied
+      ? 'Notifications blocked in browser settings'
+      : (on ? 'Notifications on — tap to turn off' : 'Notifications off — tap to enable');
+  }
 }
 
 async function togglePushNotifications() {
@@ -9258,6 +9284,14 @@ function WebsiteQueueDrawer2({ orders, onClose, onSchedule, onDismiss }) {
             <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
               <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{label}{unpaid&&<span style={TS.pill('rgba(224,160,48,.15)','#b8860b')}>Awaiting payment</span>}</div>
               {o.delivery_address&&<div style={{fontSize:11,color:'#3f7fc4',marginBottom:4}}>📍 {o.delivery_address}</div>}
+              {(() => {
+                const di = o.delivery_info || {};
+                const t = String(di.delivery_type||'regular');
+                const label = t==='event' ? 'Event' : t==='expedited' ? (di.priority_type==='specific_date'?'Expedited — specific date':'Expedited (next day)') : 'Regular (2 days)';
+                const when = di.delivery_date ? ` · ${di.delivery_date}${di.event_time?' '+di.event_time:''}` : '';
+                return <div style={{fontSize:11,color:'#6a6a6a',marginBottom:4}}>🚚 {label}{when}</div>;
+              })()}
+              {o.notes&&<div style={{fontSize:11,color:'#b8860b',marginBottom:4}}>⚠ {o.notes}</div>}
               <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{items}</div>
               <button style={{...TS.btn('#1a1a1a','#fff'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
               <button style={{...TS.btn('#eeeeee','#d5544a'),width:'100%',border:'1px solid #cccccc'}} onClick={()=>onDismiss(o)}>Remove</button>
@@ -11077,6 +11111,14 @@ function GlobalWebQueueDrawer({ orders, onClose, onSchedule, onDismiss }) {
             <div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid #e0e0e0'}}>
               <div style={{fontWeight:600,color:'#121212',marginBottom:4}}>{label}{unpaid&&<span style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',padding:'2px 7px',borderRadius:10,background:'rgba(224,160,48,.15)',color:'#b8860b',display:'inline-block',marginLeft:6}}>Awaiting payment</span>}</div>
               {o.delivery_address&&<div style={{fontSize:11,color:'#3f7fc4',marginBottom:4}}>📍 {o.delivery_address}</div>}
+              {(() => {
+                const di = o.delivery_info || {};
+                const t = String(di.delivery_type||'regular');
+                const label = t==='event' ? 'Event' : t==='expedited' ? (di.priority_type==='specific_date'?'Expedited — specific date':'Expedited (next day)') : 'Regular (2 days)';
+                const when = di.delivery_date ? ` · ${di.delivery_date}${di.event_time?' '+di.event_time:''}` : '';
+                return <div style={{fontSize:11,color:'#6a6a6a',marginBottom:4}}>🚚 {label}{when}</div>;
+              })()}
+              {o.notes&&<div style={{fontSize:11,color:'#b8860b',marginBottom:4}}>⚠ {o.notes}</div>}
               <div style={{fontSize:11,color:'#6a6a6a',marginBottom:10}}>{items}</div>
               <button style={{...globalPillBtn('#1a1a1a'),width:'100%',marginBottom:6}} onClick={()=>onSchedule(o)}>Schedule →</button>
               <button style={{...globalPillBtn('#eeeeee'),width:'100%',border:'1px solid #cccccc',color:'#d5544a'}} onClick={()=>onDismiss(o)}>Remove</button>
