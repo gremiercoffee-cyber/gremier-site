@@ -325,6 +325,15 @@
     .modal-sub { font-size:.84rem; color:var(--text2); margin-bottom:28px; }
     /* FORMS */
     .form-group { margin-bottom:18px; }
+    .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    /* Circular N/A toggle for the apartment/floor fields */
+    .co-na-toggle { display:flex; align-items:center; gap:9px; margin-top:10px; cursor:pointer; font-size:.85rem; color:var(--text2, #6a6a6a); user-select:none; }
+    .co-na-toggle input { position:absolute; opacity:0; width:0; height:0; }
+    .co-na-dot { width:20px; height:20px; border-radius:50%; border:2px solid #cfcfcf; flex-shrink:0; position:relative; transition:border-color .15s, background .15s; }
+    .co-na-toggle input:checked + .co-na-dot { border-color:#1a1a1a; background:#1a1a1a; }
+    .co-na-toggle input:checked + .co-na-dot::after { content:''; position:absolute; inset:0; margin:auto; width:6px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg) translate(-1px,-1px); }
+    .co-na-toggle input:focus-visible + .co-na-dot { box-shadow:0 0 0 3px rgba(0,0,0,.12); }
+    #coAptRow.co-disabled { opacity:.45; pointer-events:none; }
     .form-label { display:block; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:7px; }
     .form-input { width:100%; background:#f7f5f2; border:1px solid var(--border); color:#1a1a1a; padding:11px 14px; font-family:'DM Sans',sans-serif; font-size:.88rem; border-radius:2px; outline:none; transition:border-color .2s; }
     .form-input:focus { border-color:#1a1a1a; }
@@ -1154,6 +1163,17 @@
       </div>
       <div class="form-group"><label class="form-label" id="t-co-addr">Street Address</label><input class="form-input" id="coAddr" type="text" placeholder="Street and apartment number"/></div>
       <div class="form-group">
+        <div class="form-row-2" id="coAptRow">
+          <div><label class="form-label" id="t-co-apt">Apartment *</label><input class="form-input" id="coApt" type="text" placeholder="Apt / unit"/></div>
+          <div><label class="form-label" id="t-co-floor">Floor *</label><input class="form-input" id="coFloor" type="text" placeholder="Floor"/></div>
+        </div>
+        <label class="co-na-toggle" for="coAptNA">
+          <input type="checkbox" id="coAptNA" onchange="toggleAptNA()"/>
+          <span class="co-na-dot" aria-hidden="true"></span>
+          <span id="t-co-apt-na">Private house — not applicable</span>
+        </label>
+      </div>
+      <div class="form-group">
         <label class="form-label" id="t-co-ship">Shipping Type</label>
         <div style="display:flex;gap:10px;margin-top:4px">
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipRegularLabel">
@@ -1425,7 +1445,7 @@ const T = {
     'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure card payment.',
     'co-name':'Full Name','co-phone':'Phone','co-email':'Email',
     'co-city':'City','co-city-hint':'Type to search — all Israeli cities & towns','co-city-ph':'Start typing your city…',
-    'co-addr':'Street Address','co-notes':'Notes (optional)',
+    'co-addr':'Street Address','co-apt':'Apartment *','co-floor':'Floor *','co-apt-na':'Private house — not applicable','co-notes':'Notes (optional)',
     'pay-title':'Secure Payment via PayMe',
     'pay-sub':'You\'ll be redirected to PayMe to pay securely by card. Your order is confirmed only after payment.',
     'co-submit':'Proceed to Payment','co-cancel':'Cancel',
@@ -1478,7 +1498,7 @@ const T = {
     'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח בכרטיס.',
     'co-name':'שם מלא','co-phone':'טלפון','co-email':'אימייל',
     'co-city':'עיר','co-city-hint':'הקלידו לחיפוש — כל הישובים בישראל','co-city-ph':'הקלידו שם ישוב…',
-    'co-addr':'רחוב ומספר בית','co-notes':'הערות (אופציונלי)',
+    'co-addr':'רחוב ומספר בית','co-apt':'דירה *','co-floor':'קומה *','co-apt-na':'בית פרטי — לא רלוונטי','co-notes':'הערות (אופציונלי)',
     'pay-title':'תשלום מאובטח דרך PayMe',
     'pay-sub':'תועברו לדף תשלום מאובטח של PayMe. ההזמנה תאושר רק לאחר התשלום.',
     'co-submit':'המשך לתשלום','co-cancel':'ביטול',
@@ -1526,7 +1546,7 @@ function applyTranslations() {
     't-mo-eye':'mo-eye','t-mo-title':'mo-title',
     't-cart-title':'cart-title','t-cart-total':'cart-total','t-cart-checkout':'cart-checkout',
     't-co-title':'co-title','t-co-sub':'co-sub','t-co-name':'co-name','t-co-phone':'co-phone',
-    't-co-email':'co-email','t-co-city':'co-city','t-co-city-hint':'co-city-hint','t-co-addr':'co-addr','t-co-notes':'co-notes',
+    't-co-email':'co-email','t-co-city':'co-city','t-co-city-hint':'co-city-hint','t-co-addr':'co-addr','t-co-apt':'co-apt','t-co-floor':'co-floor','t-co-apt-na':'co-apt-na','t-co-notes':'co-notes',
     't-pay-title':'pay-title','t-pay-sub':'pay-sub',
     't-co-submit':'co-submit','t-co-cancel':'co-cancel',
     't-conf-title':'conf-title','t-conf-sub':'conf-sub','t-conf-btn':'conf-btn',
@@ -2559,6 +2579,16 @@ function isValidPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   return digits.length >= 9 && digits.length <= 15;
 }
+function toggleAptNA() {
+  const na = document.getElementById('coAptNA')?.checked;
+  const row = document.getElementById('coAptRow');
+  if (row) row.classList.toggle('co-disabled', !!na);
+  if (na) {
+    const apt = document.getElementById('coApt'); const fl = document.getElementById('coFloor');
+    if (apt) apt.value = ''; if (fl) fl.value = '';
+  }
+}
+
 async function submitOrder() {
   const name = document.getElementById('coName').value.trim();
   const phone = document.getElementById('coPhone').value.trim();
@@ -2567,6 +2597,15 @@ async function submitOrder() {
   if (!name || !phone || !email || !addr) {
     alert(lang==='he'?'אנא מלאו שם, טלפון, אימייל וכתובת':'Please fill in name, phone, email and address'); return;
   }
+  const aptNA = document.getElementById('coAptNA')?.checked;
+  const apt = document.getElementById('coApt').value.trim();
+  const floor = document.getElementById('coFloor').value.trim();
+  if (!aptNA && (!apt || !floor)) {
+    alert(lang==='he'
+      ? 'אנא מלאו מספר דירה וקומה, או סמנו בית פרטי'
+      : 'Please enter apartment and floor, or tick “Private house”'); return;
+  }
+  const aptSuffix = aptNA ? '' : `, ${lang==='he'?'דירה':'Apt'} ${apt}, ${lang==='he'?'קומה':'Floor'} ${floor}`;
   if (!isValidEmail(email)) {
     alert(lang==='he'?'אנא הזינו כתובת אימייל תקינה':'Please enter a valid email address'); return;
   }
@@ -2612,7 +2651,7 @@ const shipType = isEvent ? 'event' : (isExpedited ? 'expedited' : 'regular');   
       customer_name: name,
       customer_email: email,
       customer_phone: phone,
-      delivery_address: cityLabel + ', ' + addr,
+      delivery_address: cityLabel + ', ' + addr + aptSuffix,
       notes: document.getElementById('coNotes').value.trim(),
       items: cart.map(i=>({
         product_id: i.base_product_id || String(i.id).split('_')[0],
