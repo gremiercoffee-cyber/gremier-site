@@ -65,6 +65,8 @@ const STOCK_KEY_ALIASES: Record<string, string> = {
   colombia: "colombia_liter",
   decaf: "decaf_liter",
   sweetened: "sweetened_classic",
+  jerry_can_classic: "jerry_can",
+  jerry_can_house_blend: "jerry_can_houseblend",
 };
 
 function canonicalStockKey(key: string): string {
@@ -154,17 +156,18 @@ async function resolveOpsQuantities(
   for (const item of items) {
     const rawId = String(item.product_id || "").trim();
     const cat = catalog[rawId];
-    if (cat?.exclude && !cat.stock_key) continue; // bundle with no inventory equivalent
 
-    // Products synced into ops without an explicit stock_key use their own
-    // catalog UUID as the ops key (see normalizeProduct in admin.html), so the
-    // raw id is a valid last resort before giving up on the item.
-    const key = cat?.stock_key
+    const resolved = cat?.stock_key
       || KNOWN_PRODUCT_IDS[rawId]
-      || resolveStockKeyByText([item.name_en, item.name_he, cat?.name_en, cat?.name_he, cat?.category].filter(Boolean).join(" "))
-      || rawId;
+      || resolveStockKeyByText([item.name_en, item.name_he, cat?.name_en, cat?.name_he, cat?.category].filter(Boolean).join(" "));
 
-    const canonical = canonicalStockKey(key);
+    // `exclude` means "this website product maps onto a built-in ops product",
+    // NOT "ignore it" — only drop it when nothing resolves (true bundles/gift sets).
+    if (!resolved && cat?.exclude) continue;
+
+    // Products synced into ops without a stock_key use their own catalog UUID
+    // as the ops key (see normalizeProduct in admin.html) — last resort.
+    const canonical = canonicalStockKey(resolved || rawId);
 
     const qty = Number(item.qty) || 1;
     const mult = (cat?.pack_size || 1) > 1 ? (cat!.pack_size as number) : 1;
