@@ -56,6 +56,22 @@ type OrderRow = {
   delivery_info?: Record<string, unknown> | null;
 };
 
+/**
+ * Some catalog products store an ops stock_key that differs from the key the
+ * schedule screens actually use, which made those quantities render as zero.
+ */
+const STOCK_KEY_ALIASES: Record<string, string> = {
+  classic: "classic_liter",
+  colombia: "colombia_liter",
+  decaf: "decaf_liter",
+  sweetened: "sweetened_classic",
+};
+
+function canonicalStockKey(key: string): string {
+  const k = String(key || "").trim();
+  return STOCK_KEY_ALIASES[k] || k;
+}
+
 /** Stable website catalog IDs for core products (fallback when names are unhelpful). */
 const KNOWN_PRODUCT_IDS: Record<string, string> = {
   "5553dae1-d35d-4d02-b3a1-3633e9ca6bfc": "classic_liter",
@@ -148,9 +164,11 @@ async function resolveOpsQuantities(
       || resolveStockKeyByText([item.name_en, item.name_he, cat?.name_en, cat?.name_he, cat?.category].filter(Boolean).join(" "))
       || rawId;
 
+    const canonical = canonicalStockKey(key);
+
     const qty = Number(item.qty) || 1;
     const mult = (cat?.pack_size || 1) > 1 ? (cat!.pack_size as number) : 1;
-    if (key) quantities[key] = (quantities[key] || 0) + qty * mult;
+    if (canonical) quantities[canonical] = (quantities[canonical] || 0) + qty * mult;
     else unresolved.push(item.name_en || rawId || "item");
   }
   if (unresolved.length) {
