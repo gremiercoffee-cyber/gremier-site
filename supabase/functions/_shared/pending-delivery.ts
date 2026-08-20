@@ -56,6 +56,105 @@ type OrderRow = {
   delivery_info?: Record<string, unknown> | null;
 };
 
+/** Stable website catalog IDs for core products (fallback when names are unhelpful). */
+const KNOWN_PRODUCT_IDS: Record<string, string> = {
+  "5553dae1-d35d-4d02-b3a1-3633e9ca6bfc": "classic_liter",
+  "d14c3808-0f14-439d-b978-69bf6e35e9b4": "house_blend",
+  "d59ad233-5090-40bc-b984-ed326ca8460d": "colombia_liter",
+  "1c28055f-79b8-4d99-b7f2-38c270b47af7": "caramel_mini",
+};
+
+function normText(v: unknown): string {
+  return String(v || "").toLowerCase().replace(/[^a-z0-9֐-׿]+/g, " ").trim();
+}
+
+/** Mirror of admin.html's resolveByText — maps a product name to an ops stock key. */
+function resolveStockKeyByText(text: string): string {
+  const t = normText(text);
+  if (!t) return "";
+  const isMini = /mini|מיני|cremier|קרמייר/.test(t);
+  const isJerry = /jerry|5l|5 l|5 liter|5 litre|bulk/.test(t);
+  const isSyrup = /syrup|סירופ/.test(t);
+
+  if (isSyrup) {
+    if (/caramel|קרמל/.test(t)) return "caramel_syrup";
+    if (/vanilla|וניל/.test(t)) return "vanilla_syrup";
+    if (/sugar|simple|סוכר/.test(t)) return "sugar_syrup";
+  }
+  if (isMini) {
+    if (/caramel|קרמל/.test(t)) return "caramel_mini";
+    if (/vanilla|וניל/.test(t)) return "vanilla_mini";
+    if (/house|blend/.test(t)) return "house_blend_mini";
+    return "original_mini";
+  }
+  if (isJerry) {
+    if (/house|blend/.test(t)) return "jerry_can_houseblend";
+    if (/colombia|sidamo|ethiopia|light/.test(t)) return "jerry_can_colombia";
+    if (/decaf/.test(t)) return "jerry_can_decaf";
+    return "jerry_can";
+  }
+  if (/sweet|sweetened/.test(t)) return "sweetened_classic";
+  if (/house|blend/.test(t)) return "house_blend";
+  if (/colombia|sidamo|ethiopia|light/.test(t)) return "colombia_liter";
+  if (/decaf/.test(t)) return "decaf_liter";
+  if (/classic|dark|original/.test(t)) return "classic_liter";
+  if (/bottles?|liter|litre|1\s*l|1l/.test(t)) return "classic_liter";
+  return "";
+}
+
+/**
+ * Build the ops `quantities` map for a job from website order items.
+ * The ops schedule keys stock by keys like "classic_liter" — using the raw
+ * website product UUID makes every quantity render as zero in the app.
+ */
+async function resolveOpsQuantities(
+  supabase: SupabaseClient,
+  items: Array<{ product_id?: string; name_en?: string; name_he?: string; qty?: number }>,
+): Promise<Record<string, number>> {
+  const ids = [...new Set(items.map((i) => String(i.product_id || "").trim()).filter(Boolean))];
+  const catalog: Record<string, { name_en?: string; name_he?: string; category?: string; stock_key?: string; pack_size?: number; exclude?: boolean }> = {};
+
+  if (ids.length) {
+    const { data: rows } = await supabase
+      .from("products")
+      .select("id,name_en,name_he,category,variations")
+      .in("id", ids);
+    for (const row of rows || []) {
+      const variations = Array.isArray(row.variations) ? row.variations as Record<string, unknown>[] : [];
+      const ops = variations.find((v) => v.type === "ops_settings") || {};
+      catalog[String(row.id)] = {
+        name_en: row.name_en,
+        name_he: row.name_he,
+        category: row.category,
+        stock_key: String(ops.stock_key || "").trim(),
+        pack_size: Number(ops.pack_size) || 1,
+        exclude: !!ops.exclude,
+      };
+    }
+  }
+
+  const quantities: Record<string, number> = {};
+  const unresolved: string[] = [];
+  for (const item of items) {
+    const rawId = String(item.product_id || "").trim();
+    const cat = catalog[rawId];
+    if (cat?.exclude && !cat.stock_key) continue; // bundle with no inventory equivalent
+
+    const key = cat?.stock_key
+      || KNOWN_PRODUCT_IDS[rawId]
+      || resolveStockKeyByText([item.name_en, item.name_he, cat?.name_en, cat?.name_he, cat?.category].filter(Boolean).join(" "));
+
+    const qty = Number(item.qty) || 1;
+    const mult = (cat?.pack_size || 1) > 1 ? (cat!.pack_size as number) : 1;
+    if (key) quantities[key] = (quantities[key] || 0) + qty * mult;
+    else unresolved.push(item.name_en || rawId || "item");
+  }
+  if (unresolved.length) {
+    console.warn("resolveOpsQuantities: could not map items:", unresolved.join(", "));
+  }
+  return quantities;
+}
+
 /** Record why auto-scheduling didn't happen on the pending row, so it's visible in the admin. */
 async function noteAutoScheduleFailure(
   supabase: SupabaseClient,
@@ -108,9 +207,7 @@ async function autoScheduleDelivery(
     time: slot.time,
     done: false,
     needs_confirmation: false,
-    quantities: Object.fromEntries(
-      items.map((i) => [i.product_id || i.name_en || "item", i.qty || 1]),
-    ),
+    quantities: await resolveOpsQuantities(supabase, items),
     planned_total: Number(order.total) || 0,
     label: "Website Order — " + (order.customer_name || "") + " — " + itemsLabel,
     people: null,

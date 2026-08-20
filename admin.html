@@ -10970,6 +10970,11 @@ function normalizeVoiceJob3(rawJob, intent, idx, fallbackDate, stores) {
 
   const isLog = intent === 'log';
   job.date = job.date || fallbackDate;
+  // Keep a spoken time ("delivered at 2:30") — previously dropped, so logs
+  // always landed at the current moment instead of when the work happened.
+  const rawTime = String(job.time || '').trim();
+  const tm = rawTime.match(/^(\d{1,2}):(\d{2})/);
+  job.time = tm ? String(Math.min(23, Number(tm[1]))).padStart(2, '0') + ':' + tm[2] : null;
   job.id = `${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`;
   job.createdAt = new Date().toISOString();
   job.brewStarted = false;
@@ -11402,7 +11407,7 @@ PICK ONE INTENT:
 If what the user reports matches an open job, PREFER complete/reschedule over log — do not create duplicates.
 
 JOB SHAPES:
-- delivery store: { type:"delivery", deliveryType:"store", storeName, quantities:{product_key:qty}, done, date }
+- delivery store: { type:"delivery", deliveryType:"store", storeName, quantities:{product_key:qty}, done, date, time }
 - delivery private: { type:"delivery", deliveryType:"private", privateName, privateAddress, quantities, done, date }
 - brew: { type:"brew", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:1|1.5|2|3, done, date }
 - bottling: { type:"bottling", product:product_key, qty:number, liters:number, done, date }
@@ -11425,6 +11430,7 @@ complete: { "intent":"complete", "reply":"short confirmation of which job", "job
 reschedule: { "intent":"reschedule", "reply":"short confirmation", "job_id":"exact-id-from-open-jobs-list", "date":"YYYY-MM-DD", "time":"HH:MM" or null }
 
 EVERY job MUST include a "date" (YYYY-MM-DD). If the user gives no date, use TODAY for log and TOMORROW for schedule.
+EVERY job may also include "time" (24h "HH:MM"). If the user states a time — including for something already done ("I delivered to Rova at 2:30", "bottled 20 classics this morning at 9") — you MUST set "time" to that time. Convert spoken forms: "2:30pm"->"14:30", "quarter past 9"->"09:15", "noon"->"12:00", "this morning"->omit unless a clock time is given. Omit "time" entirely when no clock time was spoken.
 For log intent, the app will immediately apply stock changes after the user confirms, so do not invent vague products. Use exact product keys only.
 For "storeName", copy the EXACT name from the STORES list above, verbatim — do not rephrase or transliterate it. If the spoken store doesn't clearly match one in the list, use the clarify intent and offer the closest names as choices.
 If the user describes more than one job, you MUST return them all in the "options" array — never collapse them into one.
