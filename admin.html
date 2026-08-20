@@ -8321,6 +8321,8 @@ function isStoreWaDelivery2(job, stores) {
   return !!getStoreWaPhone2(job.storeName, stores);
 }
 const STORE_WA_LOOKBACK_DAYS = 45;
+// exposed on window: other <script type="text/babel"> blocks can't see this block's consts
+window.STORE_WA_LOOKBACK_DAYS = STORE_WA_LOOKBACK_DAYS;
 function jobWaDrawerEligible2(job, stores) {
   if (!isStoreWaDelivery2(job,stores)||!job.done||job.waSentAt) return false;
   const d = String(job.date||'').slice(0,10);
@@ -9811,22 +9813,6 @@ async function handleDelete(job) {
     await reload();
   }
 
-  // Store deliveries already marked sent — kept available so an accidental
-  // "✓ Sent" tap (or a store change) can be undone instead of lost forever.
-  const waRecentlySent = jobs
-    .filter(j=>isStoreWaDelivery2(j,stores)&&j.done&&j.waSentAt)
-    .filter(j=>{
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-STORE_WA_LOOKBACK_DAYS);
-      return String(j.date||'').slice(0,10) >= cutoff.toISOString().slice(0,10);
-    })
-    .sort((a,b)=>String(b.waSentAt||'').localeCompare(String(a.waSentAt||'')))
-    .slice(0,10);
-
-  async function undoWaSent(jobId) {
-    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:true,waSentAt:null}:j));
-    await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({wa_needs_send:true,wa_sent_at:null})});
-  }
-
   async function markWaSent(jobId) {
     const sentAt = new Date().toISOString();
     setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:sentAt}:j));
@@ -11279,6 +11265,22 @@ function GlobalPillsFloat() {
   const waPending = jobs.filter(j=>jobWaDrawerEligible2(j,stores));
   // Website orders are paid at checkout — never bill them (websiteOrderId marks them; paid can be toggled manually so it's not the filter).
   const unbilled = jobs.filter(j=>j.type==='delivery'&&(j.deliveryType==='private'||j.deliveryType==='coffeebar')&&j.done&&!j.paid&&!j.websiteOrderId);
+
+  // Store deliveries already marked sent — kept available so an accidental
+  // "✓ Sent" tap (or a store change) can be undone instead of lost forever.
+  const waRecentlySent = jobs
+    .filter(j=>isStoreWaDelivery2(j,stores)&&j.done&&j.waSentAt)
+    .filter(j=>{
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-(window.STORE_WA_LOOKBACK_DAYS||45));
+      return String(j.date||'').slice(0,10) >= cutoff.toISOString().slice(0,10);
+    })
+    .sort((a,b)=>String(b.waSentAt||'').localeCompare(String(a.waSentAt||'')))
+    .slice(0,10);
+
+  async function undoWaSent(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:true,waSentAt:null}:j));
+    await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({wa_needs_send:true,wa_sent_at:null})});
+  }
 
   async function markWaSent(jobId) {
     setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:new Date().toISOString()}:j));
