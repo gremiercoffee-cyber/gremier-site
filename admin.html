@@ -1757,6 +1757,32 @@ window.MAIN_SB = sb; // shared client — reused by opsFetch (Schedule/Stock/voi
 let adminUser = null;
 let allProducts = [];
 
+// ── Notification deep-link bridge ─────────────────────────────────────────
+// Tapping "Mark delivered" opens (or focuses) the app on that job's checkoff.
+function gremierOpenJobFromNotification(jobId) {
+  if (!jobId) return;
+  const fire = () => window.dispatchEvent(new CustomEvent('gremier:open-job-checkoff', { detail: { jobId } }));
+  // The schedule root mounts after the page scripts, so retry briefly on cold start.
+  let tries = 0;
+  const t = setInterval(() => { fire(); if (++tries >= 6) clearInterval(t); }, 700);
+  fire();
+}
+(function initNotificationDeepLink() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const jobId = params.get('job');
+    if (jobId && params.get('checkoff')) {
+      gremierOpenJobFromNotification(jobId);
+      history.replaceState({}, '', location.pathname);
+    }
+  } catch (e) { console.warn('deep link parse failed:', e); }
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', ev => {
+      if (ev.data && ev.data.type === 'gremier:open-job') gremierOpenJobFromNotification(ev.data.jobId);
+    });
+  }
+})();
+
 // ── Native push notifications (Web Push via service worker) ──────────
 const PUSH_VAPID_PUBLIC_KEY = 'BFIXYUWDzcaT0UMZKvCI39mt9hi-bwtSJCpcJXBQaRbFVI9AJ70Mg5qJ_2ZQw9_Fq189Knc49EATRWzNL2tOgUM';
 
@@ -9686,13 +9712,29 @@ const [showForm, setShowForm] = useState2(false);
     // the voice logger lives in a separate React root; when it saves a job it fires this
     // event so the calendar/task lists re-fetch instead of staying stale until a page reload
     function onJobsChanged() { reload(); }
+    // A notification action ("Mark delivered") asks the schedule to open the
+    // confirm-quantities checkoff for one job, so stock still gets confirmed.
+    async function onOpenJobCheckoff(e) {
+      const jobId = e.detail && e.detail.jobId;
+      if (!jobId) { window.showTab && window.showTab('schedule'); return; }
+      window.showTab && window.showTab('schedule');
+      try {
+        const rows = await window.opsFetch(`jobs?id=eq.${encodeURIComponent(jobId)}&select=*`);
+        const row = rows && rows[0];
+        if (!row) return;
+        if (row.done) { window.showToast && window.showToast('That job is already done'); return; }
+        setCheckoffJob(rowToJob2(row));
+      } catch (err) { console.warn('open-job checkoff failed:', err); }
+    }
     function onCatalogChanged() { window.__opsScheduleSetupDone = false; reload(); }
     window.addEventListener('gremier:schedule-prefill', onPrefillHandoff);
     window.addEventListener('gremier:jobs-changed', onJobsChanged);
+    window.addEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
+      window.removeEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
       window.removeEventListener('gremier:catalog-products-changed', onCatalogChanged);
     };
   },[]);

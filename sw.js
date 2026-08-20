@@ -1,4 +1,5 @@
-const CACHE = 'gremier-v25';
+const CACHE = 'gremier-v26';
+const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
   '/admin.html',
@@ -42,18 +43,64 @@ self.addEventListener('push', e => {
     // Android draws the badge from the alpha channel only — must be a
     // transparent silhouette, or it renders as a solid black square.
     badge: '/icon-badge.png',
-    data: { url: data.url || '/admin.html' },
+    actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : undefined,
+    data: {
+      url: data.url || '/admin.html',
+      jobId: data.jobId || null,
+      actionToken: data.actionToken || null,
+    },
   }));
 });
 
 // Tap on notification → focus/open the admin app
 self.addEventListener('notificationclick', e => {
+  const d = e.notification.data || {};
+  const url = d.url || '/admin.html';
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/admin.html';
+
+  // One-tap drain completion — the side effect is a known amount of concentrate,
+  // so it can be applied server-side without opening the app.
+  if (e.action === 'drain_complete' && d.actionToken) {
+    e.waitUntil((async () => {
+      try {
+        const res = await fetch(SUPABASE_FN + '/job-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: d.actionToken }),
+        });
+        const out = await res.json().catch(() => ({}));
+        await self.registration.showNotification(
+          out.ok ? '✓ Drain logged' : 'Could not log drain',
+          {
+            body: out.ok
+              ? (out.already ? 'Already marked done.' : `+${out.liters_added}L ${out.product} concentrate`)
+              : (out.error || 'Open the app and try again.'),
+            icon: '/icon-192.png',
+            badge: '/icon-badge.png',
+            tag: 'drain-result',
+            data: { url: '/admin.html' },
+          }
+        );
+      } catch (err) {
+        await self.registration.showNotification('Could not log drain', {
+          body: 'No connection — open the app to mark it done.',
+          icon: '/icon-192.png', badge: '/icon-badge.png', tag: 'drain-result',
+          data: { url: '/admin.html' },
+        });
+      }
+    })());
+    return;
+  }
+
+  // Everything else (including "Mark delivered") opens the app at the job so the
+  // normal confirm-quantities checkoff runs.
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const client of list) {
-        if (client.url.includes('admin.html') && 'focus' in client) return client.focus();
+        if (client.url.includes('admin.html') && 'focus' in client) {
+          client.postMessage({ type: 'gremier:open-job', jobId: d.jobId || null });
+          return client.focus();
+        }
       }
       return self.clients.openWindow(url);
     })

@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.notifications]
 verify_jwt = false
+
+[functions.job-action]
+verify_jwt = false

@@ -9,6 +9,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
+import { signJobAction } from "../_shared/job-action-token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://ayuzmwpmhncxrugsyxmw.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -68,7 +69,9 @@ function isActiveJob(j: any): boolean {
 
 const pushClient = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 
-async function sendPushover(title: string, message: string, priority = 0) {
+type PushExtras = { jobId?: string; jobType?: string };
+
+async function sendPushover(title: string, message: string, priority = 0, extras: PushExtras = {}) {
   await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -80,9 +83,27 @@ async function sendPushover(title: string, message: string, priority = 0) {
       priority,
     }),
   });
-  // Mirror every reminder/digest to the admin PWA as a native push.
+  // Mirror every reminder/digest to the admin PWA as a native push, with an
+  // action button where the job can be completed straight from the notification.
   try {
-    await sendWebPushToAdmins(pushClient, { title, body: message, url: "/admin.html" });
+    const payload: Record<string, unknown> = { title, body: message, url: "/admin.html" };
+    if (extras.jobId) {
+      payload.jobId = extras.jobId;
+      payload.tag = `job-${extras.jobId}`;
+      if (extras.jobType === "drain") {
+        // Drains have a deterministic side effect — safe to complete in one tap.
+        payload.actionToken = await signJobAction(extras.jobId, "drain_complete");
+        payload.actions = [{ action: "drain_complete", title: "✓ Mark drained" }];
+      } else if (extras.jobType === "delivery") {
+        // Deliveries need the confirm-quantities step, so deep-link into the app.
+        payload.actions = [{ action: "open_job", title: "✓ Mark delivered" }];
+        payload.url = `/admin.html?job=${encodeURIComponent(extras.jobId)}&checkoff=1`;
+      } else {
+        payload.actions = [{ action: "open_job", title: "Open job" }];
+        payload.url = `/admin.html?job=${encodeURIComponent(extras.jobId)}&checkoff=1`;
+      }
+    }
+    await sendWebPushToAdmins(pushClient, payload as never);
   } catch (e) {
     console.error("web push mirror failed:", e);
   }
@@ -231,6 +252,7 @@ async function handleReminders(supabase: any) {
           `${icon} ${typeLabel} in 30 min`,
           `${name} @ ${formatTime(j.time)}`,
           1,
+          { jobId: j.id, jobType: j.type },
         );
 
         await supabase.from("notifications_sent").insert({
@@ -250,7 +272,7 @@ async function handleReminders(supabase: any) {
         .maybeSingle();
 
       if (!existing) {
-        await sendPushover("🧪 Drain Now!", `Time to drain: ${name} @ ${formatTime(j.time)}`, 2);
+        await sendPushover("🧪 Drain Now!", `Time to drain: ${name} @ ${formatTime(j.time)}`, 2, { jobId: j.id, jobType: "drain" });
         await supabase.from("notifications_sent").insert({
           job_id: j.id,
           notif_type: "drain_now",
@@ -272,6 +294,7 @@ async function handleReminders(supabase: any) {
           "🧪 Overdue Drain!",
           `${name} was due ${j.date}${j.time ? " @ " + formatTime(j.time) : ""}`,
           1,
+          { jobId: j.id, jobType: "drain" },
         );
         await supabase.from("notifications_sent").insert({
           job_id: j.id,
