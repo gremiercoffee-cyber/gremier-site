@@ -140,9 +140,13 @@ async function resolveOpsQuantities(
     const cat = catalog[rawId];
     if (cat?.exclude && !cat.stock_key) continue; // bundle with no inventory equivalent
 
+    // Products synced into ops without an explicit stock_key use their own
+    // catalog UUID as the ops key (see normalizeProduct in admin.html), so the
+    // raw id is a valid last resort before giving up on the item.
     const key = cat?.stock_key
       || KNOWN_PRODUCT_IDS[rawId]
-      || resolveStockKeyByText([item.name_en, item.name_he, cat?.name_en, cat?.name_he, cat?.category].filter(Boolean).join(" "));
+      || resolveStockKeyByText([item.name_en, item.name_he, cat?.name_en, cat?.name_he, cat?.category].filter(Boolean).join(" "))
+      || rawId;
 
     const qty = Number(item.qty) || 1;
     const mult = (cat?.pack_size || 1) > 1 ? (cat!.pack_size as number) : 1;
