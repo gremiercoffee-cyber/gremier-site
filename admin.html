@@ -9811,6 +9811,22 @@ async function handleDelete(job) {
     await reload();
   }
 
+  // Store deliveries already marked sent — kept available so an accidental
+  // "✓ Sent" tap (or a store change) can be undone instead of lost forever.
+  const waRecentlySent = jobs
+    .filter(j=>isStoreWaDelivery2(j,stores)&&j.done&&j.waSentAt)
+    .filter(j=>{
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-STORE_WA_LOOKBACK_DAYS);
+      return String(j.date||'').slice(0,10) >= cutoff.toISOString().slice(0,10);
+    })
+    .sort((a,b)=>String(b.waSentAt||'').localeCompare(String(a.waSentAt||'')))
+    .slice(0,10);
+
+  async function undoWaSent(jobId) {
+    setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:true,waSentAt:null}:j));
+    await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({wa_needs_send:true,wa_sent_at:null})});
+  }
+
   async function markWaSent(jobId) {
     const sentAt = new Date().toISOString();
     setJobs(prev=>prev.map(j=>j.id===jobId?{...j,waNeedsSend:false,waSentAt:sentAt}:j));
@@ -9837,7 +9853,17 @@ async function addJobFromForm(job, mode) {
     if (editingJobId) {
       const existing = jobs.find(j=>j.id===editingJobId);
       const updatedJob = { ...existing, ...incomingJobs[0] };
+      // Changing the store means the WhatsApp message is now for a different shop —
+      // re-arm it (even if the old one was already marked sent) so the pill returns.
+      const storeChanged = String(existing?.storeName||'') !== String(updatedJob.storeName||'');
+      if (storeChanged && isStoreWaDelivery2(updatedJob, stores)) {
+        updatedJob.waSentAt = null;
+        updatedJob.waNeedsSend = true;
+      }
       await patchJob2(editingJobId, jobToRow2(updatedJob));
+      if (storeChanged && isStoreWaDelivery2(updatedJob, stores)) {
+        window.showToast && window.showToast('Store changed — WhatsApp message ready to send again');
+      }
       setEditingJobId(null);
       setShowForm(false);
       setFormPrefill(null);
@@ -11102,7 +11128,8 @@ const GLOBAL_PILL_DRAWER_STYLE = { position:'fixed', bottom:0, left:0, right:0, 
 const GLOBAL_PILL_BACKDROP_STYLE = { position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:300 };
 function globalPillBtn(bg) { return { background:bg, color:'#fff', border:'none', borderRadius:8, padding:'10px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }; }
 
-function GlobalWaDrawer({ jobs, stores, onMarkSent, onClose }) {
+function GlobalWaDrawer({ jobs, stores, sentJobs = [], onMarkSent, onUndoSent, onClose }) {
+  const [showSent, setShowSent] = useState3(false);
   return (
     <>
       <div style={GLOBAL_PILL_BACKDROP_STYLE} onClick={onClose}/>
@@ -11125,6 +11152,25 @@ function GlobalWaDrawer({ jobs, stores, onMarkSent, onClose }) {
             </div>
           );
         })}
+
+        {sentJobs.length>0&&(
+          <div style={{marginTop:14,borderTop:'1px solid #e0e0e0',paddingTop:10}}>
+            <button type="button" onClick={()=>setShowSent(v=>!v)}
+              style={{background:'none',border:'none',color:'#6a6a6a',fontSize:12,cursor:'pointer',padding:0,display:'flex',alignItems:'center',gap:6}}>
+              <span style={{display:'inline-block',transform:showSent?'none':'rotate(-90deg)',transition:'transform .15s'}}>▾</span>
+              Recently sent ({sentJobs.length})
+            </button>
+            {showSent&&sentJobs.map(job=>(
+              <div key={job.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',borderBottom:'1px solid #e0e0e0'}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,color:'#121212',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.storeName}</div>
+                  <div style={{fontSize:11,color:'#6a6a6a'}}>{formatDate2(job.date)}</div>
+                </div>
+                <button style={{...globalPillBtn('#eeeeee'),flexShrink:0}} onClick={()=>onUndoSent(job.id)}>↩ Undo</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
@@ -11326,7 +11372,7 @@ function GlobalPillsFloat() {
       {!anyDrawerOpen&&pendingWeb.length>0&&(
         <button style={{position:'fixed',bottom:250,right:16,background:'#3f7fc4',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
       )}
-      {waOpen&&<GlobalWaDrawer jobs={waPending} stores={stores} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onClose={()=>setWaOpen(false)}/>}
+      {waOpen&&<GlobalWaDrawer jobs={waPending} stores={stores} sentJobs={waRecentlySent} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onUndoSent={undoWaSent} onClose={()=>setWaOpen(false)}/>}
       {billingOpen&&<GlobalBillingDrawer jobs={unbilled} onMarkBilled={markBilled} onMarkPaid={markPaid} onClose={()=>setBillingOpen(false)}/>}
       {webQueueOpen&&<GlobalWebQueueDrawer orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={scheduleWebOrder} onDismiss={dismissWebOrder}/>}
     </>
