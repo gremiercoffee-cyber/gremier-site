@@ -12,7 +12,7 @@ const CONCENTRATE_LABELS: Record<string, string> = {
 // sensible threshold permanently, so warning on it is pure noise.
 const BEAN_WARN: Record<string, number> = { classic: 9, houseBlend: 3, colombia: 3 };
 
-export type BriefingItem = { tag?: string; text?: string; tone?: string };
+export type BriefingItem = { group?: string; tag?: string; text?: string; tone?: string };
 export type BriefingResult = { headline: string; items: BriefingItem[] } | null;
 
 function isoDays(offset = 0): string {
@@ -113,10 +113,12 @@ export async function buildBriefingSnapshot(supabase: SupabaseClient) {
   }));
 
   const lowBeans = (beansRes.data || [])
+    // A bean type with no threshold (decaf) is intentionally never warned about.
+    .filter((b: Record<string, unknown>) => BEAN_WARN[String(b.type)] !== undefined)
     .map((b: Record<string, unknown>) => ({
       type: CONCENTRATE_LABELS[String(b.type)] || String(b.type),
       kg: Number(b.kg) || 0,
-      warn: BEAN_WARN[String(b.type)] ?? 3,
+      warn: BEAN_WARN[String(b.type)],
       ordered: !!b.ordered,
     }))
     .filter((b) => b.kg <= b.warn && !b.ordered)
@@ -153,7 +155,8 @@ AVOID NOISE - the full schedule is printed underneath your briefing, so:
 
 Max about 10 words per item. 2-4 items, most urgent first. Fewer is better - do not pad.
 Return JSON only:
-{"headline":"one short sentence - the single most important action today","items":[{"tag":"BREW","text":"...","tone":"danger"}]}
+{"headline":"one short sentence - the single most important action today","items":[{"group":"now","tag":"BREW","text":"...","tone":"danger"}]}
+Allowed group values: now (act today), soon (next few days), fyi (worth knowing).
 Allowed tag values: BREW, BOTTLE, DELIVER, ORDER, WATCH, OK. Allowed tone values: danger, warn, info, good.`;
 
 /** Drop any item that merely restates the headline. */
@@ -204,13 +207,35 @@ export async function generateAiBriefing(snapshot: unknown): Promise<BriefingRes
   }
 }
 
-/** Plain-text block for a push/Pushover message. Empty string when unavailable. */
+/**
+ * Text rendering of the dashboard briefing card: headline, then Now/Soon/FYI
+ * groups with a tone dot and tag per line. Empty string when unavailable.
+ */
 export function formatBriefingForNotification(b: BriefingResult): string {
   if (!b) return "";
+  const TONE_DOT: Record<string, string> = {
+    danger: "\u{1F534}", // red
+    warn: "\u{1F7E0}", // orange
+    info: "\u{1F535}", // blue
+    good: "\u{1F7E2}", // green
+  };
+  const GROUP_LABEL: Record<string, string> = {
+    now: "⚡ NOW",
+    soon: "\u{1F4C5} SOON",
+    fyi: "\u{1F440} FYI",
+  };
+
   const lines = [b.headline];
-  for (const item of b.items.slice(0, 5)) {
-    const tag = item.tag ? `[${item.tag}] ` : "- ";
-    lines.push(`${tag}${item.text || ""}`.trim());
+  for (const group of ["now", "soon", "fyi"]) {
+    const rows = b.items.filter((i) => String(i.group || "now").toLowerCase() === group);
+    if (!rows.length) continue;
+    lines.push("");
+    lines.push(GROUP_LABEL[group]);
+    for (const item of rows.slice(0, 4)) {
+      const dot = TONE_DOT[String(item.tone || "info")] || TONE_DOT.info;
+      const tag = item.tag ? `${item.tag}: ` : "";
+      lines.push(`${dot} ${tag}${item.text || ""}`.trim());
+    }
   }
   return lines.join("\n");
 }
