@@ -10,6 +10,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 import { signJobAction } from "../_shared/job-action-token.ts";
+import { buildBriefingSnapshot, generateAiBriefing, formatBriefingForNotification } from "../_shared/daily-briefing.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://ayuzmwpmhncxrugsyxmw.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -196,7 +197,18 @@ async function handleMorning(supabase: any) {
     ? `☕ Gremier — ${dateLabel} (${drainCount} drain${drainCount === 1 ? "" : "s"} due)`
     : `☕ Gremier — ${dateLabel}`;
 
-  await sendPushover(title, lines.join("\n"), 0);
+  // Lead with the AI briefing so the morning alert opens with what needs doing,
+  // then the plain schedule listing. Falls back to the listing alone if AI fails.
+  let message = lines.join("\n");
+  try {
+    const snapshot = await buildBriefingSnapshot(supabase);
+    const briefing = formatBriefingForNotification(await generateAiBriefing(snapshot));
+    if (briefing) message = briefing + "\n\n---\n" + message;
+  } catch (e) {
+    console.error("morning briefing failed, sending schedule only:", e);
+  }
+
+  await sendPushover(title, message, 0);
 }
 
 async function handleAfternoon(supabase: any) {
