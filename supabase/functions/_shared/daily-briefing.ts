@@ -8,7 +8,9 @@ const CONCENTRATE_LABELS: Record<string, string> = {
   decaf: "Decaf",
 };
 /** Bean warning thresholds (kg), mirroring the dashboard briefing. */
-const BEAN_WARN: Record<string, number> = { classic: 9, houseBlend: 3, colombia: 3, decaf: 1 };
+// Decaf is deliberately absent: it is a low-volume line that sits under any
+// sensible threshold permanently, so warning on it is pure noise.
+const BEAN_WARN: Record<string, number> = { classic: 9, houseBlend: 3, colombia: 3 };
 
 export type BriefingItem = { tag?: string; text?: string; tone?: string };
 export type BriefingResult = { headline: string; items: BriefingItem[] } | null;
@@ -118,7 +120,7 @@ export async function buildBriefingSnapshot(supabase: SupabaseClient) {
       ordered: !!b.ordered,
     }))
     .filter((b) => b.kg <= b.warn && !b.ordered)
-    .map((b) => `${b.type}: ${b.kg}kg`);
+    .map((b) => `${b.type}: ${b.kg}kg left (usually keeps ~${b.warn}kg)`);
 
   return {
     today,
@@ -139,12 +141,30 @@ HOW THE BUSINESS WORKS - use the right verb:
 - BOTTLE: concentrate into finished bottles/minis/jerry cans, done in-house. A bottle shortfall means BOTTLE more (needs concentrate first - if concentrate is also short, the brew comes first).
 - DELIVER: take finished stock to stores/customers.
 - ORDER: ONLY for buying beans from the supplier. Never say "order bottles" - bottles are made, not bought.
+- DRAIN: finishing a brew that is already steeping. Tag these WATCH, never BREW.
 Never use vague verbs like "plan", "secure", "replenish", "arrange". Every item is a concrete physical action.
 
-Max about 10 words per item. 2-5 items, most urgent first. If nothing needs attention, return one "good" item saying so.
+AVOID NOISE - the full schedule is printed underneath your briefing, so:
+- NEVER repeat the headline as one of the items. The headline stands alone.
+- Do NOT restate jobs that are already scheduled today (deliveries, drains, brews with a time). They are listed below and have their own reminders. Mention one only if something puts it at risk, e.g. not enough stock for it.
+- Prefer what is NOT already on the schedule: stores drifting past their usual rhythm, shortfalls, beans running out.
+- Always include the number: "Order 5kg Classic beans (2kg left)", not "order beans before stock runs out".
+- If the only thing to report is already on the schedule below, return a single "good" item such as "Schedule below is covered."
+
+Max about 10 words per item. 2-4 items, most urgent first. Fewer is better - do not pad.
 Return JSON only:
 {"headline":"one short sentence - the single most important action today","items":[{"tag":"BREW","text":"...","tone":"danger"}]}
 Allowed tag values: BREW, BOTTLE, DELIVER, ORDER, WATCH, OK. Allowed tone values: danger, warn, info, good.`;
+
+/** Drop any item that merely restates the headline. */
+function dedupeAgainstHeadline(headline: string, items: BriefingItem[]): BriefingItem[] {
+  const norm = (t: string) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const h = norm(headline);
+  return items.filter((i) => {
+    const t = norm(i.text || "");
+    return t && t !== h && !(h.includes(t) && t.length > 12);
+  });
+}
 
 /** Ask Luna for the prioritized read. Returns null if unavailable - caller falls back. */
 export async function generateAiBriefing(snapshot: unknown): Promise<BriefingResult> {
@@ -175,7 +195,9 @@ export async function generateAiBriefing(snapshot: unknown): Promise<BriefingRes
     const raw = data.choices?.[0]?.message?.content || "";
     const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
     if (!parsed?.headline) return null;
-    return { headline: String(parsed.headline), items: Array.isArray(parsed.items) ? parsed.items : [] };
+    const headline = String(parsed.headline);
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    return { headline, items: dedupeAgainstHeadline(headline, items) };
   } catch (e) {
     console.error("daily-briefing: failed", e);
     return null;
