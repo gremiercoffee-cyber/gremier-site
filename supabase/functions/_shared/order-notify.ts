@@ -289,6 +289,19 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
 
   const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
 
+  // Keep a copy for the in-app notifications list.
+  try {
+    const logLabel = order.order_number ? `#${order.order_number}` : String(order.id).slice(0, 8);
+    await supabase.from("notification_log").insert({
+      title: `New paid order ${logLabel} — ₪${Number(order.total) || 0}`,
+      body: [order.customer_name || "", order.delivery_address || ""].filter(Boolean).join(" · "),
+      kind: "order",
+      url: "/admin.html",
+    });
+  } catch (e) {
+    console.error("notification_log (order) failed:", e);
+  }
+
   // Native PWA push to all admin devices (best-effort, alongside email).
   try {
     const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);

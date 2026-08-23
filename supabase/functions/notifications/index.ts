@@ -84,6 +84,19 @@ async function sendPushover(title: string, message: string, priority = 0, extras
       priority,
     }),
   });
+  // Keep a copy so the admin app can show notifications that were swiped away.
+  try {
+    await pushClient.from("notification_log").insert({
+      title,
+      body: message,
+      kind: extras.jobType || null,
+      job_id: extras.jobId || null,
+      url: extras.jobId ? `/admin.html?job=${extras.jobId}&checkoff=1` : "/admin.html",
+    });
+  } catch (e) {
+    console.error("notification_log insert failed:", e);
+  }
+
   // Mirror every reminder/digest to the admin PWA as a native push, with an
   // action button where the job can be completed straight from the notification.
   try {
