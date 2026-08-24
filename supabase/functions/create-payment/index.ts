@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { quoteDeliveryFee, loadDeliveryPricingTables } from "../_shared/delivery-pricing.ts";
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -348,7 +349,7 @@ serve(async (req) => {
 
     const body = await req.json();
 
-    const { order_id, payment_link_code, language, delivery_address, customer_name, customer_email, customer_phone } = body;
+    const { order_id, payment_link_code, language, delivery_address, customer_name, customer_email, customer_phone, delivery_info } = body;
 
 
 
@@ -392,7 +393,7 @@ serve(async (req) => {
 
         .from("payment_links")
 
-        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, order_id, tranzila_url")
+        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, order_id, tranzila_url, delivery_fee, delivery_info")
 
         .eq("link_code", String(payment_link_code))
 
@@ -443,12 +444,50 @@ serve(async (req) => {
         await supabase.from("orders").update(orderPatch).eq("id", row.order_id);
       }
 
-      const totalShekels = Number(row.total) || 0;
+      // Delivery chosen by the customer on the pay page is priced HERE, never
+      // trusted from the client, then persisted so the order carries the fee.
+      let deliveryFee = 0;
+      let deliveryMeta: Record<string, unknown> | null = null;
+      const chosenDelivery = delivery_info && typeof delivery_info === "object"
+        ? delivery_info as Record<string, unknown>
+        : null;
+      if (chosenDelivery && String(chosenDelivery.delivery_type || "") !== "") {
+        try {
+          const { zones, settings } = await loadDeliveryPricingTables(supabase);
+          const quote = quoteDeliveryFee(chosenDelivery, zones, settings, Number(row.total) || 0);
+          deliveryFee = Number(quote.fee) || 0;
+          deliveryMeta = {
+            ...chosenDelivery,
+            delivery_fee: deliveryFee,
+            delivery_label: quote.typeLabel,
+            zone_name: quote.zone?.name_en || "",
+            pricing_source: quote.source,
+            server_priced: true,
+          };
+          await supabase.from("payment_links").update({
+            delivery_fee: deliveryFee,
+            delivery_info: deliveryMeta,
+            updated_at: new Date().toISOString(),
+          }).eq("link_code", row.link_code);
+        } catch (e) {
+          console.error("payment link delivery pricing failed:", e);
+        }
+      }
+
+      const totalShekels = (Number(row.total) || 0) + deliveryFee;
 
       if (totalShekels <= 0) {
 
         throw new Error("Invalid payment total");
 
+      }
+
+      if (deliveryMeta && row.order_id) {
+        await supabase.from("orders").update({
+          delivery_info: deliveryMeta,
+          total: totalShekels,
+          updated_at: new Date().toISOString(),
+        }).eq("id", row.order_id);
       }
 
       // Reuse an open PayMe sale — never create a second charge for the same link attempt.

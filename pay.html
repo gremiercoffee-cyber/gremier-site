@@ -58,6 +58,37 @@
 
     .pay-discount { color: #4caf72; }
 
+    /* DELIVERY CHOOSER */
+    .pay-delivery { margin: 4px 0 18px; }
+    .pay-delivery-label { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: #9a9a9a; margin-bottom: 8px; display: block; }
+    .pay-delivery-opts { display: grid; gap: 8px; }
+    .pay-delivery-opt {
+      display: flex; align-items: center; gap: 10px; padding: 12px 13px;
+      border: 1px solid #333; border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .pay-delivery-opt.selected { border-color: #d0d0d0; background: rgba(208,208,208,.07); }
+    .pay-delivery-opt input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .pay-delivery-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #666; flex-shrink: 0; position: relative; }
+    .pay-delivery-opt.selected .pay-delivery-dot { border-color: #d0d0d0; }
+    .pay-delivery-opt.selected .pay-delivery-dot::after {
+      content: ''; position: absolute; inset: 3px; border-radius: 50%; background: #d0d0d0;
+    }
+    .pay-delivery-text { flex: 1; min-width: 0; }
+    .pay-delivery-name { font-size: .88rem; color: #efefef; }
+    .pay-delivery-hint { font-size: .72rem; color: #8a8a8a; margin-top: 2px; }
+    .pay-delivery-price { font-size: .85rem; color: #d0d0d0; white-space: nowrap; }
+    .pay-city-wrap { position: relative; }
+    .pay-city-list {
+      position: absolute; left: 0; right: 0; top: 100%; z-index: 20; margin: 4px 0 0; padding: 0;
+      list-style: none; background: #1c1c1c; border: 1px solid #333; border-radius: 8px;
+      max-height: 210px; overflow-y: auto;
+    }
+    .pay-city-list li { padding: 10px 12px; cursor: pointer; font-size: .85rem; color: #d8d8d8; }
+    .pay-city-list li:hover, .pay-city-list li.active { background: rgba(255,255,255,.07); }
+    .pay-fee-row {
+      display: flex; justify-content: space-between; font-size: .82rem;
+      color: #b6b6b6; padding: 8px 0; border-top: 1px solid #2a2a2a;
+    }
     .pay-total { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 0 24px; }
 
     .pay-total-label { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: #9a9a9a; }
@@ -278,12 +309,206 @@
     } catch (_) {}
   }
 
+// ── DELIVERY CHOOSER ────────────────────────────────────────────────────────
+// Shows the same options as the website checkout and prices them from the same
+// delivery_zones table. The displayed fee is a preview only — create-payment
+// recomputes it server-side, so the charge can never be tampered with here.
+let payZones = [];
+let payZoneSettings = null;
+let payCities = [];
+let paySelectedCity = null;
+let payDeliveryType = 'regular';
+
+const PAY_DELIVERY_OPTIONS = [
+  { id: 'regular',   name: 'Regular delivery',  hint: 'Within 2 days' },
+  { id: 'expedited', name: 'Expedited delivery', hint: 'Next day' },
+  { id: 'event',     name: 'Delivery to event',  hint: 'Specific date and time' },
+  { id: 'pickup',    name: 'No delivery',        hint: 'Pickup / arranged separately' },
+];
+
+async function initPayDelivery() {
+  try {
+    const [{ data: zones }, { data: settings }] = await Promise.all([
+      sb.from('delivery_zones').select('*').order('name_en'),
+      sb.from('delivery_settings').select('*').eq('id', 1).maybeSingle(),
+    ]);
+    payZones = (zones || []).filter(z => z.is_active !== false);
+    payZoneSettings = settings || null;
+  } catch (e) {
+    console.warn('delivery zones unavailable:', e);
+  }
+  try {
+    const res = await fetch('israel-cities.json');
+    payCities = await res.json();
+  } catch (_) { payCities = []; }
+  renderPayDeliveryOptions();
+}
+
+function renderPayDeliveryOptions() {
+  const box = document.getElementById('payDeliveryOpts');
+  if (!box) return;
+  box.innerHTML = PAY_DELIVERY_OPTIONS.map(o => `
+    <label class="pay-delivery-opt ${o.id === payDeliveryType ? 'selected' : ''}" data-opt="${o.id}">
+      <input type="radio" name="payDelivery" value="${o.id}" ${o.id === payDeliveryType ? 'checked' : ''}
+             onchange="selectPayDelivery('${o.id}')"/>
+      <span class="pay-delivery-dot"></span>
+      <span class="pay-delivery-text">
+        <span class="pay-delivery-name">${o.name}</span>
+        <span class="pay-delivery-hint">${o.hint}</span>
+      </span>
+      <span class="pay-delivery-price" id="payOptPrice_${o.id}"></span>
+    </label>`).join('');
+  updatePayDeliveryQuote();
+}
+
+function selectPayDelivery(id) {
+  payDeliveryType = id;
+  document.querySelectorAll('.pay-delivery-opt').forEach(el => {
+    el.classList.toggle('selected', el.dataset.opt === id);
+  });
+  const needsAddress = id !== 'pickup';
+  const fields = document.getElementById('payDeliveryFields');
+  if (fields) fields.style.display = needsAddress ? 'block' : 'none';
+  const ev = document.getElementById('payEventWrap');
+  if (ev) ev.style.display = id === 'event' ? 'block' : 'none';
+  updatePayDeliveryQuote();
+}
+
+function payNormCity(v) {
+  return String(v || '').toLowerCase().trim().replace(/['"`]/g, '').replace(/\s+/g, ' ');
+}
+
+function findPayZone() {
+  if (!paySelectedCity) return null;
+  const code = String(paySelectedCity.code || '').trim();
+  const en = payNormCity(paySelectedCity.en);
+  const he = String(paySelectedCity.he || '').trim();
+  return payZones.find(z => {
+    if (code && z.city_code && String(z.city_code) === code) return true;
+    const zEn = payNormCity(z.name_en);
+    return (zEn && en && (zEn === en || zEn.includes(en) || en.includes(zEn)))
+        || (!!he && String(z.name_he || '').trim() === he);
+  }) || null;
+}
+
+/** Mirrors quoteDeliveryFee on the server so the preview matches the charge. */
+function payFeeFor(type) {
+  if (type === 'pickup') return 0;
+  const zone = findPayZone();
+  const regular = zone ? (Number(zone.regular_price) || 0)
+                       : (Number(payZoneSettings?.default_regular_price) || 30);
+  const expedited = zone ? (Number(zone.expedited_price) || 0)
+                         : (Number(payZoneSettings?.default_expedited_price) || 50);
+  const eventPrice = zone
+    ? (zone.event_price != null ? Number(zone.event_price) : expedited)
+    : (Number(payZoneSettings?.default_event_price) || 80);
+  const freeAbove = zone?.free_above ? Number(zone.free_above) : null;
+  const base = Number(paymentLink?.total) || 0;
+  if (type === 'expedited') return expedited;
+  if (type === 'event') return eventPrice;
+  return (freeAbove != null && base >= freeAbove) ? 0 : regular;
+}
+
+function updatePayDeliveryQuote() {
+  const base = Number(paymentLink?.total) || 0;
+  const hasCity = !!paySelectedCity;
+
+  PAY_DELIVERY_OPTIONS.forEach(o => {
+    const el = document.getElementById('payOptPrice_' + o.id);
+    if (!el) return;
+    if (o.id === 'pickup') { el.textContent = '₪0'; return; }
+    el.textContent = hasCity ? ('₪' + payFeeFor(o.id)) : '';
+  });
+
+  const fee = hasCity ? payFeeFor(payDeliveryType) : 0;
+  const feeRow = document.getElementById('payFeeRow');
+  const feeAmt = document.getElementById('payFeeAmt');
+  const feeLabel = document.getElementById('payFeeLabel');
+  const totalEl = document.getElementById('payTotalAmt');
+
+  const show = payDeliveryType !== 'pickup' && hasCity;
+  if (feeRow) feeRow.style.display = show ? 'flex' : 'none';
+  if (feeAmt) feeAmt.textContent = '₪' + fee;
+  if (feeLabel) {
+    const opt = PAY_DELIVERY_OPTIONS.find(o => o.id === payDeliveryType);
+    feeLabel.textContent = 'Delivery — ' + (opt ? opt.name : '');
+  }
+  if (totalEl) totalEl.textContent = '₪' + (base + (show ? fee : 0));
+}
+
+function onPayCityInput(value) {
+  const list = document.getElementById('payCityList');
+  if (!list) return;
+  paySelectedCity = null;
+  const q = payNormCity(value);
+  if (q.length < 2) { list.style.display = 'none'; updatePayDeliveryQuote(); return; }
+  const matches = payCities.filter(c =>
+    payNormCity(c.en).includes(q) || String(c.he || '').includes(value.trim())
+  ).slice(0, 8);
+  if (!matches.length) { list.style.display = 'none'; updatePayDeliveryQuote(); return; }
+  list.innerHTML = matches.map((c, i) =>
+    `<li data-i="${i}" onclick="choosePayCity(${i})">${c.he ? c.he + ' · ' : ''}${c.en}</li>`
+  ).join('');
+  list._matches = matches;
+  list.style.display = 'block';
+  updatePayDeliveryQuote();
+}
+
+function choosePayCity(i) {
+  const list = document.getElementById('payCityList');
+  const city = list?._matches?.[i];
+  if (!city) return;
+  paySelectedCity = city;
+  const input = document.getElementById('payCity');
+  if (input) input.value = city.he ? `${city.he} · ${city.en}` : city.en;
+  list.style.display = 'none';
+  updatePayDeliveryQuote();
+}
+
+/** What gets sent to create-payment; the server re-prices it. */
+function getPayDeliveryInfo() {
+  if (payDeliveryType === 'pickup') return { delivery_type: 'pickup' };
+  if (!paySelectedCity) return null;
+  return {
+    delivery_type: payDeliveryType,
+    city_en: paySelectedCity.en || '',
+    city_he: paySelectedCity.he || '',
+    city_code: paySelectedCity.code || null,
+    delivery_date: payDeliveryType === 'event'
+      ? (document.getElementById('payEventDate')?.value || null) : null,
+    event_time: payDeliveryType === 'event'
+      ? (document.getElementById('payEventTime')?.value || null) : null,
+  };
+}
+
+/** Blocks checkout until the delivery choice is complete. Returns an error string or ''. */
+function validatePayDelivery() {
+  if (payDeliveryType === 'pickup') return '';
+  if (!paySelectedCity) return 'Please choose your city from the list';
+  if (!(document.getElementById('payAddress')?.value || '').trim()) return 'Please enter your street address';
+  if (payDeliveryType === 'event') {
+    const d = document.getElementById('payEventDate')?.value;
+    const t = document.getElementById('payEventTime')?.value;
+    if (!d || !t) return 'Please choose the event date and time';
+  }
+  return '';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.pay-city-wrap')) {
+    const l = document.getElementById('payCityList');
+    if (l) l.style.display = 'none';
+  }
+});
+
 async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerName, customerEmail, customerPhone } = {}) {
   const body = { language: 'en' };
   if (orderId) body.order_id = orderId;
   if (linkCode) body.payment_link_code = linkCode;
   if (!body.order_id && !body.payment_link_code) throw new Error('Payment setup error');
   if (deliveryAddress) body.delivery_address = deliveryAddress;
+  const chosenDelivery = typeof getPayDeliveryInfo === 'function' ? getPayDeliveryInfo() : null;
+  if (chosenDelivery) body.delivery_info = chosenDelivery;
   if (customerName) body.customer_name = customerName;
   if (customerEmail) body.customer_email = customerEmail;
   if (customerPhone) body.customer_phone = customerPhone;
@@ -792,11 +1017,16 @@ function renderCheckout(link) {
 
       <div class="pay-items">${items}${discountLine}</div>
 
+      <div id="payFeeRow" class="pay-fee-row" style="display:none">
+        <span id="payFeeLabel">Delivery</span>
+        <span id="payFeeAmt">₪0</span>
+      </div>
+
       <div class="pay-total">
 
         <span class="pay-total-label">Total</span>
 
-        <span class="pay-total-amt">₪${link.total}</span>
+        <span class="pay-total-amt" id="payTotalAmt">₪${link.total}</span>
 
       </div>
 
@@ -826,14 +1056,28 @@ function renderCheckout(link) {
 
       </div>
 
-      <div class="pay-field">
+      <div class="pay-delivery" id="payDeliveryBlock">
+        <span class="pay-delivery-label">Delivery</span>
+        <div class="pay-delivery-opts" id="payDeliveryOpts"></div>
 
-        <label for="payAddress">Delivery address <span style="text-transform:none;letter-spacing:0;color:#666">(optional)</span></label>
-
-        <input type="text" id="payAddress" placeholder="City, street, apartment…" value="${esc(link.delivery_address || '')}"/>
-
-        <div class="pay-field-hint">Add your address here if you know it — otherwise we'll confirm delivery details with you on WhatsApp.</div>
-
+        <div id="payDeliveryFields" style="display:none;margin-top:12px">
+          <div class="pay-field pay-city-wrap">
+            <label for="payCity">City <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
+            <input type="text" id="payCity" autocomplete="off" placeholder="Start typing your city…" oninput="onPayCityInput(this.value)"/>
+            <ul class="pay-city-list" id="payCityList" style="display:none"></ul>
+          </div>
+          <div class="pay-field">
+            <label for="payAddress">Street address <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
+            <input type="text" id="payAddress" placeholder="Street, number, apartment, floor" value="${esc(link.delivery_address || '')}"/>
+          </div>
+          <div class="pay-field" id="payEventWrap" style="display:none">
+            <label for="payEventDate">Date &amp; time <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
+            <div style="display:flex;gap:8px">
+              <input type="date" id="payEventDate" style="flex:1" onchange="updatePayDeliveryQuote()"/>
+              <input type="time" id="payEventTime" style="flex:1" onchange="updatePayDeliveryQuote()"/>
+            </div>
+          </div>
+        </div>
       </div>
 
       <button class="pay-btn" id="payBtn" onclick="startPayment()">Pay with PayMe</button>
@@ -842,6 +1086,8 @@ function renderCheckout(link) {
 
       <div class="pay-error" id="payError" style="display:none"></div>`;
 
+    // Delivery chooser needs zones + city list; render it once the card exists.
+    initPayDelivery().then(() => selectPayDelivery(payDeliveryType));
   }
 
 
@@ -886,6 +1132,13 @@ function renderCheckout(link) {
     if (errEl) errEl.style.display = 'none';
 
     try {
+      const deliveryErr = typeof validatePayDelivery === 'function' ? validatePayDelivery() : '';
+      if (deliveryErr) {
+        if (errEl) { errEl.textContent = deliveryErr; errEl.style.display = 'block'; }
+        paymentStarting = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Pay with PayMe'; }
+        return;
+      }
       const deliveryAddress = getPayAddressForCheckout(paymentLink);
       const customerName = getPayNameForCheckout(paymentLink);
 
