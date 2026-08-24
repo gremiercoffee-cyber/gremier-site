@@ -216,6 +216,20 @@ async function autoScheduleDelivery(
     return false;
   }
 
+  // Idempotency guard: the webhook and the browser return URL both run this flow,
+  // sometimes concurrently, so a job for this order may already exist. Never make a
+  // second one — that was showing up as a duplicate delivery on the schedule.
+  const { data: existingJob } = await supabase
+    .from("jobs")
+    .select("id")
+    .eq("website_order_id", order.id)
+    .limit(1)
+    .maybeSingle();
+  if (existingJob) {
+    console.log("autoScheduleDelivery: job already exists for order", order.id, "- skipping");
+    return true;
+  }
+
   const items = Array.isArray(order.items) ? order.items : [];
   const itemsLabel = items.map((i) => `${i.name_en || "Item"} x${i.qty || 1}`).join(", ");
   const jobId = "web_" + Date.now() + "_" + Math.random().toString(36).slice(2);
