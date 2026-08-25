@@ -72,18 +72,25 @@ const pushClient = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSes
 
 type PushExtras = { jobId?: string; jobType?: string };
 
+// Pushover is disabled — the in-app + native web push notifications replaced it.
+// Re-enable by setting PUSHOVER_ENABLED=1 (kept so nothing is lost). This function
+// still logs every notification and mirrors it to the admin PWA regardless.
+const PUSHOVER_ENABLED = Deno.env.get("PUSHOVER_ENABLED") === "1";
+
 async function sendPushover(title: string, message: string, priority = 0, extras: PushExtras = {}) {
-  await fetch("https://api.pushover.net/1/messages.json", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      token: PUSHOVER_TOKEN,
-      user: PUSHOVER_USER,
-      title,
-      message,
-      priority,
-    }),
-  });
+  if (PUSHOVER_ENABLED && PUSHOVER_TOKEN && PUSHOVER_USER) {
+    await fetch("https://api.pushover.net/1/messages.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: PUSHOVER_TOKEN,
+        user: PUSHOVER_USER,
+        title,
+        message,
+        priority,
+      }),
+    });
+  }
   // Keep a copy so the admin app can show notifications that were swiped away.
   try {
     await pushClient.from("notification_log").insert({

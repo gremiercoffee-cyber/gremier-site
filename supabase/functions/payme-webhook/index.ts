@@ -131,6 +131,8 @@ async function sendViaGoogleSheet(payload: Record<string, unknown>): Promise<boo
 }
 
 async function sendViaPushover(title: string, message: string): Promise<boolean> {
+  // Pushover disabled (dead path anyway; live notifications go through the shared module).
+  if (Deno.env.get("PUSHOVER_ENABLED") !== "1") return false;
   const user = Deno.env.get("PUSHOVER_USER_KEY");
   const token = Deno.env.get("PUSHOVER_API_TOKEN");
   if (!user || !token) return false;
