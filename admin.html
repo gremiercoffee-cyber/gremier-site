@@ -519,6 +519,19 @@
       padding: 10px 16px; border-bottom: 1px solid var(--border);
       font-size: .78rem; color: var(--text2);
     }
+    .notif-tabs { display: inline-flex; gap: 2px; background: var(--highlight); border-radius: 8px; padding: 2px; }
+    .notif-tab {
+      background: none; border: none; cursor: pointer; padding: 5px 11px; border-radius: 6px;
+      font-family: 'DM Sans', sans-serif; font-size: .74rem; color: var(--text2); font-weight: 600;
+    }
+    .notif-tab.active { background: #1a1a1a; color: #fff; }
+    .notif-item { position: relative; }
+    .notif-archive-btn {
+      position: absolute; top: 8px; right: 8px; background: none; border: none;
+      color: var(--text2); font-size: .72rem; cursor: pointer; padding: 3px 6px; border-radius: 6px;
+      opacity: .55;
+    }
+    .notif-archive-btn:hover { opacity: 1; background: var(--highlight); }
     .notif-list { flex: 1; overflow-y: auto; padding: 8px 12px 24px; }
     .notif-item {
       border: 1px solid var(--border); border-radius: 10px; padding: 12px 13px;
@@ -1368,6 +1381,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="notif-head">
       <span>&#128276; Notifications</span>
       <div style="display:flex;gap:6px;align-items:center">
+        <div class="notif-tabs">
+          <button type="button" class="notif-tab active" id="notifTabActive" onclick="setNotifView('active')">Active</button>
+          <button type="button" class="notif-tab" id="notifTabArchived" onclick="setNotifView('archived')">Archived</button>
+        </div>
         <button type="button" class="btn btn-outline btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
         <button type="button" class="notif-close" onclick="closeNotificationsPanel()" aria-label="Close">&#10005;</button>
       </div>
@@ -2433,6 +2450,15 @@ async function signOut() { await sb.auth.signOut(); location.reload(); }
 // Push notifications vanish once swiped away, so every one the server sends is
 // also logged and shown here.
 let notifCache = [];
+let notifView = 'active';           // 'active' | 'archived'
+const NOTIF_AUTO_ARCHIVE_DAYS = 7;  // read notifications older than this auto-archive
+
+function setNotifView(view) {
+  notifView = view;
+  document.getElementById('notifTabActive')?.classList.toggle('active', view === 'active');
+  document.getElementById('notifTabArchived')?.classList.toggle('active', view === 'archived');
+  renderNotifications();
+}
 
 async function loadNotifications() {
   const list = document.getElementById('notifList');
@@ -2442,15 +2468,30 @@ async function loadNotifications() {
       .from('notification_log')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(200);
     if (error) throw error;
     notifCache = data || [];
+    await autoArchiveOldRead();
     renderNotifications();
     updateNotifBadge();
   } catch (e) {
     console.warn('loadNotifications failed:', e);
     list.innerHTML = '<div class="notif-empty">Could not load notifications.</div>';
   }
+}
+
+// Read notifications older than NOTIF_AUTO_ARCHIVE_DAYS move to Archived on their own.
+async function autoArchiveOldRead() {
+  const cutoff = Date.now() - NOTIF_AUTO_ARCHIVE_DAYS * 86400000;
+  const stale = notifCache.filter(n =>
+    !n.archived_at && n.read_at && new Date(n.created_at).getTime() < cutoff);
+  if (!stale.length) return;
+  const now = new Date().toISOString();
+  stale.forEach(n => { n.archived_at = now; });
+  try {
+    await sb.from('notification_log').update({ archived_at: now })
+      .in('id', stale.map(n => n.id));
+  } catch (e) { console.warn('auto-archive failed:', e); }
 }
 
 function notifTimeLabel(iso) {
@@ -2467,20 +2508,43 @@ function notifTimeLabel(iso) {
 function renderNotifications() {
   const list = document.getElementById('notifList');
   if (!list) return;
-  if (!notifCache.length) {
-    list.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+  const rows = notifCache.filter(n => notifView === 'archived' ? n.archived_at : !n.archived_at);
+  if (!rows.length) {
+    list.innerHTML = `<div class="notif-empty">${notifView === 'archived' ? 'Nothing archived.' : 'No notifications yet.'}</div>`;
     return;
   }
-  list.innerHTML = notifCache.map(n => `
+  list.innerHTML = rows.map(n => `
     <div class="notif-item ${n.read_at ? '' : 'unread'}" onclick="openNotification('${n.id}')">
+      <button class="notif-archive-btn" onclick="event.stopPropagation();${n.archived_at ? 'unarchiveNotification' : 'archiveNotification'}('${n.id}')">${n.archived_at ? '\u21a9 Restore' : '\u2715 Archive'}</button>
       <div class="notif-item-title">${escHtml(n.title || '')}</div>
       ${n.body ? `<div class="notif-item-body">${escHtml(n.body)}</div>` : ''}
       <div class="notif-item-time">${notifTimeLabel(n.created_at)}</div>
     </div>`).join('');
 }
 
+async function archiveNotification(id) {
+  const n = notifCache.find(x => String(x.id) === String(id));
+  if (!n) return;
+  n.archived_at = new Date().toISOString();
+  if (!n.read_at) n.read_at = n.archived_at;   // archiving also clears unread
+  renderNotifications();
+  updateNotifBadge();
+  try { await sb.from('notification_log').update({ archived_at: n.archived_at, read_at: n.read_at }).eq('id', n.id); }
+  catch (e) { console.warn('archive failed:', e); }
+}
+
+async function unarchiveNotification(id) {
+  const n = notifCache.find(x => String(x.id) === String(id));
+  if (!n) return;
+  n.archived_at = null;
+  renderNotifications();
+  updateNotifBadge();
+  try { await sb.from('notification_log').update({ archived_at: null }).eq('id', n.id); }
+  catch (e) { console.warn('unarchive failed:', e); }
+}
+
 function updateNotifBadge() {
-  const unread = notifCache.filter(n => !n.read_at).length;
+  const unread = notifCache.filter(n => !n.read_at && !n.archived_at).length;
   ['pushBellBtn', 'notifBellDesktop'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2527,6 +2591,7 @@ async function markAllNotificationsRead() {
 function openNotificationsPanel() {
   document.getElementById('notifPanel')?.classList.add('open');
   document.getElementById('notifBackdrop')?.classList.add('open');
+  setNotifView('active');
   loadNotifications();
   refreshPushButton();
 }
