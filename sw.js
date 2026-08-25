@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v26';
+const CACHE = 'gremier-v27';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -92,17 +92,21 @@ self.addEventListener('notificationclick', e => {
     return;
   }
 
-  // Everything else (including "Mark delivered") opens the app at the job so the
-  // normal confirm-quantities checkoff runs.
+  // The action BUTTONS ("Mark delivered" / "Open job") jump to that job's checkoff.
+  // A plain tap on the notification body opens the in-app Notifications screen.
+  const goToJob = e.action === 'open_job';
+  const openUrl = goToJob ? url : '/admin.html?notif=1';
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const client of list) {
         if (client.url.includes('admin.html') && 'focus' in client) {
-          client.postMessage({ type: 'gremier:open-job', jobId: d.jobId || null });
+          client.postMessage(goToJob
+            ? { type: 'gremier:open-job', jobId: d.jobId || null }
+            : { type: 'gremier:open-notifications' });
           return client.focus();
         }
       }
-      return self.clients.openWindow(url);
+      return self.clients.openWindow(openUrl);
     })
   );
 });

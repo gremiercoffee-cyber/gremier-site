@@ -1874,6 +1874,14 @@ function gremierOpenJobFromNotification(jobId) {
   const t = setInterval(() => { fire(); if (++tries >= 6) clearInterval(t); }, 700);
   fire();
 }
+// Open the Notifications panel once the app scripts are ready (it mounts late).
+function gremierOpenNotificationsFromPush() {
+  let tries = 0;
+  const t = setInterval(() => {
+    if (typeof openNotificationsPanel === 'function') { openNotificationsPanel(); clearInterval(t); }
+    if (++tries >= 8) clearInterval(t);
+  }, 500);
+}
 (function initNotificationDeepLink() {
   try {
     const params = new URLSearchParams(location.search);
@@ -1881,11 +1889,17 @@ function gremierOpenJobFromNotification(jobId) {
     if (jobId && params.get('checkoff')) {
       gremierOpenJobFromNotification(jobId);
       history.replaceState({}, '', location.pathname);
+    } else if (params.get('notif')) {
+      // Tapped a push notification → land on the Notifications screen.
+      gremierOpenNotificationsFromPush();
+      history.replaceState({}, '', location.pathname);
     }
   } catch (e) { console.warn('deep link parse failed:', e); }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', ev => {
-      if (ev.data && ev.data.type === 'gremier:open-job') gremierOpenJobFromNotification(ev.data.jobId);
+      if (!ev.data) return;
+      if (ev.data.type === 'gremier:open-job') gremierOpenJobFromNotification(ev.data.jobId);
+      else if (ev.data.type === 'gremier:open-notifications') gremierOpenNotificationsFromPush();
     });
   }
 })();
