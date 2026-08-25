@@ -258,6 +258,13 @@ async function autoScheduleDelivery(
   });
 
   if (jobErr) {
+    // 23505 = unique violation on jobs_website_order_id_unique: another confirmation
+    // path already scheduled this exact order. That's the desired outcome, not a failure.
+    const code = (jobErr as { code?: string }).code;
+    if (code === "23505" || /duplicate key|unique/i.test(jobErr.message || "")) {
+      console.log("autoScheduleDelivery: job already scheduled for order", order.id, "(unique guard) - ok");
+      return true;
+    }
     console.error("autoScheduleDelivery: jobs insert failed:", jobErr.message, jobErr);
     await noteAutoScheduleFailure(supabase, pendingId, `Auto-schedule failed: ${jobErr.message}`);
     return false;
