@@ -751,6 +751,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
+      <div class="nav-item" onclick="showTab('workers')" id="nav-workers"><span class="icon">👷</span><span>Workers</span></div>
       <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
       </div>
       <div class="sidebar-bottom">
@@ -1343,6 +1344,85 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 </div>
  
 <!-- GIFT CARDS TAB -->
+<div id="tab-workers" class="tab-content" style="display:none">
+  <div class="page-header">
+    <div class="flex-between">
+      <div><h1 class="page-title">👷 Workers</h1><p class="page-sub">Hours, rates and payments</p></div>
+      <div class="header-actions">
+        <button class="btn btn-amber" onclick="openWorkerModal()">+ Add Worker</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-grid" id="workerStats"></div>
+
+  <div id="workersList"><div class="loading"><div class="spinner"></div></div></div>
+</div>
+
+<!-- Add / edit worker -->
+<div class="modal" id="workerModal">
+  <div class="modal-box">
+    <div class="modal-title" id="workerModalTitle">Add Worker</div>
+    <input type="hidden" id="wkEditId"/>
+    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="wkName" placeholder="Worker name"/></div>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Hourly rate (₪)</label><input class="form-input" type="number" id="wkRate" placeholder="0"/></div>
+      <div class="form-group"><label class="form-label">Phone (optional)</label><input class="form-input" id="wkPhone" placeholder="05X-XXXXXXX"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="wkNotes" placeholder="Anything worth remembering"/></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-amber" onclick="saveWorker()">Save</button>
+      <button class="btn btn-outline" onclick="closeWorkerModal()">Cancel</button>
+      <button class="btn btn-red btn-sm" id="wkDeleteBtn" style="margin-left:auto;display:none" onclick="deleteWorker()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log hours -->
+<div class="modal" id="workerHoursModal">
+  <div class="modal-box">
+    <div class="modal-title">Log hours</div>
+    <input type="hidden" id="whWorkerId"/>
+    <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="whDate"/></div>
+    <div class="seg-control" style="margin-bottom:14px">
+      <button type="button" class="seg-btn active" id="whModeHours" onclick="setHoursMode('hours')">Just hours</button>
+      <button type="button" class="seg-btn" id="whModeTimes" onclick="setHoursMode('times')">Start / end times</button>
+    </div>
+    <div id="whHoursWrap" class="form-group">
+      <label class="form-label">Hours worked</label>
+      <input class="form-input" type="number" step="0.25" id="whHours" placeholder="e.g. 4.5" oninput="updateHoursPreview()"/>
+    </div>
+    <div id="whTimesWrap" class="form-row-2" style="display:none">
+      <div class="form-group"><label class="form-label">Start</label><input class="form-input" type="time" id="whStart" onchange="updateHoursPreview()"/></div>
+      <div class="form-group"><label class="form-label">End</label><input class="form-input" type="time" id="whEnd" onchange="updateHoursPreview()"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Note (optional)</label><input class="form-input" id="whNote" placeholder="What they worked on"/></div>
+    <div id="whPreview" style="font-size:.85rem;color:var(--text2);margin-bottom:8px"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" onclick="saveWorkerHours()">Save</button>
+      <button class="btn btn-outline" onclick="closeHoursModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log payment -->
+<div class="modal" id="workerPayModal">
+  <div class="modal-box">
+    <div class="modal-title">Log payment</div>
+    <input type="hidden" id="wpWorkerId"/>
+    <div class="form-row-2">
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="wpDate"/></div>
+      <div class="form-group"><label class="form-label">Amount (₪)</label><input class="form-input" type="number" id="wpAmount" placeholder="0"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Note (optional)</label><input class="form-input" id="wpNote" placeholder="Cash, transfer…"/></div>
+    <div id="wpOwedHint" style="font-size:.85rem;color:var(--text2);margin-bottom:8px"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" onclick="saveWorkerPayment()">Save</button>
+      <button class="btn btn-outline" onclick="closePayModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="tab-giftcards" class="tab-content" style="display:none">
   <div class="page-header">
     <div class="flex-between">
@@ -1428,6 +1508,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="nav-drawer-item" onclick="showTab('products');closeNavDrawer()"><span>&#128230;</span>Products</button>
     <button class="nav-drawer-item" onclick="showTab('paylinks');closeNavDrawer()"><span>&#128279;</span>Payment Links</button>
     <button class="nav-drawer-item" onclick="showTab('members');closeNavDrawer()"><span>&#128100;</span>Members</button>
+    <button class="nav-drawer-item" onclick="showTab('workers');closeNavDrawer()"><span>&#128119;</span>Workers</button>
     <button class="nav-drawer-item" onclick="showTab('reports');closeNavDrawer()"><span>&#128200;</span>Reports</button>
     <button class="nav-drawer-item" onclick="showTab('delivery');closeNavDrawer()"><span>&#128666;</span>Delivery</button>
     <button class="nav-drawer-item" onclick="showTab('coupons');closeNavDrawer()"><span>&#127903;&#65039;</span>Coupons</button>
@@ -2614,6 +2695,289 @@ function closeNotificationsPanel() {
   document.getElementById('notifBackdrop')?.classList.remove('open');
 }
 
+// ══ WORKERS: hours, rates, payments ══════════════════════════════════════════
+let workersCache = [];
+let workerEntriesCache = {};   // worker_id -> entries[]
+let workerOpenId = null;       // which worker's history is expanded
+let whMode = 'hours';          // 'hours' | 'times'
+
+function wkMoney(n) { return '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString(); }
+function wkTodayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+/** Hours between two HH:MM times, handling a shift that runs past midnight. */
+function wkHoursBetween(start, end) {
+  if (!start || !end) return 0;
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins < 0) mins += 24 * 60;
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+async function loadWorkers() {
+  const list = document.getElementById('workersList');
+  if (!list) return;
+  try {
+    const [{ data: ws, error: e1 }, { data: es, error: e2 }] = await Promise.all([
+      sb.from('workers').select('*').order('name'),
+      sb.from('worker_entries').select('*').order('entry_date', { ascending: false }),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    workersCache = ws || [];
+    workerEntriesCache = {};
+    (es || []).forEach(en => { (workerEntriesCache[en.worker_id] ||= []).push(en); });
+    renderWorkers();
+  } catch (err) {
+    console.warn('loadWorkers failed:', err);
+    list.innerHTML = '<div class="card" style="padding:16px;color:var(--text2)">Could not load workers.</div>';
+  }
+}
+
+function workerTotals(id) {
+  const entries = workerEntriesCache[id] || [];
+  let earned = 0, paid = 0, hours = 0;
+  entries.forEach(e => {
+    if (e.kind === 'payment') paid += Number(e.amount) || 0;
+    else { earned += Number(e.amount) || 0; hours += Number(e.hours) || 0; }
+  });
+  return { earned, paid, hours, owed: earned - paid, count: entries.length };
+}
+
+function renderWorkers() {
+  const list = document.getElementById('workersList');
+  const stats = document.getElementById('workerStats');
+  if (!list) return;
+
+  let totalOwed = 0, totalPaid = 0, totalHours = 0;
+  workersCache.forEach(w => {
+    const t = workerTotals(w.id);
+    totalOwed += t.owed; totalPaid += t.paid; totalHours += t.hours;
+  });
+  if (stats) {
+    stats.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Owed right now</div><div class="stat-value">${wkMoney(totalOwed)}</div></div>
+      <div class="stat-card"><div class="stat-label">Paid all time</div><div class="stat-value">${wkMoney(totalPaid)}</div></div>
+      <div class="stat-card"><div class="stat-label">Hours logged</div><div class="stat-value">${Math.round(totalHours * 100) / 100}</div></div>
+      <div class="stat-card"><div class="stat-label">Workers</div><div class="stat-value">${workersCache.length}</div></div>`;
+  }
+
+  if (!workersCache.length) {
+    list.innerHTML = '<div class="card" style="padding:18px;color:var(--text2)">No workers yet — tap “+ Add Worker” to start.</div>';
+    return;
+  }
+
+  list.innerHTML = workersCache.map(w => {
+    const t = workerTotals(w.id);
+    const open = workerOpenId === w.id;
+    const entries = (workerEntriesCache[w.id] || []).slice(0, 40);
+    const owedColor = t.owed > 0 ? 'var(--red)' : 'var(--green)';
+    return `
+    <div class="card" style="padding:0;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer" onclick="toggleWorker('${w.id}')">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:var(--cream);font-size:.95rem">${escHtml(w.name)}</div>
+          <div style="font-size:.75rem;color:var(--text2);margin-top:2px">
+            ${wkMoney(w.hourly_rate)}/hr · ${Math.round(t.hours * 100) / 100} h logged
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;color:${owedColor};font-size:.95rem">${wkMoney(t.owed)}</div>
+          <div style="font-size:.7rem;color:var(--text2)">${t.owed > 0 ? 'owed' : 'settled'}</div>
+        </div>
+        <span style="color:var(--text2);transform:${open ? 'none' : 'rotate(-90deg)'};transition:transform .15s">▾</span>
+      </div>
+
+      ${open ? `
+      <div style="padding:0 16px 16px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openHoursModal('${w.id}')">+ Log hours</button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openPayModal('${w.id}')">₪ Log payment</button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openWorkerModal('${w.id}')">Edit</button>
+        </div>
+        ${entries.length ? entries.map(e => {
+          const isPay = e.kind === 'payment';
+          const when = e.entry_date;
+          const detail = isPay
+            ? (e.note || 'Payment')
+            : `${Math.round((Number(e.hours) || 0) * 100) / 100} h${e.start_time ? ` · ${String(e.start_time).slice(0,5)}–${String(e.end_time || '').slice(0,5)}` : ''}${e.note ? ' · ' + escHtml(e.note) : ''}`;
+          return `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:.95rem">${isPay ? '💸' : '⏱'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.82rem;color:var(--cream2)">${escHtml(detail)}</div>
+              <div style="font-size:.7rem;color:var(--text2)">${when}</div>
+            </div>
+            <div style="font-size:.85rem;font-weight:600;color:${isPay ? 'var(--green)' : 'var(--cream)'}">
+              ${isPay ? '−' : '+'}${wkMoney(e.amount)}
+            </div>
+            <button class="btn btn-outline btn-sm" style="padding:3px 8px" onclick="event.stopPropagation();deleteWorkerEntry('${e.id}','${w.id}')">✕</button>
+          </div>`;
+        }).join('') : '<div style="font-size:.82rem;color:var(--text2);padding:8px 0">No entries yet.</div>'}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleWorker(id) {
+  workerOpenId = workerOpenId === id ? null : id;
+  renderWorkers();
+}
+
+// ── worker add/edit ──
+function openWorkerModal(id) {
+  const w = id ? workersCache.find(x => String(x.id) === String(id)) : null;
+  document.getElementById('workerModalTitle').textContent = w ? 'Edit Worker' : 'Add Worker';
+  document.getElementById('wkEditId').value = w ? w.id : '';
+  document.getElementById('wkName').value = w ? (w.name || '') : '';
+  document.getElementById('wkRate').value = w ? (w.hourly_rate ?? '') : '';
+  document.getElementById('wkPhone').value = w ? (w.phone || '') : '';
+  document.getElementById('wkNotes').value = w ? (w.notes || '') : '';
+  document.getElementById('wkDeleteBtn').style.display = w ? 'inline-flex' : 'none';
+  document.getElementById('workerModal').classList.add('open');
+}
+function closeWorkerModal() { document.getElementById('workerModal').classList.remove('open'); }
+
+async function saveWorker() {
+  const id = document.getElementById('wkEditId').value;
+  const name = document.getElementById('wkName').value.trim();
+  const rate = Number(document.getElementById('wkRate').value) || 0;
+  if (!name) { showToast('Enter a name'); return; }
+  const payload = {
+    name,
+    hourly_rate: rate,
+    phone: document.getElementById('wkPhone').value.trim() || null,
+    notes: document.getElementById('wkNotes').value.trim() || null,
+  };
+  try {
+    if (id) await sb.from('workers').update(payload).eq('id', id);
+    else await sb.from('workers').insert(payload);
+    closeWorkerModal();
+    await loadWorkers();
+    showToast('Saved ✓');
+  } catch (e) { console.error(e); showToast('Could not save worker'); }
+}
+
+async function deleteWorker() {
+  const id = document.getElementById('wkEditId').value;
+  if (!id) return;
+  if (!window.confirm('Delete this worker and all their logged hours and payments?')) return;
+  try {
+    await sb.from('workers').delete().eq('id', id);
+    closeWorkerModal();
+    if (workerOpenId === id) workerOpenId = null;
+    await loadWorkers();
+    showToast('Worker deleted');
+  } catch (e) { console.error(e); showToast('Could not delete'); }
+}
+
+// ── hours ──
+function setHoursMode(mode) {
+  whMode = mode;
+  document.getElementById('whModeHours').classList.toggle('active', mode === 'hours');
+  document.getElementById('whModeTimes').classList.toggle('active', mode === 'times');
+  document.getElementById('whHoursWrap').style.display = mode === 'hours' ? 'block' : 'none';
+  document.getElementById('whTimesWrap').style.display = mode === 'times' ? 'grid' : 'none';
+  updateHoursPreview();
+}
+
+function currentLoggedHours() {
+  if (whMode === 'times') {
+    return wkHoursBetween(document.getElementById('whStart').value, document.getElementById('whEnd').value);
+  }
+  return Math.max(0, Number(document.getElementById('whHours').value) || 0);
+}
+
+function updateHoursPreview() {
+  const w = workersCache.find(x => String(x.id) === String(document.getElementById('whWorkerId').value));
+  const hrs = currentLoggedHours();
+  const el = document.getElementById('whPreview');
+  if (!el) return;
+  el.textContent = hrs > 0 && w
+    ? `${hrs} h × ${wkMoney(w.hourly_rate)}/hr = ${wkMoney(hrs * (Number(w.hourly_rate) || 0))}`
+    : '';
+}
+
+function openHoursModal(workerId) {
+  document.getElementById('whWorkerId').value = workerId;
+  document.getElementById('whDate').value = wkTodayISO();
+  document.getElementById('whHours').value = '';
+  document.getElementById('whStart').value = '';
+  document.getElementById('whEnd').value = '';
+  document.getElementById('whNote').value = '';
+  setHoursMode('hours');
+  document.getElementById('workerHoursModal').classList.add('open');
+}
+function closeHoursModal() { document.getElementById('workerHoursModal').classList.remove('open'); }
+
+async function saveWorkerHours() {
+  const workerId = document.getElementById('whWorkerId').value;
+  const w = workersCache.find(x => String(x.id) === String(workerId));
+  if (!w) return;
+  const hours = currentLoggedHours();
+  if (!(hours > 0)) { showToast('Enter hours, or a start and end time'); return; }
+  const rate = Number(w.hourly_rate) || 0;
+  const usingTimes = whMode === 'times';
+  try {
+    await sb.from('worker_entries').insert({
+      worker_id: workerId,
+      kind: 'work',
+      entry_date: document.getElementById('whDate').value || wkTodayISO(),
+      start_time: usingTimes ? (document.getElementById('whStart').value || null) : null,
+      end_time: usingTimes ? (document.getElementById('whEnd').value || null) : null,
+      hours,
+      rate_snapshot: rate,
+      amount: Math.round(hours * rate * 100) / 100,
+      note: document.getElementById('whNote').value.trim() || null,
+    });
+    closeHoursModal();
+    workerOpenId = workerId;
+    await loadWorkers();
+    showToast('Hours logged ✓');
+  } catch (e) { console.error(e); showToast('Could not log hours'); }
+}
+
+// ── payments ──
+function openPayModal(workerId) {
+  document.getElementById('wpWorkerId').value = workerId;
+  document.getElementById('wpDate').value = wkTodayISO();
+  const t = workerTotals(workerId);
+  document.getElementById('wpAmount').value = t.owed > 0 ? Math.round(t.owed * 100) / 100 : '';
+  document.getElementById('wpNote').value = '';
+  const hint = document.getElementById('wpOwedHint');
+  if (hint) hint.textContent = t.owed > 0 ? `Currently owed: ${wkMoney(t.owed)}` : 'Nothing outstanding.';
+  document.getElementById('workerPayModal').classList.add('open');
+}
+function closePayModal() { document.getElementById('workerPayModal').classList.remove('open'); }
+
+async function saveWorkerPayment() {
+  const workerId = document.getElementById('wpWorkerId').value;
+  const amount = Number(document.getElementById('wpAmount').value) || 0;
+  if (!(amount > 0)) { showToast('Enter an amount'); return; }
+  try {
+    await sb.from('worker_entries').insert({
+      worker_id: workerId,
+      kind: 'payment',
+      entry_date: document.getElementById('wpDate').value || wkTodayISO(),
+      amount,
+      note: document.getElementById('wpNote').value.trim() || null,
+    });
+    closePayModal();
+    workerOpenId = workerId;
+    await loadWorkers();
+    showToast('Payment logged ✓');
+  } catch (e) { console.error(e); showToast('Could not log payment'); }
+}
+
+async function deleteWorkerEntry(entryId, workerId) {
+  if (!window.confirm('Delete this entry?')) return;
+  try {
+    await sb.from('worker_entries').delete().eq('id', entryId);
+    workerOpenId = workerId;
+    await loadWorkers();
+  } catch (e) { console.error(e); showToast('Could not delete entry'); }
+}
+
 // ══ MOBILE NAV DRAWER ══
 function toggleNavDrawer() {
   const open = !document.getElementById('navDrawer')?.classList.contains('open');
@@ -2662,6 +3026,7 @@ function showTab(tab) {
   if (tab === 'delivery' && typeof loadDeliverySettings === 'function') loadDeliverySettings();
   if (tab === 'storedeliveries' && typeof loadStoreDeliveries === 'function') loadStoreDeliveries();
   if (tab === 'siteimages' && typeof loadSiteImages === 'function') loadSiteImages();
+  if (tab === 'workers' && typeof loadWorkers === 'function') loadWorkers();
   if (tab === 'stock') {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
@@ -5531,6 +5896,7 @@ function showTab(tab) {
   if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
   if (tab==='coupons') loadCoupons();
   if (tab==='giftcards') loadGiftCards();
+  if (tab==='workers') loadWorkers();
   if (tab==='stock') {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
