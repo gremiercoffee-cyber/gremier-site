@@ -43,6 +43,10 @@ export async function sendWebPushToAdmins(
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         body,
+        // High urgency tells FCM to wake a dozing device instead of batching the
+        // message for later — without it Android delays or drops these entirely.
+        // TTL keeps it deliverable for a day if the phone is offline.
+        { urgency: "high", TTL: 86400 },
       );
       sent++;
       await supabase

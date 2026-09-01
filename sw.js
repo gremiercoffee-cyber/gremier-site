@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v27';
+const CACHE = 'gremier-v28';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -44,6 +44,11 @@ self.addEventListener('push', e => {
     // transparent silhouette, or it renders as a solid black square.
     badge: '/icon-badge.png',
     actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : undefined,
+    // Re-alert even when a notification with the same tag is showing, and keep
+    // order alerts on screen until acted on so they can't be missed.
+    renotify: !!data.tag,
+    requireInteraction: data.important !== false,
+    vibrate: [180, 80, 180],
     data: {
       url: data.url || '/admin.html',
       jobId: data.jobId || null,
