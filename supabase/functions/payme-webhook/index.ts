@@ -5,6 +5,14 @@ import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/paym
 import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-order.ts";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { findCheckoutOrder } from "../_shared/find-checkout-order.ts";
+import { sendWebPushToAdmins } from "../_shared/web-push.ts";
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 // ─── Order notifications (Google Sheet + Pushover fallback) ───────────────────
 
@@ -643,6 +651,210 @@ async function notifyPaidOrder(
 
 
 
+// ─── Subscription (recurring) callbacks ────────────────────────────────────────
+// PayMe posts these to sub_callback_url on every subscription event. Types:
+//   sub-create, sub-active, sub-iteration-success, sub-complete, sub-cancel, sub-failure
+// (https://docs.payme.io/docs/payments/567ad7df11de2-subscriptions)
+
+type SubscriptionParent = {
+  id: string;
+  order_number?: number | null;
+  user_id?: string | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+  delivery_address?: string | null;
+  items?: unknown;
+  subtotal?: number | null;
+  discount?: number | null;
+  total?: number | null;
+  payment_status?: string | null;
+  delivery_info?: Record<string, unknown> | null;
+};
+
+const PARENT_COLUMNS =
+  "id, order_number, user_id, customer_name, customer_email, customer_phone, delivery_address, items, subtotal, discount, total, payment_status, delivery_info";
+
+/** Find the original checkout order for a subscription. We send subscription_id=order.id, so PayMe echoes it. */
+async function findSubscriptionParent(
+  supabase: ReturnType<typeof createClient>,
+  merchantSubId: string,
+  paymeSubId: string,
+): Promise<SubscriptionParent | null> {
+  if (merchantSubId) {
+    const { data } = await supabase.from("orders").select(PARENT_COLUMNS).eq("id", merchantSubId).maybeSingle();
+    if (data) return data as SubscriptionParent;
+  }
+  if (paymeSubId) {
+    const { data: rows } = await supabase
+      .from("orders")
+      .select(PARENT_COLUMNS)
+      .eq("payment_method", "payme")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    return (rows as SubscriptionParent[] | null)?.find((o) => {
+      const info = o.delivery_info && typeof o.delivery_info === "object" ? o.delivery_info : {};
+      return String(info.payme_subscription_id || "") === paymeSubId;
+    }) ?? null;
+  }
+  return null;
+}
+
+/** Best-effort stable id for one subscription charge, so retries don't double-process. */
+function iterationKey(payload: PaymePayload): string {
+  const direct = String(
+    payload.payme_sale_id || payload.payme_transaction_id || payload.transaction_id || "",
+  ).trim();
+  if (direct) return direct;
+  const sub = String(payload.sub_payme_id || "");
+  const done = String(payload.sub_iterations_completed ?? "");
+  return sub ? `${sub}:${done}` : "";
+}
+
+async function adminAlert(
+  supabase: ReturnType<typeof createClient>,
+  title: string,
+  body: string,
+): Promise<void> {
+  try {
+    await supabase.from("notification_log").insert({ title, body, kind: "order", url: "/admin.html" });
+  } catch (e) {
+    console.error("adminAlert notification_log failed:", e);
+  }
+  try {
+    await sendWebPushToAdmins(supabase, { title, body, url: "/admin.html", tag: `sub-${Date.now()}` });
+  } catch (e) {
+    console.error("adminAlert web push failed:", e);
+  }
+}
+
+async function handleSubscriptionCallback(
+  supabase: ReturnType<typeof createClient>,
+  payload: PaymePayload,
+): Promise<Response> {
+  // Log the full payload so the exact PayMe field names can be confirmed in the logs.
+  console.log("PayMe subscription callback:", JSON.stringify(payload));
+
+  const notifyType = String(payload.notify_type || "").toLowerCase();
+  const merchantSubId = String(payload.subscription_id || "");
+  const paymeSubId = String(payload.sub_payme_id || "");
+
+  const parent = await findSubscriptionParent(supabase, merchantSubId, paymeSubId);
+  if (!parent) {
+    console.error("subscription callback: parent order not found", { merchantSubId, paymeSubId, notifyType });
+    return json({ ok: false, error: "subscription_parent_not_found" }, 404);
+  }
+
+  const info = parent.delivery_info && typeof parent.delivery_info === "object"
+    ? parent.delivery_info as Record<string, unknown>
+    : {};
+  const key = iterationKey(payload);
+
+  const isSuccess = notifyType === "sub-active" || notifyType === "sub-iteration-success";
+  if (isSuccess) {
+    // First charge — the original checkout order is still unpaid. Mark it paid and fulfill.
+    if (parent.payment_status !== "paid") {
+      await supabase.from("orders").update({
+        payment_status: "paid",
+        status: "confirmed",
+        delivery_info: {
+          ...info,
+          subscription_first_iteration_key: key,
+          payme_subscription_id: info.payme_subscription_id || paymeSubId || null,
+          payme_sale_id: String(payload.payme_sale_id || info.payme_sale_id || paymeSubId || ""),
+        },
+        updated_at: new Date().toISOString(),
+      }).eq("id", parent.id);
+
+      if (parent.user_id) {
+        await awardPoints(supabase, parent.user_id, Number(parent.subtotal) || 0);
+        await redeemCouponIfUsed(supabase, parent.user_id, Number(parent.discount) || 0);
+      }
+      await fulfillPaidOrder(supabase, parent.id, { skip_payme_check: true });
+      return json({ ok: true, first_charge: true, order_id: parent.id });
+    }
+
+    // Parent already paid → this is either a duplicate of the first charge, or a renewal.
+    if (key && key === String(info.subscription_first_iteration_key || "")) {
+      return json({ ok: true, duplicate_first: true });
+    }
+    if (key) {
+      const { data: existingChild } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("delivery_info->>subscription_iteration_key", key)
+        .maybeSingle();
+      if (existingChild) return json({ ok: true, already_processed: true, order_id: existingChild.id });
+    }
+
+    // Renewal: clone the parent into a fresh paid order, then fulfill (schedules delivery + notifies).
+    const childInfo: Record<string, unknown> = { ...info };
+    // Schedule the renewal fresh (default lead time) — don't reuse the months-old requested date.
+    delete childInfo.delivery_date;
+    delete childInfo.date_requested;
+    delete childInfo.order_notified_at;
+    delete childInfo.subscription_first_iteration_key;
+    delete childInfo.sale_url;
+    childInfo.recurring_child = true;
+    childInfo.subscription_parent_order_id = parent.id;
+    childInfo.subscription_iteration_key = key || null;
+    childInfo.payme_subscription_id = paymeSubId || info.payme_subscription_id || null;
+    childInfo.payme_sale_id = String(payload.payme_sale_id || "");
+
+    const { data: child, error } = await supabase.from("orders").insert({
+      user_id: parent.user_id ?? null,
+      customer_name: parent.customer_name,
+      customer_email: parent.customer_email,
+      customer_phone: parent.customer_phone,
+      delivery_address: parent.delivery_address,
+      items: parent.items || [],
+      subtotal: parent.subtotal,
+      discount: parent.discount || 0,
+      total: parent.total,
+      status: "confirmed",
+      payment_status: "paid",
+      payment_method: "payme",
+      source: "subscription",
+      delivery_info: childInfo,
+      notes: "Auto-created from subscription renewal",
+    }).select("id").single();
+
+    if (error || !child?.id) {
+      console.error("subscription renewal: order clone failed", error);
+      await adminAlert(
+        supabase,
+        `⚠️ Subscription renewal — could not auto-create order for ${parent.customer_name || ""}`.trim(),
+        "PayMe charged the customer but the order/delivery wasn't created. Add it manually in admin.",
+      );
+      return json({ ok: false, error: "renewal_clone_failed" }, 500);
+    }
+
+    if (parent.user_id) await awardPoints(supabase, parent.user_id, Number(parent.subtotal) || 0);
+    await fulfillPaidOrder(supabase, child.id, { skip_payme_check: true });
+    return json({ ok: true, renewal: true, order_id: child.id });
+  }
+
+  if (notifyType === "sub-cancel" || notifyType === "sub-failure") {
+    await supabase.from("orders").update({
+      delivery_info: { ...info, subscription_status: notifyType },
+      updated_at: new Date().toISOString(),
+    }).eq("id", parent.id);
+
+    const label = parent.order_number ? `#${parent.order_number}` : String(parent.id).slice(0, 8);
+    await adminAlert(
+      supabase,
+      notifyType === "sub-cancel"
+        ? `Subscription canceled — ${parent.customer_name || label}`
+        : `⚠️ Subscription payment failed — ${parent.customer_name || label}`,
+      [parent.customer_name || "", parent.delivery_address || ""].filter(Boolean).join(" · "),
+    );
+    return json({ ok: true, [notifyType]: true });
+  }
+
+  // sub-create, sub-complete, or anything else — acknowledge without side effects.
+  return json({ ok: true, ignored: notifyType || "unknown" });
+}
+
 Deno.serve(async (req) => {
 
   if (req.method === "OPTIONS") {
@@ -687,6 +899,21 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
     if (sigSecret && !verifySignature(payload, sigSecret)) {
       console.error("PayMe webhook signature mismatch");
       return new Response("Invalid signature", { status: 401 });
+    }
+
+
+
+    // Subscription (recurring) callbacks are a separate flow from one-time sales.
+    // Route them before the sale logic — their notify_type starts with "sub-".
+    const notifyTypeRaw = String(payload.notify_type || "").toLowerCase();
+    if (notifyTypeRaw.startsWith("sub-")) {
+      const subServiceKey = getServiceRoleKey();
+      if (!subServiceKey) {
+        console.error("PayMe subscription callback: missing service role key");
+        return json({ ok: false }, 500);
+      }
+      const subSupabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", subServiceKey);
+      return await handleSubscriptionCallback(subSupabase, payload);
     }
 
 

@@ -22,17 +22,21 @@ export type OrderNotifyRow = {
 export function describeDelivery(info: Record<string, unknown> | null | undefined): {
   typeLabel: string;
   requested: string;
+  requestedShort: string;
 } {
   const row = info && typeof info === "object" ? info : {};
   const type = String(row.delivery_type || "regular");
   const priority = String(row.priority_type || "");
   const date = String(row.delivery_date || "").trim();
   const time = String(row.event_time || "").trim();
+  const hasDate = /^\d{4}-\d{2}-\d{2}/.test(date);
 
   let typeLabel = "Regular (within 2 days)";
   if (type === "event") typeLabel = "Event delivery";
   else if (type === "expedited") {
     typeLabel = priority === "specific_date" ? "Expedited — specific date" : "Expedited (next day)";
+  } else if (type === "regular" && hasDate) {
+    typeLabel = "Regular — requested date";
   }
   if (row.is_gift_card) typeLabel = "Gift card";
 
@@ -40,8 +44,13 @@ export function describeDelivery(info: Record<string, unknown> | null | undefine
     const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
     return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
   };
-  const requested = date ? formatDate(date) + (time ? ` at ${time}` : "") : "";
-  return { typeLabel, requested };
+  const formatShort = (iso: string) => {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}` : iso;
+  };
+  const requested = hasDate ? formatDate(date) + (time ? ` at ${time}` : "") : "";
+  const requestedShort = hasDate ? formatShort(date) + (time ? ` ${time}` : "") : "";
+  return { typeLabel, requested, requestedShort };
 }
 
 function formatItems(items: OrderNotifyRow["items"]): string {
@@ -89,7 +98,7 @@ function buildOrderMessage(order: OrderNotifyRow) {
     `Email: ${payload.customer_email || "—"}`,
     `Address: ${payload.delivery_address || "—"}`,
     `Delivery: ${payload.delivery_type}`,
-    payload.delivery_requested ? `Requested for: ${payload.delivery_requested}` : null,
+    payload.delivery_requested ? `📅 REQUESTED DELIVERY DATE: ${payload.delivery_requested}` : null,
     "",
     "Items:",
     payload.items_summary,
@@ -291,12 +300,20 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
 
   const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
 
+  const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);
+  // Lead a requested delivery date so it can't be missed at a glance.
+  const datePrefix = delivery.requestedShort ? `📅 ${delivery.requestedShort} · ` : "";
+
   // Keep a copy for the in-app notifications list.
   try {
     const logLabel = order.order_number ? `#${order.order_number}` : String(order.id).slice(0, 8);
     await supabase.from("notification_log").insert({
-      title: `New paid order ${logLabel} — ₪${Number(order.total) || 0}`,
-      body: [order.customer_name || "", order.delivery_address || ""].filter(Boolean).join(" · "),
+      title: `${datePrefix}New paid order ${logLabel} — ₪${Number(order.total) || 0}`,
+      body: [
+        order.customer_name || "",
+        delivery.requested ? `Requested for ${delivery.requested}` : "",
+        order.delivery_address || "",
+      ].filter(Boolean).join(" · "),
       kind: "order",
       url: "/admin.html",
     });
@@ -306,14 +323,17 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
 
   // Native PWA push to all admin devices (best-effort, alongside email).
   try {
-    const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);
     const label = order.order_number ? `#${order.order_number}` : String(order.id).slice(0, 8);
+    const notes = String(order.notes || "").trim();
     await sendWebPushToAdmins(supabase, {
-      title: `New paid order ${label} — ₪${Number(order.total) || 0}`,
+      title: `${datePrefix}New paid order ${label} — ₪${Number(order.total) || 0}`,
       body: [
         order.customer_name || "",
-        delivery.typeLabel + (delivery.requested ? ` · ${delivery.requested}` : ""),
+        delivery.requested
+          ? `📅 Requested delivery: ${delivery.requested}`
+          : delivery.typeLabel,
         order.delivery_address || "",
+        notes ? `📝 ${notes.length > 90 ? notes.slice(0, 90) + "…" : notes}` : "",
       ].filter(Boolean).join("\n"),
       url: "/admin.html",
       tag: `order-${order.id}`,

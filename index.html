@@ -1177,7 +1177,7 @@
         <label class="form-label" id="t-co-ship">Shipping Type</label>
         <div style="display:flex;gap:10px;margin-top:4px">
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipRegularLabel">
-            <input type="radio" name="shipType" value="regular" id="shipRegular" onchange="updateDeliveryPrice()" checked style="accent-color:#1a1a1a"/>
+            <input type="radio" name="shipType" value="regular" id="shipRegular" onchange="updateDeliveryPrice();toggleExpeditedOptions()" checked style="accent-color:#1a1a1a"/>
             <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-regular">Regular Delivery</div><div style="font-size:.74rem;color:var(--text2)">2-5 days <span id="shipRegularPrice">—</span></div></div>
           </label>
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipExpeditedLabel">
@@ -1188,6 +1188,12 @@
             <input type="radio" name="shipType" value="event" id="shipEvent" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
             <div><div style="font-size:.85rem;color:var(--cream)">Event Delivery</div><div style="font-size:.74rem;color:var(--text2)">Choose your date &amp; time <span id="shipEventPrice">—</span></div></div>
           </label>
+        </div>
+        <!-- Regular delivery: optional requested date -->
+        <div id="regularOptions" style="margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
+          <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px" id="t-co-regular-date">Requested delivery date (optional)</label>
+          <input type="date" id="coRegularDate" class="form-input" style="max-width:220px"/>
+          <div style="font-size:.72rem;color:var(--text2);margin-top:6px;line-height:1.5" id="t-co-regular-date-hint">Leave blank and we'll deliver as soon as possible (2–5 days). Pick a date only if you need it delivered on a specific day.</div>
         </div>
         <!-- Priority sub-options -->
         <div id="expeditedOptions" style="display:none;margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
@@ -2643,6 +2649,7 @@ const isExpedited = document.getElementById('shipExpedited')?.checked;
 const isEvent = document.getElementById('shipEvent')?.checked;
 const priorityType = document.getElementById('priorityDate')?.checked ? 'specific_date' : 'fast';
 const deliveryDate = document.getElementById('coDeliveryDate')?.value || null;
+const regularDate = document.getElementById('coRegularDate')?.value || null;
 const eventDate = document.getElementById('coEventDate')?.value || null;
 const eventTime = document.getElementById('coEventTime')?.value || null;
 const shipType = isEvent ? 'event' : (isExpedited ? 'expedited' : 'regular');    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
@@ -2675,8 +2682,9 @@ const shipType = isEvent ? 'event' : (isExpedited ? 'expedited' : 'regular');   
       total,
       delivery_info: {
        delivery_type: shipType,
-priority_type: isExpedited ? priorityType : null,
-delivery_date: isExpedited && priorityType === 'specific_date' ? deliveryDate : (isEvent ? eventDate : null),
+priority_type: isExpedited ? priorityType : (shipType === 'regular' && regularDate ? 'specific_date' : null),
+delivery_date: isEvent ? eventDate : (isExpedited && priorityType === 'specific_date' ? deliveryDate : (shipType === 'regular' ? regularDate : null)),
+date_requested: shipType === 'regular' ? !!regularDate : null,
 event_time: isEvent ? eventTime : null,
         delivery_fee: deliveryFee,
         city_en: selectedCheckoutCity.en,
@@ -3774,10 +3782,19 @@ async function purchaseGiftCardFromPage() {
   function toggleExpeditedOptions() {
   const isExpedited = document.getElementById('shipExpedited')?.checked;
   const isEvent = document.getElementById('shipEvent')?.checked;
+  const isRegular = document.getElementById('shipRegular')?.checked;
   const opts = document.getElementById('expeditedOptions');
   const eventOpts = document.getElementById('eventOptions');
+  const regOpts = document.getElementById('regularOptions');
   if (opts) opts.style.display = isExpedited ? 'block' : 'none';
   if (eventOpts) eventOpts.style.display = isEvent ? 'block' : 'none';
+  if (regOpts) regOpts.style.display = isRegular ? 'block' : 'none';
+  // Don't let the customer pick a date in the past.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
+  ['coRegularDate', 'coDeliveryDate', 'coEventDate'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.min) el.min = today;
+  });
   if (!isExpedited) {
     const dateRow = document.getElementById('datePickerRow');
     if (dateRow) dateRow.style.display = 'none';

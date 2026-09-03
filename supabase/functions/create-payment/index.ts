@@ -203,17 +203,19 @@ async function generatePayMeSubscription(
   console.log("PayMe subscription response:", paymeRes.status, paymeData);
 
   const statusCode = Number(paymeData.status_code);
+  // PayMe returns the subscription id as sub_payme_id and the checkout URL as
+  // sub_url (subscription_id is just the merchant id we sent, echoed back).
   const paymeSaleId = String(
-    paymeData.payme_subscription_id
+    paymeData.sub_payme_id
+      || paymeData.payme_subscription_id
       || paymeData.subscription_id
-      || paymeData.payme_sale_id
       || "",
   );
   const saleUrl = String(
-    paymeData.sale_url
+    paymeData.sub_url
+      || paymeData.sale_url
       || paymeData.sale_url_full
       || paymeData.subscription_url
-      || paymeData.sub_url
       || paymeData.redirect_url
       || "",
   );
@@ -258,8 +260,21 @@ function intervalToPayMeIterationType(interval: unknown): number {
   return interval === "weekly" ? 2 : 3;
 }
 
-function nextIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * PayMe wants the start date as DD/MM/YYYY. For monthly subscriptions the day
+ * of month must be 1–28 (PayMe rejects 29–31), so clamp it. Uses Israel time.
+ */
+function paymeStartDate(iterationType: number): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  let day = Number(get("day"));
+  if (iterationType === 3 && day > 28) day = 28; // monthly: PayMe allows only 1–28
+  return `${String(day).padStart(2, "0")}/${get("month")}/${get("year")}`;
 }
 
 function buildRecurringPayload(
@@ -275,34 +290,45 @@ function buildRecurringPayload(
     callbackUrl: string;
   },
 ): Record<string, unknown> {
+  // Optional overrides / sandbox flags (e.g. {"test":1}). No longer required —
+  // the full payload is built here so subscriptions work without extra config.
+  let template: Record<string, unknown> = {};
   const templateRaw = Deno.env.get("PAYME_RECURRING_PAYLOAD_JSON") || "";
-  if (!templateRaw.trim()) {
-    throw new Error("Subscription checkout is not configured for automatic recurring billing yet. Set PAYME_RECURRING_PAYLOAD_JSON with PayMe shared recurring defaults.");
-  }
-  const parsed = JSON.parse(templateRaw);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("PAYME_RECURRING_PAYLOAD_JSON must be a JSON object");
-  }
-  if (!opts.paymeClientKey) {
-    throw new Error("Subscription checkout is missing PAYME_CLIENT_KEY");
+  if (templateRaw.trim()) {
+    const parsed = JSON.parse(templateRaw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("PAYME_RECURRING_PAYLOAD_JSON must be a JSON object");
+    }
+    template = parsed as Record<string, unknown>;
   }
   if (!opts.buyerEmail || !opts.buyerPhone) {
     throw new Error("Subscription checkout requires customer email and phone");
   }
-  return {
-    ...(parsed as Record<string, unknown>),
-    payme_client_key: opts.paymeClientKey,
+
+  const iterationType = intervalToPayMeIterationType(subscription.interval);
+  const payload: Record<string, unknown> = {
+    // Defaults per PayMe generate-subscription spec; env template can override.
+    sub_type: 1, // 1 = regular (first charge via iframe establishes the card)
+    sub_iterations: -1, // unlimited until cancelled
+    sub_currency: "ILS", // required by PayMe
+    language: "he",
+    sub_send_notification: true,
+    ...template,
     seller_payme_id: opts.sellerId,
     sub_price: Math.round(opts.totalShekels * 100),
     sub_description: `Gremier Coffee Subscription #${order.order_number ?? order.id.slice(0, 8)}`,
-    sub_iteration_type: intervalToPayMeIterationType(subscription.interval),
-    sub_start_date: nextIsoDate(),
+    sub_iteration_type: iterationType,
+    sub_start_date: paymeStartDate(iterationType),
     subscription_id: order.id,
     sub_callback_url: opts.callbackUrl,
     sub_return_url: opts.returnUrl,
     sub_email_address: opts.buyerEmail,
     sub_indicative_mobile: opts.buyerPhone,
   };
+  // Partner accounts only — PayMe's own sample omits this for regular sellers,
+  // and our code used to throw without it, which blocked every subscription.
+  if (opts.paymeClientKey) payload.payme_client_key = opts.paymeClientKey;
+  return payload;
 }
 
 async function tryReuseExistingPayMeSale(
@@ -763,6 +789,12 @@ serve(async (req) => {
       payme_sale_id: paymeSaleId,
 
       sale_url: checkoutUrl,
+
+      // Mark recurring orders and keep the PayMe subscription id under its own
+      // key so the webhook can tell a subscription iteration from a plain sale.
+      ...(subscriptionMeta
+        ? { recurring: true, payme_subscription_id: paymeSaleId }
+        : {}),
 
     };
 

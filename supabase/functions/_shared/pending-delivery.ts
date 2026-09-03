@@ -16,6 +16,7 @@ function addDays(isoDate: string, days: number): string {
 /**
  * Compute the automatic delivery slot from the customer's delivery choice:
  * - event / expedited with a specific date → that date (+ event time if given)
+ * - regular with a requested date → that date (customer asked for a specific day)
  * - expedited (fast) → next day
  * - regular → two days out
  * Returns null when we can't schedule automatically (gift cards, missing event date)
@@ -31,6 +32,8 @@ function computeAutoSchedule(
   const chosenDate = String(info.delivery_date || "").trim();
   const chosenTime = String(info.event_time || "").trim();
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(chosenDate) ? chosenDate : "";
+  // Only honour a requested date that isn't already in the past.
+  const futureDate = validDate && validDate >= todayInIsrael() ? validDate : "";
 
   if (type === "event") {
     if (!validDate) return null;
@@ -42,6 +45,8 @@ function computeAutoSchedule(
     }
     return { date: addDays(todayInIsrael(), 1), time: DEFAULT_DELIVERY_TIME };
   }
+  // Regular: if the customer requested a specific delivery date, schedule for it.
+  if (futureDate) return { date: futureDate, time: DEFAULT_DELIVERY_TIME };
   return { date: addDays(todayInIsrael(), 2), time: DEFAULT_DELIVERY_TIME };
 }
 
