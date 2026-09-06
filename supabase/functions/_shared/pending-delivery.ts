@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { describeItemExtras } from "./order-notify.ts";
 
 const DEFAULT_DELIVERY_TIME = "12:00";
 
@@ -236,7 +237,10 @@ async function autoScheduleDelivery(
   }
 
   const items = Array.isArray(order.items) ? order.items : [];
-  const itemsLabel = items.map((i) => `${i.name_en || "Item"} x${i.qty || 1}`).join(", ");
+  const itemsLabel = items.map((i) => {
+    const extras = describeItemExtras(i as Record<string, unknown>);
+    return `${i.name_en || "Item"} x${i.qty || 1}${extras ? ` (${extras})` : ""}`;
+  }).join(", ");
   const jobId = "web_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
   const { error: jobErr } = await supabase.from("jobs").insert({

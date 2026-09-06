@@ -4226,10 +4226,29 @@ async function queuePaymentLinkForOps(linkCode) {
   else showToast('Ops queue failed — run apply-db-migrations.bat if you have not yet');
   loadPayLinks();
 }
+function describeItemExtras(i) {
+  const parts = [];
+  const vars = i && i.selected_variations;
+  if (vars && typeof vars === 'object') {
+    Object.values(vars).forEach(v => {
+      const label = (v && typeof v === 'object') ? String(v.label || '').trim() : String(v || '').trim();
+      if (label) parts.push(label);
+    });
+  }
+  const addons = Array.isArray(i && i.selected_addons) ? i.selected_addons : [];
+  const addonNames = addons.map(a => String((a && a.name) || '').trim()).filter(Boolean);
+  const segs = [];
+  if (parts.length) segs.push(parts.join(' · '));
+  if (addonNames.length) segs.push('+ ' + addonNames.join(', '));
+  return segs.join(' · ');
+}
 function openOrderDetail(id) {
   const o = allOrders.find(x=>x.id===id);
   if (!o) return;
-  const items = (o.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${i.name_en} ×${i.qty}</span><span style="color:var(--cream)">₪${i.price*i.qty}</span></div>`).join('');
+  const items = (o.items||[]).map(i=>{
+    const extras = describeItemExtras(i);
+    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${escHtml(i.name_en||'')} ×${i.qty}${extras?`<span style="display:block;color:var(--text2);font-size:.78rem;margin-top:2px">${escHtml(extras)}</span>`:''}</span><span style="color:var(--cream)">₪${i.price*i.qty}</span></div>`;
+  }).join('');
   // Surface the delivery type the customer chose at checkout (stored in delivery_info by the storefront)
   const di = (o.delivery_info && typeof o.delivery_info === 'object') ? o.delivery_info : {};
   const DELIVERY_TYPE_LABELS = { regular:'Regular', expedited:'Expedited', event:'Event Delivery', pickup:'Pickup' };

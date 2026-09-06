@@ -9,7 +9,14 @@ export type OrderNotifyRow = {
   customer_email?: string | null;
   customer_phone?: string | null;
   delivery_address?: string | null;
-  items?: Array<{ name_en?: string; name_he?: string; qty?: number; price?: number }> | null;
+  items?: Array<{
+    name_en?: string;
+    name_he?: string;
+    qty?: number;
+    price?: number;
+    selected_variations?: Record<string, unknown> | null;
+    selected_addons?: Array<Record<string, unknown>> | null;
+  }> | null;
   subtotal?: number | null;
   discount?: number | null;
   total?: number | null;
@@ -53,10 +60,36 @@ export function describeDelivery(info: Record<string, unknown> | null | undefine
   return { typeLabel, requested, requestedShort };
 }
 
+/** Chosen variations + add-ons for one item, e.g. "50 guests · + Extra syrup, Whipped cream". */
+export function describeItemExtras(item: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const vars = item.selected_variations;
+  if (vars && typeof vars === "object") {
+    for (const v of Object.values(vars as Record<string, unknown>)) {
+      const label = v && typeof v === "object"
+        ? String((v as Record<string, unknown>).label || "").trim()
+        : String(v || "").trim();
+      if (label) parts.push(label);
+    }
+  }
+  const addons = Array.isArray(item.selected_addons) ? item.selected_addons : [];
+  const addonNames = addons
+    .map((a) => String((a as Record<string, unknown>)?.name || "").trim())
+    .filter(Boolean);
+  const segs: string[] = [];
+  if (parts.length) segs.push(parts.join(" · "));
+  if (addonNames.length) segs.push("+ " + addonNames.join(", "));
+  return segs.join(" · ");
+}
+
 function formatItems(items: OrderNotifyRow["items"]): string {
   if (!Array.isArray(items) || !items.length) return "—";
   return items
-    .map((i) => `${i.qty || 1}× ${i.name_en || i.name_he || "Item"} — ₪${Number(i.price) || 0}`)
+    .map((i) => {
+      const base = `${i.qty || 1}× ${i.name_en || i.name_he || "Item"} — ₪${Number(i.price) || 0}`;
+      const extras = describeItemExtras(i as Record<string, unknown>);
+      return extras ? `${base}\n    ${extras}` : base;
+    })
     .join("\n");
 }
 
@@ -325,6 +358,15 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
   try {
     const label = order.order_number ? `#${order.order_number}` : String(order.id).slice(0, 8);
     const notes = String(order.notes || "").trim();
+    // Compact item list including add-ons, so the alert says what to deliver.
+    const itemsForPush = Array.isArray(order.items)
+      ? order.items
+        .map((i) => {
+          const extras = describeItemExtras(i as Record<string, unknown>);
+          return `${i.qty || 1}× ${i.name_en || i.name_he || "Item"}${extras ? ` (${extras})` : ""}`;
+        })
+        .join(", ")
+      : "";
     await sendWebPushToAdmins(supabase, {
       title: `${datePrefix}New paid order ${label} — ₪${Number(order.total) || 0}`,
       body: [
@@ -332,6 +374,7 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
         delivery.requested
           ? `📅 Requested delivery: ${delivery.requested}`
           : delivery.typeLabel,
+        itemsForPush ? `🛒 ${itemsForPush}` : "",
         order.delivery_address || "",
         notes ? `📝 ${notes.length > 90 ? notes.slice(0, 90) + "…" : notes}` : "",
       ].filter(Boolean).join("\n"),
