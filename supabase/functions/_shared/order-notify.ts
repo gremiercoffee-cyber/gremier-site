@@ -63,6 +63,13 @@ export function describeDelivery(info: Record<string, unknown> | null | undefine
 /** Chosen variations + add-ons for one item, e.g. "50 guests · + Extra syrup, Whipped cream". */
 export function describeItemExtras(item: Record<string, unknown>): string {
   const parts: string[] = [];
+  // Guest count first ("for N people") — the key detail for coffee bars.
+  const guestLabel = String(item.guest_label || "").trim();
+  const guests = item.selected_guests;
+  if (guestLabel) parts.push(guestLabel);
+  else if (guests != null && guests !== "" && !Number.isNaN(Number(guests))) {
+    parts.push(`${Number(guests)} guests`);
+  }
   const vars = item.selected_variations;
   if (vars && typeof vars === "object") {
     for (const v of Object.values(vars as Record<string, unknown>)) {

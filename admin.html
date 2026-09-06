@@ -4228,6 +4228,27 @@ async function queuePaymentLinkForOps(linkCode) {
 }
 function describeItemExtras(i) {
   const parts = [];
+  // Guest count (coffee bar): stored on new orders; reconstruct from the catalog for older ones.
+  let guestLabel = String((i && i.guest_label) || '').trim();
+  let guests = (i && i.selected_guests != null && i.selected_guests !== '') ? Number(i.selected_guests) : null;
+  if (!guestLabel && (guests == null || Number.isNaN(guests)) && i && i.selected_guest_price != null && i.selected_guest_price !== '') {
+    const price = Number(i.selected_guest_price);
+    const pid = String(i.product_id || i.base_product_id || '');
+    const prod = (typeof allProducts !== 'undefined' ? allProducts : []).find(p => String(p.id) === pid);
+    const gv = (prod && Array.isArray(prod.variations)) ? prod.variations.find(v => v && v.type === 'guest_count') : null;
+    const opts = (gv && Array.isArray(gv.options)) ? gv.options : [];
+    for (const o of opts) {
+      const op = (o && typeof o === 'object') ? o : {};
+      const oprice = (op.price != null && op.price !== '') ? Number(op.price) : NaN;
+      if (!Number.isNaN(oprice) && oprice === price) {
+        guestLabel = String(op.label || '').trim();
+        if (op.guests != null && op.guests !== '') guests = Number(op.guests);
+        break;
+      }
+    }
+  }
+  if (guestLabel) parts.push(guestLabel);
+  else if (guests != null && !Number.isNaN(guests)) parts.push(guests + ' guests');
   const vars = i && i.selected_variations;
   if (vars && typeof vars === 'object') {
     Object.values(vars).forEach(v => {

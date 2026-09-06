@@ -78,6 +78,22 @@ function selectedValues(value: unknown): Record<string, unknown>[] {
     .filter((v) => v && typeof v === "object") as Record<string, unknown>[];
 }
 
+/** Resolve the chosen guest-count tier (label + guests) from the validated guest price. */
+function resolveGuestSelection(
+  product: Record<string, unknown>,
+  item: Record<string, unknown>,
+): { label: string; guests: number | null } | null {
+  if (item.selected_guest_price == null || item.selected_guest_price === "") return null;
+  const price = Number(item.selected_guest_price);
+  if (Number.isNaN(price)) return null;
+  const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
+  const guestVariation = variations.find((v) => v.type === "guest_count");
+  const options = Array.isArray(guestVariation?.options) ? guestVariation.options : [];
+  const match = options.map(normalizeVariationOption).find((o) => o.price === price);
+  if (!match) return null;
+  return { label: match.label || "", guests: match.guests };
+}
+
 function computeUnitPrice(product: Record<string, unknown>, item: Record<string, unknown>): number {
   const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
   let unitPrice = Number(product.price) || 0;
@@ -210,6 +226,7 @@ Deno.serve(async (req) => {
       const qty = Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 1)));
       const unitPrice = computeUnitPrice(product, item);
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
+      const guest = resolveGuestSelection(product, item);
       return {
         product_id: productId,
         name_en: product.name_en || null,
@@ -219,6 +236,9 @@ Deno.serve(async (req) => {
         selected_variations: item.selected_variations || null,
         selected_addons: item.selected_addons || null,
         selected_guest_price: item.selected_guest_price || null,
+        // Guest tier for display ("for N people") — validated against the catalog.
+        selected_guests: guest?.guests ?? null,
+        guest_label: guest?.label || null,
       };
     });
 
