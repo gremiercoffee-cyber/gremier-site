@@ -1150,7 +1150,7 @@
       <p class="modal-sub" id="t-co-sub">Fill in your details, then continue to secure card payment.</p>
       <div class="form-group"><label class="form-label" id="t-co-name">Full Name</label><input class="form-input" id="coName" type="text" placeholder="Your name"/></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label" id="t-co-phone">Phone <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label><input class="form-input" id="coPhone" type="tel" placeholder="05X-XXXXXXX" required/></div>
+        <div class="form-group"><label class="form-label" id="t-co-phone">Phone <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label><input class="form-input" id="coPhone" type="tel" placeholder="05X-XXXXXXX" required/><div id="t-co-delivery-note" style="font-size:.76rem;color:var(--text2);line-height:1.5;margin-top:6px">🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.</div></div>
         <div class="form-group"><label class="form-label" id="t-co-email">Email <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label><input class="form-input" id="coEmail" type="email" placeholder="you@email.com" required/></div>
       </div>
       <div class="form-group">
@@ -1449,7 +1449,7 @@ const T = {
     'mo-eye':'Account','mo-title':'My Orders',
     'cart-title':'Your Cart','cart-total':'Total','cart-checkout':'Proceed to Checkout',
     'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure card payment.',
-    'co-name':'Full Name','co-phone':'Phone','co-email':'Email',
+    'co-name':'Full Name','co-delivery-note':"🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.",'co-phone':'Phone','co-email':'Email',
     'co-city':'City','co-city-hint':'Type to search — all Israeli cities & towns','co-city-ph':'Start typing your city…',
     'co-addr':'Street Address','co-apt':'Apartment *','co-floor':'Floor *','co-apt-na':'Private house — not applicable','co-notes':'Notes (optional)',
     'pay-title':'Secure Payment via PayMe',
@@ -1502,7 +1502,7 @@ const T = {
     'mo-eye':'חשבון','mo-title':'ההזמנות שלי',
     'cart-title':'העגלה שלך','cart-total':'סה"כ','cart-checkout':'המשך לתשלום',
     'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח בכרטיס.',
-    'co-name':'שם מלא','co-phone':'טלפון','co-email':'אימייל',
+    'co-name':'שם מלא','co-delivery-note':'🚚 נשתדל להביא את ההזמנה עד הדלת, או לפחות עד הבניין. אם השליח יצטרך שמישהו יקבל את המשלוח, הוא ייצור איתכם קשר בדרך.','co-phone':'טלפון','co-email':'אימייל',
     'co-city':'עיר','co-city-hint':'הקלידו לחיפוש — כל הישובים בישראל','co-city-ph':'הקלידו שם ישוב…',
     'co-addr':'רחוב ומספר בית','co-apt':'דירה *','co-floor':'קומה *','co-apt-na':'בית פרטי — לא רלוונטי','co-notes':'הערות (אופציונלי)',
     'pay-title':'תשלום מאובטח דרך PayMe',
@@ -1551,7 +1551,7 @@ function applyTranslations() {
     't-shop-eye':'shop-eye','t-shop-title':'shop-title',
     't-mo-eye':'mo-eye','t-mo-title':'mo-title',
     't-cart-title':'cart-title','t-cart-total':'cart-total','t-cart-checkout':'cart-checkout',
-    't-co-title':'co-title','t-co-sub':'co-sub','t-co-name':'co-name','t-co-phone':'co-phone',
+    't-co-title':'co-title','t-co-sub':'co-sub','t-co-name':'co-name','t-co-phone':'co-phone','t-co-delivery-note':'co-delivery-note',
     't-co-email':'co-email','t-co-city':'co-city','t-co-city-hint':'co-city-hint','t-co-addr':'co-addr','t-co-apt':'co-apt','t-co-floor':'co-floor','t-co-apt-na':'co-apt-na','t-co-notes':'co-notes',
     't-pay-title':'pay-title','t-pay-sub':'pay-sub',
     't-co-submit':'co-submit','t-co-cancel':'co-cancel',

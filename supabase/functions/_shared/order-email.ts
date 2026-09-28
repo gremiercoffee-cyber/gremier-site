@@ -195,7 +195,9 @@ export function buildCustomerReceiptText(order: {
 
     "",
 
-    "We'll be in touch shortly about delivery.",
+    "🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.",
+
+    "🚚 נשתדל להביא את ההזמנה עד הדלת, או לפחות עד הבניין. אם השליח יצטרך שמישהו יקבל את המשלוח, הוא ייצור איתכם קשר בדרך.",
 
     "",
 
