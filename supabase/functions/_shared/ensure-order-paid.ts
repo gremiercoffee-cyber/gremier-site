@@ -24,11 +24,13 @@ export async function ensureOrderPaidFromPayMe(
     ? order.delivery_info as Record<string, unknown>
     : {};
   const saleId = String(paymeSaleIdHint || info.payme_sale_id || "").trim();
-  if (!saleId) return "unpaid";
+  // The sale must belong to THIS order (or its payment link) — see resolvePayMePaymentStatus.
+  const orderLinkCode = String(info.payment_link_code || "").trim();
+  const expected = [orderId, orderLinkCode ? `pl_${orderLinkCode}` : ""];
 
   let payme = null;
   for (let i = 0; i < 12; i++) {
-    payme = await resolvePayMePaymentStatus(saleId, orderId);
+    payme = await resolvePayMePaymentStatus(saleId, expected);
     if (payme?.isCompleted) break;
     if (i < 11) await new Promise((r) => setTimeout(r, i < 3 ? 500 : 1000));
   }

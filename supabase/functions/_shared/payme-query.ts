@@ -8,6 +8,10 @@ export type PayMeSaleInfo = {
   /** True when we should redirect to existing sale instead of generate-sale. */
   isReusable: boolean;
   saleUrl: string | null;
+  /** The transaction_id we sent when generating the sale — ties the sale to an order/link. */
+  transactionId: string;
+  /** Sale price in agorot. */
+  priceAgorot: number | null;
 };
 
 export function getPayMeBase(): string {
@@ -60,17 +64,6 @@ function normalizeStatus(raw: string): string {
   return String(raw || "").toLowerCase().trim();
 }
 
-function extractSaleRecord(data: Record<string, unknown>): Record<string, unknown> | null {
-  if (data.sale_status || data.payme_sale_id) return data;
-  const items = Array.isArray(data.items)
-    ? data.items
-    : Array.isArray(data.sales)
-    ? data.sales
-    : [];
-  const first = items.find((item) => item && typeof item === "object") as Record<string, unknown> | undefined;
-  return first || null;
-}
-
 export function classifyPayMeStatus(status: string): {
   isCompleted: boolean;
   isPending: boolean;
@@ -91,93 +84,104 @@ export function classifyPayMeStatus(status: string): {
   return { isCompleted, isPending, isTerminalUnpaid };
 }
 
-function parsePayMeGetSalesResponse(
-  data: Record<string, unknown>,
-  fallbackSaleId: string,
-): PayMeSaleInfo | null {
-  const statusCode = Number(data.status_code);
-  if (statusCode === 1) {
-    console.warn("PayMe get-sales error:", data.status_error_details || data.status_error_code);
-    return null;
-  }
 
-  const sale = extractSaleRecord(data);
-  const paymeSaleId = String(
-    sale?.payme_sale_id || data.payme_sale_id || fallbackSaleId || "",
-  ).trim();
-  if (!paymeSaleId) return null;
-
-  const status = normalizeStatus(
-    String(sale?.sale_status || sale?.status || data.sale_status || data.status || ""),
-  );
+function toSaleInfo(sale: Record<string, unknown>): PayMeSaleInfo {
+  const status = normalizeStatus(String(sale.sale_status || sale.status || ""));
   const { isCompleted, isPending, isTerminalUnpaid } = classifyPayMeStatus(status);
-  const saleUrl = String(
-    sale?.sale_url || sale?.sale_url_full || data.sale_url || data.sale_url_full || "",
-  ).trim() || null;
-
-  // Unknown status from API → reuse existing sale (safer than creating duplicates).
-  const isReusable = !isCompleted && !isTerminalUnpaid && (isPending || !status);
-
+  const price = Number(sale.sale_price);
   return {
-    paymeSaleId,
+    paymeSaleId: String(sale.sale_payme_id || sale.payme_sale_id || "").trim(),
     status: status || "unknown",
     isCompleted,
     isPending,
-    isReusable,
-    saleUrl,
+    // Unknown status from API → reuse existing sale (safer than creating duplicates).
+    isReusable: !isCompleted && !isTerminalUnpaid && (isPending || !status),
+    saleUrl: String(sale.sale_url || sale.sale_url_full || "").trim() || null,
+    transactionId: String(sale.transaction_id || "").trim(),
+    priceAgorot: Number.isFinite(price) ? price : null,
   };
 }
 
-async function fetchPayMeGetSales(body: Record<string, unknown>): Promise<PayMeSaleInfo | null> {
+/**
+ * POST get-sales with a filter. NOTE: the filter field is `sale_payme_id` — PayMe silently
+ * ignores `payme_sale_id` and returns the whole account history (the old code then took the
+ * first, unrelated sale). Returns null on error.
+ */
+async function fetchPayMeSales(filter: Record<string, unknown>): Promise<Record<string, unknown>[] | null> {
   const sellerId = Deno.env.get("PAYME_SELLER_ID");
   if (!sellerId) return null;
-
-  const paymeBase = getPayMeBase();
-  const fallbackSaleId = String(body.payme_sale_id || "");
   try {
-    const res = await fetch(`${paymeBase}api/get-sales`, {
+    const res = await fetch(`${getPayMeBase()}api/get-sales`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seller_payme_id: sellerId, ...body }),
+      body: JSON.stringify({ seller_payme_id: sellerId, ...filter }),
     });
-    const text = await res.text();
-    let data: Record<string, unknown> = {};
-    try {
-      data = text ? JSON.parse(text) as Record<string, unknown> : {};
-    } catch {
+    const data = await res.json().catch(() => null) as Record<string, unknown> | null;
+    if (!data || Number(data.status_code) === 1) {
+      console.warn("PayMe get-sales error:", data?.status_error_details || data?.status_error_code || res.status);
       return null;
     }
-    return parsePayMeGetSalesResponse(data, fallbackSaleId);
+    const items = Array.isArray(data.items) ? data.items as Record<string, unknown>[] : [];
+    // Belt and braces: never trust a result from another seller.
+    return items.filter((i) => !i.seller_payme_id || String(i.seller_payme_id) === sellerId);
   } catch (err) {
     console.error("PayMe get-sales error:", err);
     return null;
   }
 }
 
+/** Exactly this sale, or null (not found / API error). */
 export async function queryPayMeSale(paymeSaleId: string): Promise<PayMeSaleInfo | null> {
-  if (!paymeSaleId) return null;
-  return fetchPayMeGetSales({ payme_sale_id: paymeSaleId });
+  const id = String(paymeSaleId || "").trim();
+  if (!id) return null;
+  const items = await fetchPayMeSales({ sale_payme_id: id });
+  const sale = items?.find((s) => String(s.sale_payme_id || "") === id);
+  return sale ? toSaleInfo(sale) : null;
 }
 
-/** Look up a sale by our transaction_id (e.g. pl_abc123) when payme_sale_id was not stored. */
+/** Sale generated with exactly this transaction_id (prefers a completed one). */
 export async function queryPayMeSaleByTransaction(transactionId: string): Promise<PayMeSaleInfo | null> {
-  if (!transactionId) return null;
-  return fetchPayMeGetSales({ transaction_id: transactionId });
+  const txn = String(transactionId || "").trim();
+  if (!txn) return null;
+  const items = await fetchPayMeSales({ transaction_id: txn });
+  const matches = (items || []).filter((s) => String(s.transaction_id || "") === txn).map(toSaleInfo);
+  return matches.find((s) => s.isCompleted) || matches[0] || null;
 }
 
-/** Resolve PayMe sale status using sale id and/or transaction id fallbacks. */
+/**
+ * Does this sale belong to one of these orders/links? Sales are generated with
+ * transaction_id = "<orderId>", "<orderId>_<ts>" (retry), "pl_<code>" or "pl_<code>_<ts>".
+ */
+export function saleBelongsTo(sale: PayMeSaleInfo, expected: string[]): boolean {
+  const t = sale.transactionId;
+  return !!t && expected.filter(Boolean).some((x) => t === x || t.startsWith(`${x}_`));
+}
+
+/**
+ * Payment status for an order/link. `expected` = the ids the sale must belong to
+ * (order id, and "pl_<code>" for payment links). A sale id supplied by a client or a
+ * notice only counts if PayMe says it was generated for one of those — otherwise any
+ * completed sale id could be used to mark an unrelated order paid.
+ */
 export async function resolvePayMePaymentStatus(
   paymeSaleId: string,
-  transactionId: string,
+  expected: string | string[],
 ): Promise<PayMeSaleInfo | null> {
+  const exp = (Array.isArray(expected) ? expected : [expected]).map((x) => String(x || "").trim()).filter(Boolean);
+  if (!exp.length) return null;
+  let bySale: PayMeSaleInfo | null = null;
   if (paymeSaleId) {
-    const bySale = await queryPayMeSale(paymeSaleId);
-    if (bySale?.isCompleted) return bySale;
+    const s = await queryPayMeSale(paymeSaleId);
+    if (s && saleBelongsTo(s, exp)) {
+      if (s.isCompleted) return s;
+      bySale = s;
+    } else if (s) {
+      console.warn("resolvePayMePaymentStatus: sale", paymeSaleId, "belongs to", s.transactionId, "not", exp.join("/"));
+    }
   }
-  if (transactionId) {
-    const byTxn = await queryPayMeSaleByTransaction(transactionId);
-    if (byTxn) return byTxn;
+  for (const txn of exp) {
+    const byTxn = await queryPayMeSaleByTransaction(txn);
+    if (byTxn?.isCompleted) return byTxn;
   }
-  if (paymeSaleId) return queryPayMeSale(paymeSaleId);
-  return null;
+  return bySale;
 }

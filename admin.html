@@ -4719,6 +4719,14 @@ function addPlCoffeeBarTier(productId, guests) {
 function addPlItem(productId) {
   const p = allProducts.find(x=>x.id===productId);
   if (!p) return;
+  // Payment links are always a one-time charge — a subscription added here never recurs
+  // (this is how a "subscription" customer ended up charged only once, Aug 2026).
+  if ((p.is_subscription || p.category === 'subscriptions') && !plCartItems.some(x => x.id === productId)) {
+    const ok = window.confirm(
+      `"${p.name_en}" is a subscription, but payment links only charge ONCE — this will NOT set up a monthly subscription.\n\n` +
+      `To start a real subscription, have the customer order it on the website.\n\nAdd it as a one-time charge anyway?`);
+    if (!ok) return;
+  }
   const existing = plCartItems.find(x=>x.id===productId);
   if (existing) existing.qty++;
   else plCartItems.push({

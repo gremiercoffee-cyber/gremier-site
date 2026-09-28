@@ -80,11 +80,12 @@ function resolveOrderIdFromBody(body: Record<string, unknown>): string {
   return "";
 }
 
+/** `expected` = server-derived ids the sale must belong to (never client-supplied). */
 async function queryPaymeSaleCompleted(
   paymeSaleId: string,
-  transactionId: string,
+  expected: string[],
 ): Promise<{ completed: boolean; paymeSaleId: string }> {
-  const payme = await resolvePayMePaymentStatus(paymeSaleId, transactionId);
+  const payme = await resolvePayMePaymentStatus(paymeSaleId, expected);
   return {
     completed: !!payme?.isCompleted,
     paymeSaleId: payme?.paymeSaleId || paymeSaleId,
@@ -93,12 +94,12 @@ async function queryPaymeSaleCompleted(
 
 async function queryPaymeSaleCompletedWithRetries(
   paymeSaleId: string,
-  transactionId: string,
+  expected: string[],
   attempts = 8,
 ): Promise<{ completed: boolean; paymeSaleId: string }> {
   let last = { completed: false, paymeSaleId: paymeSaleId };
   for (let i = 0; i < attempts; i++) {
-    last = await queryPaymeSaleCompleted(paymeSaleId, transactionId);
+    last = await queryPaymeSaleCompleted(paymeSaleId, expected);
     if (last.completed) return last;
     if (i < attempts - 1) {
       await new Promise((r) => setTimeout(r, i === 0 ? 200 : 500));
@@ -423,8 +424,13 @@ Deno.serve(async (req) => {
       const storedSaleId = await resolvePaymeSaleId(supabase, body, linkCode, orderDeliveryInfo);
       const saleIdFromLink = link?.payme_sale_id ? String(link.payme_sale_id) : "";
       const saleId = storedSaleId || saleIdFromLink;
-      const txn = txnId || resolvedOrderId || (link ? paymentLinkTransactionId(link.link_code) : "");
-      const query = await queryPaymeSaleCompletedWithRetries(saleId, txn);
+      // Which order/link the sale must belong to — derived from our own records, not from
+      // the request (a client could otherwise pass someone else's completed sale id).
+      const orderLink = String(orderDeliveryInfo?.payment_link_code || "").trim();
+      const expected = link
+        ? [paymentLinkTransactionId(link.link_code)]
+        : [resolvedOrderId, orderLink ? paymentLinkTransactionId(orderLink) : ""];
+      const query = await queryPaymeSaleCompletedWithRetries(saleId, expected.filter(Boolean));
       return {
         completed: query.completed,
         paymeSaleId: query.paymeSaleId || saleId,
@@ -466,15 +472,8 @@ Deno.serve(async (req) => {
         ? order.delivery_info as Record<string, unknown>
         : null;
 
-      const paymeSaleIdFromBody = String(body.payme_sale_id || "").trim();
-      if (paymeSaleIdFromBody) {
-        orderDeliveryInfo = await persistPaymeSaleIdOnOrder(
-          supabase,
-          resolvedOrderId,
-          paymeSaleIdFromBody,
-          orderDeliveryInfo,
-        );
-      }
+      // A sale id from the request is only a lookup hint (resolvePaymeSaleId); it is saved
+      // on the order only after PayMe confirms it belongs to this order (markOrderPaid).
 
       if (order?.payment_status === "paid") {
         await ensurePendingWebsiteDelivery(supabase, resolvedOrderId);
@@ -484,7 +483,9 @@ Deno.serve(async (req) => {
         });
       }
 
-      const payme = await checkPaymePaid(orderDeliveryInfo, linkRow);
+      // Marking THIS order paid: the sale must belong to the order (or the order's own
+      // link, taken from the order record) — not to whatever link the request names.
+      const payme = await checkPaymePaid(orderDeliveryInfo, null);
 
       if (order && payme.completed) {
         const markResult = await markOrderPaid(supabase, resolvedOrderId, {
@@ -512,7 +513,13 @@ Deno.serve(async (req) => {
           payme_sale_id: payme.paymeSaleId || undefined,
           payme_transaction_id: paymeTransactionId || undefined,
           transaction_id: txnId,
-        }, { resolvedOrderId: resolvedOrderId || undefined });
+        }, {
+          // Only attach to a requested order that really belongs to this link.
+          resolvedOrderId: resolvedOrderId && (String(linkRow.order_id || "") === resolvedOrderId
+              || String(orderDeliveryInfo?.payment_link_code || "") === linkRow.link_code)
+            ? resolvedOrderId
+            : undefined,
+        });
         if (fulfilledOrderId) {
           await ensurePendingWebsiteDelivery(supabase, fulfilledOrderId);
           await notifyPaidOrderOnceLocal(supabase, fulfilledOrderId);

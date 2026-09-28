@@ -6,6 +6,23 @@ import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-orde
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { findCheckoutOrder } from "../_shared/find-checkout-order.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
+import { resolvePayMePaymentStatus } from "../_shared/payme-query.ts";
+
+/**
+ * Confirm a sale notice with PayMe before trusting it. The webhook URL is public and no
+ * signature secret is configured, so a posted "sale complete" proves nothing on its own:
+ * the sale must exist, be completed, and have been generated for THIS order/link.
+ * PayMe can report a sale a moment before its API shows it completed, so retry briefly.
+ */
+async function confirmSaleWithPayMe(payload: PaymePayload, expected: string[]): Promise<string | null> {
+  const saleId = String(payload.payme_sale_id || "").trim();
+  for (let i = 0; i < 5; i++) {
+    const sale = await resolvePayMePaymentStatus(saleId, expected);
+    if (sale?.isCompleted) return sale.paymeSaleId || saleId;
+    if (i < 4) await new Promise((r) => setTimeout(r, 1000));
+  }
+  return null;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1062,7 +1079,15 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
 
       if (paymentLink) {
 
-        const result = await fulfillPaymentLink(supabase, paymentLink, payload);
+        const confirmedSale = await confirmSaleWithPayMe(payload, [`pl_${paymentLink.link_code}`]);
+        if (!confirmedSale) {
+          console.error("PayMe webhook: link sale not confirmed by PayMe — ignoring", paymentLink.link_code);
+          return new Response(JSON.stringify({ ok: false, error: "not_verified" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const result = await fulfillPaymentLink(supabase, paymentLink, { ...payload, payme_sale_id: confirmedSale });
 
         if (result.alreadyPaid) {
 
@@ -1113,6 +1138,21 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
     }
 
 
+
+    const orderInfo = order.delivery_info && typeof order.delivery_info === "object"
+      ? order.delivery_info as Record<string, unknown>
+      : {};
+    const orderLink = String(orderInfo.payment_link_code || "").trim();
+    const confirmedSaleId = await confirmSaleWithPayMe(payload, [order.id, orderLink ? `pl_${orderLink}` : ""]);
+    if (!confirmedSaleId) {
+      // Non-2xx so PayMe retries; the customer's return to the site also re-checks.
+      console.error("PayMe webhook: sale not confirmed by PayMe for order", order.id, "— ignoring");
+      return new Response(JSON.stringify({ ok: false, error: "not_verified" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    payload.payme_sale_id = confirmedSaleId;
 
     const deliveryInfo = {
 
