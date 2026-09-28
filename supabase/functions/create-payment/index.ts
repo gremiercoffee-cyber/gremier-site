@@ -1,4 +1,4 @@
-import { pickDeliveryChoice } from "../_shared/security.ts";
+import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { quoteDeliveryFee, loadDeliveryPricingTables } from "../_shared/delivery-pricing.ts";
 
@@ -446,10 +446,10 @@ serve(async (req) => {
 
       }
 
-      const name = String(customer_name || row.customer_name || "").trim();
-      const addr = String(delivery_address || "").trim();
-      const email = String(customer_email || row.customer_email || "").trim();
-      const phone = String(customer_phone || row.customer_phone || "").trim();
+      const name = cleanText(customer_name || row.customer_name, 120);
+      const addr = cleanText(delivery_address, 300);
+      const email = cleanText(customer_email || row.customer_email, 200);
+      const phone = cleanText(customer_phone || row.customer_phone, 40);
       const linkPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (name) linkPatch.customer_name = name;
       if (addr) linkPatch.delivery_address = addr;
@@ -649,10 +649,10 @@ serve(async (req) => {
 
     }
 
-    const name = String(customer_name || "").trim();
-    const addr = String(delivery_address || "").trim();
-    const email = String(customer_email || "").trim();
-    const phone = String(customer_phone || "").trim();
+    const name = cleanText(customer_name, 120);
+    const addr = cleanText(delivery_address, 300);
+    const email = cleanText(customer_email, 200);
+    const phone = cleanText(customer_phone, 40);
     const orderPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (name) orderPatch.customer_name = name;
     if (addr) orderPatch.delivery_address = addr;

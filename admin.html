@@ -3770,7 +3770,7 @@ async function loadRecoverableOrdersUI() {
       sections.push(`<div class="recover-orders-card"><h3>Recently deleted (last 15 min)</h3>${recent.map(a => {
         const o = a.order_data;
         const when = new Date(a.deleted_at).toLocaleString('en-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-        return `<div class="recover-row"><span>#${o.order_number || '—'} · ${o.customer_name || '—'} · ₪${o.total || 0} · ${when}</span><button class="btn btn-amber btn-sm" onclick="restoreDeletedOrder('${a.id}')">Restore</button></div>`;
+        return `<div class="recover-row"><span>#${o.order_number || '—'} · ${escHtml(o.customer_name || '—')} · ₪${o.total || 0} · ${when}</span><button class="btn btn-amber btn-sm" onclick="restoreDeletedOrder('${a.id}')">Restore</button></div>`;
       }).join('')}</div>`);
     }
   } catch (e) {
@@ -3785,7 +3785,7 @@ async function loadRecoverableOrdersUI() {
     sections.push(`<div class="recover-orders-card"><h3>Payment links missing an order (${missing.length})</h3>
       ${missing.slice(0, 8).map(l => {
         const items = (l.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
-        return `<div class="recover-row"><span>${l.customer_name || '—'} · ₪${l.total} · ${items || 'items'}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate</button></div>`;
+        return `<div class="recover-row"><span>${escHtml(l.customer_name || '—')} · ₪${l.total} · ${escHtml(items || 'items')}</span><button class="btn btn-amber btn-sm" onclick="recreateOrderFromPaymentLink('${l.link_code}')">Recreate</button></div>`;
       }).join('')}</div>`);
   }
 
@@ -5436,7 +5436,7 @@ function renderReports(orders, period) {
   }));
   const sorted = Object.entries(productMap).sort((a,b)=>b[1].revenue-a[1].revenue);
   document.getElementById('productBreakBody').innerHTML = sorted.map(([name,d])=>`
-    <tr><td style="color:var(--cream)">${name}</td><td>${d.units}</td><td style="color:var(--cream)">₪${d.revenue.toFixed(0)}</td><td>₪${(d.revenue/d.units).toFixed(0)}</td></tr>
+    <tr><td style="color:var(--cream)">${escHtml(name)}</td><td>${d.units}</td><td style="color:var(--cream)">₪${d.revenue.toFixed(0)}</td><td>₪${(d.revenue/d.units).toFixed(0)}</td></tr>
   `).join('') || '<tr><td colspan="4" class="empty-state">No data.</td></tr>';
   // Customer history
   const customerMap = {};

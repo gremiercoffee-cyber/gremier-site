@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
-import { pickDeliveryChoice } from "../_shared/security.ts";
+import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -245,10 +245,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const items = Array.isArray(body.items) ? body.items : [];
-    const customerName = String(body.customer_name || "").trim();
-    const customerEmail = String(body.customer_email || "").trim();
-    const customerPhone = String(body.customer_phone || "").trim();
-    const deliveryAddress = String(body.delivery_address || "").trim();
+    const customerName = cleanText(body.customer_name, 120);
+    const customerEmail = cleanText(body.customer_email, 200);
+    const customerPhone = cleanText(body.customer_phone, 40);
+    const deliveryAddress = cleanText(body.delivery_address, 300);
     // Only the customer's delivery choices — every other delivery_info field is server-set.
     const deliveryInfo = pickDeliveryChoice(body.delivery_info);
 
@@ -427,7 +427,7 @@ Deno.serve(async (req) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_address: deliveryAddress,
-      notes: String(body.notes || "").trim() || null,
+      notes: cleanText(body.notes, 1000) || null,
       items: allowedItems,
       subtotal,
       discount,

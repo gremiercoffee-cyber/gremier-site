@@ -34,6 +34,20 @@ export function pickDeliveryChoice(raw: unknown): Record<string, unknown> {
   return out;
 }
 
+/**
+ * Free text typed by a customer (name, address, notes, gift card message…). It is shown
+ * inside the admin panel, where an injected <script>/attribute would run with full admin
+ * rights — so strip HTML-significant characters at the source, whatever screen shows it.
+ */
+export function cleanText(value: unknown, maxLength = 500): string {
+  return String(value ?? "")
+    .replace(/[<>"`]/g, "")
+    // deno-lint-ignore no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim()
+    .slice(0, maxLength);
+}
+
 function serviceKeys(): string[] {
   const keys: string[] = [];
   const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");

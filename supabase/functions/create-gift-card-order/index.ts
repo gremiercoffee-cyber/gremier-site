@@ -4,6 +4,7 @@
 // the amount (validated against a sane range). The gift card itself is issued
 // server-side after payment via issue-gift-card (called from confirm-payment-return).
 
+import { cleanText } from "../_shared/security.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -56,8 +57,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const amount = Number(body.amount);
     const recipientEmail = String(body.recipient_email || "").trim();
-    const recipientName = String(body.recipient_name || "").trim() || null;
-    const message = String(body.message || "").trim() || null;
+    const recipientName = cleanText(body.recipient_name, 120) || null;
+    const message = cleanText(body.message, 500) || null;
 
     // Validate amount (sane range to prevent abuse)
     if (!amount || amount < 10 || amount > 2000) {
@@ -70,8 +71,8 @@ Deno.serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     const userId = await getUserId(req, supabaseUrl);
 
-    const buyerEmail = String(body.customer_email || "").trim() || recipientEmail;
-    const buyerName = String(body.customer_name || "").trim() || "Gift Card Purchase";
+    const buyerEmail = cleanText(body.customer_email, 200) || recipientEmail;
+    const buyerName = cleanText(body.customer_name, 120) || "Gift Card Purchase";
 
     const { data: inserted, error } = await admin
       .from("orders")
