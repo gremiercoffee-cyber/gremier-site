@@ -4303,6 +4303,11 @@ function describeItemExtras(i) {
   const segs = [];
   if (parts.length) segs.push(parts.join(' · '));
   if (addonNames.length) segs.push('+ ' + addonNames.join(', '));
+  // Subscription box: what to deliver each cycle, and how often.
+  const box = Array.isArray(i && i.subscription_items) ? i.subscription_items : [];
+  const boxText = box.map(c => `${(c && (c.name_en || c.name_he)) || 'Item'} ×${Number(c && c.qty) || 1}`).join(', ');
+  if (boxText) segs.push('Box: ' + boxText);
+  if ((i && i.is_subscription) || box.length) segs.push(String(i.subscription_interval || 'monthly') === 'weekly' ? '🔁 weekly' : '🔁 monthly');
   return segs.join(' · ');
 }
 function openOrderDetail(id) {

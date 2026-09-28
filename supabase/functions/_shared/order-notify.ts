@@ -86,6 +86,15 @@ export function describeItemExtras(item: Record<string, unknown>): string {
   const segs: string[] = [];
   if (parts.length) segs.push(parts.join(" · "));
   if (addonNames.length) segs.push("+ " + addonNames.join(", "));
+  // Subscription box: what to deliver each cycle, and how often.
+  const box = Array.isArray(item.subscription_items) ? item.subscription_items as Record<string, unknown>[] : [];
+  const boxText = box
+    .map((c) => `${c?.name_en || c?.name_he || "Item"} ×${Number(c?.qty) || 1}`)
+    .join(", ");
+  if (boxText) segs.push(`Box: ${boxText}`);
+  if (item.is_subscription === true || box.length) {
+    segs.push(String(item.subscription_interval || "monthly") === "weekly" ? "🔁 weekly" : "🔁 monthly");
+  }
   return segs.join(" · ");
 }
 
@@ -342,7 +351,8 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
 
   const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);
   // Lead a requested delivery date so it can't be missed at a glance.
-  const datePrefix = delivery.requestedShort ? `📅 ${delivery.requestedShort} · ` : "";
+  const datePrefix = (info.recurring_child ? "🔁 Subscription renewal · " : "")
+    + (delivery.requestedShort ? `📅 ${delivery.requestedShort} · ` : "");
 
   // Keep a copy for the in-app notifications list.
   try {

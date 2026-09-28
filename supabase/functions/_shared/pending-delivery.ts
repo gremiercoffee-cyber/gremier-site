@@ -133,8 +133,20 @@ function resolveStockKeyByText(text: string): string {
  */
 async function resolveOpsQuantities(
   supabase: SupabaseClient,
-  items: Array<{ product_id?: string; name_en?: string; name_he?: string; qty?: number }>,
+  rawItems: Array<{ product_id?: string; name_en?: string; name_he?: string; qty?: number; subscription_items?: unknown }>,
 ): Promise<Record<string, number>> {
+  // A subscription box is delivered as its contents, not as "1× Combo Subscription".
+  const items = rawItems.flatMap((i) => {
+    const box = Array.isArray(i.subscription_items) ? i.subscription_items as Array<Record<string, unknown>> : [];
+    if (!box.length) return [i];
+    const mult = Number(i.qty) || 1;
+    return box.map((c) => ({
+      product_id: String(c?.product_id || ""),
+      name_en: String(c?.name_en || ""),
+      name_he: String(c?.name_he || ""),
+      qty: (Number(c?.qty) || 1) * mult,
+    }));
+  });
   const ids = [...new Set(items.map((i) => String(i.product_id || "").trim()).filter(Boolean))];
   const catalog: Record<string, { name_en?: string; name_he?: string; category?: string; stock_key?: string; pack_size?: number; exclude?: boolean }> = {};
 

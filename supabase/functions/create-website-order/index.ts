@@ -78,6 +78,61 @@ function selectedValues(value: unknown): Record<string, unknown>[] {
     .filter((v) => v && typeof v === "object") as Record<string, unknown>[];
 }
 
+// Must match SUBSCRIPTION_DISCOUNT_RATE in index.html.
+const SUBSCRIPTION_DISCOUNT_RATE = 0.10;
+
+function isSubscriptionProductRow(product: Record<string, unknown>): boolean {
+  return product.is_subscription === true || product.category === "subscriptions";
+}
+
+/** Product ids the admin allowed inside a build-your-own subscription box. */
+function subscriptionBundleIds(product: Record<string, unknown>): string[] {
+  const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
+  const bundle = variations.find((v) => v.type === "subscription_bundle");
+  const rows = Array.isArray(bundle?.items) ? bundle.items : (Array.isArray(bundle?.product_ids) ? bundle.product_ids : []);
+  return [...new Set((rows as unknown[]).map((r) => {
+    const row = r && typeof r === "object" ? r as Record<string, unknown> : null;
+    return String(row ? (row.product_id || row.id || "") : r).trim();
+  }).filter(Boolean))];
+}
+
+/**
+ * Price a subscription the same way the storefront does: the chosen box items
+ * (catalog prices × qty) — or the product price when it has no box — minus the
+ * subscription discount. Returns the validated box contents so the order records
+ * what to deliver each cycle.
+ */
+function priceSubscription(
+  product: Record<string, unknown>,
+  item: Record<string, unknown>,
+  productsById: Map<string, Record<string, unknown>>,
+): { unitPrice: number; contents: Array<Record<string, unknown>> | null } {
+  const bundleIds = subscriptionBundleIds(product);
+  let raw: number;
+  let contents: Array<Record<string, unknown>> | null = null;
+  if (bundleIds.length) {
+    const chosen = Array.isArray(item.subscription_items) ? item.subscription_items as Record<string, unknown>[] : [];
+    contents = [];
+    for (const c of chosen) {
+      const id = String(c?.product_id || "").trim();
+      const bp = productsById.get(id);
+      if (!bundleIds.includes(id) || !bp || bp.is_active === false) throw new Error("Invalid subscription item");
+      contents.push({
+        product_id: id,
+        name_en: bp.name_en || null,
+        name_he: bp.name_he || null,
+        price: Number(bp.price) || 0,
+        qty: Math.max(1, Math.min(20, Math.floor(Number(c.qty) || 1))),
+      });
+    }
+    if (!contents.length) throw new Error("Choose at least one item for the subscription");
+    raw = contents.reduce((s, c) => s + (Number(c.price) || 0) * (Number(c.qty) || 1), 0);
+  } else {
+    raw = Number(product.price) || 0;
+  }
+  return { unitPrice: Math.round(raw * (1 - SUBSCRIPTION_DISCOUNT_RATE) * 100) / 100, contents };
+}
+
 /** Resolve the chosen guest-count tier (label + guests) from the validated guest price. */
 function resolveGuestSelection(
   product: Record<string, unknown>,
@@ -212,21 +267,44 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid order items" }, 400);
     }
 
-    const { data: productRows, error: productErr } = await admin
+    // Also load the products chosen inside any subscription box, for their real prices.
+    const boxIds = items.flatMap((item: Record<string, unknown>) =>
+      Array.isArray(item.subscription_items)
+        ? (item.subscription_items as Record<string, unknown>[]).map((c) => String(c?.product_id || "").trim())
+        : []
+    ).filter(Boolean);
+    const { data: fetchedRows, error: productErr } = await admin
       .from("products")
       .select("id,name_en,name_he,price,is_active,variations,delivery_price,is_subscription,category")
-      .in("id", productIds);
+      .in("id", [...new Set([...productIds, ...boxIds])]);
     if (productErr) throw productErr;
 
-    const productsById = new Map((productRows || []).map((product: Record<string, unknown>) => [String(product.id), product]));
+    const productsById = new Map((fetchedRows || []).map((product: Record<string, unknown>) => [String(product.id), product]));
+    // Only the products actually in the cart drive delivery pricing.
+    const productRows = productIds.map((id) => productsById.get(id)).filter(Boolean) as Record<string, unknown>[];
+
+    // A subscription's order total becomes the monthly PayMe charge, so it must be
+    // ordered on its own — anything else in the cart would be billed every month.
+    const subscriptionLines = items.filter((item: Record<string, unknown>) => {
+      const p = productsById.get(String(item.product_id || "").trim());
+      return p && isSubscriptionProductRow(p);
+    });
+    const isSubscriptionOrder = subscriptionLines.length > 0;
+    if (isSubscriptionOrder && items.length > 1) {
+      return json({ error: "A subscription has to be ordered on its own — please check out other items separately." }, 400);
+    }
+
     const allowedItems = items.map((item: Record<string, unknown>) => {
       const productId = String(item.product_id || "").trim();
       const product = productsById.get(productId);
       if (!product || product.is_active === false) throw new Error("Invalid order item");
-      const qty = Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 1)));
-      const unitPrice = computeUnitPrice(product, item);
+      const isSub = isSubscriptionProductRow(product);
+      const sub = isSub ? priceSubscription(product, item, productsById) : null;
+      const qty = isSub ? 1 : Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 1)));
+      const unitPrice = sub ? sub.unitPrice : computeUnitPrice(product, item);
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
       const guest = resolveGuestSelection(product, item);
+      const interval = String(item.subscription_interval || "monthly").toLowerCase() === "weekly" ? "weekly" : "monthly";
       return {
         product_id: productId,
         name_en: product.name_en || null,
@@ -239,12 +317,15 @@ Deno.serve(async (req) => {
         // Guest tier for display ("for N people") — validated against the catalog.
         selected_guests: guest?.guests ?? null,
         guest_label: guest?.label || null,
-        // Keep the subscription flag so the admin can recognise subscription orders.
-        is_subscription: item.is_subscription === true || product.is_subscription === true,
-        subscription_interval: item.is_subscription === true ? (item.subscription_interval || "monthly") : null,
+        // Subscription details, decided server-side from the catalog: the flag lets the
+        // admin recognise the order; the box contents say what to deliver every cycle.
+        is_subscription: isSub,
+        subscription_interval: isSub ? interval : null,
+        subscription_items: sub?.contents ?? null,
         category: product.category || null,
       };
     });
+    const subscriptionInterval = isSubscriptionOrder ? allowedItems[0].subscription_interval : null;
 
     const subtotal = allowedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
     const [zonesResult, settingsResult] = await Promise.all([
@@ -264,8 +345,15 @@ Deno.serve(async (req) => {
 
     let discount = 0;
 
-    // Check loyalty coupon (profile-based)
-    if (userId) {
+    // Subscriptions already carry the subscription discount, and the order total becomes
+    // the recurring PayMe price — a one-off coupon / gift card would recur forever (and a
+    // fully covered order would never create the subscription at all). So none apply.
+    if (isSubscriptionOrder && (String(body.coupon_code || "").trim() || String(body.gift_card_code || "").trim())) {
+      return json({ error: "Coupons and gift cards can't be used on a subscription." }, 400);
+    }
+
+    // Check loyalty coupon (profile-based) — kept for their next regular order
+    if (userId && !isSubscriptionOrder) {
       const { data: profile } = await admin
         .from("profiles")
         .select("coupon_available")
@@ -350,6 +438,8 @@ Deno.serve(async (req) => {
       gift_card_discount: gcDiscount || 0,
       delivery_info: {
         ...deliveryInfo,
+        // Decided server-side, never trusted from the client.
+        subscription: isSubscriptionOrder ? { interval: subscriptionInterval } : null,
         delivery_fee: delivery.fee,
         zone_id: delivery.zone?.id || null,
         zone_name: delivery.zone?.name_en || "",

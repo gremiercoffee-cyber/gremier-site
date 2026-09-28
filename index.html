@@ -2621,6 +2621,22 @@ async function submitOrder() {
   if (!selectedCheckoutCity) {
     alert(lang==='he'?'אנא בחרו ישוב מהרשימה':'Please select your city from the list'); return;
   }
+  // The subscription order's total becomes the recurring monthly charge, so it has to be
+  // checked out alone and without coupons/gift cards (server enforces the same).
+  if (cart.some(i => i.is_subscription)) {
+    if (cart.length > 1) {
+      alert(lang==='he'
+        ? 'מנוי צריך להיות מוזמן לבד — אנא הסירו את שאר המוצרים מהעגלה והזמינו אותם בנפרד'
+        : 'A subscription has to be ordered on its own — please remove the other items and order them separately');
+      return;
+    }
+    if (appliedRedeem) {
+      alert(lang==='he'
+        ? 'לא ניתן להשתמש בקופון או כרטיס מתנה על מנוי — הנחת המנוי כבר כלולה במחיר'
+        : "Coupons and gift cards can't be used on a subscription — the subscription discount is already included");
+      return;
+    }
+  }
   const submitBtn = document.getElementById('t-co-submit');
   const prevLabel = submitBtn.textContent;
   submitBtn.disabled = true;
@@ -3625,6 +3641,12 @@ function clearRedeemCode() {
 async function applyRedeemCode() {
   const code = document.getElementById('coRedeemCode').value.trim().toUpperCase();
   if (!code) { setRedeemMsg(lang==='he'?'הזינו קוד':'Enter a code', false); return; }
+  if (cart.some(i => i.is_subscription)) {
+    setRedeemMsg(lang==='he'
+      ? 'לא ניתן להשתמש בקופון או כרטיס מתנה על מנוי — הנחת המנוי כבר כלולה'
+      : "Coupons and gift cards can't be used on a subscription — its discount is already included", false);
+    return;
+  }
   const btn = document.getElementById('coRedeemBtn');
   btn.disabled = true; btn.textContent = '…';
   const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);

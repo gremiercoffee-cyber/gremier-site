@@ -694,7 +694,8 @@ async function findSubscriptionParent(
       .limit(200);
     return (rows as SubscriptionParent[] | null)?.find((o) => {
       const info = o.delivery_info && typeof o.delivery_info === "object" ? o.delivery_info : {};
-      return String(info.payme_subscription_id || "") === paymeSubId;
+      // Renewal copies carry the same subscription id — only the original is the parent.
+      return String(info.payme_subscription_id || "") === paymeSubId && !info.recurring_child;
     }) ?? null;
   }
   return null;
@@ -716,6 +717,45 @@ function iterationKey(payload: PaymePayload): string {
   ).trim();
   if (direct) return direct;
   return sub ? `${sub}:${String(payload.sub_iterations_completed ?? "")}` : "";
+}
+
+type VerifiedSubscription = {
+  status: number;
+  paid: boolean;
+  paymentDate: string;
+  subscriptionId: string;
+};
+
+/**
+ * Look the subscription up with PayMe itself. The webhook URL is public and PayMe's sub
+ * callbacks aren't signed, so a notice alone proves nothing — without this, anyone could
+ * post "sub-active" / "sub-iteration-success" and get an order marked paid or a free
+ * renewal delivery. Works with just the seller id (verified live Sep 2026).
+ */
+async function verifySubscriptionWithPayMe(subPaymeId: string): Promise<VerifiedSubscription | null> {
+  const sellerId = Deno.env.get("PAYME_SELLER_ID") || "";
+  if (!sellerId || !subPaymeId) return null;
+  const base = (Deno.env.get("PAYME_API_URL") || "https://live.payme.io/").replace(/\/?$/, "/");
+  try {
+    const res = await fetch(`${base}api/get-subscriptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seller_payme_id: sellerId, sub_payme_id: subPaymeId }),
+    });
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const items = Array.isArray(data.items) ? data.items as Record<string, unknown>[] : [];
+    const sub = items.find((s) => String(s.sub_payme_id || "") === subPaymeId);
+    if (!sub || String(sub.seller_payme_id || "") !== sellerId) return null;
+    return {
+      status: Number(sub.sub_status) || 0,
+      paid: sub.sub_paid === true || sub.sub_paid === 1 || String(sub.sub_paid) === "1" || String(sub.sub_paid) === "true",
+      paymentDate: String(sub.sub_payment_date || "").trim(),
+      subscriptionId: String(sub.subscription_id || ""),
+    };
+  } catch (e) {
+    console.error("verifySubscriptionWithPayMe failed:", e);
+    return null;
+  }
 }
 
 async function adminAlert(
@@ -765,23 +805,64 @@ async function handleSubscriptionCallback(
   const info = parent.delivery_info && typeof parent.delivery_info === "object"
     ? parent.delivery_info as Record<string, unknown>
     : {};
-  const key = iterationKey(payload);
+
+  // sub-create carries no money; nothing to verify or do.
+  if (notifyType === "sub-create" || notifyType === "sub-complete") {
+    return json({ ok: true, ignored: notifyType });
+  }
+
+  // Only act on what PayMe itself confirms (see verifySubscriptionWithPayMe).
+  const claimedPaidAt = String(payload.sub_payment_date || "").trim();
+  let verified = await verifySubscriptionWithPayMe(paymeSubId);
+  // PayMe's record can trail its own notice by a moment — give it a few seconds.
+  for (let i = 0; i < 3 && verified && claimedPaidAt && verified.paymentDate !== claimedPaidAt; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    verified = await verifySubscriptionWithPayMe(paymeSubId);
+  }
+  if (!verified) {
+    // PayMe lookup failed (network etc.) — non-2xx so PayMe retries the notice later.
+    console.error("subscription callback: could not verify with PayMe", { paymeSubId, notifyType });
+    return json({ ok: false, error: "verify_failed" }, 503);
+  }
+  if (verified.subscriptionId !== parent.id) {
+    console.error("subscription callback: PayMe record doesn't match this order — ignoring", { paymeSubId, notifyType });
+    return json({ ok: false, error: "not_verified" }, 403);
+  }
+  // The charge key comes from PayMe's record, not the notice, so a forged notice
+  // can't invent a new charge — at most it repeats a real one (deduped below).
+  const key = verified.paymentDate ? `${paymeSubId}@${verified.paymentDate}` : iterationKey(payload);
 
   const isSuccess = notifyType === "sub-active" || notifyType === "sub-iteration-success";
+  if (isSuccess && !(verified.paid && (verified.status === 2 || verified.status === 6) && verified.paymentDate)) {
+    console.error("subscription callback: PayMe says not paid — ignoring", { paymeSubId, notifyType, status: verified.status });
+    return json({ ok: false, error: "not_paid" }, 403);
+  }
+  if (isSuccess && claimedPaidAt && verified.paymentDate !== claimedPaidAt) {
+    // Notice is about a payment PayMe hasn't recorded yet — retry later rather than guess.
+    return json({ ok: false, error: "payment_not_yet_visible" }, 503);
+  }
   if (isSuccess) {
-    // First charge — the original checkout order is still unpaid. Mark it paid and fulfill.
-    if (parent.payment_status !== "paid") {
-      await supabase.from("orders").update({
+    // First charge = no charge recorded on this subscription yet. Don't go by
+    // payment_status: the customer's return to the site can mark the order paid a few
+    // seconds before PayMe's notice lands, which made the first charge look like a renewal.
+    const firstKey = String(info.subscription_first_iteration_key || "");
+    if (!firstKey) {
+      // Atomic claim: only the notice that records the first charge proceeds; a
+      // simultaneous duplicate notice matches no row and is treated as a repeat.
+      const { data: claimed } = await supabase.from("orders").update({
         payment_status: "paid",
         status: "confirmed",
         delivery_info: {
           ...info,
-          subscription_first_iteration_key: key,
+          subscription_first_iteration_key: key || `${paymeSubId}:first`,
           payme_subscription_id: info.payme_subscription_id || paymeSubId || null,
           payme_sale_id: String(payload.payme_sale_id || info.payme_sale_id || paymeSubId || ""),
         },
         updated_at: new Date().toISOString(),
-      }).eq("id", parent.id);
+      }).eq("id", parent.id)
+        .is("delivery_info->>subscription_first_iteration_key", null)
+        .select("id");
+      if (!claimed || claimed.length === 0) return json({ ok: true, duplicate_first: true });
 
       if (parent.user_id) {
         await awardPoints(supabase, parent.user_id, Number(parent.subtotal) || 0);
@@ -836,6 +917,11 @@ async function handleSubscriptionCallback(
       notes: "Auto-created from subscription renewal",
     }).select("id").single();
 
+    // 23505 = the unique index on subscription_iteration_key: a simultaneous duplicate
+    // notice already created this renewal. That's the desired outcome, not a failure.
+    if (error && ((error as { code?: string }).code === "23505" || /duplicate key|unique/i.test(error.message || ""))) {
+      return json({ ok: true, already_processed: true });
+    }
     if (error || !child?.id) {
       console.error("subscription renewal: order clone failed", error);
       await adminAlert(
@@ -852,6 +938,9 @@ async function handleSubscriptionCallback(
   }
 
   if (notifyType === "sub-cancel" || notifyType === "sub-failure") {
+    // Statuses: 4 failed, 5 canceled, 7 failed-pending-retry. Ignore if PayMe disagrees.
+    const confirmed = notifyType === "sub-cancel" ? verified.status === 5 : (verified.status === 4 || verified.status === 7);
+    if (!confirmed) return json({ ok: true, ignored: "status_not_confirmed" });
     await supabase.from("orders").update({
       delivery_info: { ...info, subscription_status: notifyType },
       updated_at: new Date().toISOString(),
