@@ -1,3 +1,4 @@
+import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
@@ -10,6 +11,9 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Admin-only (or our own cron/server). verify_jwt alone lets the public site key through.
+  if (!(await isServiceOrAdmin(req))) return forbidden(corsHeaders);
 
   try {
     const url = new URL(req.url);

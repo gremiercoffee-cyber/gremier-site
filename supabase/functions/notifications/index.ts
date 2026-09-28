@@ -1,3 +1,4 @@
+import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 // ─── GREMIER COFFEE — NOTIFICATIONS EDGE FUNCTION ────────────────────────────
 // File location: supabase/functions/notifications/index.ts
 //
@@ -340,6 +341,9 @@ async function handleReminders(supabase: any) {
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
+
+  // Admin-only (or our own cron/server). verify_jwt alone lets the public site key through.
+  if (!(await isServiceOrAdmin(req))) return forbidden({});
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let body: any = {};

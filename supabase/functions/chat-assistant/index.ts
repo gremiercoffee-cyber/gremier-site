@@ -142,9 +142,41 @@ function parseAssistantResponse(raw: string) {
   return { reply: trimmed, cart_items: [] as unknown[] };
 }
 
+// Public endpoint on our OpenAI bill — cap usage per visitor (IP). chat_rate_limits
+// already existed (cleaned daily by cron) but was never used.
+const RATE_LIMIT_PER_HOUR = 60;
+async function overRateLimit(req: Request): Promise<boolean> {
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const key = getServiceRoleKey();
+  if (!url || !key) return false;
+  const ip = (req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown").split(",")[0].trim();
+  const rowKey = "ip:" + ip;
+  const headers = { apikey: key, Authorization: "Bearer " + key, "Content-Type": "application/json" };
+  try {
+    const r = await fetch(`${url}/rest/v1/chat_rate_limits?key=eq.${encodeURIComponent(rowKey)}&select=count,updated_at`, { headers });
+    const row = ((await r.json()) as Array<{ count: number; updated_at: string }>)[0];
+    const fresh = row && Date.now() - new Date(row.updated_at).getTime() < 3600_000;
+    if (fresh && row.count >= RATE_LIMIT_PER_HOUR) return true;
+    await fetch(`${url}/rest/v1/chat_rate_limits?on_conflict=key`, {
+      method: "POST",
+      headers: { ...headers, Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ key: rowKey, count: fresh ? row.count + 1 : 1, updated_at: fresh ? row.updated_at : new Date().toISOString() }),
+    });
+  } catch (e) {
+    console.error("rate limit check failed:", e);
+  }
+  return false;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+  if (await overRateLimit(req)) {
+    return new Response(JSON.stringify({ reply: "You've sent a lot of messages — please try again a little later, or message us on WhatsApp.", cart_items: [] }), {
+      status: 429,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -155,13 +187,17 @@ serve(async (req) => {
       catalog_version?: number;
     };
 
-    const messages = body.messages || [];
+    // Only normal user/assistant turns, length-capped (no client-injected "system" turns).
+    const messages = (Array.isArray(body.messages) ? body.messages : [])
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .map((m) => ({ role: m.role, content: String(m.content).slice(0, 1500) }));
     const clientProducts = body.products || [];
     const lang = body.lang || "en";
 
     // ALWAYS re-fetch from database on every request
     const dbProducts = await fetchLiveProductsFromDb();
-    const products = mergeCatalogs(dbProducts, clientProducts);
+    // The live catalog is authoritative; the client copy is only a fallback if the DB read fails.
+    const products = dbProducts.length ? dbProducts : mergeCatalogs(dbProducts, clientProducts);
     const fetchedAt = new Date().toISOString();
 
     const openaiKey = Deno.env.get("OPENAI_API_KEY");

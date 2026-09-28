@@ -1,3 +1,4 @@
+import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -30,6 +31,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  // Admin-only (or our own cron/server). verify_jwt alone lets the public site key through.
+  if (!(await isServiceOrAdmin(req))) return forbidden(corsHeaders);
 
   try {
     // Verify caller is an authenticated admin

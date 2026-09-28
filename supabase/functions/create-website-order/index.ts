@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
+import { pickDeliveryChoice } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -248,9 +249,8 @@ Deno.serve(async (req) => {
     const customerEmail = String(body.customer_email || "").trim();
     const customerPhone = String(body.customer_phone || "").trim();
     const deliveryAddress = String(body.delivery_address || "").trim();
-    const deliveryInfo = body.delivery_info && typeof body.delivery_info === "object"
-      ? body.delivery_info as Record<string, unknown>
-      : {};
+    // Only the customer's delivery choices — every other delivery_info field is server-set.
+    const deliveryInfo = pickDeliveryChoice(body.delivery_info);
 
     if (!customerName || !customerEmail || !customerPhone || !deliveryAddress) {
       return json({ error: "Missing customer details" }, 400);
@@ -464,25 +464,8 @@ Deno.serve(async (req) => {
       throw error || new Error("Could not create order");
     }
 
-    // Deduct gift card / coupon balance for fully-covered orders.
-    // For partial orders this happens later in confirm-payment-return after PayMe settles.
-    if (fullyCovered && (gcDiscount > 0 || couponDiscountValue > 0)) {
-      try {
-        const redeemRes = await fetch(`${supabaseUrl}/functions/v1/redeem-codes`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + serviceKey,
-          },
-          body: JSON.stringify({ order_id: inserted.id }),
-        });
-        if (!redeemRes.ok) {
-          console.error("redeem-codes (full coverage) returned", redeemRes.status, await redeemRes.text());
-        }
-      } catch (e) {
-        console.error("redeem-codes (full coverage) call failed:", e);
-      }
-    }
+    // Coupon / gift card are consumed inside fulfillPaidOrder (redeemOrderCodes) for every
+    // paid order — full coverage included — so there is no separate redeem call here.
 
     // Fully-covered gift card order: no PayMe webhook will ever fire, so call
     // fulfillPaidOrder directly — the same function confirm-payment-return calls

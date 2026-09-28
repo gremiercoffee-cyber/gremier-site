@@ -1,3 +1,4 @@
+import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -140,6 +141,9 @@ tbody td { padding:7px 10px; border-bottom:1px solid #eee; }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Admin-only (or our own cron/server). verify_jwt alone lets the public site key through.
+  if (!(await isServiceOrAdmin(req))) return forbidden(corsHeaders);
 
   try {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);

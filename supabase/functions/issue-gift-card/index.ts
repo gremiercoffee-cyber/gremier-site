@@ -295,6 +295,10 @@ Deno.serve(async (req) => {
 
       if (!order) return json({ error: 'order_not_found' }, 404);
       if (order.payment_status !== 'paid') return json({ skipped: 'not_paid' });
+      // Only genuine gift card purchases (created server-side by create-gift-card-order).
+      // Without this, any paid order carrying a client-written gift_card.amount could mint
+      // a card worth far more than was paid.
+      if (order.source !== 'gift_card') return json({ error: 'not_a_gift_card_order' }, 403);
 
       // Idempotency: already issued for this order?
       const { data: existing } = await sb
@@ -309,7 +313,8 @@ Deno.serve(async (req) => {
       const gcInfo = order.delivery_info?.gift_card || {};
 
       // This is the actual gift card value ordered.
-      const amount = Number(gcInfo.amount) || Number(order.total) || 0;
+      // The card is worth exactly what was paid for it.
+      const amount = Number(order.total) || 0;
 
       if (!amount || amount <= 0) {
         return json({ error: 'invalid_gift_card_amount' }, 400);

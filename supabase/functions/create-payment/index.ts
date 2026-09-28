@@ -1,3 +1,4 @@
+import { pickDeliveryChoice } from "../_shared/security.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { quoteDeliveryFee, loadDeliveryPricingTables } from "../_shared/delivery-pricing.ts";
 
@@ -474,9 +475,9 @@ serve(async (req) => {
       // trusted from the client, then persisted so the order carries the fee.
       let deliveryFee = 0;
       let deliveryMeta: Record<string, unknown> | null = null;
-      const chosenDelivery = delivery_info && typeof delivery_info === "object"
-        ? delivery_info as Record<string, unknown>
-        : null;
+      // Only the customer's delivery choices from the request (see pickDeliveryChoice).
+      const pickedDelivery = pickDeliveryChoice(delivery_info);
+      const chosenDelivery = Object.keys(pickedDelivery).length ? pickedDelivery : null;
       if (chosenDelivery && String(chosenDelivery.delivery_type || "") !== "") {
         try {
           const { zones, settings } = await loadDeliveryPricingTables(supabase);
@@ -484,6 +485,8 @@ serve(async (req) => {
           deliveryFee = Number(quote.fee) || 0;
           deliveryMeta = {
             ...chosenDelivery,
+            // The link's own code — never a code from the request.
+            payment_link_code: row.link_code,
             delivery_fee: deliveryFee,
             delivery_label: quote.typeLabel,
             zone_name: quote.zone?.name_en || "",
