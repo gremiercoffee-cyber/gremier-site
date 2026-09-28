@@ -701,21 +701,21 @@ async function findSubscriptionParent(
 }
 
 /**
- * Stable id for one subscription charge, so retries / duplicate notices don't
- * double-process. PayMe's sub callbacks carry no per-charge sale id; the payment
- * timestamp is unique per charge and identical across repeat notices for it.
- * (sub_iterations_completed is still "0" on the first paid notice, so it can't be trusted.)
+ * Stable id for one subscription charge, so duplicate notices don't double-process.
+ * Observed live (Sep 2026): ONE payment produces sub-active (no sale id, completed "0")
+ * AND sub-iteration-success (with payme_sale_id, completed "1"), each sent twice. All
+ * four share sub_payment_date, and the next month's charge gets a new one — so the
+ * payment date is the key, and must win over the sale id.
  */
 function iterationKey(payload: PaymePayload): string {
+  const sub = String(payload.sub_payme_id || "");
+  const paidAt = String(payload.sub_payment_date || "").trim();
+  if (sub && paidAt) return `${sub}@${paidAt}`;
   const direct = String(
     payload.payme_sale_id || payload.payme_transaction_id || payload.transaction_id || "",
   ).trim();
   if (direct) return direct;
-  const sub = String(payload.sub_payme_id || "");
-  if (!sub) return "";
-  const paidAt = String(payload.sub_payment_date || "").trim();
-  if (paidAt) return `${sub}@${paidAt}`;
-  return `${sub}:${String(payload.sub_iterations_completed ?? "")}`;
+  return sub ? `${sub}:${String(payload.sub_iterations_completed ?? "")}` : "";
 }
 
 async function adminAlert(

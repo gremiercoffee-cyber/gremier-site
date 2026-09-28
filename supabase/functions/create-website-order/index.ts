@@ -214,7 +214,7 @@ Deno.serve(async (req) => {
 
     const { data: productRows, error: productErr } = await admin
       .from("products")
-      .select("id,name_en,name_he,price,is_active,variations,delivery_price")
+      .select("id,name_en,name_he,price,is_active,variations,delivery_price,is_subscription,category")
       .in("id", productIds);
     if (productErr) throw productErr;
 
@@ -239,6 +239,10 @@ Deno.serve(async (req) => {
         // Guest tier for display ("for N people") — validated against the catalog.
         selected_guests: guest?.guests ?? null,
         guest_label: guest?.label || null,
+        // Keep the subscription flag so the admin can recognise subscription orders.
+        is_subscription: item.is_subscription === true || product.is_subscription === true,
+        subscription_interval: item.is_subscription === true ? (item.subscription_interval || "monthly") : null,
+        category: product.category || null,
       };
     });
 

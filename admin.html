@@ -3799,6 +3799,10 @@ async function loadRecoverableOrdersUI() {
 }
 
 function isSubscriptionOrder(o) {
+  // Website orders keep the subscription on delivery_info (the server rebuilds items and,
+  // before Sep 2026, dropped the item flag) — check both so every subscription shows.
+  const di = o.delivery_info && typeof o.delivery_info === 'object' ? o.delivery_info : {};
+  if (di.recurring || di.recurring_child || (di.subscription && typeof di.subscription === 'object')) return true;
   return (o.items || []).some(i => i.category === 'subscriptions' || i.is_subscription);
 }
 
