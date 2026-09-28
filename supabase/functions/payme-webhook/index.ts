@@ -700,15 +700,22 @@ async function findSubscriptionParent(
   return null;
 }
 
-/** Best-effort stable id for one subscription charge, so retries don't double-process. */
+/**
+ * Stable id for one subscription charge, so retries / duplicate notices don't
+ * double-process. PayMe's sub callbacks carry no per-charge sale id; the payment
+ * timestamp is unique per charge and identical across repeat notices for it.
+ * (sub_iterations_completed is still "0" on the first paid notice, so it can't be trusted.)
+ */
 function iterationKey(payload: PaymePayload): string {
   const direct = String(
     payload.payme_sale_id || payload.payme_transaction_id || payload.transaction_id || "",
   ).trim();
   if (direct) return direct;
   const sub = String(payload.sub_payme_id || "");
-  const done = String(payload.sub_iterations_completed ?? "");
-  return sub ? `${sub}:${done}` : "";
+  if (!sub) return "";
+  const paidAt = String(payload.sub_payment_date || "").trim();
+  if (paidAt) return `${sub}@${paidAt}`;
+  return `${sub}:${String(payload.sub_iterations_completed ?? "")}`;
 }
 
 async function adminAlert(
@@ -732,8 +739,18 @@ async function handleSubscriptionCallback(
   supabase: ReturnType<typeof createClient>,
   payload: PaymePayload,
 ): Promise<Response> {
-  // Log the full payload so the exact PayMe field names can be confirmed in the logs.
-  console.log("PayMe subscription callback:", JSON.stringify(payload));
+  // Log only non-personal fields (the payload also carries card mask, ID number, phone, email).
+  console.log("PayMe subscription callback:", JSON.stringify({
+    notify_type: payload.notify_type,
+    sub_payme_id: payload.sub_payme_id,
+    subscription_id: payload.subscription_id,
+    sub_status: payload.sub_status,
+    sub_paid: payload.sub_paid,
+    sub_price: payload.sub_price,
+    sub_payment_date: payload.sub_payment_date,
+    sub_next_date: payload.sub_next_date,
+    sub_iterations_completed: payload.sub_iterations_completed,
+  }));
 
   const notifyType = String(payload.notify_type || "").toLowerCase();
   const merchantSubId = String(payload.subscription_id || "");
