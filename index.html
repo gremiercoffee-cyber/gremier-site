@@ -1581,12 +1581,20 @@ function applyTranslations() {
 function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); applySiteImages(); }
 // ══ AUTH ══
 async function initAuth() {
-  const { data: { session } } = await sb.auth.getSession();
+  // Timeout-guarded: a stuck auth lock here blocked the whole init — signed-in visitors
+  // saw an empty shop because products load after this.
+  const { data: { session } } = await getSessionSafe();
   if (session) await setUser(session.user);
   else showMembershipForGuest();
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (session) await setUser(session.user);
-    else { clearUser(); showMembershipForGuest(); }
+  // Never await Supabase calls inside this callback: it runs while supabase-js holds its
+  // auth lock, so any later getSession() (e.g. at checkout) would wait forever after a
+  // silent token refresh — checkout got stuck on "Redirecting to payment…". Defer instead.
+  sb.auth.onAuthStateChange((event, session) => {
+    lastAuthSession = session || null;
+    setTimeout(() => {
+      if (session) setUser(session.user);
+      else { clearUser(); showMembershipForGuest(); }
+    }, 0);
   });
 }
 let userPoints = 0;
@@ -2491,14 +2499,25 @@ function closeCheckout(fromNav) {
   if (document.getElementById('checkoutOverlay').classList.contains('open')) navBack();
   else document.getElementById('checkoutOverlay').classList.remove('open');
 }
+var lastAuthSession = null;
+/** getSession() with a timeout — falls back to the last session the auth listener saw. */
+async function getSessionSafe(ms = 4000) {
+  const timeout = new Promise(resolve => setTimeout(() => resolve({ data: { session: lastAuthSession }, timedOut: true }), ms));
+  const res = await Promise.race([sb.auth.getSession(), timeout]);
+  if (res && res.timedOut) console.warn("getSession timed out — using last known session");
+  return res;
+}
 async function getCheckoutAuthHeaders() {
   // Loyalty points depend on create-website-order seeing the real member JWT.
   // Never silently create a member checkout with only the anon key, because then orders.user_id stays null.
-  let { data: { session } } = await sb.auth.getSession();
+  let { data: { session } } = await getSessionSafe();
 
   if (!session?.access_token && currentUser) {
     try {
-      const refreshed = await sb.auth.refreshSession();
+      const refreshed = await Promise.race([
+        sb.auth.refreshSession(),
+        new Promise(resolve => setTimeout(() => resolve({ data: { session: null } }), 5000)),
+      ]);
       session = refreshed?.data?.session || session;
     } catch (err) {
       console.warn('Could not refresh checkout session:', err);
@@ -3788,7 +3807,7 @@ async function purchaseGiftCardFromPage() {
   const btn = document.getElementById('gcPageBuyBtn');
   btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting to payment…';
   try {
-   const { data: { session } } = await sb.auth.getSession();
+   const { data: { session } } = await getSessionSafe();
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-gift-card-order`, {
       method: 'POST',
       headers: {

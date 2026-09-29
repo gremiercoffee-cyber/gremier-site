@@ -2328,8 +2328,9 @@ function whatsAppShareHref(raw, encodedMessage) {
 async function initAdmin() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) await checkAdminAccess(session.user);
-  sb.auth.onAuthStateChange(async (_, session) => {
-    if (session) await checkAdminAccess(session.user);
+  // Defer: awaiting Supabase calls inside this callback can deadlock the auth lock.
+  sb.auth.onAuthStateChange((_, session) => {
+    if (session) setTimeout(() => checkAdminAccess(session.user), 0);
   });
 }
 async function checkAdminAccess(user) {
