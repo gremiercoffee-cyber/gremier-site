@@ -64,11 +64,36 @@ function serviceKeys(): string[] {
  * NOTE: a function's verify_jwt=true is NOT enough — the public website (anon) key is a
  * valid JWT, so without this anyone could call admin-only functions.
  */
+/**
+ * Is this some genuine service key for our project? Crons may carry an older service-role
+ * JWT (or an sb_secret_ key) that differs from the one in this function's env, so an exact
+ * string compare isn't enough. Ask GoTrue: its admin API only answers to real service keys.
+ */
+async function isServiceKey(token: string, url: string): Promise<boolean> {
+  let looksService = token.startsWith("sb_secret_");
+  if (!looksService && token.split(".").length === 3) {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      looksService = payload?.role === "service_role";
+    } catch { /* not a JWT */ }
+  }
+  if (!looksService || !url) return false;
+  try {
+    const res = await fetch(`${url}/auth/v1/admin/users?page=1&per_page=1`, {
+      headers: { apikey: token, Authorization: `Bearer ${token}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function isServiceOrAdmin(req: Request): Promise<boolean> {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;
   if (serviceKeys().includes(token)) return true;
   const url = Deno.env.get("SUPABASE_URL") ?? "";
+  if (await isServiceKey(token, url)) return true;
   const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   if (!url || !anon || token === anon) return false;
   try {

@@ -266,16 +266,25 @@ function intervalToPayMeIterationType(interval: unknown): number {
  * of month must be 1–28 (PayMe rejects 29–31), so clamp it. Uses Israel time.
  */
 function paymeStartDate(iterationType: number): string {
+  // PayMe rules (verified live, Sep 2026): the date must not be in the past (Israel time),
+  // and for monthly subscriptions the day must be 1–28. So on the 29th–31st, start on the
+  // 1st of next month (the first charge still happens at checkout). Clamping to the 28th
+  // used to put the start date in the past, and PayMe rejected every subscription.
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Jerusalem",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   }).formatToParts(new Date());
-  const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
-  let day = Number(get("day"));
-  if (iterationType === 3 && day > 28) day = 28; // monthly: PayMe allows only 1–28
-  return `${String(day).padStart(2, "0")}/${get("month")}/${get("year")}`;
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value || 0);
+  let day = get("day"), month = get("month"), year = get("year");
+  if (iterationType === 3 && day > 28) {
+    day = 1;
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(day)}/${pad(month)}/${year}`;
 }
 
 function buildRecurringPayload(

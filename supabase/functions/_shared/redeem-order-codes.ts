@@ -68,7 +68,8 @@ export async function redeemOrderCodes(
         gift_card_id: gc.id,
         order_id: order.id,
         amount_used: amount > 0 ? amount : discount,
-        balance_after: null,
+        // NOT NULL column: record the expected balance now, corrected after the debit.
+        balance_after: Math.max(0, (Number(gc.balance) || 0) - Math.max(0, amount)),
         note: `Order #${order.order_number || ""}`,
       }).select("id").single();
       if (claimErr) {
