@@ -307,7 +307,8 @@ Deno.serve(async (req) => {
         .eq('purchase_order_id', order.id)
         .maybeSingle();
 
-      if (existing) return json({ ok: true, already: true, code: existing.code });
+      // Mode 1 is callable without login — never hand the card code to an anonymous caller.
+      if (existing) return json({ ok: true, already: true });
 
       // Gift card details come from order.delivery_info.gift_card
       const gcInfo = order.delivery_info?.gift_card || {};

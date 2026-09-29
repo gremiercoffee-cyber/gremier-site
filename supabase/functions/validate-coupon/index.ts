@@ -3,6 +3,9 @@
 // Public-callable (anon key) — never trusts the client for the discount math.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+/** Case-insensitive EXACT match: escape LIKE wildcards so "%" / "_" can't enumerate codes. */
+function likeLiteral(v: string): string { return v.replace(/[\\%_]/g, (m) => "\\" + m); }
+
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 function getServiceRoleKey(): string {
@@ -40,13 +43,15 @@ Deno.serve(async (req) => {
     const { code, cart_total, items, user_id, email } = await req.json();
     const cleanCode = String(code || '').trim().toUpperCase();
     if (!cleanCode) return json({ valid: false, error: 'no_code' });
+    // Codes are letters/digits/dashes/underscores only — no LIKE wildcards.
+    if (!/^[A-Z0-9_-]{2,40}$/.test(cleanCode)) return json({ valid: false, error: 'not_found', message: 'Coupon not found' });
 
     const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
     const { data: coupon } = await sb
       .from('coupons')
       .select('*')
-      .ilike('code', cleanCode)
+      .ilike('code', likeLiteral(cleanCode))
       .maybeSingle();
 
     if (!coupon) return json({ valid: false, error: 'not_found', message: 'Coupon not found' });

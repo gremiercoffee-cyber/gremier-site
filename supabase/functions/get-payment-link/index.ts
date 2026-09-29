@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       .select(`
         id, link_code, link_name, customer_name, customer_phone, customer_email,
         delivery_address, items, subtotal, discount, discount_note, total, status,
-        order_id, last_order_id, reusable, tranzila_url, payme_sale_id, sale_url
+        order_id, reusable, tranzila_url
       `)
       .eq("link_code", linkCode)
       .maybeSingle();

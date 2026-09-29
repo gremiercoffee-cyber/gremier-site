@@ -2,6 +2,9 @@
 // Checks a gift card code and returns its available balance.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+/** Case-insensitive EXACT match: escape LIKE wildcards so "%" / "_" can't enumerate codes. */
+function likeLiteral(v: string): string { return v.replace(/[\\%_]/g, (m) => "\\" + m); }
+
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 function getServiceRoleKey(): string {
@@ -34,9 +37,11 @@ Deno.serve(async (req) => {
     const { code, cart_total } = await req.json();
     const cleanCode = String(code || '').trim().toUpperCase();
     if (!cleanCode) return json({ valid: false, error: 'no_code' });
+    // Codes are letters/digits/dashes only — anything else (e.g. "%" wildcards) can't match.
+    if (!/^[A-Z0-9-]{3,40}$/.test(cleanCode)) return json({ valid: false, error: 'not_found', message: 'Gift card not found' });
 
     const sb = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: gc } = await sb.from('gift_cards').select('*').ilike('code', cleanCode).maybeSingle();
+    const { data: gc } = await sb.from('gift_cards').select('*').ilike('code', likeLiteral(cleanCode)).maybeSingle();
 
     if (!gc) return json({ valid: false, error: 'not_found', message: 'Gift card not found' });
     if (!gc.is_active) return json({ valid: false, error: 'inactive', message: 'This gift card is inactive' });

@@ -1,3 +1,4 @@
+import { cleanText } from "../_shared/security.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -58,10 +59,15 @@ Deno.serve(async (req) => {
 
     const reusable = isReusableLink(link);
 
-    const customerName = String(body.customer_name || link.customer_name || "").trim() || null;
-    const customerEmail = String(body.customer_email || link.customer_email || "").trim() || null;
-    const customerPhone = String(body.customer_phone || link.customer_phone || "").trim() || null;
-    const deliveryAddress = String(body.delivery_address || link.delivery_address || "").trim() || null;
+    // Customer free text is shown in the admin — strip HTML (cleanText).
+    const customerName = cleanText(body.customer_name || link.customer_name, 120) || null;
+    const customerEmail = cleanText(body.customer_email || link.customer_email, 200) || null;
+    const customerPhone = cleanText(body.customer_phone || link.customer_phone, 40) || null;
+    const deliveryAddress = cleanText(body.delivery_address || link.delivery_address, 300) || null;
+
+    // A reusable link is shared by many customers: never save one visitor's details onto the
+    // link itself, or the next visitor would see them pre-filled (they go on the order instead).
+    if (!reusable) {
 
     if (customerName && customerName !== link.customer_name) {
       await admin.from("payment_links").update({ customer_name: customerName }).eq("link_code", linkCode);
@@ -74,6 +80,7 @@ Deno.serve(async (req) => {
     }
     if (deliveryAddress && deliveryAddress !== link.delivery_address) {
       await admin.from("payment_links").update({ delivery_address: deliveryAddress }).eq("link_code", linkCode);
+    }
     }
 
     if (!reusable && link.order_id) {

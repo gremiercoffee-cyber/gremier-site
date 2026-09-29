@@ -1,4 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+/** Case-insensitive EXACT match: escape LIKE wildcards so "%" / "_" can't enumerate codes. */
+function likeLiteral(v: string): string { return v.replace(/[\\%_]/g, (m) => "\\" + m); }
+
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -31,7 +34,7 @@ export async function redeemOrderCodes(
 
   // ── Coupon ──
   if (order.coupon_code) {
-    const { data: coupon } = await supabase.from("coupons").select("*").ilike("code", order.coupon_code).maybeSingle();
+    const { data: coupon } = await supabase.from("coupons").select("*").ilike("code", likeLiteral(String(order.coupon_code))).maybeSingle();
     if (coupon) {
       const { error: claimErr } = await supabase.from("coupon_redemptions").insert({
         coupon_id: coupon.id,
@@ -61,7 +64,7 @@ export async function redeemOrderCodes(
   // ── Gift card ──
   const discount = Number(order.gift_card_discount) || 0;
   if (order.gift_card_code && discount > 0) {
-    const { data: gc } = await supabase.from("gift_cards").select("id, balance").ilike("code", order.gift_card_code).maybeSingle();
+    const { data: gc } = await supabase.from("gift_cards").select("id, balance").ilike("code", likeLiteral(String(order.gift_card_code))).maybeSingle();
     if (gc) {
       const amount = Math.min(discount, Number(gc.balance) || 0);
       const { data: claim, error: claimErr } = await supabase.from("gift_card_transactions").insert({
