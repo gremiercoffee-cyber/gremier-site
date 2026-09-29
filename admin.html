@@ -8735,6 +8735,7 @@ function renderGiftCardsTable() {
       <td class="cell-actions"><div class="cell-actions-wrap">
         <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(g.code)}')">Copy</button>
         <button class="btn btn-outline btn-sm" onclick="openEditGiftCardBalance('${g.id}',${g.balance})">Edit</button>
+        <button class="btn btn-outline btn-sm" onclick="openGiftCardHistory('${g.id}')">History</button>
         <button class="btn btn-sm ${g.is_active?'btn-red':'btn-green'}" onclick="toggleGiftCard('${g.id}',${g.is_active})">${g.is_active?'Off':'On'}</button>
       </div></td>
     </tr>`;
@@ -8817,6 +8818,10 @@ async function openEditGiftCardBalance(id, currentBalance) {
   if (input === null) return;
   const newBalance = parseFloat(input);
   if (isNaN(newBalance) || newBalance < 0) { showToast('Invalid amount'); return; }
+  const oldBalance = Number(currentBalance) || 0;
+  const change = Math.round((newBalance - oldBalance) * 100) / 100;
+  if (!change) { showToast('Balance unchanged'); return; }
+  const reason = (window.prompt('Reason (optional) — e.g. "used in person":', '') || '').trim();
   const { error } = await sb.from('gift_cards').update({
     balance: newBalance,
     is_active: newBalance > 0,
@@ -8827,8 +8832,41 @@ async function openEditGiftCardBalance(id, currentBalance) {
     console.error('gift_cards balance update error:', error);
     return;
   }
+  // Log it in the card's history (amount_used > 0 = taken off, < 0 = added), so hand
+  // edits never show up later as an unexplained gap.
+  const { error: logErr } = await sb.from('gift_card_transactions').insert({
+    gift_card_id: id,
+    order_id: null,
+    amount_used: -change,
+    balance_after: newBalance,
+    note: `Manual adjustment: ${change > 0 ? '+' : '−'}₪${Math.abs(change)}${reason ? ' — ' + reason : ''}`,
+  });
+  if (logErr) console.warn('gift card adjustment not logged:', logErr);
   loadGiftCards();
   showToast('Balance updated ✓');
+}
+
+async function openGiftCardHistory(id) {
+  const gc = allGiftCards.find(g => g.id === id);
+  if (!gc) return;
+  const { data: rows, error } = await sb.from('gift_card_transactions')
+    .select('amount_used,balance_after,note,created_at,order_id')
+    .eq('gift_card_id', id)
+    .order('created_at', { ascending: false });
+  if (error) { showToast('Could not load history'); return; }
+  const line = (label, amount, balance, when, color) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:.85rem">
+      <div><div style="color:var(--cream)">${escHtml(label)}</div><div style="font-size:.72rem;color:var(--text2)">${when}</div></div>
+      <div style="text-align:right"><div style="color:${color};font-weight:600">${amount}</div><div style="font-size:.72rem;color:var(--text2)">balance ₪${Number(balance).toFixed(0)}</div></div>
+    </div>`;
+  const fmt = d => new Date(d).toLocaleString('en-IL', { day:'numeric', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+  const items = (rows || []).map(r => {
+    const used = Number(r.amount_used) || 0;
+    return line(r.note || (used > 0 ? 'Used on an order' : 'Added'), (used > 0 ? '−₪' : '+₪') + Math.abs(used).toFixed(0), r.balance_after, fmt(r.created_at), used > 0 ? 'var(--red)' : 'var(--green)');
+  });
+  items.push(line('Issued', '₪' + Number(gc.initial_amount).toFixed(0), gc.initial_amount, fmt(gc.created_at), 'var(--cream)'));
+  document.getElementById('orderModalTitle').textContent = `${gc.code} — history`;
+  document.getElementById('orderModalContent').innerHTML = `<div style="font-size:.85rem;color:var(--text2);margin-bottom:10px">Current balance <strong style="color:var(--cream)">₪${Number(gc.balance).toFixed(0)}</strong></div>${items.join('')}`;
+  document.getElementById('orderModal').classList.add('open');
 }
 
 initAdmin();
