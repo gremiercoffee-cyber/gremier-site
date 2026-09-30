@@ -1085,17 +1085,12 @@
 </div>
 <!-- ══ COFFEE BARS PAGE ══ -->
 <div id="coffeebarsPage" class="page" style="padding-top:64px">
-  <!-- Shop callout strip -->
-  <div style="background:#f7f5f2;border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
-    <span style="font-size:.82rem;color:var(--text2)">Just want cold brew delivered to your door?</span>
-    <button class="btn btn-outline" onclick="showPage('shop')" style="font-size:.78rem;padding:6px 18px">Shop Online →</button>
-  </div>
   <div class="cbp-hero">
-    <img src="/logo.png" alt="Gremier Coffee Co." style="width:90px;height:90px;object-fit:contain;border-radius:50%;margin:0 auto 24px;display:block;opacity:.9"/>
     <div class="eyebrow" style="color:rgba(255,255,255,.4)!important;margin-bottom:16px">Events & Occasions</div>
     <h1 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h1>
     <p class="cbp-hero-sub" id="t-cbp-hero-sub">Premium cold brew for your birthday, corporate event, or any occasion — we'll help you choose the right amount for your guest count.</p>
     <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95%20Can%20you%20tell%20me%20more%3F" target="_blank" rel="noopener" class="btn btn-light" style="text-decoration:none">Book Your Event on WhatsApp ↗</a>
+    <div><a href="#cbpPackages" onclick="event.preventDefault();document.getElementById('cbpPackages').scrollIntoView({behavior:'smooth',block:'start'})" class="cbp-see-pkgs">See packages ↓</a></div>
   </div>
   <div id="cbpHeroImgWrap" class="cbp-hero-img-wrap" style="display:none">
     <img id="cbpHeroImg" src="" alt="Gremier Coffee Bar at event"/>
@@ -4479,6 +4474,20 @@ async function sendChatMessageText(text) {
   #helpMenu a:hover, #helpMenu button:hover { background: #f4f1ec; }
   #helpMenu .hm-ico { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
   body.rtl #helpMenu { direction: rtl; }
+
+  /* Coffee Bars page: tighter, no repeated intro */
+  .cbp-see-pkgs { display:inline-block; margin-top:18px; color:rgba(255,255,255,.7); font-size:.85rem; text-decoration:none; border-bottom:1px solid rgba(255,255,255,.3); padding-bottom:2px; }
+  #coffeebarsPage .section-header #t-cbp-eye, #coffeebarsPage .section-header #t-cbp-eye + .divider, #t-cbp-intro { display:none; }
+  #cbpPackages { scroll-margin-top: 80px; }
+  @media (max-width: 640px) {
+    .cbp-hero { padding: 48px 20px 40px; }
+    .cbp-hero-sub { margin-bottom: 26px; }
+    #coffeebarsPage .section { padding-top: 40px; }
+    #coffeebarsPage .section-header { margin-bottom: 22px; }
+    #cbpPackages.product-grid { grid-template-columns: 1fr; gap: 18px; }
+    #cbpPackages .product-img { aspect-ratio: 16 / 10; }
+    #cbpPackages .product-desc { -webkit-line-clamp: 2; }
+  }
 </style>
 <button type="button" id="cartBar" onclick="openCart()"><span><span class="cb-count" id="cartBarCount">0</span><span id="cartBarLabel">View cart</span></span><span id="cartBarTotal">₪0</span></button>
 <script id="ux2-script">
@@ -4595,6 +4604,7 @@ async function sendChatMessageText(text) {
     ['Just want cold brew delivered to your door?', 'רוצים רק קולד ברו עד הדלת?'],
     ['Shop Online →', 'לחנות ←'],
     ['Events & Occasions', 'אירועים ושמחות'],
+    ['See packages ↓', 'לחבילות ↓'],
     ['Book Your Event on WhatsApp ↗', 'הזמינו אירוע בוואטסאפ ↗'],
     ['Prices vary by guest count and event requirements.', 'המחיר משתנה לפי מספר האורחים וצורכי האירוע.'],
     ['Message us for a custom quote →', 'כתבו לנו להצעת מחיר ←'],
