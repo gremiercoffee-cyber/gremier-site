@@ -1779,7 +1779,9 @@ function isCoffeeBarProduct(p) {
   return !!(p && p.is_coffee_bar);
 }
 function getCoffeeBarProducts() {
-  return products.filter(isCoffeeBarProduct);
+  // Premium package first, the Dispenser (add-on) last.
+  const rank = p => /premium/i.test(p.name_en || "") ? 0 : /dispenser/i.test(p.name_en || "") ? 2 : 1;
+  return products.filter(isCoffeeBarProduct).sort((a, b) => rank(a) - rank(b));
 }
 function coffeeBarEmptyHTML() {
   return `<p style="color:var(--text2);text-align:center;width:100%;grid-column:1/-1;padding:28px 16px;font-size:.9rem;line-height:1.6">${tr('cb-empty')}</p>`;
