@@ -4400,6 +4400,27 @@ async function sendChatMessageText(text) {
   }
   window.localizeCheckoutExtras = localizeCheckoutExtras;
 
+  // Come back to the same spot: phones reload a backgrounded tab, which used to land at the top.
+  const SK = "gremier_scroll_v1";
+  let saveT;
+  window.addEventListener("scroll", () => {
+    clearTimeout(saveT);
+    saveT = setTimeout(() => { try { sessionStorage.setItem(SK, JSON.stringify({ url: location.href, y: Math.round(scrollY) })); } catch (_) {} }, 250);
+  }, { passive: true });
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SK) || "null");
+    if (saved && saved.url === location.href && saved.y > 0) {
+      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+      let tries = 0;
+      const restore = () => {
+        // Wait until products have rendered so the page is tall enough.
+        if (document.body.scrollHeight - innerHeight >= saved.y || ++tries > 40) { scrollTo({ top: saved.y, behavior: "instant" }); return; }
+        setTimeout(restore, 150);
+      };
+      window.addEventListener("load", () => setTimeout(restore, 400));
+    }
+  } catch (_) {}
+
   // P10. Membership popup + top banner in Hebrew (they stayed English, laid out right-to-left).
   const MEMBER = {
     "popup-title": ["Join Gremier Members", "הצטרפו למועדון גרמייר"],

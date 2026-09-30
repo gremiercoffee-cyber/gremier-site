@@ -106,7 +106,7 @@
             setHubMode('website');
           }
           if (typeof showTab === 'function') {
-            showTab('schedule');
+            showTab(localStorage.getItem('gremier_admin_tab') || 'schedule');
           }
           if (typeof loadOrders === 'function') loadOrders();
           if (typeof loadAllProducts === 'function') loadAllProducts();
@@ -2344,8 +2344,8 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-  // App launch always opens Schedule — the main daily screen.
-  showTab('schedule');
+  // Reopen the screen you were last on (phones reload backgrounded apps); Schedule on first use.
+  showTab(localStorage.getItem('gremier_admin_tab') || 'schedule');
   loadOrders();
   loadAllProducts();
   loadStores();
