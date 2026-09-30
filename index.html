@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="preconnect" href="https://res.cloudinary.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;700&display=swap" rel="stylesheet"/>
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="/favicon.png"/>
   <script src="/vendor/supabase-js.min.js?v=2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -695,6 +695,42 @@
     .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a1a; border:1px solid #333333; color:#ffffff; padding:12px 24px; border-radius:4px; font-size:.85rem; font-weight:500; z-index:500; transition:transform .3s; white-space:nowrap; box-shadow:0 4px 20px rgba(0,0,0,.25); }
     .toast.show { transform:translateX(-50%) translateY(0); }
   </style>
+<!-- ══════════ UX IMPROVEMENTS — styles ══════════ -->
+<style id="preview-ux-styles">
+  /* P1. Two products per row on phones (was one huge card per screen) */
+  @media (max-width: 640px) {
+    .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .product-grid .product-img { aspect-ratio: 1 / 1; }
+    .product-grid .product-info { padding: 10px 11px 12px; }
+    .product-grid .product-name { font-size: .88rem; }
+    .product-grid .product-desc { font-size: .72rem; min-height: 0; margin-bottom: 8px; -webkit-line-clamp: 2; }
+    .product-grid .product-price { font-size: .95rem; }
+    .product-grid .product-badge { font-size: .55rem; padding: 2px 6px; top: 8px; left: 8px; }
+    .category-filter { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding: 0 16px 6px; margin: 0 -16px 24px; scrollbar-width: none; }
+    .category-filter::-webkit-scrollbar { display: none; }
+    .filter-btn { flex: 0 0 auto; }
+  }
+  /* P2. Chat hint no longer sits on top of product text */
+  #chatTooltip.pv-hidden { opacity: 0 !important; visibility: hidden !important; transition: opacity .4s, visibility .4s; }
+  /* P3. "Added to cart" message moves to the top so it never covers the checkout button */
+  .toast.pv-top { bottom: auto; top: 20px; transform: translateX(-50%) translateY(-90px); }
+  .toast.pv-top.show { transform: translateX(-50%) translateY(0); }
+  /* P4. Delivery info in the product view */
+  .pv-pd-info { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 16px; padding: 12px 14px; background: #f7f5f2; border-radius: 6px; font-size: .8rem; color: #444; line-height: 1.45; }
+  /* P5. Syrup suggestion in the cart */
+  .pv-suggest { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .pv-suggest-title { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); margin-bottom: 10px; }
+  .pv-suggest-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .pv-suggest-row img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: #f7f5f2; }
+  .pv-suggest-row .n { flex: 1; font-size: .84rem; color: #1a1a1a; }
+  .pv-suggest-row button { background: #1a1a1a; color: #fff; border: none; border-radius: 999px; padding: 6px 12px; font-size: .75rem; cursor: pointer; }
+  /* P6. Free-delivery progress at checkout */
+  .pv-free-hint { margin-top: 8px; font-size: .78rem; color: #8a5a1c; background: rgba(200,135,58,.1); border-radius: 4px; padding: 7px 10px; }
+  .pv-free-bar { height: 4px; background: rgba(0,0,0,.08); border-radius: 4px; margin-top: 6px; overflow: hidden; }
+  .pv-free-bar > i { display: block; height: 100%; background: #c8873a; }
+  /* Preview badge */
+</style>
+
 </head>
 <body>
 <!-- ══ MEMBERSHIP BANNER (non-members only) ══ -->
@@ -759,7 +795,7 @@
 <a onclick="showPage('giftcards');closeMobileMenu()">Gift Cards 🎁</a><a onclick="showPage('giftcards');closeMobileMenu()">Gift Cards</a></div>
 <nav>
   <span class="nav-logo-wrap" onclick="showPage('home')">
-    <img src="logo.png" alt="Gremier Coffee Co." class="nav-logo-img"/>
+    <img src="/logo.png" alt="Gremier Coffee Co." class="nav-logo-img"/>
     <span class="nav-logo-text">Gremier <span>Coffee Co.</span></span>
   </span>
   <ul class="nav-links">
@@ -799,7 +835,7 @@
     <div class="hero-bg"></div>
     <div class="hero-content">
       <div class="hero-brand">
-        <img src="logo.png" alt="Gremier Coffee Co." class="hero-logo"/>
+        <img src="/logo.png" alt="Gremier Coffee Co." class="hero-logo"/>
         <div class="hero-title-wrap">
           <h1 class="hero-title" id="t-hero-title">Cold Brew<br><em id="t-hero-em" style="color:#1a1a1a;font-style:italic;">Delivered.</em></h1>
         </div>
@@ -1055,7 +1091,7 @@
     <button class="btn btn-outline" onclick="showPage('shop')" style="font-size:.78rem;padding:6px 18px">Shop Online →</button>
   </div>
   <div class="cbp-hero">
-    <img src="logo.png" alt="Gremier Coffee Co." style="width:90px;height:90px;object-fit:contain;border-radius:50%;margin:0 auto 24px;display:block;opacity:.9"/>
+    <img src="/logo.png" alt="Gremier Coffee Co." style="width:90px;height:90px;object-fit:contain;border-radius:50%;margin:0 auto 24px;display:block;opacity:.9"/>
     <div class="eyebrow" style="color:rgba(255,255,255,.4)!important;margin-bottom:16px">Events & Occasions</div>
     <h1 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h1>
     <p class="cbp-hero-sub" id="t-cbp-hero-sub">Premium cold brew for your birthday, corporate event, or any occasion — we'll help you choose the right amount for your guest count.</p>
@@ -1307,7 +1343,7 @@
   <div class="footer-grid">
     <div>
       <div class="footer-brand" style="display:flex;align-items:center;gap:12px">
-        <img src="logo.png" alt="Gremier Coffee Co." style="height:48px;width:48px;object-fit:contain;border-radius:50%;flex-shrink:0"/>
+        <img src="/logo.png" alt="Gremier Coffee Co." style="height:48px;width:48px;object-fit:contain;border-radius:50%;flex-shrink:0"/>
         <span>Gremier <span style="color:#888;font-weight:400">Coffee Co.</span></span>
       </div>
       <p class="footer-desc" id="t-ft-desc">Israel's premier cold brew, delivered fresh to your door or your event.</p>
@@ -1472,7 +1508,7 @@ const T = {
     't-wa-label':'Contact us',
     'sign-in':'Sign In','sign-out':'Sign Out',
     'enquire':'Enquire & Book',
-    'cats':{'all':'All','bottles':'Bottles','minis':'Mini Packs','bulk':'Bulk & 5L','subscriptions':'Subscriptions'},
+    'cats':{'all':'All','bottles':'Bottles','minis':'Mini Packs','bulk':'Bulk & 5L','syrups':'Syrups','coffeebars':'Coffee Bars','subscriptions':'Subscriptions'},
     'empty-cart':'Your cart is empty',
     'empty-orders':'No orders yet.',
     'order-status':{'pending':'Pending','awaiting_payment':'Awaiting Payment','confirmed':'Confirmed','fulfilled':'Fulfilled','cancelled':'Cancelled'},
@@ -1525,7 +1561,7 @@ const T = {
     't-wa-label':'צור קשר',
     'sign-in':'התחברות','sign-out':'התנתקות',
     'enquire':'לפרטים ותיאום',
-    'cats':{'all':'הכל','bottles':'בקבוקים','minis':'מיני פקים','bulk':'5 ליטר','subscriptions':'מנויים'},
+    'cats':{'all':'הכל','bottles':'בקבוקים','minis':'מיני פקים','bulk':'5 ליטר','syrups':'סירופים','coffeebars':'עמדות קפה','subscriptions':'מנויים'},
     'empty-cart':'העגלה ריקה',
     'empty-orders':'אין הזמנות עדיין.',
     'order-status':{'pending':'ממתין','awaiting_payment':'ממתין לתשלום','confirmed':'אושר','fulfilled':'סופק','cancelled':'בוטל'},
@@ -2364,8 +2400,17 @@ function renderFeatured() {
   grid.innerHTML = featured.length ? featured.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center">No products yet.</p>';
 }
 const categories = [
-  {key:'all'},{key:'bottles'},{key:'minis'},{key:'bulk'},{key:'subscriptions'}
+  {key:'all'},{key:'bottles'},{key:'minis'},{key:'bulk'},{key:'syrups'},{key:'coffeebars'},{key:'subscriptions'}
 ];
+// Syrups are stored under "bottles" — treat anything named syrup as its own filter,
+// and list best sellers first, coffee before syrups/extras.
+function isSyrupProduct(p) { return /syrup|סירופ/i.test((p.name_en || '') + ' ' + (p.name_he || '')); }
+function shopCategoryOf(p) { return isSyrupProduct(p) ? 'syrups' : (p.category || ''); }
+function shopRank(p) {
+  const order = { bottles: 1, minis: 2, bulk: 3, subscriptions: 4, coffeebars: 5, syrups: 6 };
+  const popular = /popular|best/i.test(p.badge_text || '') ? 0 : 1;
+  return popular * 10 + (order[shopCategoryOf(p)] || 9);
+}
 function setCategory(cat) {
   activeCategory = cat;
   const callout = document.getElementById('subCallout');
@@ -2381,7 +2426,8 @@ function renderShop() {
   }
   const grid = document.getElementById('shopGrid');
   if (!grid) return;
-  const list = activeCategory === 'all' ? products : products.filter(p => p.category === activeCategory);
+  const base = activeCategory === 'all' ? products.slice() : products.filter(p => shopCategoryOf(p) === activeCategory);
+  const list = base.sort((a, b) => shopRank(a) - shopRank(b));
   grid.innerHTML = list.length ? list.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center;width:100%">No products in this category.</p>';
 }
 function renderCoffeeBars() {
@@ -3409,7 +3455,7 @@ async function loadIsraelCities() {
   } catch (e) {
     console.warn('Israel cities API failed, using fallback list', e);
     try {
-      const res = await fetch('israel-cities.json');
+      const res = await fetch('/israel-cities.json');
       israelCities = await res.json();
     } catch (_) { israelCities = []; }
   }
@@ -4197,5 +4243,198 @@ async function sendChatMessageText(text) {
   document.getElementById('chatbotInput').focus();
 }
 </script>
+<!-- ══════════ UX IMPROVEMENTS — behaviour ══════════ -->
+<script id="preview-ux-script">
+(function () {
+  const he = () => lang === 'he';
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+  };
+
+  // P2. Chat hint: show briefly, then get out of the way (it covered product names on phones).
+  function hideChatHint() { document.getElementById('chatTooltip')?.classList.add('pv-hidden'); }
+  setTimeout(hideChatHint, 6000);
+  window.addEventListener('scroll', hideChatHint, { once: true, passive: true });
+
+  // P3. Toast at the top on phones / while the cart is open, so it can't cover "Proceed to Checkout".
+  const _showToast = window.showToast;
+  window.showToast = function (msg) {
+    const t = document.getElementById('toast');
+    const cartOpen = document.getElementById('cartDrawer')?.classList.contains('open');
+    if (t) t.classList.toggle('pv-top', !!cartOpen || window.innerWidth <= 640);
+    return _showToast(msg);
+  };
+
+  // P4. Delivery facts in the product view (answers "when will it arrive?" before checkout).
+  const _openPd = window.openProductDrawerUI;
+  window.openProductDrawerUI = function (id) {
+    const r = _openPd.apply(this, arguments);
+    const desc = document.getElementById('pdDesc');
+    if (desc) {
+      document.getElementById('pvPdInfo')?.remove();
+      const p = ((typeof products!=='undefined'?products:[]) || []).find(x => String(x.id) === String(id));
+      const isBar = p && typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p);
+      const box = document.createElement('div');
+      box.id = 'pvPdInfo'; box.className = 'pv-pd-info';
+      box.innerHTML = isBar
+        ? (he() ? '<span>📅 בחרו תאריך ושעה לאירוע בקופה — אנחנו מגיעים עם הכל מוכן.</span><span>💬 שאלות? כתבו לנו בוואטסאפ ונעזור לתכנן כמויות.</span>'
+                : "<span>📅 Pick your event date &amp; time at checkout — we arrive with everything ready.</span><span>💬 Questions? WhatsApp us and we'll help plan quantities.</span>")
+        : (he() ? '<span>🚚 משלוח רגיל תוך 2–5 ימים, או מהיר תוך 1–2 ימים.</span><span>📅 צריכים ביום מסוים? אפשר לבחור תאריך בקופה.</span>'
+                : '<span>🚚 Regular delivery in 2–5 days, or expedited in 1–2 days.</span><span>📅 Need it on a specific day? Pick a date at checkout.</span>');
+      desc.insertAdjacentElement('afterend', box);
+    }
+    return r;
+  };
+
+  // P5. Suggest a syrup when the cart has coffee but no syrup.
+  const _renderCart = window.renderCartDrawer;
+  window.renderCartDrawer = function () {
+    const r = _renderCart.apply(this, arguments);
+    const body = document.getElementById('cartBody');
+    if (!body || typeof cart === 'undefined' || !Array.isArray(cart) || !cart.length) return r;
+    const inCart = new Set(cart.map(i => String(i.base_product_id || String(i.id).split('_')[0])));
+    const hasSyrup = cart.some(i => /syrup|סירופ/i.test((i.name_en || '') + (i.name_he || '')));
+    const syrups = ((typeof products!=='undefined'?products:[]) || []).filter(p => typeof isSyrupProduct === 'function' && isSyrupProduct(p) && !inCart.has(String(p.id)));
+    if (hasSyrup || !syrups.length) return r;
+    const rows = syrups.slice(0, 2).map(p => `<div class="pv-suggest-row">
+        ${p.images && p.images[0] ? `<img src="${escAttr(p.images[0])}" alt="">` : ''}
+        <span class="n">${escHtml(he() ? (p.name_he || p.name_en) : p.name_en)} · ₪${p.price}</span>
+        <button type="button" onclick="closeCart();openProductDrawer('${escAttr(p.id)}')">${he() ? '+ הוספה' : '+ Add'}</button>
+      </div>`).join('');
+    body.insertAdjacentHTML('beforeend', `<div class="pv-suggest"><div class="pv-suggest-title">${he() ? 'מתאים לקפה שלכם' : 'Goes great with your coffee'}</div>${rows}</div>`);
+    return r;
+  };
+
+  // P6. Remember returning customers' details (this device only) and prefill from Google sign-in.
+  const CK = 'gremier_checkout_details_v1';
+  const _submit = window.submitOrder;
+  window.submitOrder = function () {
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    store.set(CK, {
+      name: v('coName'), phone: v('coPhone'), email: v('coEmail'), addr: v('coAddr'),
+      apt: v('coApt'), floor: v('coFloor'), aptNA: !!document.getElementById('coAptNA')?.checked,
+      city: (typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null) || null,
+    });
+    return _submit.apply(this, arguments);
+  };
+  const _openCheckout = window.openCheckout;
+  window.openCheckout = async function () {
+    const r = await _openCheckout.apply(this, arguments);
+    const saved = store.get(CK) || {};
+    const set = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = val; };
+    const meta = ((typeof currentUser!=='undefined'?currentUser:null) && (typeof currentUser!=='undefined'?currentUser:null).user_metadata) || {};
+    set('coName', saved.name || meta.full_name || meta.name);
+    set('coEmail', saved.email || ((typeof currentUser!=='undefined'?currentUser:null) && (typeof currentUser!=='undefined'?currentUser:null).email));
+    set('coPhone', saved.phone); set('coAddr', saved.addr); set('coApt', saved.apt); set('coFloor', saved.floor);
+    const na = document.getElementById('coAptNA');
+    if (saved.aptNA && na && !na.checked) { na.checked = true; toggleAptNA(); }
+    if (saved.city && !(typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null) && typeof selectCheckoutCity === 'function') selectCheckoutCity(saved.city);
+    localizeCheckoutExtras();
+    return r;
+  };
+
+  // P7. Free-delivery progress once the city is known (thresholds differ by area).
+  const _updateDelivery = window.updateDeliveryPrice;
+  window.updateDeliveryPrice = function () {
+    const fee = _updateDelivery.apply(this, arguments);
+    const note = document.getElementById('freeDeliveryNote');
+    if (!note) return fee;
+    let hint = document.getElementById('pvFreeHint');
+    if (!hint) { hint = document.createElement('div'); hint.id = 'pvFreeHint'; hint.className = 'pv-free-hint'; note.insertAdjacentElement('afterend', hint); }
+    hint.style.display = 'none';
+    try {
+      const city = (typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null);
+      const regular = document.getElementById('shipRegular')?.checked;
+      const productFee = cart.some(i => i.delivery_price !== null && i.delivery_price !== undefined && !isNaN(i.delivery_price));
+      if (city && regular && !productFee && fee > 0) {
+        const freeAbove = Number(resolveDeliveryPricing(city).freeAbove) || 0;
+        const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+        if (freeAbove > total) {
+          const left = Math.ceil(freeAbove - total);
+          hint.innerHTML = (he() ? `עוד ₪${left} ומשלוח חינם 🎉` : `Add ₪${left} more for free delivery 🎉`)
+            + `<div class="pv-free-bar"><i style="width:${Math.min(100, Math.round(total / freeAbove * 100))}%"></i></div>`;
+          hint.style.display = 'block';
+        }
+      }
+    } catch (_) {}
+    return fee;
+  };
+
+  // P8. Hebrew for Hebrew-language phones, and remember the language the visitor chooses.
+  const LK = 'gremier_lang_v1';
+  const _toggleLang = window.toggleLang;
+  window.toggleLang = function () { const r = _toggleLang.apply(this, arguments); store.set(LK, lang); localizeCheckoutExtras(); localizeMemberBits(); return r; };
+  window.addEventListener('load', () => setTimeout(() => {
+    const saved = store.get(LK);
+    const wantHe = saved ? saved === 'he' : (navigator.languages || [navigator.language]).some(l => /^(he|iw)/i.test(l || ''));
+    if ((wantHe && lang !== 'he') || (saved === 'en' && lang !== 'en')) _toggleLang();
+    localizeCheckoutExtras(); localizeMemberBits();
+  }, 300));
+
+  // P9. Translate checkout text that was English-only.
+  const EXTRA = [
+    ['Requested delivery date (optional)', 'תאריך משלוח מבוקש (לא חובה)'],
+    ["Leave blank and we'll deliver as soon as possible (2–5 days). Pick a date only if you need it delivered on a specific day.", 'השאירו ריק ונשלח בהקדם (2–5 ימים). בחרו תאריך רק אם צריך את המשלוח ביום מסוים.'],
+    ['We always ship as fast as we can — this option guarantees 1–2 day delivery or locks in a specific date. Extra fee applies.', 'אנחנו תמיד שולחים מהר ככל האפשר — אפשרות זו מבטיחה משלוח תוך 1–2 ימים או בתאריך מסוים. בתוספת תשלום.'],
+    ['⚡ Guaranteed 1–2 days', '⚡ מובטח תוך 1–2 ימים'],
+    ['📅 Pick a specific date', '📅 בחירת תאריך מסוים'],
+    ['Delivery date', 'תאריך משלוח'],
+    ["We'll arrive at your event venue at the requested time. Please provide the date and arrival time.", 'נגיע למקום האירוע בזמן המבוקש. אנא ציינו תאריך ושעת הגעה.'],
+    ['Event date', 'תאריך האירוע'],
+    ['Arrival time', 'שעת הגעה'],
+    ['Event Delivery', 'משלוח לאירוע'],
+    ['Choose your date & time', 'בחרו תאריך ושעה'],
+  ];
+  function localizeCheckoutExtras() {
+    const root = document.getElementById('checkoutFormView');
+    if (!root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const n of nodes) {
+      const t = n.nodeValue.trim(); if (!t) continue;
+      for (const [en, heText] of EXTRA) {
+        if (t === en || t === heText) { n.nodeValue = n.nodeValue.replace(t, he() ? heText : en); break; }
+      }
+    }
+  }
+  window.localizeCheckoutExtras = localizeCheckoutExtras;
+
+  // P10. Membership popup + top banner in Hebrew (they stayed English, laid out right-to-left).
+  const MEMBER = {
+    "popup-title": ["Join Gremier Members", "הצטרפו למועדון גרמייר"],
+    "popup-sub": ["Sign in with Google and start earning points on every order. Free to join, always.", "התחברו עם גוגל וצברו נקודות על כל הזמנה. ההצטרפות תמיד בחינם."],
+    "perk1": ["Earn 1 point for every ₪10 you spend", "נקודה אחת על כל ₪10 שאתם מוציאים"],
+    "perk2": ["200 points = 10% off your next order", "200 נקודות = 10% הנחה על ההזמנה הבאה"],
+    "perk3": ["Early access to new products & deals", "גישה מוקדמת למוצרים ומבצעים חדשים"],
+    "perk4": ["Track your orders easily", "מעקב קל אחרי ההזמנות שלכם"],
+    "popup-join-btn": ["Join Now — It's Free", "הצטרפו עכשיו — בחינם"],
+    "popup-skip": ["Maybe later", "אולי אחר כך"],
+    "bannerText": ["Become a Gremier Member — earn points on every order.", "הצטרפו למועדון גרמייר — צברו נקודות על כל הזמנה."],
+  };
+  function localizeMemberBits() {
+    for (const [id, [en, heText]] of Object.entries(MEMBER)) {
+      const el = document.getElementById(id);
+      if (el && (el.textContent.trim() === en || el.textContent.trim() === heText)) el.textContent = he() ? heText : en;
+    }
+    const join = document.querySelector("#memberBanner a");
+    if (join && /Join free|הצטרפו בחינם/.test(join.textContent)) join.textContent = he() ? "הצטרפו בחינם ←" : "Join free →";
+  }
+  window.localizeMemberBits = localizeMemberBits;
+  // Chat hint text follows the language too.
+  const _lmb = localizeMemberBits;
+  window.localizeMemberBits = localizeMemberBits = function () {
+    _lmb();
+    const tip = document.getElementById("chatTooltip");
+    const node = tip && [...tip.childNodes].find(n => n.nodeType === 3 && n.nodeValue.trim());
+    if (tip && node) {
+      const br = tip.querySelector("br");
+      if (he()) { node.nodeValue = "ספרו לי "; if (br && br.nextSibling && br.nextSibling.nodeType === 3) br.nextSibling.nodeValue = "מה תרצו להזמין"; }
+    }
+  };
+
+})();
+</script>
+
 </body>
 </html>
