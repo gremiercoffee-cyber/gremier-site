@@ -34,3 +34,6 @@ verify_jwt = false
 # Deployed outside this repo originally (pulled in Sep 2026) — public checkout endpoint.
 [functions.create-gift-card-order]
 verify_jwt = false
+
+[functions.admin-tools]
+verify_jwt = false
