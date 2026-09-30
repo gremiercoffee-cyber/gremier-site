@@ -1385,7 +1385,7 @@
   </div>
 </footer>
 <!-- Float Buttons — bottom right, stacked -->
-<div style="position:fixed;bottom:20px;right:16px;z-index:90;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+<div id="fabStack" style="position:fixed;bottom:20px;right:16px;direction:ltr;z-index:90;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
   <!-- WhatsApp -->
   <a href="https://wa.me/972552703413?text=Hi%20Gremier%20Coffee!%20I%27d%20like%20to%20place%20an%20order%20%E2%98%95" target="_blank" rel="noopener" aria-label="Contact us on WhatsApp"
     style="background:#25D366;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 12px rgba(0,0,0,0.25);transition:transform .2s,box-shadow .2s;text-decoration:none;"
@@ -2436,7 +2436,7 @@ function renderCoffeeBars() {
   const cbList = getCoffeeBarProducts();
   grid.innerHTML = cbList.length ? cbList.map(productCardHTML).join('') : coffeeBarEmptyHTML();
 }
-function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); }
+function renderGrids() { renderFeatured(); renderShop(); renderCoffeeBars(); renderCoffeeBarsPage(); if (document.getElementById('cartDrawer')?.classList.contains('open')) renderCartDrawer(); }
 function renderCoffeeBarsPage() {
   const grid = document.getElementById('cbpPackages');
   if (!grid) return;
