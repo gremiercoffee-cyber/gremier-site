@@ -19,3 +19,4 @@ telemetry.json
 # Supabase personal access token (never commit)
 .gremier-supabase-token
 *.supabase-token
+node_modules/
