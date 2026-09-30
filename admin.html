@@ -7829,7 +7829,9 @@ function ensureDailyBriefing() {
   const today = briefingLocalISO(0);
   if (window.__dashBriefingLoadedForDate[today]) return;
   window.__dashBriefingLoadedForDate[today] = true;
-  loadBriefing({ auto: true });
+  // Only builds when you press "Build Briefing" — no automatic daily run.
+  const body = document.getElementById('dashBriefingBody');
+  if (body) body.innerHTML = '<div class="briefing-body">Press <b>Build Briefing</b> when you want today’s summary.</div>';
 }
 
 async function loadBriefing(options = {}) {
