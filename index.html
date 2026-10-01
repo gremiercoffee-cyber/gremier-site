@@ -5098,6 +5098,14 @@ async function sendChatMessageText(text) {
     return _submit.apply(this, arguments);
   };
 
+  // "Save my card" travels with the order: create-website-order verifies the customer and
+  // marks the order, then create-payment asks PayMe to keep the card.
+  const _createOrder = window.createWebsiteOrder;
+  window.createWebsiteOrder = function (orderData) {
+    if (signedIn() && !card && document.getElementById('scSave')?.checked && orderData) orderData.save_card = true;
+    return _createOrder.apply(this, arguments);
+  };
+  try { createWebsiteOrder = window.createWebsiteOrder; } catch (_) {}
   const _createPayment = window.callCreatePayment;
   async function normalPayment(orderId, saveCard) {
     if (!saveCard) return _createPayment(orderId);

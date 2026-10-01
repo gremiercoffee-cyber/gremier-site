@@ -446,6 +446,8 @@ Deno.serve(async (req) => {
         pricing_source: delivery.source,
         server_priced: true,
         gift_card_id: giftCardId,
+        // "Save my card": only for a verified signed-in customer, never on subscriptions.
+        ...(body.save_card === true && userId && !isSubscriptionOrder ? { save_card_requested: true } : {}),
         gift_card_amount: gcDiscount || 0,
       },
       status: fullyCovered ? "confirmed" : "awaiting_payment",

@@ -31,23 +31,19 @@ function getServiceRoleKey(): string {
     return "";
   }
 }
-/** Last reason a session check failed (diagnostics only). */
-let lastAuthError = "";
+/** Same session check as create-website-order (proven to identify signed-in customers). */
 async function sessionUserId(req: Request): Promise<string | null> {
-  const token = (req.headers.get("Authorization") || "").replace(/^Bearers+/i, "").trim();
-  const url = Deno.env.get("SUPABASE_URL") ?? "";
-  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  if (!token) { lastAuthError = "no_token"; return null; }
-  if (token === anon || token.startsWith("sb_publishable_")) { lastAuthError = "anon_key"; return null; }
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const jwt = (req.headers.get("Authorization") || "").replace(/^Bearers+/i, "").trim();
+  if (!anonKey || !jwt || jwt === anonKey || jwt.startsWith("sb_publishable_")) return null;
   try {
-    // Pass the token explicitly — validated by Supabase Auth, works without a stored session.
-    const client = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data, error } = await client.auth.getUser(token);
-    if (error || !data?.user) { lastAuthError = String(error?.message || "no_user").slice(0, 120); return null; }
-    lastAuthError = "";
-    return data.user.id;
-  } catch (e) {
-    lastAuthError = String(e).slice(0, 120);
+    const userClient = createClient(Deno.env.get("SUPABASE_URL") ?? "", anonKey, {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+      auth: { persistSession: false },
+    });
+    const { data: { user } } = await userClient.auth.getUser();
+    return user?.id || null;
+  } catch {
     return null;
   }
 }

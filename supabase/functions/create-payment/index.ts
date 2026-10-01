@@ -111,27 +111,6 @@ function getServiceRoleKey(): string {
 
 
 /** The signed-in user behind this request (null for the anon key / no session). */
-/** Last reason a session check failed (diagnostics only). */
-let lastAuthError = "";
-async function requestUserId(req: Request): Promise<string | null> {
-  const token = (req.headers.get("Authorization") || "").replace(/^Bearers+/i, "").trim();
-  const url = Deno.env.get("SUPABASE_URL") ?? "";
-  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  if (!token) { lastAuthError = "no_token"; return null; }
-  if (token === anon || token.startsWith("sb_publishable_")) { lastAuthError = "anon_key"; return null; }
-  try {
-    // Pass the token explicitly — validated by Supabase Auth, works without a stored session.
-    const client = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data, error } = await client.auth.getUser(token);
-    if (error || !data?.user) { lastAuthError = String(error?.message || "no_user").slice(0, 120); return null; }
-    lastAuthError = "";
-    return data.user.id;
-  } catch (e) {
-    lastAuthError = String(e).slice(0, 120);
-    return null;
-  }
-}
-
 async function generatePayMeSale(
 
   payload: Record<string, unknown>,
@@ -718,7 +697,7 @@ serve(async (req) => {
     const storedSaleUrl = String(info.sale_url || "");
 
     // A card can only be saved on a fresh sale, so don't reuse an old one when saving.
-    if (storedSaleId && body.save_card !== true) {
+    if (storedSaleId && body.save_card !== true && info.save_card_requested !== true) {
       const reused = await tryReuseExistingPayMeSale(
         paymeBase,
         storedSaleId,
@@ -756,32 +735,11 @@ serve(async (req) => {
     }
 
     // "Save my card" — only for the signed-in customer who owns this order (JWT checked).
-    let captureBuyer = 0;
-    if (body.save_card === true) {
-      const diag: Record<string, unknown> = { at: new Date().toISOString(), link: !!linkCode };
-      try {
-        if (!linkCode) {
-          const owner = await requestUserId(req);
-          diag.signed_in = !!owner;
-          if (!owner) diag.reason = lastAuthError;
-          if (owner) {
-            const { data: ownerRow } = await supabase.from("orders").select("user_id").eq("id", row.id).maybeSingle();
-            diag.order_has_user = !!ownerRow?.user_id;
-            diag.owner_match = !!ownerRow?.user_id && ownerRow.user_id === owner;
-            if (diag.owner_match) {
-              captureBuyer = 1;
-              const withFlag = { ...info, save_card_requested: true };
-              await supabase.from("orders").update({ delivery_info: withFlag }).eq("id", row.id);
-              // The sale bookkeeping below rebuilds delivery_info from row — keep the flag in it.
-              row.delivery_info = withFlag;
-            }
-          }
-        }
-      } catch (e) {
-        diag.error = String(e).slice(0, 200);
-      }
-      // Trace (no card data) so a failed save can be diagnosed without function logs.
-      await supabase.from("alert_log").upsert({ key: `diag:savecard:${row.id}`, first_sent_at: JSON.stringify(diag), follow_up_sent: false }).then(() => {}, () => {});
+    // "Save my card": requested when the order was created — create-website-order sets the flag
+    // only for a verified signed-in customer, so no second session check is needed here.
+    const captureBuyer = !linkCode && info.save_card_requested === true ? 1 : 0;
+    if (body.save_card === true || captureBuyer) {
+      await supabase.from("alert_log").upsert({ key: `diag:savecard:${row.id}`, first_sent_at: JSON.stringify({ at: new Date().toISOString(), capture: captureBuyer }), follow_up_sent: false }).then(() => {}, () => {});
     }
     const returnUrl = row.source === "payment_link" && linkCode
 
