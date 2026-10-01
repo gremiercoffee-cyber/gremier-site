@@ -1222,6 +1222,29 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">🔄 Generate / Refresh Images</button>
     </div>
     <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Builds a statement image per store from this month's deliveries. Send it over WhatsApp, then mark it billed and paid as you go — regenerating later won't reset either status.</p>
+    <div class="billing-modes" style="display:flex;gap:8px;margin-bottom:14px">
+      <button type="button" class="btn btn-sm" id="billModeMonth" onclick="setBillingMode('month')">This month</button>
+      <button type="button" class="btn btn-sm" id="billModeAll" onclick="setBillingMode('all')">All months</button>
+    </div>
+    <div id="billAllFilters" class="filter-bar" style="display:none;flex-wrap:wrap;gap:8px">
+      <select class="form-input" style="width:auto" id="billGroup" onchange="renderBillingAll()">
+        <option value="status">Group by status</option>
+        <option value="month">Group by month</option>
+        <option value="store">Group by store</option>
+        <option value="none">No grouping (biggest first)</option>
+      </select>
+      <select class="form-input" style="width:auto" id="billStatus" onchange="renderBillingAll()">
+        <option value="all">All statuses</option>
+        <option value="owed">Billed, not paid</option>
+        <option value="unbilled">Not billed yet</option>
+        <option value="open">Everything unpaid</option>
+        <option value="paid">Paid</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select class="form-input" style="width:auto" id="billStore" onchange="renderBillingAll()"><option value="">All stores</option></select>
+      <select class="form-input" style="width:auto" id="billMonth" onchange="renderBillingAll()"><option value="">All months</option></select>
+    </div>
+    <div id="billAllSummary" class="stat-grid" style="display:none"></div>
     <div id="sdBillingBody"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
@@ -6321,7 +6344,7 @@ async function loadBillingMiniStats() {
   try {
     const { data: rows, error } = await sb
       .from('store_billing')
-      .select('total,billed_at,paid_at')
+      .select('total,billed_at,paid_at,cancelled_at')
       .eq('year', y)
       .eq('month', m);
     if (error) throw error;
@@ -6340,6 +6363,7 @@ function renderBillingMiniStats(rows) {
   const el = document.getElementById('sdBillingMiniStats');
   if (!el) return;
   const amount = r => Number(r.total || 0);
+  rows = rows.filter(r => !r.cancelled_at);
   const billedRows = rows.filter(r => !!r.billed_at);
   const paidRows = rows.filter(r => !!r.paid_at);
   const owedRows = rows.filter(r => !!r.billed_at && !r.paid_at);
@@ -6895,6 +6919,8 @@ function toggleBillingBoard() {
 }
 
 async function loadBillingBoard() {
+  if (billingMode === 'all') return loadBillingAll();
+  syncBillingModeUI();
   const monthVal = getSDMonth();
   if (!monthVal) return;
   const [y, m] = monthVal.split('-').map(Number);
@@ -6911,34 +6937,7 @@ async function loadBillingBoard() {
     body.innerHTML = `<div class="empty-state">No statements generated for this month yet. Tap "Generate / Refresh Images" above.</div>`;
     return;
   }
-  body.innerHTML = rows.map(r => {
-    const storeName = r.stores?.name || 'Unknown store';
-    const phone = r.stores?.phone || '';
-    const isBilled = !!r.billed_at;
-    const billedDateTxt = isBilled ? new Date(r.billed_at).toLocaleDateString('he-IL',{day:'numeric',month:'short'}) : '';
-    const paidTxt = r.paid_at ? `✓ Paid ${new Date(r.paid_at).toLocaleDateString('he-IL',{day:'numeric',month:'short'})}` : 'Not paid';
-    const rowStyle = isBilled
-      ? 'padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:rgba(234,196,53,.16);border:1px solid rgba(234,196,53,.45)'
-      : 'padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap';
-    return `
-      <div class="card" style="${rowStyle}">
-        ${r.image_url ? `<img src="${r.image_url}" style="width:54px;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="window.open('${r.image_url}','_blank')"/>` : ''}
-        <div style="flex:1;min-width:160px">
-          <div style="font-weight:600;color:var(--cream)">${escHtml(storeName)}</div>
-          <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone?` · ${escHtml(phone)}`:''}</div>
-          <div style="font-size:.74rem;margin-top:4px">
-            ${isBilled ? `<span style="color:#b8860b;font-weight:600">📋 Billed ${billedDateTxt}</span> <a href="#" onclick="event.preventDefault();unmarkBillingBilled('${r.id}')" style="color:var(--text2);font-size:.72rem;text-decoration:underline">undo</a>` : `<span style="color:var(--text2)">Not billed</span>`}
-            &nbsp;·&nbsp;
-            <span style="color:${r.paid_at?'var(--green)':'var(--text2)'}">${paidTxt}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url?'':'disabled'}>💬 Send via WhatsApp</button>
-          <button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download Balance PNG</button>
-          <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')" ${r.paid_at?'disabled':''}>${r.paid_at?'Paid ✓':'Mark Paid'}</button>
-        </div>
-      </div>`;
-  }).join('');
+  body.innerHTML = rows.map(r => billingCardHtml(r, false)).join('');
 }
 
 async function downloadOutstandingBalancePNG(storeId) {
@@ -6953,6 +6952,7 @@ async function downloadOutstandingBalancePNG(storeId) {
       .select('year,month,total,billed_at,stores(name)')
       .eq('store_id', storeId)
       .is('paid_at', null)
+      .is('cancelled_at', null)
       .order('year', { ascending: true })
       .order('month', { ascending: true });
     if (error) throw error;
@@ -7048,9 +7048,162 @@ async function shareInvoiceWhatsApp(billingId) {
 
 async function markBillingPaid(billingId) {
   if (!confirm('Mark this store as paid for this month?')) return;
-  await sb.from('store_billing').update({ paid_at: new Date().toISOString() }).eq('id', billingId);
+  await sb.from('store_billing').update({ paid_at: new Date().toISOString(), cancelled_at: null }).eq('id', billingId);
   await loadBillingBoard();
 }
+async function markBillingCancelled(billingId) {
+  if (!confirm("Cancel this store's bill for this month?\n\nIt won't count as owed and drops off their outstanding balance. You can undo it.")) return;
+  await sb.from('store_billing').update({ cancelled_at: new Date().toISOString() }).eq('id', billingId);
+  showToast('Cancelled for this store ✓');
+  await loadBillingBoard();
+}
+async function undoBillingPaid(billingId) {
+  if (!confirm('Undo paid for this month?')) return;
+  await sb.from('store_billing').update({ paid_at: null }).eq('id', billingId);
+  await loadBillingBoard();
+}
+async function undoBillingCancelled(billingId) {
+  await sb.from('store_billing').update({ cancelled_at: null }).eq('id', billingId);
+  await loadBillingBoard();
+}
+
+// ── Billing: shared card, status, and the All-months view ──
+let billingMode = (() => { try { return localStorage.getItem('gremier_billing_mode') || 'month'; } catch { return 'month'; } })();
+let billingAllRows = [];
+const BILL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function billingStatus(r) {
+  if (r.cancelled_at) return 'cancelled';
+  if (r.paid_at) return 'paid';
+  if (r.billed_at) return 'owed';
+  return 'unbilled';
+}
+const BILL_STATUS_META = {
+  owed:      { label: '📋 Billed, not paid', order: 0 },
+  unbilled:  { label: '🕓 Not billed yet',   order: 1 },
+  paid:      { label: '✅ Paid',             order: 2 },
+  cancelled: { label: '✕ Cancelled',         order: 3 },
+};
+function billMonthLabel(r) { return `${BILL_MONTHS[r.month - 1]} ${r.year}`; }
+function billingCardHtml(r, showMonth) {
+  const storeName = r.stores?.name || 'Unknown store';
+  const phone = r.stores?.phone || '';
+  const st = billingStatus(r);
+  const d = v => new Date(v).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+  const bg = {
+    owed: 'background:rgba(234,196,53,.16);border:1px solid rgba(234,196,53,.45)',
+    paid: 'background:rgba(76,175,114,.10);border:1px solid rgba(76,175,114,.40)',
+    cancelled: 'background:var(--bg3);opacity:.7',
+    unbilled: '',
+  }[st];
+  const undo = (fn) => ` <a href="#" onclick="event.preventDefault();${fn}('${r.id}')" style="color:var(--text2);font-size:.72rem;text-decoration:underline">undo</a>`;
+  const billedTxt = r.billed_at
+    ? `<span style="color:#b8860b;font-weight:600">📋 Billed ${d(r.billed_at)}</span>${undo('unmarkBillingBilled')}`
+    : '<span style="color:var(--text2)">Not billed</span>';
+  const endTxt = st === 'cancelled'
+    ? `<span style="color:var(--text2);font-weight:600">✕ Cancelled ${d(r.cancelled_at)}</span>${undo('undoBillingCancelled')}`
+    : r.paid_at
+      ? `<span style="color:var(--green);font-weight:600">✓ Paid ${d(r.paid_at)}</span>${undo('undoBillingPaid')}`
+      : '<span style="color:var(--text2)">Not paid</span>';
+  const closed = st === 'paid' || st === 'cancelled';
+  return `
+    <div class="card" style="padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;${bg}">
+      ${r.image_url ? `<img src="${escAttr(r.image_url)}" style="width:54px;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="window.open(this.src,'_blank')"/>` : ''}
+      <div style="flex:1;min-width:160px">
+        <div style="font-weight:600;color:var(--cream)">${escHtml(storeName)}${showMonth ? ` <span style="color:var(--text2);font-weight:500">· ${billMonthLabel(r)}</span>` : ''}</div>
+        <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone ? ` · ${escHtml(phone)}` : ''}</div>
+        <div style="font-size:.74rem;margin-top:4px">${billedTxt} &nbsp;·&nbsp; ${endTxt}</div>
+      </div>
+      ${closed ? '' : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'}>💬 Send via WhatsApp</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Balance PNG</button>
+        <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')">Mark Paid</button>
+        <button class="btn btn-outline btn-sm" onclick="markBillingCancelled('${r.id}')" title="Write this month off for this store">Cancel</button>
+      </div>`}
+    </div>`;
+}
+function syncBillingModeUI() {
+  const all = billingMode === 'all';
+  const m = document.getElementById('billModeMonth'), a = document.getElementById('billModeAll');
+  if (m) m.className = 'btn btn-sm ' + (all ? 'btn-outline' : 'btn-amber');
+  if (a) a.className = 'btn btn-sm ' + (all ? 'btn-amber' : 'btn-outline');
+  const f = document.getElementById('billAllFilters'); if (f) f.style.display = all ? 'flex' : 'none';
+  const sm = document.getElementById('billAllSummary'); if (sm) sm.style.display = all ? '' : 'none';
+  const gen = document.getElementById('billingGenBtn'); if (gen) gen.style.display = all ? 'none' : '';
+}
+function setBillingMode(mode) {
+  billingMode = mode;
+  try { localStorage.setItem('gremier_billing_mode', mode); } catch {}
+  loadBillingBoard();
+}
+async function loadBillingAll() {
+  syncBillingModeUI();
+  const body = document.getElementById('sdBillingBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const { data: rows, error } = await sb.from('store_billing').select('*, stores(name, phone)')
+    .order('year', { ascending: false }).order('month', { ascending: false });
+  if (error) { body.innerHTML = `<div class="empty-state">Couldn't load billing data: ${escHtml(error.message)}</div>`; return; }
+  billingAllRows = rows || [];
+  // Fill the store / month filters, keeping the current choice.
+  const fill = (id, opts, first) => {
+    const el = document.getElementById(id); if (!el) return;
+    const cur = el.value;
+    el.innerHTML = `<option value="">${first}</option>` + opts.map(([v, t]) => `<option value="${escAttr(v)}">${escHtml(t)}</option>`).join('');
+    el.value = opts.some(([v]) => v === cur) ? cur : '';
+  };
+  const stores = [...new Map(billingAllRows.map(r => [r.store_id, r.stores?.name || 'Unknown store'])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const months = [...new Map(billingAllRows.map(r => [billKey(r), billMonthLabel(r)])).entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  fill('billStore', stores, 'All stores');
+  fill('billMonth', months, 'All months');
+  renderBillingAll();
+}
+function billKey(r) { return `${r.year}-${String(r.month).padStart(2, '0')}`; }
+function renderBillingAll() {
+  const body = document.getElementById('sdBillingBody');
+  const group = document.getElementById('billGroup')?.value || 'status';
+  const status = document.getElementById('billStatus')?.value || 'all';
+  const store = document.getElementById('billStore')?.value || '';
+  const month = document.getElementById('billMonth')?.value || '';
+  const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
+  const rows = billingAllRows.filter(r => {
+    if (!inScope(r)) return false;
+    const st = billingStatus(r);
+    if (status === 'open') return st === 'owed' || st === 'unbilled';
+    return status === 'all' || st === status;
+  });
+  const sum = list => list.reduce((t, r) => t + Number(r.total || 0), 0);
+  // Totals per status (for the chosen store/month); tap one to filter to it.
+  document.getElementById('billAllSummary').innerHTML = ['owed', 'unbilled', 'paid', 'cancelled'].map(st => {
+    const l = billingAllRows.filter(r => inScope(r) && billingStatus(r) === st);
+    const border = st === 'owed' && l.length ? 'border-color:rgba(224,160,48,.55);' : st === 'paid' ? 'border-color:rgba(76,175,114,.4);' : '';
+    return `<div class="stat-card" style="cursor:pointer;${border}" onclick="document.getElementById('billStatus').value='${st}';renderBillingAll()"><div class="stat-label">${BILL_STATUS_META[st].label}</div><div class="stat-value">₪${sum(l).toFixed(0)}</div><div class="stat-sub">${l.length} store-month${l.length === 1 ? '' : 's'}</div></div>`;
+  }).join('');
+  if (!rows.length) { body.innerHTML = '<div class="empty-state">Nothing matches these filters.</div>'; return; }
+
+  const statusOrder = r => BILL_STATUS_META[billingStatus(r)].order;
+  // Inside a group: unpaid first, paid (green) at the bottom; oldest first within each.
+  const within = (a, b) => statusOrder(a) - statusOrder(b) || billKey(a).localeCompare(billKey(b)) || Number(b.total || 0) - Number(a.total || 0);
+  let groups;
+  if (group === 'none') {
+    groups = [['', rows.slice().sort((a, b) => Number(b.total || 0) - Number(a.total || 0))]];
+  } else {
+    const gk = r => group === 'status' ? billingStatus(r) : group === 'month' ? billKey(r) : (r.stores?.name || 'Unknown store');
+    const map = new Map();
+    for (const r of rows) { const k = gk(r); if (!map.has(k)) map.set(k, []); map.get(k).push(r); }
+    groups = [...map.entries()].sort(([a], [b]) =>
+      group === 'status' ? BILL_STATUS_META[a].order - BILL_STATUS_META[b].order
+      : group === 'month' ? b.localeCompare(a) : a.localeCompare(b));
+    groups.forEach(([, list]) => list.sort(within));
+  }
+  body.innerHTML = groups.map(([k, list]) => {
+    const open = list.filter(r => ['owed', 'unbilled'].includes(billingStatus(r)));
+    const title = group === 'status' ? BILL_STATUS_META[k].label
+      : group === 'month' ? billMonthLabel(list[0])
+      : group === 'store' ? escHtml(k) : '';
+    const head = title ? `<div class="flex-between" style="margin:18px 0 8px;gap:10px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4><span style="font-size:.8rem;color:var(--text2);text-align:right">₪${sum(group === 'status' ? list : list.filter(r => billingStatus(r) !== 'cancelled')).toFixed(0)}${group !== 'status' && open.length ? ` · <b style="color:#b8860b">₪${sum(open).toFixed(0)} unpaid</b>` : ''}</span></div>` : '';
+    return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
+  }).join('');
+}
+
 
 async function unmarkBillingBilled(billingId) {
   if (!confirm('Undo billed status for this store? This does not un-send the WhatsApp message, it just clears the billed mark.')) return;
