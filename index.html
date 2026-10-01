@@ -4679,5 +4679,288 @@ async function sendChatMessageText(text) {
   window.addEventListener('load', () => setTimeout(() => { localizeAll(); refreshCartBar(); }, 700));
 })();
 </script>
+<!-- ══════════ Express checkout + Reorder ══════════ -->
+<style id="oneclick-styles">
+  .reorder-strip { margin: 0 auto 26px; max-width: 1100px; }
+  .reorder-strip h3 { font-family: 'DM Sans', sans-serif; font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; color: var(--text2); margin: 0 0 10px; font-weight: 600; }
+  .reorder-row { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .reorder-row::-webkit-scrollbar { display: none; }
+  .reorder-card { flex: 0 0 auto; width: min(300px, 82vw); display: flex; gap: 12px; align-items: center; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+  .reorder-thumbs { display: flex; flex-shrink: 0; }
+  .reorder-thumbs img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 2px solid #fff; background: #f4f1ec; }
+  .reorder-thumbs img + img { margin-inline-start: -16px; }
+  .reorder-info { min-width: 0; flex: 1; }
+  .reorder-info b { display: block; font-size: .82rem; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reorder-info small { color: var(--text2); font-size: .72rem; }
+  .reorder-btn { flex-shrink: 0; background: #1a1a1a; color: #fff; border: none; border-radius: 999px; padding: 8px 14px; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  .bought-tag { position: absolute; bottom: 8px; inset-inline-start: 8px; background: rgba(26,26,26,.82); color: #fff; font-size: .6rem; font-weight: 600; letter-spacing: .03em; padding: 3px 7px; border-radius: 999px; z-index: 2; pointer-events: none; }
+  .product-img { position: relative; }
+  .express-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: #faf8f5; font-size: .8rem; line-height: 1.55; color: #333; }
+  .express-box .ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .express-box .ex-head b { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); }
+  .express-box a { color: #1a1a1a; font-weight: 600; font-size: .78rem; cursor: pointer; text-decoration: underline; }
+  .express-pay { width: 100%; margin-top: 10px; background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 14px; font-size: .95rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .express-pay:disabled { opacity: .6; }
+  .cart-reorder { margin-top: 18px; text-align: start; }
+</style>
+<script id="oneclick-script">
+(function () {
+  const he = () => lang === 'he';
+  const T = (en, hebrew) => he() ? hebrew : en;
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const get = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) { return null; } };
+  const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+  const CK = 'gremier_checkout_details_v1';      // saved delivery details (this device)
+  const HK = 'gremier_order_history_v1';         // guests' paid orders (this device)
+  const PK = 'gremier_pending_reorder_v1';       // order sent to PayMe, not yet confirmed
+  const fmtDate = (d) => new Date(d).toLocaleDateString(he() ? 'he-IL' : 'en-IL', { day: 'numeric', month: 'short' });
+
+  // ── Saved details: device + (signed in) the customer's own profile ──
+  function detailsComplete(d) {
+    return !!(d && d.name && d.phone && d.email && d.addr && d.city && (d.aptNA || (d.apt && d.floor)));
+  }
+  async function syncProfileDetails() {
+    if (typeof currentUser === 'undefined' || !currentUser) return;
+    try {
+      const { data } = await sb.from('profiles').select('checkout_details').eq('id', currentUser.id).maybeSingle();
+      const remote = data && data.checkout_details;
+      const local = get(CK);
+      if (remote && !detailsComplete(local)) { put(CK, remote); refreshAll(); }
+      else if (detailsComplete(local) && !remote) saveProfileDetails(local);
+    } catch (_) {}
+  }
+  function saveProfileDetails(d) {
+    if (typeof currentUser === 'undefined' || !currentUser || !detailsComplete(d)) return;
+    const clean = {};
+    for (const k of ['name', 'phone', 'email', 'addr', 'apt', 'floor', 'aptNA']) clean[k] = typeof d[k] === 'string' ? d[k].slice(0, 200) : d[k];
+    if (d.city) clean.city = { en: d.city.en, he: d.city.he, code: d.city.code || null, region: d.city.region || null };
+    sb.from('profiles').update({ checkout_details: clean }).eq('id', currentUser.id).then(() => {}, () => {});
+  }
+
+  // ── Order history (for Reorder) ──
+  let history = [];   // [{ id, date, total, items:[{product_id, qty, name_en, name_he}] }]
+  function reorderableItems(order) {
+    const out = [];
+    for (const it of order.items || []) {
+      if (it.is_subscription || it.selected_guest_price || (it.selected_addons && it.selected_addons.length)) continue;
+      if (it.selected_variations && Object.keys(it.selected_variations).length) continue;
+      const pid = String(it.product_id || '').split('_')[0];
+      const p = (typeof products !== 'undefined' ? products : []).find((x) => String(x.id) === pid);
+      if (!p || (typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p))) continue;
+      out.push({ p, qty: Math.max(1, Math.min(50, Number(it.qty) || 1)) });
+    }
+    return out;
+  }
+  async function loadHistory() {
+    let list = [];
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      try {
+        const { data } = await sb.from('orders').select('id,created_at,total,items,payment_status,status')
+          .eq('user_id', currentUser.id).eq('payment_status', 'paid').order('created_at', { ascending: false }).limit(10);
+        list = (data || []).filter((o) => o.status !== 'cancelled').map((o) => ({ id: o.id, date: o.created_at, total: o.total, items: o.items }));
+      } catch (_) {}
+    }
+    // Guests (or members with older device orders): orders paid on this device.
+    const local = get(HK) || [];
+    for (const o of local) if (!list.some((x) => x.id === o.id)) list.push(o);
+    list.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Drop repeats of the same basket so the row shows distinct orders.
+    const seen = new Set();
+    history = list.filter((o) => {
+      const items = reorderableItems(o);
+      if (!items.length) return false;
+      const sig = items.map((i) => i.p.id + 'x' + i.qty).sort().join(',');
+      if (seen.has(sig)) return false;
+      seen.add(sig); return true;
+    }).slice(0, 4);
+    refreshAll();
+  }
+  function boughtMap() {
+    const m = new Map();
+    for (const o of history) for (const { p } of reorderableItems(o)) if (!m.has(String(p.id))) m.set(String(p.id), o.date);
+    return m;
+  }
+
+  window.reorder = function (orderId) {
+    const o = history.find((x) => x.id === orderId);
+    if (!o) return;
+    const items = reorderableItems(o);
+    for (const { p, qty } of items) {
+      const existing = cart.find((x) => x.id === p.id);
+      if (existing) existing.qty += qty;
+      else cart.push({ id: p.id, base_product_id: p.id, name_en: p.name_en, name_he: p.name_he, price: p.price, images: p.images, category: p.category, delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null, qty });
+    }
+    updateCartCount();
+    const skipped = (o.items || []).length - items.length;
+    showToast(skipped > 0 ? T(`Added to cart — ${skipped} item(s) no longer available`, `נוסף לעגלה — ${skipped} פריטים כבר לא זמינים`) : T('Added to cart ✓', 'נוסף לעגלה ✓'));
+    if (typeof openCart === 'function') openCart();
+  };
+
+  function orderCardHtml(o) {
+    const items = reorderableItems(o);
+    const total = items.reduce((t, { p, qty }) => t + Number(p.price) * qty, 0);
+    const names = items.map(({ p, qty }) => `${he() ? (p.name_he || p.name_en) : p.name_en} ×${qty}`).join(', ');
+    const thumbs = items.slice(0, 3).map(({ p }) => p.images && p.images[0] ? `<img src="${esc(cloudinaryOptimize(p.images[0], 100))}" alt="">` : '').join('');
+    return `<div class="reorder-card"><div class="reorder-thumbs">${thumbs}</div>
+      <div class="reorder-info"><b>${esc(names)}</b><small>${fmtDate(o.date)} · ₪${Math.round(total * 100) / 100}</small></div>
+      <button type="button" class="reorder-btn" onclick="reorder('${esc(o.id)}')">${T('Reorder', 'להזמין שוב')}</button></div>`;
+  }
+  function renderStrips() {
+    const html = history.length
+      ? `<h3>${T('Order again', 'להזמין שוב')}</h3><div class="reorder-row">${history.map(orderCardHtml).join('')}</div>` : '';
+    for (const [id, anchorId, where] of [['reorderShop', 'catFilter', 'beforebegin'], ['reorderHome', 'featuredGrid', 'beforebegin']]) {
+      let el = document.getElementById(id);
+      if (!el) {
+        const anchor = document.getElementById(anchorId);
+        if (!anchor) continue;
+        el = document.createElement('div'); el.id = id; el.className = 'reorder-strip';
+        anchor.insertAdjacentElement(where, el);
+      }
+      el.innerHTML = html;
+      el.style.display = html ? '' : 'none';
+    }
+  }
+
+  // "Bought 12 Sep" tag on product cards.
+  const _card = window.productCardHTML;
+  window.productCardHTML = function (p) {
+    let html = _card.apply(this, arguments);
+    const when = boughtMap().get(String(p.id));
+    if (when) html = html.replace('<div class="product-img-gradient"></div>', `<div class="product-img-gradient"></div><span class="bought-tag">${T('Bought', 'נקנה')} ${fmtDate(when)}</span>`);
+    return html;
+  };
+  try { productCardHTML = window.productCardHTML; } catch (_) {}
+
+  // ── Cart: last order when empty; express checkout when details are saved ──
+  function regularFee(city) {
+    try {
+      const pricing = resolveDeliveryPricing(city);
+      const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+      const fees = cart.map((i) => i.delivery_price).filter((v) => v !== null && v !== undefined && !isNaN(v));
+      if (fees.length) return Math.max(...fees);
+      if (pricing.freeAbove && cartTotal >= pricing.freeAbove) return 0;
+      return Number(pricing.regular) || 0;
+    } catch (_) { return null; }
+  }
+  function expressEligible() {
+    const d = get(CK);
+    if (!detailsComplete(d) || !cart.length) return null;
+    // Event / coffee-bar items need a date & time — those go through the full form.
+    const productOf = (i) => products.find((x) => String(x.id) === String(i.base_product_id || String(i.id).split('_')[0]));
+    if (cart.some((i) => i.category === 'coffeebars' || i.selected_guest_price || (productOf(i) && typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(productOf(i))))) return null;
+    return d;
+  }
+  const _renderCart = window.renderCartDrawer;
+  window.renderCartDrawer = function () {
+    const r = _renderCart.apply(this, arguments);
+    const body = document.getElementById('cartBody');
+    const footer = document.getElementById('cartFooter');
+    document.getElementById('expressBox')?.remove();
+    if (!cart.length) {
+      if (body && history.length) body.insertAdjacentHTML('beforeend', `<div class="cart-reorder reorder-strip"><h3>${T('Your last order', 'ההזמנה האחרונה שלך')}</h3>${orderCardHtml(history[0])}</div>`);
+      return r;
+    }
+    const d = expressEligible();
+    if (!d || !footer) return r;
+    const fee = regularFee(d.city);
+    const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    const city = he() ? (d.city.he || d.city.en) : (d.city.en || d.city.he);
+    const apt = d.aptNA ? '' : `, ${T('Apt', 'דירה')} ${esc(d.apt)}`;
+    const feeTxt = fee === null ? '' : fee === 0 ? T('Free delivery', 'משלוח חינם') : `${T('Delivery', 'משלוח')} ₪${fee}`;
+    const total = fee === null ? subtotal : subtotal + fee;
+    footer.insertAdjacentHTML('afterbegin', `<div id="expressBox" class="express-box">
+      <div class="ex-head"><b>${T('Deliver to', 'משלוח אל')}</b><a onclick="expressChange()">${T('Change', 'שינוי')}</a></div>
+      <div><b>${esc(d.name)}</b> · ${esc(d.phone)}<br>${esc(d.addr)}${apt}, ${esc(city)}</div>
+      <div style="color:var(--text2)">${T('Regular delivery (2–5 days)', 'משלוח רגיל (2–5 ימים)')}${feeTxt ? ' · ' + feeTxt : ''}</div>
+      <button type="button" class="express-pay" id="expressPayBtn" onclick="expressPay()">${T('Pay', 'לתשלום')} ₪${Math.round(total * 100) / 100} ${T('with PayMe', 'ב-PayMe')}</button>
+      <div style="text-align:center;margin-top:6px;font-size:.72rem;color:var(--text2)">${T('Coupon, gift card or a specific date? Use full checkout below.', 'קופון, כרטיס מתנה או תאריך מסוים? המשיכו לקופה המלאה למטה.')}</div>
+    </div>`);
+    return r;
+  };
+  window.expressChange = function () { openCheckout(); };
+  window.expressPay = async function () {
+    const btn = document.getElementById('expressPayBtn');
+    if (btn) { btn.disabled = true; btn.textContent = T('Redirecting to payment…', 'מעביר לתשלום…'); }
+    try {
+      await openCheckout();                  // prefills every field from the saved details
+      const reg = document.getElementById('shipRegular');
+      if (reg && !reg.checked) { reg.checked = true; try { toggleExpeditedOptions(); } catch (_) {} }
+      updateDeliveryPrice();
+      await new Promise((res) => setTimeout(res, 50));
+      await submitOrder();                   // same validated path as the full form → PayMe
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+  // ── Remember details + the order for Reorder when an order is placed ──
+  const _submit = window.submitOrder;
+  window.submitOrder = function () {
+    try {
+      // Saved by the existing checkout wrapper just before this; mirror to the account.
+      setTimeout(() => saveProfileDetails(get(CK)), 0);
+      if (!(typeof currentUser !== 'undefined' && currentUser)) {
+        put(PK, { date: new Date().toISOString(), total: cart.reduce((s, i) => s + i.price * i.qty, 0),
+          items: cart.map((i) => ({ product_id: i.base_product_id || String(i.id).split('_')[0], qty: i.qty, name_en: i.name_en, name_he: i.name_he,
+            is_subscription: !!i.is_subscription, selected_variations: i.selected_variations || null, selected_addons: i.selected_addons || null, selected_guest_price: i.selected_guest_price || null })) });
+      }
+    } catch (_) {}
+    return _submit.apply(this, arguments);
+  };
+  const _result = window.showCheckoutResultUI;
+  window.showCheckoutResultUI = function (kind) {
+    const r = _result.apply(this, arguments);
+    if (kind === 'paid') {
+      const pending = get(PK);
+      if (pending && Date.now() - new Date(pending.date) < 3 * 3600e3) {
+        const list = get(HK) || [];
+        list.unshift({ id: 'local-' + Date.now(), ...pending });
+        put(HK, list.slice(0, 10));
+      }
+      try { localStorage.removeItem(PK); } catch (_) {}
+      setTimeout(loadHistory, 1500);
+    }
+    return r;
+  };
+
+  // My Account: a Reorder button on each past order.
+  const _loadMyOrders = window.loadMyOrders;
+  window.loadMyOrders = async function () {
+    const r = await _loadMyOrders.apply(this, arguments);
+    try {
+      const { data } = await sb.from('orders').select('id,order_number,created_at,total,items,payment_status,status').eq('user_id', currentUser.id);
+      for (const card of document.querySelectorAll('#myOrdersList .order-card')) {
+        const num = (card.querySelector('.order-num')?.textContent || '').match(/#(\d+)/)?.[1];
+        const o = (data || []).find((x) => String(x.order_number) === num);
+        if (!o || o.payment_status !== 'paid' || !reorderableItems(o).length) continue;
+        if (!history.some((h) => h.id === o.id)) history.push({ id: o.id, date: o.created_at, total: o.total, items: o.items });
+        card.querySelector('.order-card-footer')?.insertAdjacentHTML('afterend', `<button type="button" class="reorder-btn" style="margin-top:12px" onclick="reorder('${o.id}')">${T('Reorder', 'להזמין שוב')}</button>`);
+      }
+    } catch (_) {}
+    return r;
+  };
+
+  function refreshAll() {
+    renderStrips();
+    try { if (typeof renderGrids === 'function' && typeof products !== 'undefined' && products.length) renderGrids(); } catch (_) {}
+    if (document.getElementById('cartDrawer')?.classList.contains('open')) renderCartDrawer();
+  }
+  const _tl = window.toggleLang;
+  window.toggleLang = function () { const r = _tl.apply(this, arguments); renderStrips(); return r; };
+
+  // Load once products exist, and again when the visitor signs in / out.
+  let lastUser = null;
+  function tick() {
+    const uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
+    if (typeof products !== 'undefined' && products.length && (uid !== lastUser || !tick.done)) {
+      tick.done = true; lastUser = uid;
+      loadHistory();
+      syncProfileDetails();
+    }
+  }
+  setInterval(tick, 1500);
+  window.addEventListener('load', () => setTimeout(tick, 800));
+})();
+</script>
 </body>
 </html>
