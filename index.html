@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="preconnect" href="https://res.cloudinary.com" crossorigin/>
+  <link rel="preconnect" href="https://live.payme.io"/>
+  <link rel="dns-prefetch" href="https://live.payme.io"/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;700&display=swap" rel="stylesheet"/>
   <link rel="icon" type="image/png" href="/favicon.png"/>
   <script src="/vendor/supabase-js.min.js?v=2"></script>
@@ -2548,20 +2550,30 @@ async function getSessionSafe(ms = 4000) {
   const timeout = new Promise(resolve => setTimeout(() => resolve({ data: { session: lastAuthSession }, timedOut: true }), ms));
   const res = await Promise.race([sb.auth.getSession(), timeout]);
   if (res && res.timedOut) console.warn("getSession timed out — using last known session");
+  else if (res?.data?.session) lastAuthSession = res.data.session;
   return res;
 }
 async function getCheckoutAuthHeaders() {
+  // Fast path: a sign-in that is still valid for over a minute needs no lookup. Asking the
+  // auth library can hang (then times out after 4s and may hand back an expired token) —
+  // that made checkout take 15–20s and the server treat signed-in customers as guests.
+  const fresh = lastAuthSession;
+  if (currentUser && fresh?.access_token && Number(fresh.expires_at || 0) * 1000 > Date.now() + 60000) {
+    return { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + fresh.access_token };
+  }
   // Loyalty points depend on create-website-order seeing the real member JWT.
   // Never silently create a member checkout with only the anon key, because then orders.user_id stays null.
   let { data: { session } } = await getSessionSafe();
 
-  if (!session?.access_token && currentUser) {
+  const expiringSoon = !!session?.access_token && Number(session.expires_at || 0) * 1000 < Date.now() + 30000;
+  if ((!session?.access_token || expiringSoon) && currentUser) {
     try {
       const refreshed = await Promise.race([
         sb.auth.refreshSession(),
         new Promise(resolve => setTimeout(() => resolve({ data: { session: null } }), 5000)),
       ]);
       session = refreshed?.data?.session || session;
+      if (refreshed?.data?.session) lastAuthSession = refreshed.data.session;
     } catch (err) {
       console.warn('Could not refresh checkout session:', err);
     }
@@ -4702,6 +4714,14 @@ async function sendChatMessageText(text) {
   .express-pay { width: 100%; margin-top: 10px; background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 14px; font-size: .95rem; font-weight: 600; cursor: pointer; font-family: inherit; }
   .express-pay:disabled { opacity: .6; }
   .cart-reorder { margin-top: 18px; text-align: start; }
+  #payOverlay { position: fixed; inset: 0; z-index: 10000; background: rgba(255,255,255,.96); display: none; align-items: center; justify-content: center; text-align: center; font-family: 'DM Sans', sans-serif; }
+  #payOverlay.on { display: flex; }
+  #payOverlay .po-box { padding: 24px; }
+  #payOverlay .po-spin { width: 46px; height: 46px; margin: 0 auto 18px; border: 4px solid #e8e2d9; border-top-color: #1a1a1a; border-radius: 50%; animation: poSpin .8s linear infinite; }
+  #payOverlay #payOverlayText { font-size: 1.05rem; font-weight: 600; color: #1a1a1a; }
+  #payOverlay small { display: block; margin-top: 8px; color: var(--text2); font-size: .78rem; }
+  @keyframes poSpin { to { transform: rotate(360deg); } }
+  body.express-running #checkoutOverlay { visibility: hidden; }
 </style>
 <script id="oneclick-script">
 (function () {
@@ -4878,18 +4898,38 @@ async function sendChatMessageText(text) {
     return r;
   };
   window.expressChange = function () { openCheckout(); };
+  // One tap: a full-screen spinner straight away, the checkout form stays hidden, then
+  // straight to payment (or the success page with a saved card). If anything needs the
+  // customer (e.g. a missing detail), the form is shown so they can fix it.
+  function payOverlay(on, text) {
+    let el = document.getElementById('payOverlay');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'payOverlay';
+      el.innerHTML = '<div class="po-box"><div class="po-spin"></div><div id="payOverlayText"></div><small id="payOverlaySub"></small></div>';
+      document.body.appendChild(el);
+    }
+    if (text) document.getElementById('payOverlayText').textContent = text;
+    document.getElementById('payOverlaySub').textContent = T('Secure payment by PayMe', 'תשלום מאובטח באמצעות PayMe');
+    el.classList.toggle('on', !!on);
+    document.body.classList.toggle('express-running', !!on);
+  }
+  window.payOverlay = payOverlay;
+  let leaving = false;
+  window.addEventListener('pagehide', () => { leaving = true; });
+  window.addEventListener('beforeunload', () => { leaving = true; });
   window.expressPay = async function () {
     const btn = document.getElementById('expressPayBtn');
-    if (btn) { btn.disabled = true; btn.textContent = T('Redirecting to payment…', 'מעביר לתשלום…'); }
+    const savedCard = !!(btn && /••••/.test(btn.textContent) && !window.__scForceNew);
+    payOverlay(true, savedCard ? T('Paying with your saved card…', 'מחייבים את הכרטיס השמור…') : T('Taking you to secure payment…', 'מעבירים אותך לתשלום מאובטח…'));
     try {
-      await openCheckout();                  // prefills every field from the saved details
+      await openCheckout();                  // prefills every field from the saved details (hidden)
       const reg = document.getElementById('shipRegular');
       if (reg && !reg.checked) { reg.checked = true; try { toggleExpeditedOptions(); } catch (_) {} }
       updateDeliveryPrice();
-      await new Promise((res) => setTimeout(res, 50));
       await submitOrder();                   // same validated path as the full form → PayMe
     } finally {
-      if (btn) btn.disabled = false;
+      // Still here after a moment = something needs the customer; show the form.
+      setTimeout(() => { if (!leaving) payOverlay(false); }, 1500);
     }
   };
 
