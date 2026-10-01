@@ -1043,6 +1043,10 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
 
 
     console.log("PayMe sale callback card fields:", Object.keys(payload).filter((k) => /buyer|card|token/i.test(k)).join(","));
+    try {
+      const sb0 = createClient(Deno.env.get("SUPABASE_URL") ?? "", getServiceRoleKey());
+      await sb0.from("alert_log").upsert({ key: `diag:cardfields:${String(payload.payme_sale_id || Date.now())}:${String(payload.notify_type || payload.sale_status || "")}`, first_sent_at: Object.keys(payload).filter((k) => /buyer|card|token|sale_status|notify_type|transaction_id/i.test(k)).join(","), follow_up_sent: !!payload.buyer_key });
+    } catch (_) { /* diagnostics only */ }
     if (!isPaidEvent(payload)) {
 
       return new Response(JSON.stringify({ ok: true, ignored: true }), {

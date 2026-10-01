@@ -415,6 +415,9 @@ serve(async (req) => {
 
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey);
+    if (body.save_card === true) {
+      await supabase.from("alert_log").upsert({ key: `diag:savecard-req:${String(order_id || payment_link_code || "").slice(0, 60)}`, first_sent_at: new Date().toISOString(), follow_up_sent: false }).then(() => {}, () => {});
+    }
 
 
 
@@ -707,7 +710,8 @@ serve(async (req) => {
     const storedSaleId = String(info.payme_sale_id || "");
     const storedSaleUrl = String(info.sale_url || "");
 
-    if (storedSaleId) {
+    // A card can only be saved on a fresh sale, so don't reuse an old one when saving.
+    if (storedSaleId && body.save_card !== true) {
       const reused = await tryReuseExistingPayMeSale(
         paymeBase,
         storedSaleId,
@@ -746,19 +750,30 @@ serve(async (req) => {
 
     // "Save my card" — only for the signed-in customer who owns this order (JWT checked).
     let captureBuyer = 0;
-    if (body.save_card === true && !linkCode) {
-      const owner = await requestUserId(req);
-      if (!owner) console.warn("save_card: no signed-in user on request for order", row.id);
-      if (owner) {
-        const { data: ownerRow } = await supabase.from("orders").select("user_id").eq("id", row.id).maybeSingle();
-        if (ownerRow?.user_id && ownerRow.user_id === owner) {
-          captureBuyer = 1;
-          const withFlag = { ...info, save_card_requested: true };
-          await supabase.from("orders").update({ delivery_info: withFlag }).eq("id", row.id);
-          // The sale bookkeeping below rebuilds delivery_info from row — keep the flag in it.
-          row.delivery_info = withFlag;
+    if (body.save_card === true) {
+      const diag: Record<string, unknown> = { at: new Date().toISOString(), link: !!linkCode };
+      try {
+        if (!linkCode) {
+          const owner = await requestUserId(req);
+          diag.signed_in = !!owner;
+          if (owner) {
+            const { data: ownerRow } = await supabase.from("orders").select("user_id").eq("id", row.id).maybeSingle();
+            diag.order_has_user = !!ownerRow?.user_id;
+            diag.owner_match = !!ownerRow?.user_id && ownerRow.user_id === owner;
+            if (diag.owner_match) {
+              captureBuyer = 1;
+              const withFlag = { ...info, save_card_requested: true };
+              await supabase.from("orders").update({ delivery_info: withFlag }).eq("id", row.id);
+              // The sale bookkeeping below rebuilds delivery_info from row — keep the flag in it.
+              row.delivery_info = withFlag;
+            }
+          }
         }
+      } catch (e) {
+        diag.error = String(e).slice(0, 200);
       }
+      // Trace (no card data) so a failed save can be diagnosed without function logs.
+      await supabase.from("alert_log").upsert({ key: `diag:savecard:${row.id}`, first_sent_at: JSON.stringify(diag), follow_up_sent: false }).then(() => {}, () => {});
     }
     const returnUrl = row.source === "payment_link" && linkCode
 
