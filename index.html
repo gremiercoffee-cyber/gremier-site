@@ -5008,9 +5008,17 @@ async function sendChatMessageText(text) {
   }
 
   // ── Cart express box: saved card button ──
+  let expressSave = false;   // "save my card" ticked in the cart's express box
   function renderExpress() {
     const btn = document.getElementById('expressPayBtn');
-    if (!btn || !card || btn.dataset.sc) return;
+    if (!btn || btn.dataset.sc) return;
+    if (!card) {
+      // Signed in, no saved card yet: offer to save it right here (the express button skips the form).
+      if (!signedIn()) return;
+      btn.dataset.sc = '1';
+      btn.insertAdjacentHTML('beforebegin', `<label class="sc-box" style="margin:10px 0 0"><input type="checkbox" id="scExpressSave" ${expressSave ? 'checked' : ''} onchange="window.__scExpressSave=this.checked"><span><b>${T('Save my card for one-tap checkout next time', 'לשמור את הכרטיס לתשלום בלחיצה אחת בפעם הבאה')}</b><small>${T('Stored securely by PayMe — we never see your card number.', 'נשמר באופן מאובטח אצל PayMe — אנחנו לא רואים את מספר הכרטיס.')}</small></span></label>`);
+      return;
+    }
     btn.dataset.sc = '1';
     const amount = (btn.textContent.match(/₪[\d.,]+/) || [''])[0];
     btn.textContent = `${T('Pay', 'לתשלום')} ${amount} · ${cardLabel()}`;
@@ -5040,6 +5048,9 @@ async function sendChatMessageText(text) {
   // Express "Pay with saved card" → the order is created normally, then charged here.
   const _submit = window.submitOrder;
   window.submitOrder = function () {
+    const saveBox = document.getElementById('scSave');
+    if (saveBox && window.__scExpressSave) saveBox.checked = true;
+    window.__scExpressSave = false;
     const useBox = document.getElementById('scUseSaved');
     if (window.__scForceNew) { if (useBox) useBox.checked = false; window.__scForceNew = false; }
     else if (useSaved && useBox) useBox.checked = true;
