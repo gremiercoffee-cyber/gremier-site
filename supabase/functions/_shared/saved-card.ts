@@ -68,3 +68,43 @@ export async function saveCardIfRequested(supabase: SupabaseClient, orderId: str
     console.error("saveCardIfRequested failed:", e);
   }
 }
+
+/**
+ * For card payments PayMe sends the token ONLY in the sale callback. Store it — but only
+ * for an order that is already verified paid with PayMe, whose customer opted in, and only
+ * when the callback is for that order's verified sale.
+ */
+export async function saveCardFromCallback(supabase: SupabaseClient, orderId: string, payload: Record<string, unknown>): Promise<void> {
+  try {
+    const key = String(payload.buyer_key || "").trim();
+    if (!key) return;
+    const { data: order } = await supabase.from("orders")
+      .select("id, user_id, payment_status, delivery_info").eq("id", orderId).maybeSingle();
+    if (!order || order.payment_status !== "paid" || !order.user_id) return;
+    const info = (order.delivery_info || {}) as Record<string, unknown>;
+    if (info.save_card_requested !== true) return;
+    const verifiedSale = String(info.payme_sale_id || "").trim();
+    const callbackSale = String(payload.payme_sale_id || payload.sale_payme_id || "").trim();
+    if (!verifiedSale || verifiedSale !== callbackSale) {
+      console.warn("saveCardFromCallback: sale mismatch, not saving", orderId);
+      return;
+    }
+    const mask = payload.buyer_card_mask ?? payload.payme_transaction_card_mask ?? payload.card_mask;
+    const exp = String(payload.buyer_card_exp ?? payload.buyer_card_expiry ?? payload.payme_transaction_card_exp ?? "").replace(/\D/g, "").slice(0, 4);
+    const brand = String(payload.payme_transaction_card_brand ?? payload.buyer_card_brand ?? "").slice(0, 30);
+    const { error } = await supabase.from("saved_cards").upsert({
+      user_id: order.user_id,
+      buyer_key: key,
+      card_mask: last4(mask),
+      card_brand: brand || null,
+      card_expiry: exp || null,
+      source_order_id: order.id,
+      source_sale_id: verifiedSale,
+      created_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+    if (error) console.error("saveCardFromCallback upsert failed:", error.message);
+    else console.log("Saved card (callback) for user", order.user_id, "order", order.id);
+  } catch (e) {
+    console.error("saveCardFromCallback failed:", e);
+  }
+}

@@ -748,11 +748,15 @@ serve(async (req) => {
     let captureBuyer = 0;
     if (body.save_card === true && !linkCode) {
       const owner = await requestUserId(req);
+      if (!owner) console.warn("save_card: no signed-in user on request for order", row.id);
       if (owner) {
         const { data: ownerRow } = await supabase.from("orders").select("user_id").eq("id", row.id).maybeSingle();
         if (ownerRow?.user_id && ownerRow.user_id === owner) {
           captureBuyer = 1;
-          await supabase.from("orders").update({ delivery_info: { ...info, save_card_requested: true } }).eq("id", row.id);
+          const withFlag = { ...info, save_card_requested: true };
+          await supabase.from("orders").update({ delivery_info: withFlag }).eq("id", row.id);
+          // The sale bookkeeping below rebuilds delivery_info from row — keep the flag in it.
+          row.delivery_info = withFlag;
         }
       }
     }

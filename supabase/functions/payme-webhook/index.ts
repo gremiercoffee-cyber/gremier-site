@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { saveCardFromCallback } from "../_shared/saved-card.ts";
 import { createHash } from "node:crypto";
 import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
@@ -1041,6 +1042,7 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
 
 
 
+    console.log("PayMe sale callback card fields:", Object.keys(payload).filter((k) => /buyer|card|token/i.test(k)).join(","));
     if (!isPaidEvent(payload)) {
 
       return new Response(JSON.stringify({ ok: true, ignored: true }), {
@@ -1128,6 +1130,7 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
     if (order.payment_status === "paid") {
 
       await fulfillPaidOrder(supabase, order.id, { skip_payme_check: true });
+      await saveCardFromCallback(supabase, order.id, payload);
 
       return new Response(JSON.stringify({ ok: true, already_paid: true }), {
 
@@ -1215,6 +1218,7 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
     }
 
     await fulfillPaidOrder(supabase, order.id, { skip_payme_check: true });
+    await saveCardFromCallback(supabase, order.id, payload);
 
     return new Response(JSON.stringify({ ok: true }), {
 
