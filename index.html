@@ -4962,5 +4962,140 @@ async function sendChatMessageText(text) {
   window.addEventListener('load', () => setTimeout(tick, 800));
 })();
 </script>
+<!-- ══════════ Saved card (signed-in customers, opt-in) ══════════ -->
+<style id="savedcard-styles">
+  .sc-box { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: #faf8f5; font-size: .82rem; line-height: 1.5; color: #333; cursor: pointer; }
+  .sc-box input { margin-top: 3px; accent-color: #1a1a1a; flex-shrink: 0; }
+  .sc-box small { display: block; color: var(--text2); font-size: .72rem; }
+  .sc-alt { display: block; text-align: center; margin-top: 8px; font-size: .76rem; color: #1a1a1a; text-decoration: underline; cursor: pointer; }
+  .sc-account { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 16px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .sc-account b { font-size: .92rem; }
+  .sc-account small { display: block; color: var(--text2); font-size: .76rem; }
+  .sc-account button { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; cursor: pointer; font-family: inherit; font-size: .78rem; }
+</style>
+<script id="savedcard-script">
+(function () {
+  const T = (en, hebrew) => (lang === 'he' ? hebrew : en);
+  const signedIn = () => typeof currentUser !== 'undefined' && !!currentUser;
+  let card = null;          // { last4, brand, expiry, expired } — never the token itself
+  let useSaved = false;     // set for this one payment attempt
+
+  async function call(action, extra) {
+    const headers = await getCheckoutAuthHeaders();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/saved-card`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, language: lang, ...(extra || {}) }),
+    });
+    return res.json().catch(() => ({}));
+  }
+  async function loadCard() {
+    if (!signedIn()) { card = null; return render(); }
+    try { const r = await call('info'); card = r && r.card && !r.card.expired ? r.card : null; } catch (_) { card = null; }
+    render();
+  }
+  const cardLabel = () => card ? `${card.brand ? card.brand.charAt(0) + card.brand.slice(1).toLowerCase() + ' ' : ''}•••• ${card.last4}` : '';
+
+  // ── Checkout form: "pay with saved card" or "save my card" ──
+  function renderCheckoutOption() {
+    const submit = document.getElementById('t-co-submit');
+    if (!submit) return;
+    let box = document.getElementById('scCheckout');
+    if (!signedIn()) { box?.remove(); return; }
+    if (!box) { box = document.createElement('label'); box.id = 'scCheckout'; box.className = 'sc-box'; submit.insertAdjacentElement('beforebegin', box); }
+    box.innerHTML = card
+      ? `<input type="checkbox" id="scUseSaved" checked><span><b>${T('Pay with my saved card', 'תשלום בכרטיס השמור שלי')} ${cardLabel()}</b><small>${T('Untick to pay with a different card on PayMe.', 'בטלו את הסימון כדי לשלם בכרטיס אחר ב-PayMe.')}</small></span>`
+      : `<input type="checkbox" id="scSave"><span><b>${T('Save my card for one-tap checkout next time', 'לשמור את הכרטיס לתשלום בלחיצה אחת בפעם הבאה')}</b><small>${T('Stored securely by PayMe — we never see your card number. Remove it anytime in My Account.', 'נשמר באופן מאובטח אצל PayMe — אנחנו לא רואים את מספר הכרטיס. אפשר להסיר בכל עת בחשבון שלי.')}</small></span>`;
+  }
+
+  // ── Cart express box: saved card button ──
+  function renderExpress() {
+    const btn = document.getElementById('expressPayBtn');
+    if (!btn || !card || btn.dataset.sc) return;
+    btn.dataset.sc = '1';
+    const amount = (btn.textContent.match(/₪[\d.,]+/) || [''])[0];
+    btn.textContent = `${T('Pay', 'לתשלום')} ${amount} · ${cardLabel()}`;
+    btn.onclick = () => { useSaved = true; expressPay(); };
+    btn.insertAdjacentHTML('afterend', `<a class="sc-alt" onclick="expressPayOtherCard()">${T('Use a different card', 'תשלום בכרטיס אחר')}</a>`);
+  }
+  window.expressPayOtherCard = function () { useSaved = false; window.__scForceNew = true; expressPay(); };
+
+  // ── My Account: show + remove ──
+  function renderAccount() {
+    const anchor = document.querySelector('#accountSignedIn .account-profile-card');
+    let el = document.getElementById('scAccount');
+    if (!anchor || !card) { el?.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'scAccount'; el.className = 'sc-account'; anchor.insertAdjacentElement('afterend', el); }
+    el.innerHTML = `<div><b>💳 ${cardLabel()}</b><small>${T('Saved for one-tap checkout', 'שמור לתשלום בלחיצה אחת')}${card.expiry ? ` · ${T('exp', 'תוקף')} ${card.expiry.slice(0, 2)}/${card.expiry.slice(2)}` : ''}</small></div>
+      <button type="button" onclick="removeSavedCard()">${T('Remove card', 'הסרת הכרטיס')}</button>`;
+  }
+  window.removeSavedCard = async function () {
+    if (!confirm(T('Remove your saved card?', 'להסיר את הכרטיס השמור?'))) return;
+    await call('remove');
+    card = null; render();
+    showToast(T('Card removed ✓', 'הכרטיס הוסר ✓'));
+  };
+
+  function render() { renderCheckoutOption(); renderExpress(); renderAccount(); }
+
+  // Express "Pay with saved card" → the order is created normally, then charged here.
+  const _submit = window.submitOrder;
+  window.submitOrder = function () {
+    const useBox = document.getElementById('scUseSaved');
+    if (window.__scForceNew) { if (useBox) useBox.checked = false; window.__scForceNew = false; }
+    else if (useSaved && useBox) useBox.checked = true;
+    useSaved = false;
+    return _submit.apply(this, arguments);
+  };
+
+  const _createPayment = window.callCreatePayment;
+  async function normalPayment(orderId, saveCard) {
+    if (!saveCard) return _createPayment(orderId);
+    // Same as callCreatePayment, but with the customer's session so the server can verify ownership.
+    const headers = await getCheckoutAuthHeaders();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId, language: lang, save_card: true }),
+    });
+    const payData = await res.json().catch(() => ({}));
+    const saleUrl = payData?.sale_url || payData?.redirect_url;
+    if (!res.ok || !saleUrl) return _createPayment(orderId);   // fall back to the plain flow
+    return { ...payData, sale_url: saleUrl };
+  }
+  window.callCreatePayment = async function (orderId) {
+    const useCard = signedIn() && card && document.getElementById('scUseSaved')?.checked;
+    const saveCard = signedIn() && !card && document.getElementById('scSave')?.checked;
+    if (useCard) {
+      const btn = document.getElementById('t-co-submit');
+      if (btn) btn.textContent = T('Charging your card…', 'מחייב את הכרטיס…');
+      try {
+        const r = await call('pay', { order_id: orderId });
+        if (r.status === 'completed' && r.return_url) return { sale_url: r.return_url, payme_sale_id: r.payme_sale_id };
+        if (r.status === 'redirect' && r.sale_url) return { sale_url: r.sale_url, payme_sale_id: r.payme_sale_id };
+        console.warn('Saved card not charged:', r.error);
+      } catch (e) { console.warn('Saved card charge failed:', e); }
+      showToast(T("Couldn't use your saved card — opening the card page instead", 'לא ניתן היה לחייב את הכרטיס השמור — עוברים לדף התשלום'));
+      return _createPayment(orderId);
+    }
+    return normalPayment(orderId, saveCard);
+  };
+  try { callCreatePayment = window.callCreatePayment; } catch (_) {}
+
+  // Re-render where these pieces live.
+  const _openCheckout = window.openCheckout;
+  window.openCheckout = async function () { const r = await _openCheckout.apply(this, arguments); renderCheckoutOption(); return r; };
+  const _renderCart = window.renderCartDrawer;
+  window.renderCartDrawer = function () { const r = _renderCart.apply(this, arguments); renderExpress(); return r; };
+  const _loadMyOrders = window.loadMyOrders;
+  window.loadMyOrders = async function () { const r = await _loadMyOrders.apply(this, arguments); renderAccount(); return r; };
+  const _tl = window.toggleLang;
+  window.toggleLang = function () { const r = _tl.apply(this, arguments); document.getElementById('expressPayBtn')?.removeAttribute('data-sc'); render(); return r; };
+
+  let lastUid;
+  setInterval(() => {
+    const uid = signedIn() ? currentUser.id : null;
+    if (uid !== lastUid) { lastUid = uid; loadCard(); }
+  }, 1500);
+})();
+</script>
 </body>
 </html>

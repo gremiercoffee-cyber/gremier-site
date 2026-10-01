@@ -110,6 +110,21 @@ function getServiceRoleKey(): string {
 
 
 
+/** The signed-in user behind this request (null for the anon key / no session). */
+async function requestUserId(req: Request): Promise<string | null> {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearers+/i, "").trim();
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!token || !url || !anon || token === anon) return null;
+  try {
+    const client = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
+    const { data: { user } } = await client.auth.getUser();
+    return user?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 async function generatePayMeSale(
 
   payload: Record<string, unknown>,
@@ -729,6 +744,18 @@ serve(async (req) => {
       }
     }
 
+    // "Save my card" — only for the signed-in customer who owns this order (JWT checked).
+    let captureBuyer = 0;
+    if (body.save_card === true && !linkCode) {
+      const owner = await requestUserId(req);
+      if (owner) {
+        const { data: ownerRow } = await supabase.from("orders").select("user_id").eq("id", row.id).maybeSingle();
+        if (ownerRow?.user_id && ownerRow.user_id === owner) {
+          captureBuyer = 1;
+          await supabase.from("orders").update({ delivery_info: { ...info, save_card_requested: true } }).eq("id", row.id);
+        }
+      }
+    }
     const returnUrl = row.source === "payment_link" && linkCode
 
       ? `${siteUrl}/pay.html?payment=return&code=${encodeURIComponent(linkCode)}&order_id=${encodeURIComponent(row.id)}`
@@ -763,7 +790,7 @@ serve(async (req) => {
 
       language: lang,
 
-      capture_buyer: 0,
+      capture_buyer: captureBuyer,
 
       buyer_name: buyerName || undefined,
 

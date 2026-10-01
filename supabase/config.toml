@@ -37,3 +37,6 @@ verify_jwt = false
 
 [functions.admin-tools]
 verify_jwt = false
+
+[functions.saved-card]
+verify_jwt = false

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { saveCardIfRequested } from "./saved-card.ts";
 import { ensureOrderPaidFromPayMe } from "./ensure-order-paid.ts";
 import { notifyPaidOrderOnce } from "./order-notify.ts";
 import { enqueuePendingWebsiteDelivery } from "./pending-delivery.ts";
@@ -67,6 +68,8 @@ export async function fulfillPaidOrder(
   } catch (e) {
     console.error("redeemOrderCodes failed:", e);
   }
+  // Opt-in "save my card" (signed-in customers): store PayMe's token for one-tap checkout.
+  await saveCardIfRequested(supabase, orderId);
   // A bought gift card was never issued automatically after payment — issue it now.
   if (order.source === "gift_card") await issuePurchasedGiftCard(orderId);
 
