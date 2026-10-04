@@ -19,6 +19,32 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose", // drafts only; this code never calls send
 ];
 const MAX_THREADS = 10;
+const TRIAGE_PURPOSES = ["email_triage", "whatsapp_triage"];
+
+/** Background AI calls made today (UTC) and the daily ceiling. Chat with the user never counts. */
+export async function triageBudget(env: Env) {
+  const cap = Number(env.AI_DAILY_CAP) || 40;
+  const row = await first<{ n: number }>(env,
+    `SELECT COUNT(*) AS n FROM usage_log WHERE purpose IN (${TRIAGE_PURPOSES.map(() => "?").join(",")}) AND created_at >= ?`,
+    ...TRIAGE_PURPOSES, new Date().toISOString().slice(0, 10));
+  return { used: row?.n ?? 0, cap };
+}
+
+const BULK_SENDER = /(no-?reply|do-?not-?reply|notifications?|mailer-daemon|newsletter|bounce|alerts?|newsletters?|marketing)@/i;
+const ASKS = /\?|\b(can you|could you|please|let me know|send me|waiting for|when will|need you to)\b/i;
+
+/**
+ * Free pre-filter: only mail a real person wrote to the user (or the user's own questions) goes to the model.
+ * Returns why a thread was skipped, or null when it deserves an AI look.
+ */
+function skipReason(m: GMessage, me: string | null, text: string): string | null {
+  if (fromMe(m)) return ASKS.test(text) ? null : "user's own message without a question";
+  if (BULK_SENDER.test(header(m, "From"))) return "automated sender";
+  if (header(m, "List-Unsubscribe") || header(m, "List-Id")) return "mailing list";
+  if (/bulk|list|junk/i.test(header(m, "Precedence")) || /auto-/i.test(header(m, "Auto-Submitted"))) return "automated";
+  if (me && !header(m, "To").toLowerCase().includes(me.toLowerCase())) return "user only cc'd";
+  return null;
+}
 const MEETING_LEAD_MIN = 45;
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -55,7 +81,8 @@ const redirectUri = (req: Request) => new URL("/api/google/callback", req.url).t
 
 export async function googleStatus(env: Env): Promise<GoogleStatus> {
   const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
-  return { configured: googleConfigured(env), connected: !!a, email: a?.email ?? null, last_sync_at: a?.last_sync_at ?? null, last_error: a?.last_error ?? null };
+  const b = await triageBudget(env);
+  return { configured: googleConfigured(env), connected: !!a, email: a?.email ?? null, last_sync_at: a?.last_sync_at ?? null, last_error: a?.last_error ?? null, ai_used_today: b.used, ai_daily_cap: b.cap };
 }
 
 export async function startGoogleAuth(env: Env, req: Request): Promise<string> {
@@ -244,7 +271,7 @@ Reply with JSON only, no prose:
 
 interface Triage { action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[] }
 
-async function syncGmail(env: Env, token: string, alerts: boolean) {
+async function syncGmail(env: Env, token: string, alerts: boolean, me: string | null) {
   const queries = [
     "in:inbox newer_than:3d -category:promotions -category:social -category:updates -category:forums",
     "in:sent newer_than:3d",
@@ -291,8 +318,15 @@ async function syncGmail(env: Env, token: string, alerts: boolean) {
         replied ? `You replied to ${counterpart}. Tap Undo if it isn't finished.` : `${counterpart} got back to you.`, item.id);
     }
 
-    // 2. Model triage of the latest exchange (skip when an open item already tracks the thread).
+    // 2. Model triage of the latest exchange: skipped when an open item already tracks the thread,
+    //    when the free pre-filter says it's not personal mail, or when today's AI budget is spent.
     const stillTracked = await first(env, "SELECT 1 FROM items WHERE status = 'open' AND ext_source = 'gmail' AND ext_ref = ?", threadId);
+    if (stillTracked || skipReason(last, me, bodyText(last))) {
+      await run(env, "UPDATE gmail_threads SET analyzed_msg_id = ? WHERE thread_id = ?", last.id, threadId);
+      continue;
+    }
+    const budget = await triageBudget(env);
+    if (budget.used >= budget.cap) break; // left unanalyzed; picked up tomorrow while it's still recent
     const openItems = await all<Item>(env, "SELECT id, kind, title, person FROM items WHERE status = 'open' AND kind != 'idea' ORDER BY updated_at DESC LIMIT 40");
     const transcript = th.messages.slice(-3).map((m) =>
       `--- ${fromMe(m) ? "FROM THE USER" : `From ${header(m, "From")}`} to ${header(m, "To")} on ${new Date(Number(m.internalDate)).toISOString()}\n${bodyText(m)}`).join("\n\n");
@@ -315,7 +349,7 @@ async function syncGmail(env: Env, token: string, alerts: boolean) {
       completed++;
       if (alerts) await notify(env, "auto_done", `Looks done: ${item.title}`, `Based on your email "${subject}". Tap Undo if not.`, id);
     }
-    if (!stillTracked && ["task", "commitment", "waiting"].includes(triage.action) && triage.title) {
+    if (["task", "commitment", "waiting"].includes(triage.action) && triage.title) {
       const item = await createItem(env, {
         kind: triage.action, title: triage.title, person: triage.person ?? (counterpart || null), due_at: triage.due_at ?? null,
         priority: triage.priority, source: "gmail",
@@ -339,7 +373,7 @@ export async function syncGoogle(env: Env) {
   const result: Record<string, unknown> = {};
   const errors: string[] = [];
   try { result.events = await syncCalendar(env, auth.token, alerts); } catch (e) { errors.push(`Calendar: ${(e as Error).message}`); }
-  try { Object.assign(result, await syncGmail(env, auth.token, alerts)); } catch (e) { errors.push(`Gmail: ${(e as Error).message}`); }
+  try { Object.assign(result, await syncGmail(env, auth.token, alerts, auth.email)); } catch (e) { errors.push(`Gmail: ${(e as Error).message}`); }
   await run(env, "UPDATE oauth_accounts SET last_sync_at = ?, last_error = ? WHERE provider = 'google'",
     now(), errors.length ? errors.join(" · ").slice(0, 300) : null);
   return { ...result, errors };

@@ -121,4 +121,6 @@ export interface GoogleStatus {
   email: string | null;
   last_sync_at: string | null;
   last_error: string | null;
+  ai_used_today: number;
+  ai_daily_cap: number;
 }

@@ -190,6 +190,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             </>}
           </div>
           <p className="text-xs text-muted">
+            {google?.connected && <>AI email checks today: {google.ai_used_today} of {google.ai_daily_cap} max. Newsletters, automated mail and CCs are filtered out for free first.<br /></>}
             Reads your calendar and email to remind you of meetings, spot emails that need you, and notice when you've replied.
             It only writes a draft when you ask, and it never sends anything.
           </p>

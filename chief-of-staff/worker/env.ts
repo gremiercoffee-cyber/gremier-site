@@ -20,4 +20,6 @@ export interface Env {
   /** Google OAuth client (Calendar + Gmail). Both are secrets. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Max background AI calls (email/WhatsApp triage) per UTC day. Default 40. */
+  AI_DAILY_CAP?: string;
 }
