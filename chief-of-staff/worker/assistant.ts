@@ -6,6 +6,7 @@ import {
   all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
 import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upcomingEventsText } from "./google";
+import { bridgeStatus, queueWhatsApp } from "./whatsapp";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -78,6 +79,10 @@ export async function buildContext(env: Env, mode: string): Promise<string> {
   lines.push(g === null ? "- Google: not connected (no calendar or email access)."
     : `- Google accounts: ${g.accounts.map((a) => a.email).join(", ")}. Calendar lookups cover all of them; email search covers all unless you pass account. Drafts go from the account the thread is in (or the account you pass for new mail).`);
   if (events !== null) lines.push("", "## Calendar (next 48 hours)", events);
+  const bridge = await bridgeStatus(env);
+  lines.push(bridge.configured
+    ? `- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve). Their computer is ${bridge.online ? "online" : "offline right now, so approved messages send when it's back"}. Actionable incoming WhatsApps arrive as items with source whatsapp.`
+    : "- WhatsApp: not set up yet.");
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
   return lines.join("\n");
 }
@@ -116,6 +121,20 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Read the latest messages of a Gmail thread by id.",
       input_schema: { type: "object", properties: { thread_id: { type: "string" }, account: { type: "string" } }, required: ["thread_id"] },
       handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
+    },
+    {
+      name: "send_whatsapp",
+      description: "Prepare a WhatsApp message. It is NOT sent yet: the user gets it with Send / Edit / Cancel buttons, and only after Send does their computer send it through WhatsApp Web. Use the contact's name exactly as they'd appear in WhatsApp. Write in the user's voice and the language they use with that person.",
+      input_schema: {
+        type: "object",
+        properties: { to: { type: "string", description: "Contact or group name as it appears in WhatsApp" }, message: { type: "string" } },
+        required: ["to", "message"],
+      },
+      handler: async (input) => {
+        const r = await queueWhatsApp(env, String(input.to), String(input.message));
+        note("send_whatsapp", `WhatsApp to ${input.to} is waiting for your Send tap`);
+        return r;
+      },
     },
     {
       name: "draft_email",

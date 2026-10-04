@@ -8,6 +8,7 @@ import {
 } from "./db";
 import { runProactive } from "./proactive";
 import { actionsFor, applyAction, verifyNudge } from "./actions";
+import { bridgeAuthorised, bridgeStatus, handleIncoming, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
@@ -233,6 +234,7 @@ route("POST", "/api/push/test", async (_req, env) =>
   json(await sendPush(env, { title: "Notifications are on", body: "This is how your reminders will arrive.", url: "/?tab=today", tag: "test" })));
 // ---- Google (Calendar + Gmail) ---------------------------------------------
 route("GET", "/api/google/status", async (_req, env) => json(await googleStatus(env)));
+route("GET", "/api/bridge-status", async (_req, env) => json(await bridgeStatus(env)));
 route("POST", "/api/google/connect", async (req, env) => {
   try { return json({ url: await startGoogleAuth(env, req) }); }
   catch (e) { if (e instanceof GoogleAuthError) throw new HttpError(400, e.message); throw e; }
@@ -262,6 +264,18 @@ export default {
     }
     // Google redirects the browser here without our bearer token; the single-use state is the check.
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
+    // Desktop WhatsApp bridge: its own key, its own three routes.
+    if (url.pathname.startsWith("/api/bridge/")) {
+      if (!bridgeAuthorised(req, env)) return json({ error: "unauthorised" }, 401);
+      if (url.pathname === "/api/bridge/incoming" && req.method === "POST") return json(await handleIncoming(env, await req.json()));
+      if (url.pathname === "/api/bridge/outbox" && req.method === "GET") return json(await takeOutbox(env));
+      const m = url.pathname.match(/^\/api\/bridge\/outbox\/([\w-]+)$/);
+      if (m && req.method === "POST") {
+        const b = (await req.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
+        return json(await reportOutbox(env, m[1], !!b.ok, String(b.detail ?? "")));
+      }
+      return json({ error: "not found" }, 404);
+    }
     // Lock-screen notification buttons: authorised by a per-nudge signature instead of the passcode.
     if (url.pathname === "/api/act" && req.method === "POST" && env.COS_ACCESS_TOKEN) {
       const b = await req.json().catch(() => ({})) as { n?: string; a?: string; sig?: string };

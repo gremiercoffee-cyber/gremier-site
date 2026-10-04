@@ -31,6 +31,8 @@ export default function Settings({ settings, onSaved, installPrompt }: {
     } as Record<string, string>)[r ?? ""] ?? "";
   });
   const [syncing, setSyncing] = useState(false);
+  const [bridge, setBridge] = useState<{ configured: boolean; online: boolean; last_seen: string | null } | null>(null);
+  useEffect(() => { api.bridgeStatus().then(setBridge).catch(() => {}); }, []);
   const syncGoogle = async () => {
     setSyncing(true);
     const r = await api.googleSync().catch((e) => ({ error: (e as Error).message }) as Awaited<ReturnType<typeof api.googleSync>>);
@@ -207,6 +209,19 @@ export default function Settings({ settings, onSaved, installPrompt }: {
               </p>
             </>
           )}
+        </div>
+      </Card>
+
+      <Card title="WhatsApp">
+        <div className="flex items-center gap-3">
+          <span className={`h-2.5 w-2.5 rounded-full ${bridge?.online ? "bg-ok" : "bg-line"}`} />
+          <div className="flex-1">
+            <p className="text-[15px]">{!bridge ? "Checking…" : !bridge.configured ? "Not set up yet" : bridge.online ? "Your computer is connected" : "Your computer is offline"}</p>
+            <p className="text-xs text-muted">
+              {bridge?.last_seen ? `Last seen ${new Date(bridge.last_seen).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}. ` : ""}
+              The desktop bridge forwards actionable WhatsApps and sends the messages you approve.
+            </p>
+          </div>
         </div>
       </Card>
 

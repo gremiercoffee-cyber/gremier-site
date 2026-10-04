@@ -6,9 +6,12 @@
 import type { Item, Nudge, NudgeAction } from "../shared/types";
 import type { Env } from "./env";
 import { first, getSettings, localParts, run, updateItem } from "./db";
+import { decideOutbox } from "./whatsapp";
 
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
+  if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
+  if (n.type === "whatsapp") return [{ id: "done", title: "Handled ✓" }, { id: "reply", title: "Reply…", opens: true }, { id: "tomorrow", title: "Tomorrow" }];
   if (!n.item_id) return n.type === "event" ? [{ id: "ok", title: "Got it" }] : [{ id: "ok", title: "OK" }];
   switch (n.type) {
     case "reminder":
@@ -58,6 +61,18 @@ function tomorrowMorning(tz: string) {
 export async function applyAction(env: Env, nudgeId: string, action: string): Promise<{ ok: true; message: string; open?: string }> {
   const n = await first<Nudge>(env, "SELECT * FROM nudges WHERE id = ?", nudgeId);
   if (!n) return { ok: true, message: "Already handled." };
+  if (n.type === "wa_send" && n.item_id) {
+    // For send requests item_id points at the outbox row.
+    const dismissIt = () => run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    if (action === "send") { const message = await decideOutbox(env, n.item_id, "approved"); await dismissIt(); return { ok: true, message }; }
+    if (action === "cancel") { const message = await decideOutbox(env, n.item_id, "cancelled"); await dismissIt(); return { ok: true, message }; }
+    if (action === "edit") {
+      const row = await first<{ recipient: string; text: string }>(env, "SELECT recipient, text FROM whatsapp_outbox WHERE id = ?", n.item_id);
+      await decideOutbox(env, n.item_id, "cancelled");
+      await dismissIt();
+      return { ok: true, message: "Let's change it.", open: `/?ask=${encodeURIComponent(`Change the WhatsApp to ${row?.recipient}: "${row?.text}"`)}` };
+    }
+  }
   const item = n.item_id ? await first<Item>(env, "SELECT * FROM items WHERE id = ?", n.item_id) : null;
   const dismiss = () => run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
   let message = "Noted.";
@@ -84,8 +99,11 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       break;
     case "draft":
     case "nudge":
+    case "reply":
       if (item) {
-        const ask = action === "draft" ? `Draft a reply for: ${item.title}` : `Draft a friendly follow-up to ${item.person ?? "them"} about: ${item.title}`;
+        const ask = action === "draft" ? `Draft a reply for: ${item.title}`
+          : action === "reply" ? `Help me reply on WhatsApp to ${item.person ?? "them"}. ${item.notes}`
+          : `Draft a friendly follow-up to ${item.person ?? "them"} about: ${item.title}`;
         open = `/?ask=${encodeURIComponent(ask)}`;
         message = "Opening a draft…";
       }

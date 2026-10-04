@@ -22,4 +22,6 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   /** Max background AI calls (email/WhatsApp triage) per UTC day. Default 40. */
   AI_DAILY_CAP?: string;
+  /** Shared key for the desktop WhatsApp bridge (bridge/cos_bridge.py). */
+  BRIDGE_KEY?: string;
 }

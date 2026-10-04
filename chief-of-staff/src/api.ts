@@ -66,6 +66,7 @@ export const api = {
   pushKey: () => request<{ key: string | null }>("GET", "/api/push/key"),
   pushTest: () => request<{ sent: number; failed: number }>("POST", "/api/push/test"),
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
+  bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
   googleConnect: () => request<{ url: string }>("POST", "/api/google/connect"),
   googleDisconnect: (email: string) => request("POST", "/api/google/disconnect", { email }),

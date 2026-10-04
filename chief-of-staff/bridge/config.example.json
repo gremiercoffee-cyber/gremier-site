@@ -1,0 +1,13 @@
+{
+  "api_base": "https://<your-worker>.workers.dev",
+  "bridge_key": "<BRIDGE_KEY secret>",
+  "my_names": [
+    "Yoni"
+  ],
+  "ignore_chats": [
+    "Some noisy group"
+  ],
+  "always_forward_from": [
+    "Important customer"
+  ]
+}

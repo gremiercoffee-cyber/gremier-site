@@ -2,3 +2,6 @@ node_modules
 dist
 .wrangler
 .dev.vars
+bridge/config.json
+bridge/state.json
+bridge/bridge.log
