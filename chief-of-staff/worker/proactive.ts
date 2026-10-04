@@ -22,7 +22,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 1. Reminders, tasks and commitments whose time has come.
   const due = await all<Item>(env,
-    `SELECT * FROM items WHERE status = 'open' AND kind IN ('reminder','task','commitment')
+    `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind IN ('reminder','task','commitment')
        AND due_at IS NOT NULL AND due_at <= ? AND reminded_at IS NULL LIMIT 50`, t);
   for (const item of due) {
     const checkin = item.kind === "reminder" && /^(did|have|has|is|are) /i.test(item.title);
@@ -39,7 +39,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   // 2. Waiting-for entries that have gone quiet.
   const cutoff = new Date(Date.now() - WAITING_NUDGE_DAYS * 86400_000).toISOString();
   const stale = await all<Item>(env,
-    `SELECT * FROM items WHERE status = 'open' AND kind = 'waiting'
+    `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'waiting'
        AND COALESCE(reminded_at, created_at) <= ? LIMIT 20`, cutoff);
   for (const item of stale) {
     await addNudge(env, "waiting", `${item.person ?? "They"} still hasn't gotten back to you`,
@@ -51,7 +51,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   // 3. Open loops: emails/WhatsApps that still haven't been answered after 2 hours (or after a snooze).
   if (!isShabbat(settings.timezone)) {
     const unanswered = await all<Item>(env,
-      `SELECT * FROM items WHERE status = 'open' AND kind = 'task' AND source IN ('gmail', 'whatsapp')
+      `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'task' AND source IN ('gmail', 'whatsapp')
          AND reminded_at IS NULL AND COALESCE(nudge_after, strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+2 hours')) <= ? LIMIT 20`, t);
     for (const item of unanswered) {
       const hours = Math.max(2, Math.round((Date.now() - new Date(item.created_at).getTime()) / 3600_000));

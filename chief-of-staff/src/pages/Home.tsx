@@ -94,7 +94,9 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
   const act = async (n: Nudge, action: string) => {
     const r = await api.actNudge(n.id, action);
-    if (r.open) {
+    if (r.open?.includes("reschedule=1") && n.item_id) {
+      window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: n.item_id }));
+    } else if (r.open) {
       const ask = new URLSearchParams(r.open.split("?")[1] ?? "").get("ask");
       if (ask) { onConversation(null); convoRef.current = null; setMessages([]); send(ask); }
     }

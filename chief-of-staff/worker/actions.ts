@@ -13,24 +13,21 @@ import { now, uid } from "./db";
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
-  if (n.type === "unanswered") return [{ id: "snooze2h", title: "In 2 hours" }, { id: "reply", title: "Reply…", opens: true }, { id: "hold", title: "Holding reply" }, { id: "notneeded", title: "Not needed" }];
-  if (n.type === "digest") return [{ id: "ok", title: "Got it" }];
-  if (n.type === "whatsapp") return [{ id: "done", title: "Handled ✓" }, { id: "reply", title: "Reply…", opens: true }, { id: "tomorrow", title: "Tomorrow" }];
-  if (!n.item_id) return n.type === "event" ? [{ id: "ok", title: "Got it" }] : [{ id: "ok", title: "OK" }];
+  if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
+  if (!n.item_id) return [{ id: "ok", title: n.type === "digest" || n.type === "event" ? "Got it" : "Dismiss" }];
+  // Every alert about a task: the same four, in this order. Android shows the first three on the
+  // lock screen; the app shows all of them plus the extras for that kind of alert.
+  const done: NudgeAction = { id: "done", title: n.type === "checkin" ? "Yes, done ✓" : "Done ✓" };
+  const base: NudgeAction[] = [done, { id: "reschedule", title: "Reschedule", opens: true }, { id: "ok", title: "Dismiss" }, { id: "ignore", title: "Ignore" }];
   switch (n.type) {
-    case "reminder":
-    case "overdue":
-      return [{ id: "done", title: "Done ✓" }, { id: "snooze1h", title: "In 1 hour" }, { id: "tomorrow", title: "Tomorrow" }];
+    case "unanswered":
+    case "whatsapp":
     case "email":
-      return [{ id: "done", title: "Handled ✓" }, { id: "draft", title: "Draft reply", opens: true }, { id: "tomorrow", title: "Tomorrow" }];
+      return [...base, { id: "reply", title: "Reply…", opens: true }, ...(n.type === "unanswered" ? [{ id: "hold", title: "Holding reply" }] : [])];
     case "waiting":
-      return [{ id: "nudge", title: "Draft follow-up", opens: true }, { id: "snooze3d", title: "Wait 3 days" }, { id: "done", title: "Got it ✓" }];
-    case "auto_done":
-      return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
-    case "checkin":
-      return [{ id: "done", title: "Yes, done ✓" }, { id: "snooze1h", title: "Not yet" }, { id: "tomorrow", title: "Tomorrow" }];
+      return [...base, { id: "nudge", title: "Draft follow-up", opens: true }];
     default:
-      return [{ id: "done", title: "Done ✓" }, { id: "ok", title: "Dismiss" }];
+      return base;
   }
 }
 
@@ -122,6 +119,13 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       }
       break;
     case "ok":
+      message = "Dismissed.";
+      break;
+    case "ignore":
+      if (item) { await run(env, "UPDATE items SET muted = 1 WHERE id = ?", item.id); message = "OK, no more alerts about this one. It's still on your list."; }
+      break;
+    case "reschedule":
+      if (item) { open = `/?item=${encodeURIComponent(item.id)}&reschedule=1`; message = "Pick a new time…"; }
       break;
     default:
       return { ok: true, message: "Unknown action." };

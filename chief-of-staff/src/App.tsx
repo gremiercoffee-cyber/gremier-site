@@ -9,9 +9,12 @@ import BrainDump from "./pages/BrainDump";
 import Lists from "./pages/Lists";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
+import Search from "./pages/Search";
+import Library, { type LibraryTab } from "./pages/Library";
+import Reschedule from "./components/Reschedule";
 
-type View = "home" | "today" | "dump" | "lists" | "projects" | "settings";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings" };
+type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library" };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -30,6 +33,10 @@ export default function App() {
   const [settings, setSettings] = useState<S | null>(null);
   const [sheet, setSheet] = useState<{ item: Item | null; kind?: ItemKind } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [query, setQuery] = useState("");
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("ideas");
+  const [rescheduling, setRescheduling] = useState<Item | null>(null);
+  const [toast, setToast] = useState("");
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null);
 
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -42,7 +49,7 @@ export default function App() {
     const onInstall = (e: Event) => { e.preventDefault(); setInstall(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", onInstall);
     // Links like ?ask= are one-shot; keep the address bar clean.
-    if (params.get("ask") || params.get("voice") || params.get("type") || params.get("item")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
+    if (params.get("ask") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
     return () => { window.removeEventListener("cos:unauthorised", onUnauth); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
 
@@ -68,8 +75,22 @@ export default function App() {
   useEffect(() => {
     const id = params.get("item");
     if (!authed || !id) return;
-    api.items({ status: "all" }).then((all) => { const it = all.find((i) => i.id === id); if (it) setSheet({ item: it }); }).catch(() => {});
+    const reschedule = params.get("reschedule") === "1";
+    api.items({ status: "all" }).then((all) => {
+      const it = all.find((i) => i.id === id);
+      if (it) reschedule ? setRescheduling(it) : setSheet({ item: it });
+    }).catch(() => {});
   }, [authed]);
+
+  // Reschedule requests from cards inside the app.
+  useEffect(() => {
+    const onRe = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      api.items({ status: "all" }).then((all) => { const it = all.find((i) => i.id === id); if (it) setRescheduling(it); }).catch(() => {});
+    };
+    window.addEventListener("cos:reschedule", onRe);
+    return () => window.removeEventListener("cos:reschedule", onRe);
+  }, []);
 
   // Refresh when the app comes back to the foreground (new nudges may have arrived).
   useEffect(() => {
@@ -116,6 +137,10 @@ export default function App() {
         {view === "dump" && <BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />}
         {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
         {view === "projects" && <Projects onOpenItem={openItem} refreshKey={refreshKey} />}
+        {view === "search" && (
+          <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
+        )}
+        {view === "library" && <Library tab={libraryTab} onTab={setLibraryTab} onOpenItem={openItem} refreshKey={refreshKey} />}
         {view === "settings" && settings && (
           <Settings settings={settings} onSaved={setSettings}
             installPrompt={install ? () => { install.prompt(); setInstall(null); } : null} />
@@ -126,12 +151,21 @@ export default function App() {
         <div className="fixed inset-0 z-40 flex">
           <nav className="w-[82%] max-w-80 h-full bg-surface border-r border-line shadow-card flex flex-col pt-safe pb-safe drawer-in">
             <div className="flex items-center gap-2.5 px-4 h-14 shrink-0"><Logo /><span className="font-medium">Chief of Staff</span></div>
+            <form className="px-3 pb-2" onSubmit={(e) => { e.preventDefault(); go("search"); }}>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} onFocus={() => { if (query) go("search"); }}
+                placeholder="🔍  Search everything" enterKeyHint="search"
+                className="w-full rounded-full bg-sunken px-4 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-accent/30" />
+            </form>
             <div className="px-2 space-y-0.5">
               <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<path d="M4 6h16M4 12h16M4 18h9" />} label="Today" />
               <DrawerItem active={view === "lists"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists" />
               <DrawerItem active={view === "projects"} onClick={() => go("projects")} icon={<path d="M3 7h6l2 2h10v10H3z" />} label="Projects" />
               <DrawerItem active={view === "dump"} onClick={() => go("dump")} icon={<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3" />} label="Brain dump" />
+              <DrawerItem active={view === "library" && libraryTab === "ideas"} onClick={() => { setLibraryTab("ideas"); go("library"); }} icon={<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />} label="Ideas & notes" />
+              <DrawerItem active={view === "library" && libraryTab === "people"} onClick={() => { setLibraryTab("people"); go("library"); }} icon={<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6" /></>} label="People" />
+              <DrawerItem active={view === "library" && libraryTab === "memory"} onClick={() => { setLibraryTab("memory"); go("library"); }} icon={<path d="M12 4a4 4 0 0 0-4 4 4 4 0 0 0-3 6.5A4 4 0 0 0 8 20h8a4 4 0 0 0 3-5.5A4 4 0 0 0 16 8a4 4 0 0 0-4-4zM12 4v16" />} label="Memory" />
+              <DrawerItem active={view === "library" && libraryTab === "dumps"} onClick={() => { setLibraryTab("dumps"); go("library"); }} icon={<path d="M4 5h16v14H4zM8 9h8M8 13h5" />} label="Past brain dumps" />
             </div>
             <p className="px-5 pt-5 pb-1.5 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Conversations</p>
             <div className="flex-1 overflow-y-auto px-2">
@@ -152,6 +186,12 @@ export default function App() {
           <button aria-label="Close menu" className="flex-1 bg-black/40" onClick={() => setDrawer(false)} />
         </div>
       )}
+
+      {rescheduling && (
+        <Reschedule item={rescheduling} onClose={() => setRescheduling(null)}
+          onSaved={(msg) => { setRescheduling(null); refresh(); setToast(msg); setTimeout(() => setToast(""), 2500); }} />
+      )}
+      {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 rounded-full bg-ink text-bg px-4 py-2 text-sm shadow-card">{toast}</div>}
 
       {sheet && (
         <ItemSheet item={sheet.item} defaultKind={sheet.kind} onClose={() => setSheet(null)}

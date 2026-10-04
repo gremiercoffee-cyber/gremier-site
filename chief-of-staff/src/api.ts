@@ -1,6 +1,11 @@
 import type {
-  BrainDump, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
+  BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
+
+export interface Person {
+  id: string; name: string; role: string; email: string | null; phone: string | null; whatsapp_name: string | null;
+  preferred_channel: string | null; notes: string;
+}
 
 const TOKEN_KEY = "cos.token";
 
@@ -56,7 +61,12 @@ export const api = {
   deleteProject: (id: string) => request("DELETE", `/api/projects/${id}`),
   memories: () => request<Memory[]>("GET", "/api/memories"),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
-  people: () => request<{ id: string; name: string; role: string; email: string | null; whatsapp_name: string | null; preferred_channel: string | null }[]>("GET", "/api/people"),
+  people: () => request<Person[]>("GET", "/api/people"),
+  search: (q: string) => request<{
+    q: string; items: Item[]; memories: Memory[]; people: Person[]; projects: Project[]; events: CalendarEvent[];
+    conversations: { conversation_id: string | null; title: string | null; role: string; content: string; created_at: string }[];
+    brain_dumps: { id: string; raw: string; summary: string; created_at: string }[];
+  }>("GET", `/api/search?q=${encodeURIComponent(q)}`),
   deletePerson: (id: string) => request("DELETE", `/api/people/${id}`),
   dismissNudge: (id: string) => request("POST", `/api/nudges/${id}/dismiss`),
   runProactive: (briefing = false) => request("POST", "/api/proactive/run", { briefing }),

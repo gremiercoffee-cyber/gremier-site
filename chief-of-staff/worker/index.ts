@@ -10,6 +10,7 @@ import { runProactive } from "./proactive";
 import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
+import { findPeople, recallMemories } from "./memory";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -195,6 +196,29 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Search everything ----------------------------------------------------------
+route("GET", "/api/search", async (req, env) => {
+  const q = (new URL(req.url).searchParams.get("q") ?? "").trim().slice(0, 100);
+  if (q.length < 2) return json({ q, items: [], memories: [], people: [], conversations: [], brain_dumps: [], projects: [], events: [] });
+  const like = `%${q.replace(/[%_]/g, "")}%`;
+  const [items, memLike, memFts, people, conversations, dumps, projects, events] = await Promise.all([
+    all<Item>(env, `SELECT * FROM items WHERE title LIKE ? OR notes LIKE ? OR person LIKE ?
+      ORDER BY status = 'open' DESC, updated_at DESC LIMIT 25`, like, like, like),
+    all<Memory>(env, "SELECT * FROM memories WHERE content LIKE ? ORDER BY updated_at DESC LIMIT 15", like),
+    recallMemories(env, q, 15),
+    findPeople(env, q, 10),
+    all(env, `SELECT m.conversation_id, c.title, m.role, m.content, m.created_at FROM messages m
+      LEFT JOIN conversations c ON c.id = m.conversation_id WHERE m.content LIKE ? ORDER BY m.created_at DESC LIMIT 15`, like),
+    all(env, "SELECT id, raw, summary, created_at FROM brain_dumps WHERE raw LIKE ? OR summary LIKE ? ORDER BY created_at DESC LIMIT 8", like, like),
+    all<Project>(env, "SELECT * FROM projects WHERE name LIKE ? OR description LIKE ? ORDER BY updated_at DESC LIMIT 8", like, like),
+    all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
+      WHERE summary LIKE ? OR location LIKE ? GROUP BY summary, start_at ORDER BY start_at LIMIT 10`, like, like),
+  ]);
+  const seen = new Set<string>();
+  const memories = [...memLike, ...memFts].filter((m) => !seen.has(m.id) && seen.add(m.id)).slice(0, 15);
+  return json({ q, items, memories, people, conversations, brain_dumps: dumps, projects, events });
+});
+
 // ---- Home-screen widget: only unfinished things, grouped, newest-relevant first ------
 route("GET", "/api/widget", async (_req, env) => {
   const settings = await getSettings(env);
