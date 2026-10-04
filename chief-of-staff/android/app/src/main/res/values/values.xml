@@ -1,0 +1,8 @@
+<resources>
+    <string name="widget_desc">Everything you still need to do, in one place. Tap the circle to mark done.</string>
+    <color name="bg">#FFFFFF</color>
+    <color name="ink">#0E1117</color>
+    <color name="muted">#6A7080</color>
+    <color name="accent">#3540A8</color>
+    <color name="danger">#C23B3B</color>
+</resources>

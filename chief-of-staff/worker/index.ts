@@ -195,6 +195,44 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Home-screen widget: only unfinished things, grouped, newest-relevant first ------
+route("GET", "/api/widget", async (_req, env) => {
+  const settings = await getSettings(env);
+  const t = now();
+  const endOfDay = endOfLocalDay(settings.timezone);
+  const week = new Date(Date.now() + 7 * 86400_000).toISOString();
+  const [waiting, overdue, today, soon, undated, next] = await Promise.all([
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind='task' AND source IN ('gmail','whatsapp') ORDER BY created_at LIMIT 8`),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment','reminder') AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 8`, t),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind != 'idea' AND kind != 'waiting' AND due_at > ? AND due_at <= ? ORDER BY due_at LIMIT 10`, t, endOfDay),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind != 'idea' AND kind != 'waiting' AND due_at > ? AND due_at <= ? ORDER BY due_at LIMIT 8`, endOfDay, week),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment') AND due_at IS NULL AND source NOT IN ('gmail','whatsapp') ORDER BY priority, created_at DESC LIMIT 6`),
+    first<{ summary: string; start_at: string }>(env, `SELECT summary, start_at FROM calendar_events WHERE all_day = 0 AND start_at > ? ORDER BY start_at LIMIT 1`, t),
+  ]);
+  const tz = settings.timezone;
+  const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
+  const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { timeZone: tz, weekday: "short" });
+  const ago = (iso: string) => { const h = Math.round((Date.now() - new Date(iso).getTime()) / 3600_000); return h < 1 ? "just now" : h < 24 ? `${h}h` : `${Math.round(h / 24)}d`; };
+  const row = (i: Item, sub: string) => ({ id: i.id, title: i.title, sub, high: i.priority === 1 });
+  const sections = [
+    { title: "Waiting on you", items: waiting.map((i) => row(i, `${i.person ?? ""} · ${i.source === "gmail" ? "email" : "WhatsApp"} · ${ago(i.created_at)}`)) },
+    { title: "Overdue", items: overdue.map((i) => row(i, `${day(i.due_at!)} ${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
+    { title: "Today", items: today.map((i) => row(i, `${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
+    { title: "Coming up", items: soon.map((i) => row(i, `${day(i.due_at!)} ${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
+    { title: "Anytime", items: undated.map((i) => row(i, i.person ?? "")) },
+  ].filter((s) => s.items.length);
+  const count = sections.reduce((n, s) => n + s.items.length, 0);
+  return json({ count, next_event: next ? `${next.summary} · ${time(next.start_at)}` : null, sections, updated_at: t });
+});
+route("POST", "/api/widget/act", async (req, env) => {
+  const b = await body<{ id?: string; action?: string }>(req);
+  if (!b.id) throw new HttpError(400, "id required");
+  if (b.action === "done") await updateItem(env, b.id, { status: "done" });
+  else throw new HttpError(400, "unknown action");
+  // Any alert about this item is now moot.
+  await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", b.id);
+  return json({ ok: true });
+});
 route("POST", "/api/nudges/:id/act", async (req, env, [id]) => {
   const { action } = await body<{ action?: string }>(req);
   return json(await applyAction(env, id, String(action ?? "")));
