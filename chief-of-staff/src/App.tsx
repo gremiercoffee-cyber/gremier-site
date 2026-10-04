@@ -23,6 +23,7 @@ export default function App() {
   const [view, setView] = useState<View>(legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
   const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? undefined);
   const [startVoice] = useState(params.get("voice") === "1");
+  const [startTyping] = useState(params.get("type") === "1");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [drawer, setDrawer] = useState(false);
@@ -41,7 +42,7 @@ export default function App() {
     const onInstall = (e: Event) => { e.preventDefault(); setInstall(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", onInstall);
     // Links like ?ask= are one-shot; keep the address bar clean.
-    if (params.get("ask") || params.get("voice")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
+    if (params.get("ask") || params.get("voice") || params.get("type") || params.get("item")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
     return () => { window.removeEventListener("cos:unauthorised", onUnauth); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
 
@@ -63,6 +64,12 @@ export default function App() {
     })();
   }, [authed]);
   useEffect(() => { if (drawer) loadConversations(); }, [drawer]);
+  // From the widget: open one item's details.
+  useEffect(() => {
+    const id = params.get("item");
+    if (!authed || !id) return;
+    api.items({ status: "all" }).then((all) => { const it = all.find((i) => i.id === id); if (it) setSheet({ item: it }); }).catch(() => {});
+  }, [authed]);
 
   // Refresh when the app comes back to the foreground (new nudges may have arrived).
   useEffect(() => {
@@ -102,7 +109,7 @@ export default function App() {
         {view === "home" && (
           <Home name={settings?.name ?? ""} conversationId={conversationId}
             onConversation={(id) => { setConversationId(id); loadConversations(); }}
-            initialAsk={ask} startVoice={startVoice} serverTranscription={!!health?.transcription}
+            initialAsk={ask} startVoice={startVoice} startTyping={startTyping} serverTranscription={!!health?.transcription}
             onDataChanged={refresh} refreshKey={refreshKey} />
         )}
         {view === "today" && <Today name={settings?.name ?? ""} onOpenItem={openItem} goChat={(p) => { openConversation(null); setAsk(p); }} refreshKey={refreshKey} />}

@@ -10,19 +10,20 @@ type LiveState = "off" | LiveStatus;
  * The main screen: your Chief of Staff. With no conversation open it is a calm "I'm here" presence
  * with whatever needs you; once you talk or type it becomes the conversation.
  */
-export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, serverTranscription, onDataChanged, refreshKey }: {
+export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, serverTranscription, onDataChanged, refreshKey }: {
   name: string;
   conversationId: string | null;
   onConversation: (id: string | null) => void;
   initialAsk?: string;
   startVoice?: boolean;
+  startTyping?: boolean;
   serverTranscription: boolean;
   onDataChanged: () => void;
   refreshKey: number;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
+  const [typing, setTyping] = useState(!!startTyping);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [live, setLive] = useState<LiveState>("off");
