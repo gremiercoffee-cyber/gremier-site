@@ -14,7 +14,7 @@
     for (let i = 0; i < tries; i++) {
       try {
         if (!chrome.runtime?.id) throw new Error("Extension context invalidated");
-        return await send(msg);
+        return await chrome.runtime.sendMessage(msg);
       } catch (e) {
         if (String(e).includes("invalidated")) { console.warn("[Chief of Staff] Add-on was updated: reload this tab (F5)."); return; }
         await new Promise((r) => setTimeout(r, 800 * (i + 1)));
