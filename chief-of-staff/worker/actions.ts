@@ -16,6 +16,9 @@ export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
   if (n.type === "postponed") return [{ id: "done", title: "Do it now ✓" }, { id: "breakdown", title: "Break it down", opens: true },
     { id: "notneeded", title: "Drop it" }, { id: "delegate", title: "Hand it off", opens: true }, { id: "reschedule", title: "Reschedule", opens: true }];
+  if (n.type === "routine" || n.type === "routine_alert") return [
+    { id: "report_doc", title: "📄 Open Doc", opens: true }, { id: "report_brief", title: "💬 Tell me about it", opens: true },
+    { id: "report_read", title: "🔊 Read it to me", opens: true }];
   if (n.type === "mission_ask") return [{ id: "answer", title: "Answer…", opens: true }, { id: "ok", title: "Later" }];
   if (n.type === "mission_progress" || n.type === "mission_done") return [{ id: "ok", title: "Got it" }];
   if (!n.item_id) return [{ id: "ok", title: n.type === "digest" || n.type === "event" ? "Got it" : "Dismiss" }];
@@ -66,6 +69,15 @@ export function tomorrowMorning(tz: string) {
 export async function applyAction(env: Env, nudgeId: string, action: string): Promise<{ ok: true; message: string; open?: string }> {
   const n = await first<Nudge>(env, "SELECT * FROM nudges WHERE id = ?", nudgeId);
   if (!n) return { ok: true, message: "Already handled." };
+  if ((n.type === "routine" || n.type === "routine_alert") && n.item_id) {
+    // For report alerts item_id is the report (routine run) id.
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    const r = await first<{ doc_link: string | null }>(env, "SELECT doc_link FROM routine_runs WHERE id = ?", n.item_id);
+    if (action === "report_doc") return { ok: true, message: "Opening…", open: r?.doc_link ?? `/?report=${n.item_id}&mode=read` };
+    if (action === "report_brief") return { ok: true, message: "Opening…", open: `/?report=${n.item_id}&mode=brief` };
+    if (action === "report_read") return { ok: true, message: "Opening…", open: `/?report=${n.item_id}&mode=read` };
+    return { ok: true, message: "OK" };
+  }
   if (n.type === "wa_send" && n.item_id) {
     // For send requests item_id points at the outbox row.
     const dismissIt = () => run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);

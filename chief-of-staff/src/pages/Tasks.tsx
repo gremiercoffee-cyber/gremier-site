@@ -8,13 +8,15 @@ const DEPTHS: { id: string; label: string; detail: string; cost: number }[] = [
   { id: "standard", label: "Standard", detail: "solid report, ~24 searches", cost: 0.3 },
   { id: "deep", label: "Deep", detail: "comprehensive research, ~64 searches", cost: 0.8 },
 ];
-const DELIVER: [string, string][] = [["briefing", "In my briefing"], ["alert", "Alert me"], ["doc", "Google Doc report"]];
+const DELIVER: [string, string][] = [["doc", "Google Doc + notification"], ["alert", "Notification only"], ["briefing", "Quietly, in my briefing"]];
 
 const runsPerMonth = (s: RoutineSchedule) =>
   s.kind === "hours" ? (30 * 24) / (s.every_hours ?? 6) : s.kind === "daily" ? 30 : s.kind === "weekly" ? 4.3 * (s.weekdays?.length || 1) : 1;
 
 /** Recurring jobs your Chief of Staff runs on a schedule: research, reports, checks. */
-export default function Tasks({ onAsk, refreshKey }: { onAsk: (text: string) => void; refreshKey: number }) {
+export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
+  onAsk: (text: string) => void; onOpenReport: (id: string, mode: "brief" | "read") => void; refreshKey: number;
+}) {
   const [list, setList] = useState<RoutineRow[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const load = () => api.routines().then(setList).catch(() => setList([]));
@@ -31,12 +33,14 @@ export default function Tasks({ onAsk, refreshKey }: { onAsk: (text: string) => 
       {list.length === 0 && <Empty>No tasks yet.</Empty>}
       {list.map((r) => editing === r.id
         ? <Editor key={r.id} r={r} onDone={() => { setEditing(null); load(); }} />
-        : <TaskCard key={r.id} r={r} onEdit={() => setEditing(r.id)} onChanged={load} />)}
+        : <TaskCard key={r.id} r={r} onEdit={() => setEditing(r.id)} onChanged={load} onOpenReport={onOpenReport} />)}
     </div>
   );
 }
 
-function TaskCard({ r, onEdit, onChanged }: { r: RoutineRow; onEdit: () => void; onChanged: () => void }) {
+function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
+  r: RoutineRow; onEdit: () => void; onChanged: () => void; onOpenReport: (id: string, mode: "brief" | "read") => void;
+}) {
   const [msg, setMsg] = useState("");
   const depth = DEPTHS.find((d) => d.id === r.depth) ?? DEPTHS[1];
   const monthly = depth.cost * runsPerMonth(r.schedule);
@@ -65,7 +69,13 @@ function TaskCard({ r, onEdit, onChanged }: { r: RoutineRow; onEdit: () => void;
                 {x.summary && <span className="block text-muted mt-1">{x.summary}</span>}
               </summary>
               {x.error && <p className="text-sm text-danger mt-2">{x.error}</p>}
-              {x.doc_link && <a href={x.doc_link} target="_blank" rel="noreferrer" className="block text-sm text-accent mt-2">Open the Google Doc ↗</a>}
+              {x.status === "done" && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {x.doc_link && <a href={x.doc_link} target="_blank" rel="noreferrer" className="rounded-full bg-surface border border-line px-3 py-1.5 text-[13px]">📄 Open Doc</a>}
+                  <button onClick={() => onOpenReport(x.id, "brief")} className="rounded-full bg-surface border border-line px-3 py-1.5 text-[13px]">💬 Tell me about it</button>
+                  <button onClick={() => onOpenReport(x.id, "read")} className="rounded-full bg-surface border border-line px-3 py-1.5 text-[13px]">🔊 Read it to me</button>
+                </div>
+              )}
               {x.report && <div className="mt-3 text-[15px] leading-relaxed"><Markdown text={x.report} /></div>}
             </details>
           ))}

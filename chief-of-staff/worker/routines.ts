@@ -84,7 +84,7 @@ export async function saveRoutine(env: Env, input: Record<string, unknown>) {
   const t = now();
   const sched = normalizeSchedule(input.schedule ?? existing?.schedule);
   const depth = DEPTH[String(input.depth)] ? String(input.depth) : existing?.depth ?? "standard";
-  const deliver = ["briefing", "alert", "doc"].includes(String(input.deliver)) ? String(input.deliver) : existing?.deliver ?? "briefing";
+  const deliver = ["briefing", "alert", "doc"].includes(String(input.deliver)) ? String(input.deliver) : existing?.deliver ?? "doc";
   const r = {
     id: existing?.id ?? uid(),
     name: String(input.name ?? existing?.name ?? "Task").slice(0, 80),
@@ -171,14 +171,23 @@ Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.
     }).catch(() => report.slice(0, 280));
 
     let docLink: string | null = null;
+    let docProblem = "";
     if (r.deliver === "doc") {
-      try { docLink = (await createDoc(env, `${r.name} — ${today}`, report)).link; } catch (e) { console.error("task doc failed", e); }
+      try { docLink = (await createDoc(env, `${r.name} — ${today}`, report)).link; }
+      catch (e) { docProblem = (e as Error).message; console.error("task doc failed", e); }
     }
     await run(env, "UPDATE routine_runs SET status='done', finished_at=?, summary=?, report=?, sources=?, searches=?, doc_link=? WHERE id=?",
       now(), summary, report, JSON.stringify(sources), searches, docLink, runId);
-    // Delivery: alert buzzes; briefing/doc wait quietly for the next briefing (policy "routine").
-    await notify(env, r.deliver === "alert" ? "routine_alert" : "routine", `${r.name}: new report`,
-      `${summary}${docLink ? `\n${docLink}` : ""}`.slice(0, 400), null, "/?tab=tasks");
+    // Delivery: Doc reports and alerts buzz once, and tapping opens the Doc (or the report in Tasks);
+    // "briefing" waits quietly for the next briefing.
+    if (r.deliver === "doc" && !docLink) {
+      await notify(env, "routine_alert", `${r.name}: report ready`,
+        `${summary}\n(Couldn't create the Google Doc: ${docProblem.slice(0, 120)}. The full report is in Tasks.)`.slice(0, 400), runId, "/?tab=tasks");
+    } else {
+      await notify(env, r.deliver === "briefing" ? "routine" : "routine_alert",
+        r.deliver === "doc" ? `📄 ${r.name}` : `${r.name}: new report`,
+        `${summary}${docLink ? "\nTap to open the Google Doc." : ""}`.slice(0, 400), runId, docLink ?? "/?tab=tasks");
+    }
   } catch (e) {
     await run(env, "UPDATE routine_runs SET status='failed', finished_at=?, error=? WHERE id=?", now(), (e as Error).message.slice(0, 300), runId);
   }

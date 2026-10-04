@@ -230,6 +230,12 @@ route("GET", "/api/routines", async (_req, env) => {
 route("POST", "/api/routines", async (req, env) => {
   try { return json(await saveRoutine(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
+route("GET", "/api/routine-runs/:id", async (_req, env, [id]) => {
+  const r = await first(env, `SELECT rr.id, rr.routine_id, rr.started_at, rr.summary, rr.report, rr.sources, rr.doc_link, r.name
+    FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?`, id);
+  if (!r) throw new HttpError(404, "report not found");
+  return json(r);
+});
 route("DELETE", "/api/routines/:id", async (_req, env, [id]) => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM routine_runs WHERE routine_id = ?").bind(id),

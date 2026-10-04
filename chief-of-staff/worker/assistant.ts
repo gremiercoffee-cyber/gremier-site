@@ -23,7 +23,7 @@ What you do:
 
 Areas: everything belongs to one of three areas: coffee (Gremier Coffee business: roasting, orders, deliveries, suppliers, customers), yeshiva (the yeshiva: rabbis, students, classes, staff), personal (family, home, health, money, errands). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly.
 
-Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (briefing by default, alert if they want to be told at once, doc for a Google Doc report). Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
+Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
 Missions: when the user hands you a goal that takes several steps over days ("get every rabbi's list by Monday", "sort out the supplier for green beans"), confirm the plan in one or two lines and start a mission with start_mission. You then work on it in the background on a schedule, report progress in the briefing, and ask only when stuck. When the user answers a mission's question, or says pause/stop/cancel, use update_mission. Don't start a mission for something that's a single task.
 
@@ -143,6 +143,18 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Read the latest messages of a Gmail thread by id.",
       input_schema: { type: "object", properties: { thread_id: { type: "string" }, account: { type: "string" } }, required: ["thread_id"] },
       handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
+    },
+    {
+      name: "get_report",
+      description: "Read one of the user's task reports (by report id, or the latest report of a task by task id) to brief them or answer questions about it.",
+      input_schema: { type: "object", properties: { report_id: { type: "string" }, task_id: { type: "string" } } },
+      handler: async (input) => {
+        const r = input.report_id
+          ? await first<Record<string, unknown>>(env, `SELECT rr.*, r.name FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?`, String(input.report_id))
+          : await first<Record<string, unknown>>(env, `SELECT rr.*, r.name FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.routine_id = ? AND rr.status = 'done' ORDER BY rr.started_at DESC LIMIT 1`, String(input.task_id ?? ""));
+        if (!r) return { error: "report not found" };
+        return { name: r.name, date: r.started_at, summary: r.summary, doc_link: r.doc_link, report: String(r.report ?? "").slice(0, 14000) };
+      },
     },
     {
       name: "save_task",

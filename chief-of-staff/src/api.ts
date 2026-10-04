@@ -85,6 +85,7 @@ export const api = {
   routines: () => request<RoutineRow[]>("GET", "/api/routines"),
   saveRoutine: (r: Record<string, unknown>) => request("POST", "/api/routines", r),
   deleteRoutine: (id: string) => request("DELETE", `/api/routines/${id}`),
+  routineRun: (id: string) => request<{ id: string; name: string; started_at: string; summary: string | null; report: string | null; doc_link: string | null }>("GET", `/api/routine-runs/${id}`),
   runRoutine: (id: string) => request<{ ok: true; message: string }>("POST", `/api/routines/${id}/run`),
   replies: () => request<ReplyCard[]>("GET", "/api/replies"),
   sendReply: (id: string, text: string) => request<{ ok: true; message: string }>("POST", `/api/replies/${id}/send`, { text }),

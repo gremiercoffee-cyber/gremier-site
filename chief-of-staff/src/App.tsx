@@ -14,6 +14,7 @@ import Library, { type LibraryTab } from "./pages/Library";
 import Missions from "./pages/Missions";
 import Replies from "./pages/Replies";
 import Tasks from "./pages/Tasks";
+import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
@@ -41,6 +42,11 @@ export default function App() {
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("ideas");
   const [rescheduling, setRescheduling] = useState<Item | null>(null);
   const [toast, setToast] = useState("");
+  // A task report opened from a notification (?report=id&mode=read|brief) or the Tasks page.
+  const [report, setReport] = useState<{ id: string; mode: "read" | "brief" } | null>(() => {
+    const id = params.get("report");
+    return id ? { id, mode: params.get("mode") === "brief" ? "brief" : "read" } : null;
+  });
   // Text to pre-fill in the composer (e.g. "About my mission …: "), without sending it.
   const [draft, setDraft] = useState<string | undefined>();
   const setTyping = (text: string) => setDraft(text);
@@ -56,7 +62,7 @@ export default function App() {
     const onInstall = (e: Event) => { e.preventDefault(); setInstall(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", onInstall);
     // Links like ?ask= are one-shot; keep the address bar clean.
-    if (params.get("ask") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
+    if (params.get("ask") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("report")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
     return () => { window.removeEventListener("cos:unauthorised", onUnauth); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
 
@@ -147,7 +153,7 @@ export default function App() {
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
-        {view === "tasks" && <Tasks refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
+        {view === "tasks" && <Tasks refreshKey={refreshKey} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
         {view === "missions" && <Missions refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => { setTyping(p); }, 0); }} />}
         {view === "library" && <Library tab={libraryTab} onTab={setLibraryTab} onOpenItem={openItem} refreshKey={refreshKey} />}
@@ -195,6 +201,14 @@ export default function App() {
         </div>
       )}
 
+      {report && (
+        <ReportReader id={report.id} autoBrief={report.mode === "brief"} onClose={() => setReport(null)}
+          onBrief={(r) => {
+            setReport(null);
+            openConversation(null);
+            setAsk(`Tell me about my report "${r.name}" (report id ${r.id}): the key points, what changed, and what I should do about it.`);
+          }} />
+      )}
       {rescheduling && (
         <Reschedule item={rescheduling} onClose={() => setRescheduling(null)}
           onSaved={(msg) => { setRescheduling(null); refresh(); setToast(msg); setTimeout(() => setToast(""), 2500); }} />

@@ -1,6 +1,6 @@
 // Chief of Staff service worker: app-shell caching + notification plumbing.
 // API calls are never cached — data always comes fresh from the Worker.
-const CACHE = "cos-shell-v4";
+const CACHE = "cos-shell-v5";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -41,7 +41,9 @@ self.addEventListener("push", (e) => {
 });
 
 const focusOrOpen = (target) =>
-  self.clients.matchAll({ type: "window" }).then((list) => {
+  new URL(target, self.location.origin).origin !== self.location.origin
+    ? self.clients.openWindow(target) // e.g. a Google Doc: open it in its own app/browser
+    : self.clients.matchAll({ type: "window" }).then((list) => {
     for (const c of list) if ("focus" in c) { c.navigate(target); return c.focus(); }
     return self.clients.openWindow(target);
   });

@@ -112,26 +112,50 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="text-sm text-muted py-2">{children}</p>;
 }
 
-/** Tiny markdown renderer for assistant replies: paragraphs, lists, bold. Escapes everything else. */
+/**
+ * Small markdown renderer for replies and reports: headings, bullet/numbered lists, bold, links.
+ * Escapes everything else (React text nodes).
+ */
 export function Markdown({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}/);
   const inline = (s: string) =>
-    s.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : <span key={i}>{part}</span>,
-    );
-  return (
-    <div className="prose-chat">
-      {blocks.map((b, i) => {
-        const lines = b.split("\n");
-        if (lines.every((l) => /^\s*([-*•]|\d+\.)\s+/.test(l))) {
-          const ordered = /^\s*\d+\./.test(lines[0]);
-          const items = lines.map((l, j) => <li key={j}>{inline(l.replace(/^\s*([-*•]|\d+\.)\s+/, ""))}</li>);
-          return ordered ? <ol key={i}>{items}</ol> : <ul key={i}>{items}</ul>;
-        }
-        return <p key={i}>{lines.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l.replace(/^#+\s*/, ""))}</span>)}</p>;
-      })}
-    </div>
-  );
+    s.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
+      if (/^https?:\/\//.test(part)) {
+        return <a key={i} href={part} target="_blank" rel="noreferrer" className="text-accent underline break-all">{part.replace(/^https?:\/\/(www\.)?/, "").slice(0, 48)}</a>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  // Walk line by line so headings, lists and paragraphs can sit next to each other.
+  const out: ReactNode[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  let para: string[] = [];
+  const flushPara = () => { if (para.length) { out.push(<p key={out.length}>{para.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l)}</span>)}</p>); para = []; } };
+  const flushList = () => {
+    if (!list) return;
+    const items = list.items.map((l, j) => <li key={j}>{inline(l)}</li>);
+    out.push(list.ordered ? <ol key={out.length}>{items}</ol> : <ul key={out.length}>{items}</ul>);
+    list = null;
+  };
+  for (const raw of text.split("\n")) {
+    const line = raw.trimEnd();
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    const li = line.match(/^\s*([-*•]|\d+\.)\s+(.*)$/);
+    if (!line.trim()) { flushPara(); flushList(); continue; }
+    if (h) {
+      flushPara(); flushList();
+      out.push(<p key={out.length} className={`${h[1].length <= 2 ? "text-[16px] mt-3" : "text-[15px] mt-2"} font-semibold`}>{inline(h[2])}</p>);
+    } else if (li) {
+      flushPara();
+      const ordered = /\d/.test(li[1]);
+      if (!list || list.ordered !== ordered) { flushList(); list = { ordered, items: [] }; }
+      list.items.push(li[2]);
+    } else {
+      flushList();
+      para.push(line);
+    }
+  }
+  flushPara(); flushList();
+  return <div className="prose-chat">{out}</div>;
 }
 
 /**
