@@ -139,6 +139,8 @@ export interface GoogleAccountStatus {
   email: string;
   /** Docs, Sheets and Drive access granted. */
   workspace: boolean;
+  /** Area its calendar events belong to. */
+  category: string | null;
   last_sync_at: string | null;
   last_error: string | null;
 }

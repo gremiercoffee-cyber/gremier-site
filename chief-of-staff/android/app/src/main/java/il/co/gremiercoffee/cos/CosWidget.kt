@@ -145,6 +145,29 @@ class CosWidget : AppWidgetProvider() {
             mgr.updateAppWidget(id, v)
         }
 
+        /** Partial update for filter / day changes: restyle chips, relabel columns, reload the lists. */
+        fun quickUpdate(c: Context) {
+            val mgr = AppWidgetManager.getInstance(c)
+            val all = ids(c)
+            val filter = Cos.catFilter(c)
+            val muted = c.getColor(R.color.muted)
+            all.forEach { id ->
+                val v = RemoteViews(c.packageName, R.layout.widget)
+                FILTERS.forEach { (key, view) ->
+                    v.setInt(view, "setBackgroundResource", if (key == filter) R.drawable.pill else 0)
+                    v.setTextColor(view, if (key == filter) c.getColor(R.color.accent) else muted)
+                }
+                DAYS.indices.forEach { col ->
+                    val shown = Cos.rows(c, "day$col").size
+                    v.setTextViewText(DAY_LABELS[col], (Cos.day(c, col)?.optString("label") ?: "") + if (shown == 0) " · free" else "")
+                }
+                v.setTextViewText(R.id.tab0, Cos.agendaCount(c).let { n -> if (n > 0) "Agenda $n" else "Agenda" })
+                mgr.partiallyUpdateAppWidget(id, v)
+            }
+            mgr.notifyAppWidgetViewDataChanged(all, R.id.list)
+            DAYS.forEach { mgr.notifyAppWidgetViewDataChanged(all, it) }
+        }
+
         fun schedule(c: Context, on: Boolean) {
             val am = c.getSystemService(AlarmManager::class.java)
             val pi = broadcast(c, 7, ACT_REFRESH)
@@ -167,8 +190,8 @@ class CosWidget : AppWidgetProvider() {
         when (intent.action) {
             ACT_REFRESH -> refreshAll(c)
             ACT_PAGE -> { Cos.setPage(c, v.toIntOrNull() ?: 0); refreshAll(c, fetch = false) }
-            ACT_FILTER -> { Cos.setCatFilter(c, v); refreshAll(c, fetch = false) }
-            ACT_DAYS -> { Cos.setDayOffset(c, Cos.dayOffset(c) + (v.toIntOrNull() ?: 0)); refreshAll(c, fetch = false) }
+            ACT_FILTER -> { Cos.setCatFilter(c, v); quickUpdate(c) }
+            ACT_DAYS -> { Cos.setDayOffset(c, Cos.dayOffset(c) + (v.toIntOrNull() ?: 0)); quickUpdate(c) }
         }
     }
 }

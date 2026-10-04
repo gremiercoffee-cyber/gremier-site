@@ -250,8 +250,9 @@ route("GET", "/api/widget", async (_req, env) => {
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind NOT IN ('idea','waiting') AND due_at > ? AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 20`, t, endOfDay),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind NOT IN ('idea','waiting') AND due_at > ? AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 20`, endOfDay, week),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment') AND due_at IS NULL AND source NOT IN ('gmail','whatsapp') ORDER BY priority, created_at DESC LIMIT 15`),
-    all<CalendarEvent & { account: string }>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
-       WHERE hidden = 0 AND ((all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at >= ? AND start_at < ?))
+    all<CalendarEvent & { category: string | null }>(env, `SELECT ce.id, ce.summary, ce.start_at, ce.end_at, ce.all_day, ce.location, ce.html_link,
+         ga.category FROM calendar_events ce LEFT JOIN google_accounts ga ON ga.email = ce.account
+       WHERE ce.hidden = 0 AND ((ce.all_day = 0 AND ce.start_at >= ? AND ce.start_at < ?) OR (ce.all_day = 1 AND ce.start_at >= ? AND ce.start_at < ?))
        GROUP BY summary, start_at ORDER BY start_at LIMIT 24`,
       new Date(Date.now() - 3600_000).toISOString(), week, new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()), week.slice(0, 10)),
   ]);
@@ -293,7 +294,7 @@ route("GET", "/api/widget", async (_req, env) => {
     const cards: Card[] = [
       ...events.filter((e) => (e.all_day ? e.start_at : localDate(new Date(e.start_at))) === ymd).map((e): Card => ({
         type: "event", id: e.id, title: e.summary, time: e.all_day ? "All day" : `${time(e.start_at)}${e.end_at ? `–${time(e.end_at)}` : ""}`,
-        sort: e.all_day ? "0" : e.start_at, location: e.location ?? "", link: e.html_link ?? "",
+        sort: e.all_day ? "0" : e.start_at, location: e.location ?? "", link: e.html_link ?? "", category: e.category ?? null,
       })),
       ...datedTasks.filter((i) => localDate(new Date(i.due_at!)) === ymd).map((i) => taskCard(i, time(i.due_at!))),
     ].sort((x, y) => x.sort.localeCompare(y.sort));
@@ -409,6 +410,12 @@ route("POST", "/api/google/disconnect", async (req, env) => {
   const { email } = await body<{ email?: string }>(req);
   if (!email) throw new HttpError(400, "email required");
   await disconnectGoogle(env, email);
+  return json({ ok: true });
+});
+route("POST", "/api/google/area", async (req, env) => {
+  const b = await body<{ email?: string; category?: string }>(req);
+  if (!b.email || !["coffee", "yeshiva", "personal"].includes(b.category ?? "")) throw new HttpError(400, "email and category required");
+  await run(env, "UPDATE google_accounts SET category = ? WHERE email = ?", b.category, b.email);
   return json({ ok: true });
 });
 route("POST", "/api/google/sync", async (_req, env) => json(await syncGoogle(env)));

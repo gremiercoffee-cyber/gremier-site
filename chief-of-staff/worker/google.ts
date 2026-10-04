@@ -93,7 +93,7 @@ export async function googleStatus(env: Env): Promise<GoogleStatus> {
     configured: googleConfigured(env),
     connected: accounts.length > 0,
     accounts: accounts.map((a) => ({
-      email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error,
+      email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error, category: (a as Account & { category?: string }).category ?? null,
       workspace: WORKSPACE_SCOPES.every((s) => ((a as Account & { scopes?: string }).scopes ?? "").includes(s)),
     })),
     ai_used_today: b.used, ai_daily_cap: b.cap,
@@ -142,9 +142,12 @@ export async function finishGoogleAuth(env: Env, req: Request): Promise<Response
   if (!email) return back("failed");
 
   await run(env,
-    `INSERT OR REPLACE INTO google_accounts (email, refresh_token, access_token, expires_at, connected_at, scopes)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    email, await seal(env, tok.refresh_token), await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, now(), tok.scope);
+    `INSERT INTO google_accounts (email, refresh_token, access_token, expires_at, connected_at, scopes, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET refresh_token = excluded.refresh_token, access_token = excluded.access_token,
+       expires_at = excluded.expires_at, scopes = excluded.scopes, last_error = NULL`,
+    email, await seal(env, tok.refresh_token), await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, now(), tok.scope,
+    /gremier/i.test(email) ? "coffee" : /aish/i.test(email) ? "yeshiva" : "personal");
   return back("connected");
 }
 

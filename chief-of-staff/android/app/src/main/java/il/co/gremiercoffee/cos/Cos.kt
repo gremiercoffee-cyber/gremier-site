@@ -20,14 +20,14 @@ object Cos {
 
     /** 0 = Agenda (tasks + meetings by day), 1 = People. */
     fun page(c: Context) = prefs(c).getInt("page", 0).coerceIn(0, 1)
-    fun setPage(c: Context, p: Int) = prefs(c).edit().putInt("page", p).putInt("day_offset", 0).apply()
+    fun setPage(c: Context, p: Int) = prefs(c).edit().putInt("page", p).putInt("day_offset", 0).commit()
     /** First day shown on the Calendar page (0, 3 or 6 → steps of three days). */
     fun dayOffset(c: Context) = prefs(c).getInt("day_offset", 0)
-    fun setDayOffset(c: Context, d: Int) = prefs(c).edit().putInt("day_offset", d.coerceIn(0, 4)).apply()
+    fun setDayOffset(c: Context, d: Int) = prefs(c).edit().putInt("day_offset", d.coerceIn(0, 4)).commit()
 
     /** Area filter for To do / People: all | coffee | yeshiva | personal. */
     fun catFilter(c: Context) = prefs(c).getString("cat", "all") ?: "all"
-    fun setCatFilter(c: Context, f: String) = prefs(c).edit().putString("cat", f).apply()
+    fun setCatFilter(c: Context, f: String) = prefs(c).edit().putString("cat", f).commit()
     private fun shows(c: Context, item: JSONObject): Boolean {
         val f = catFilter(c)
         val cat = item.optString("category").takeIf { it.isNotBlank() && it != "null" }
@@ -170,8 +170,8 @@ object Cos {
             kind == "people" -> j.optJSONArray("people")?.let { for (i in 0 until it.length()) it.getJSONObject(i).let { o -> if (shows(c, o)) out += Row(item = o) } }
             kind.startsWith("day") -> day(c, kind.removePrefix("day").toInt())?.optJSONArray("events")?.let {
                 for (i in 0 until it.length()) it.getJSONObject(i).let { card ->
-                    // Meetings always show; tasks follow the area filter.
-                    if (card.optString("type") != "task" || shows(c, card)) out += Row(event = card)
+                    // Tasks and meetings both follow the area filter (meetings by their calendar's area).
+                    if (shows(c, card)) out += Row(event = card)
                 }
             }
         }

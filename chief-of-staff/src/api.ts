@@ -83,6 +83,7 @@ export const api = {
   bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
   googleConnect: () => request<{ url: string }>("POST", "/api/google/connect"),
+  googleArea: (email: string, category: string) => request("POST", "/api/google/area", { email, category }),
   googleDisconnect: (email: string) => request("POST", "/api/google/disconnect", { email }),
   googleSync: () => request<{ events?: number; created?: number; completed?: number; errors?: string[]; error?: string }>("POST", "/api/google/sync"),
 };

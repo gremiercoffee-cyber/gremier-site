@@ -76,11 +76,11 @@ class PopupActivity : Activity() {
     private fun muted(s: String) = text(s, 13f, Color.parseColor("#6A7080"))
 
     private fun pill(label: String, primary: Boolean = false, onClick: () -> Unit) = Button(this).apply {
-        text = label; isAllCaps = false; textSize = 14f; minHeight = 0; minimumHeight = 0
+        text = label; isAllCaps = false; textSize = 13f; minHeight = 0; minimumHeight = 0
         setTextColor(if (primary) Color.WHITE else Color.parseColor("#0E1117"))
         background = GradientDrawable().apply { cornerRadius = 22 * dp; setColor(Color.parseColor(if (primary) "#3540A8" else "#EEF0FA")) }
         setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
-        maxLines = 1
+        maxLines = 2
         setOnClickListener { onClick() }
     }
 

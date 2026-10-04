@@ -184,6 +184,13 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                     <span className="h-9 w-9 shrink-0 rounded-full bg-sunken grid place-items-center text-sm font-semibold uppercase">{a.email[0]}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[15px] truncate">{a.email}</p>
+                      <select value={a.category ?? "personal"} aria-label="Area for this account's calendar"
+                        onChange={async (e) => { await api.googleArea(a.email, e.target.value); setGoogle(await api.googleStatus()); }}
+                        className="mt-0.5 mb-0.5 rounded-full bg-sunken px-2 py-0.5 text-xs outline-none">
+                        <option value="coffee">☕ Coffee calendar</option>
+                        <option value="yeshiva">📚 Yeshiva calendar</option>
+                        <option value="personal">🏠 Personal calendar</option>
+                      </select>
                       <p className={`text-xs truncate ${a.last_error ? "text-danger" : "text-muted"}`}>
                         {a.last_error ?? (a.last_sync_at ? `Calendar & Gmail · synced ${new Date(a.last_sync_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Calendar & Gmail · waiting for first sync")}
                       </p>
