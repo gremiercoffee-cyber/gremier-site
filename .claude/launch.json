@@ -4,8 +4,27 @@
     {
       "name": "static-site",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "serve", "-l", "8123", "."],
+      "runtimeArgs": [
+        "--yes",
+        "serve",
+        "-l",
+        "8123",
+        "."
+      ],
       "port": 8123
+    },
+    {
+      "name": "chief-of-staff-local",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--cwd",
+        "chief-of-staff",
+        "--port",
+        "8787"
+      ],
+      "port": 8787
     }
   ]
 }

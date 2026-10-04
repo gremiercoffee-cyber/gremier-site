@@ -37,18 +37,50 @@ export default function Settings({ settings, onSaved, installPrompt }: {
     else document.documentElement.setAttribute("data-theme", t);
   };
 
+  const [pushState, setPushState] = useState<"unknown" | "on" | "off" | "working">("unknown");
+  const [pushMsg, setPushMsg] = useState("");
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return setPushState("off");
+    navigator.serviceWorker.ready.then((r) => r.pushManager.getSubscription()).then((s) => setPushState(s ? "on" : "off")).catch(() => setPushState("off"));
+  }, []);
+
+  // Ask permission, subscribe this device with the server's VAPID key, and register it.
   const enableNotifications = async () => {
-    if (typeof Notification === "undefined") return;
-    const p = await Notification.requestPermission();
-    setNotif(p);
+    setPushMsg("");
+    if (typeof Notification === "undefined" || !("PushManager" in window)) {
+      setPushMsg("This browser can't receive notifications. On iPhone, open the app from your Home Screen icon first.");
+      return;
+    }
+    setPushState("working");
+    try {
+      const p = await Notification.requestPermission();
+      setNotif(p);
+      if (p !== "granted") throw new Error("Notifications were blocked. Allow them in your phone's settings for this app.");
+      const { key } = await api.pushKey();
+      if (!key) throw new Error("The server isn't set up to send notifications yet.");
+      const reg = await navigator.serviceWorker.ready;
+      const raw = Uint8Array.from(atob(key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw }));
+      await api.subscribePush(sub.toJSON());
+      setPushState("on");
+      setPushMsg("Done. You'll get reminders on this device.");
+    } catch (e) {
+      setPushState("off");
+      setPushMsg((e as Error).message);
+    }
+  };
+  const testNotification = async () => {
+    const r = await api.pushTest().catch(() => ({ sent: 0, failed: 1 }));
+    setPushMsg(r.sent ? "Test sent. It should appear in a few seconds." : "Couldn't send. Try turning alerts on again.");
   };
 
   const field = "w-full rounded-xl bg-sunken px-3 py-2.5 outline-none text-[15px]";
-  const timezones = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [form.timezone];
+  const timezones = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+  if (!timezones.includes(form.timezone)) timezones.unshift(form.timezone);
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+      <h1 className="font-display text-[32px] leading-tight">Settings</h1>
 
       <Card title="You">
         <div className="space-y-3">
@@ -91,10 +123,14 @@ export default function Settings({ settings, onSaved, installPrompt }: {
           </div>
           <div className="flex flex-wrap gap-2">
             {installPrompt && <Button variant="soft" onClick={installPrompt}>Install app</Button>}
-            {notif === "default" && <Button variant="soft" onClick={enableNotifications}>Enable notifications</Button>}
+            {pushState !== "on" && <Button onClick={enableNotifications} disabled={pushState === "working"}>
+              {pushState === "working" ? "Turning on…" : "Turn on notifications"}</Button>}
+            {pushState === "on" && <Button variant="soft" onClick={testNotification}>Send a test notification</Button>}
           </div>
+          {pushMsg && <p className="text-sm">{pushMsg}</p>}
           <p className="text-xs text-muted">
-            Notifications: {notif === "unsupported" ? "not supported in this browser" : notif}. On iPhone, add to Home Screen first (Share → Add to Home Screen).
+            Notifications: {pushState === "on" ? "on for this device" : notif === "denied" ? "blocked in your phone settings" : "off"}.
+            On iPhone, add to Home Screen first (Share → Add to Home Screen) and open the app from that icon.
           </p>
         </div>
       </Card>

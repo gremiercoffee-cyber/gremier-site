@@ -25,7 +25,7 @@ export default function Projects({ onOpenItem, refreshKey }: { onOpenItem: (i: I
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+      <h1 className="font-display text-[32px] leading-tight">Projects</h1>
       <form onSubmit={(e) => { e.preventDefault(); create(); }} className="flex gap-2">
         <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="New project"
           className="flex-1 min-w-0 rounded-xl bg-surface border border-line px-3.5 py-2.5 outline-none text-[15px] focus:border-accent" />

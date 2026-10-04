@@ -13,4 +13,8 @@ export interface Env {
   MODEL_MAIN: string;
   MODEL_FAST: string;
   TIMEZONE: string;
+  /** Web Push: raw P-256 public key (base64url), private key JWK (secret), and contact URL. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_JWK?: string;
+  VAPID_SUBJECT?: string;
 }

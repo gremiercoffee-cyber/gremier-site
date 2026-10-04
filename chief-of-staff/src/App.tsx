@@ -54,7 +54,7 @@ export default function App() {
   return (
     <div className="h-full flex flex-col max-w-2xl mx-auto">
       <header className="pt-safe px-4 flex items-center justify-between h-14 shrink-0">
-        <button onClick={() => setTab("today")} className="flex items-center gap-2 font-semibold">
+        <button onClick={() => setTab("today")} className="flex items-center gap-2.5 font-medium tracking-tight">
           <Logo /> Chief of Staff
         </button>
         <button onClick={() => setTab("settings")} aria-label="Settings" className={`p-2 rounded-xl ${tab === "settings" ? "bg-sunken" : "text-muted"}`}>
@@ -82,7 +82,7 @@ export default function App() {
         )}
       </main>
 
-      <nav className="shrink-0 border-t border-line bg-bg/95 backdrop-blur pb-safe">
+      <nav className="shrink-0 border-t border-line/70 bg-bg/80 backdrop-blur-xl pb-safe">
         <div className="grid grid-cols-5">
           <NavButton active={tab === "today"} onClick={() => setTab("today")} label="Today" icon={<path d="M3 10.5 12 3l9 7.5V21H3z" />} />
           <NavButton active={tab === "chat"} onClick={() => goChat()} label="Chat" icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z" />} />
@@ -110,8 +110,8 @@ function NavButton({ active, onClick, label, icon }: { active: boolean; onClick:
 }
 
 const Logo = () => (
-  <span className="flex gap-0.5">
-    <span className="h-2.5 w-2.5 rounded-full bg-accent" /><span className="h-2.5 w-2.5 rounded-full bg-ink" /><span className="h-2.5 w-2.5 rounded-full bg-muted" />
+  <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-ink text-bg font-display text-[17px] leading-none">
+    C<span className="text-accent">s</span>
   </span>
 );
 
@@ -132,13 +132,13 @@ function Login({ health, onDone }: { health: { configured: boolean } | null; onD
     <div className="h-full grid place-items-center px-6">
       <form className="w-full max-w-xs space-y-4 text-center" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div className="flex justify-center"><Logo /></div>
-        <h1 className="text-2xl font-semibold">Chief of Staff</h1>
+        <h1 className="font-display text-[34px] leading-tight">Chief of Staff</h1>
         {health && !health.configured ? (
           <p className="text-sm text-muted">Set the <code>COS_ACCESS_TOKEN</code> secret on the Worker to finish setup.</p>
         ) : (
           <>
             <input type="password" autoFocus value={code} onChange={(e) => setCode(e.target.value)} placeholder="Passcode"
-              className="w-full rounded-xl bg-surface border border-line px-4 py-3 outline-none text-center focus:border-accent" />
+              className="w-full rounded-full bg-surface border border-line px-5 py-3 outline-none text-center focus:border-accent shadow-card" />
             {error && <p className="text-danger text-sm">{error}</p>}
             <Button type="submit" className="w-full py-3" disabled={!code}>Unlock</Button>
           </>

@@ -32,7 +32,7 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
     <div className="space-y-4">
       <header className="pt-1">
         <p className="text-muted text-sm">{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</p>
-        <h1 className="text-2xl font-semibold tracking-tight">{greeting}{name ? `, ${name}` : ""}.</h1>
+        <h1 className="font-display text-[32px] leading-tight">{greeting}{name ? `, ${name}` : ""}.</h1>
       </header>
 
       <button onClick={() => goChat()} className="w-full text-left rounded-2xl bg-surface border border-line px-4 py-3.5 text-muted hover:border-accent transition">

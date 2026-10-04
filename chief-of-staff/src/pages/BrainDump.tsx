@@ -29,7 +29,7 @@ export default function BrainDump({ serverTranscription, onDataChanged }: { serv
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Brain dump</h1>
+        <h1 className="font-display text-[32px] leading-tight">Brain dump</h1>
         <p className="text-muted text-sm">Get it all out of your head. I'll sort it into tasks, reminders, commitments, waiting-fors and ideas.</p>
       </header>
       <div className="rounded-2xl bg-surface border border-line p-3">

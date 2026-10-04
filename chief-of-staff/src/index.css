@@ -3,7 +3,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-sunken: var(--sunken);
@@ -16,29 +17,33 @@
   --color-ok: var(--ok);
 }
 
+/* Cool graphite and porcelain with a single indigo accent. */
 :root {
-  --bg: #f7f5f0;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --sunken: #efece5;
-  --ink: #1f1e1c;
-  --muted: #74716b;
-  --line: #e4e0d7;
-  --accent: #d48a1f;
+  --sunken: #eceef2;
+  --ink: #0e1117;
+  --muted: #6a7080;
+  --line: #e2e5eb;
+  --accent: #3540a8;
   --accent-ink: #ffffff;
-  --danger: #c2412d;
-  --ok: #3f7d4e;
+  --danger: #c23b3b;
+  --ok: #2c7a5a;
+  --shadow: 0 1px 2px rgb(14 17 23 / 0.04), 0 8px 24px -12px rgb(14 17 23 / 0.10);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #151514; --surface: #1f1f1d; --sunken: #262624; --ink: #f0eee9; --muted: #a09d96;
-    --line: #33322f; --accent: #e9a23b; --accent-ink: #1a1203; --danger: #ef6b55; --ok: #6fb07f;
+    --bg: #0a0b0f; --surface: #13151b; --sunken: #1b1e26; --ink: #eceef3; --muted: #8a8fa0;
+    --line: #242833; --accent: #a7b1ff; --accent-ink: #0a0b0f; --danger: #f07a7a; --ok: #5fc49c;
+    --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -16px rgb(0 0 0 / 0.6);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #151514; --surface: #1f1f1d; --sunken: #262624; --ink: #f0eee9; --muted: #a09d96;
-  --line: #33322f; --accent: #e9a23b; --accent-ink: #1a1203; --danger: #ef6b55; --ok: #6fb07f;
+  --bg: #0a0b0f; --surface: #13151b; --sunken: #1b1e26; --ink: #eceef3; --muted: #8a8fa0;
+  --line: #242833; --accent: #a7b1ff; --accent-ink: #0a0b0f; --danger: #f07a7a; --ok: #5fc49c;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -16px rgb(0 0 0 / 0.6);
   color-scheme: dark;
 }
 
@@ -49,6 +54,8 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+  letter-spacing: -0.006em;
   -webkit-tap-highlight-color: transparent;
 }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
@@ -58,3 +65,5 @@ body {
 .prose-chat ol { list-style: decimal; padding-left: 1.25rem; margin: 0.25rem 0; }
 @keyframes pulse-ring { 0% { transform: scale(1); opacity: .6 } 100% { transform: scale(1.8); opacity: 0 } }
 .pulse-ring::before { content: ""; position: absolute; inset: 0; border-radius: 9999px; background: var(--accent); animation: pulse-ring 1.4s ease-out infinite; }
+.shadow-card { box-shadow: var(--shadow); }
+.font-display { font-weight: 400; letter-spacing: -0.01em; }

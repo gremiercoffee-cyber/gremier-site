@@ -6,12 +6,15 @@ import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { getProvider } from "./ai";
 import { all, first, getSettings, localParts, now, run, uid } from "./db";
+import { sendPush } from "./push";
 
 const WAITING_NUDGE_DAYS = 4;
 
 async function addNudge(env: Env, type: string, title: string, body = "", itemId: string | null = null) {
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     uid(), type, title, body, itemId, now());
+  // Mirror every nudge to the lock screen; the tag collapses repeats for the same item.
+  await sendPush(env, { title, body, url: "/?tab=today", tag: itemId ?? type });
 }
 
 export async function runProactive(env: Env, opts: { forceBriefing?: boolean } = {}) {

@@ -30,6 +30,9 @@ TRANSCRIBE_MODEL = "gpt-transcribe"
 REALTIME_MODEL = "gpt-realtime-2.1-mini"
 REALTIME_TRANSCRIBE_MODEL = "gpt-transcribe"
 TIMEZONE = "UTC"
+# Web Push: public half of the VAPID key (private half is the VAPID_PRIVATE_JWK secret)
+VAPID_PUBLIC_KEY = "BKQ-bHmoAA3cPy3kzbG6suVI3FyU7nnLIDp8Nln7w6Br_v8nc9CNIemlkFXkx88kah7CXzee7M6uc7NBfTzen_I"
+VAPID_SUBJECT = "https://chief-of-staff.gremiercoffee.workers.dev"
 
 # Secrets (never in the frontend) â€” set with `wrangler secret put <NAME>`:
 #   COS_ACCESS_TOKEN  passcode the app uses to talk to the API

@@ -29,7 +29,7 @@ export default function Lists({ onOpenItem, onNew, refreshKey }: {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Lists</h1>
+        <h1 className="font-display text-[32px] leading-tight">Lists</h1>
         <Button variant="soft" onClick={() => onNew(kind)}>+ New</Button>
       </header>
       <div className="flex gap-1.5 overflow-x-auto -mx-4 px-4 pb-1">

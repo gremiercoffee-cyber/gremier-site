@@ -5,10 +5,10 @@ import { createRecognizer, speechRecognitionAvailable, startRecording } from "..
 
 export function Card({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl bg-surface border border-line p-4 ${className}`}>
+    <section className={`rounded-[20px] bg-surface border border-line/70 shadow-card p-5 ${className}`}>
       {(title || action) && (
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">{title}</h2>
+          <h2 className="text-[11px] font-medium text-muted uppercase tracking-[0.14em]">{title}</h2>
           {action}
         </div>
       )}
@@ -31,18 +31,18 @@ export function Button({
   }[variant];
   return (
     <button type={type} title={title} onClick={onClick} disabled={disabled}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition disabled:opacity-40 ${styles} ${className}`}>
+      className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition disabled:opacity-40 ${styles} ${className}`}>
       {children}
     </button>
   );
 }
 
 export const KIND_META: Record<ItemKind, { label: string; plural: string; color: string }> = {
-  task: { label: "Task", plural: "Tasks", color: "#d48a1f" },
-  reminder: { label: "Reminder", plural: "Reminders", color: "#4a7fc1" },
-  commitment: { label: "Commitment", plural: "Commitments", color: "#9a5bb5" },
-  waiting: { label: "Waiting for", plural: "Waiting for", color: "#3f7d4e" },
-  idea: { label: "Idea", plural: "Ideas", color: "#8f8d89" },
+  task: { label: "Task", plural: "Tasks", color: "#6b78e5" },
+  reminder: { label: "Reminder", plural: "Reminders", color: "#3a9bc4" },
+  commitment: { label: "Commitment", plural: "Commitments", color: "#a46bd6" },
+  waiting: { label: "Waiting for", plural: "Waiting for", color: "#3fa883" },
+  idea: { label: "Idea", plural: "Ideas", color: "#8a8fa0" },
 };
 
 export function formatDue(iso: string | null): { text: string; overdue: boolean } | null {

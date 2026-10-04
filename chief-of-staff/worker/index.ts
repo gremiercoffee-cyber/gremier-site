@@ -7,6 +7,7 @@ import {
   HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, now, run, saveSettings, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
+import { pushConfigured, sendPush } from "./push";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
 const json = (data: unknown, status = 200) =>
@@ -203,6 +204,9 @@ route("POST", "/api/push/subscribe", async (req, env) => {
     sub.endpoint, JSON.stringify(sub), now());
   return json({ ok: true });
 });
+route("GET", "/api/push/key", async (_req, env) => json({ key: pushConfigured(env) ? env.VAPID_PUBLIC_KEY : null }));
+route("POST", "/api/push/test", async (_req, env) =>
+  json(await sendPush(env, { title: "Notifications are on", body: "This is how your reminders will arrive.", url: "/?tab=today", tag: "test" })));
 route("GET", "/api/export", async (_req, env) => {
   const [items, projects, memories, messages] = await Promise.all([
     all(env, "SELECT * FROM items"), all(env, "SELECT * FROM projects"),
@@ -216,7 +220,7 @@ export default {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     if (url.pathname === "/api/health") {
-      return json({ ok: true, configured: !!env.COS_ACCESS_TOKEN, model: !!env.OPENAI_API_KEY, transcription: !!env.OPENAI_API_KEY });
+      return json({ ok: true, configured: !!env.COS_ACCESS_TOKEN, model: !!env.OPENAI_API_KEY, transcription: !!env.OPENAI_API_KEY, push: pushConfigured(env) });
     }
     if (!env.COS_ACCESS_TOKEN) return json({ error: "Server not configured: set the COS_ACCESS_TOKEN secret." }, 503);
     if (!authorised(req, env)) return json({ error: "unauthorised" }, 401);
