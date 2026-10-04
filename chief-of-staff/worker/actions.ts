@@ -14,6 +14,10 @@ import { now, uid } from "./db";
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
+  if (n.type === "postponed") return [{ id: "done", title: "Do it now ✓" }, { id: "breakdown", title: "Break it down", opens: true },
+    { id: "notneeded", title: "Drop it" }, { id: "delegate", title: "Hand it off", opens: true }, { id: "reschedule", title: "Reschedule", opens: true }];
+  if (n.type === "mission_ask") return [{ id: "answer", title: "Answer…", opens: true }, { id: "ok", title: "Later" }];
+  if (n.type === "mission_progress" || n.type === "mission_done") return [{ id: "ok", title: "Got it" }];
   if (!n.item_id) return [{ id: "ok", title: n.type === "digest" || n.type === "event" ? "Got it" : "Dismiss" }];
   // Every alert about a task: the same four, in this order. Android shows the first three on the
   // lock screen; the app shows all of them plus the extras for that kind of alert.
@@ -96,7 +100,7 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       }
       break;
     case "snooze2h":
-      if (item) { await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", new Date(Date.now() + 2 * 3600_000).toISOString(), item.id); message = "I'll check again in 2 hours."; }
+      if (item) { await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL, snooze_count = snooze_count + 1 WHERE id = ?", new Date(Date.now() + 2 * 3600_000).toISOString(), item.id); message = "I'll check again in 2 hours."; }
       break;
     case "notneeded":
       if (item) { await updateItem(env, item.id, { status: "dropped" }); message = "Dropped. No reply needed."; }
@@ -106,6 +110,16 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       break;
     case "snooze3d":
       if (item) { await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", new Date(Date.now() - 86400_000).toISOString(), item.id); message = "I'll check again in 3 days."; }
+      break;
+    case "breakdown":
+      if (item) { open = `/?ask=${encodeURIComponent(`Help me break "${item.title}" into small steps I can actually do, and schedule them.`)}`; message = "Opening…"; }
+      break;
+    case "delegate":
+      if (item) { open = `/?ask=${encodeURIComponent(`I want to hand off "${item.title}" to someone else. Help me pick who and draft the message.`)}`; message = "Opening…"; }
+      break;
+    case "answer":
+      open = `/?ask=${encodeURIComponent(`About my mission question: "${n.body}" — my answer: `)}`;
+      message = "Opening…";
       break;
     case "draft":
     case "nudge":

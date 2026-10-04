@@ -103,12 +103,16 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   next.updated_at = now();
   // A rescheduled item should be able to remind again.
   const resetReminder = input.due_at !== undefined && next.due_at !== existing.due_at;
+  // Pushed later after it had already come due (or was about to): that's a postponement.
+  const postponed = resetReminder && !!existing.due_at && !!next.due_at && next.due_at > existing.due_at
+    && new Date(existing.due_at).getTime() <= Date.now() + 3600_000;
   await run(
     env,
     `UPDATE items SET kind=?, title=?, notes=?, status=?, priority=?, due_at=?, person=?, project_id=?, category=?,
-       completed_at=?, updated_at=?, reminded_at = CASE WHEN ? THEN NULL ELSE reminded_at END WHERE id=?`,
+       completed_at=?, updated_at=?, reminded_at = CASE WHEN ? THEN NULL ELSE reminded_at END,
+       heads_up_at = CASE WHEN ? THEN NULL ELSE heads_up_at END, snooze_count = snooze_count + ? WHERE id=?`,
     next.kind, next.title, next.notes, next.status, next.priority, next.due_at, next.person,
-    next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, id,
+    next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, resetReminder ? 1 : 0, postponed ? 1 : 0, id,
   );
   return next;
 }

@@ -3,9 +3,10 @@
  * VAPID_PUBLIC_KEY is the raw P-256 public key (base64url); VAPID_PRIVATE_JWK is the private key as a JWK.
  */
 import type { Env } from "./env";
-import { all, now, run, uid } from "./db";
+import { all, first, now, run, uid } from "./db";
 import { actionsFor, signNudge } from "./actions";
 import { isShabbat } from "./shabbat";
+import { urgencyFor } from "./policy";
 import { getSettings } from "./db";
 
 export interface PushMessage {
@@ -100,13 +101,18 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
   return { sent, failed };
 }
 
-/** Records a nudge on the Today screen and mirrors it to the lock screen. */
+/**
+ * Records a nudge (home screen, widget, next briefing) and buzzes the phone only when the
+ * interruption rule says it can't wait (policy.ts). Never buzzes on Shabbat.
+ */
 export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null) {
   const id = uid();
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     id, type, title, body, itemId, now());
   // Shabbat: keep it on the Today screen, but don't buzz. A summary goes out after Shabbat.
   if (isShabbat((await getSettings(env)).timezone)) return;
+  const prio = itemId ? (await first<{ priority: number }>(env, "SELECT priority FROM items WHERE id = ?", itemId))?.priority : undefined;
+  if (urgencyFor(type, prio) === "later") return; // waits quietly for the next briefing / check-in
   // The tag collapses repeats for the same item; buttons act without opening the app.
   await sendPush(env, {
     title, body, url: "/", tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),

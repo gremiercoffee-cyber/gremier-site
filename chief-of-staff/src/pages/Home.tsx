@@ -10,13 +10,15 @@ type LiveState = "off" | LiveStatus;
  * The main screen: your Chief of Staff. With no conversation open it is a calm "I'm here" presence
  * with whatever needs you; once you talk or type it becomes the conversation.
  */
-export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, serverTranscription, onDataChanged, refreshKey }: {
+export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, draft, onDraftUsed, serverTranscription, onDataChanged, refreshKey }: {
   name: string;
   conversationId: string | null;
   onConversation: (id: string | null) => void;
   initialAsk?: string;
   startVoice?: boolean;
   startTyping?: boolean;
+  draft?: string;
+  onDraftUsed?: () => void;
   serverTranscription: boolean;
   onDataChanged: () => void;
   refreshKey: number;
@@ -42,6 +44,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   useEffect(() => () => callRef.current?.hangUp(), []);
   useEffect(() => { if (startVoice) startLive(); }, [startVoice]);
   useEffect(() => { if (initialAsk) send(initialAsk); }, [initialAsk]);
+  useEffect(() => { if (draft) { setTyping(true); setInput(draft); onDraftUsed?.(); } }, [draft]);
 
   async function send(text: string, mode: "text" | "dictation" = "text") {
     const t = text.trim();

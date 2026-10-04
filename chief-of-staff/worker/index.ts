@@ -11,6 +11,7 @@ import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
+import { updateMission } from "./missions";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -214,6 +215,14 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Missions ----------------------------------------------------------------------
+route("GET", "/api/missions", async (_req, env) =>
+  json(await all(env, "SELECT * FROM missions ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, updated_at DESC LIMIT 50")));
+route("POST", "/api/missions/:id", async (req, env, [id]) => {
+  const b = await body<{ status?: string }>(req);
+  return json(await updateMission(env, id, { status: b.status, note: b.status ? `You set it to ${b.status}.` : undefined }));
+});
+
 // ---- Search everything ----------------------------------------------------------
 route("GET", "/api/search", async (req, env) => {
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim().slice(0, 100);

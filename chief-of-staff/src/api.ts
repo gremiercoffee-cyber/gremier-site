@@ -2,6 +2,11 @@ import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
+export interface MissionRow {
+  id: string; goal: string; category: string | null; status: string; steps: string; log: string;
+  waiting_on_user: string | null; next_run_at: string | null; updated_at: string;
+}
+
 export interface Person {
   id: string; name: string; role: string; email: string | null; phone: string | null; whatsapp_name: string | null;
   preferred_channel: string | null; notes: string;
@@ -64,6 +69,8 @@ export const api = {
   memories: () => request<Memory[]>("GET", "/api/memories"),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
   people: () => request<Person[]>("GET", "/api/people"),
+  missions: () => request<MissionRow[]>("GET", "/api/missions"),
+  setMission: (id: string, status: string) => request("POST", `/api/missions/${id}`, { status }),
   search: (q: string) => request<{
     q: string; items: Item[]; memories: Memory[]; people: Person[]; projects: Project[]; events: CalendarEvent[];
     conversations: { conversation_id: string | null; title: string | null; role: string; content: string; created_at: string }[];

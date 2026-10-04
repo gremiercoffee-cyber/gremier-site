@@ -11,11 +11,12 @@ import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
 import Library, { type LibraryTab } from "./pages/Library";
+import Missions from "./pages/Missions";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
-type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library" };
+type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Missions" };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -38,6 +39,9 @@ export default function App() {
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("ideas");
   const [rescheduling, setRescheduling] = useState<Item | null>(null);
   const [toast, setToast] = useState("");
+  // Text to pre-fill in the composer (e.g. "About my mission …: "), without sending it.
+  const [draft, setDraft] = useState<string | undefined>();
+  const setTyping = (text: string) => setDraft(text);
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null);
 
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -131,7 +135,7 @@ export default function App() {
         {view === "home" && (
           <Home name={settings?.name ?? ""} conversationId={conversationId}
             onConversation={(id) => { setConversationId(id); loadConversations(); }}
-            initialAsk={ask} startVoice={startVoice} startTyping={startTyping} serverTranscription={!!health?.transcription}
+            initialAsk={ask} startVoice={startVoice} startTyping={startTyping || !!draft} draft={draft} onDraftUsed={() => setDraft(undefined)} serverTranscription={!!health?.transcription}
             onDataChanged={refresh} refreshKey={refreshKey} />
         )}
         {view === "today" && <Today name={settings?.name ?? ""} onOpenItem={openItem} goChat={(p) => { openConversation(null); setAsk(p); }} refreshKey={refreshKey} />}
@@ -141,6 +145,7 @@ export default function App() {
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
+        {view === "missions" && <Missions refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => { setTyping(p); }, 0); }} />}
         {view === "library" && <Library tab={libraryTab} onTab={setLibraryTab} onOpenItem={openItem} refreshKey={refreshKey} />}
         {view === "settings" && settings && (
           <Settings settings={settings} onSaved={setSettings}
@@ -163,6 +168,7 @@ export default function App() {
               <DrawerItem active={view === "lists"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists" />
               <DrawerItem active={view === "projects"} onClick={() => go("projects")} icon={<path d="M3 7h6l2 2h10v10H3z" />} label="Projects" />
               <DrawerItem active={view === "dump"} onClick={() => go("dump")} icon={<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3" />} label="Brain dump" />
+              <DrawerItem active={view === "missions"} onClick={() => go("missions")} icon={<path d="M4 20V4l8 4 8-4v16l-8-4z" />} label="Missions" />
               <DrawerItem active={view === "library" && libraryTab === "ideas"} onClick={() => { setLibraryTab("ideas"); go("library"); }} icon={<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />} label="Ideas & notes" />
               <DrawerItem active={view === "library" && libraryTab === "people"} onClick={() => { setLibraryTab("people"); go("library"); }} icon={<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6" /></>} label="People" />
               <DrawerItem active={view === "library" && libraryTab === "memory"} onClick={() => { setLibraryTab("memory"); go("library"); }} icon={<path d="M12 4a4 4 0 0 0-4 4 4 4 0 0 0-3 6.5A4 4 0 0 0 8 20h8a4 4 0 0 0 3-5.5A4 4 0 0 0 16 8a4 4 0 0 0-4-4zM12 4v16" />} label="Memory" />

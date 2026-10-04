@@ -9,6 +9,7 @@ import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upc
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
 import { findPeople, memoryContext, noteContact, recallMemories, savePerson } from "./memory";
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
+import { missionsSummary, startMission, updateMission } from "./missions";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -20,6 +21,8 @@ What you do:
 - A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
 
 Areas: everything belongs to one of three areas: coffee (Gremier Coffee business: roasting, orders, deliveries, suppliers, customers), yeshiva (the yeshiva: rabbis, students, classes, staff), personal (family, home, health, money, errands). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly.
+
+Missions: when the user hands you a goal that takes several steps over days ("get every rabbi's list by Monday", "sort out the supplier for green beans"), confirm the plan in one or two lines and start a mission with start_mission. You then work on it in the background on a schedule, report progress in the briefing, and ask only when stuck. When the user answers a mission's question, or says pause/stop/cancel, use update_mission. Don't start a mission for something that's a single task.
 
 Memory, like a person with a good brain:
 - "People you know" is your address book. When the user mentions someone by role or name ("my boss", "the accountant", "Avi") look there first.
@@ -94,6 +97,8 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   lines.push(bridge.configured
     ? `- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve). Their computer is ${bridge.online ? "online" : "offline right now, so approved messages send when it's back"}. Actionable incoming WhatsApps arrive as items with source whatsapp.`
     : "- WhatsApp: not set up yet.");
+  const missions = await missionsSummary(env);
+  if (missions) lines.push("", "## Missions (working in the background)", missions);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
   return lines.join("\n");
 }
@@ -133,6 +138,42 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Read the latest messages of a Gmail thread by id.",
       input_schema: { type: "object", properties: { thread_id: { type: "string" }, account: { type: "string" } }, required: ["thread_id"] },
       handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
+    },
+    {
+      name: "start_mission",
+      description: "Start a background mission for a multi-step goal the user authorized. Give a short plan of steps; you'll work through them on a schedule.",
+      input_schema: {
+        type: "object",
+        properties: {
+          goal: { type: "string" },
+          steps: { type: "array", items: { type: "string" }, description: "3-8 concrete steps" },
+          category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          start_in_hours: { type: "number", description: "0 to begin right away" },
+        },
+        required: ["goal", "steps"],
+      },
+      handler: async (input) => {
+        const m = await startMission(env, String(input.goal), (input.steps as string[]) ?? [], input.category as string | undefined, Number(input.start_in_hours) || 0);
+        note("start_mission", `Mission started: ${m.goal}`);
+        return m;
+      },
+    },
+    {
+      name: "update_mission",
+      description: "Update a mission: record the user's answer to its question (resumes it), pause, resume (status active), cancel, or mark done.",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" }, answer: { type: "string" }, note: { type: "string" },
+          status: { type: "string", enum: ["active", "paused", "done", "cancelled"] },
+        },
+        required: ["id"],
+      },
+      handler: async (input) => {
+        const r = await updateMission(env, String(input.id), input as never);
+        note("update_mission", `Mission ${r.status}`);
+        return r;
+      },
     },
     {
       name: "save_person",
