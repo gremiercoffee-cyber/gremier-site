@@ -4,7 +4,7 @@ import { api } from "../api";
 import { Button, Card, Empty, ItemRow, timeAgo } from "../components/ui";
 
 export type LibraryTab = "dump" | "ideas" | "trackers" | "people" | "memory" | "dumps";
-const TABS: [LibraryTab, string][] = [["dump", "Brain dump"], ["ideas", "Ideas"], ["memory", "Memory"]];
+const TABS: [LibraryTab, string][] = [["memory", "What I know"], ["dump", "Brain dump"], ["ideas", "Ideas"]];
 const AREAS: [string, string][] = [["all", "All"], ["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]];
 
 /** Everything your Chief of Staff has organized, to browse: ideas, people, memories, past brain dumps. */
@@ -50,21 +50,7 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump,
         </Card>
       )}
 
-      {tab === "memory" && (
-        <Card title={`Memory (${memories.length})`}>
-          {memories.length === 0 ? <Empty>Nothing remembered yet.</Empty> : (
-            <ul className="divide-y divide-line">
-              {memories.map((m) => (
-                <li key={m.id} className="py-2 flex gap-2 items-start">
-                  <span className="text-[10px] uppercase tracking-wide text-muted bg-sunken rounded px-1.5 py-0.5 mt-0.5">{m.category}</span>
-                  <p className="flex-1 text-sm">{m.content}</p>
-                  <button className="text-xs text-muted hover:text-danger" onClick={async () => { await api.deleteMemory(m.id); load(); }}>Forget</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
+      {tab === "memory" && <MemoryReview memories={memories} reload={load} />}
 
       {tab === "dumps" && (
         <Card title={`Brain dumps (${dumps.length})`}>
@@ -145,5 +131,92 @@ export function People({ refreshKey }: { refreshKey: number }) {
             </ul>
           )}
         </Card>
+  );
+}
+
+const MEM_AREAS: [string, string][] = [["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"], ["", "General"]];
+const KIND_LABEL: Record<string, string> = { person: "Who's who", schedule: "Schedule", preference: "Preference" };
+
+/** What I picked up (to review) and what I know (confirmed), grouped by area. */
+function MemoryReview({ memories, reload }: { memories: Memory[]; reload: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pending = memories.filter((m) => m.status === "suggested");
+  const known = memories.filter((m) => m.status !== "suggested");
+  const act = async (id: string, action: "accept" | "edit" | "ignore", content?: string) => {
+    await api.reviewMemory(id, action, content); setEditing(null); reload();
+  };
+  const learn = async () => { setBusy(true); try { await api.learnNow(); } catch { /* shown as nothing new */ } setBusy(false); reload(); };
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="flex items-center justify-between px-1 mb-1.5">
+          <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted">To review{pending.length ? <span className="ml-1.5 font-normal opacity-70">{pending.length}</span> : null}</h2>
+          <button onClick={learn} disabled={busy} className="text-xs text-accent">{busy ? "Looking…" : "Look for more now"}</button>
+        </div>
+        {pending.length === 0 ? <Empty>Nothing to review. I'll keep picking things up from your chats, WhatsApp, email and calendar.</Empty> : (
+          <div className="space-y-2">
+            {pending.map((m) => (
+              <div key={m.id} className="rounded-2xl bg-surface border border-accent/30 p-4">
+                <p className="text-[11px] uppercase tracking-wide text-accent">
+                  I sensed{KIND_LABEL[m.category] ? ` · ${KIND_LABEL[m.category]}` : ""}{m.area ? ` · ${MEM_AREAS.find(([k]) => k === m.area)?.[1] ?? m.area}` : ""}
+                </p>
+                {editing === m.id ? (
+                  <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} dir="auto"
+                    className="mt-1 w-full rounded-xl border border-line bg-sunken p-2 text-[15px]" />
+                ) : (
+                  <p className="text-[15px] leading-snug mt-0.5" dir="auto">{m.content}</p>
+                )}
+                {m.question && editing !== m.id && <p className="text-sm text-muted mt-1">{m.question}</p>}
+                {m.evidence && <p className="text-xs text-muted mt-1">Seen in: {m.evidence}</p>}
+                <div className="flex gap-2 mt-3">
+                  {editing === m.id ? (
+                    <>
+                      <Button onClick={() => act(m.id, "edit", text)}>Save</Button>
+                      <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button onClick={() => act(m.id, "accept")}>That's right</Button>
+                      <Button variant="soft" onClick={() => { setEditing(m.id); setText(m.content); }}>Change</Button>
+                      <Button variant="ghost" onClick={() => act(m.id, "ignore")}>Ignore</Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {MEM_AREAS.map(([area, label]) => {
+        const list = known.filter((m) => (m.area ?? "") === area);
+        if (!list.length) return null;
+        return (
+          <section key={area}>
+            <h2 className="px-1 mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted">{label}<span className="ml-1.5 font-normal opacity-70">{list.length}</span></h2>
+            <ul className="rounded-2xl bg-surface border border-line px-4 divide-y divide-line">
+              {list.map((m) => (
+                <li key={m.id} className="py-2.5 flex gap-2 items-start">
+                  {editing === m.id ? (
+                    <div className="flex-1">
+                      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} dir="auto" className="w-full rounded-xl border border-line bg-sunken p-2 text-sm" />
+                      <div className="flex gap-2 mt-1"><Button onClick={() => act(m.id, "edit", text)}>Save</Button><Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="flex-1 text-sm" dir="auto" onClick={() => { setEditing(m.id); setText(m.content); }}>{m.content}</p>
+                      <button className="text-xs text-muted hover:text-danger" onClick={async () => { if (window.confirm("Forget this?")) { await api.deleteMemory(m.id); reload(); } }}>Forget</button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+      {known.length === 0 && pending.length === 0 && <Empty>Nothing remembered yet.</Empty>}
+    </div>
   );
 }

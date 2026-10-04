@@ -27,7 +27,7 @@ export default function App() {
   const [health, setHealth] = useState<{ configured: boolean; model: boolean; transcription: boolean } | null>(null);
   const params = new URLSearchParams(location.search);
   const legacyTab = params.get("tab");
-  const [view, setView] = useState<View>(legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
+  const [view, setView] = useState<View>(legacyTab === "review" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
   const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? undefined);
   const [startVoice] = useState(params.get("voice") === "1");
   const [startTyping] = useState(params.get("type") === "1");
@@ -38,7 +38,7 @@ export default function App() {
   const [sheet, setSheet] = useState<{ item: Item | null; kind?: ItemKind } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
-  const [libraryTab, setLibraryTab] = useState<LibraryTab>("dump");
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>(legacyTab === "review" ? "memory" : "dump");
   const [rescheduling, setRescheduling] = useState<Item | null>(null);
   const [toast, setToast] = useState("");
   // A task report opened from a notification (?report=id&mode=read|brief) or the Tasks page.

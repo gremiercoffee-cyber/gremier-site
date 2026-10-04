@@ -50,7 +50,7 @@ export async function recallMemories(env: Env, text: string, limit = RECALLED): 
   if (!q) return [];
   try {
     return await all<Memory>(env,
-      `SELECT m.* FROM memories_fts f JOIN memories m ON m.rowid = f.rowid WHERE memories_fts MATCH ? ORDER BY rank LIMIT ?`, q, limit);
+      `SELECT m.* FROM memories_fts f JOIN memories m ON m.rowid = f.rowid WHERE memories_fts MATCH ? AND m.status != 'ignored' ORDER BY rank LIMIT ?`, q, limit);
   } catch {
     return [];
   }
@@ -70,11 +70,11 @@ export async function findPeople(env: Env, text: string, limit = 8): Promise<Per
 export async function memoryContext(env: Env, query = ""): Promise<string> {
   const [people, core] = await Promise.all([
     all<Person>(env, "SELECT * FROM people ORDER BY (role != '') DESC, COALESCE(last_contact_at, updated_at) DESC LIMIT ?", CORE_PEOPLE),
-    all<Memory>(env, "SELECT * FROM memories ORDER BY importance ASC, updated_at DESC LIMIT ?", CORE_MEMORIES),
+    all<Memory>(env, "SELECT * FROM memories WHERE status = 'confirmed' ORDER BY importance ASC, updated_at DESC LIMIT ?", CORE_MEMORIES),
   ]);
   const coreIds = new Set(core.map((m) => m.id));
   const recalled = query ? (await recallMemories(env, query)).filter((m) => !coreIds.has(m.id)) : [];
-  const total = await first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM memories");
+  const total = await first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM memories WHERE status != 'ignored'");
 
   const lines = ["## People you know"];
   lines.push(people.length ? people.map(personLine).join("\n") : "- (none saved yet)");
@@ -82,7 +82,7 @@ export async function memoryContext(env: Env, query = ""): Promise<string> {
   lines.push(core.length ? core.map((m) => `- [${m.category}] ${m.content} (id ${m.id})`).join("\n") : "- (nothing yet)");
   if (recalled.length) {
     lines.push("", "## Memory: related to this message");
-    lines.push(recalled.map((m) => `- [${m.category}] ${m.content} (id ${m.id})`).join("\n"));
+    lines.push(recalled.map((m) => `- [${m.category}] ${m.content}${m.status === "suggested" ? " (unconfirmed guess, not yet reviewed by the user)" : ""} (id ${m.id})`).join("\n"));
   }
   if ((total?.n ?? 0) > core.length + recalled.length) lines.push(`(More memories exist; use recall to search them.)`);
   return lines.join("\n");

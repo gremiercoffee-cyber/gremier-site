@@ -7,6 +7,7 @@ import {
   HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
+import { learnPass, reviewMemory } from "./learn";
 import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
@@ -209,7 +210,12 @@ route("DELETE", "/api/projects/:id", async (_req, env, [id]) => {
 
 // ---- Memory ----------------------------------------------------------------
 route("GET", "/api/memories", async (_req, env) =>
-  json(await all<Memory>(env, "SELECT * FROM memories ORDER BY category, updated_at DESC")));
+  json(await all<Memory>(env, "SELECT * FROM memories WHERE status != 'ignored' ORDER BY status = 'suggested' DESC, area, updated_at DESC")));
+route("POST", "/api/memories/:id/review", async (req, env, [id]) => {
+  const b = await body<{ action?: string; content?: string }>(req);
+  return json(await reviewMemory(env, id, String(b.action), b.content));
+});
+route("POST", "/api/learn", async (_req, env) => json(await learnPass(env, true)));
 route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
 route("DELETE", "/api/people/:id", async (_req, env, [id]) => {
   await run(env, "DELETE FROM people WHERE id = ?", id);
@@ -584,6 +590,7 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
-    ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env)).then(() => undefined));
+    ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+      .then(() => learnPass(env)).catch((e) => console.error("learn", e)).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;

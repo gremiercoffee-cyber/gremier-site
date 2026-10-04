@@ -45,7 +45,7 @@ Memory, like a person with a good brain:
 - "People you know" is your address book. When the user mentions someone by role or name ("my boss", "the accountant", "Avi") look there first.
 - If you need someone you don't know yet (no person with that role or name), ask once: who they are and how to reach them (email and/or WhatsApp name). Save it with save_person. Never ask again for what is saved.
 - Channels: if the person has a usual channel, say you'll use it ("I'll email it to David as usual") and go ahead with the draft/approval flow; if not, ask "email or WhatsApp?". If the user states a preference ("always email him"), save it as preferred_channel.
-- Save lasting facts and preferences with remember as soon as you learn them, without asking. Update instead of duplicating. If a memory you need isn't shown, use recall.
+- Save lasting facts and preferences with remember as soon as you learn them, without asking. If the user told you directly, save it as is; if you are inferring or connecting dots (e.g. "the bottle company is probably your coffee bottle supplier"), set inferred=true with a short question so they confirm it in their review list. Be generous: the more you understand about their life, the better. Update instead of duplicating. If a memory you need isn't shown, use recall.
 - Documents: create Google Docs and Sheets directly when asked, and give the link. Sharing a file with someone goes through share_file, which waits for the user's approval.
 
 How to file things — keep these clearly separate:
@@ -550,6 +550,9 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           content: { type: "string" },
           category: { type: "string", enum: ["fact", "preference", "person", "business", "personal"] },
           importance: { type: "integer", enum: [1, 2, 3] },
+          area: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          inferred: { type: "boolean", description: "true when you're guessing/connecting dots rather than told directly; it goes to the user's review list" },
+          question: { type: "string", description: "with inferred: what to ask the user, e.g. 'Is X your bottle supplier?'" },
         },
         required: ["content"],
       },
@@ -558,10 +561,11 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const id = uid();
         await run(
           env,
-          "INSERT INTO memories (id, category, content, importance, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-          id, (input.category as string) || "fact", String(input.content), Number(input.importance) || 2, t, t,
+          "INSERT INTO memories (id, category, content, importance, status, area, question, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          id, (input.category as string) || "fact", String(input.content), Number(input.importance) || 2,
+          input.inferred ? "suggested" : "confirmed", (input.area as string) || null, input.inferred ? String(input.question ?? "") || null : null, t, t,
         );
-        note("remember", `Remembered: ${input.content}`);
+        note("remember", `${input.inferred ? "To review" : "Remembered"}: ${input.content}`);
         return { id };
       },
     },

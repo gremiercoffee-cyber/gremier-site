@@ -38,6 +38,11 @@ export interface Memory {
   category: string;
   content: string;
   importance: number;
+  status?: "suggested" | "confirmed" | "ignored";
+  area?: string | null;
+  about?: string | null;
+  question?: string | null;
+  evidence?: string | null;
   created_at: string;
   updated_at: string;
 }

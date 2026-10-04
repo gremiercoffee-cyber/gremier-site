@@ -61,6 +61,7 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
               <div className="flex-1 min-w-0">
                 <p className="text-[15px] leading-snug">{cleanTitle(n.title)}</p>
                 <p className="text-xs text-muted">{[n.type !== "briefing" && n.body?.split("\n")[0], timeAgo(n.created_at)].filter(Boolean).join(" · ")}</p>
+                {n.type === "learn" && <a href="/?tab=review" className="text-sm text-accent font-medium">Review now →</a>}
                 {n.type === "briefing" && n.body && <p className="text-sm text-muted mt-1 whitespace-pre-line">{n.body}</p>}
                 {(n.type === "waiting" || (n.type === "auto_done" && n.item_id)) && (
                   <div className="flex gap-1 -ml-3">
@@ -160,6 +161,7 @@ function Section({ title, count, danger, children }: { title: string; count?: nu
 
 const GROUPS: [string, (n: Dashboard["nudges"][number]) => boolean][] = [
   ["Briefing", (n) => n.type === "briefing"],
+  ["To review", (n) => n.type === "learn"],
   ["Right now", (n) => n.type === "situation"],
   ["Don't forget", (n) => /^don't forget/i.test(n.title) || n.type === "reminder"],
   ["Coming up", (n) => /^coming up/i.test(n.title) || n.type === "deadline"],
