@@ -40,3 +40,6 @@ verify_jwt = false
 
 [functions.saved-card]
 verify_jwt = false
+
+[functions.hub-api]
+verify_jwt = false

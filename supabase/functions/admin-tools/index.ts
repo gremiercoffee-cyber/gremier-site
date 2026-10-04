@@ -9,6 +9,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
+import { sha256 } from "../_shared/hub-actions.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -209,6 +210,26 @@ Deno.serve(async (req) => {
       case "subscriptions": return json({ subscriptions: await listSubscriptions(sb) });
       case "cancel_subscription": return json(await cancelSubscription(sb, String(body.sub_payme_id || "")));
       case "unpaid_alerts": return json(await unpaidAlerts(sb));
+      case "create_api_key": {
+        // A connected-app key: shown once, only its hash is stored.
+        const name = String(body.name || "").replace(/[^\w \-֐-׿]/g, "").trim().slice(0, 40);
+        if (!name) return json({ error: "name_required" }, 400);
+        const scopes = (Array.isArray(body.scopes) ? body.scopes : ["read"]).filter((x: unknown) => x === "read" || x === "write");
+        if (!scopes.includes("read")) scopes.unshift("read");
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const bytes = crypto.getRandomValues(new Uint8Array(40));
+        const key = "ghk_" + [...bytes].map((b) => alphabet[b % alphabet.length]).join("");
+        const { data, error } = await sb.from("api_keys").insert({ name, scopes, key_hash: await sha256(key), key_prefix: key.slice(0, 10) }).select("id, name, scopes").single();
+        if (error) throw error;
+        await sb.rpc("log_activity", { p_actor: "system", p_action: "app.key_created", p_summary: `Connected app key created: ${name} (${scopes.join("+")})`, p_ref: `api_keys:${data.id}`, p_details: null });
+        return json({ ...data, key });
+      }
+      case "revoke_api_key": {
+        const id = String(body.id || "");
+        const { data } = await sb.from("api_keys").update({ revoked_at: new Date().toISOString() }).eq("id", id).is("revoked_at", null).select("name").maybeSingle();
+        if (data) await sb.rpc("log_activity", { p_actor: "system", p_action: "app.key_revoked", p_summary: `Connected app key revoked: ${data.name}`, p_ref: `api_keys:${id}`, p_details: null });
+        return json({ ok: !!data });
+      }
       case "weekly_summary": return json(await weeklySummary(sb));
       default: return json({ error: "unknown_action" }, 400);
     }
