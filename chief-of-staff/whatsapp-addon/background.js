@@ -1,7 +1,13 @@
 // Sends what content.js found to the Chief of Staff, using the bridge key from config.js.
 importScripts("config.js"); // defines COS_CONFIG = { api_base, bridge_key, my_names }
 
+/** Which WhatsApp this Chrome profile holds: "personal" or "business" (set in the popup). */
+async function account() {
+  return (await chrome.storage.local.get("account")).account || "personal";
+}
+
 async function call(path, body) {
+  body = { ...body, account: await account() };
   const r = await fetch(COS_CONFIG.api_base.replace(/\/$/, "") + path, {
     method: "POST",
     headers: { "content-type": "application/json", "x-bridge-key": COS_CONFIG.bridge_key },

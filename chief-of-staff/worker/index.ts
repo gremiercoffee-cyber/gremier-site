@@ -494,8 +494,9 @@ export default {
       if (!bridgeAuthorised(req, env)) return json({ error: "unauthorised" }, 401);
       if (url.pathname === "/api/bridge/incoming" && req.method === "POST") return json(await handleIncoming(env, await req.json()));
       if (url.pathname === "/api/bridge/diag" && req.method === "POST") {
-        const d = JSON.stringify(await req.json().catch(() => ({}))).slice(0, 2000);
-        await run(env, "INSERT INTO settings (key, value) VALUES ('addon_diag', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", d);
+        const raw = (await req.json().catch(() => ({}))) as { account?: string };
+        const key = raw.account === "business" ? "addon_diag_business" : "addon_diag";
+        await run(env, "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, JSON.stringify(raw).slice(0, 2000));
         return json({ ok: true });
       }
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));

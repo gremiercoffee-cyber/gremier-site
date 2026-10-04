@@ -44,15 +44,16 @@ const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Rep
 - none: chit-chat, thanks, FYI, or nothing the user must do. Titles in the message's language is fine.`;
 
 /** One forwarded WhatsApp notification. Returns what was filed, if anything. */
-export async function handleIncoming(env: Env, m: { chat?: string; sender?: string; text?: string; at?: string }) {
+export async function handleIncoming(env: Env, m: { chat?: string; sender?: string; text?: string; at?: string; account?: string }) {
   await heartbeat(env);
   const chat = (m.chat ?? "").slice(0, 120), sender = (m.sender ?? chat).slice(0, 120), text = (m.text ?? "").trim().slice(0, 2000);
+  const account = m.account === "business" ? "business" : "personal";
   if (!text || !chat) return { filed: false, reason: "empty" };
   const hash = await sha(`${chat}|${sender}|${text}`);
   if (await first(env, "SELECT 1 FROM whatsapp_inbox WHERE hash = ?", hash)) return { filed: false, reason: "duplicate" };
   const id = uid();
-  await run(env, "INSERT INTO whatsapp_inbox (id, hash, chat, sender, text, received_at) VALUES (?, ?, ?, ?, ?, ?)",
-    id, hash, chat, sender, text, m.at || now());
+  await run(env, "INSERT INTO whatsapp_inbox (id, hash, chat, sender, text, received_at, account) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    id, hash, chat, sender, text, m.at || now(), account);
 
   let triage: { action: string; title?: string; due_at?: string | null; priority?: number; category?: string | null } = {
     action: "task", title: `Reply to ${sender}: ${text.slice(0, 70)}${text.length > 70 ? "…" : ""}`, priority: 2,
@@ -70,8 +71,11 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   if (triage.action === "none" || !triage.title) return { filed: false, reason: "not actionable" };
 
   const item: Item = await createItem(env, {
-    kind: triage.action, title: triage.title, person: sender, due_at: triage.due_at ?? null, priority: triage.priority, category: triage.category,
-    source: "whatsapp", notes: `WhatsApp from ${sender}${chat !== sender ? ` in ${chat}` : ""}: "${text}"`,
+    kind: triage.action, title: triage.title, person: sender, due_at: triage.due_at ?? null, priority: triage.priority,
+    // The business number is Gremier Coffee unless the message clearly says otherwise.
+    category: triage.category ?? (account === "business" ? "coffee" : null),
+    source: "whatsapp",
+    notes: `${account === "business" ? "Business WhatsApp" : "WhatsApp"} from ${sender}${chat !== sender ? ` in ${chat}` : ""}: "${text}"`,
   });
   await run(env, "UPDATE whatsapp_inbox SET item_id = ? WHERE id = ?", item.id, id);
   return { filed: true, item_id: item.id };
@@ -83,13 +87,13 @@ async function sha(s: string) {
 }
 
 /** The user answered a chat on WhatsApp: close items that came from that chat (no AI). */
-export async function handleReplied(env: Env, m: { chat?: string }) {
+export async function handleReplied(env: Env, m: { chat?: string; account?: string }) {
   await heartbeat(env);
   const chat = (m.chat ?? "").slice(0, 120);
   if (!chat) return { closed: 0 };
   const open = await all<Item>(env,
     `SELECT i.* FROM items i JOIN whatsapp_inbox w ON w.item_id = i.id
-     WHERE w.chat = ? AND i.status = 'open' AND i.kind IN ('task', 'commitment')`, chat);
+     WHERE w.chat = ? AND w.account = ? AND i.status = 'open' AND i.kind IN ('task', 'commitment')`, chat, m.account === "business" ? "business" : "personal");
   for (const item of open) {
     await run(env, "UPDATE items SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?", now(), now(), item.id);
     await notify(env, "auto_done", `Done: ${item.title}`, `You replied to ${chat} on WhatsApp. Tap Undo if it isn't finished.`, item.id);

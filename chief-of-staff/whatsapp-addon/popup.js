@@ -14,3 +14,15 @@ chrome.storage.local.get("cos").then(({ cos = {} }) => {
   document.getElementById("seen").textContent = cos.last_seen ? `Last message noticed: ${cos.last_seen}` : "No new messages noticed since the tab loaded.";
   if (cos.last_event) document.getElementById("last").textContent = `Last: ${cos.last_event}`;
 });
+
+// Personal / Business switch for this Chrome profile's WhatsApp.
+chrome.storage.local.get("account").then(({ account = "personal" }) => {
+  const paint = (a) => {
+    document.getElementById("acct-personal").className = "pick" + (a === "personal" ? " on" : "");
+    document.getElementById("acct-business").className = "pick" + (a === "business" ? " on" : "");
+  };
+  paint(account);
+  for (const a of ["personal", "business"]) {
+    document.getElementById("acct-" + a).onclick = async () => { await chrome.storage.local.set({ account: a }); paint(a); };
+  }
+});

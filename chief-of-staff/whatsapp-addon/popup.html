@@ -9,12 +9,19 @@
     .dot { width: 9px; height: 9px; border-radius: 50%; background: #c9ccd3; flex: none; }
     .ok { background: #2c7a5a; } .warn { background: #d08a1e; } .bad { background: #c23b3b; }
     p { margin: 6px 0; color: #6a7080; font-size: 12px; }
+    .pick { flex: 1; border: 1px solid #e2e5eb; background: #fff; border-radius: 999px; padding: 7px 0; font: inherit; cursor: pointer; }
+    .pick.on { background: #3540a8; color: #fff; border-color: #3540a8; }
   </style>
 </head>
 <body>
   <h1>Chief of Staff for WhatsApp</h1>
   <div class="row"><span id="d1" class="dot"></span><span id="mode">Checking…</span></div>
   <div class="row"><span id="d2" class="dot"></span><span id="conn">…</span></div>
+  <div class="row" style="margin:10px 0 4px">This WhatsApp is:</div>
+  <div class="row">
+    <button id="acct-personal" class="pick">👤 Personal</button>
+    <button id="acct-business" class="pick">☕ Business</button>
+  </div>
   <p id="seen"></p>
   <p id="last"></p>
   <p>Read-only. It never opens chats, marks messages read, or sends anything.</p>
