@@ -64,7 +64,7 @@ export default function App() {
 
       {health && !health.model && (
         <div className="mx-4 mb-2 rounded-xl bg-sunken text-sm px-3 py-2 text-muted">
-          The assistant isn't connected to a model yet — set the <code>ANTHROPIC_API_KEY</code> secret. Lists and projects still work.
+          The assistant isn't connected to a model yet — set the <code>OPENAI_API_KEY</code> secret. Lists and projects still work.
         </div>
       )}
 

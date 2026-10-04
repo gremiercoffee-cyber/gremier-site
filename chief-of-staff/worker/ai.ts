@@ -5,7 +5,7 @@
  * Tiers keep cost in check: "main" for the conversational assistant, "fast" for
  * background work (brain-dump sorting, briefings) where a small model is plenty.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type { Env } from "./env";
 import { now, run, uid } from "./db";
 
@@ -51,43 +51,35 @@ export interface ModelProvider {
 export class ProviderUnavailable extends Error {}
 
 export function getProvider(env: Env): ModelProvider {
-  if (env.ANTHROPIC_API_KEY) return new AnthropicProvider(env);
-  throw new ProviderUnavailable("No model provider configured. Set the ANTHROPIC_API_KEY secret.");
+  if (env.OPENAI_API_KEY) return new OpenAIProvider(env);
+  throw new ProviderUnavailable("No model provider configured. Set the OPENAI_API_KEY secret.");
 }
 
-class AnthropicProvider implements ModelProvider {
-  readonly name = "anthropic";
-  private client: Anthropic;
+type Effort = OpenAI.Chat.ChatCompletionCreateParams["reasoning_effort"];
+
+class OpenAIProvider implements ModelProvider {
+  readonly name = "openai";
+  private client: OpenAI;
 
   constructor(private env: Env) {
-    this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: env.ANTHROPIC_BASE_URL || undefined });
+    this.client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL || undefined });
   }
 
   private model(tier: Tier) {
-    return tier === "main" ? this.env.MODEL_MAIN || "claude-opus-5-5" : this.env.MODEL_FAST || "claude-haiku-4-5";
+    return tier === "main" ? this.env.MODEL_MAIN || "gpt-6-luna" : this.env.MODEL_FAST || "gpt-6-luna";
   }
 
-  /**
-   * Request options that depend on the model family. Effort is not accepted by Haiku 4.5;
-   * low effort keeps chat fast and cheap. Current Opus/Sonnet/Fable models get the
-   * server-side refusal fallback so a false-positive decline is retried transparently.
-   */
-  private modelOptions(model: string) {
-    const opts: Partial<Anthropic.Beta.MessageCreateParamsNonStreaming> = {};
-    if (!model.startsWith("claude-haiku")) opts.output_config = { effort: "low" };
-    if (/^claude-(opus-5|sonnet-5-5|fable-5)/.test(model)) {
-      opts.betas = ["server-side-fallback-2026-07-01"];
-      opts.fallbacks = "default";
-    }
-    return opts;
+  /** Reasoning depth per tier: a little for conversation, none for background sorting/briefings. */
+  private effort(tier: Tier): Effort {
+    return (tier === "main" ? this.env.EFFORT_MAIN || "low" : this.env.EFFORT_FAST || "none") as Effort;
   }
 
-  private async logUsage(model: string, purpose: string, usage: { input_tokens: number; output_tokens: number }) {
+  private async logUsage(model: string, purpose: string, usage?: OpenAI.CompletionUsage) {
     try {
       await run(
         this.env,
         "INSERT INTO usage_log (id, model, purpose, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        uid(), model, purpose, usage.input_tokens ?? 0, usage.output_tokens ?? 0, now(),
+        uid(), model, purpose, usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0, now(),
       );
     } catch {
       /* usage logging must never break a turn */
@@ -96,64 +88,61 @@ class AnthropicProvider implements ModelProvider {
 
   async runAgent(req: AgentRequest): Promise<AgentResult> {
     const model = this.model(req.tier);
-    const tools: Anthropic.Beta.BetaTool[] = req.tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema as Anthropic.Beta.BetaTool.InputSchema,
+    const tools: OpenAI.Chat.ChatCompletionTool[] = req.tools.map((t) => ({
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: t.input_schema },
     }));
-    const system: Anthropic.Beta.BetaTextBlockParam[] = [
-      { type: "text", text: req.system, cache_control: { type: "ephemeral" } },
-      { type: "text", text: req.context },
+    // Stable instructions first so OpenAI's automatic prefix caching can reuse them.
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: "developer", content: req.system },
+      { role: "developer", content: req.context },
+      ...normaliseHistory(req.history),
     ];
-    const messages: Anthropic.Beta.BetaMessageParam[] = normaliseHistory(req.history);
     const result: AgentResult = { text: "", toolCalls: [] };
     const maxRounds = req.maxToolRounds ?? 6;
 
     for (let round = 0; round <= maxRounds; round++) {
-      const response = await this.client.beta.messages.create({
+      const response = await this.client.chat.completions.create({
         model,
-        max_tokens: 4096,
-        system,
-        tools,
         messages,
-        ...this.modelOptions(model),
+        tools,
+        reasoning_effort: this.effort(req.tier),
+        max_completion_tokens: 8192,
       });
       await this.logUsage(model, req.purpose, response.usage);
 
-      if (response.stop_reason === "refusal") {
-        result.text = "I can't help with that one.";
+      const msg = response.choices[0]?.message;
+      if (!msg) break;
+      if (msg.refusal) {
+        result.text = msg.refusal;
         return result;
       }
+      if (msg.content?.trim()) result.text = msg.content.trim();
 
-      const text = response.content
-        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("\n")
-        .trim();
-      if (text) result.text = text;
-
-      const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-      if (response.stop_reason !== "tool_use" || toolUses.length === 0) return result;
+      const calls = (msg.tool_calls ?? []).filter(
+        (c): c is OpenAI.Chat.ChatCompletionMessageFunctionToolCall => c.type === "function",
+      );
+      if (calls.length === 0) return result;
       if (round === maxRounds) break;
 
-      // Keep the assistant content exactly as returned (thinking blocks included).
-      messages.push({ role: "assistant", content: response.content });
-      const toolResults: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-      for (const use of toolUses) {
-        const def = req.tools.find((t) => t.name === use.name);
-        const input = (use.input ?? {}) as Record<string, unknown>;
+      messages.push(msg);
+      for (const call of calls) {
+        const def = req.tools.find((t) => t.name === call.function.name);
+        let input: Record<string, unknown> = {};
+        let content: string;
         try {
-          if (!def) throw new Error(`unknown tool ${use.name}`);
+          input = JSON.parse(call.function.arguments || "{}");
+          if (!def) throw new Error(`unknown tool ${call.function.name}`);
           const out = await def.handler(input);
-          result.toolCalls.push({ name: use.name, input, result: out });
-          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(out ?? { ok: true }) });
+          result.toolCalls.push({ name: def.name, input, result: out });
+          content = JSON.stringify(out ?? { ok: true });
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          result.toolCalls.push({ name: use.name, input, result: null, error: msg });
-          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: msg, is_error: true });
+          const msgText = e instanceof Error ? e.message : String(e);
+          result.toolCalls.push({ name: call.function.name, input, result: null, error: msgText });
+          content = JSON.stringify({ error: msgText });
         }
+        messages.push({ role: "tool", tool_call_id: call.id, content });
       }
-      messages.push({ role: "user", content: toolResults });
     }
     if (!result.text) result.text = "Done.";
     return result;
@@ -161,30 +150,28 @@ class AnthropicProvider implements ModelProvider {
 
   async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }) {
     const model = this.model(req.tier);
-    const response = await this.client.beta.messages.create({
+    const response = await this.client.chat.completions.create({
       model,
-      max_tokens: req.maxTokens ?? 2048,
-      system: req.system,
-      messages: [{ role: "user", content: req.prompt }],
-      ...this.modelOptions(model),
+      messages: [
+        { role: "developer", content: req.system },
+        { role: "user", content: req.prompt },
+      ],
+      reasoning_effort: this.effort(req.tier),
+      max_completion_tokens: req.maxTokens ?? 2048,
     });
     await this.logUsage(model, req.purpose, response.usage);
-    return response.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
+    return response.choices[0]?.message?.content?.trim() ?? "";
   }
 }
 
-/** The API needs alternating roles starting with a user turn. */
-function normaliseHistory(history: Turn[]): Anthropic.Beta.BetaMessageParam[] {
-  const out: Anthropic.Beta.BetaMessageParam[] = [];
+/** Merge consecutive same-role turns and start with a user turn. */
+function normaliseHistory(history: Turn[]): OpenAI.Chat.ChatCompletionMessageParam[] {
+  const out: Turn[] = [];
   for (const t of history) {
     if (!t.content.trim()) continue;
     const last = out[out.length - 1];
     if (last && last.role === t.role) last.content = `${last.content}\n\n${t.content}`;
-    else out.push({ role: t.role, content: t.content });
+    else out.push({ ...t });
   }
   while (out.length && out[0].role !== "user") out.shift();
   return out;

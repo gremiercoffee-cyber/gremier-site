@@ -13,7 +13,7 @@
     "deploy": "npm run build && wrangler d1 migrations apply chief-of-staff --remote && wrangler deploy"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
+    "openai": "^7.27.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

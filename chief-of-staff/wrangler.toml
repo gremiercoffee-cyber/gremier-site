@@ -20,11 +20,14 @@ migrations_dir = "migrations"
 crons = ["*/15 * * * *"]
 
 [vars]
-MODEL_MAIN = "claude-opus-5-5"
-MODEL_FAST = "claude-haiku-4-5"
+# OpenAI GPT-6 Luna for both tiers; the fast tier just reasons less.
+MODEL_MAIN = "gpt-6-luna"
+MODEL_FAST = "gpt-6-luna"
+EFFORT_MAIN = "low"    # none | low | medium | high | xhigh | max
+EFFORT_FAST = "none"
+TRANSCRIBE_MODEL = "whisper-1"
 TIMEZONE = "UTC"
 
 # Secrets (never in the frontend) — set with `wrangler secret put <NAME>`:
 #   COS_ACCESS_TOKEN  passcode the app uses to talk to the API
-#   ANTHROPIC_API_KEY  model provider key
-#   OPENAI_API_KEY     optional, only for batch dictation transcription (Whisper)
+#   OPENAI_API_KEY     model provider key (chat, brain dump, briefings, dictation)

@@ -73,8 +73,8 @@ route("POST", "/api/chat", async (req, env) => {
   return json(await chat(env, text, mode));
 });
 
-// Batch dictation: audio in, transcript out. Uses Whisper when an OpenAI key is set;
-// otherwise the client falls back to on-device speech recognition.
+// Batch dictation: audio in, transcript out, via OpenAI transcription. If it is unavailable
+// the client falls back to on-device speech recognition.
 route("POST", "/api/transcribe", async (req, env) => {
   if (!env.OPENAI_API_KEY) throw new HttpError(501, "server transcription not configured");
   const form = await req.formData();
@@ -83,8 +83,8 @@ route("POST", "/api/transcribe", async (req, env) => {
   if (audio.size > 24 * 1024 * 1024) throw new HttpError(413, "audio too large");
   const out = new FormData();
   out.append("file", audio, audio.name || "dictation.webm");
-  out.append("model", "whisper-1");
-  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+  out.append("model", env.TRANSCRIBE_MODEL || "whisper-1");
+  const r = await fetch(`${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, {
     method: "POST",
     headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
     body: out,
@@ -204,7 +204,7 @@ export default {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     if (url.pathname === "/api/health") {
-      return json({ ok: true, configured: !!env.COS_ACCESS_TOKEN, model: !!env.ANTHROPIC_API_KEY, transcription: !!env.OPENAI_API_KEY });
+      return json({ ok: true, configured: !!env.COS_ACCESS_TOKEN, model: !!env.OPENAI_API_KEY, transcription: !!env.OPENAI_API_KEY });
     }
     if (!env.COS_ACCESS_TOKEN) return json({ error: "Server not configured: set the COS_ACCESS_TOKEN secret." }, 503);
     if (!authorised(req, env)) return json({ error: "unauthorised" }, 401);

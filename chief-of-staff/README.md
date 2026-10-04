@@ -10,7 +10,7 @@ or dictation. It's a mobile-first PWA running entirely on Cloudflare (Workers, D
 | --- | --- |
 | **Chat** | One continuous conversation. The assistant files things with tools (create/update items and projects, remember facts, search). |
 | **Live voice** | Hands-free conversation ("Talk"). It listens, replies, speaks the reply aloud and listens again. Uses on-device speech recognition and synthesis, so voice costs nothing per minute. |
-| **Dictation** | Record a clip and get it transcribed. Uses Whisper on the server when `OPENAI_API_KEY` is set, otherwise on-device recognition. Available in Chat and Brain Dump. |
+| **Dictation** | Record a clip and get it transcribed. Transcribed on the server with OpenAI (falls back to on-device recognition). Available in Chat and Brain Dump. |
 | **Shared state** | Text, voice and dictation all write to the same message history, memory and data. |
 | **Brain Dump** | Unstructured text in. A cheap model sorts it into tasks, reminders, commitments, waiting-fors and ideas, and stores durable facts as memories. |
 | **Lists** | Tasks, Reminders, Commitments, Waiting For and Ideas are kept clearly separate. Quick add, edit sheet, completion. |
@@ -41,18 +41,16 @@ chief-of-staff/
   no Durable Objects. One user with D1 doesn't need them yet.
 - **Secrets stay on the server.** The browser only holds your passcode, sent as a bearer token. Every model call goes through the Worker.
 - **Cost controls:**
-  - Chat runs on `MODEL_MAIN` (default `claude-opus-5-5`) at low effort.
-  - Brain dumps and briefings run on `MODEL_FAST` (default `claude-haiku-4-5`).
-  - The stable system prompt is prompt-cached.
+  - Everything runs on OpenAI **GPT-6 Luna** (`gpt-6-luna`), OpenAI's efficiency-focused model.
+  - Chat uses reasoning effort `low`; brain dumps and briefings use `none`.
+  - The stable system prompt is sent first so OpenAI's automatic prompt caching applies.
   - Deterministic proactive checks don't call a model at all.
   - Voice uses on-device speech.
   - Usage is logged to D1 and shown in Settings.
 
-  You can change either model in `wrangler.toml`.
-- **Refusal fallback.** Requests to current Opus/Sonnet models include Anthropic's server-side refusal fallback
-  (`fallbacks: "default"`). A false-positive safety decline is retried automatically instead of failing the turn.
+  Models and effort levels are set in `wrangler.toml` (`MODEL_MAIN`, `MODEL_FAST`, `EFFORT_MAIN`, `EFFORT_FAST`).
 - **Adding a provider.** Implement `ModelProvider` in `worker/ai.ts` and select it in `getProvider()`.
-  Set `ANTHROPIC_BASE_URL` to route calls through Cloudflare AI Gateway.
+  Set `OPENAI_BASE_URL` to route calls through Cloudflare AI Gateway.
 
 ## Deploy
 
@@ -64,8 +62,7 @@ npm install
 npx wrangler login
 npx wrangler d1 create chief-of-staff          # copy the database_id into wrangler.toml
 npx wrangler secret put COS_ACCESS_TOKEN       # your app passcode, make it long
-npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put OPENAI_API_KEY         # optional: server-side dictation
+npx wrangler secret put OPENAI_API_KEY
 npm run deploy                                 # build, migrate D1, deploy
 ```
 
@@ -75,7 +72,7 @@ A custom domain is optional and can be added later in the Cloudflare dashboard.
 ## Local development
 
 ```bash
-printf 'COS_ACCESS_TOKEN=dev\nANTHROPIC_API_KEY=sk-ant-...\n' > .dev.vars
+printf 'COS_ACCESS_TOKEN=dev\nOPENAI_API_KEY=sk-...\n' > .dev.vars
 npm run db:migrate:local
 npm run build && npm run dev:worker   # full app on http://localhost:8787
 # or, for hot reload: `npm run dev:worker` in one terminal and `npm run dev` in another
