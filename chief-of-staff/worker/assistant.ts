@@ -179,7 +179,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Create a Google Sheet with rows (first row = headers). Returns the link.",
       input_schema: {
         type: "object",
-        properties: { title: { type: "string" }, rows: { type: "array", items: { type: "array", items: {} } }, account: { type: "string" } },
+        properties: { title: { type: "string" }, rows: { type: "array", description: "Each row is a list of cell values", items: { type: "array", items: { type: "string" } } }, account: { type: "string" } },
         required: ["title"],
       },
       handler: async (input) => {
@@ -193,7 +193,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Add rows to the end of a Google Sheet (by file id, optional tab name).",
       input_schema: {
         type: "object",
-        properties: { file_id: { type: "string" }, rows: { type: "array", items: { type: "array", items: {} } }, sheet: { type: "string" }, account: { type: "string" } },
+        properties: { file_id: { type: "string" }, rows: { type: "array", description: "Each row is a list of cell values", items: { type: "array", items: { type: "string" } } }, sheet: { type: "string" }, account: { type: "string" } },
         required: ["file_id", "rows"],
       },
       handler: async (input) => {
