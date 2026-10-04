@@ -9186,7 +9186,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-react-1.js?v=7ab1f5ae35"></script>
 <script src="/admin-react-2.js?v=997d5b8c13"></script>
 
-<script src="/admin-react-3.js?v=7c9d437682"></script>
+<script src="/admin-react-3.js?v=e59f3c903f"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">
@@ -9235,6 +9235,8 @@ window.opsFetch = window.opsFetch || (function () {
 
 <script id="hub-script">
 (function () {
+  // Deep links (Android widget): admin?tab=stock opens that screen.
+  try { const t = new URLSearchParams(location.search).get('tab'); if (t && /^[a-z]{3,20}$/.test(t)) localStorage.setItem('gremier_admin_tab', t); } catch (_) {}
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = (n) => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IL');
   const dayISO = (off = 0) => { const d = new Date(Date.now() + off * 86400e3); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); };

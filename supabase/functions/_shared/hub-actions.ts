@@ -30,6 +30,7 @@ export const ACTIONS: Record<string, Handler> = {
   log_store_delivery: { scope: "write", describe: "Log a store delivery that happened. Args: store (name, fuzzy), quantities {product_key: qty}, date (default today). Deducts stock, adds the store billing row.", run: ({ sb }, a) => logStoreDelivery(sb, a as any) },
   complete_delivery: { scope: "write", describe: "Mark a scheduled delivery done. Args: job_id (default = next one today/overdue), quantities (optional actual amounts).", run: ({ sb }, a) => completeDelivery(sb, a as any) },
   adjust_stock: { scope: "write", describe: "Stock correction. Args: kind (inventory|concentrate|beans|labeled), product, delta (+/-).", run: ({ sb }, a) => adjustStock(sb, a as any) },
+  widget_config: { scope: "read", describe: "Buttons for the Android widget (server-driven, with live counts).", run: ({ sb }) => widgetConfig(sb) },
   log_note: {
     scope: "write", describe: "Add a note to the activity timeline. Args: text.",
     run: async ({ sb, app }, a) => {
@@ -76,4 +77,54 @@ export async function runAction(sb: Sb, app: { name: string; scopes: string[] },
     await sb.from("activity_log").update({ actor: `app:${app.name}` }).in("ref", refs).eq("actor", "system").gte("at", started);
   }
   return result;
+}
+
+// ── Android widget buttons ──
+// Server-driven so buttons/labels/order change without updating the app. kinds:
+//   open    → open url        confirm → ask, then run action     run → run action
+//   form    → small form (fields: choice | number | text), then run action. "a.b" keys nest.
+const ADMIN_URL = (Deno.env.get("SITE_URL") || "https://gremiercoffee.co.il").replace(/\/$/, "") + "/admin";
+const DELIVERY_PRODUCTS: [string, string][] = [
+  ["classic_liter", "Classic"], ["sweetened_classic", "Sweetened"], ["house_blend", "House Blend"],
+  ["colombia_liter", "Colombia"], ["decaf_liter", "Decaf"], ["classic_mini", "Classic mini"],
+  ["vanilla_mini", "Vanilla mini"], ["original_mini", "Original mini"], ["caramel_mini", "Caramel mini"],
+  ["vanilla_syrup", "Vanilla syrup"], ["caramel_syrup", "Caramel syrup"],
+];
+const COFFEES = [["classic", "Classic"], ["houseBlend", "House Blend"], ["colombia", "Colombia"], ["decaf", "Decaf"]];
+async function widgetConfig(sb: Sb) {
+  const [summary, stores, drains] = await Promise.all([
+    readSummary(sb),
+    readStores(sb),
+    sb.from("jobs").select("id, product, kg, date, time").eq("type", "drain").eq("done", false).order("date").order("time").limit(1),
+  ]);
+  const s = summary as any;
+  const drain = (drains.data || [])[0] as any;
+  const next = s.next_delivery as any;
+  const nextWho = next ? (next.store_name || next.cb_name || next.private_name || next.label || "delivery") : "";
+  const buttons = [
+    { id: "brew", icon: "☕", label: "Start brew", kind: "form", action: "start_brew", title: "Start a brew", submit: "Start brew",
+      fields: [
+        { key: "product", type: "choice", label: "Coffee", options: COFFEES.map(([v, l]) => ({ value: v, label: l })), default: "classic" },
+        { key: "kg", type: "choice", label: "Beans", options: [1, 1.5, 2, 3].map((k) => ({ value: k, label: `${k} kg` })), default: 3 },
+      ] },
+    drain
+      ? { id: "drain", icon: "💧", label: "Drain", sub: `${drain.product} ${drain.time || ""}`.trim(), kind: "confirm", action: "complete_drain", args: { job_id: drain.id },
+          confirm: `Mark the ${drain.product} drain (${drain.kg} kg, due ${drain.date} ${drain.time || ""}) done? This adds the concentrate.` }
+      : { id: "drain", icon: "💧", label: "Drain", sub: "none due", kind: "open", url: `${ADMIN_URL}?tab=schedule` },
+    { id: "store", icon: "🏪", label: "Store drop", kind: "form", action: "log_store_delivery", title: "Log a store delivery", submit: "Log delivery",
+      fields: [
+        { key: "store", type: "choice", label: "Store", options: (stores as any[]).map((st) => ({ value: st.name, label: st.name })) },
+        ...DELIVERY_PRODUCTS.map(([k, l]) => ({ key: `quantities.${k}`, type: "number", label: l, default: 0 })),
+      ] },
+    next
+      ? { id: "delivered", icon: "🚚", label: "Delivered", sub: nextWho, kind: "confirm", action: "complete_delivery", args: { job_id: next.id },
+          confirm: `Mark ${nextWho} delivered (${next.date}${next.time ? " " + next.time : ""})? Stock is updated with the planned amounts.` }
+      : { id: "delivered", icon: "🚚", label: "Delivered", sub: "none today", kind: "open", url: `${ADMIN_URL}?tab=schedule` },
+    { id: "orders", icon: "🛒", label: "Orders", badge: s.orders_to_fulfil || 0, sub: s.unpaid_orders ? `${s.unpaid_orders} unpaid` : "", kind: "open", url: `${ADMIN_URL}?tab=today` },
+    { id: "stock", icon: "📦", label: "Stock", kind: "open", url: `${ADMIN_URL}?tab=stock` },
+    { id: "voice", icon: "🎙️", label: "Voice log", kind: "open", url: `${ADMIN_URL}?tab=schedule&voice=1` },
+    { id: "note", icon: "📝", label: "Note", kind: "form", action: "log_note", title: "Add a note", submit: "Save note",
+      fields: [{ key: "text", type: "text", label: "Note" }] },
+  ];
+  return { per_page: 4, buttons, refreshed_at: new Date().toISOString() };
 }

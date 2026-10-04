@@ -482,6 +482,13 @@ function GlobalPillsFloat() {
 
 function VoiceLoggerFloat() {
   const [isOpen, setIsOpen] = useState3(false);
+  // Open from outside (e.g. the Android widget link admin?voice=1).
+  useEffect3(() => {
+    const open = () => setIsOpen(true);
+    window.addEventListener('gremier:open-voice', open);
+    if (new URLSearchParams(location.search).get('voice') === '1') setTimeout(open, 600);
+    return () => window.removeEventListener('gremier:open-voice', open);
+  }, []);
   const [phase, setPhase] = useState3('idle');
   const [messages, setMessages] = useState3([]);
   const [pendingOption, setPendingOption] = useState3(null);
