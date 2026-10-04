@@ -46,6 +46,22 @@ export default function App() {
   }, []);
 
   useEffect(() => { if (authed) { api.settings().then(setSettings).catch(() => {}); loadConversations(); } }, [authed]);
+
+  // Self-heal notifications: whenever the app opens with permission already granted, make sure this
+  // device is subscribed and the server knows it (subscriptions can be dropped by the browser or OS).
+  useEffect(() => {
+    if (!authed || typeof Notification === "undefined" || Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
+    (async () => {
+      try {
+        const { key } = await api.pushKey();
+        if (!key) return;
+        const reg = await navigator.serviceWorker.ready;
+        const raw = Uint8Array.from(atob(key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+        const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw }));
+        await api.subscribePush(sub.toJSON());
+      } catch { /* Settings still offers the manual button */ }
+    })();
+  }, [authed]);
   useEffect(() => { if (drawer) loadConversations(); }, [drawer]);
 
   // Refresh when the app comes back to the foreground (new nudges may have arrived).
