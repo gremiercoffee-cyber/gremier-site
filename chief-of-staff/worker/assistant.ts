@@ -26,7 +26,7 @@ Rules:
 - Deleting things, or anything that would affect the outside world (sending messages, contacting people, spending money), requires approval: use propose_action and tell the user it is waiting for their approval. You have no external integrations yet; say so plainly if asked to do something outside Chief of Staff.
 - Be concise and warm. Lead with what matters. Use short lists when listing items. Do not invent data you have not been given.`;
 
-const VOICE_ADDENDUM = `\n\nThis turn arrived by live voice and your reply will be spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
+const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
 
 export async function buildContext(env: Env, mode: string): Promise<string> {
   const settings = await getSettings(env);

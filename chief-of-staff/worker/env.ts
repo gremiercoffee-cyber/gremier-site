@@ -8,6 +8,8 @@ export interface Env {
   EFFORT_MAIN?: string;
   EFFORT_FAST?: string;
   TRANSCRIBE_MODEL?: string;
+  REALTIME_MODEL?: string;
+  REALTIME_TRANSCRIBE_MODEL?: string;
   MODEL_MAIN: string;
   MODEL_FAST: string;
   TIMEZONE: string;

@@ -126,7 +126,7 @@ export function Markdown({ text }: { text: string }) {
 }
 
 /**
- * Batch dictation button: records a clip, transcribes it on the server (Whisper) and
+ * Batch dictation button: records a clip, transcribes it on the server (gpt-transcribe) and
  * returns the text. Falls back to on-device recognition if the server can't transcribe.
  */
 export function DictateButton({ onText, serverTranscription }: { onText: (t: string) => void; serverTranscription: boolean }) {

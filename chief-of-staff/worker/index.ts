@@ -7,6 +7,7 @@ import {
   HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, now, run, saveSettings, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
+import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
@@ -73,6 +74,17 @@ route("POST", "/api/chat", async (req, env) => {
   return json(await chat(env, text, mode));
 });
 
+// Live voice (OpenAI Realtime over WebRTC).
+route("POST", "/api/realtime/session", async (_req, env) => json(await createRealtimeSession(env)));
+route("POST", "/api/realtime/tool", async (req, env) => {
+  const b = await body<{ name?: string; arguments?: string }>(req);
+  return json(await runRealtimeTool(env, String(b.name ?? ""), String(b.arguments ?? "{}")));
+});
+route("POST", "/api/realtime/log", async (req, env) => {
+  const b = await body<{ role?: string; content?: string; actions?: [] }>(req);
+  return json(await logRealtimeMessage(env, String(b.role), String(b.content ?? ""), b.actions ?? []));
+});
+
 // Batch dictation: audio in, transcript out, via OpenAI transcription. If it is unavailable
 // the client falls back to on-device speech recognition.
 route("POST", "/api/transcribe", async (req, env) => {
@@ -83,7 +95,7 @@ route("POST", "/api/transcribe", async (req, env) => {
   if (audio.size > 24 * 1024 * 1024) throw new HttpError(413, "audio too large");
   const out = new FormData();
   out.append("file", audio, audio.name || "dictation.webm");
-  out.append("model", env.TRANSCRIBE_MODEL || "whisper-1");
+  out.append("model", env.TRANSCRIBE_MODEL || "gpt-transcribe");
   const r = await fetch(`${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, {
     method: "POST",
     headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },

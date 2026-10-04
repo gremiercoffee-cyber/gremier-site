@@ -71,8 +71,7 @@ export default function App() {
       <main className={`flex-1 min-h-0 px-4 ${tab === "chat" ? "pb-3" : "overflow-y-auto pb-6"}`}>
         {tab === "today" && <Today name={settings?.name ?? ""} onOpenItem={openItem} goChat={goChat} refreshKey={refreshKey} />}
         {tab === "chat" && (
-          <Chat key={chatPrompt ?? "chat"} initialPrompt={chatPrompt} startVoice={startVoice} voiceName={settings?.voice_name ?? ""}
-            serverTranscription={!!health?.transcription} onDataChanged={refresh} />
+          <Chat key={chatPrompt ?? "chat"} initialPrompt={chatPrompt} startVoice={startVoice} serverTranscription={!!health?.transcription} onDataChanged={refresh} />
         )}
         {tab === "dump" && <BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />}
         {tab === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}

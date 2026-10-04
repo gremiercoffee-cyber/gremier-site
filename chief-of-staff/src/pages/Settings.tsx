@@ -3,6 +3,9 @@ import type { Memory, Settings as S } from "../../shared/types";
 import { api, setToken } from "../api";
 import { Button, Card, Empty } from "../components/ui";
 
+// OpenAI Realtime voices for live conversation.
+const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"];
+
 type Usage = Awaited<ReturnType<typeof api.usage>>;
 
 export default function Settings({ settings, onSaved, installPrompt }: {
@@ -12,18 +15,12 @@ export default function Settings({ settings, onSaved, installPrompt }: {
   const [saved, setSaved] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [usage, setUsage] = useState<Usage>([]);
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [notif, setNotif] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("cos.theme") ?? "system"; } catch { return "system"; } });
 
   useEffect(() => {
     api.memories().then(setMemories).catch(() => {});
     api.usage().then(setUsage).catch(() => {});
-    if ("speechSynthesis" in window) {
-      const load = () => setVoices(window.speechSynthesis.getVoices());
-      load();
-      window.speechSynthesis.onvoiceschanged = load;
-    }
   }, []);
 
   const save = async () => {
@@ -71,8 +68,8 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             </label>
             <label className="block text-xs text-muted space-y-1"><span>Voice</span>
               <select className={field} value={form.voice_name} onChange={(e) => setForm({ ...form, voice_name: e.target.value })}>
-                <option value="">Default</option>
-                {voices.map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
+                <option value="">Default (Marin)</option>
+                {VOICES.map((v) => <option key={v} value={v}>{v[0].toUpperCase() + v.slice(1)}</option>)}
               </select>
             </label>
           </div>

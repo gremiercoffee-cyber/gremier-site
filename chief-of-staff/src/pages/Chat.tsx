@@ -2,99 +2,74 @@ import { useEffect, useRef, useState } from "react";
 import type { ActionNote, Message } from "../../shared/types";
 import { api } from "../api";
 import { Button, DictateButton, Markdown, MicIcon } from "../components/ui";
-import { createRecognizer, speak, speechRecognitionAvailable, stopSpeaking } from "../voice";
+import { startLiveCall, type LiveStatus } from "../realtime";
 
-type LiveState = "off" | "listening" | "thinking" | "speaking";
+type LiveState = "off" | LiveStatus;
 
-export default function Chat({ initialPrompt, startVoice, voiceName, serverTranscription, onDataChanged }: {
-  initialPrompt?: string; startVoice?: boolean; voiceName: string; serverTranscription: boolean; onDataChanged: () => void;
+export default function Chat({ initialPrompt, startVoice, serverTranscription, onDataChanged }: {
+  initialPrompt?: string; startVoice?: boolean; serverTranscription: boolean; onDataChanged: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState(initialPrompt ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [live, setLive] = useState<LiveState>("off");
-  const [interim, setInterim] = useState("");
-  const liveRef = useRef<LiveState>("off");
-  const recRef = useRef<{ start: () => void; stop: () => void; abort: () => void } | null>(null);
+  const callRef = useRef<{ hangUp: () => void } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { api.messages().then(setMessages).catch((e) => setError(e.message)); }, []);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, interim, sending]);
-  useEffect(() => () => stopLive(), []);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sending]);
+  useEffect(() => () => callRef.current?.hangUp(), []);
   useEffect(() => { if (startVoice) startLive(); }, [startVoice]);
 
-  const setLiveState = (s: LiveState) => { liveRef.current = s; setLive(s); };
-  // Read through a function so TypeScript doesn't narrow the ref across awaits.
-  const liveNow = (): LiveState => liveRef.current;
-
-  async function send(text: string, mode: "text" | "voice" | "dictation" = "text") {
+  async function send(text: string) {
     const t = text.trim();
-    if (!t) return null;
+    if (!t) return;
     setError("");
     setSending(true);
-    const optimistic: Message = { id: `tmp-${Date.now()}`, role: "user", content: t, mode, meta: null, created_at: new Date().toISOString() };
+    const optimistic: Message = { id: `tmp-${Date.now()}`, role: "user", content: t, mode: "text", meta: null, created_at: new Date().toISOString() };
     setMessages((m) => [...m, optimistic]);
     try {
-      const res = await api.chat(t, mode);
+      const res = await api.chat(t, "text");
       setMessages((m) => [...m.filter((x) => x.id !== optimistic.id), res.user, res.reply]);
       if (res.actions.length) onDataChanged();
-      return res.reply.content;
     } catch (e) {
       setError((e as Error).message);
-      return null;
     } finally {
       setSending(false);
     }
   }
 
-  // ---- Live voice: listen → send → speak → listen again ----
-  function listen() {
-    const rec = createRecognizer({
-      continuous: false,
-      onInterim: setInterim,
-      onFinal: async (text) => {
-        setInterim("");
-        if (!text || liveRef.current !== "listening") return;
-        setLiveState("thinking");
-        const reply = await send(text, "voice");
-        if (liveNow() === "off") return;
-        if (reply) {
-          setLiveState("speaking");
-          await speak(reply, voiceName);
-        }
-        if (liveNow() !== "off") { setLiveState("listening"); listen(); }
-      },
-      onEnd: () => {
-        // Recognition stops after silence; keep listening while in listening state.
-        if (liveRef.current === "listening") setTimeout(() => liveRef.current === "listening" && listen(), 250);
-      },
-      onError: (err) => {
-        if (err === "not-allowed") { setError("Microphone permission denied."); stopLive(); }
-      },
-    });
-    recRef.current = rec;
-    try { rec?.start(); } catch { /* already started */ }
-  }
-
-  function startLive() {
-    if (!speechRecognitionAvailable()) {
-      setError("Live voice needs a browser with speech recognition (Chrome, Edge or Safari).");
-      return;
+  // ---- Live voice: OpenAI Realtime over WebRTC ----
+  async function startLive() {
+    if (callRef.current) return;
+    setError("");
+    try {
+      callRef.current = await startLiveCall({
+        onStatus: (s) => setLive(s === "ended" ? "off" : s),
+        onTranscript: (role, content) =>
+          setMessages((m) => [...m, { id: `live-${Date.now()}-${role}`, role, content, mode: "voice", meta: null, created_at: new Date().toISOString() }]),
+        onActions: (actions) => {
+          onDataChanged();
+          setMessages((m) => [...m, { id: `act-${Date.now()}`, role: "assistant", content: "", mode: "voice", meta: JSON.stringify(actions), created_at: new Date().toISOString() }]);
+        },
+        onError: setError,
+      });
+    } catch (e) {
+      setError((e as Error).message.includes("Permission") ? "Microphone permission denied." : (e as Error).message);
+      callRef.current = null;
+      setLive("off");
     }
-    setLiveState("listening");
-    listen();
   }
 
   function stopLive() {
-    liveRef.current = "off";
+    callRef.current?.hangUp();
+    callRef.current = null;
     setLive("off");
-    setInterim("");
-    try { recRef.current?.abort(); } catch { /* noop */ }
-    stopSpeaking();
   }
 
-  const liveLabel = { off: "", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…" }[live];
+  const LIVE_LABELS: Record<LiveState, string> = { off: "", connecting: "Connecting…", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…", ended: "" };
+  const liveLabel = LIVE_LABELS[live];
 
   return (
     <div className="flex flex-col h-full">
@@ -106,7 +81,6 @@ export default function Chat({ initialPrompt, startVoice, voiceName, serverTrans
           </div>
         )}
         {messages.map((m) => <Bubble key={m.id} m={m} />)}
-        {interim && <div className="flex justify-end"><div className="max-w-[85%] rounded-2xl px-4 py-2.5 bg-accent/30 italic">{interim}</div></div>}
         {sending && <div className="text-muted text-sm px-1 flex gap-1 items-center"><Dots /> </div>}
         {error && <p className="text-danger text-sm">{error}</p>}
         <div ref={endRef} />
@@ -120,9 +94,8 @@ export default function Chat({ initialPrompt, startVoice, voiceName, serverTrans
           </div>
           <div className="flex-1">
             <p className="font-medium">{liveLabel}</p>
-            <p className="text-xs text-muted">Live conversation — just talk.</p>
+            <p className="text-xs text-muted">Live conversation — just talk. You can interrupt any time.</p>
           </div>
-          {live === "speaking" && <Button variant="soft" onClick={() => { stopSpeaking(); }}>Skip</Button>}
           <Button variant="soft" onClick={stopLive}>End</Button>
         </div>
       ) : (
@@ -156,9 +129,9 @@ function Bubble({ m }: { m: Message }) {
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[88%] space-y-1.5">
-        <div className={`rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed ${mine ? "bg-accent text-accent-ink rounded-br-md" : "bg-surface border border-line rounded-bl-md"}`}>
+        {m.content && <div className={`rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed ${mine ? "bg-accent text-accent-ink rounded-br-md" : "bg-surface border border-line rounded-bl-md"}`}>
           {mine ? <p className="whitespace-pre-wrap">{m.content}</p> : <Markdown text={m.content} />}
-        </div>
+        </div>}
         {actions.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {actions.map((a, i) => (
@@ -166,7 +139,7 @@ function Bubble({ m }: { m: Message }) {
             ))}
           </div>
         )}
-        {m.mode !== "text" && <p className={`text-[10px] text-muted ${mine ? "text-right" : ""}`}>{m.mode}</p>}
+        {m.mode !== "text" && m.content && <p className={`text-[10px] text-muted ${mine ? "text-right" : ""}`}>{m.mode}</p>}
       </div>
     </div>
   );

@@ -9,8 +9,8 @@ or dictation. It's a mobile-first PWA running entirely on Cloudflare (Workers, D
 | Area | What it does |
 | --- | --- |
 | **Chat** | One continuous conversation. The assistant files things with tools (create/update items and projects, remember facts, search). |
-| **Live voice** | Hands-free conversation ("Talk"). It listens, replies, speaks the reply aloud and listens again. Uses on-device speech recognition and synthesis, so voice costs nothing per minute. |
-| **Dictation** | Record a clip and get it transcribed. Transcribed on the server with OpenAI (falls back to on-device recognition). Available in Chat and Brain Dump. |
+| **Live voice** | Hands-free conversation ("Talk") on OpenAI Realtime **gpt-realtime-2.1-mini** over WebRTC. You can interrupt it, and it uses the same tools, memory and approval rules as chat. Transcripts land in the shared conversation. |
+| **Dictation** | Record a clip and get it transcribed. Transcribed on the server with OpenAI **gpt-transcribe** (falls back to on-device recognition). Available in Chat and Brain Dump. |
 | **Shared state** | Text, voice and dictation all write to the same message history, memory and data. |
 | **Brain Dump** | Unstructured text in. A cheap model sorts it into tasks, reminders, commitments, waiting-fors and ideas, and stores durable facts as memories. |
 | **Lists** | Tasks, Reminders, Commitments, Waiting For and Ideas are kept clearly separate. Quick add, edit sheet, completion. |
@@ -32,6 +32,7 @@ chief-of-staff/
     assistant.ts  system prompt, context assembly, tools, approvals
     braindump.ts  brain dump sorting (fast tier)
     proactive.ts  scheduled nudges and briefing
+    realtime.ts   live voice: mints short-lived Realtime keys, runs voice tool calls
     db.ts         D1 helpers, settings, time zones
   shared/       types used by both sides
   migrations/   D1 schema
@@ -45,7 +46,7 @@ chief-of-staff/
   - Chat uses reasoning effort `low`; brain dumps and briefings use `none`.
   - The stable system prompt is sent first so OpenAI's automatic prompt caching applies.
   - Deterministic proactive checks don't call a model at all.
-  - Voice uses on-device speech.
+  - Live voice uses the mini Realtime model, and the browser only ever gets a 2-minute key.
   - Usage is logged to D1 and shown in Settings.
 
   Models and effort levels are set in `wrangler.toml` (`MODEL_MAIN`, `MODEL_FAST`, `EFFORT_MAIN`, `EFFORT_FAST`).
@@ -55,6 +56,18 @@ chief-of-staff/
 ## Deploy
 
 You need a Cloudflare account and Node 20+.
+
+**Windows (easiest):** in PowerShell, run
+
+```powershell
+cd path\to\gremier-site\chief-of-staff
+powershell -ExecutionPolicy Bypass -File .\deploy.ps1
+```
+
+It installs dependencies, logs you in to Cloudflare, creates the database, asks for your passcode and
+OpenAI key, and deploys. You can safely re-run it to redeploy after changes.
+
+**Manually:**
 
 ```bash
 cd chief-of-staff
@@ -90,6 +103,5 @@ The data model and the approval queue are designed so these can plug in without 
   `executeApproved()`.
 - **Browser automation or a cloud computer.** Same approval path.
 - **Coffee-business integrations** (orders, stock, wholesale clients) and smart-home integrations. Each would be a tool module plus a project/memory context source.
-- **Realtime speech-to-speech voice.** The voice layer is isolated in `src/voice.ts`.
 - **Semantic memory search** (Vectorize) for when memory outgrows what fits in the prompt.
 - **Multi-user auth** (Cloudflare Access) instead of a single passcode.

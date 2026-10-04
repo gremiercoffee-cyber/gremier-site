@@ -1,8 +1,7 @@
 /**
- * Voice helpers. Live voice uses the browser's on-device speech recognition and
- * synthesis (no audio leaves the device, no per-minute cost). Batch dictation records
- * audio and sends it to the Worker for transcription, falling back to on-device
- * recognition when server transcription is not configured.
+ * Dictation helpers. Dictation records audio and sends it to the Worker for transcription
+ * (OpenAI gpt-transcribe), falling back to on-device recognition when that isn't configured.
+ * Live voice lives in realtime.ts.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -37,29 +36,6 @@ export function createRecognizer(opts: {
   rec.onerror = (e: any) => opts.onError?.(e.error ?? "speech error");
   rec.onend = () => opts.onEnd?.();
   return rec;
-}
-
-/** Strip markdown so replies read naturally aloud. */
-function speakable(text: string) {
-  return text.replace(/[*_`#>]/g, "").replace(/\[(.*?)\]\(.*?\)/g, "$1").replace(/^\s*[-•]\s*/gm, "");
-}
-
-export function speak(text: string, voiceName?: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (!("speechSynthesis" in window)) return resolve();
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(speakable(text));
-    const voice = window.speechSynthesis.getVoices().find((v) => v.name === voiceName);
-    if (voice) u.voice = voice;
-    u.rate = 1.05;
-    u.onend = () => resolve();
-    u.onerror = () => resolve();
-    window.speechSynthesis.speak(u);
-  });
-}
-
-export function stopSpeaking() {
-  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 }
 
 export async function startRecording(): Promise<{ stop: () => Promise<Blob> }> {

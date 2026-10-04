@@ -25,7 +25,10 @@ MODEL_MAIN = "gpt-6-luna"
 MODEL_FAST = "gpt-6-luna"
 EFFORT_MAIN = "low"    # none | low | medium | high | xhigh | max
 EFFORT_FAST = "none"
-TRANSCRIBE_MODEL = "whisper-1"
+TRANSCRIBE_MODEL = "gpt-transcribe"
+# Live voice: OpenAI Realtime over WebRTC
+REALTIME_MODEL = "gpt-realtime-2.1-mini"
+REALTIME_TRANSCRIBE_MODEL = "gpt-transcribe"
 TIMEZONE = "UTC"
 
 # Secrets (never in the frontend) — set with `wrangler secret put <NAME>`:
