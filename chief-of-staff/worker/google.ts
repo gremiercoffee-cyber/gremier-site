@@ -387,6 +387,14 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
       completed++;
       if (alerts) await notify(env, "auto_done", `Looks done: ${item.title}`, `Based on your email "${subject}". Tap Undo if not.`, id);
     }
+    // The other side is the user themselves (another connected account, or their own name): not a real "waiting on".
+    const own = await accountEmails(env);
+    const userName = ((await getSettings(env)).name || "").trim().toLowerCase();
+    const otherAddr = (fromMe(last) ? header(last, "To") : header(last, "From")).toLowerCase();
+    const who = (triage.person ?? counterpart ?? "").trim().toLowerCase();
+    const isSelf = own.some((e) => otherAddr.includes(e.toLowerCase())) || (!!userName && (who === userName || who.split(/\s+/)[0] === userName));
+    if (isSelf && triage.action === "waiting") triage.action = "none";
+    if (isSelf && triage.person) triage.person = null;
     if (["task", "commitment", "waiting"].includes(triage.action) && triage.title) {
       const item = await createItem(env, {
         kind: triage.action, title: triage.title, person: triage.person ?? (counterpart || null), due_at: triage.due_at ?? null,

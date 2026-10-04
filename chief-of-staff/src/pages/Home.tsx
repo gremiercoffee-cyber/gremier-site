@@ -113,6 +113,8 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
       <div className="flex-1 overflow-y-auto pb-4">
         {!inConversation ? (
           <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={live} dash={dash} onAct={act}
+            onNudge={(ask) => { onConversation(null); convoRef.current = null; setMessages([]); send(ask); }}
+            onChanged={() => { api.dashboard().then(setDash).catch(() => {}); onDataChanged(); }}
             onReply={(n) => { onConversation(null); convoRef.current = null; setTyping(true); setInput(`About "${n.title}": `); }} />
         ) : (
           <div className="space-y-3 pt-2">
@@ -133,9 +135,9 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   );
 }
 
-function Presence({ greeting, live, dash, onAct, onReply }: {
+function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: {
   greeting: string; live: LiveState; dash: Dashboard | null;
-  onAct: (n: Nudge, a: string) => void; onReply: (n: Nudge) => void;
+  onAct: (n: Nudge, a: string) => void; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
 }) {
   const next = dash?.events.find((e) => !e.all_day && new Date(e.start_at).getTime() > Date.now());
   const overdue = dash?.overdue.length ?? 0;
@@ -143,7 +145,7 @@ function Presence({ greeting, live, dash, onAct, onReply }: {
   const lines = [
     next && `Next up: ${next.summary} at ${new Date(next.start_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
     overdue > 0 && `${overdue} thing${overdue > 1 ? "s are" : " is"} overdue.`,
-    waiting > 0 && `You're waiting on ${waiting} ${waiting > 1 ? "people" : "person"}.`,
+
   ].filter(Boolean) as string[];
   const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing").slice(0, 6);
   const briefing = dash?.nudges.find((n) => n.type === "briefing");
@@ -158,6 +160,21 @@ function Presence({ greeting, live, dash, onAct, onReply }: {
         </div>
       </div>
 
+      {(dash?.waiting ?? []).slice(0, 4).map((w) => (
+        <FromCos key={w.id}>
+          <p>Waiting on <span className="font-medium">{w.person ?? "someone"}</span>: {w.title}</p>
+          <p className="text-xs text-muted mt-0.5">{timeAgo(w.created_at)}</p>
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
+            {[["done", "Got it ✓"], ["nudge", "Nudge them"], ["dropped", "Not needed"]].map(([a, label]) => (
+              <button key={a} onClick={async () => {
+                if (a === "nudge") { onNudge(`Draft a friendly follow-up to ${w.person ?? "them"} about: ${w.title}`); return; }
+                await api.updateItem(w.id, { status: a as "done" | "dropped" });
+                onChanged();
+              }} className="rounded-full border border-line bg-bg px-3 py-1.5 text-[13px] font-medium hover:border-accent">{label}</button>
+            ))}
+          </div>
+        </FromCos>
+      ))}
       {lines.length > 0 && (
         <FromCos>
           <p>{lines.join(" ")}</p>
