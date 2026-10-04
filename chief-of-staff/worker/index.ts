@@ -312,8 +312,18 @@ route("GET", "/api/widget", async (_req, env) => {
   });
 });
 route("POST", "/api/widget/act", async (req, env) => {
-  const b = await body<{ id?: string; action?: string }>(req);
+  const b = await body<{ id?: string; action?: string; due_at?: string }>(req);
   if (!b.id) throw new HttpError(400, "id required");
+  if (b.action === "due") {
+    const at = b.due_at ? new Date(b.due_at) : null;
+    if (!at || isNaN(at.getTime())) throw new HttpError(400, "due_at required");
+    await updateItem(env, b.id, { status: "open", due_at: at.toISOString() });
+    await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", at.toISOString(), b.id);
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", b.id);
+    const tz = (await getSettings(env)).timezone;
+    const when = at.toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    return json({ ok: true, message: `Moved to ${when}` });
+  }
   if (b.action === "hide_event") {
     const ev = await first<{ summary: string; start_at: string }>(env, "SELECT summary, start_at FROM calendar_events WHERE id = ?", b.id);
     if (ev) await run(env, "UPDATE calendar_events SET hidden = 1 WHERE summary = ? AND start_at = ?", ev.summary, ev.start_at);

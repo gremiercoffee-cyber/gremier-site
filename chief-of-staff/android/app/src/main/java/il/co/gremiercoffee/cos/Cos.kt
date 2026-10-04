@@ -74,10 +74,12 @@ object Cos {
     fun fetch(c: Context): JSONObject = json(c, "GET", "/api/widget").also { save(c, it) }
 
     /** done | notneeded | snooze1h | tomorrow. Returns a short confirmation. */
-    fun act(c: Context, id: String, action: String): String {
+    fun act(c: Context, id: String, action: String, dueAt: String? = null): String {
         if (action == "done" || action == "notneeded" || action == "hide_event") { removeLocally(c, id); removeCard(c, id) }
         if (action.startsWith("cat:")) setCategoryLocally(c, id, action.removePrefix("cat:"))
-        return json(c, "POST", "/api/widget/act", JSONObject().put("id", id).put("action", action)).optString("message", "Done")
+        val body = JSONObject().put("id", id).put("action", action)
+        if (dueAt != null) body.put("due_at", dueAt)
+        return json(c, "POST", "/api/widget/act", body).optString("message", "Done")
     }
 
     /** One message to the Chief of Staff; returns its reply. */

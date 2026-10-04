@@ -2,6 +2,8 @@ package il.co.gremiercoffee.cos
 
 import android.Manifest
 import android.app.Activity
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -22,6 +24,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.concurrent.thread
 
@@ -90,10 +97,10 @@ class PopupActivity : Activity() {
     private fun showReply(s: String) { reply.text = s; reply.visibility = View.VISIBLE }
 
     /** Run a widget action, show the confirmation briefly, refresh the widget, close. */
-    private fun act(id: String, action: String) {
+    private fun act(id: String, action: String, dueAt: String? = null) {
         showReply("…")
         thread {
-            val msg = runCatching { Cos.act(this, id, action) }.getOrElse { it.message ?: "Couldn't update" }
+            val msg = runCatching { Cos.act(this, id, action, dueAt) }.getOrElse { it.message ?: "Couldn't update" }
             CosWidget.refreshAll(applicationContext)
             runOnUiThread { showReply(msg); body.postDelayed({ finish() }, 900) }
         }
@@ -107,8 +114,8 @@ class PopupActivity : Activity() {
         it.optString("notes").takeIf { s -> s.isNotBlank() && s != "null" }?.let { s ->
             body.addView(text(s, 14f, Color.parseColor("#3A3F4B")).apply { setPadding(0, (8 * dp).toInt(), 0, 0) })
         }
-        body.addView(row(pill("Done ✓", primary = true) { act(id, "done") }, pill("In 1 hour") { act(id, "snooze1h") }))
-        body.addView(row(pill("Tomorrow") { act(id, "tomorrow") }, pill("Not needed") { act(id, "notneeded") }))
+        body.addView(row(pill("Done ✓", primary = true) { act(id, "done") }, pill("Reschedule…") { showReschedule(id, it.optString("title")) }))
+        body.addView(row(pill("Not needed") { act(id, "notneeded") }))
         val cat = it.optString("category").takeIf { s -> s.isNotBlank() && s != "null" }
         body.addView(muted(if (cat == null) "Which area?" else "Area").apply { setPadding(0, (12 * dp).toInt(), 0, 0) })
         body.addView(row(
@@ -117,6 +124,39 @@ class PopupActivity : Activity() {
             pill(if (cat == "personal") "🏠 Personal ✓" else "🏠 Personal") { act(id, "cat:personal") },
         ))
         askBox("Ask or tell me about this…", "About \"${it.optString("title")}\": ")
+        body.addView(reply)
+        addClose()
+    }
+
+    // ---- Reschedule --------------------------------------------------------------------
+    private fun showReschedule(id: String, title: String) {
+        body.removeAllViews()
+        body.addView(muted("RESCHEDULE"))
+        body.addView(text(title, 19f, bold = true))
+        val zone = ZoneId.systemDefault()
+        val now = LocalDateTime.now(zone)
+        val fmt = DateTimeFormatter.ofPattern("EEE d MMM, HH:mm")
+        fun at(t: LocalDateTime) = t.atZone(zone).toInstant().toString()
+        val options = mutableListOf(
+            "In 1 hour" to now.plusHours(1),
+            "In 3 hours" to now.plusHours(3),
+        )
+        val evening = now.toLocalDate().atTime(19, 0)
+        if (evening.isAfter(now.plusMinutes(30))) options += "This evening (19:00)" to evening
+        options += "Tomorrow morning (09:00)" to now.toLocalDate().plusDays(1).atTime(9, 0)
+        options += "Next week" to now.toLocalDate().plusDays(7).atTime(9, 0)
+        options.forEach { (label, t) ->
+            body.addView(row(pill("$label  ·  ${t.format(fmt)}") { act(id, "due", at(t)) }))
+        }
+        body.addView(row(pill("Pick a date & time…", primary = true) {
+            val today = LocalDate.now(zone)
+            DatePickerDialog(this, { _, y, m, d ->
+                val day = LocalDate.of(y, m + 1, d)
+                TimePickerDialog(this, { _, h, min ->
+                    act(id, "due", at(LocalDateTime.of(day, LocalTime.of(h, min))))
+                }, 9, 0, true).show()
+            }, today.year, today.monthValue - 1, today.dayOfMonth).apply { datePicker.minDate = System.currentTimeMillis() - 1000 }.show()
+        }))
         body.addView(reply)
         addClose()
     }
