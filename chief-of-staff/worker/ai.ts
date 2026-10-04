@@ -46,6 +46,8 @@ export interface ModelProvider {
   runAgent(req: AgentRequest): Promise<AgentResult>;
   /** Single prompt -> text (no tools). */
   complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }): Promise<string>;
+  /** Research with live web search; returns the report text and how many searches it used. */
+  research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }): Promise<{ text: string; searches: number; sources: string[] }>;
 }
 
 export class ProviderUnavailable extends Error {}
@@ -147,6 +149,32 @@ class OpenAIProvider implements ModelProvider {
     }
     if (!result.text) result.text = "Done.";
     return result;
+  }
+
+  async research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }) {
+    const model = this.model("main");
+    // max_tool_calls caps paid web searches; the API accepts it though this SDK version doesn't type it.
+    const params = {
+      model,
+      instructions: req.system,
+      input: req.prompt,
+      tools: [{ type: "web_search" }],
+      max_tool_calls: Math.max(1, req.maxSearches),
+      max_output_tokens: req.maxTokens ?? 4000,
+    } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming;
+    const response = await this.client.responses.create(params);
+    const usage = response.usage;
+    await this.logUsage(model, req.purpose, usage ? { prompt_tokens: usage.input_tokens, completion_tokens: usage.output_tokens, total_tokens: usage.total_tokens } as OpenAI.CompletionUsage : undefined);
+    const searches = response.output.filter((o) => o.type === "web_search_call").length;
+    // Source links the model cited.
+    const sources = new Set<string>();
+    for (const o of response.output) {
+      if (o.type !== "message") continue;
+      for (const c of o.content) {
+        if (c.type === "output_text") for (const a of c.annotations ?? []) if (a.type === "url_citation") sources.add(a.url);
+      }
+    }
+    return { text: response.output_text.trim(), searches, sources: [...sources].slice(0, 15) };
   }
 
   async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }) {

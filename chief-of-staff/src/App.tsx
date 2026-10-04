@@ -13,11 +13,12 @@ import Search from "./pages/Search";
 import Library, { type LibraryTab } from "./pages/Library";
 import Missions from "./pages/Missions";
 import Replies from "./pages/Replies";
+import Tasks from "./pages/Tasks";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
-type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Missions", replies: "Replies" };
+type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Missions", replies: "Replies", tasks: "Tasks" };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -146,6 +147,7 @@ export default function App() {
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
+        {view === "tasks" && <Tasks refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
         {view === "missions" && <Missions refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => { setTyping(p); }, 0); }} />}
         {view === "library" && <Library tab={libraryTab} onTab={setLibraryTab} onOpenItem={openItem} refreshKey={refreshKey} />}
@@ -171,6 +173,7 @@ export default function App() {
               <DrawerItem active={view === "projects"} onClick={() => go("projects")} icon={<path d="M3 7h6l2 2h10v10H3z" />} label="Projects" />
               <DrawerItem active={view === "dump"} onClick={() => go("dump")} icon={<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3" />} label="Brain dump" />
               <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
+              <DrawerItem active={view === "tasks"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks" />
               <DrawerItem active={view === "missions"} onClick={() => go("missions")} icon={<path d="M4 20V4l8 4 8-4v16l-8-4z" />} label="Missions" />
               <DrawerItem active={view === "library" && libraryTab === "ideas"} onClick={() => { setLibraryTab("ideas"); go("library"); }} icon={<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />} label="Ideas & notes" />
               <DrawerItem active={view === "library" && libraryTab === "people"} onClick={() => { setLibraryTab("people"); go("library"); }} icon={<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6" /></>} label="People" />

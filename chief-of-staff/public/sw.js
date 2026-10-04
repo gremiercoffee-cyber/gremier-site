@@ -1,6 +1,6 @@
 // Chief of Staff service worker: app-shell caching + notification plumbing.
 // API calls are never cached — data always comes fresh from the Worker.
-const CACHE = "cos-shell-v3";
+const CACHE = "cos-shell-v4";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -35,7 +35,7 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   const data = e.data ? e.data.json() : { title: "Chief of Staff", body: "" };
   e.waitUntil(self.registration.showNotification(data.title, {
-    body: data.body, icon: "/icon-192.png", badge: "/icon-192.png", tag: data.tag, renotify: !!data.tag, data,
+    body: data.body, icon: "/icon-192.png", badge: "/badge.png", tag: data.tag, renotify: !!data.tag, data,
     actions: (data.actions || []).slice(0, 3).map((a) => ({ action: a.action, title: a.title })),
   }));
 });

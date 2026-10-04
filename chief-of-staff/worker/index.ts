@@ -13,6 +13,7 @@ import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
+import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -39,7 +40,7 @@ function authorised(req: Request, env: Env): boolean {
   return diff === 0;
 }
 
-type Handler = (req: Request, env: Env, params: string[]) => Promise<Response>;
+type Handler = (req: Request, env: Env, params: string[], ctx: ExecutionContext) => Promise<Response>;
 const routes: [string, RegExp, Handler][] = [];
 const route = (method: string, path: string, h: Handler) =>
   routes.push([method, new RegExp("^" + path.replace(/:\w+/g, "([^/]+)") + "$"), h]);
@@ -216,6 +217,33 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Tasks (recurring agent jobs) -----------------------------------------------------
+route("GET", "/api/routines", async (_req, env) => {
+  const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY active DESC, created_at");
+  const runs = await all(env, `SELECT id, routine_id, started_at, finished_at, status, summary, report, sources, searches, doc_link, error
+    FROM routine_runs WHERE routine_id IN (SELECT id FROM routines) ORDER BY started_at DESC LIMIT 60`);
+  return json(rs.map((r) => ({
+    ...r, schedule: normalizeSchedule(r.schedule), schedule_text: describeSchedule(normalizeSchedule(r.schedule)),
+    runs: (runs as { routine_id: string }[]).filter((x) => x.routine_id === r.id).slice(0, 8),
+  })));
+});
+route("POST", "/api/routines", async (req, env) => {
+  try { return json(await saveRoutine(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("DELETE", "/api/routines/:id", async (_req, env, [id]) => {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM routine_runs WHERE routine_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM routines WHERE id = ?").bind(id),
+  ]);
+  return json({ ok: true });
+});
+route("POST", "/api/routines/:id/run", async (_req, env, [id], ctx) => {
+  const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", id);
+  if (!r) throw new HttpError(404, "task not found");
+  ctx.waitUntil(runRoutine(env, r)); // keeps going after we answer
+  return json({ ok: true, message: "Started. The report will appear here in a few minutes." });
+});
+
 // ---- Replies: consolidated catch-up ------------------------------------------------
 route("GET", "/api/replies", async (_req, env) => json(await replyQueue(env)));
 route("POST", "/api/replies/:id/send", async (req, env, [id]) => {
@@ -447,7 +475,7 @@ route("GET", "/api/export", async (_req, env) => {
 });
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     if (url.pathname === "/api/health") {
@@ -486,7 +514,7 @@ export default {
       const m = url.pathname.match(re);
       if (m && method === req.method) {
         try {
-          return await handler(req, env, m.slice(1).map(decodeURIComponent));
+          return await handler(req, env, m.slice(1).map(decodeURIComponent), ctx);
         } catch (e) {
           if (e instanceof HttpError) return json({ error: e.message }, e.status);
           if (e instanceof ProviderUnavailable) return json({ error: e.message }, 503);

@@ -10,6 +10,7 @@ import { bridgeStatus, queueWhatsApp } from "./whatsapp";
 import { findPeople, memoryContext, noteContact, recallMemories, savePerson } from "./memory";
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
 import { missionsSummary, startMission, updateMission } from "./missions";
+import { routinesSummary, saveRoutine } from "./routines";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -21,6 +22,8 @@ What you do:
 - A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
 
 Areas: everything belongs to one of three areas: coffee (Gremier Coffee business: roasting, orders, deliveries, suppliers, customers), yeshiva (the yeshiva: rabbis, students, classes, staff), personal (family, home, health, money, errands). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly.
+
+Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (briefing by default, alert if they want to be told at once, doc for a Google Doc report). Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
 Missions: when the user hands you a goal that takes several steps over days ("get every rabbi's list by Monday", "sort out the supplier for green beans"), confirm the plan in one or two lines and start a mission with start_mission. You then work on it in the background on a schedule, report progress in the briefing, and ask only when stuck. When the user answers a mission's question, or says pause/stop/cancel, use update_mission. Don't start a mission for something that's a single task.
 
@@ -99,6 +102,8 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
     : "- WhatsApp: not set up yet.");
   const missions = await missionsSummary(env);
   if (missions) lines.push("", "## Missions (working in the background)", missions);
+  const tasks = await routinesSummary(env);
+  if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
   return lines.join("\n");
 }
@@ -138,6 +143,38 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Read the latest messages of a Gmail thread by id.",
       input_schema: { type: "object", properties: { thread_id: { type: "string" }, account: { type: "string" } }, required: ["thread_id"] },
       handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
+    },
+    {
+      name: "save_task",
+      description: "Create or change a recurring task (scheduled research/report/check). Pass id to change an existing one.",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          instructions: { type: "string", description: "What to research/check/prepare, specifically" },
+          schedule: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["hours", "daily", "weekly", "monthly"] },
+              every_hours: { type: "number" }, time: { type: "string", description: "HH:MM local" },
+              weekdays: { type: "array", items: { type: "integer" }, description: "0=Sunday … 6=Saturday" },
+              day: { type: "integer", description: "day of month" },
+            },
+            required: ["kind"],
+          },
+          depth: { type: "string", enum: ["quick", "standard", "deep"] },
+          deliver: { type: "string", enum: ["briefing", "alert", "doc"] },
+          category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          active: { type: "boolean" },
+          run_now: { type: "boolean", description: "Also run it right away" },
+        },
+      },
+      handler: async (input) => {
+        const r = await saveRoutine(env, input);
+        note("save_task", `Task "${r.name}": ${r.active ? r.schedule_text : "paused"}`);
+        return r;
+      },
     },
     {
       name: "start_mission",

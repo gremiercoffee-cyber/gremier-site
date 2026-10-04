@@ -7,6 +7,13 @@ export interface ReplyCard {
   why: string | null; suggested: string | null; waiting_since: string; category: string | null;
 }
 
+export interface RoutineSchedule { kind: "hours" | "daily" | "weekly" | "monthly"; every_hours?: number; time?: string; weekdays?: number[]; day?: number }
+export interface RoutineRow {
+  id: string; name: string; instructions: string; schedule: RoutineSchedule; schedule_text: string; depth: string; deliver: string;
+  category: string | null; active: number; next_run_at: string | null; last_run_at: string | null;
+  runs: { id: string; started_at: string; status: string; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
+}
+
 export interface MissionRow {
   id: string; goal: string; category: string | null; status: string; steps: string; log: string;
   waiting_on_user: string | null; next_run_at: string | null; updated_at: string;
@@ -75,6 +82,10 @@ export const api = {
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
   people: () => request<Person[]>("GET", "/api/people"),
   missions: () => request<MissionRow[]>("GET", "/api/missions"),
+  routines: () => request<RoutineRow[]>("GET", "/api/routines"),
+  saveRoutine: (r: Record<string, unknown>) => request("POST", "/api/routines", r),
+  deleteRoutine: (id: string) => request("DELETE", `/api/routines/${id}`),
+  runRoutine: (id: string) => request<{ ok: true; message: string }>("POST", `/api/routines/${id}/run`),
   replies: () => request<ReplyCard[]>("GET", "/api/replies"),
   sendReply: (id: string, text: string) => request<{ ok: true; message: string }>("POST", `/api/replies/${id}/send`, { text }),
   setMission: (id: string, status: string) => request("POST", `/api/missions/${id}`, { status }),
