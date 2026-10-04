@@ -43,3 +43,6 @@ verify_jwt = false
 
 [functions.hub-api]
 verify_jwt = false
+
+[functions.hub-mcp]
+verify_jwt = false
