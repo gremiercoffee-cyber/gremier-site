@@ -10,6 +10,7 @@
 
   chrome.runtime.sendMessage({ type: "config" }, (cfg) => { myNames = (cfg && cfg.my_names) || []; });
   const status = (m) => { mode = m; chrome.runtime.sendMessage({ type: "status", mode: m }); };
+  status("starting"); // visible in the popup as soon as the add-on is attached to the tab
 
   function flush(chatId) {
     const b = buffers.get(chatId);

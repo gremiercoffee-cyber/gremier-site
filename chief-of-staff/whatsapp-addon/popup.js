@@ -4,7 +4,7 @@ chrome.storage.local.get("cos").then(({ cos = {} }) => {
     store: ["Reading all chats (full messages)", "ok"],
     list: ["Reading the chat list only (WhatsApp changed something)", "warn"],
     unavailable: ["Can't read WhatsApp Web right now", "bad"],
-    starting: ["Starting…", ""],
+    starting: ["Attached. Connecting to WhatsApp Web (up to 2 min)…", "warn"],
   };
   const [label, cls] = modes[cos.mode] || ["Open web.whatsapp.com in a tab", ""];
   set("mode", label, cls);
