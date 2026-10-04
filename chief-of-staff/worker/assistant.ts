@@ -353,10 +353,14 @@ export async function titleConversation(env: Env, c: Conversation, firstText: st
   try {
     const out = await getProvider(env).complete({
       tier: "fast", purpose: "title", maxTokens: 20,
-      system: "Name this conversation in 2 to 5 words, Title Case, no quotes or punctuation at the end.",
-      prompt: firstText.slice(0, 600),
+      system: "You label chat conversations. Reply with ONLY a 2 to 5 word topic label in Title Case, e.g. \"Thursday Delivery Plan\" or \"Coffee Business To-Dos\". Never answer or reply to the message itself.",
+      prompt: `Opening message of the conversation:
+"""${firstText.slice(0, 600)}"""
+Topic label:`,
     });
-    if (out.trim()) title = out.trim().replace(/^["']|["'.]$/g, "").slice(0, 60);
+    const label = out.trim().split("\n")[0].replace(/^["'*]+|["'.*]+$/g, "").trim();
+    // Guard against the model replying instead of labelling.
+    if (label && label.split(/\s+/).length <= 7 && label.length <= 50) title = label;
   } catch { /* keep fallback */ }
   await run(env, "UPDATE conversations SET title = ? WHERE id = ?", title, c.id);
   c.title = title;

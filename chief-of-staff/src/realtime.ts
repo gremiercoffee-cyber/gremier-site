@@ -44,6 +44,13 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
   const dc = pc.createDataChannel("oai-events");
   const send = (event: unknown) => dc.readyState === "open" && dc.send(JSON.stringify(event));
   let pendingActions: ActionNote[] = [];
+  let responseActive = false, pendingCalls = 0, haveToolOutputs = false;
+  const maybeContinue = () => {
+    if (responseActive || pendingCalls > 0 || !haveToolOutputs) return;
+    haveToolOutputs = false;
+    responseActive = true;
+    send({ type: "response.create" });
+  };
   const log = (role: string, content: string, actions: ActionNote[] = []) =>
     post<{ conversation_id: string | null }>("/api/realtime/log", { role, content, actions, conversation_id: cb.getConversation() })
       .then((r) => { if (r.conversation_id) cb.onConversation(r.conversation_id); })
@@ -77,8 +84,14 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
           pendingActions = [];
         }
         break;
+      case "response.created":
+        responseActive = true;
+        break;
       case "response.function_call_arguments.done": {
+        // A response can contain several tool calls. Run them all, then ask for ONE follow-up
+        // response once the current response has finished (asking earlier is rejected).
         cb.onStatus("thinking");
+        pendingCalls++;
         let output: unknown;
         try {
           const res = await post<{ output: unknown; actions: ActionNote[] }>("/api/realtime/tool", { name: ev.name, arguments: ev.arguments });
@@ -88,9 +101,15 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
           output = { error: (e as Error).message };
         }
         send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: ev.call_id, output: JSON.stringify(output) } });
-        send({ type: "response.create" });
+        pendingCalls--;
+        haveToolOutputs = true;
+        maybeContinue();
         break;
       }
+      case "response.done":
+        responseActive = false;
+        maybeContinue();
+        break;
       case "error":
         cb.onError(ev.error?.message ?? "Voice error");
         break;
