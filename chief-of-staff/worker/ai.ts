@@ -106,7 +106,8 @@ class OpenAIProvider implements ModelProvider {
         model,
         messages,
         tools,
-        reasoning_effort: this.effort(req.tier),
+        // gpt-6-luna on chat/completions only accepts tools with reasoning_effort "none".
+        reasoning_effort: (tools.length ? "none" : this.effort(req.tier)) as Effort,
         max_completion_tokens: 8192,
       });
       await this.logUsage(model, req.purpose, response.usage);
