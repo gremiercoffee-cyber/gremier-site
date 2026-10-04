@@ -8,15 +8,29 @@
   let myNames = [];
   let mode = "starting";
 
-  chrome.runtime.sendMessage({ type: "config" }, (cfg) => { myNames = (cfg && cfg.my_names) || []; });
-  const status = (m) => { mode = m; chrome.runtime.sendMessage({ type: "status", mode: m }); };
+  // Messages to background.js can fail if Chrome restarted the add-on or put it to sleep.
+  // Retry a few times; if the add-on was reloaded under this tab, ask for a tab reload.
+  async function send(msg, tries = 3) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        if (!chrome.runtime?.id) throw new Error("Extension context invalidated");
+        return await send(msg);
+      } catch (e) {
+        if (String(e).includes("invalidated")) { console.warn("[Chief of Staff] Add-on was updated: reload this tab (F5)."); return; }
+        await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+      }
+    }
+  }
+
+  send({ type: "config" }).then((cfg) => { myNames = (cfg && cfg.my_names) || []; });
+  const status = (m) => { mode = m; send({ type: "status", mode: m }); };
   status("starting"); // visible in the popup as soon as the add-on is attached to the tab
 
   function flush(chatId) {
     const b = buffers.get(chatId);
     buffers.delete(chatId);
     if (!b || !b.actionable) return;
-    chrome.runtime.sendMessage({
+    send({
       type: "incoming",
       payload: { chat: b.chat, sender: b.sender, text: b.lines.join("\n"), at: new Date().toISOString() },
     });
@@ -28,19 +42,19 @@
     const ok = cosActionable(m, myNames);
     b.actionable = b.actionable || ok;
     const why = ok ? "will forward in 1 min" : m.isGroup ? "skipped: group, you weren't mentioned" : m.muted ? "skipped: muted chat" : "skipped: didn't look like a request";
-    chrome.runtime.sendMessage({ type: "seen", note: `${m.sender}${m.isGroup ? ` in ${m.chat}` : ""} (${why})` });
+    send({ type: "seen", note: `${m.sender}${m.isGroup ? ` in ${m.chat}` : ""} (${why})` });
     clearTimeout(b.timer);
     b.timer = setTimeout(() => flush(m.chatId), BUNDLE_MS);
     buffers.set(m.chatId, b);
   }
 
   function onMine(m) {
-    chrome.runtime.sendMessage({ type: "seen", note: `Your message to ${m.chat} (counts as replying)` });
+    send({ type: "seen", note: `Your message to ${m.chat} (counts as replying)` });
     buffers.delete(m.chatId); // you answered: nothing pending to forward
     const prev = lastReplied.get(m.chatId) || 0;
     if (Date.now() - prev < 30_000) return;
     lastReplied.set(m.chatId, Date.now());
-    chrome.runtime.sendMessage({ type: "replied", payload: { chat: m.chat } });
+    send({ type: "replied", payload: { chat: m.chat } });
   }
 
   window.addEventListener("message", (e) => {
