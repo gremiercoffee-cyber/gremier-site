@@ -73,7 +73,6 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
     source: "whatsapp", notes: `WhatsApp from ${sender}${chat !== sender ? ` in ${chat}` : ""}: "${text}"`,
   });
   await run(env, "UPDATE whatsapp_inbox SET item_id = ? WHERE id = ?", item.id, id);
-  await notify(env, "whatsapp", item.title, `${sender}: ${text.slice(0, 140)}`, item.id);
   return { filed: true, item_id: item.id };
 }
 

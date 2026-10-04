@@ -394,7 +394,6 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
       });
       await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ?, ext_account = ? WHERE id = ?", threadId, me, item.id);
       created++;
-      if (alerts && item.priority === 1) await notify(env, "email", `Email needs you: ${item.title}`, `From ${displayName(header(other, "From"))}`, item.id);
     }
     await run(env, "UPDATE gmail_threads SET analyzed_msg_id = ? WHERE thread_id = ?", last.id, threadId);
   }

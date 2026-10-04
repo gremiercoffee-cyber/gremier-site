@@ -7,10 +7,14 @@ import type { Item, Nudge, NudgeAction } from "../shared/types";
 import type { Env } from "./env";
 import { first, getSettings, localParts, run, updateItem } from "./db";
 import { decideOutbox } from "./whatsapp";
+import { createDraft } from "./google";
+import { now, uid } from "./db";
 
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
+  if (n.type === "unanswered") return [{ id: "snooze2h", title: "In 2 hours" }, { id: "reply", title: "Reply…", opens: true }, { id: "hold", title: "Holding reply" }, { id: "notneeded", title: "Not needed" }];
+  if (n.type === "digest") return [{ id: "ok", title: "Got it" }];
   if (n.type === "whatsapp") return [{ id: "done", title: "Handled ✓" }, { id: "reply", title: "Reply…", opens: true }, { id: "tomorrow", title: "Tomorrow" }];
   if (!n.item_id) return n.type === "event" ? [{ id: "ok", title: "Got it" }] : [{ id: "ok", title: "OK" }];
   switch (n.type) {
@@ -94,6 +98,15 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
         message = "Moved to tomorrow morning.";
       }
       break;
+    case "snooze2h":
+      if (item) { await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", new Date(Date.now() + 2 * 3600_000).toISOString(), item.id); message = "I'll check again in 2 hours."; }
+      break;
+    case "notneeded":
+      if (item) { await updateItem(env, item.id, { status: "dropped" }); message = "Dropped. No reply needed."; }
+      break;
+    case "hold":
+      if (item) message = await holdingReply(env, item);
+      break;
     case "snooze3d":
       if (item) { await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", new Date(Date.now() - 86400_000).toISOString(), item.id); message = "I'll check again in 3 days."; }
       break;
@@ -102,7 +115,7 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
     case "reply":
       if (item) {
         const ask = action === "draft" ? `Draft a reply for: ${item.title}`
-          : action === "reply" ? `Help me reply on WhatsApp to ${item.person ?? "them"}. ${item.notes}`
+          : action === "reply" ? `Help me reply ${item.source === "gmail" ? "by email" : "on WhatsApp"} to ${item.person ?? "them"}. ${item.notes}`
           : `Draft a friendly follow-up to ${item.person ?? "them"} about: ${item.title}`;
         open = `/?ask=${encodeURIComponent(ask)}`;
         message = "Opening a draft…";
@@ -115,4 +128,24 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
   }
   await dismiss();
   return { ok: true, message, open };
+}
+
+/** "Got it, I'll get back to you by tomorrow" in the person's language, then check again tomorrow. */
+async function holdingReply(env: Env, item: Item): Promise<string> {
+  const hebrew = /[\u0590-\u05FF]/.test(`${item.notes} ${item.title}`);
+  const text = hebrew ? "קיבלתי, אחזור אליך עד מחר 🙏" : "Got it, I'll get back to you by tomorrow.";
+  const tomorrow = tomorrowMorning((await getSettings(env)).timezone);
+  await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", tomorrow, item.id);
+  if (item.source === "whatsapp" && item.person) {
+    // The tap on "Holding reply" is the approval for this exact message.
+    const t = now();
+    await run(env, "INSERT INTO whatsapp_outbox (id, recipient, text, status, created_at, updated_at) VALUES (?, ?, ?, 'approved', ?, ?)",
+      uid(), item.person, text, t, t);
+    return `Sending "${text}" to ${item.person}. I'll remind you tomorrow.`;
+  }
+  if (item.source === "gmail" && item.ext_ref) {
+    await createDraft(env, { threadId: item.ext_ref, body: text, account: item.ext_account ?? undefined });
+    return "Holding reply saved in your Gmail drafts. Send it from there. I'll remind you tomorrow.";
+  }
+  return "I'll remind you tomorrow.";
 }
