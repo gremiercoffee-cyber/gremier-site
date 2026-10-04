@@ -5,7 +5,7 @@
  */
 import type { Env } from "./env";
 import { getProvider } from "./ai";
-import { all, first, now, run, uid } from "./db";
+import { all, first, getSettings, now, run, uid } from "./db";
 import { savePerson } from "./memory";
 import { saveSituation } from "./situations";
 import { notify } from "./push";
@@ -39,13 +39,14 @@ export async function learnPass(env: Env, force = false) {
     all<{ subject: string; counterpart: string }>(env, "SELECT subject, counterpart FROM gmail_threads WHERE updated_at > ? LIMIT 25", since),
     all<{ summary: string; start_at: string; location: string | null }>(env, "SELECT summary, start_at, location FROM calendar_events WHERE updated_at > ? LIMIT 25", since),
   ]);
+  const tz = (await getSettings(env)).timezone;
   const cut = (s: string, n = 400) => s.replace(/\s+/g, " ").slice(0, n);
   const snippets = [
     ...said.map((m) => `[user said] ${cut(m.content, 800)}`),
     ...dumps.map((d) => `[brain dump] ${cut(d.raw, 1200)}`),
     ...wa.map((m) => `[WhatsApp ${m.chat}${m.sender !== m.chat ? ` / ${m.sender}` : ""}] ${cut(m.text)}`),
     ...mail.map((m) => `[email with ${m.counterpart}] ${cut(m.subject, 150)}`),
-    ...cal.map((e) => `[calendar ${e.start_at.slice(0, 16)}] ${cut(e.summary, 150)}${e.location ? ` @ ${e.location}` : ""}`),
+    ...cal.map((e) => `[calendar ${localTime(e.start_at, tz)}] ${cut(e.summary, 150)}${e.location ? ` @ ${e.location}` : ""}`),
   ];
   if (!snippets.length) { await put(env, KEY, started); return { learned: 0 }; }
 
@@ -53,7 +54,7 @@ export async function learnPass(env: Env, force = false) {
     all<{ content: string; status: string }>(env, "SELECT content, status FROM memories ORDER BY updated_at DESC LIMIT 200"),
     all<{ name: string; role: string }>(env, "SELECT name, role FROM people LIMIT 150"),
   ]);
-  const system = `You are the learning engine of a personal Chief of Staff. The user runs a coffee business (Gremier Coffee), works at a yeshiva, and has a personal/family life. From the new material below, pick out what reveals something LASTING about their life worth remembering: who a person or company is to them (e.g. "Bottle company X supplies the bottles for your coffee business"), suppliers, customers, colleagues, family, roles, routines and weekly schedule, preferences, ongoing commitments, places, prices, how things work in their businesses. Be aggressive: propose anything plausibly useful, but nothing one-off (a single errand is not a memory) and nothing already known. When you are guessing, say so in "question" (e.g. "Is X your bottle supplier for the coffee business?").
+  const system = `You are the learning engine of a personal Chief of Staff. The user runs a coffee business (Gremier Coffee), works at a yeshiva, and has a personal/family life. All times below are the user's local time (${tz}); use them as given. From the new material below, pick out what reveals something LASTING about their life worth remembering: who a person or company is to them (e.g. "Bottle company X supplies the bottles for your coffee business"), suppliers, customers, colleagues, family, roles, routines and weekly schedule, preferences, ongoing commitments, places, prices, how things work in their businesses. Be aggressive: propose anything plausibly useful, but nothing one-off (a single errand is not a memory) and nothing already known. When you are guessing, say so in "question" (e.g. "Is X your bottle supplier for the coffee business?").
 Already known (don't repeat, don't re-propose ignored ones):
 ${known.map((k) => `- ${k.status === "ignored" ? "(ignored) " : ""}${k.content.slice(0, 160)}`).join("\n") || "- nothing yet"}
 People already known: ${people.map((p) => `${p.name}${p.role ? ` (${p.role})` : ""}`).join("; ") || "none"}
@@ -121,4 +122,10 @@ export async function reviewMemory(env: Env, id: string, action: string, content
   }
   if (!(await first(env, "SELECT 1 FROM memories WHERE status = 'suggested'"))) await run(env, "DELETE FROM nudges WHERE type = 'learn'");
   return { ok: true };
+}
+
+/** "Thu 12:05" in the user's time zone (calendar times are stored in UTC). All-day dates pass through. */
+function localTime(iso: string, tz: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 }
