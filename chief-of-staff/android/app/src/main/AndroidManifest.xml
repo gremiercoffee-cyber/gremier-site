@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:label="Chief of Staff"
@@ -15,7 +16,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Invisible: handles taps on widget rows (mark done / open), then closes. -->
+        <!-- Invisible: handles taps inside widget lists (done / choose area / open a pop-up), then closes. -->
         <activity
             android:name=".TapActivity"
             android:exported="false"
@@ -23,6 +24,15 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Pop-ups over the home screen: item / event details, quick add, talk. -->
+        <activity
+            android:name=".PopupActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.DeviceDefault.Light.Dialog.NoActionBar" />
 
         <receiver android:name=".CosWidget" android:exported="true">
             <intent-filter>

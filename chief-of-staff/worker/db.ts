@@ -34,10 +34,27 @@ export interface ItemInput {
   person?: string | null;
   project_id?: string | null;
   source?: string;
+  category?: string | null;
+}
+
+export const CATEGORIES = ["coffee", "yeshiva", "personal"];
+const validCategory = (c: unknown) => (typeof c === "string" && CATEGORIES.includes(c.toLowerCase()) ? c.toLowerCase() : null);
+
+/** Remember which area a person belongs to, so their next requests are filed without asking. */
+export async function learnCategory(env: Env, person: string | null | undefined, category: string) {
+  if (!person) return;
+  const p = await first<{ id: string }>(env, "SELECT id FROM people WHERE lower(name) = lower(?) OR lower(whatsapp_name) = lower(?)", person, person);
+  const t = now();
+  if (p) await run(env, "UPDATE people SET category = ?, updated_at = ? WHERE id = ?", category, t, p.id);
+  else await run(env, "INSERT INTO people (id, name, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", uid(), person, category, t, t);
 }
 
 export async function createItem(env: Env, input: ItemInput): Promise<Item> {
   const kind = (KINDS.includes(input.kind as ItemKind) ? input.kind : "task") as ItemKind;
+  if (!validCategory(input.category) && input.person) {
+    const p = await first<{ category: string | null }>(env, "SELECT category FROM people WHERE lower(name) = lower(?) OR lower(whatsapp_name) = lower(?)", input.person, input.person);
+    if (p?.category) input = { ...input, category: p.category };
+  }
   const title = (input.title ?? "").trim();
   if (!title) throw new HttpError(400, "title is required");
   const t = now();
@@ -52,16 +69,17 @@ export async function createItem(env: Env, input: ItemInput): Promise<Item> {
     person: input.person || null,
     project_id: input.project_id || null,
     source: input.source ?? "manual",
+    category: validCategory(input.category),
     completed_at: null,
     created_at: t,
     updated_at: t,
   };
   await run(
     env,
-    `INSERT INTO items (id, kind, title, notes, status, priority, due_at, person, project_id, source, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO items (id, kind, title, notes, status, priority, due_at, person, project_id, source, category, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.id, item.kind, item.title, item.notes, item.status, item.priority, item.due_at,
-    item.person, item.project_id, item.source, item.created_at, item.updated_at,
+    item.person, item.project_id, item.source, item.category, item.created_at, item.updated_at,
   );
   return item;
 }
@@ -77,6 +95,7 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   if (input.due_at !== undefined) next.due_at = toIso(input.due_at);
   if (input.person !== undefined) next.person = input.person || null;
   if (input.project_id !== undefined) next.project_id = input.project_id || null;
+  if (input.category !== undefined) next.category = validCategory(input.category);
   if (input.status !== undefined && ["open", "done", "dropped"].includes(input.status)) {
     next.status = input.status as Item["status"];
     next.completed_at = next.status === "done" ? now() : null;
@@ -86,10 +105,10 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   const resetReminder = input.due_at !== undefined && next.due_at !== existing.due_at;
   await run(
     env,
-    `UPDATE items SET kind=?, title=?, notes=?, status=?, priority=?, due_at=?, person=?, project_id=?,
+    `UPDATE items SET kind=?, title=?, notes=?, status=?, priority=?, due_at=?, person=?, project_id=?, category=?,
        completed_at=?, updated_at=?, reminded_at = CASE WHEN ? THEN NULL ELSE reminded_at END WHERE id=?`,
     next.kind, next.title, next.notes, next.status, next.priority, next.due_at, next.person,
-    next.project_id, next.completed_at, next.updated_at, resetReminder ? 1 : 0, id,
+    next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, id,
   );
   return next;
 }

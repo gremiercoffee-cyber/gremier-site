@@ -15,6 +15,8 @@ export interface Item {
   ext_source?: string | null;
   ext_ref?: string | null;
   ext_account?: string | null;
+  /** coffee | yeshiva | personal; null = ask the user. */
+  category?: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;

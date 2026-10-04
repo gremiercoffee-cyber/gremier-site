@@ -297,16 +297,17 @@ function bodyText(m: GMessage): string {
 
 const TRIAGE_SYSTEM = `You triage email for a busy business owner. You see one email thread and the user's open items.
 Reply with JSON only, no prose:
-{"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"completes":string[]}
+{"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"category":"coffee"|"yeshiva"|"personal"|null,"completes":string[]}
 - task: the latest message is from someone else and the user personally needs to do something (reply, send, pay, decide, book).
 - commitment: the user promised something in this thread that is not yet done.
 - waiting: the latest message is FROM THE USER and asks someone else for something they have not delivered yet.
+- category: coffee = Gremier Coffee business (orders, deliveries, beans, customers, suppliers); yeshiva = the yeshiva (rabbis, students, classes); personal = family/home/money; null if unsure.
 - none: newsletters, receipts, notifications, automated mail, FYI-only, or nothing left to do.
 - title: short imperative, e.g. "Reply to Dana about the roaster invoice". person: the other person's name.
 - due_at: ISO 8601 only if a date is stated or clearly implied, else null. priority 1 only for urgent or money/customer-critical.
 - completes: ids of the user's open items (listed) that this thread shows are clearly finished, e.g. the user sent what they promised. Only when certain; otherwise [].`;
 
-interface Triage { action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[] }
+interface Triage { action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[]; category?: string | null }
 
 async function syncGmail(env: Env, token: string, alerts: boolean, me: string, maxThreads: number) {
   const queries = [
@@ -389,7 +390,7 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
     if (["task", "commitment", "waiting"].includes(triage.action) && triage.title) {
       const item = await createItem(env, {
         kind: triage.action, title: triage.title, person: triage.person ?? (counterpart || null), due_at: triage.due_at ?? null,
-        priority: triage.priority, source: "gmail",
+        priority: triage.priority, source: "gmail", category: triage.category,
         notes: `Email (${me}): "${subject}"\nhttps://mail.google.com/mail/?authuser=${encodeURIComponent(me)}#all/${threadId}`,
       });
       await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ?, ext_account = ? WHERE id = ?", threadId, me, item.id);

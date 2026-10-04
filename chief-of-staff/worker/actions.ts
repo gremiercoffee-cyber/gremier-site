@@ -49,7 +49,7 @@ export async function verifyNudge(env: Env, nudgeId: string, sig: string) {
 }
 
 /** Next morning at 09:00 local, as a UTC instant. */
-function tomorrowMorning(tz: string) {
+export function tomorrowMorning(tz: string) {
   const target = localParts(tz, new Date(Date.now() + 86400_000)).date;
   let t = new Date(`${target}T09:00:00Z`);
   // Shift until the local wall clock reads 09:00 on that date (handles any offset).

@@ -37,9 +37,10 @@ export async function bridgeStatus(env: Env) {
 }
 
 const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Reply with JSON only:
-{"action":"none"|"task"|"commitment"|"reminder","title":string,"due_at":string|null,"priority":1|2|3}
+{"action":"none"|"task"|"commitment"|"reminder","title":string,"due_at":string|null,"priority":1|2|3,"category":"coffee"|"yeshiva"|"personal"|null}
 - task: the sender needs the user to do or answer something. Title like "Reply to Avi about Thursday's order".
 - reminder: something at a specific time (set due_at, ISO 8601). commitment: the user already promised something.
+- category: coffee = Gremier Coffee business (orders, deliveries, beans, customers, suppliers); yeshiva = the yeshiva (rabbis, students, classes); personal = family/home/money; null if unsure.
 - none: chit-chat, thanks, FYI, or nothing the user must do. Titles in the message's language is fine.`;
 
 /** One forwarded WhatsApp notification. Returns what was filed, if anything. */
@@ -53,7 +54,7 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   await run(env, "INSERT INTO whatsapp_inbox (id, hash, chat, sender, text, received_at) VALUES (?, ?, ?, ?, ?, ?)",
     id, hash, chat, sender, text, m.at || now());
 
-  let triage: { action: string; title?: string; due_at?: string | null; priority?: number } = {
+  let triage: { action: string; title?: string; due_at?: string | null; priority?: number; category?: string | null } = {
     action: "task", title: `Reply to ${sender}: ${text.slice(0, 70)}${text.length > 70 ? "…" : ""}`, priority: 2,
   };
   const budget = await triageBudget(env);
@@ -69,7 +70,7 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   if (triage.action === "none" || !triage.title) return { filed: false, reason: "not actionable" };
 
   const item: Item = await createItem(env, {
-    kind: triage.action, title: triage.title, person: sender, due_at: triage.due_at ?? null, priority: triage.priority,
+    kind: triage.action, title: triage.title, person: sender, due_at: triage.due_at ?? null, priority: triage.priority, category: triage.category,
     source: "whatsapp", notes: `WhatsApp from ${sender}${chat !== sender ? ` in ${chat}` : ""}: "${text}"`,
   });
   await run(env, "UPDATE whatsapp_inbox SET item_id = ? WHERE id = ?", item.id, id);

@@ -4,10 +4,10 @@ import { ProviderUnavailable } from "./ai";
 import { chat, executeApproved } from "./assistant";
 import { processBrainDump } from "./braindump";
 import {
-  HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, now, run, saveSettings, updateItem,
+  HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
-import { actionsFor, applyAction, verifyNudge } from "./actions";
+import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
@@ -198,40 +198,94 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
 // ---- Home-screen widget: only unfinished things, grouped, newest-relevant first ------
 route("GET", "/api/widget", async (_req, env) => {
   const settings = await getSettings(env);
-  const t = now();
-  const endOfDay = endOfLocalDay(settings.timezone);
-  const week = new Date(Date.now() + 7 * 86400_000).toISOString();
-  const [waiting, overdue, today, soon, undated, next] = await Promise.all([
-    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind='task' AND source IN ('gmail','whatsapp') ORDER BY created_at LIMIT 8`),
-    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment','reminder') AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 8`, t),
-    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind != 'idea' AND kind != 'waiting' AND due_at > ? AND due_at <= ? ORDER BY due_at LIMIT 10`, t, endOfDay),
-    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind != 'idea' AND kind != 'waiting' AND due_at > ? AND due_at <= ? ORDER BY due_at LIMIT 8`, endOfDay, week),
-    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment') AND due_at IS NULL AND source NOT IN ('gmail','whatsapp') ORDER BY priority, created_at DESC LIMIT 6`),
-    first<{ summary: string; start_at: string }>(env, `SELECT summary, start_at FROM calendar_events WHERE all_day = 0 AND start_at > ? ORDER BY start_at LIMIT 1`, t),
-  ]);
   const tz = settings.timezone;
+  const t = now();
+  const endOfDay = endOfLocalDay(tz);
+  const week = new Date(Date.now() + 7 * 86400_000).toISOString();
+  const [waiting, overdue, today, soon, undated, events] = await Promise.all([
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind='task' AND source IN ('gmail','whatsapp') ORDER BY created_at LIMIT 20`),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment','reminder') AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 15`, t),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind NOT IN ('idea','waiting') AND due_at > ? AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 20`, t, endOfDay),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind NOT IN ('idea','waiting') AND due_at > ? AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 20`, endOfDay, week),
+    all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment') AND due_at IS NULL AND source NOT IN ('gmail','whatsapp') ORDER BY priority, created_at DESC LIMIT 15`),
+    all<CalendarEvent & { account: string }>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
+       WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at >= ? AND start_at < ?)
+       GROUP BY summary, start_at ORDER BY start_at LIMIT 24`,
+      new Date(Date.now() - 3600_000).toISOString(), week, new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()), week.slice(0, 10)),
+  ]);
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
-  const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { timeZone: tz, weekday: "short" });
+  const localDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+  const dayName = (iso: string) => {
+    const d = new Date(iso), today = localDate(new Date()), tmrw = localDate(new Date(Date.now() + 86400_000));
+    const ld = iso.length === 10 ? iso : localDate(d);
+    return ld === today ? "Today" : ld === tmrw ? "Tomorrow" : new Date(`${ld}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  };
   const ago = (iso: string) => { const h = Math.round((Date.now() - new Date(iso).getTime()) / 3600_000); return h < 1 ? "just now" : h < 24 ? `${h}h` : `${Math.round(h / 24)}d`; };
-  const row = (i: Item, sub: string) => ({ id: i.id, title: i.title, sub, high: i.priority === 1 });
-  const sections = [
-    { title: "Waiting on you", items: waiting.map((i) => row(i, `${i.person ?? ""} · ${i.source === "gmail" ? "email" : "WhatsApp"} · ${ago(i.created_at)}`)) },
-    { title: "Overdue", items: overdue.map((i) => row(i, `${day(i.due_at!)} ${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
+  const row = (i: Item, sub: string) => ({
+    id: i.id, title: i.title, sub, high: i.priority === 1, notes: (i.notes || "").slice(0, 400), person: i.person, source: i.source,
+    category: i.category ?? null,
+  });
+  const todo = [
+    { title: "Overdue", items: overdue.map((i) => row(i, `${dayName(i.due_at!)} ${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
     { title: "Today", items: today.map((i) => row(i, `${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
-    { title: "Coming up", items: soon.map((i) => row(i, `${day(i.due_at!)} ${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
+    { title: "Coming up", items: soon.map((i) => row(i, `${dayName(i.due_at!)} ${time(i.due_at!)}${i.person ? ` · ${i.person}` : ""}`)) },
     { title: "Anytime", items: undated.map((i) => row(i, i.person ?? "")) },
   ].filter((s) => s.items.length);
-  const count = sections.reduce((n, s) => n + s.items.length, 0);
-  return json({ count, next_event: next ? `${next.summary} · ${time(next.start_at)}` : null, sections, updated_at: t });
+  const people = waiting.map((i) => row(i, `${i.source === "gmail" ? "Email" : "WhatsApp"} · waiting ${ago(i.created_at)}`));
+  const cal = events.map((e) => ({
+    id: e.id, title: e.summary, day: dayName(e.start_at), time: e.all_day ? "All day" : `${time(e.start_at)}${e.end_at ? `–${time(e.end_at)}` : ""}`,
+    location: e.location ?? "", link: e.html_link ?? "",
+  }));
+  // Calendar page: one column per day for the next 7 days (empty days included).
+  const days = Array.from({ length: 7 }, (_, k) => {
+    const d = new Date(Date.now() + k * 86400_000);
+    const ymd = localDate(d);
+    const label = k === 0 ? "Today" : k === 1 ? "Tomorrow" : new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric" });
+    return {
+      label,
+      events: events.filter((e) => (e.all_day ? e.start_at : localDate(new Date(e.start_at))) === ymd).map((e) => ({
+        id: e.id, title: e.summary, time: e.all_day ? "All day" : `${time(e.start_at)}${e.end_at ? `–${time(e.end_at)}` : ""}`,
+        location: e.location ?? "", link: e.html_link ?? "",
+      })),
+    };
+  });
+  const todoCount = todo.reduce((n, s) => n + s.items.length, 0);
+  const next = events.find((e) => !e.all_day && e.start_at > t);
+  return json({
+    count: todoCount + people.length, todo_count: todoCount, people_count: people.length, events_count: cal.length,
+    next_event: next ? `${next.summary} · ${dayName(next.start_at) === "Today" ? "" : dayName(next.start_at) + " "}${time(next.start_at)}` : null,
+    todo, people, events: cal, days, updated_at: t,
+  });
 });
 route("POST", "/api/widget/act", async (req, env) => {
   const b = await body<{ id?: string; action?: string }>(req);
   if (!b.id) throw new HttpError(400, "id required");
-  if (b.action === "done") await updateItem(env, b.id, { status: "done" });
-  else throw new HttpError(400, "unknown action");
+  const tz = (await getSettings(env)).timezone;
+  let message = "Done";
+  switch (b.action) {
+    case "done": await updateItem(env, b.id, { status: "done" }); message = "Marked done"; break;
+    case "notneeded": await updateItem(env, b.id, { status: "dropped" }); message = "Removed"; break;
+    case "snooze1h":
+      await updateItem(env, b.id, { status: "open", due_at: new Date(Date.now() + 3600_000).toISOString() });
+      await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", new Date(Date.now() + 3600_000).toISOString(), b.id);
+      message = "I'll remind you in an hour"; break;
+    case "tomorrow": {
+      const at = tomorrowMorning(tz);
+      await updateItem(env, b.id, { status: "open", due_at: at });
+      await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", at, b.id);
+      message = "Moved to tomorrow morning"; break;
+    }
+    default: {
+      const cat = (b.action ?? "").startsWith("cat:") ? b.action!.slice(4) : "";
+      if (!["coffee", "yeshiva", "personal"].includes(cat)) throw new HttpError(400, "unknown action");
+      const item = await updateItem(env, b.id, { category: cat });
+      await learnCategory(env, item.person, cat);
+      return json({ ok: true, message: `Filed under ${cat[0].toUpperCase() + cat.slice(1)}` });
+    }
+  }
   // Any alert about this item is now moot.
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", b.id);
-  return json({ ok: true });
+  return json({ ok: true, message });
 });
 route("POST", "/api/nudges/:id/act", async (req, env, [id]) => {
   const { action } = await body<{ action?: string }>(req);

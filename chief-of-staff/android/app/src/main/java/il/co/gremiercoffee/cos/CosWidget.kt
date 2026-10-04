@@ -14,75 +14,139 @@ import android.widget.RemoteViews
 import kotlin.concurrent.thread
 
 /**
- * Resizable home-screen widget (4×2 by default) listing only unfinished things, grouped
- * (Waiting on you / Overdue / Today / Coming up / Anytime). Tapping ○ marks an item done.
+ * Resizable home-screen widget with three pages: To do, People (replies you owe), Calendar
+ * (three day columns of event boxes). Everything is handled on the home screen: ○ marks done,
+ * tapping an item or event opens a small pop-up, + and Talk open pop-ups too.
  */
 class CosWidget : AppWidgetProvider() {
 
     companion object {
         const val ACT_REFRESH = "il.co.gremiercoffee.cos.REFRESH"
-        private const val REFRESH_MS = 15 * 60 * 1000L
+        private const val ACT_PAGE = "il.co.gremiercoffee.cos.PAGE"
+        private const val ACT_FILTER = "il.co.gremiercoffee.cos.FILTER"
+        private const val ACT_DAYS = "il.co.gremiercoffee.cos.DAYS"
+        /** While the screen is on (non-wakeup alarm), refresh about this often. */
+        private const val REFRESH_MS = 5 * 60 * 1000L
+
+        private val TABS = intArrayOf(R.id.tab0, R.id.tab1, R.id.tab2)
+        private val FILTERS = mapOf("all" to R.id.f_all, "coffee" to R.id.f_coffee, "yeshiva" to R.id.f_yeshiva, "personal" to R.id.f_personal)
+        private val DAYS = intArrayOf(R.id.day0, R.id.day1, R.id.day2)
+        private val DAY_LABELS = intArrayOf(R.id.day0_label, R.id.day1_label, R.id.day2_label)
 
         private fun ids(c: Context): IntArray =
             AppWidgetManager.getInstance(c).getAppWidgetIds(ComponentName(c, CosWidget::class.java))
 
-        /** Redraw from the cached list right away; optionally fetch a fresh one in the background. */
+        /** Redraw from the cached data right away; optionally fetch fresh data in the background. */
         fun refreshAll(c: Context, fetch: Boolean = true) {
             val mgr = AppWidgetManager.getInstance(c)
             val all = ids(c)
-            all.forEach { render(c, mgr, it, null) }
-            mgr.notifyAppWidgetViewDataChanged(all, R.id.list)
+            redraw(c, mgr, all, null)
             if (fetch && Cos.passcode(c) != null) thread {
                 val err = runCatching { Cos.fetch(c) }.exceptionOrNull()?.message
-                all.forEach { render(c, mgr, it, err) }
-                mgr.notifyAppWidgetViewDataChanged(all, R.id.list)
+                redraw(c, mgr, all, err)
             }
         }
 
-        private fun open(c: Context, req: Int, url: String): PendingIntent =
-            PendingIntent.getActivity(c, req, Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        private fun redraw(c: Context, mgr: AppWidgetManager, all: IntArray, err: String?) {
+            all.forEach { render(c, mgr, it, err) }
+            mgr.notifyAppWidgetViewDataChanged(all, R.id.list)
+            DAYS.forEach { mgr.notifyAppWidgetViewDataChanged(all, it) }
+        }
+
+        private fun flags(mutable: Boolean = false) =
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (mutable) PendingIntent.FLAG_MUTABLE else PendingIntent.FLAG_IMMUTABLE)
+
+        private fun broadcast(c: Context, req: Int, action: String, extra: String = ""): PendingIntent =
+            PendingIntent.getBroadcast(c, req, Intent(c, CosWidget::class.java).setAction(action).putExtra("v", extra), flags())
+
+        private fun popup(c: Context, req: Int, mode: String): PendingIntent =
+            PendingIntent.getActivity(c, req, Intent(c, PopupActivity::class.java).putExtra("mode", mode)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK), flags())
+
+        private fun adapter(c: Context, widgetId: Int, kind: String): Intent =
+            Intent(c, CosListService::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId).putExtra("kind", kind).also {
+                it.data = Uri.parse(it.toUri(Intent.URI_INTENT_SCHEME)) // unique per widget + list
+            }
 
         fun render(c: Context, mgr: AppWidgetManager, id: Int, error: String?) {
             val v = RemoteViews(c.packageName, R.layout.widget)
             val data = Cos.cached(c)
+            val page = Cos.page(c)
+            val ink = c.getColor(R.color.ink)
+            val muted = c.getColor(R.color.muted)
 
+            // Header
             if (Cos.passcode(c) == null) {
-                v.setTextViewText(R.id.subtitle, "Tap to set up")
-                v.setOnClickPendingIntent(R.id.head, PendingIntent.getActivity(c, 1, Intent(c, MainActivity::class.java),
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                v.setTextViewText(R.id.subtitle, "Tap here to set up")
+                v.setOnClickPendingIntent(R.id.title, PendingIntent.getActivity(c, 1, Intent(c, MainActivity::class.java), flags()))
             } else {
-                val count = data?.optInt("count") ?: 0
                 val next = data?.optString("next_event")?.takeIf { it.isNotBlank() && it != "null" }
-                val sub = when {
+                v.setTextViewText(R.id.subtitle, when {
                     error != null && data == null -> error
-                    count == 0 -> next?.let { "Nothing open · Next: $it" } ?: "Nothing open"
-                    else -> "$count open" + (next?.let { " · Next: $it" } ?: "")
-                }
-                v.setTextViewText(R.id.subtitle, sub)
-                v.setOnClickPendingIntent(R.id.head, open(c, 2, Cos.APP_URL))
+                    next != null -> "Next: $next"
+                    else -> "Nothing scheduled soon"
+                })
             }
-            v.setOnClickPendingIntent(R.id.talk, open(c, 3, "${Cos.APP_URL}/?voice=1"))
-            v.setOnClickPendingIntent(R.id.add, open(c, 4, "${Cos.APP_URL}/?type=1"))
-            v.setOnClickPendingIntent(R.id.refresh, PendingIntent.getBroadcast(c, 5,
-                Intent(c, CosWidget::class.java).setAction(ACT_REFRESH), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            v.setOnClickPendingIntent(R.id.talk, popup(c, 3, "talk"))
+            v.setOnClickPendingIntent(R.id.add, popup(c, 4, "add"))
+            v.setOnClickPendingIntent(R.id.refresh, broadcast(c, 5, ACT_REFRESH))
 
-            // The scrolling list; each row fills in this template (TapActivity does the work).
-            val svc = Intent(c, CosListService::class.java)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            svc.data = Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME))
-            v.setRemoteAdapter(R.id.list, svc)
-            v.setEmptyView(R.id.list, R.id.empty)
-            v.setPendingIntentTemplate(R.id.list, PendingIntent.getActivity(c, 6, Intent(c, TapActivity::class.java),
-                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
-            v.setViewVisibility(R.id.empty, if ((data?.optInt("count") ?: 0) == 0 && Cos.passcode(c) != null) View.VISIBLE else View.GONE)
+            // Tabs with counts
+            val counts = intArrayOf(data?.optInt("todo_count") ?: 0, data?.optInt("people_count") ?: 0, data?.optInt("events_count") ?: 0)
+            val names = arrayOf("To do", "People", "Calendar")
+            TABS.forEachIndexed { i, tab ->
+                v.setTextViewText(tab, if (counts[i] > 0) "${names[i]} ${counts[i]}" else names[i])
+                v.setInt(tab, "setBackgroundResource", if (i == page) R.drawable.tab_on else 0)
+                v.setTextColor(tab, if (i == page) c.getColor(R.color.bg) else muted)
+                v.setOnClickPendingIntent(tab, broadcast(c, 10 + i, ACT_PAGE, i.toString()))
+            }
+
+            // Area filters (To do / People only)
+            val filter = Cos.catFilter(c)
+            v.setViewVisibility(R.id.filters, if (page == 2) View.GONE else View.VISIBLE)
+            FILTERS.entries.forEachIndexed { i, (key, view) ->
+                v.setInt(view, "setBackgroundResource", if (key == filter) R.drawable.pill else 0)
+                v.setTextColor(view, if (key == filter) c.getColor(R.color.accent) else muted)
+                v.setOnClickPendingIntent(view, broadcast(c, 20 + i, ACT_FILTER, key))
+            }
+
+            // Day arrows (Calendar only)
+            val dayNav = if (page == 2) View.VISIBLE else View.GONE
+            v.setViewVisibility(R.id.prev, dayNav)
+            v.setViewVisibility(R.id.next, dayNav)
+            v.setOnClickPendingIntent(R.id.prev, broadcast(c, 30, ACT_DAYS, "-3"))
+            v.setOnClickPendingIntent(R.id.next, broadcast(c, 31, ACT_DAYS, "3"))
+
+            // Taps inside lists are handled by TapActivity (done / pop-up), never the full app.
+            val template = PendingIntent.getActivity(c, 6, Intent(c, TapActivity::class.java), flags(mutable = true))
+
+            if (page == 2) {
+                v.setViewVisibility(R.id.list, View.GONE)
+                v.setViewVisibility(R.id.cal, View.VISIBLE)
+                v.setViewVisibility(R.id.empty, View.GONE)
+                DAYS.forEachIndexed { col, list ->
+                    val day = Cos.day(c, col)
+                    val n = day?.optJSONArray("events")?.length() ?: 0
+                    v.setTextViewText(DAY_LABELS[col], (day?.optString("label") ?: "") + if (n == 0) " · free" else "")
+                    v.setTextColor(DAY_LABELS[col], if (col == 0 && Cos.dayOffset(c) == 0) ink else muted)
+                    v.setRemoteAdapter(list, adapter(c, id, "day$col"))
+                    v.setPendingIntentTemplate(list, template)
+                }
+            } else {
+                v.setViewVisibility(R.id.cal, View.GONE)
+                v.setViewVisibility(R.id.list, View.VISIBLE)
+                v.setRemoteAdapter(R.id.list, adapter(c, id, if (page == 1) "people" else "todo"))
+                v.setPendingIntentTemplate(R.id.list, template)
+                val empty = Cos.passcode(c) != null && Cos.rows(c, if (page == 1) "people" else "todo").isEmpty()
+                v.setTextViewText(R.id.empty, if (page == 1) "No one is waiting on you ✨" else "All clear ✨")
+                v.setViewVisibility(R.id.empty, if (empty) View.VISIBLE else View.GONE)
+            }
             mgr.updateAppWidget(id, v)
         }
 
-        private fun schedule(c: Context, on: Boolean) {
+        fun schedule(c: Context, on: Boolean) {
             val am = c.getSystemService(AlarmManager::class.java)
-            val pi = PendingIntent.getBroadcast(c, 7, Intent(c, CosWidget::class.java).setAction(ACT_REFRESH),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            val pi = broadcast(c, 7, ACT_REFRESH)
             if (on) am.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + REFRESH_MS, REFRESH_MS, pi)
             else am.cancel(pi)
         }
@@ -98,6 +162,12 @@ class CosWidget : AppWidgetProvider() {
 
     override fun onReceive(c: Context, intent: Intent) {
         super.onReceive(c, intent)
-        if (intent.action == ACT_REFRESH) refreshAll(c)
+        val v = intent.getStringExtra("v").orEmpty()
+        when (intent.action) {
+            ACT_REFRESH -> refreshAll(c)
+            ACT_PAGE -> { Cos.setPage(c, v.toIntOrNull() ?: 0); refreshAll(c, fetch = false) }
+            ACT_FILTER -> { Cos.setCatFilter(c, v); refreshAll(c, fetch = false) }
+            ACT_DAYS -> { Cos.setDayOffset(c, Cos.dayOffset(c) + (v.toIntOrNull() ?: 0)); refreshAll(c, fetch = false) }
+        }
     }
 }

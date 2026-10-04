@@ -94,6 +94,15 @@ export function ItemRow({ item, onChange, onOpen }: { item: Item; onChange: () =
           {item.person && <span>{item.kind === "waiting" ? "from" : "with"} {item.person}</span>}
           {item.notes && <span className="truncate max-w-[16rem]">{item.notes}</span>}
         </div>
+        {!done && item.kind !== "idea" && !item.category && (
+          <span className="flex flex-wrap items-center gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[11px] text-accent mr-0.5">Which area?</span>
+            {[["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]].map(([k, label]) => (
+              <span key={k} role="button" onClick={async () => { await api.updateItem(item.id, { category: k }); onChange(); }}
+                className="rounded-full bg-sunken px-2 py-0.5 text-[11px] hover:bg-line">{label}</span>
+            ))}
+          </span>
+        )}
       </button>
     </div>
   );
