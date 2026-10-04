@@ -12,6 +12,7 @@ import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOu
 import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
+import { replyQueue, sendReply } from "./replies";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -215,6 +216,14 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Replies: consolidated catch-up ------------------------------------------------
+route("GET", "/api/replies", async (_req, env) => json(await replyQueue(env)));
+route("POST", "/api/replies/:id/send", async (req, env, [id]) => {
+  const { text } = await body<{ text?: string }>(req);
+  try { return json(await sendReply(env, id, String(text ?? ""))); }
+  catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+
 // ---- Missions ----------------------------------------------------------------------
 route("GET", "/api/missions", async (_req, env) =>
   json(await all(env, "SELECT * FROM missions ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, updated_at DESC LIMIT 50")));

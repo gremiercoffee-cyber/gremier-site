@@ -194,7 +194,8 @@ async function checkIns(env: Env, tz: string) {
     if (w.length || (quiet?.n ?? 0) > 0) {
       const lines = w.map((i) => `• ${i.person ?? "?"}: ${i.title}`);
       if ((quiet?.n ?? 0) > 0) lines.push(`• ${quiet!.n} more thing${quiet!.n > 1 ? "s" : ""} noted on your home screen`);
-      await notify(env, "digest", w.length ? `${w.length} ${w.length === 1 ? "person is" : "people are"} waiting on you` : "Midday check", lines.join("\n"));
+      await notify(env, "digest", w.length ? `${w.length} ${w.length === 1 ? "reply" : "replies"} to catch up on` : "Midday check", lines.join("\n"),
+        null, w.length ? "/?tab=replies" : "/");
       n++;
     }
   }
@@ -210,7 +211,7 @@ async function checkIns(env: Env, tz: string) {
       overdue.length ? `${overdue.length} still open from today: ${overdue.slice(0, 3).map((i) => i.title).join(", ")}${overdue.length > 3 ? "…" : ""}` : "",
       w.length ? `${w.length} waiting for a reply: ${names(w)}` : "",
     ].filter(Boolean);
-    if (lines.length) { await notify(env, "digest", "End of day", lines.join("\n")); n++; }
+    if (lines.length) { await notify(env, "digest", "End of day", lines.join("\n"), null, w.length ? "/?tab=replies" : "/"); n++; }
   }
   return n;
 }

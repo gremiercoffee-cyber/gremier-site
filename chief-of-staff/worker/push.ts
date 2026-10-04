@@ -105,7 +105,7 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
  * Records a nudge (home screen, widget, next briefing) and buzzes the phone only when the
  * interruption rule says it can't wait (policy.ts). Never buzzes on Shabbat.
  */
-export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null) {
+export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null, url = "/") {
   const id = uid();
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     id, type, title, body, itemId, now());
@@ -115,7 +115,7 @@ export async function notify(env: Env, type: string, title: string, body = "", i
   if (urgencyFor(type, prio) === "later") return; // waits quietly for the next briefing / check-in
   // The tag collapses repeats for the same item; buttons act without opening the app.
   await sendPush(env, {
-    title, body, url: "/", tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
+    title, body, url, tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
     actions: actionsFor({ type, item_id: itemId }).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
 }

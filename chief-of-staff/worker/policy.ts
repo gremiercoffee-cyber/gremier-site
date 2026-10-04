@@ -10,7 +10,6 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "event":       // a meeting is about to start
     case "reminder":    // the user asked to be reminded at that time
     case "checkin":     // "Did you…?" the user set up
-    case "unanswered":  // someone has waited 2h+ for a reply (the user chose this)
     case "wa_send":     // a message waiting for the user's Send tap
     case "wa_failed":
     case "postponed":   // pushed off 3+ times: worth one direct question
@@ -23,6 +22,7 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "email":
     case "whatsapp":
       return priority === 1 ? "now" : "later";
+    case "unanswered":  // gathered into "N replies to catch up on" (Replies) instead
     default:            // waiting nudges, auto-done notes, sent confirmations, sweeps, mission progress
       return "later";
   }
