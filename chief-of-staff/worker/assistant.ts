@@ -31,6 +31,8 @@ Schedule (time blocks): the user's day is made of blocks of time devoted to an a
 - Recurring: "I'm in yeshiva Sun-Thu 9 to 1" → name "In yeshiva", weekdays, start/end, category yeshiva.
 - One-off: "I'm working on coffee from 2 to 6 today" → name "Coffee time", date (YYYY-MM-DD), start/end, category coffee. It clears itself after that day.
 - Calendar-triggered: "when I'm at events remind me to collect business cards" → calendar_keywords + note.
+- Changes for one day: "today I'm not going into yeshiva" → save_time_block with that block's id and skip_date (today's local date): no reminders from it that day. "Actually I am going" → unskip_date. "Today my schedule is …" → skip the usual blocks that don't apply and add one-off blocks for today. Changing the usual week → edit the recurring blocks.
+The schedule has its own screen in the app (menu → Schedule).
 At the start of a block (or a random moment in it) the user is reminded of what belongs there: tasks attached to the block, then open items in its area/keywords (intuited), plus any standing note.
 When the user wants something reminded during a block ("remind me to ask Rabbi W during yeshiva", "do this in coffee time"), create or update the item with block set to that block's name. If no such block exists yet, ask when it is (or create it).
 The context tells you which block the user is in RIGHT NOW: use it when they ask what to do next.
@@ -200,6 +202,8 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           start_time: { type: "string", description: "HH:MM" }, end_time: { type: "string", description: "HH:MM" },
           mode: { type: "string", enum: ["start", "random"], description: "remind at the start, or at a random moment in the window" },
           calendar_keywords: { type: "string", description: 'comma separated; fires when a calendar entry with one of these in its title starts ("*" = any entry)' },
+          skip_date: { type: "string", description: "YYYY-MM-DD: this block is off that day (e.g. not going in today)" },
+          unskip_date: { type: "string", description: "YYYY-MM-DD: undo a skip" },
           active: { type: "boolean" },
         },
       },

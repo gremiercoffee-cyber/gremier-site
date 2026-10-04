@@ -16,6 +16,7 @@ export interface RoutineRow {
 
 export interface SituationRow {
   id: string; name: string; category: string | null; note: string; keywords: string; active: number; when: string;
+  weekdays: string | null; date: string | null; start_time: string | null; end_time: string | null; calendar_keywords: string; skip_dates: string;
 }
 
 export interface MissionRow {

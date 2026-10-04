@@ -12,13 +12,14 @@ import Settings from "./pages/Settings";
 import Search from "./pages/Search";
 import Library, { People, Trackers, type LibraryTab } from "./pages/Library";
 import Replies from "./pages/Replies";
+import Schedule from "./pages/Schedule";
 import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
-type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Library", lists: "Lists", projects: "Lists", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Replies", trackers: "Tasks" };
+type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Library", lists: "Lists", projects: "Lists", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Replies", trackers: "Tasks", schedule: "Schedule" };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -164,6 +165,7 @@ export default function App() {
           <Switch value={view} onChange={(v) => setView(v as View)} options={[["replies", "Replies"], ["people", "People"]]} />
         )}
         {view === "people" && <People refreshKey={refreshKey} />}
+        {view === "schedule" && <Schedule refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
         {(view === "library" || view === "dump") && (
           <Library tab={view === "dump" ? "dump" : libraryTab} onTab={(t) => { setLibraryTab(t); setView("library"); }} onOpenItem={openItem} refreshKey={refreshKey}
@@ -188,6 +190,7 @@ export default function App() {
             <div className="px-2 space-y-0.5">
               <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
+              <DrawerItem active={view === "schedule"} onClick={() => go("schedule")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>} label="Schedule" />
               <DrawerItem active={view === "replies" || view === "people"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies & people" />
               <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
               <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />

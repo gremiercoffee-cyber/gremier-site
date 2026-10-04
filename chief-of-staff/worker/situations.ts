@@ -16,7 +16,7 @@ import { notify } from "./push";
 export interface Situation {
   id: string; name: string; category: string | null; keywords: string; note: string; weekdays: string | null; date: string | null;
   start_time: string | null; end_time: string | null; mode: string; calendar_keywords: string; active: number;
-  last_fired: string | null; created_at: string; updated_at: string;
+  last_fired: string | null; skip_dates: string; created_at: string; updated_at: string;
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -33,7 +33,7 @@ function nowLocal(tz: string) {
 
 /** Does this block's time window cover the given local day? */
 const onDay = (s: Situation, date: string, dow: number) =>
-  !!s.start_time && (s.date ? s.date === date : parse<number[]>(s.weekdays, []).includes(dow));
+  !!s.start_time && !words(s.skip_dates ?? "").includes(date) && (s.date ? s.date === date : parse<number[]>(s.weekdays, []).includes(dow));
 
 export function describeSituation(s: Situation) {
   const parts: string[] = [];
@@ -43,6 +43,9 @@ export function describeSituation(s: Situation) {
     parts.push(`${when} ${s.start_time}–${s.end_time ?? "?"}${s.mode === "random" ? " (reminds at a random moment)" : ""}`);
   }
   if (s.calendar_keywords) parts.push(`when a calendar entry with "${words(s.calendar_keywords).join('" / "')}" starts`);
+  const today = new Date().toISOString().slice(0, 10);
+  const off = words(s.skip_dates ?? "").filter((d) => d >= today);
+  if (off.length) parts.push(`off on ${off.join(", ")}`);
   return parts.join(" · ") || "no time set";
 }
 
@@ -63,12 +66,20 @@ export async function saveSituation(env: Env, input: Record<string, unknown>) {
     mode: input.mode === "random" ? "random" : input.mode === "start" ? "start" : existing?.mode ?? "start",
     calendar_keywords: str("calendar_keywords"),
     active: input.active === undefined ? existing?.active ?? 1 : input.active ? 1 : 0,
+    skip_dates: existing?.skip_dates ?? "",
   };
+  {
+    const today = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+    const set = new Set(words(s.skip_dates).filter((d) => d >= today));
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(input.skip_date ?? ""))) set.add(String(input.skip_date));
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(input.unskip_date ?? ""))) set.delete(String(input.unskip_date));
+    s.skip_dates = [...set].sort().join(",");
+  }
   if (!s.start_time && !s.calendar_keywords) throw new Error("A time block needs a time (and days or a date) or calendar keywords.");
   if (s.start_time && !s.date && !parse<number[]>(s.weekdays, []).length) throw new Error("Which days (or which date) is this time block?");
   if (existing) {
-    await run(env, `UPDATE situations SET name=?, category=?, keywords=?, note=?, weekdays=?, date=?, start_time=?, end_time=?, mode=?, calendar_keywords=?, active=?, updated_at=? WHERE id=?`,
-      s.name, s.category, s.keywords, s.note, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, t, s.id);
+    await run(env, `UPDATE situations SET name=?, category=?, keywords=?, note=?, weekdays=?, date=?, start_time=?, end_time=?, mode=?, calendar_keywords=?, active=?, skip_dates=?, updated_at=? WHERE id=?`,
+      s.name, s.category, s.keywords, s.note, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, s.skip_dates, t, s.id);
   } else {
     await run(env, `INSERT INTO situations (id, name, category, keywords, note, weekdays, date, start_time, end_time, mode, calendar_keywords, active, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
