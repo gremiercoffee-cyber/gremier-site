@@ -7,11 +7,31 @@ const ICON: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal:
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const days = (s: SituationRow): number[] => { try { return JSON.parse(s.weekdays ?? "[]"); } catch { return []; } };
 const skipped = (s: SituationRow, date: string) => (s.skip_dates ?? "").split(",").includes(date);
+/** Blocks grouped by the exact days they run; the biggest group (your standard day) first. */
+const groups = (list: SituationRow[]) => {
+  const m = new Map<string, SituationRow[]>();
+  for (const s of list) { const k = [...days(s)].sort().join(","); m.set(k, [...(m.get(k) ?? []), s]); }
+  return [...m.entries()].sort((a, b) => b[1].length - a[1].length || b[0].split(",").length - a[0].split(",").length);
+};
+const SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** [0,1,2,3,4] → "Sun–Thu"; [0,2] → "Sun, Tue"; [0] → "Sundays". */
+const dayRange = (d: number[]) => {
+  const x = [...new Set(d)].sort();
+  if (x.length === 1) return `${DAYS[x[0]]}s`;
+  const runs: string[] = [];
+  for (let i = 0; i < x.length; ) {
+    let j = i; while (j + 1 < x.length && x[j + 1] === x[j] + 1) j++;
+    runs.push(j - i >= 2 ? `${SHORT[x[i]]}–${SHORT[x[j]]}` : x.slice(i, j + 1).map((n) => SHORT[n]).join(", "));
+    i = j + 1;
+  }
+  return runs.join(", ");
+};
 const byStart = (a: SituationRow, b: SituationRow) => (a.start_time ?? "").localeCompare(b.start_time ?? "");
 
 /** Your schedule: today (with one-day changes) and your usual week. Change it by just telling me. */
 export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
   const [list, setList] = useState<SituationRow[] | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
   const load = () => api.situations().then(setList).catch(() => setList([]));
   useEffect(() => { load(); }, [refreshKey]);
   if (!list) return <p className="text-sm text-muted">Loading…</p>;
@@ -27,10 +47,7 @@ export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => 
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted px-1">
-        Tell me your schedule and I'll remind you of the right things at the right time. Change it any time by just saying it:
-        "today I'm not going into yeshiva", "today I'm on coffee from 2 to 6", "from now on yeshiva ends at 2".
-      </p>
+      <p className="text-sm text-muted px-1">Change it any time by just telling me: "today I'm not going into yeshiva", "from now on yeshiva ends at 2".</p>
       <div className="flex gap-2">
         <Button onClick={() => onAsk("Today my schedule is: ")}>Change today</Button>
         <Button variant="soft" onClick={() => onAsk("My usual schedule: ")}>Change my usual week</Button>
@@ -58,36 +75,22 @@ export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => 
         </Section>
       )}
 
-      <Section title="Your usual week">
-        {recurring.length === 0 ? <div className="py-3"><Empty>No usual schedule yet. Tell me, e.g. "I'm in yeshiva Sunday to Thursday 9 to 1".</Empty></div> : (
-          [0, 1, 2, 3, 4, 5, 6].map((d) => {
-            const blocks = recurring.filter((s) => days(s).includes(d)).sort(byStart);
-            if (!blocks.length) return null;
-            return (
-              <div key={d} className="py-2.5">
-                <p className={`text-[12px] font-semibold ${d === dow ? "text-accent" : "text-muted"}`}>{DAYS[d]}</p>
-                {blocks.map((s) => (
-                  <p key={s.id} className="text-[15px] leading-snug mt-0.5">
-                    <span className="tabular-nums text-muted text-sm mr-2">{s.start_time}–{s.end_time ?? "?"}</span>
-                    {s.category && `${ICON[s.category]} `}{s.name}
-                  </p>
-                ))}
-              </div>
-            );
-          })
-        )}
-      </Section>
-
-      {recurring.length > 0 && (
-        <Section title="Blocks">
-          {recurring.map((s) => (
-            <Row key={s.id} s={s} sub={s.when}>
-              <button className="text-xs text-accent" onClick={() => save({ id: s.id, active: false })}>Pause</button>
-              <button className="text-xs text-muted hover:text-danger" onClick={async () => { if (window.confirm(`Delete "${s.name}"?`)) { await api.deleteSituation(s.id); load(); } }}>Delete</button>
-            </Row>
+      {recurring.length === 0 ? (
+        <Section title="Your usual week"><div className="py-3"><Empty>No usual schedule yet. Tell me, e.g. "I'm in yeshiva Sunday to Thursday 9 to 1".</Empty></div></Section>
+      ) : groups(recurring).map(([key, blocks], gi) => (
+        <Section key={key} title={gi === 0 ? `Your usual day · ${dayRange(days(blocks[0]))}` : `Also ${dayRange(days(blocks[0]))}`}>
+          {blocks.sort(byStart).map((s) => (
+            <div key={s.id} onClick={() => setSel(sel === s.id ? null : s.id)} className="cursor-pointer">
+              <Row s={s}>
+                {sel === s.id ? <>
+                  <button className="text-xs text-accent" onClick={(e) => { e.stopPropagation(); save({ id: s.id, active: false }); }}>Pause</button>
+                  <button className="text-xs text-muted hover:text-danger" onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Delete "${s.name}"?`)) { await api.deleteSituation(s.id); load(); } }}>Delete</button>
+                </> : null}
+              </Row>
+            </div>
           ))}
         </Section>
-      )}
+      ))}
 
       {triggers.length > 0 && (
         <Section title="When something's on my calendar">
