@@ -96,7 +96,7 @@ async function maybeNotify(env: Env) {
   if (n < 2) return;
   await put(env, "learn_notified_at", now());
   await run(env, "DELETE FROM nudges WHERE type = 'learn'");
-  await notify(env, "learn", `I picked up ${n} things about your life`, "Take a look: accept, change or ignore.", null, "/?tab=review");
+  await notify(env, "learn", `I picked up ${n} things about your life`, "Tap to review them: That's right, Change or Ignore.", null, "/?tab=review");
 }
 
 /** The user's verdict on a suggestion: accept, edit (accept with their wording) or ignore. */

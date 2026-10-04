@@ -14,6 +14,11 @@ export interface RoutineRow {
   runs: { id: string; started_at: string; status: string; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
 }
 
+export interface IdeaRow {
+  id: string; title: string; area: string | null; summary: string; transcript: string; analysis: string; verdict: string | null;
+  notes: string; steps: string; status: string; conversation_id: string | null; created_at: string; updated_at: string;
+}
+
 export interface SituationRow {
   id: string; name: string; category: string | null; note: string; keywords: string; active: number; when: string;
   weekdays: string | null; date: string | null; start_time: string | null; end_time: string | null; calendar_keywords: string; skip_dates: string;
@@ -86,6 +91,10 @@ export const api = {
   memories: () => request<Memory[]>("GET", "/api/memories"),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
   reviewMemory: (id: string, action: "accept" | "edit" | "ignore", content?: string) => request("POST", `/api/memories/${id}/review`, { action, content }),
+  ideas: () => request<IdeaRow[]>("GET", "/api/ideas"),
+  updateIdea: (id: string, patch: Record<string, unknown>) => request("POST", `/api/ideas/${id}`, patch),
+  ideaStep: (id: string, step: string, action: "do" | "dismiss", when?: string) => request<{ plan?: string; queued?: boolean }>("POST", `/api/ideas/${id}/steps/${step}`, { action, when }),
+  deleteIdea: (id: string) => request("DELETE", `/api/ideas/${id}`),
   learnNow: () => request<{ learned?: number }>("POST", "/api/learn"),
   people: () => request<Person[]>("GET", "/api/people"),
   missions: () => request<MissionRow[]>("GET", "/api/missions"),

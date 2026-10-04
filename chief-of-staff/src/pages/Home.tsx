@@ -233,9 +233,11 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
             </Row>
           ))}
           {nudges.map((n) => (
-            <Row key={n.id} icon="•" title={n.title} time={n.created_at}>
-              {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
-              <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
+            <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
+              {n.type === "learn" ? <LearnReview onChanged={onChanged} /> : <>
+                {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
+                <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
+              </>}
             </Row>
           ))}
         </div>
@@ -245,8 +247,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
 }
 
 /** One compact line; tap to open its details and buttons. */
-function Row({ icon, title, time, children }: { icon: string; title: string; time?: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+function Row({ icon, title, time, children, startOpen }: { icon: string; title: string; time?: string; children: ReactNode; startOpen?: boolean }) {
+  const [open, setOpen] = useState(!!startOpen);
   return (
     <div>
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
@@ -429,3 +431,42 @@ const Thinking = () => (
     </span>
   </FromCos>
 );
+
+/** What I picked up about your life, reviewed right here: That's right / Change / Ignore. */
+function LearnReview({ onChanged }: { onChanged: () => void }) {
+  const [list, setList] = useState<Awaited<ReturnType<typeof api.memories>> | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const load = () => api.memories().then((m) => setList(m.filter((x) => x.status === "suggested"))).catch(() => setList([]));
+  useEffect(() => { load(); }, []);
+  const act = async (id: string, action: "accept" | "edit" | "ignore", content?: string) => {
+    setList((l) => l?.filter((m) => m.id !== id) ?? null); setEditing(null);
+    await api.reviewMemory(id, action, content).catch(() => {});
+    if (list && list.length <= 1) onChanged();
+  };
+  if (!list) return <p className="text-sm text-muted">Loading…</p>;
+  if (!list.length) return <p className="text-sm text-muted">All reviewed. Thanks!</p>;
+  return (
+    <div className="space-y-2 -ml-6">
+      {list.map((m) => (
+        <div key={m.id} className="rounded-xl bg-sunken px-3 py-2.5">
+          {editing === m.id
+            ? <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} dir="auto" className="w-full rounded-lg border border-line bg-bg p-2 text-[14px]" />
+            : <p className="text-[14px] leading-snug" dir="auto">{m.content}</p>}
+          {m.question && editing !== m.id && <p className="text-[13px] text-muted mt-0.5">{m.question}</p>}
+          <div className="flex gap-1.5 mt-2">
+            {editing === m.id ? <>
+              <button onClick={() => act(m.id, "edit", text)} className="rounded-full bg-accent text-white px-3 py-1 text-[13px] font-medium">Save</button>
+              <button onClick={() => setEditing(null)} className="rounded-full px-3 py-1 text-[13px] text-muted">Cancel</button>
+            </> : <>
+              <button onClick={() => act(m.id, "accept")} className="rounded-full bg-accent text-white px-3 py-1 text-[13px] font-medium">That's right</button>
+              <button onClick={() => { setEditing(m.id); setText(m.content); }} className="rounded-full border border-line bg-bg px-3 py-1 text-[13px]">Change</button>
+              <button onClick={() => act(m.id, "ignore")} className="rounded-full px-3 py-1 text-[13px] text-muted">Ignore</button>
+            </>}
+          </div>
+        </div>
+      ))}
+      <a href="/?tab=review" className="block text-[13px] text-accent pt-1">See everything I know →</a>
+    </div>
+  );
+}

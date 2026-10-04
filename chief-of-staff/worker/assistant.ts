@@ -13,6 +13,7 @@ import { missionsSummary, startMission, updateMission } from "./missions";
 import { routinesSummary, saveRoutine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, trackerEntries, trackersSummary } from "./trackers";
+import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -55,7 +56,14 @@ How to file things — keep these clearly separate:
 - reminder: something to be reminded of at a specific time (always set due_at).
 - commitment: a promise the user made to someone (set person; due_at if there is a deadline).
 - waiting: something the user is waiting on from someone else (set person).
-- idea: a thought worth keeping that is not yet a commitment. Never turn an idea into a task unless asked.
+- idea: never file ideas with create_item; use capture_idea (below).
+
+Ideas and thinking out loud: all talking happens here, so recognize when the user is sharing an idea or brain-dumping (a business idea, "what if we…", a plan they're mulling, a stream of thoughts). Then:
+1. Engage like a sharp chief of staff: reflect it back briefly, give an honest take (what's strong, what's risky, good or bad idea and why), and add an angle or two they may not have considered. Back-and-forth is fine.
+2. File it with capture_idea (or update_idea if it's an idea already listed under "Ideas", e.g. they return to it): a clear title, a summary, their own words (transcript), your analysis and verdict, and 3-5 concrete next steps, each with a kind: research ("look into what bottle suppliers charge"), plan ("sketch how to launch it"), remind ("remind me in 2 weeks"), task (a concrete to-do), other.
+3. End by offering the next steps as a short question, e.g. "Want me to look into X, sketch a plan, or remind you about it in two weeks?" Do nothing on them until the user picks.
+4. When they pick, call idea_step for each chosen step (research runs in the background and reports back; plan comes back right away, so share it).
+A brain dump with several things: file tasks/reminders/commitments as usual, and capture each idea separately.
 
 Rules:
 - When the user tells you something actionable, file it with the tools; do not just acknowledge it. Check for duplicates with search_items first when unsure.
@@ -122,6 +130,8 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   if (situations) lines.push("", "## Schedule (time blocks)", situations);
   const trackers = await trackersSummary(env);
   if (trackers) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
+  const ideas = await ideasSummary(env);
+  if (ideas) lines.push("", "## Ideas (open)", ideas);
   const tasks = await routinesSummary(env);
   if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
@@ -211,6 +221,59 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const s = await saveSituation(env, input);
         note("save_time_block", `Schedule: ${s.name}, ${s.when}`);
         return s;
+      },
+    },
+    {
+      name: "capture_idea",
+      description: "File an idea or brain dump the user shared: title, summary, their words, your honest analysis and verdict, and 3-5 suggested next steps for them to choose from.",
+      input_schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" }, area: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          summary: { type: "string", description: "clear summary of the idea in a few sentences" },
+          transcript: { type: "string", description: "the user's own words, cleaned up lightly" },
+          analysis: { type: "string", description: "honest take: what's strong, what's risky, what to watch, good or bad idea and why" },
+          verdict: { type: "string", enum: ["promising", "mixed", "doubtful"] },
+          next_steps: { type: "array", items: { type: "object", properties: { label: { type: "string" }, kind: { type: "string", enum: ["research", "plan", "remind", "task", "other"] } }, required: ["label", "kind"] } },
+        },
+        required: ["title", "summary", "next_steps"],
+      },
+      handler: async (input) => {
+        const i = await captureIdea(env, input);
+        note("capture_idea", `💡 Saved idea: ${i.title}`);
+        return { id: i.id, steps: JSON.parse(i.steps) };
+      },
+    },
+    {
+      name: "update_idea",
+      description: "Add to or change an existing idea (by id or title): add a note from the conversation, new next steps, a revised summary/analysis, or status (exploring, parked, done, dropped).",
+      input_schema: {
+        type: "object",
+        properties: {
+          idea: { type: "string" }, add_note: { type: "string" }, summary: { type: "string" }, analysis: { type: "string" },
+          verdict: { type: "string", enum: ["promising", "mixed", "doubtful"] }, status: { type: "string", enum: ["new", "exploring", "parked", "done", "dropped"] },
+          add_steps: { type: "array", items: { type: "object", properties: { label: { type: "string" }, kind: { type: "string", enum: ["research", "plan", "remind", "task", "other"] } }, required: ["label", "kind"] } },
+        },
+        required: ["idea"],
+      },
+      handler: async (input) => {
+        const i = await updateIdea(env, String(input.idea), input);
+        note("update_idea", `💡 Updated idea: ${i.title}`);
+        return { id: i.id, status: i.status, steps: JSON.parse(i.steps) };
+      },
+    },
+    {
+      name: "idea_step",
+      description: "Do (or dismiss) a next step of an idea the user chose. research → runs in the background and reports back; plan → returns a plan now; remind → reminder at 'when' (ISO, default in a week); task → adds a to-do. Pass step_id, or label for a new step.",
+      input_schema: {
+        type: "object",
+        properties: { idea: { type: "string" }, step_id: { type: "string" }, label: { type: "string" }, action: { type: "string", enum: ["do", "dismiss"] }, when: { type: "string" } },
+        required: ["idea"],
+      },
+      handler: async (input) => {
+        const r = await ideaStep(env, String(input.idea), String(input.step_id ?? ""), input.action === "dismiss" ? "dismiss" : "do", { when: input.when as string, label: input.label as string });
+        note("idea_step", "💡 On it");
+        return r;
       },
     },
     {
@@ -454,6 +517,11 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "File a task, reminder, commitment, waiting-for entry or idea.",
       input_schema: { type: "object", properties: itemProps, required: ["kind", "title"] },
       handler: async (input) => {
+        if (input.kind === "idea") {
+          const i = await captureIdea(env, { title: input.title, summary: input.notes ?? input.title, area: input.category, next_steps: [] });
+          note("capture_idea", `💡 Saved idea: ${i.title}`);
+          return { id: i.id, kind: "idea" };
+        }
         const project_id = await resolveProjectId(env, input.project as string);
         const item = await createItem(env, { ...(input as object), project_id, source } as never);
         const block = await attachBlock(env, item.id, input.block);

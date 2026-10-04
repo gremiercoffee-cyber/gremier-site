@@ -10,7 +10,7 @@ const BRAIN_DUMP_SYSTEM = `You are the user's Chief of Staff, sorting a brain du
 
 Read the dump and file every distinct thing with create_item, choosing the right kind:
 task (to do), reminder (at a time — set due_at), commitment (promised to someone — set person),
-waiting (waiting on someone — set person), idea (a thought, not a commitment).
+waiting (waiting on someone — set person). Ideas go to capture_idea with a summary, an honest analysis and 3-5 suggested next steps.
 Use remember for durable facts or preferences. Use an existing project name when one clearly fits.
 Do not create duplicates of open items already listed in the context. Do not invent details.
 When done, reply with a two-sentence summary of what you filed.`;
@@ -28,7 +28,7 @@ export async function processBrainDump(env: Env, raw: string) {
       history: [{ role: "user", content: raw }],
       // Brain dumps never queue deletions: only filing tools.
       tools: assistantTools(env, "brain_dump", notes).filter((t) =>
-        ["create_item", "create_project", "remember", "search_items"].includes(t.name),
+        ["create_item", "create_project", "remember", "search_items", "capture_idea"].includes(t.name),
       ),
       maxToolRounds: 4,
     });
