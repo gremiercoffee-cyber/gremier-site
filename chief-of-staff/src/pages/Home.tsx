@@ -3,6 +3,7 @@ import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import { api } from "../api";
 import { DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
+import LiveOrb from "../components/LiveOrb";
 
 type LiveState = "off" | LiveStatus;
 
@@ -30,7 +31,8 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const [error, setError] = useState("");
   const [live, setLive] = useState<LiveState>("off");
   const [dash, setDash] = useState<Dashboard | null>(null);
-  const callRef = useRef<{ hangUp: () => void } | null>(null);
+  const callRef = useRef<{ hangUp: () => void; levels: () => { input: number; output: number } } | null>(null);
+  const levels = useRef(() => callRef.current?.levels() ?? { input: 0, output: 0 }).current;
   const convoRef = useRef<string | null>(conversationId);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +149,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
       <Composer
         live={live} typing={typing} setTyping={setTyping} input={input} setInput={setInput} sending={sending}
         serverTranscription={serverTranscription} onSend={(t, mode) => { setInput(""); send(t, mode); }}
-        onTalk={startLive} onEnd={stopLive}
+        onTalk={startLive} onEnd={stopLive} levels={levels}
       />
     </div>
   );
@@ -172,7 +174,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   return (
     <div className="pt-4 space-y-5">
       <div className="flex flex-col items-center text-center gap-3">
-        <div className="scale-[0.8] -my-3"><Orb state={live} /></div>
+        {live === "off" && <div className="scale-[0.8] -my-3"><Orb state={live} /></div>}
         <div>
           <h1 className="font-display text-[30px] leading-tight">{greeting}</h1>
           <p className="text-muted text-sm mt-0.5">{live === "off" ? "I'm here. Tell me what's going on." : "I'm listening."}</p>
@@ -281,25 +283,19 @@ function Orb({ state }: { state: LiveState }) {
   );
 }
 
-function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd }: {
+function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, levels }: {
   live: LiveState; typing: boolean; setTyping: (b: boolean) => void; input: string; setInput: (s: string | ((v: string) => string)) => void;
   sending: boolean; serverTranscription: boolean; onSend: (t: string, mode: "text" | "dictation") => void; onTalk: () => void; onEnd: () => void;
+  levels: () => { input: number; output: number };
 }) {
   const LABELS: Record<LiveState, string> = { off: "", connecting: "Connecting…", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…", ended: "" };
   if (live !== "off") {
     return (
-      <div className="pb-2 px-1">
-        <div className="flex items-center gap-3 rounded-full bg-surface border border-line shadow-card pl-5 pr-2 py-2">
-          <span className="relative h-3 w-3 shrink-0">
-            {live === "listening" && <span className="absolute inset-0 rounded-full bg-accent animate-ping opacity-60" />}
-            <span className={`absolute inset-0 rounded-full ${live === "speaking" ? "bg-ok" : live === "connecting" ? "bg-line" : "bg-accent"}`} />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-[15px] font-medium">{LABELS[live]}</span>
-            <span className="block text-xs text-muted">{live === "connecting" ? "One moment" : "Just talk. You can interrupt any time."}</span>
-          </span>
-          <button onClick={onEnd} className="h-11 px-5 rounded-full bg-danger/10 text-danger font-medium text-sm">End</button>
-        </div>
+      <div className="pb-2 flex flex-col items-center">
+        <LiveOrb state={live === "ended" ? "connecting" : live} levels={levels} size={104} />
+        <p className="-mt-3 text-[15px] font-medium">{LABELS[live]}</p>
+        <p className="text-xs text-muted">{live === "connecting" ? "One moment" : "Just talk. You can interrupt any time."}</p>
+        <button onClick={onEnd} className="mt-3 h-10 px-6 rounded-full bg-danger/10 text-danger font-medium text-sm">End</button>
       </div>
     );
   }

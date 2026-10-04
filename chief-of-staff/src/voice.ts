@@ -1,3 +1,4 @@
+import { meter } from "./audioLevel";
 /**
  * Dictation helpers. Dictation records audio and sends it to the Worker for transcription
  * (OpenAI gpt-transcribe), falling back to on-device recognition when that isn't configured.
@@ -38,16 +39,19 @@ export function createRecognizer(opts: {
   return rec;
 }
 
-export async function startRecording(): Promise<{ stop: () => Promise<Blob> }> {
+export async function startRecording(): Promise<{ stop: () => Promise<Blob>; level: () => number }> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const m = meter(stream);
   const rec = new MediaRecorder(stream);
   const chunks: BlobPart[] = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   rec.start();
   return {
+    level: m.level,
     stop: () =>
       new Promise((resolve) => {
         rec.onstop = () => {
+          m.close();
           stream.getTracks().forEach((t) => t.stop());
           resolve(new Blob(chunks, { type: rec.mimeType || "audio/webm" }));
         };

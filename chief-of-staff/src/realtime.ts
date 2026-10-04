@@ -5,6 +5,7 @@
  */
 import type { ActionNote } from "../shared/types";
 import { getToken } from "./api";
+import { meter, type Meter } from "./audioLevel";
 
 export type LiveStatus = "connecting" | "listening" | "thinking" | "speaking" | "ended";
 
@@ -29,17 +30,19 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => void }> {
+export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => void; levels: () => { input: number; output: number } }> {
   cb.onStatus("connecting");
   const { client_secret } = await post<{ client_secret: string }>("/api/realtime/session", {});
 
   const pc = new RTCPeerConnection();
   const audio = new Audio();
   audio.autoplay = true;
-  pc.ontrack = (e) => { audio.srcObject = e.streams[0]; };
+  let outMeter: Meter | null = null;
+  pc.ontrack = (e) => { audio.srcObject = e.streams[0]; outMeter?.close(); outMeter = meter(e.streams[0]); };
 
   const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+  const inMeter = meter(mic);
 
   const dc = pc.createDataChannel("oai-events");
   const send = (event: unknown) => dc.readyState === "open" && dc.send(JSON.stringify(event));
@@ -139,6 +142,7 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
   }
 
   return {
-    hangUp: () => { hangUpAll(); cb.onStatus("ended"); },
+    hangUp: () => { inMeter.close(); outMeter?.close(); hangUpAll(); cb.onStatus("ended"); },
+    levels: () => ({ input: inMeter.level(), output: outMeter?.level() ?? 0 }),
   };
 }

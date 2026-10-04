@@ -81,3 +81,4 @@ body {
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+.orb-think { filter: saturate(1.15) brightness(1.05); }

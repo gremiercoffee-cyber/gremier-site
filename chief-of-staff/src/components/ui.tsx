@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Item, ItemKind } from "../../shared/types";
 import { api } from "../api";
 import { createRecognizer, speechRecognitionAvailable, startRecording } from "../voice";
+import LiveOrb from "./LiveOrb";
 
 export function Card({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -165,11 +166,13 @@ export function Markdown({ text }: { text: string }) {
 export function DictateButton({ onText, serverTranscription, compact }: { onText: (t: string) => void; serverTranscription: boolean; compact?: boolean }) {
   const [state, setState] = useState<"idle" | "recording" | "working">("idle");
   const [error, setError] = useState("");
-  const recRef = useRef<{ stop: () => Promise<Blob> } | null>(null);
+  const recRef = useRef<{ stop: () => Promise<Blob>; level?: () => number } | null>(null);
   const srRef = useRef<{ stop: () => void } | null>(null);
   const bufRef = useRef<string[]>([]);
 
   useEffect(() => () => { srRef.current?.stop(); }, []);
+  // Stable getter for the orb (reads the recorder's live loudness).
+  const levelsRef = useRef(() => ({ input: recRef.current?.level?.() ?? 0.3, output: 0 }));
 
   const start = async () => {
     setError("");
@@ -220,10 +223,19 @@ export function DictateButton({ onText, serverTranscription, compact }: { onText
   if (compact) {
     return (
       <div className="relative">
-        <button onClick={state === "recording" ? stop : start} disabled={state === "working"} aria-label="Dictate"
-          className={`h-12 w-12 rounded-full grid place-items-center border transition ${state === "recording" ? "bg-danger text-white border-danger" : "bg-surface border-line text-muted"}`}>
-          {state === "working" ? <span className="text-xs">…</span> : state === "recording" ? <span className="h-3.5 w-3.5 rounded-sm bg-white" /> : <DictIcon />}
-        </button>
+        {state === "recording" ? (
+          <button onClick={stop} aria-label="Stop dictating" className="relative h-12 w-12 grid place-items-center">
+            <span className="absolute inset-0 grid place-items-center pointer-events-none">
+              <LiveOrb state="recording" soft size={44} levels={levelsRef.current} />
+            </span>
+            <span className="relative h-3 w-3 rounded-sm bg-white/90" />
+          </button>
+        ) : (
+          <button onClick={start} disabled={state === "working"} aria-label="Dictate"
+            className="h-12 w-12 rounded-full grid place-items-center border transition bg-surface border-line text-muted">
+            {state === "working" ? <span className="text-xs">…</span> : <DictIcon />}
+          </button>
+        )}
         {error && <span className="absolute top-full mt-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] text-danger">{error}</span>}
       </div>
     );
