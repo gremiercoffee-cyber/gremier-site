@@ -260,18 +260,30 @@ route("GET", "/api/widget", async (_req, env) => {
     id: e.id, title: e.summary, day: dayName(e.start_at), time: e.all_day ? "All day" : `${time(e.start_at)}${e.end_at ? `–${time(e.end_at)}` : ""}`,
     location: e.location ?? "", link: e.html_link ?? "",
   }));
-  // Calendar page: one column per day for the next 7 days (empty days included).
+  // Agenda: one column per day for the next 7 days; meetings and tasks together as cards, by time.
+  // Overdue and undated tasks live in Today (overdue first, "Anytime" last).
+  type Card = { type: "event" | "task"; id: string; title: string; time: string; sort: string; location?: string; link?: string;
+    category?: string | null; overdue?: boolean; high?: boolean; anytime?: boolean };
+  const taskCard = (i: Item, t2: string, extra: Partial<Card> = {}): Card => ({
+    type: "task", id: i.id, title: i.title, time: t2, sort: i.due_at ?? "9999", category: i.category ?? null, high: i.priority === 1, ...extra,
+  });
+  const datedTasks = [...today, ...soon];
   const days = Array.from({ length: 7 }, (_, k) => {
     const d = new Date(Date.now() + k * 86400_000);
     const ymd = localDate(d);
     const label = k === 0 ? "Today" : k === 1 ? "Tomorrow" : new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric" });
-    return {
-      label,
-      events: events.filter((e) => (e.all_day ? e.start_at : localDate(new Date(e.start_at))) === ymd).map((e) => ({
-        id: e.id, title: e.summary, time: e.all_day ? "All day" : `${time(e.start_at)}${e.end_at ? `–${time(e.end_at)}` : ""}`,
-        location: e.location ?? "", link: e.html_link ?? "",
+    const cards: Card[] = [
+      ...events.filter((e) => (e.all_day ? e.start_at : localDate(new Date(e.start_at))) === ymd).map((e): Card => ({
+        type: "event", id: e.id, title: e.summary, time: e.all_day ? "All day" : `${time(e.start_at)}${e.end_at ? `–${time(e.end_at)}` : ""}`,
+        sort: e.all_day ? "0" : e.start_at, location: e.location ?? "", link: e.html_link ?? "",
       })),
-    };
+      ...datedTasks.filter((i) => localDate(new Date(i.due_at!)) === ymd).map((i) => taskCard(i, time(i.due_at!))),
+    ].sort((x, y) => x.sort.localeCompare(y.sort));
+    if (k === 0) {
+      cards.unshift(...overdue.map((i) => taskCard(i, `Overdue · ${dayName(i.due_at!)}`, { overdue: true, sort: "" })));
+      cards.push(...undated.map((i) => taskCard(i, "Anytime", { anytime: true })));
+    }
+    return { label, events: cards };
   });
   const todoCount = todo.reduce((n, s) => n + s.items.length, 0);
   const next = events.find((e) => !e.all_day && e.start_at > t);

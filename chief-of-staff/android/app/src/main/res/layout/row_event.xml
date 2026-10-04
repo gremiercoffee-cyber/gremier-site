@@ -1,36 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- One agenda card: a meeting, or a task (with a check circle). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/event_box"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="4dp"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:background="@drawable/event_bg"
-    android:paddingStart="8dp"
+    android:paddingStart="6dp"
     android:paddingEnd="6dp"
     android:paddingTop="6dp"
     android:paddingBottom="6dp">
     <TextView
-        android:id="@+id/ev_time"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/accent"
-        android:textSize="10sp"
-        android:maxLines="1" />
-    <TextView
-        android:id="@+id/ev_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/ink"
-        android:textSize="12sp"
-        android:maxLines="2"
-        android:ellipsize="end" />
-    <TextView
-        android:id="@+id/ev_place"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:id="@+id/ev_check"
+        android:layout_width="24dp"
+        android:layout_height="28dp"
+        android:gravity="center"
+        android:text="○"
+        android:textSize="17sp"
         android:textColor="@color/muted"
-        android:textSize="10sp"
-        android:maxLines="1"
-        android:ellipsize="end" />
+        android:visibility="gone" />
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="2dp">
+        <TextView
+            android:id="@+id/ev_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/accent"
+            android:textSize="10sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+        <TextView
+            android:id="@+id/ev_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/ink"
+            android:textSize="12sp"
+            android:maxLines="3"
+            android:ellipsize="end" />
+        <TextView
+            android:id="@+id/ev_place"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/muted"
+            android:textSize="10sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
 </LinearLayout>

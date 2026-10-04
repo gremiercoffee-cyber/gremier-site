@@ -100,7 +100,7 @@ class PopupActivity : Activity() {
     private fun showItem(id: String) {
         val it = Cos.find(this, id) ?: run { body.addView(muted("This item was already handled.")); addClose(); return }
         body.addView(text(it.optString("title"), 19f, bold = true))
-        it.optString("sub").takeIf { s -> s.isNotBlank() }?.let { s -> body.addView(muted(s)) }
+        (it.optString("sub").ifBlank { it.optString("time") }).takeIf { s -> s.isNotBlank() }?.let { s -> body.addView(muted(s)) }
         it.optString("notes").takeIf { s -> s.isNotBlank() && s != "null" }?.let { s ->
             body.addView(text(s, 14f, Color.parseColor("#3A3F4B")).apply { setPadding(0, (8 * dp).toInt(), 0, 0) })
         }

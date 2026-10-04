@@ -18,8 +18,8 @@ object Cos {
     fun cached(c: Context): JSONObject? = prefs(c).getString("widget", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
     private fun save(c: Context, j: JSONObject) = prefs(c).edit().putString("widget", j.toString()).apply()
 
-    /** 0 = To do, 1 = People, 2 = Calendar. */
-    fun page(c: Context) = prefs(c).getInt("page", 0)
+    /** 0 = Agenda (tasks + meetings by day), 1 = People. */
+    fun page(c: Context) = prefs(c).getInt("page", 0).coerceIn(0, 1)
     fun setPage(c: Context, p: Int) = prefs(c).edit().putInt("page", p).putInt("day_offset", 0).apply()
     /** First day shown on the Calendar page (0, 3 or 6 → steps of three days). */
     fun dayOffset(c: Context) = prefs(c).getInt("day_offset", 0)
@@ -75,7 +75,7 @@ object Cos {
 
     /** done | notneeded | snooze1h | tomorrow. Returns a short confirmation. */
     fun act(c: Context, id: String, action: String): String {
-        if (action == "done" || action == "notneeded") removeLocally(c, id)
+        if (action == "done" || action == "notneeded") { removeLocally(c, id); removeCard(c, id) }
         if (action.startsWith("cat:")) setCategoryLocally(c, id, action.removePrefix("cat:"))
         return json(c, "POST", "/api/widget/act", JSONObject().put("id", id).put("action", action)).optString("message", "Done")
     }
@@ -121,12 +121,23 @@ object Cos {
         save(c, j)
     }
 
+    private fun removeCard(c: Context, id: String) {
+        val j = cached(c) ?: return
+        val days = j.optJSONArray("days") ?: return
+        for (d in 0 until days.length()) {
+            val day = days.getJSONObject(d)
+            day.put("events", filter(day.optJSONArray("events")) { it.optString("id") != id })
+        }
+        save(c, j)
+    }
+
     private fun setCategoryLocally(c: Context, id: String, cat: String) {
         val j = cached(c) ?: return
         find(c, id) // ensure present
         fun fix(a: JSONArray?) { if (a != null) for (i in 0 until a.length()) a.getJSONObject(i).let { if (it.optString("id") == id) it.put("category", cat) } }
         j.optJSONArray("todo")?.let { for (s in 0 until it.length()) fix(it.getJSONObject(s).optJSONArray("items")) }
         fix(j.optJSONArray("people"))
+        j.optJSONArray("days")?.let { for (d in 0 until it.length()) fix(it.getJSONObject(d).optJSONArray("events")) }
         save(c, j)
     }
 
@@ -156,11 +167,17 @@ object Cos {
             }
             kind == "people" -> j.optJSONArray("people")?.let { for (i in 0 until it.length()) it.getJSONObject(i).let { o -> if (shows(c, o)) out += Row(item = o) } }
             kind.startsWith("day") -> day(c, kind.removePrefix("day").toInt())?.optJSONArray("events")?.let {
-                for (i in 0 until it.length()) out += Row(event = it.getJSONObject(i))
+                for (i in 0 until it.length()) it.getJSONObject(i).let { card ->
+                    // Meetings always show; tasks follow the area filter.
+                    if (card.optString("type") != "task" || shows(c, card)) out += Row(event = card)
+                }
             }
         }
         return out
     }
+
+    /** Cards in the visible day columns, after the area filter (for the tab count). */
+    fun agendaCount(c: Context) = (0..2).sumOf { rows(c, "day$it").size }
 
     fun day(c: Context, column: Int): JSONObject? = cached(c)?.optJSONArray("days")?.optJSONObject(dayOffset(c) + column)
 

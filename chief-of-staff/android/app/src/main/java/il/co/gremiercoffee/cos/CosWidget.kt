@@ -91,27 +91,28 @@ class CosWidget : AppWidgetProvider() {
             v.setOnClickPendingIntent(R.id.add, popup(c, 4, "add"))
             v.setOnClickPendingIntent(R.id.refresh, broadcast(c, 5, ACT_REFRESH))
 
-            // Tabs with counts
-            val counts = intArrayOf(data?.optInt("todo_count") ?: 0, data?.optInt("people_count") ?: 0, data?.optInt("events_count") ?: 0)
-            val names = arrayOf("To do", "People", "Calendar")
-            TABS.forEachIndexed { i, tab ->
+            // Tabs with counts: Agenda (tasks + meetings) and People (replies you owe)
+            val counts = intArrayOf(Cos.agendaCount(c), data?.optInt("people_count") ?: 0)
+            val names = arrayOf("Agenda", "People")
+            v.setViewVisibility(R.id.tab2, View.GONE)
+            TABS.take(2).forEachIndexed { i, tab ->
                 v.setTextViewText(tab, if (counts[i] > 0) "${names[i]} ${counts[i]}" else names[i])
                 v.setInt(tab, "setBackgroundResource", if (i == page) R.drawable.tab_on else 0)
                 v.setTextColor(tab, if (i == page) c.getColor(R.color.bg) else muted)
                 v.setOnClickPendingIntent(tab, broadcast(c, 10 + i, ACT_PAGE, i.toString()))
             }
 
-            // Area filters (To do / People only)
+            // Area filters (both pages; meetings on the Agenda always show)
             val filter = Cos.catFilter(c)
-            v.setViewVisibility(R.id.filters, if (page == 2) View.GONE else View.VISIBLE)
+            v.setViewVisibility(R.id.filters, View.VISIBLE)
             FILTERS.entries.forEachIndexed { i, (key, view) ->
                 v.setInt(view, "setBackgroundResource", if (key == filter) R.drawable.pill else 0)
                 v.setTextColor(view, if (key == filter) c.getColor(R.color.accent) else muted)
                 v.setOnClickPendingIntent(view, broadcast(c, 20 + i, ACT_FILTER, key))
             }
 
-            // Day arrows (Calendar only)
-            val dayNav = if (page == 2) View.VISIBLE else View.GONE
+            // Day arrows (Agenda only)
+            val dayNav = if (page == 0) View.VISIBLE else View.GONE
             v.setViewVisibility(R.id.prev, dayNav)
             v.setViewVisibility(R.id.next, dayNav)
             v.setOnClickPendingIntent(R.id.prev, broadcast(c, 30, ACT_DAYS, "-3"))
@@ -120,14 +121,14 @@ class CosWidget : AppWidgetProvider() {
             // Taps inside lists are handled by TapActivity (done / pop-up), never the full app.
             val template = PendingIntent.getActivity(c, 6, Intent(c, TapActivity::class.java), flags(mutable = true))
 
-            if (page == 2) {
+            if (page == 0) {
                 v.setViewVisibility(R.id.list, View.GONE)
                 v.setViewVisibility(R.id.cal, View.VISIBLE)
                 v.setViewVisibility(R.id.empty, View.GONE)
                 DAYS.forEachIndexed { col, list ->
                     val day = Cos.day(c, col)
-                    val n = day?.optJSONArray("events")?.length() ?: 0
-                    v.setTextViewText(DAY_LABELS[col], (day?.optString("label") ?: "") + if (n == 0) " · free" else "")
+                    val shown = Cos.rows(c, "day$col").size
+                    v.setTextViewText(DAY_LABELS[col], (day?.optString("label") ?: "") + if (shown == 0) " · free" else "")
                     v.setTextColor(DAY_LABELS[col], if (col == 0 && Cos.dayOffset(c) == 0) ink else muted)
                     v.setRemoteAdapter(list, adapter(c, id, "day$col"))
                     v.setPendingIntentTemplate(list, template)
@@ -135,10 +136,10 @@ class CosWidget : AppWidgetProvider() {
             } else {
                 v.setViewVisibility(R.id.cal, View.GONE)
                 v.setViewVisibility(R.id.list, View.VISIBLE)
-                v.setRemoteAdapter(R.id.list, adapter(c, id, if (page == 1) "people" else "todo"))
+                v.setRemoteAdapter(R.id.list, adapter(c, id, "people"))
                 v.setPendingIntentTemplate(R.id.list, template)
-                val empty = Cos.passcode(c) != null && Cos.rows(c, if (page == 1) "people" else "todo").isEmpty()
-                v.setTextViewText(R.id.empty, if (page == 1) "No one is waiting on you ✨" else "All clear ✨")
+                val empty = Cos.passcode(c) != null && Cos.rows(c, "people").isEmpty()
+                v.setTextViewText(R.id.empty, "No one is waiting on you ✨")
                 v.setViewVisibility(R.id.empty, if (empty) View.VISIBLE else View.GONE)
             }
             mgr.updateAppWidget(id, v)
