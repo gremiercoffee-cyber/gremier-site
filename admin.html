@@ -9547,5 +9547,106 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
+<!-- ══════════ Connected apps + Activity timeline ══════════ -->
+<script id="apps-script">
+(function () {
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const when = (d) => d ? new Date(d).toLocaleString('en-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  const main = document.getElementById('websiteMain');
+  main.insertAdjacentHTML('beforeend', `
+    <div id="tab-activity" class="tab-content" style="display:none">
+      <div class="page-header"><div class="flex-between">
+        <div><h1 class="page-title">🕑 Activity</h1><p class="page-sub">Everything that happened — from you, the website, the widget and connected apps.</p></div>
+        <div class="header-actions">
+          <select class="form-input" style="width:auto" id="actFilter" onchange="appsLoadActivity()">
+            <option value="">Everyone</option><option value="admin:">You (admin app)</option><option value="app:">Connected apps</option><option value="website">Website</option><option value="system">System</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="appsLoadActivity()">↻ Refresh</button>
+        </div>
+      </div></div>
+      <div class="card" style="padding:4px 16px" id="actList"><div class="hub-empty">Loading…</div></div>
+    </div>
+    <div id="tab-connected" class="tab-content" style="display:none">
+      <div class="page-header"><div class="flex-between">
+        <div><h1 class="page-title">🔌 Connected apps</h1><p class="page-sub">Keys for the Android widget, your Claude secretary, or any app that reads or logs things here. Each key can be switched off anytime.</p></div>
+      </div></div>
+      <div class="hub-card" style="margin-bottom:16px">
+        <h3><span>New key</span></h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input class="form-input" id="appKeyName" placeholder="App name, e.g. Widget or Secretary" style="flex:1;min-width:200px" maxlength="40"/>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem"><input type="checkbox" id="appKeyWrite" checked> Can log & change things</label>
+          <button class="btn btn-amber btn-sm" onclick="appsCreateKey()">Create key</button>
+        </div>
+        <div id="appKeyShown"></div>
+      </div>
+      <div id="appKeys"><div class="hub-empty">Loading…</div></div>
+      <p style="color:var(--text2);font-size:.78rem;margin-top:14px;line-height:1.6;word-break:break-all">API address: <code>${esc(SUPABASE_URL)}/functions/v1/hub-api</code> · send <code>Authorization: Bearer &lt;key&gt;</code> and <code>{"action":"help"}</code> to list everything it can do.</p>
+    </div>`);
+  const icon = { app: '🔌', admin: '👤', website: '🌐', system: '⚙️' };
+  document.getElementById('nav-subscriptions')?.insertAdjacentHTML('afterend',
+    `<div class="nav-item" onclick="showTab('activity')" id="nav-activity"><span class="icon">🕑</span><span>Activity</span></div>
+     <div class="nav-item" onclick="showTab('connected')" id="nav-connected"><span class="icon">🔌</span><span>Connected apps</span></div>`);
+  document.querySelector('#navDrawer .nav-drawer-sep')?.insertAdjacentHTML('beforebegin',
+    `<button class="nav-drawer-item" onclick="showTab('activity');closeNavDrawer()"><span>🕑</span>Activity</button>
+     <button class="nav-drawer-item" onclick="showTab('connected');closeNavDrawer()"><span>🔌</span>Connected apps</button>`);
+
+  const _showTab = window.showTab;
+  window.showTab = function (tab) {
+    const r = _showTab.apply(this, arguments);
+    if (tab === 'activity') appsLoadActivity();
+    if (tab === 'connected') appsLoadKeys();
+    return r;
+  };
+
+  window.appsLoadActivity = async function () {
+    const box = document.getElementById('actList');
+    const f = document.getElementById('actFilter').value;
+    let q = sb.from('activity_log').select('at, actor, action, summary').order('at', { ascending: false }).limit(150);
+    if (f) q = f.endsWith(':') ? q.like('actor', f + '%') : q.eq('actor', f);
+    const { data, error } = await q;
+    if (error) { box.innerHTML = `<div class="hub-empty">⚠️ ${esc(error.message)}</div>`; return; }
+    if (!data.length) { box.innerHTML = '<div class="hub-empty">Nothing yet — new activity shows up here from now on.</div>'; return; }
+    let lastDay = '';
+    box.innerHTML = data.map((r) => {
+      const day = new Date(r.at).toLocaleDateString('en-IL', { weekday: 'long', day: 'numeric', month: 'long' });
+      const head = day !== lastDay ? `<div style="font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin:14px 0 4px">${esc(day)}</div>` : '';
+      lastDay = day;
+      const kind = r.actor.split(':')[0];
+      const who = kind === 'admin' ? 'You' : kind === 'app' ? r.actor.slice(4) : r.actor === 'website' ? 'Website' : 'System';
+      return head + `<div class="hub-row" style="cursor:default"><div class="t"><b style="white-space:normal">${icon[kind] || '•'} ${esc(r.summary)}</b><small>${esc(who)}</small></div><div class="r" style="color:var(--text2)">${new Date(r.at).toLocaleTimeString('en-IL', { hour: '2-digit', minute: '2-digit' })}</div></div>`;
+    }).join('');
+  };
+
+  window.appsLoadKeys = async function () {
+    const box = document.getElementById('appKeys');
+    const { data, error } = await sb.from('api_keys').select('id, name, key_prefix, scopes, created_at, last_used_at, revoked_at').order('created_at', { ascending: false });
+    if (error) { box.innerHTML = `<div class="hub-empty">⚠️ ${esc(error.message)}</div>`; return; }
+    if (!data.length) { box.innerHTML = '<div class="hub-card"><div class="hub-empty">No connected apps yet.</div></div>'; return; }
+    box.innerHTML = '<div class="hub-grid">' + data.map((k) => `<div class="hub-card" style="${k.revoked_at ? 'opacity:.55' : ''}">
+      <h3><span>${esc(k.name)}</span>${k.revoked_at ? '<span class="hub-pill bad">Off</span>' : `<span class="hub-pill ok">${k.scopes.includes('write') ? 'Read + log' : 'Read only'}</span>`}</h3>
+      <div style="font-size:.8rem;line-height:1.7;color:var(--text2)"><code>${esc(k.key_prefix)}…</code><br>Created ${when(k.created_at)} · Last used ${when(k.last_used_at)}</div>
+      ${k.revoked_at ? '' : `<button class="btn btn-red btn-sm" style="margin-top:10px" onclick="appsRevokeKey('${k.id}', ${esc(JSON.stringify(k.name))})">Switch off</button>`}
+    </div>`).join('') + '</div>';
+  };
+  window.appsCreateKey = async function () {
+    const name = document.getElementById('appKeyName').value.trim();
+    if (!name) return showToast('Give the app a name');
+    const scopes = document.getElementById('appKeyWrite').checked ? ['read', 'write'] : ['read'];
+    const { res, data } = await callAdminFunction('admin-tools', { action: 'create_api_key', name, scopes });
+    if (!res.ok || !data.key) return alert('Could not create key: ' + (data.error || res.status));
+    document.getElementById('appKeyName').value = '';
+    document.getElementById('appKeyShown').innerHTML = `<div style="margin-top:12px;padding:12px;border:1px solid rgba(224,160,48,.55);border-radius:8px;background:rgba(224,160,48,.08)">
+      <b style="font-size:.85rem">Key for ${esc(data.name)} — copy it now, it won't be shown again:</b>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input class="form-input" readonly value="${esc(data.key)}" id="appKeyValue" style="flex:1;min-width:220px;font-family:monospace;font-size:.8rem"/>
+      <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('appKeyValue').value).then(()=>showToast('Copied ✓'))">Copy</button></div></div>`;
+    appsLoadKeys();
+  };
+  window.appsRevokeKey = async function (id, name) {
+    if (!confirm(`Switch off ${name}? It stops working immediately.`)) return;
+    const { res } = await callAdminFunction('admin-tools', { action: 'revoke_api_key', id });
+    if (res.ok) { showToast('Switched off ✓'); appsLoadKeys(); }
+  };
+})();
+</script>
 </body>
 </html>
