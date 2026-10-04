@@ -60,7 +60,7 @@ def api(method: str, path: str, body: dict | None = None):
     req = urllib.request.Request(
         API + path, method=method,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={"x-bridge-key": KEY, "content-type": "application/json"},
+        headers={"x-bridge-key": KEY, "content-type": "application/json", "user-agent": "ChiefOfStaffBridge/1.0 (Windows)"},
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read() or b"null")
