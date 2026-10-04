@@ -1,5 +1,5 @@
 import type {
-  BrainDump, ChatResponse, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
+  BrainDump, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
 const TOKEN_KEY = "cos.token";
@@ -33,7 +33,12 @@ export const api = {
   health: () => request<{ ok: boolean; configured: boolean; model: boolean; transcription: boolean }>("GET", "/api/health"),
   dashboard: () => request<Dashboard>("GET", "/api/dashboard"),
   messages: () => request<Message[]>("GET", "/api/messages"),
-  chat: (text: string, mode: "text" | "voice" | "dictation" = "text") => request<ChatResponse>("POST", "/api/chat", { text, mode }),
+  chat: (text: string, mode: "text" | "voice" | "dictation" = "text", conversation_id: string | null = null) =>
+    request<ChatResponse>("POST", "/api/chat", { text, mode, conversation_id }),
+  conversations: () => request<Conversation[]>("GET", "/api/conversations"),
+  conversationMessages: (id: string) => request<Message[]>("GET", `/api/conversations/${id}/messages`),
+  deleteConversation: (id: string) => request("DELETE", `/api/conversations/${id}`),
+  actNudge: (id: string, action: string) => request<{ ok: true; message: string; open?: string }>("POST", `/api/nudges/${id}/act`, { action }),
   transcribe: (audio: Blob) => {
     const f = new FormData();
     f.append("audio", audio, "dictation.webm");

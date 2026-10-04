@@ -8,7 +8,7 @@
 import OpenAI from "openai";
 import type { ActionNote } from "../shared/types";
 import type { Env } from "./env";
-import { assistantTools, buildContext, SYSTEM_PROMPT } from "./assistant";
+import { assistantTools, buildContext, resolveConversation, SYSTEM_PROMPT, titleConversation } from "./assistant";
 import { ProviderUnavailable } from "./ai";
 import { HttpError, getSettings, now, run, uid } from "./db";
 
@@ -58,11 +58,15 @@ export async function runRealtimeTool(env: Env, name: string, args: string) {
   }
 }
 
-export async function logRealtimeMessage(env: Env, role: string, content: string, actions: ActionNote[] = []) {
+export async function logRealtimeMessage(env: Env, role: string, content: string, actions: ActionNote[] = [], conversationId?: string | null) {
   if (role !== "user" && role !== "assistant") throw new HttpError(400, "bad role");
   const text = content.trim();
-  if (!text) return { ok: true };
-  await run(env, "INSERT INTO messages (id, role, content, mode, meta, created_at) VALUES (?, ?, ?, 'voice', ?, ?)",
-    uid(), role, text.slice(0, 20000), actions.length ? JSON.stringify(actions) : null, now());
-  return { ok: true };
+  if (!text) return { ok: true, conversation_id: conversationId ?? null };
+  const convo = await resolveConversation(env, conversationId);
+  const t = now();
+  await run(env, "INSERT INTO messages (id, role, content, mode, meta, created_at, conversation_id) VALUES (?, ?, ?, 'voice', ?, ?, ?)",
+    uid(), role, text.slice(0, 20000), actions.length ? JSON.stringify(actions) : null, t, convo.id);
+  await run(env, "UPDATE conversations SET last_message_at = ? WHERE id = ?", t, convo.id);
+  if (!convo.title && role === "user") await titleConversation(env, convo, text);
+  return { ok: true, conversation_id: convo.id };
 }

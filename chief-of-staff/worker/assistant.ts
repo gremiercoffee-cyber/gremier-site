@@ -1,5 +1,5 @@
 /** The single Chief of Staff assistant: prompt, context assembly and tools over the user's data. */
-import type { ActionNote, Item, Memory, Message, Project } from "../shared/types";
+import type { ActionNote, Conversation, Item, Memory, Message, Project } from "../shared/types";
 import type { Env } from "./env";
 import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
@@ -13,6 +13,8 @@ What you do:
 - Keep track of their tasks, reminders, commitments, ideas, projects and the things they are waiting on from other people.
 - Remember durable facts and preferences (use the remember tool) so they never have to repeat themselves.
 - Help them decide, prioritise and plan. Be proactive: point out overdue items, conflicts, forgotten follow-ups and sensible next steps.
+- Act like a trusted human chief of staff, not a chatbot. When they tell you what is going on ("here's how I'm doing deliveries today", "we're launching X next week"), quietly build the structure it needs: tasks and reminders at sensible times, a check-in reminder afterwards phrased as a question ("Did you…?") so you can ask whether it happened, a project to group related work, and memories for lasting facts. Do not ask permission for this internal organizing; just do it and tell them briefly what you set up.
+- A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
 
 How to file things — keep these clearly separate:
 - task: something the user needs to do.
@@ -310,30 +312,89 @@ export async function executeApproved(env: Env, action: string, payload: Record<
 
 const HISTORY_LIMIT = 30;
 
-export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation") {
-  const provider = getProvider(env); // fail before storing anything if no model is configured
-  const userMsg: Message = { id: uid(), role: "user", content: text, mode, meta: null, created_at: now() };
-  await run(env, "INSERT INTO messages (id, role, content, mode, created_at) VALUES (?, ?, ?, ?, ?)",
-    userMsg.id, userMsg.role, userMsg.content, userMsg.mode, userMsg.created_at);
+/** A conversation goes quiet after this long; the next message starts a fresh one. */
+const CONVERSATION_IDLE_MS = 6 * 3600_000;
 
-  const recent = await all<Message>(env, "SELECT * FROM messages ORDER BY created_at DESC LIMIT ?", HISTORY_LIMIT);
+/** Returns the conversation to write into: the one given if still active, else a new one. */
+export async function resolveConversation(env: Env, id?: string | null, forceNew = false): Promise<Conversation> {
+  if (id && !forceNew) {
+    const c = await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", id);
+    if (c) return c;
+  }
+  const t = now();
+  const c: Conversation = { id: uid(), title: "", created_at: t, last_message_at: t };
+  await run(env, "INSERT INTO conversations (id, title, created_at, last_message_at) VALUES (?, ?, ?, ?)", c.id, c.title, t, t);
+  return c;
+}
+
+/** One tiny fast-tier call per conversation; falls back to the first words of the message. */
+export async function titleConversation(env: Env, c: Conversation, firstText: string) {
+  if (c.title) return c.title;
+  let title = firstText.split(/\s+/).slice(0, 6).join(" ");
+  try {
+    const out = await getProvider(env).complete({
+      tier: "fast", purpose: "title", maxTokens: 20,
+      system: "Name this conversation in 2 to 5 words, Title Case, no quotes or punctuation at the end.",
+      prompt: firstText.slice(0, 600),
+    });
+    if (out.trim()) title = out.trim().replace(/^["']|["'.]$/g, "").slice(0, 60);
+  } catch { /* keep fallback */ }
+  await run(env, "UPDATE conversations SET title = ? WHERE id = ?", title, c.id);
+  c.title = title;
+  return title;
+}
+
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null) {
+  const provider = getProvider(env); // fail before storing anything if no model is configured
+  const existing = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
+  const stale = existing && Date.now() - new Date(existing.last_message_at).getTime() > CONVERSATION_IDLE_MS;
+  let convo = await resolveConversation(env, existing?.id, !existing || !!stale);
+
+  const userMsg: Message = { id: uid(), role: "user", content: text, mode, meta: null, created_at: now(), conversation_id: convo.id };
+  await run(env, "INSERT INTO messages (id, role, content, mode, created_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?)",
+    userMsg.id, userMsg.role, userMsg.content, userMsg.mode, userMsg.created_at, convo.id);
+
+  const recent = await all<Message>(env, "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?", convo.id, HISTORY_LIMIT);
   const history: Turn[] = recent.reverse().map((m) => ({ role: m.role, content: m.content }));
 
   const notes: ActionNote[] = [];
+  let switched = false;
+  const tools = assistantTools(env, mode === "text" ? "chat" : "voice", notes);
+  if (history.length > 1) {
+    tools.push({
+      name: "new_topic",
+      description: "Call when the user's latest message starts a clearly unrelated subject from this conversation. Their message moves into a fresh conversation. Do not call for follow-ups on the same subject.",
+      input_schema: { type: "object", properties: { title: { type: "string", description: "2-5 word title" } }, required: ["title"] },
+      handler: async (input) => {
+        if (switched) return { ok: true };
+        switched = true;
+        const fresh = await resolveConversation(env, null, true);
+        fresh.title = String(input.title ?? "").slice(0, 60);
+        await run(env, "UPDATE conversations SET title = ? WHERE id = ?", fresh.title, fresh.id);
+        await run(env, "UPDATE messages SET conversation_id = ? WHERE id = ?", fresh.id, userMsg.id);
+        userMsg.conversation_id = fresh.id;
+        convo = fresh;
+        return { ok: true, note: "Moved to a new conversation. Continue answering normally." };
+      },
+    });
+  }
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
     system: SYSTEM_PROMPT,
     context: await buildContext(env, mode),
     history,
-    tools: assistantTools(env, mode === "text" ? "chat" : "voice", notes),
+    tools,
   });
 
   const reply: Message = {
     id: uid(), role: "assistant", content: result.text, mode, meta: notes.length ? JSON.stringify(notes) : null,
-    created_at: new Date(Date.now() + 1).toISOString(),
+    created_at: new Date(Date.now() + 1).toISOString(), conversation_id: convo.id,
   };
-  await run(env, "INSERT INTO messages (id, role, content, mode, meta, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    reply.id, reply.role, reply.content, reply.mode, reply.meta, reply.created_at);
-  return { user: userMsg, reply, actions: notes };
+  await run(env, "INSERT INTO messages (id, role, content, mode, meta, created_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    reply.id, reply.role, reply.content, reply.mode, reply.meta, reply.created_at, convo.id);
+  convo.last_message_at = reply.created_at;
+  await run(env, "UPDATE conversations SET last_message_at = ? WHERE id = ?", reply.created_at, convo.id);
+  if (!convo.title) await titleConversation(env, convo, text);
+  return { user: userMsg, reply, actions: notes, conversation: convo };
 }

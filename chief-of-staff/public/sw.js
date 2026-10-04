@@ -1,6 +1,6 @@
 // Chief of Staff service worker: app-shell caching + notification plumbing.
 // API calls are never cached — data always comes fresh from the Worker.
-const CACHE = "cos-shell-v2";
+const CACHE = "cos-shell-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -31,21 +31,37 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
-// Server-sent Web Push from the Worker (see worker/push.ts).
+// Server-sent Web Push from the Worker (see worker/push.ts). Buttons act without opening the app.
 self.addEventListener("push", (e) => {
   const data = e.data ? e.data.json() : { title: "Chief of Staff", body: "" };
   e.waitUntil(self.registration.showNotification(data.title, {
     body: data.body, icon: "/icon-192.png", badge: "/icon-192.png", tag: data.tag, renotify: !!data.tag, data,
+    actions: (data.actions || []).slice(0, 3).map((a) => ({ action: a.action, title: a.title })),
   }));
 });
 
+const focusOrOpen = (target) =>
+  self.clients.matchAll({ type: "window" }).then((list) => {
+    for (const c of list) if ("focus" in c) { c.navigate(target); return c.focus(); }
+    return self.clients.openWindow(target);
+  });
+
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const target = (e.notification.data && e.notification.data.url) || "/";
+  const data = e.notification.data || {};
+  const btn = (data.actions || []).find((a) => a.action === e.action);
+  if (!btn) { e.waitUntil(focusOrOpen(data.url || "/")); return; }
   e.waitUntil(
-    self.clients.matchAll({ type: "window" }).then((list) => {
-      for (const c of list) if ("focus" in c) { c.navigate(target); return c.focus(); }
-      return self.clients.openWindow(target);
-    }),
+    fetch("/api/act", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ n: data.nudge_id, a: btn.action, sig: data.sig }) })
+      .then((r) => r.json())
+      .then((res) => {
+        if (btn.opens || res.open) return focusOrOpen(res.open || "/");
+        // Quiet confirmation that replaces itself.
+        return self.registration.showNotification(res.message || "Done", { tag: "cos-ack", silent: true, icon: "/icon-192.png" })
+          .then(() => new Promise((r) => setTimeout(r, 4000)))
+          .then(() => self.registration.getNotifications({ tag: "cos-ack" }))
+          .then((ns) => ns.forEach((n) => n.close()));
+      })
+      .catch(() => focusOrOpen(data.url || "/")),
   );
 });

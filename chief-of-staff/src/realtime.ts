@@ -9,6 +9,9 @@ import { getToken } from "./api";
 export type LiveStatus = "connecting" | "listening" | "thinking" | "speaking" | "ended";
 
 export interface LiveCallbacks {
+  /** Conversation the voice transcript belongs to; null starts a new one. */
+  getConversation: () => string | null;
+  onConversation: (id: string) => void;
   onStatus: (s: LiveStatus) => void;
   onTranscript: (role: "user" | "assistant", text: string) => void;
   onActions: (actions: ActionNote[]) => void;
@@ -41,6 +44,10 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
   const dc = pc.createDataChannel("oai-events");
   const send = (event: unknown) => dc.readyState === "open" && dc.send(JSON.stringify(event));
   let pendingActions: ActionNote[] = [];
+  const log = (role: string, content: string, actions: ActionNote[] = []) =>
+    post<{ conversation_id: string | null }>("/api/realtime/log", { role, content, actions, conversation_id: cb.getConversation() })
+      .then((r) => { if (r.conversation_id) cb.onConversation(r.conversation_id); })
+      .catch(() => {});
 
   dc.onmessage = async (msg) => {
     const ev = JSON.parse(msg.data);
@@ -60,13 +67,13 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
       case "conversation.item.input_audio_transcription.completed":
         if (ev.transcript?.trim()) {
           cb.onTranscript("user", ev.transcript.trim());
-          post("/api/realtime/log", { role: "user", content: ev.transcript }).catch(() => {});
+          await log("user", ev.transcript);
         }
         break;
       case "response.output_audio_transcript.done":
         if (ev.transcript?.trim()) {
           cb.onTranscript("assistant", ev.transcript.trim());
-          post("/api/realtime/log", { role: "assistant", content: ev.transcript, actions: pendingActions }).catch(() => {});
+          await log("assistant", ev.transcript, pendingActions);
           pendingActions = [];
         }
         break;

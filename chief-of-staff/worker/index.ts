@@ -1,4 +1,4 @@
-import type { CalendarEvent, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
+import type { CalendarEvent, Conversation, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
 import { ProviderUnavailable } from "./ai";
 import { chat, executeApproved } from "./assistant";
@@ -7,6 +7,7 @@ import {
   HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, now, run, saveSettings, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
+import { actionsFor, applyAction, verifyNudge } from "./actions";
 import { pushConfigured, sendPush } from "./push";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
@@ -60,25 +61,32 @@ route("GET", "/api/dashboard", async (_req, env) => {
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const data: Dashboard = {
-    today, overdue, waiting, nudges, pending, projects, events,
+    today, overdue, waiting, pending, projects, events,
+    nudges: nudges.map((n) => ({ ...n, actions: actionsFor(n) })),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
   };
   return json(data);
 });
 
 // ---- Chat (text, live voice and dictation share one conversation) -----------
-route("GET", "/api/messages", async (req, env) => {
-  const before = new URL(req.url).searchParams.get("before") ?? "9999";
-  const rows = await all<Message>(env, "SELECT * FROM messages WHERE created_at < ? ORDER BY created_at DESC LIMIT 50", before);
-  return json(rows.reverse());
+route("GET", "/api/conversations", async (_req, env) =>
+  json(await all<Conversation>(env, "SELECT * FROM conversations ORDER BY last_message_at DESC LIMIT 100")));
+route("GET", "/api/conversations/:id/messages", async (_req, env, [id]) =>
+  json(await all<Message>(env, "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at LIMIT 400", id)));
+route("DELETE", "/api/conversations/:id", async (_req, env, [id]) => {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM messages WHERE conversation_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM conversations WHERE id = ?").bind(id),
+  ]);
+  return json({ ok: true });
 });
 route("POST", "/api/chat", async (req, env) => {
-  const b = await body<{ text?: string; mode?: string }>(req);
+  const b = await body<{ text?: string; mode?: string; conversation_id?: string | null }>(req);
   const text = (b.text ?? "").trim();
   if (!text) throw new HttpError(400, "text is required");
   if (text.length > 20000) throw new HttpError(413, "message too long");
   const mode = b.mode === "voice" || b.mode === "dictation" ? b.mode : "text";
-  return json(await chat(env, text, mode));
+  return json(await chat(env, text, mode, b.conversation_id));
 });
 
 // Live voice (OpenAI Realtime over WebRTC).
@@ -88,8 +96,8 @@ route("POST", "/api/realtime/tool", async (req, env) => {
   return json(await runRealtimeTool(env, String(b.name ?? ""), String(b.arguments ?? "{}")));
 });
 route("POST", "/api/realtime/log", async (req, env) => {
-  const b = await body<{ role?: string; content?: string; actions?: [] }>(req);
-  return json(await logRealtimeMessage(env, String(b.role), String(b.content ?? ""), b.actions ?? []));
+  const b = await body<{ role?: string; content?: string; actions?: []; conversation_id?: string | null }>(req);
+  return json(await logRealtimeMessage(env, String(b.role), String(b.content ?? ""), b.actions ?? [], b.conversation_id));
 });
 
 // Batch dictation: audio in, transcript out, via OpenAI transcription. If it is unavailable
@@ -181,6 +189,10 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+route("POST", "/api/nudges/:id/act", async (req, env, [id]) => {
+  const { action } = await body<{ action?: string }>(req);
+  return json(await applyAction(env, id, String(action ?? "")));
+});
 route("POST", "/api/nudges/:id/undo", async (_req, env, [id]) => {
   const n = await first<Nudge>(env, "SELECT * FROM nudges WHERE id = ?", id);
   if (n?.item_id) await updateItem(env, n.item_id, { status: "open" });
@@ -250,6 +262,12 @@ export default {
     }
     // Google redirects the browser here without our bearer token; the single-use state is the check.
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
+    // Lock-screen notification buttons: authorised by a per-nudge signature instead of the passcode.
+    if (url.pathname === "/api/act" && req.method === "POST" && env.COS_ACCESS_TOKEN) {
+      const b = await req.json().catch(() => ({})) as { n?: string; a?: string; sig?: string };
+      if (!b.n || !b.sig || !(await verifyNudge(env, b.n, b.sig))) return json({ error: "unauthorised" }, 401);
+      return json(await applyAction(env, b.n, String(b.a ?? "")));
+    }
     if (!env.COS_ACCESS_TOKEN) return json({ error: "Server not configured: set the COS_ACCESS_TOKEN secret." }, 503);
     if (!authorised(req, env)) return json({ error: "unauthorised" }, 401);
 

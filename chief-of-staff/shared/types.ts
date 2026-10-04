@@ -47,6 +47,7 @@ export interface Message {
   mode: "text" | "voice" | "dictation" | "system";
   meta: string | null;
   created_at: string;
+  conversation_id?: string | null;
 }
 
 export interface Nudge {
@@ -56,6 +57,21 @@ export interface Nudge {
   body: string;
   item_id: string | null;
   created_at: string;
+  actions?: NudgeAction[];
+}
+
+export interface NudgeAction {
+  id: string;
+  title: string;
+  /** Opens the app (e.g. to draft) instead of finishing silently. */
+  opens?: boolean;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  last_message_at: string;
 }
 
 export interface PendingAction {
@@ -93,6 +109,7 @@ export interface ChatResponse {
   reply: Message;
   user: Message;
   actions: ActionNote[];
+  conversation: Conversation;
 }
 
 export interface Dashboard {

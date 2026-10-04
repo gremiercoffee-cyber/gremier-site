@@ -4,8 +4,12 @@
  */
 import type { Env } from "./env";
 import { all, now, run, uid } from "./db";
+import { actionsFor, signNudge } from "./actions";
 
-export interface PushMessage { title: string; body?: string; url?: string; tag?: string }
+export interface PushMessage {
+  title: string; body?: string; url?: string; tag?: string;
+  nudge_id?: string; sig?: string; actions?: { action: string; title: string; opens?: boolean }[];
+}
 
 const enc = new TextEncoder();
 
@@ -96,8 +100,12 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
 
 /** Records a nudge on the Today screen and mirrors it to the lock screen. */
 export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null) {
+  const id = uid();
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    uid(), type, title, body, itemId, now());
-  // The tag collapses repeats for the same item.
-  await sendPush(env, { title, body, url: "/?tab=today", tag: itemId ?? type });
+    id, type, title, body, itemId, now());
+  // The tag collapses repeats for the same item; buttons act without opening the app.
+  await sendPush(env, {
+    title, body, url: "/", tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
+    actions: actionsFor({ type, item_id: itemId }).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
+  });
 }

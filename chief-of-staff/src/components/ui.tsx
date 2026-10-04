@@ -129,7 +129,7 @@ export function Markdown({ text }: { text: string }) {
  * Batch dictation button: records a clip, transcribes it on the server (gpt-transcribe) and
  * returns the text. Falls back to on-device recognition if the server can't transcribe.
  */
-export function DictateButton({ onText, serverTranscription }: { onText: (t: string) => void; serverTranscription: boolean }) {
+export function DictateButton({ onText, serverTranscription, compact }: { onText: (t: string) => void; serverTranscription: boolean; compact?: boolean }) {
   const [state, setState] = useState<"idle" | "recording" | "working">("idle");
   const [error, setError] = useState("");
   const recRef = useRef<{ stop: () => Promise<Blob> } | null>(null);
@@ -184,6 +184,17 @@ export function DictateButton({ onText, serverTranscription }: { onText: (t: str
     setState("idle");
   };
 
+  if (compact) {
+    return (
+      <div className="relative">
+        <button onClick={state === "recording" ? stop : start} disabled={state === "working"} aria-label="Dictate"
+          className={`h-12 w-12 rounded-full grid place-items-center border transition ${state === "recording" ? "bg-danger text-white border-danger" : "bg-surface border-line text-muted"}`}>
+          {state === "working" ? <span className="text-xs">…</span> : state === "recording" ? <span className="h-3.5 w-3.5 rounded-sm bg-white" /> : <DictIcon />}
+        </button>
+        {error && <span className="absolute top-full mt-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] text-danger">{error}</span>}
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <Button variant={state === "recording" ? "primary" : "soft"} onClick={state === "recording" ? stop : start}
@@ -199,5 +210,11 @@ export function DictateButton({ onText, serverTranscription }: { onText: (t: str
 export const MicIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </svg>
+);
+
+const DictIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M4 7h10M4 12h16M4 17h7" /><circle cx="18" cy="7" r="2" />
   </svg>
 );

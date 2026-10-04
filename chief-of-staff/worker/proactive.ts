@@ -24,9 +24,13 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
     `SELECT * FROM items WHERE status = 'open' AND kind IN ('reminder','task','commitment')
        AND due_at IS NOT NULL AND due_at <= ? AND reminded_at IS NULL LIMIT 50`, t);
   for (const item of due) {
-    const label = item.kind === "reminder" ? "Reminder" : item.kind === "commitment" ? "Commitment due" : "Due now";
-    await addNudge(env, item.kind === "reminder" ? "reminder" : "overdue", `${label}: ${item.title}`,
-      item.person ? `With ${item.person}` : "", item.id);
+    const checkin = item.kind === "reminder" && /^(did|have|has|is|are) /i.test(item.title);
+    const title = checkin ? item.title
+      : item.kind === "reminder" ? `Don't forget: ${item.title}`
+      : item.kind === "commitment" ? item.title
+      : `Time for: ${item.title}`;
+    await addNudge(env, checkin ? "checkin" : item.kind === "reminder" ? "reminder" : "overdue", title,
+      item.kind === "commitment" ? `You promised${item.person ? ` ${item.person}` : ""}. Did it happen?` : item.person ? `With ${item.person}` : "", item.id);
     await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
     created++;
   }
@@ -37,8 +41,8 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
     `SELECT * FROM items WHERE status = 'open' AND kind = 'waiting'
        AND COALESCE(reminded_at, created_at) <= ? LIMIT 20`, cutoff);
   for (const item of stale) {
-    await addNudge(env, "waiting", `Still waiting: ${item.title}`,
-      `${item.person ? `From ${item.person}. ` : ""}Worth a follow-up?`, item.id);
+    await addNudge(env, "waiting", `${item.person ?? "They"} still hasn't gotten back to you`,
+      `${item.title}. Want me to draft a follow-up?`, item.id);
     await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
     created++;
   }
