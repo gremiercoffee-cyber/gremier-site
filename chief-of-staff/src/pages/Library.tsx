@@ -4,7 +4,7 @@ import { api } from "../api";
 import { Button, Card, Empty, ItemRow, timeAgo } from "../components/ui";
 
 export type LibraryTab = "dump" | "ideas" | "trackers" | "people" | "memory" | "dumps";
-const TABS: [LibraryTab, string][] = [["dump", "Brain dump"], ["ideas", "Ideas"], ["trackers", "Trackers"], ["people", "People"], ["memory", "Memory"]];
+const TABS: [LibraryTab, string][] = [["dump", "Brain dump"], ["ideas", "Ideas"], ["memory", "Memory"]];
 const AREAS: [string, string][] = [["all", "All"], ["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]];
 
 /** Everything your Chief of Staff has organized, to browse: ideas, people, memories, past brain dumps. */
@@ -36,7 +36,6 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump,
       </div>
 
       {tab === "dump" && brainDump}
-      {tab === "trackers" && <Trackers onAsk={onAsk} refreshKey={refreshKey} />}
 
       {tab === "ideas" && (
         <Card title={`Ideas & notes (${shownIdeas.length})`}>
@@ -47,21 +46,6 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump,
           </div>
           {shownIdeas.length === 0 ? <Empty>No ideas saved yet. Say "idea: …" and I'll keep it here.</Empty> : (
             <div className="divide-y divide-line">{shownIdeas.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} />)}</div>
-          )}
-        </Card>
-      )}
-
-      {tab === "people" && (
-        <Card title={`People (${people.length})`}>
-          {people.length === 0 ? <Empty>No one yet. Mention someone and I'll remember them.</Empty> : (
-            <ul className="divide-y divide-line">
-              {people.map((p) => (
-                <li key={p.id} className="py-2.5">
-                  <p className="text-[15px] font-medium">{p.name}{p.role && <span className="text-muted font-normal"> · {p.role}</span>}</p>
-                  <p className="text-xs text-muted">{[p.email, p.whatsapp_name && `WhatsApp: ${p.whatsapp_name}`, p.preferred_channel && `prefers ${p.preferred_channel}`].filter(Boolean).join(" · ") || "No contact details yet"}</p>
-                </li>
-              ))}
-            </ul>
           )}
         </Card>
       )}
@@ -97,7 +81,7 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump,
 }
 
 /** WhatsApp trackers: topics collected continuously into one place (and a Google Doc). */
-function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
+export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
   const [list, setList] = useState<Awaited<ReturnType<typeof api.trackers>>>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [entries, setEntries] = useState<{ chat: string; sender: string; text: string; said_at: string }[]>([]);
@@ -141,5 +125,25 @@ function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKe
         </Card>
       ))}
     </div>
+  );
+}
+
+/** The people I know about: who they are to you and how to reach them. */
+export function People({ refreshKey }: { refreshKey: number }) {
+  const [people, setPeople] = useState<Awaited<ReturnType<typeof api.people>>>([]);
+  useEffect(() => { api.people().then(setPeople).catch(() => {}); }, [refreshKey]);
+  return (
+        <Card title={`People (${people.length})`}>
+          {people.length === 0 ? <Empty>No one yet. Mention someone and I'll remember them.</Empty> : (
+            <ul className="divide-y divide-line">
+              {people.map((p) => (
+                <li key={p.id} className="py-2.5">
+                  <p className="text-[15px] font-medium">{p.name}{p.role && <span className="text-muted font-normal"> · {p.role}</span>}</p>
+                  <p className="text-xs text-muted">{[p.email, p.whatsapp_name && `WhatsApp: ${p.whatsapp_name}`, p.preferred_channel && `prefers ${p.preferred_channel}`].filter(Boolean).join(" · ") || "No contact details yet"}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
   );
 }

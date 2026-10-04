@@ -10,15 +10,15 @@ import Lists from "./pages/Lists";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
-import Library, { type LibraryTab } from "./pages/Library";
+import Library, { People, Trackers, type LibraryTab } from "./pages/Library";
 import Replies from "./pages/Replies";
 import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
-type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Library", lists: "Lists", projects: "Lists", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks" };
+type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Library", lists: "Lists", projects: "Lists", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Replies", trackers: "Tasks" };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -155,7 +155,15 @@ export default function App() {
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
+        {(view === "tasks" || view === "trackers") && (
+          <Switch value={view} onChange={(v) => setView(v as View)} options={[["tasks", "Tasks"], ["trackers", "Trackers"]]} />
+        )}
         {view === "tasks" && <Tasks refreshKey={refreshKey} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
+        {view === "trackers" && <div className="mt-4"><Trackers refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} /></div>}
+        {(view === "replies" || view === "people") && (
+          <Switch value={view} onChange={(v) => setView(v as View)} options={[["replies", "Replies"], ["people", "People"]]} />
+        )}
+        {view === "people" && <People refreshKey={refreshKey} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
         {(view === "library" || view === "dump") && (
           <Library tab={view === "dump" ? "dump" : libraryTab} onTab={(t) => { setLibraryTab(t); setView("library"); }} onOpenItem={openItem} refreshKey={refreshKey}
@@ -180,9 +188,9 @@ export default function App() {
             <div className="px-2 space-y-0.5">
               <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
-              <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
+              <DrawerItem active={view === "replies" || view === "people"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies & people" />
               <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
-              <DrawerItem active={view === "tasks" || view === "missions"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks" />
+              <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
               <DrawerItem active={view === "library" || view === "dump"} onClick={() => go("library")} icon={<path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 7h6" />} label="Library" />
             </div>
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
