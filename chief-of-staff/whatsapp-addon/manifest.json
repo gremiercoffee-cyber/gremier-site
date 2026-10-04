@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Chief of Staff for WhatsApp",
+  "version": "1.0.0",
+  "description": "Read-only: passes actionable WhatsApp messages to your Chief of Staff. Never clicks, opens chats or sends.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://web.whatsapp.com/*", "https://chief-of-staff.gremiercoffee.workers.dev/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://web.whatsapp.com/*"], "js": ["reader.js"], "world": "MAIN", "run_at": "document_idle" },
+    { "matches": ["https://web.whatsapp.com/*"], "js": ["rules.js", "content.js"], "run_at": "document_idle" }
+  ],
+  "action": { "default_title": "Chief of Staff for WhatsApp", "default_popup": "popup.html" },
+  "icons": { "128": "icon.png" }
+}

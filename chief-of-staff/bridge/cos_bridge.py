@@ -30,6 +30,8 @@ KEY = CONFIG["bridge_key"]
 MY_NAMES = [n.lower() for n in CONFIG.get("my_names", [])]
 IGNORE_CHATS = {c.lower() for c in CONFIG.get("ignore_chats", [])}
 ALWAYS_FROM = {c.lower() for c in CONFIG.get("always_forward_from", [])}
+# The Chrome add-on (whatsapp-addon/) reads WhatsApp now; notification watching is a fallback.
+WATCH_NOTIFICATIONS = CONFIG.get("watch_notifications", False)
 
 DB = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Windows\Notifications\wpndatabase.db"))
 STATE = HERE / "state.json"
@@ -187,13 +189,14 @@ def main() -> None:
         existing = read_whatsapp_toasts(0)
         state = {"last_id": max([i for i, _ in existing], default=0), "first_run": False}
         save_state(state)
-    log(f"Bridge started. Watching WhatsApp notifications; API {API}")
+    log(f"Bridge started. Sending approved WhatsApps{"; watching notifications" if WATCH_NOTIFICATIONS else ""}. API {API}")
     last_out = 0.0
     while True:
-        try:
-            poll_incoming(state)
-        except Exception as e:
-            log(f"IN  error: {e}")
+        if WATCH_NOTIFICATIONS:
+            try:
+                poll_incoming(state)
+            except Exception as e:
+                log(f"IN  error: {e}")
         if time.time() - last_out >= POLL_OUT_S:
             last_out = time.time()
             try:

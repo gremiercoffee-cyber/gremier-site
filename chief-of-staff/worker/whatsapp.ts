@@ -82,8 +82,27 @@ async function sha(s: string) {
   return [...d.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** The user answered a chat on WhatsApp: close items that came from that chat (no AI). */
+export async function handleReplied(env: Env, m: { chat?: string }) {
+  await heartbeat(env);
+  const chat = (m.chat ?? "").slice(0, 120);
+  if (!chat) return { closed: 0 };
+  const open = await all<Item>(env,
+    `SELECT i.* FROM items i JOIN whatsapp_inbox w ON w.item_id = i.id
+     WHERE w.chat = ? AND i.status = 'open' AND i.kind IN ('task', 'commitment')`, chat);
+  for (const item of open) {
+    await run(env, "UPDATE items SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?", now(), now(), item.id);
+    await notify(env, "auto_done", `Done: ${item.title}`, `You replied to ${chat} on WhatsApp. Tap Undo if it isn't finished.`, item.id);
+  }
+  return { closed: open.length };
+}
+
+const DAILY_SEND_LIMIT = 20;
+
 /** Assistant tool: queue a message. It is only sent after the user taps Send on the notification or card. */
 export async function queueWhatsApp(env: Env, recipient: string, text: string) {
+  const today = await first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM whatsapp_outbox WHERE created_at >= ?", new Date().toISOString().slice(0, 10));
+  if ((today?.n ?? 0) >= DAILY_SEND_LIMIT) return { error: `Daily limit of ${DAILY_SEND_LIMIT} WhatsApp sends reached; try again tomorrow.` };
   const id = uid(), t = now();
   await run(env, "INSERT INTO whatsapp_outbox (id, recipient, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", id, recipient, text, t, t);
   await notify(env, "wa_send", `Send to ${recipient} on WhatsApp?`, text, id);

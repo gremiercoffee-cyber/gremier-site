@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { width: 280px; margin: 0; padding: 16px; font: 14px/1.45 Inter, "Segoe UI", sans-serif; color: #0e1117; background: #f4f5f7; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #c9ccd3; flex: none; }
+    .ok { background: #2c7a5a; } .warn { background: #d08a1e; } .bad { background: #c23b3b; }
+    p { margin: 6px 0; color: #6a7080; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Chief of Staff for WhatsApp</h1>
+  <div class="row"><span id="d1" class="dot"></span><span id="mode">Checking…</span></div>
+  <div class="row"><span id="d2" class="dot"></span><span id="conn">…</span></div>
+  <p id="last"></p>
+  <p>Read-only. It never opens chats, marks messages read, or sends anything.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

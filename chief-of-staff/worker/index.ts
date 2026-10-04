@@ -8,7 +8,7 @@ import {
 } from "./db";
 import { runProactive } from "./proactive";
 import { actionsFor, applyAction, verifyNudge } from "./actions";
-import { bridgeAuthorised, bridgeStatus, handleIncoming, reportOutbox, takeOutbox } from "./whatsapp";
+import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
@@ -268,6 +268,7 @@ export default {
     if (url.pathname.startsWith("/api/bridge/")) {
       if (!bridgeAuthorised(req, env)) return json({ error: "unauthorised" }, 401);
       if (url.pathname === "/api/bridge/incoming" && req.method === "POST") return json(await handleIncoming(env, await req.json()));
+      if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));
       if (url.pathname === "/api/bridge/outbox" && req.method === "GET") return json(await takeOutbox(env));
       const m = url.pathname.match(/^\/api\/bridge\/outbox\/([\w-]+)$/);
       if (m && req.method === "POST") {
