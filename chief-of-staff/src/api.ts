@@ -40,7 +40,9 @@ export const api = {
   messages: () => request<Message[]>("GET", "/api/messages"),
   chat: (text: string, mode: "text" | "voice" | "dictation" = "text", conversation_id: string | null = null) =>
     request<ChatResponse>("POST", "/api/chat", { text, mode, conversation_id }),
-  conversations: () => request<Conversation[]>("GET", "/api/conversations"),
+  conversations: (archived = false) => request<Conversation[]>("GET", `/api/conversations${archived ? "?archived=1" : ""}`),
+  conversationsBulk: (ids: string[], action: "archive" | "restore" | "delete") =>
+    request<{ ok: true; count: number }>("POST", "/api/conversations/bulk", { ids, action }),
   conversationMessages: (id: string) => request<Message[]>("GET", `/api/conversations/${id}/messages`),
   deleteConversation: (id: string) => request("DELETE", `/api/conversations/${id}`),
   actNudge: (id: string, action: string) => request<{ ok: true; message: string; open?: string }>("POST", `/api/nudges/${id}/act`, { action }),

@@ -75,7 +75,7 @@ object Cos {
 
     /** done | notneeded | snooze1h | tomorrow. Returns a short confirmation. */
     fun act(c: Context, id: String, action: String): String {
-        if (action == "done" || action == "notneeded") { removeLocally(c, id); removeCard(c, id) }
+        if (action == "done" || action == "notneeded" || action == "hide_event") { removeLocally(c, id); removeCard(c, id) }
         if (action.startsWith("cat:")) setCategoryLocally(c, id, action.removePrefix("cat:"))
         return json(c, "POST", "/api/widget/act", JSONObject().put("id", id).put("action", action)).optString("message", "Done")
     }

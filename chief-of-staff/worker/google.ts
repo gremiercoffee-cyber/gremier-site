@@ -249,7 +249,7 @@ async function syncCalendar(env: Env, token: string, alerts: boolean, account: s
 
   if (!alerts) return events.length;
   const soon = await all<CalendarEvent & { reminded_at: string | null }>(env,
-    `SELECT * FROM calendar_events WHERE all_day = 0 AND reminded_at IS NULL AND start_at > ? AND start_at <= ?`,
+    `SELECT * FROM calendar_events WHERE hidden = 0 AND all_day = 0 AND reminded_at IS NULL AND start_at > ? AND start_at <= ?`,
     t, new Date(Date.now() + MEETING_LEAD_MIN * 60_000).toISOString());
   const { timezone } = await getSettings(env);
   for (const e of soon) {

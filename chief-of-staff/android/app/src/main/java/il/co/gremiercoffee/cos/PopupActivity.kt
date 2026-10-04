@@ -72,14 +72,17 @@ class PopupActivity : Activity() {
         text = label; isAllCaps = false; textSize = 14f; minHeight = 0; minimumHeight = 0
         setTextColor(if (primary) Color.WHITE else Color.parseColor("#0E1117"))
         background = GradientDrawable().apply { cornerRadius = 22 * dp; setColor(Color.parseColor(if (primary) "#3540A8" else "#EEF0FA")) }
-        setPadding((16 * dp).toInt(), (8 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
+        setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
+        maxLines = 1
         setOnClickListener { onClick() }
     }
 
     private fun row(vararg views: View) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         setPadding(0, (8 * dp).toInt(), 0, 0)
-        views.forEach { v -> addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = (6 * dp).toInt() }) }
+        views.forEachIndexed { i, v ->
+            addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (i < views.size - 1) marginEnd = (6 * dp).toInt() })
+        }
     }
 
     private fun addClose() = body.addView(row(pill("Close") { finish() }))
@@ -125,6 +128,7 @@ class PopupActivity : Activity() {
         body.addView(muted(e.optString("time")))
         e.optString("location").takeIf { it.isNotBlank() }?.let { body.addView(text("📍 $it", 14f).apply { setPadding(0, (8 * dp).toInt(), 0, 0) }) }
         val link = e.optString("link")
+        body.addView(row(pill("Done ✓", primary = true) { act(id, "hide_event") }, pill("Hide") { act(id, "hide_event") }))
         askBox("Ask about this meeting…", "About my calendar event \"${e.optString("title")}\" (${e.optString("time")}): ")
         body.addView(reply)
         body.addView(row(

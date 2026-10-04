@@ -12,6 +12,7 @@ import Settings from "./pages/Settings";
 import Search from "./pages/Search";
 import Library, { type LibraryTab } from "./pages/Library";
 import Reschedule from "./components/Reschedule";
+import ConversationList from "./components/ConversationList";
 
 type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library";
 const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library" };
@@ -156,8 +157,8 @@ export default function App() {
                 placeholder="🔍  Search everything" enterKeyHint="search"
                 className="w-full rounded-full bg-sunken px-4 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-accent/30" />
             </form>
-            <div className="px-2 space-y-0.5">
-              <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
+            <div className="px-2 grid grid-cols-2 gap-0.5">
+              <div className="col-span-2"><DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" /></div>
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<path d="M4 6h16M4 12h16M4 18h9" />} label="Today" />
               <DrawerItem active={view === "lists"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists" />
               <DrawerItem active={view === "projects"} onClick={() => go("projects")} icon={<path d="M3 7h6l2 2h10v10H3z" />} label="Projects" />
@@ -165,19 +166,14 @@ export default function App() {
               <DrawerItem active={view === "library" && libraryTab === "ideas"} onClick={() => { setLibraryTab("ideas"); go("library"); }} icon={<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />} label="Ideas & notes" />
               <DrawerItem active={view === "library" && libraryTab === "people"} onClick={() => { setLibraryTab("people"); go("library"); }} icon={<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6" /></>} label="People" />
               <DrawerItem active={view === "library" && libraryTab === "memory"} onClick={() => { setLibraryTab("memory"); go("library"); }} icon={<path d="M12 4a4 4 0 0 0-4 4 4 4 0 0 0-3 6.5A4 4 0 0 0 8 20h8a4 4 0 0 0 3-5.5A4 4 0 0 0 16 8a4 4 0 0 0-4-4zM12 4v16" />} label="Memory" />
-              <DrawerItem active={view === "library" && libraryTab === "dumps"} onClick={() => { setLibraryTab("dumps"); go("library"); }} icon={<path d="M4 5h16v14H4zM8 9h8M8 13h5" />} label="Past brain dumps" />
+              <DrawerItem active={view === "library" && libraryTab === "dumps"} onClick={() => { setLibraryTab("dumps"); go("library"); }} icon={<path d="M4 5h16v14H4zM8 9h8M8 13h5" />} label="Past dumps" />
             </div>
-            <p className="px-5 pt-5 pb-1.5 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Conversations</p>
-            <div className="flex-1 overflow-y-auto px-2">
-              {conversations.length === 0 && <p className="px-3 py-2 text-sm text-muted">Nothing yet. Just start talking.</p>}
-              {conversations.map((c) => (
-                <button key={c.id} onClick={() => openConversation(c.id)}
-                  className={`w-full text-left rounded-xl px-3 py-2.5 ${c.id === conversationId && view === "home" ? "bg-sunken" : "hover:bg-sunken"}`}>
-                  <p className="text-[15px] truncate">{c.title || "New conversation"}</p>
-                  <p className="text-xs text-muted">{timeAgo(c.last_message_at)}</p>
-                </button>
-              ))}
-            </div>
+            <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
+              onOpen={(id) => openConversation(id)}
+              onChanged={() => api.conversations().then((list) => {
+                setConversations(list);
+                if (conversationId && !list.some((c) => c.id === conversationId)) setConversationId(null);
+              }).catch(() => {})} />
             <div className="px-2 pt-2 border-t border-line">
               <DrawerItem active={view === "settings"} onClick={() => go("settings")}
                 icon={<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>} label="Settings" />
@@ -203,7 +199,7 @@ export default function App() {
 
 function DrawerItem({ active, onClick, label, icon }: { active?: boolean; onClick: () => void; label: string; icon: ReactNode }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] ${active ? "bg-sunken" : "hover:bg-sunken"}`}>
+    <button onClick={onClick} className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-[14px] text-left ${active ? "bg-sunken" : "hover:bg-sunken"}`}>
       <svg viewBox="0 0 24 24" className="h-5 w-5 text-muted" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
       {label}
     </button>

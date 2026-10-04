@@ -59,7 +59,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
                        FROM projects p WHERE p.status='active' ORDER BY p.updated_at DESC LIMIT 6`),
     all<{ kind: string; n: number }>(env, `SELECT kind, COUNT(*) AS n FROM items WHERE status='open' GROUP BY kind`),
     all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
-       WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?)
+       WHERE hidden = 0 AND ((all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?))
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const data: Dashboard = {
@@ -71,8 +71,26 @@ route("GET", "/api/dashboard", async (_req, env) => {
 });
 
 // ---- Chat (text, live voice and dictation share one conversation) -----------
-route("GET", "/api/conversations", async (_req, env) =>
-  json(await all<Conversation>(env, "SELECT * FROM conversations ORDER BY last_message_at DESC LIMIT 100")));
+route("GET", "/api/conversations", async (req, env) => {
+  const archived = new URL(req.url).searchParams.get("archived") === "1" ? 1 : 0;
+  return json(await all<Conversation>(env, "SELECT * FROM conversations WHERE archived = ? ORDER BY last_message_at DESC LIMIT 100", archived));
+});
+// Clean up: archive, restore or delete one or many conversations.
+route("POST", "/api/conversations/bulk", async (req, env) => {
+  const b = await body<{ ids?: string[]; action?: string }>(req);
+  const ids = (b.ids ?? []).filter((x) => typeof x === "string").slice(0, 200);
+  if (!ids.length) return json({ ok: true, count: 0 });
+  const marks = ids.map(() => "?").join(",");
+  if (b.action === "archive" || b.action === "restore") {
+    await run(env, `UPDATE conversations SET archived = ? WHERE id IN (${marks})`, b.action === "archive" ? 1 : 0, ...ids);
+  } else if (b.action === "delete") {
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM messages WHERE conversation_id IN (${marks})`).bind(...ids),
+      env.DB.prepare(`DELETE FROM conversations WHERE id IN (${marks})`).bind(...ids),
+    ]);
+  } else throw new HttpError(400, "action must be archive, restore or delete");
+  return json({ ok: true, count: ids.length });
+});
 route("GET", "/api/conversations/:id/messages", async (_req, env, [id]) =>
   json(await all<Message>(env, "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at LIMIT 400", id)));
 route("DELETE", "/api/conversations/:id", async (_req, env, [id]) => {
@@ -233,7 +251,7 @@ route("GET", "/api/widget", async (_req, env) => {
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind NOT IN ('idea','waiting') AND due_at > ? AND due_at <= ? AND source NOT IN ('gmail','whatsapp') ORDER BY due_at LIMIT 20`, endOfDay, week),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment') AND due_at IS NULL AND source NOT IN ('gmail','whatsapp') ORDER BY priority, created_at DESC LIMIT 15`),
     all<CalendarEvent & { account: string }>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
-       WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at >= ? AND start_at < ?)
+       WHERE hidden = 0 AND ((all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at >= ? AND start_at < ?))
        GROUP BY summary, start_at ORDER BY start_at LIMIT 24`,
       new Date(Date.now() - 3600_000).toISOString(), week, new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()), week.slice(0, 10)),
   ]);
@@ -296,6 +314,11 @@ route("GET", "/api/widget", async (_req, env) => {
 route("POST", "/api/widget/act", async (req, env) => {
   const b = await body<{ id?: string; action?: string }>(req);
   if (!b.id) throw new HttpError(400, "id required");
+  if (b.action === "hide_event") {
+    const ev = await first<{ summary: string; start_at: string }>(env, "SELECT summary, start_at FROM calendar_events WHERE id = ?", b.id);
+    if (ev) await run(env, "UPDATE calendar_events SET hidden = 1 WHERE summary = ? AND start_at = ?", ev.summary, ev.start_at);
+    return json({ ok: true, message: "Taken off your agenda" });
+  }
   const tz = (await getSettings(env)).timezone;
   let message = "Done";
   switch (b.action) {
