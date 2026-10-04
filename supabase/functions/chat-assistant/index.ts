@@ -251,7 +251,7 @@ Use cart_items:[] when not adding anything yet.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5.6-luna",
+        model: "gpt-6-luna",
         messages: openaiMessages,
         max_completion_tokens: 2000,
         response_format: { type: "json_object" },

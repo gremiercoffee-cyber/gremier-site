@@ -181,7 +181,7 @@ export async function generateAiBriefing(snapshot: unknown): Promise<BriefingRes
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: "gpt-5.6-luna",
+        model: "gpt-6-luna",
         max_completion_tokens: 4000,
         response_format: { type: "json_object" },
         messages: [

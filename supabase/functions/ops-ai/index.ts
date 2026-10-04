@@ -57,7 +57,7 @@ serve(async (req) => {
       });
     }
 
-// ── SMART ALERTS (OpenAI gpt-5.6-luna) ────────────────────────────────
+// ── SMART ALERTS (OpenAI gpt-6-luna) ────────────────────────────────
     if (action === "smart_alerts") {
       const { snapshot, system } = await req.json();
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -67,7 +67,7 @@ serve(async (req) => {
           Authorization: `Bearer ${OPENAI_KEY}`,
         },
         body: JSON.stringify({
-          model: "gpt-5.6-luna",
+          model: "gpt-6-luna",
           max_completion_tokens: 2000,
           messages: [
             { role: "system", content: system },

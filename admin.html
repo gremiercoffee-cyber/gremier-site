@@ -8188,7 +8188,7 @@ async function loadBriefing(options = {}) {
       }
       if (typeof window.opsAI2 !== 'function') throw new Error('AI helper not loaded yet');
       const aiData = await window.opsAI2('parse_intent', {
-        model: 'gpt-5.6-luna', max_completion_tokens: 4000,
+        model: 'gpt-6-luna', max_completion_tokens: 4000,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: `You are the operations brain for Gremier Coffee (cold brew, Jerusalem). You get a JSON snapshot of today's schedule, stock, store delivery patterns, and production gaps. The owner knows their business — do NOT recite inventory or explain context. Tell them ONLY what needs action or attention, and anything coming up they might not have thought about.
@@ -9186,7 +9186,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-react-1.js?v=7ab1f5ae35"></script>
 <script src="/admin-react-2.js?v=997d5b8c13"></script>
 
-<script src="/admin-react-3.js?v=e59f3c903f"></script>
+<script src="/admin-react-3.js?v=dc90928d38"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">

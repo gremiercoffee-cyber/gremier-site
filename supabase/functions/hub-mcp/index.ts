@@ -7,29 +7,12 @@
 // Docs:     docs/HUB_API.md
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ACTIONS, authenticateKey, getServiceRoleKey, HubError, runAction } from "../_shared/hub-actions.ts";
+import { ACTIONS, authenticateKey, getServiceRoleKey, HubError, runAction, SCHEMAS } from "../_shared/hub-actions.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type, mcp-session-id, mcp-protocol-version",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-};
-
-const str = (description: string) => ({ type: "string", description });
-const num = (description: string) => ({ type: "number", description });
-const SCHEMAS: Record<string, { properties: Record<string, unknown>; required?: string[] }> = {
-  summary: { properties: {} },
-  schedule: { properties: { from: str("YYYY-MM-DD, default today"), to: str("YYYY-MM-DD, default = from"), include_done: { type: "boolean" } } },
-  orders: { properties: { status: { type: "string", enum: ["to_fulfil", "unpaid"], description: "Omit for the latest orders" }, limit: num("Max 100") } },
-  stock: { properties: {} },
-  stores: { properties: {} },
-  activity: { properties: { since: str("ISO timestamp"), limit: num("Max 200") } },
-  start_brew: { properties: { product: { type: "string", enum: ["classic", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
-  complete_drain: { properties: { job_id: str("Drain job id (from schedule)"), product: str("Or: complete the earliest pending drain of this coffee") } },
-  log_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles, e.g. {\"classic_liter\": 6, \"vanilla_mini\": 4}" }, date: str("YYYY-MM-DD, default today") }, required: ["store", "quantities"] },
-  complete_delivery: { properties: { job_id: str("Delivery job id; default = next one due today/overdue"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "Actual amounts if different from planned" } } },
-  adjust_stock: { properties: { kind: { type: "string", enum: ["inventory", "concentrate", "beans", "labeled"] }, product: str("Product key, or coffee type for concentrate/beans"), delta: num("+/- amount (bottles, liters or kg)") }, required: ["kind", "product", "delta"] },
-  log_note: { properties: { text: str("What to record in the timeline") }, required: ["text"] },
 };
 
 function rpc(id: unknown, result: unknown) { return { jsonrpc: "2.0", id, result }; }

@@ -123,6 +123,8 @@ class HubWidget : AppWidgetProvider() {
                         val body = (b.optJSONObject("args") ?: JSONObject()).put("action", b.getString("action"))
                         Hub.call(c, body)
                         Hub.setFlash(c, b.optString("id"))
+                        val msg = b.optString("done_message", b.optString("label") + " ✓")
+                        android.os.Handler(c.mainLooper).post { Toast.makeText(c, "✅ $msg", Toast.LENGTH_SHORT).show() }
                     } catch (e: Exception) {
                         android.os.Handler(c.mainLooper).post { Toast.makeText(c, e.message, Toast.LENGTH_LONG).show() }
                     } finally {

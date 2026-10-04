@@ -636,7 +636,7 @@ Keep replies short — 1-2 sentences.`;
     try {
       const history = messages.filter(m=>m.text&&m.text!=='⋯').map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const data = await opsAI2('parse_intent', {
-        model:'gpt-5.6-luna', max_completion_tokens:4000,
+        model:'gpt-6-luna', max_completion_tokens:4000,
         response_format:{type:'json_object'},
         messages:[{role:'system',content:systemPrompt},...history,{role:'user',content:text}],
       });

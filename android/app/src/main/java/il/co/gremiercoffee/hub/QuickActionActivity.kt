@@ -1,6 +1,9 @@
 package il.co.gremiercoffee.hub
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -29,8 +32,13 @@ class QuickActionActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         button = JSONObject(intent.getStringExtra("button") ?: run { finish(); return })
-        val d = resources.displayMetrics.density
-        val pad = (20 * d).toInt()
+        when (button.optString("kind")) {
+            "info" -> { showMessage(button.optString("message")); return }
+            "view" -> { showView(); return }
+            "voice" -> { startVoice(); return }
+        }
+        val dd = resources.displayMetrics.density
+        val pad = (20 * dd).toInt()
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad); setBackgroundColor(Color.WHITE) }
         box.addView(TextView(this).apply {
             text = "${button.optString("icon")}  ${button.optString("title", button.optString("label"))}"
@@ -82,6 +90,116 @@ class QuickActionActivity : Activity() {
             }
         }
         setContentView(ScrollView(this).apply { addView(box) }, android.view.ViewGroup.LayoutParams((320 * d).toInt(), WRAP_CONTENT))
+    }
+
+
+    // ── simple screens built in code (no layouts) ──
+    private val d get() = resources.displayMetrics.density
+    private fun panel(): LinearLayout {
+        val pad = (20 * d).toInt()
+        return LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad); setBackgroundColor(Color.WHITE) }
+    }
+    private fun title(box: LinearLayout, text: String) = box.addView(TextView(this).apply {
+        this.text = text; textSize = 19f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1A1A1A"))
+    })
+    private fun body(box: LinearLayout, text: String, color: String = "#444444", size: Float = 15f) = TextView(this).apply {
+        this.text = text; textSize = size; setTextColor(Color.parseColor(color)); setPadding(0, (8 * d).toInt(), 0, 0)
+    }.also { box.addView(it) }
+    private fun show(box: LinearLayout) = setContentView(ScrollView(this).apply { addView(box) }, android.view.ViewGroup.LayoutParams((320 * d).toInt(), WRAP_CONTENT))
+
+    private fun showMessage(message: String) {
+        val box = panel()
+        title(box, "${button.optString("icon")}  ${button.optString("title", button.optString("label"))}")
+        body(box, message)
+        box.addView(Button(this).apply { text = "OK"; setOnClickListener { finish() } })
+        show(box)
+    }
+
+    /** Read-only pop-up (e.g. Stock): rows grouped by section. */
+    private fun showView() {
+        val box = panel()
+        title(box, "${button.optString("icon")}  ${button.optString("title", button.optString("label"))}")
+        val status = body(box, "Loading…")
+        box.addView(Button(this).apply { text = "Close"; setOnClickListener { finish() } })
+        show(box)
+        thread {
+            try {
+                val r = Hub.call(this, JSONObject().put("action", button.getString("action"))).getJSONObject("result")
+                val lines = r.optJSONArray("lines")
+                runOnUiThread {
+                    box.removeView(status)
+                    var section = ""
+                    var at = 1
+                    for (i in 0 until (lines?.length() ?: 0)) {
+                        val l = lines!!.getJSONObject(i)
+                        if (l.optString("section") != section) {
+                            section = l.optString("section")
+                            box.addView(TextView(this).apply { text = section.uppercase(); textSize = 11f; letterSpacing = 0.1f; setTextColor(Color.parseColor("#8A8178")); setPadding(0, (14 * d).toInt(), 0, (2 * d).toInt()) }, at++)
+                        }
+                        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (3 * d).toInt(), 0, (3 * d).toInt()) }
+                        row.addView(TextView(this).apply { text = l.optString("label"); textSize = 15f; setTextColor(Color.parseColor("#1A1A1A")) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                        row.addView(TextView(this).apply { text = l.optString("value"); textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1A1A1A")) })
+                        box.addView(row, at++)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "⚠️ ${e.message}" }
+            }
+        }
+    }
+
+    // ── Voice: system microphone → "I understood…" → Confirm runs it ──
+    private val VOICE_REQ = 7
+    private fun startVoice() {
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "What did you do?")
+        try { startActivityForResult(i, VOICE_REQ) } catch (_: ActivityNotFoundException) { showMessage("This phone has no speech recognition available.") }
+    }
+    @Deprecated("startActivityForResult is fine for this tiny pop-up")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != VOICE_REQ) return
+        val text = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (resultCode != RESULT_OK || text.isNullOrBlank()) { finish(); return }
+        val box = panel()
+        title(box, "🎙️  Voice log")
+        body(box, "“$text”", "#8A8178", 14f)
+        val status = body(box, "Working out what to log…")
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (12 * d).toInt(), 0, 0) }
+        val again = Button(this).apply { this.text = "Try again"; setOnClickListener { startVoice() } }
+        val go = Button(this).apply { this.text = "Confirm"; isEnabled = false }
+        row.addView(again, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        row.addView(go, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        box.addView(row)
+        box.addView(Button(this).apply { this.text = "Cancel"; setOnClickListener { finish() } })
+        show(box)
+        thread {
+            try {
+                val r = Hub.call(this, JSONObject().put("action", "voice_parse").put("text", text)).getJSONObject("result")
+                runOnUiThread {
+                    status.text = r.optString("say")
+                    status.textSize = 17f
+                    status.setTypeface(status.typeface, Typeface.BOLD)
+                    status.setTextColor(Color.parseColor("#1A1A1A"))
+                    go.isEnabled = true
+                    go.setOnClickListener {
+                        go.isEnabled = false; again.isEnabled = false
+                        val call = JSONObject((r.optJSONObject("args") ?: JSONObject()).toString()).put("action", r.getString("action"))
+                        thread {
+                            val (ok, msg) = try { Hub.call(this, call); Hub.setFlash(this, "voice"); true to "✅ Done" } catch (e: Exception) { false to "⚠️ ${e.message}" }
+                            runOnUiThread {
+                                status.text = msg
+                                HubWidget.refreshAll(this)
+                                if (ok) status.postDelayed({ finish() }, 900) else { go.isEnabled = true; again.isEnabled = true }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "⚠️ ${e.message}" }
+            }
+        }
     }
 
     /** Builds {action, ...args, ...fields}; "a.b" field keys become nested objects. Null = nothing entered in a numbers-only form. */
