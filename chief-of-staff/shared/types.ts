@@ -14,6 +14,7 @@ export interface Item {
   source: string;
   ext_source?: string | null;
   ext_ref?: string | null;
+  ext_account?: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -115,12 +116,16 @@ export interface CalendarEvent {
   html_link: string | null;
 }
 
+export interface GoogleAccountStatus {
+  email: string;
+  last_sync_at: string | null;
+  last_error: string | null;
+}
+
 export interface GoogleStatus {
   configured: boolean;
   connected: boolean;
-  email: string | null;
-  last_sync_at: string | null;
-  last_error: string | null;
+  accounts: GoogleAccountStatus[];
   ai_used_today: number;
   ai_daily_cap: number;
 }

@@ -18,7 +18,8 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose", // drafts only; this code never calls send
 ];
-const MAX_THREADS = 10;
+/** Thread fetches + triage calls per run, shared across accounts to stay under 50 subrequests. */
+const THREAD_BUDGET = 12;
 const TRIAGE_PURPOSES = ["email_triage", "whatsapp_triage"];
 
 /** Background AI calls made today (UTC) and the daily ceiling. Chat with the user never counts. */
@@ -53,7 +54,7 @@ export class GoogleAuthError extends Error {}
 export const googleConfigured = (env: Env) => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
 interface Account {
-  email: string | null; refresh_token: string; access_token: string | null; expires_at: number | null;
+  email: string; refresh_token: string; access_token: string | null; expires_at: number | null;
   last_sync_at: string | null; last_error: string | null;
 }
 
@@ -80,9 +81,14 @@ async function unseal(env: Env, sealed: string) {
 const redirectUri = (req: Request) => new URL("/api/google/callback", req.url).toString();
 
 export async function googleStatus(env: Env): Promise<GoogleStatus> {
-  const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
+  const accounts = await all<Account>(env, "SELECT * FROM google_accounts ORDER BY connected_at");
   const b = await triageBudget(env);
-  return { configured: googleConfigured(env), connected: !!a, email: a?.email ?? null, last_sync_at: a?.last_sync_at ?? null, last_error: a?.last_error ?? null, ai_used_today: b.used, ai_daily_cap: b.cap };
+  return {
+    configured: googleConfigured(env),
+    connected: accounts.length > 0,
+    accounts: accounts.map((a) => ({ email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error })),
+    ai_used_today: b.used, ai_daily_cap: b.cap,
+  };
 }
 
 export async function startGoogleAuth(env: Env, req: Request): Promise<string> {
@@ -93,7 +99,8 @@ export async function startGoogleAuth(env: Env, req: Request): Promise<string> {
   const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   u.search = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID!, redirect_uri: redirectUri(req), response_type: "code",
-    scope: SCOPES.join(" "), access_type: "offline", prompt: "consent", include_granted_scopes: "true", state,
+    // select_account so a second or third account can be picked instead of silently reusing the first.
+    scope: SCOPES.join(" "), access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state,
   }).toString();
   return u.toString();
 }
@@ -106,7 +113,7 @@ export async function finishGoogleAuth(env: Env, req: Request): Promise<Response
   const row = await first<{ created_at: string }>(env, "SELECT created_at FROM oauth_states WHERE state = ?", state);
   await run(env, "DELETE FROM oauth_states WHERE state = ?", state);
   if (!row || Date.now() - new Date(row.created_at).getTime() > 15 * 60_000) return back("expired");
-  if (q.get("error") || !q.get("code")) return back("cancelled");
+  if (q.get("error") || !q.get("code")) return back(q.get("error") === "access_denied" ? "cancelled" : "blocked");
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -121,34 +128,38 @@ export async function finishGoogleAuth(env: Env, req: Request): Promise<Response
   if (!tok.refresh_token) return back("failed");
   const granted = tok.scope.split(" ");
   if (!SCOPES.slice(2).every((s) => granted.includes(s))) return back("missing_access");
-  let email: string | null = null;
-  try { email = JSON.parse(atob(tok.id_token!.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email ?? null; } catch { /* optional */ }
+  let email = "";
+  try { email = JSON.parse(atob(tok.id_token!.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email ?? ""; } catch { /* below */ }
+  if (!email) return back("failed");
 
   await run(env,
-    `INSERT OR REPLACE INTO oauth_accounts (provider, email, refresh_token, access_token, expires_at, connected_at)
-     VALUES ('google', ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO google_accounts (email, refresh_token, access_token, expires_at, connected_at)
+     VALUES (?, ?, ?, ?, ?)`,
     email, await seal(env, tok.refresh_token), await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, now());
   return back("connected");
 }
 
-export async function disconnectGoogle(env: Env) {
-  const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
+export async function disconnectGoogle(env: Env, email: string) {
+  const a = await first<Account>(env, "SELECT * FROM google_accounts WHERE email = ?", email);
   if (a) {
     try {
       await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(await unseal(env, a.refresh_token))}`, { method: "POST" });
     } catch { /* best effort */ }
   }
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM oauth_accounts WHERE provider = 'google'"),
-    env.DB.prepare("DELETE FROM calendar_events"),
-    env.DB.prepare("DELETE FROM gmail_threads"),
+    env.DB.prepare("DELETE FROM google_accounts WHERE email = ?").bind(email),
+    env.DB.prepare("DELETE FROM calendar_events WHERE account = ?").bind(email),
+    env.DB.prepare("DELETE FROM gmail_threads WHERE account = ?").bind(email),
   ]);
 }
 
-async function accessToken(env: Env): Promise<{ token: string; email: string | null } | null> {
-  const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
-  if (!a || !googleConfigured(env)) return null;
-  if (a.access_token && (a.expires_at ?? 0) > Date.now() + 60_000) return { token: await unseal(env, a.access_token), email: a.email };
+const accountEmails = async (env: Env) =>
+  (await all<{ email: string }>(env, "SELECT email FROM google_accounts ORDER BY connected_at")).map((r) => r.email);
+
+async function accessToken(env: Env, email: string): Promise<string> {
+  const a = await first<Account>(env, "SELECT * FROM google_accounts WHERE email = ?", email);
+  if (!a || !googleConfigured(env)) throw new GoogleAuthError(`${email} isn't connected.`);
+  if (a.access_token && (a.expires_at ?? 0) > Date.now() + 60_000) return unseal(env, a.access_token);
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -158,14 +169,28 @@ async function accessToken(env: Env): Promise<{ token: string; email: string | n
     }),
   });
   if (!res.ok) {
-    const msg = res.status === 400 ? "Google access has expired. Reconnect Google in Settings." : `Google sign-in failed (${res.status}).`;
-    await run(env, "UPDATE oauth_accounts SET last_error = ? WHERE provider = 'google'", msg);
+    const msg = res.status === 400 ? "Access expired. Tap Reconnect." : `Google sign-in failed (${res.status}).`;
+    await run(env, "UPDATE google_accounts SET last_error = ? WHERE email = ?", msg, email);
     throw new GoogleAuthError(msg);
   }
   const tok = (await res.json()) as { access_token: string; expires_in: number };
-  await run(env, "UPDATE oauth_accounts SET access_token = ?, expires_at = ? WHERE provider = 'google'",
-    await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000);
-  return { token: tok.access_token, email: a.email };
+  await run(env, "UPDATE google_accounts SET access_token = ?, expires_at = ? WHERE email = ?",
+    await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, email);
+  return tok.access_token;
+}
+
+/** Which connected mailbox holds a thread: the synced table knows; otherwise try each account. */
+async function accountForThread(env: Env, threadId: string, hint?: string): Promise<{ email: string; token: string }> {
+  const emails = await accountEmails(env);
+  if (!emails.length) throw new Error("Google isn't connected.");
+  const known = hint && emails.includes(hint) ? hint
+    : (await first<{ account: string }>(env, "SELECT account FROM gmail_threads WHERE thread_id = ?", threadId))?.account;
+  for (const email of known ? [known] : emails) {
+    const token = await accessToken(env, email);
+    const r = await fetch(`${GMAIL}/threads/${threadId}?format=minimal`, { headers: { authorization: `Bearer ${token}` } });
+    if (r.ok) return { email, token };
+  }
+  throw new Error("That email thread wasn't found in any connected account.");
 }
 
 async function gapi<T>(token: string, url: string, init: RequestInit = {}): Promise<T> {
@@ -197,20 +222,20 @@ const toRow = (e: GEvent) => {
   };
 };
 
-async function syncCalendar(env: Env, token: string, alerts: boolean) {
+async function syncCalendar(env: Env, token: string, alerts: boolean, account: string) {
   const from = new Date(Date.now() - 86400_000).toISOString();
   const events = (await fetchEvents(token, from, new Date(Date.now() + 14 * 86400_000).toISOString())).map(toRow);
   const t = now();
   const stmts = events.map((e) => env.DB.prepare(
-    `INSERT INTO calendar_events (id, summary, start_at, end_at, all_day, location, html_link, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO calendar_events (id, account, summary, start_at, end_at, all_day, location, html_link, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET summary=excluded.summary, end_at=excluded.end_at, all_day=excluded.all_day,
        location=excluded.location, html_link=excluded.html_link, updated_at=excluded.updated_at,
        reminded_at = CASE WHEN calendar_events.start_at = excluded.start_at THEN calendar_events.reminded_at ELSE NULL END,
        start_at=excluded.start_at`,
-  ).bind(e.id, e.summary, e.start_at, e.end_at, e.all_day, e.location, e.html_link, t));
+  ).bind(`${account}:${e.id}`, account, e.summary, e.start_at, e.end_at, e.all_day, e.location, e.html_link, t));
   // Anything not seen this run was deleted, declined or moved out of the window.
-  stmts.push(env.DB.prepare(`DELETE FROM calendar_events WHERE updated_at < ?`).bind(t));
+  stmts.push(env.DB.prepare(`DELETE FROM calendar_events WHERE account = ? AND updated_at < ?`).bind(account, t));
   await env.DB.batch(stmts);
 
   if (!alerts) return events.length;
@@ -219,10 +244,13 @@ async function syncCalendar(env: Env, token: string, alerts: boolean) {
     t, new Date(Date.now() + MEETING_LEAD_MIN * 60_000).toISOString());
   const { timezone } = await getSettings(env);
   for (const e of soon) {
+    // The same meeting can sit in two connected calendars: alert once, mark every copy.
+    const twins = await all<{ id: string }>(env, "SELECT id FROM calendar_events WHERE summary = ? AND start_at = ?", e.summary, e.start_at);
+    if ((await first(env, "SELECT 1 FROM calendar_events WHERE summary = ? AND start_at = ? AND reminded_at IS NOT NULL", e.summary, e.start_at))) continue;
     const time = new Date(e.start_at).toLocaleTimeString("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit" });
     const mins = Math.max(1, Math.round((new Date(e.start_at).getTime() - Date.now()) / 60_000));
     await notify(env, "event", `${e.summary} at ${time}`, `In ${mins} min${e.location ? ` · ${e.location}` : ""}`, null);
-    await run(env, "UPDATE calendar_events SET reminded_at = ? WHERE id = ?", t, e.id);
+    for (const tw of twins) await run(env, "UPDATE calendar_events SET reminded_at = ? WHERE id = ?", t, tw.id);
   }
   return events.length;
 }
@@ -271,7 +299,7 @@ Reply with JSON only, no prose:
 
 interface Triage { action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[] }
 
-async function syncGmail(env: Env, token: string, alerts: boolean, me: string | null) {
+async function syncGmail(env: Env, token: string, alerts: boolean, me: string, maxThreads: number) {
   const queries = [
     "in:inbox newer_than:3d -category:promotions -category:social -category:updates -category:forums",
     "in:sent newer_than:3d",
@@ -286,7 +314,7 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string | 
   const known = new Map((await all<{ thread_id: string; history_id: string }>(env,
     `SELECT thread_id, history_id FROM gmail_threads WHERE thread_id IN (${[...listed.keys()].map(() => "?").join(",")})`,
     ...listed.keys())).map((r) => [r.thread_id, r.history_id]));
-  const changed = [...listed].filter(([id, h]) => known.get(id) !== h).slice(0, MAX_THREADS);
+  const changed = [...listed].filter(([id, h]) => known.get(id) !== h).slice(0, maxThreads);
 
   let created = 0, completed = 0;
   for (const [threadId] of changed) {
@@ -298,11 +326,11 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string | 
     const lastAt = new Date(Number(last.internalDate)).toISOString();
     const prev = await first<{ analyzed_msg_id: string | null }>(env, "SELECT analyzed_msg_id FROM gmail_threads WHERE thread_id = ?", threadId);
     await run(env,
-      `INSERT INTO gmail_threads (thread_id, history_id, last_msg_id, subject, counterpart, last_from_me, last_msg_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO gmail_threads (thread_id, account, history_id, last_msg_id, subject, counterpart, last_from_me, last_msg_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(thread_id) DO UPDATE SET history_id=excluded.history_id, last_msg_id=excluded.last_msg_id, subject=excluded.subject,
          counterpart=excluded.counterpart, last_from_me=excluded.last_from_me, last_msg_at=excluded.last_msg_at, updated_at=excluded.updated_at`,
-      threadId, th.historyId, last.id, subject, counterpart, fromMe(last) ? 1 : 0, lastAt, now());
+      threadId, me, th.historyId, last.id, subject, counterpart, fromMe(last) ? 1 : 0, lastAt, now());
     if (prev?.analyzed_msg_id === last.id) continue;
 
     // 1. Deterministic completion: items born from this thread.
@@ -353,9 +381,9 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string | 
       const item = await createItem(env, {
         kind: triage.action, title: triage.title, person: triage.person ?? (counterpart || null), due_at: triage.due_at ?? null,
         priority: triage.priority, source: "gmail",
-        notes: `Email: "${subject}"\nhttps://mail.google.com/mail/u/0/#all/${threadId}`,
+        notes: `Email (${me}): "${subject}"\nhttps://mail.google.com/mail/?authuser=${encodeURIComponent(me)}#all/${threadId}`,
       });
-      await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ? WHERE id = ?", threadId, item.id);
+      await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ?, ext_account = ? WHERE id = ?", threadId, me, item.id);
       created++;
       if (alerts && item.priority === 1) await notify(env, "email", `Email needs you: ${item.title}`, `From ${displayName(header(other, "From"))}`, item.id);
     }
@@ -364,43 +392,58 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string | 
   return { threads: changed.length, created, completed };
 }
 
-/** Runs from the cron trigger and from "Sync now". Never throws. */
+/** Runs from the cron trigger and from "Sync now", for every connected account. Never throws. */
 export async function syncGoogle(env: Env) {
-  let auth;
-  try { auth = await accessToken(env); } catch (e) { return { error: (e as Error).message }; }
-  if (!auth) return { skipped: true };
+  const emails = await accountEmails(env);
+  if (!emails.length) return { skipped: true };
   const alerts = (await getSettings(env)).proactive;
-  const result: Record<string, unknown> = {};
+  const perAccount = Math.max(3, Math.floor(THREAD_BUDGET / emails.length));
+  const total = { events: 0, threads: 0, created: 0, completed: 0 };
   const errors: string[] = [];
-  try { result.events = await syncCalendar(env, auth.token, alerts); } catch (e) { errors.push(`Calendar: ${(e as Error).message}`); }
-  try { Object.assign(result, await syncGmail(env, auth.token, alerts, auth.email)); } catch (e) { errors.push(`Gmail: ${(e as Error).message}`); }
-  await run(env, "UPDATE oauth_accounts SET last_sync_at = ?, last_error = ? WHERE provider = 'google'",
-    now(), errors.length ? errors.join(" · ").slice(0, 300) : null);
-  return { ...result, errors };
+  for (const email of emails) {
+    const errs: string[] = [];
+    let token: string;
+    try { token = await accessToken(env, email); } catch (e) { errors.push(`${email}: ${(e as Error).message}`); continue; }
+    try { total.events += await syncCalendar(env, token, alerts, email); } catch (e) { errs.push(`Calendar: ${(e as Error).message}`); }
+    try {
+      const r = await syncGmail(env, token, alerts, email, perAccount);
+      total.threads += r.threads; total.created += r.created; total.completed += r.completed;
+    } catch (e) { errs.push(`Gmail: ${(e as Error).message}`); }
+    await run(env, "UPDATE google_accounts SET last_sync_at = ?, last_error = ? WHERE email = ?",
+      now(), errs.length ? errs.join(" · ").slice(0, 300) : null, email);
+    errors.push(...errs.map((x) => `${email}: ${x}`));
+  }
+  return { ...total, errors };
 }
 
 // ---- Assistant helpers -------------------------------------------------------
 export async function calendarLookup(env: Env, from: string, to: string, q?: string) {
-  const auth = await accessToken(env);
-  if (!auth) throw new Error("Google isn't connected.");
-  return (await fetchEvents(auth.token, new Date(from).toISOString(), new Date(to).toISOString(), q)).map(toRow);
+  const emails = await accountEmails(env);
+  if (!emails.length) throw new Error("Google isn't connected.");
+  const out = [];
+  for (const email of emails) {
+    const rows = (await fetchEvents(await accessToken(env, email), new Date(from).toISOString(), new Date(to).toISOString(), q)).map(toRow);
+    out.push(...rows.map((r) => ({ ...r, calendar: email })));
+  }
+  return out.sort((a, b) => a.start_at.localeCompare(b.start_at));
 }
 
-export async function searchEmail(env: Env, q: string) {
-  const auth = await accessToken(env);
-  if (!auth) throw new Error("Google isn't connected.");
-  const r = await gapi<{ threads?: { id: string; snippet: string }[] }>(auth.token, `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: "8" })}`);
-  const rows = await all<{ thread_id: string; subject: string; counterpart: string; last_msg_at: string }>(env,
-    "SELECT thread_id, subject, counterpart, last_msg_at FROM gmail_threads");
-  const byId = new Map(rows.map((x) => [x.thread_id, x]));
-  return (r.threads ?? []).map((t) => ({ thread_id: t.id, snippet: t.snippet, ...(byId.get(t.id) ?? {}) }));
+export async function searchEmail(env: Env, q: string, account?: string) {
+  const emails = (await accountEmails(env)).filter((e) => !account || e === account);
+  if (!emails.length) throw new Error("Google isn't connected.");
+  const out = [];
+  for (const email of emails) {
+    const r = await gapi<{ threads?: { id: string; snippet: string }[] }>(await accessToken(env, email), `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: "6" })}`);
+    out.push(...(r.threads ?? []).map((t) => ({ account: email, thread_id: t.id, snippet: t.snippet })));
+  }
+  return out;
 }
 
-export async function readThread(env: Env, threadId: string) {
-  const auth = await accessToken(env);
-  if (!auth) throw new Error("Google isn't connected.");
-  const th = await gapi<GThread>(auth.token, `${GMAIL}/threads/${threadId}?format=full`);
+export async function readThread(env: Env, threadId: string, account?: string) {
+  const { email, token } = await accountForThread(env, threadId, account);
+  const th = await gapi<GThread>(token, `${GMAIL}/threads/${threadId}?format=full`);
   return {
+    account: email,
     thread_id: th.id,
     subject: header(th.messages[0], "Subject"),
     messages: th.messages.slice(-6).map((m) => ({
@@ -413,9 +456,15 @@ export async function readThread(env: Env, threadId: string) {
 const mimeWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...enc.encode(s)))}?=`);
 
 /** Saves a draft in Gmail. Replies stay in the thread. Never sends. */
-export async function createDraft(env: Env, opts: { threadId?: string; to?: string; subject?: string; body: string }) {
-  const auth = await accessToken(env);
-  if (!auth) throw new Error("Google isn't connected.");
+export async function createDraft(env: Env, opts: { threadId?: string; to?: string; subject?: string; body: string; account?: string }) {
+  let auth: { email: string; token: string };
+  if (opts.threadId) auth = await accountForThread(env, opts.threadId, opts.account);
+  else {
+    const emails = await accountEmails(env);
+    const email = opts.account && emails.includes(opts.account) ? opts.account : emails[0];
+    if (!email) throw new Error("Google isn't connected.");
+    auth = { email, token: await accessToken(env, email) };
+  }
   let to = opts.to ?? "", subject = opts.subject ?? "", inReplyTo = "", references = "";
   if (opts.threadId) {
     const th = await gapi<GThread>(auth.token, `${GMAIL}/threads/${opts.threadId}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Reply-To&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References`);
@@ -436,14 +485,14 @@ export async function createDraft(env: Env, opts: { threadId?: string; to?: stri
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ message: { raw, ...(opts.threadId ? { threadId: opts.threadId } : {}) } }),
   });
-  return { draft_id: d.id, to, subject, open_in_gmail: "https://mail.google.com/mail/u/0/#drafts" };
+  return { draft_id: d.id, from_account: auth.email, to, subject, open_in_gmail: `https://mail.google.com/mail/?authuser=${encodeURIComponent(auth.email)}#drafts` };
 }
 
 /** Today's and tomorrow's events for the assistant's context (from the synced table, no API call). */
 export async function upcomingEventsText(env: Env, tz: string): Promise<string | null> {
-  if (!(await first(env, "SELECT 1 FROM oauth_accounts WHERE provider = 'google'"))) return null;
+  if (!(await first(env, "SELECT 1 FROM google_accounts"))) return null;
   const evs = await all<CalendarEvent>(env,
-    "SELECT * FROM calendar_events WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?) ORDER BY start_at",
+    "SELECT * FROM calendar_events WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?) GROUP BY summary, start_at ORDER BY start_at",
     new Date(Date.now() - 3600_000).toISOString(), new Date(Date.now() + 48 * 3600_000).toISOString(),
     new Date(Date.now() + 48 * 3600_000).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10));
   const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit" });

@@ -27,6 +27,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
       expired: "That sign-in took too long. Please try again.",
       missing_access: "Google didn't grant all the access needed. Try again and tick every box on Google's screen.",
       failed: "Google sign-in didn't work. Please try again.",
+      blocked: "Google blocked the sign-in. For a work or school account, its administrator may need to allow Chief of Staff.",
     } as Record<string, string>)[r ?? ""] ?? "";
   });
   const [syncing, setSyncing] = useState(false);
@@ -168,32 +169,44 @@ export default function Settings({ settings, onSaved, installPrompt }: {
 
       <Card title="Connected accounts">
         <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="h-9 w-9 rounded-full bg-sunken grid place-items-center text-sm font-semibold">G</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-[15px]">Google Calendar &amp; Gmail</p>
-              <p className="text-xs text-muted truncate">
-                {!google ? "Checking…" : !google.configured ? "Not set up on the server yet" : google.connected ? `Connected${google.email ? ` as ${google.email}` : ""}${google.last_sync_at ? ` · synced ${new Date(google.last_sync_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}` : "Not connected"}
+          {!google ? <p className="text-sm text-muted">Checking…</p> : !google.configured ? (
+            <p className="text-sm text-muted">Google isn't set up on the server yet.</p>
+          ) : (
+            <>
+              {google.accounts.length === 0 && <p className="text-sm text-muted">No Google accounts connected.</p>}
+              <ul className="divide-y divide-line">
+                {google.accounts.map((a) => (
+                  <li key={a.email} className="py-2.5 flex items-center gap-3">
+                    <span className="h-9 w-9 shrink-0 rounded-full bg-sunken grid place-items-center text-sm font-semibold uppercase">{a.email[0]}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] truncate">{a.email}</p>
+                      <p className={`text-xs truncate ${a.last_error ? "text-danger" : "text-muted"}`}>
+                        {a.last_error ?? (a.last_sync_at ? `Calendar & Gmail · synced ${new Date(a.last_sync_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Calendar & Gmail · waiting for first sync")}
+                      </p>
+                    </div>
+                    {a.last_error
+                      ? <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Reconnect</Button>
+                      : <Button variant="ghost" onClick={async () => {
+                          if (!confirmRemove(a.email)) return;
+                          await api.googleDisconnect(a.email); setGoogleMsg(`${a.email} disconnected.`); setGoogle(await api.googleStatus());
+                        }}>Remove</Button>}
+                  </li>
+                ))}
+              </ul>
+              {googleMsg && <p className="text-sm">{googleMsg}</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={async () => { try { location.href = (await api.googleConnect()).url; } catch (e) { setGoogleMsg((e as Error).message); } }}>
+                  {google.accounts.length ? "Add another Google account" : "Connect Google"}
+                </Button>
+                {google.connected && <Button variant="soft" onClick={syncGoogle} disabled={syncing}>{syncing ? "Syncing…" : "Sync now"}</Button>}
+              </div>
+              <p className="text-xs text-muted">
+                {google.connected && <>AI email checks today: {google.ai_used_today} of {google.ai_daily_cap} max. Newsletters, automated mail and CCs are filtered out for free first.<br /></>}
+                Reads your calendars and email to remind you of meetings, spot emails that need you, and notice when you've replied.
+                It only writes a draft when you ask, and it never sends anything.
               </p>
-            </div>
-          </div>
-          {google?.last_error && <p className="text-sm text-danger">{google.last_error}</p>}
-          {googleMsg && <p className="text-sm">{googleMsg}</p>}
-          <div className="flex flex-wrap gap-2">
-            {google?.configured && !google.connected && (
-              <Button onClick={async () => { try { location.href = (await api.googleConnect()).url; } catch (e) { setGoogleMsg((e as Error).message); } }}>Connect Google</Button>
-            )}
-            {google?.connected && <>
-              <Button variant="soft" onClick={syncGoogle} disabled={syncing}>{syncing ? "Syncing…" : "Sync now"}</Button>
-              {google.last_error && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Reconnect</Button>}
-              <Button variant="danger" onClick={async () => { await api.googleDisconnect(); setGoogleMsg("Google disconnected."); setGoogle(await api.googleStatus()); }}>Disconnect</Button>
-            </>}
-          </div>
-          <p className="text-xs text-muted">
-            {google?.connected && <>AI email checks today: {google.ai_used_today} of {google.ai_daily_cap} max. Newsletters, automated mail and CCs are filtered out for free first.<br /></>}
-            Reads your calendar and email to remind you of meetings, spot emails that need you, and notice when you've replied.
-            It only writes a draft when you ask, and it never sends anything.
-          </p>
+            </>
+          )}
         </div>
       </Card>
 
@@ -242,4 +255,9 @@ export default function Settings({ settings, onSaved, installPrompt }: {
       </Card>
     </div>
   );
+}
+
+// A tiny inline confirm keeps an accidental tap from dropping an account (window.confirm is fine on mobile).
+function confirmRemove(email: string) {
+  return window.confirm(`Disconnect ${email}? Its calendar and email will stop syncing.`);
 }

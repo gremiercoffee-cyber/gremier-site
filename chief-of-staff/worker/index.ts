@@ -57,7 +57,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
     all<{ kind: string; n: number }>(env, `SELECT kind, COUNT(*) AS n FROM items WHERE status='open' GROUP BY kind`),
     all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
        WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?)
-       ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
+       GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const data: Dashboard = {
     today, overdue, waiting, nudges, pending, projects, events,
@@ -225,7 +225,12 @@ route("POST", "/api/google/connect", async (req, env) => {
   try { return json({ url: await startGoogleAuth(env, req) }); }
   catch (e) { if (e instanceof GoogleAuthError) throw new HttpError(400, e.message); throw e; }
 });
-route("POST", "/api/google/disconnect", async (_req, env) => { await disconnectGoogle(env); return json({ ok: true }); });
+route("POST", "/api/google/disconnect", async (req, env) => {
+  const { email } = await body<{ email?: string }>(req);
+  if (!email) throw new HttpError(400, "email required");
+  await disconnectGoogle(env, email);
+  return json({ ok: true });
+});
 route("POST", "/api/google/sync", async (_req, env) => json(await syncGoogle(env)));
 
 route("GET", "/api/export", async (_req, env) => {

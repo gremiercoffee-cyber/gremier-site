@@ -63,6 +63,6 @@ export const api = {
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
   googleConnect: () => request<{ url: string }>("POST", "/api/google/connect"),
-  googleDisconnect: () => request("POST", "/api/google/disconnect"),
+  googleDisconnect: (email: string) => request("POST", "/api/google/disconnect", { email }),
   googleSync: () => request<{ events?: number; created?: number; completed?: number; errors?: string[]; error?: string }>("POST", "/api/google/sync"),
 };

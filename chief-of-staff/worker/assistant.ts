@@ -5,7 +5,7 @@ import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
   all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
-import { calendarLookup, createDraft, readThread, searchEmail, upcomingEventsText } from "./google";
+import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upcomingEventsText } from "./google";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -64,7 +64,7 @@ export async function buildContext(env: Env, mode: string): Promise<string> {
             if (i.due_at) bits.push(`due ${i.due_at}`);
             if (i.person) bits.push(`person ${i.person}`);
             if (i.project_id && projectName.has(i.project_id)) bits.push(`project ${projectName.get(i.project_id)}`);
-            if (i.ext_source === "gmail" && i.ext_ref) bits.push(`email thread ${i.ext_ref}`);
+            if (i.ext_source === "gmail" && i.ext_ref) bits.push(`email thread ${i.ext_ref}${i.ext_account ? ` in ${i.ext_account}` : ""}`);
             return `- ${i.title} (${bits.join(", ")}; id ${i.id})`;
           })
           .join("\n")
@@ -72,7 +72,9 @@ export async function buildContext(env: Env, mode: string): Promise<string> {
   );
   const events = await upcomingEventsText(env, tz);
   lines.push("", "## Connected accounts");
-  lines.push(events === null ? "- Google: not connected (no calendar or email access)." : "- Google: connected. You can look up calendar events and read/search email, and save Gmail drafts when asked.");
+  const g = events === null ? null : await googleStatus(env);
+  lines.push(g === null ? "- Google: not connected (no calendar or email access)."
+    : `- Google accounts: ${g.accounts.map((a) => a.email).join(", ")}. Calendar lookups cover all of them; email search covers all unless you pass account. Drafts go from the account the thread is in (or the account you pass for new mail).`);
   if (events !== null) lines.push("", "## Calendar (next 48 hours)", events);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
   return lines.join("\n");
@@ -104,29 +106,32 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     {
       name: "search_email",
       description: "Search the user's Gmail (Gmail search syntax, e.g. 'from:dana invoice newer_than:30d'). Returns thread ids and snippets.",
-      input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
-      handler: async (input) => searchEmail(env, String(input.query)),
+      input_schema: { type: "object", properties: { query: { type: "string" }, account: { type: "string", description: "Optional: one account email" } }, required: ["query"] },
+      handler: async (input) => searchEmail(env, String(input.query), input.account as string | undefined),
     },
     {
       name: "read_email_thread",
       description: "Read the latest messages of a Gmail thread by id.",
-      input_schema: { type: "object", properties: { thread_id: { type: "string" } }, required: ["thread_id"] },
-      handler: async (input) => readThread(env, String(input.thread_id)),
+      input_schema: { type: "object", properties: { thread_id: { type: "string" }, account: { type: "string" } }, required: ["thread_id"] },
+      handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
     },
     {
       name: "draft_email",
       description: "Save an email draft in the user's Gmail Drafts. ONLY when the user explicitly asks you to draft something. Never sends. For a reply pass thread_id (recipient and subject are filled in); for a new email pass to and subject. Write the body in the user's voice and language.",
       input_schema: {
         type: "object",
-        properties: { thread_id: { type: "string" }, to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } },
+        properties: {
+          thread_id: { type: "string" }, to: { type: "string" }, subject: { type: "string" }, body: { type: "string" },
+          account: { type: "string", description: "Which Google account to draft from (for new emails)" },
+        },
         required: ["body"],
       },
       handler: async (input) => {
         const d = await createDraft(env, {
           threadId: input.thread_id as string | undefined, to: input.to as string | undefined,
-          subject: input.subject as string | undefined, body: String(input.body),
+          subject: input.subject as string | undefined, body: String(input.body), account: input.account as string | undefined,
         });
-        note("draft_email", `Draft saved in Gmail to ${d.to}: ${d.subject}`);
+        note("draft_email", `Draft saved in ${d.from_account} to ${d.to}: ${d.subject}`);
         return d;
       },
     },
