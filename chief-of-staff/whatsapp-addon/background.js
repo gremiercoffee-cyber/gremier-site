@@ -11,21 +11,24 @@ async function call(path, body) {
   return r.json();
 }
 
-let lastDiag = 0;
+let diagTimer = null;
 async function remember(patch) {
   const cur = (await chrome.storage.local.get("cos")).cos || {};
-  const next = { ...cur, ...patch };
-  await chrome.storage.local.set({ cos: next });
-  // Health report to the Chief of Staff (status words and sender names only, never message text).
-  if (Date.now() - lastDiag > 5000) {
-    lastDiag = Date.now();
-    call("/api/bridge/diag", { mode: next.mode, last_seen: next.last_seen, last_event: next.last_event, error: next.error, at: new Date().toISOString() }).catch(() => {});
-  }
+  await chrome.storage.local.set({ cos: { ...cur, ...patch } });
+  // Health report to the Chief of Staff, at most every 5 s and always with the latest state
+  // (status words, counts and sender names only, never message text).
+  if (diagTimer) return;
+  diagTimer = setTimeout(async () => {
+    diagTimer = null;
+    const { cos = {} } = await chrome.storage.local.get("cos");
+    call("/api/bridge/diag", { mode: cos.mode, counts: cos.counts, last_seen: cos.last_seen, last_event: cos.last_event, error: cos.error, at: new Date().toISOString() }).catch(() => {});
+  }, 5000);
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === "config") { reply({ my_names: COS_CONFIG.my_names || [] }); return; }
   if (msg.type === "seen") { remember({ last_seen: `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ${msg.note}` }); reply({ ok: true }); return; }
+  if (msg.type === "counts") { remember({ counts: msg.counts }); reply({ ok: true }); return; }
   if (msg.type === "status") { remember({ mode: msg.mode, mode_at: Date.now() }); reply({ ok: true }); return; }
   if (msg.type === "incoming" || msg.type === "replied") {
     const path = msg.type === "incoming" ? "/api/bridge/incoming" : "/api/bridge/replied";

@@ -62,6 +62,8 @@
     if (e.data.kind === "status") {
       status(e.data.mode);
       if (e.data.mode === "unavailable") startListMode();
+    } else if (e.data.kind === "counts") {
+      send({ type: "counts", counts: e.data.counts });
     } else if (e.data.kind === "message") {
       const m = e.data.message;
       m.fromMe ? onMine(m) : onIncoming(m);

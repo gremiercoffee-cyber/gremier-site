@@ -1,8 +1,11 @@
-// Runs inside WhatsApp Web's page. READ-ONLY: it subscribes to new-message events in WhatsApp
-// Web's own message store and passes plain facts (chat, sender, text, from-me) to content.js.
-// It never calls anything that clicks, opens, marks read or sends, and never changes the page.
+// Runs inside WhatsApp Web's page. READ-ONLY: it listens to WhatsApp Web's own message and chat
+// collections and passes plain facts (chat, sender, text, from-me) to content.js. It never calls
+// anything that clicks, opens, marks read or sends, and never changes the page.
 (() => {
   const post = (data) => window.postMessage({ source: "cos-reader", ...data }, location.origin);
+  const started = Date.now() / 1000;
+  const done = new Set();           // message ids already passed on
+  const counts = { add: 0, chat: 0, passed: 0 };
   let attached = false;
 
   function modules() {
@@ -17,6 +20,7 @@
   }
 
   const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
+  const idOf = (msg) => str(msg && msg.id && (msg.id._serialized || msg.id.id));
 
   function describe(col, msg) {
     const id = msg.id || {};
@@ -32,23 +36,47 @@
     const text = str(msg.type === "chat" ? msg.body : msg.caption);
     return {
       chatId: remote, chat: chatName, sender, isGroup, fromMe: !!id.fromMe, text,
-      kind: str(msg.type), muted: !!(chat && chat.mute && chat.mute.isMuted), t: Number(msg.t) || Date.now() / 1000,
+      kind: str(msg.type), muted: !!(chat && chat.mute && chat.mute.isMuted), t: Number(msg.t) || 0,
     };
+  }
+
+  /** Pass a message on once, if it's fresh (sent after this tab started, minus a minute of slack). */
+  function consider(col, msg) {
+    try {
+      if (!msg) return;
+      const key = idOf(msg);
+      if (!key || done.has(key)) return;
+      const t = Number(msg.t) || 0;
+      if (t && t < started - 60) return;            // history loading, not live traffic
+      const d = describe(col, msg);
+      if (!d.chatId || d.chatId === "status@broadcast") return;
+      if (!d.text && d.kind !== "chat") return;     // media without caption
+      done.add(key);
+      counts.passed++;
+      post({ kind: "message", message: d });
+    } catch { /* never disturb WhatsApp */ }
+  }
+
+  function lastMsgOf(chat) {
+    try {
+      const msgs = chat.msgs || (chat.getAllMsgs && { _models: chat.getAllMsgs() });
+      const list = msgs && (msgs._models || msgs.models || (typeof msgs.toArray === "function" ? msgs.toArray() : null));
+      return list && list.length ? list[list.length - 1] : null;
+    } catch { return null; }
   }
 
   function attach() {
     const col = modules();
     if (!col) return false;
-    col.Msg.on("add", (msg) => {
-      try {
-        if (!msg || !msg.isNewMsg) return; // only live traffic, not history being loaded
-        const d = describe(col, msg);
-        if (d.chatId === "status@broadcast" || !d.chatId) return;
-        post({ kind: "message", message: d });
-      } catch { /* never disturb WhatsApp */ }
-    });
+    // Signal 1: messages added to the global message collection.
+    col.Msg.on("add", (msg) => { counts.add++; consider(col, msg); });
+    // Signals 2 and 3: a chat's last-activity time or unread count changes.
+    const onChat = (chat) => { counts.chat++; consider(col, lastMsgOf(chat)); };
+    col.Chat.on("change:t", onChat);
+    col.Chat.on("change:unreadCount", onChat);
     attached = true;
     post({ kind: "status", mode: "store" });
+    setInterval(() => post({ kind: "counts", counts }), 30_000);
     return true;
   }
 
