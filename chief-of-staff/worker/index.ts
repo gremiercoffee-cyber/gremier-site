@@ -180,6 +180,11 @@ route("DELETE", "/api/projects/:id", async (_req, env, [id]) => {
 // ---- Memory ----------------------------------------------------------------
 route("GET", "/api/memories", async (_req, env) =>
   json(await all<Memory>(env, "SELECT * FROM memories ORDER BY category, updated_at DESC")));
+route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
+route("DELETE", "/api/people/:id", async (_req, env, [id]) => {
+  await run(env, "DELETE FROM people WHERE id = ?", id);
+  return json({ ok: true });
+});
 route("DELETE", "/api/memories/:id", async (_req, env, [id]) => {
   await run(env, "DELETE FROM memories WHERE id = ?", id);
   return json({ ok: true });

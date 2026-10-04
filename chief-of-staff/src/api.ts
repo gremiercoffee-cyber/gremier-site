@@ -56,6 +56,8 @@ export const api = {
   deleteProject: (id: string) => request("DELETE", `/api/projects/${id}`),
   memories: () => request<Memory[]>("GET", "/api/memories"),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
+  people: () => request<{ id: string; name: string; role: string; email: string | null; whatsapp_name: string | null; preferred_channel: string | null }[]>("GET", "/api/people"),
+  deletePerson: (id: string) => request("DELETE", `/api/people/${id}`),
   dismissNudge: (id: string) => request("POST", `/api/nudges/${id}/dismiss`),
   runProactive: (briefing = false) => request("POST", "/api/proactive/run", { briefing }),
   decide: (id: string, decision: "approve" | "reject") => request<{ outcome: string }>("POST", `/api/actions/${id}/${decision}`),

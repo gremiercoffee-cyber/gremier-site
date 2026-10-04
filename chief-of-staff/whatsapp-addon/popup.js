@@ -11,5 +11,6 @@ chrome.storage.local.get("cos").then(({ cos = {} }) => {
   if (cos.error) set("conn", `Can't reach Chief of Staff (${cos.error})`, "bad");
   else if (cos.last_ok) set("conn", "Connected to Chief of Staff", "ok");
   else set("conn", "Waiting for the first message", "");
+  document.getElementById("seen").textContent = cos.last_seen ? `Last message noticed: ${cos.last_seen}` : "No new messages noticed since the tab loaded.";
   if (cos.last_event) document.getElementById("last").textContent = `Last: ${cos.last_event}`;
 });

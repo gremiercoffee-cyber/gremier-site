@@ -17,7 +17,13 @@ const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose", // drafts only; this code never calls send
+  "https://www.googleapis.com/auth/drive",          // find, read, create and (after approval) share files
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/spreadsheets",
 ];
+/** Calendar + Gmail are required; Docs/Sheets/Drive are optional per account (added later). */
+const CORE_SCOPES = SCOPES.slice(2, 5);
+export const WORKSPACE_SCOPES = SCOPES.slice(5);
 /** Thread fetches + triage calls per run, shared across accounts to stay under 50 subrequests. */
 const THREAD_BUDGET = 12;
 const TRIAGE_PURPOSES = ["email_triage", "whatsapp_triage"];
@@ -86,7 +92,10 @@ export async function googleStatus(env: Env): Promise<GoogleStatus> {
   return {
     configured: googleConfigured(env),
     connected: accounts.length > 0,
-    accounts: accounts.map((a) => ({ email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error })),
+    accounts: accounts.map((a) => ({
+      email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error,
+      workspace: WORKSPACE_SCOPES.every((s) => ((a as Account & { scopes?: string }).scopes ?? "").includes(s)),
+    })),
     ai_used_today: b.used, ai_daily_cap: b.cap,
   };
 }
@@ -127,15 +136,15 @@ export async function finishGoogleAuth(env: Env, req: Request): Promise<Response
   const tok = (await res.json()) as { access_token: string; expires_in: number; refresh_token?: string; id_token?: string; scope: string };
   if (!tok.refresh_token) return back("failed");
   const granted = tok.scope.split(" ");
-  if (!SCOPES.slice(2).every((s) => granted.includes(s))) return back("missing_access");
+  if (!CORE_SCOPES.every((s) => granted.includes(s))) return back("missing_access");
   let email = "";
   try { email = JSON.parse(atob(tok.id_token!.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email ?? ""; } catch { /* below */ }
   if (!email) return back("failed");
 
   await run(env,
-    `INSERT OR REPLACE INTO google_accounts (email, refresh_token, access_token, expires_at, connected_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    email, await seal(env, tok.refresh_token), await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, now());
+    `INSERT OR REPLACE INTO google_accounts (email, refresh_token, access_token, expires_at, connected_at, scopes)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    email, await seal(env, tok.refresh_token), await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, now(), tok.scope);
   return back("connected");
 }
 
@@ -153,10 +162,10 @@ export async function disconnectGoogle(env: Env, email: string) {
   ]);
 }
 
-const accountEmails = async (env: Env) =>
+export const accountEmails = async (env: Env) =>
   (await all<{ email: string }>(env, "SELECT email FROM google_accounts ORDER BY connected_at")).map((r) => r.email);
 
-async function accessToken(env: Env, email: string): Promise<string> {
+export async function accessToken(env: Env, email: string): Promise<string> {
   const a = await first<Account>(env, "SELECT * FROM google_accounts WHERE email = ?", email);
   if (!a || !googleConfigured(env)) throw new GoogleAuthError(`${email} isn't connected.`);
   if (a.access_token && (a.expires_at ?? 0) > Date.now() + 60_000) return unseal(env, a.access_token);

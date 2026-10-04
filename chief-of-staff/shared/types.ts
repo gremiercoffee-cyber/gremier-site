@@ -135,6 +135,8 @@ export interface CalendarEvent {
 
 export interface GoogleAccountStatus {
   email: string;
+  /** Docs, Sheets and Drive access granted. */
+  workspace: boolean;
   last_sync_at: string | null;
   last_error: string | null;
 }

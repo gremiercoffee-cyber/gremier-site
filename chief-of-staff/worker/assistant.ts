@@ -7,6 +7,8 @@ import {
 } from "./db";
 import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upcomingEventsText } from "./google";
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
+import { findPeople, memoryContext, noteContact, recallMemories, savePerson } from "./memory";
+import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -16,6 +18,13 @@ What you do:
 - Help them decide, prioritise and plan. Be proactive: point out overdue items, conflicts, forgotten follow-ups and sensible next steps.
 - Act like a trusted human chief of staff, not a chatbot. When they tell you what is going on ("here's how I'm doing deliveries today", "we're launching X next week"), quietly build the structure it needs: tasks and reminders at sensible times, a check-in reminder afterwards phrased as a question ("Did you…?") so you can ask whether it happened, a project to group related work, and memories for lasting facts. Do not ask permission for this internal organizing; just do it and tell them briefly what you set up.
 - A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
+
+Memory, like a person with a good brain:
+- "People you know" is your address book. When the user mentions someone by role or name ("my boss", "the accountant", "Avi") look there first.
+- If you need someone you don't know yet (no person with that role or name), ask once: who they are and how to reach them (email and/or WhatsApp name). Save it with save_person. Never ask again for what is saved.
+- Channels: if the person has a usual channel, say you'll use it ("I'll email it to David as usual") and go ahead with the draft/approval flow; if not, ask "email or WhatsApp?". If the user states a preference ("always email him"), save it as preferred_channel.
+- Save lasting facts and preferences with remember as soon as you learn them, without asking. Update instead of duplicating. If a memory you need isn't shown, use recall.
+- Documents: create Google Docs and Sheets directly when asked, and give the link. Sharing a file with someone goes through share_file, which waits for the user's approval.
 
 How to file things — keep these clearly separate:
 - task: something the user needs to do.
@@ -33,15 +42,15 @@ Rules:
 
 const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
 
-export async function buildContext(env: Env, mode: string): Promise<string> {
+export async function buildContext(env: Env, mode: string, query = ""): Promise<string> {
   const settings = await getSettings(env);
   const tz = settings.timezone || "UTC";
   const localNow = new Intl.DateTimeFormat("en-GB", {
     timeZone: tz, dateStyle: "full", timeStyle: "short",
   }).format(new Date());
 
-  const [memories, items, projects] = await Promise.all([
-    all<Memory>(env, "SELECT * FROM memories ORDER BY importance ASC, updated_at DESC LIMIT 60"),
+  const [memory, items, projects] = await Promise.all([
+    memoryContext(env, query),
     all<Item>(
       env,
       `SELECT * FROM items WHERE status = 'open'
@@ -51,11 +60,11 @@ export async function buildContext(env: Env, mode: string): Promise<string> {
   ]);
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
 
+  // Stable, slowly-changing parts first so OpenAI's prompt cache can reuse them between messages.
   const lines: string[] = [];
-  lines.push(`Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
   if (settings.name) lines.push(`The user's name is ${settings.name}.`);
-  lines.push("", "## Memory");
-  lines.push(memories.length ? memories.map((m) => `- [${m.category}] ${m.content} (id ${m.id})`).join("\n") : "- (nothing yet)");
+  lines.push(memory);
+  lines.push("", `Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
   lines.push("", "## Projects");
   lines.push(projects.length ? projects.map((p) => `- ${p.name} [${p.area}, ${p.status}]${p.description ? ` — ${p.description}` : ""}`).join("\n") : "- (none)");
   lines.push("", "## Open items");
@@ -123,6 +132,110 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
     },
     {
+      name: "save_person",
+      description: "Add or update someone in the address book: name, role (e.g. boss, accountant, green-bean supplier), contact details, WhatsApp chat name, preferred channel, notes. Matches an existing person by id or name.",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" }, name: { type: "string" }, role: { type: "string" }, aliases: { type: "string" },
+          email: { type: "string" }, phone: { type: "string" }, whatsapp_name: { type: "string" },
+          preferred_channel: { type: "string", enum: ["email", "whatsapp", "call"] }, notes: { type: "string" },
+        },
+      },
+      handler: async (input) => {
+        const p = await savePerson(env, input);
+        note("save_person", `${"created" in p ? "Saved" : "Updated"} ${p.name}${p.role ? ` (${p.role})` : ""}`);
+        return p;
+      },
+    },
+    {
+      name: "find_person",
+      description: "Look up people by name, role, email or WhatsApp name.",
+      input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      handler: async (input) => findPeople(env, String(input.query)),
+    },
+    {
+      name: "recall",
+      description: "Search all saved memories (beyond those shown in context).",
+      input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      handler: async (input) => recallMemories(env, String(input.query), 15),
+    },
+    {
+      name: "create_doc",
+      description: "Create a Google Doc. Content may use # / ## / ### headings and '- ' bullets. Returns the link.",
+      input_schema: {
+        type: "object",
+        properties: { title: { type: "string" }, content: { type: "string" }, account: { type: "string", description: "Google account email; default the first" } },
+        required: ["title", "content"],
+      },
+      handler: async (input) => {
+        const d = await createDoc(env, String(input.title), String(input.content), input.account as string | undefined);
+        note("create_doc", `Created doc: ${d.title}`);
+        return d;
+      },
+    },
+    {
+      name: "create_sheet",
+      description: "Create a Google Sheet with rows (first row = headers). Returns the link.",
+      input_schema: {
+        type: "object",
+        properties: { title: { type: "string" }, rows: { type: "array", items: { type: "array", items: {} } }, account: { type: "string" } },
+        required: ["title"],
+      },
+      handler: async (input) => {
+        const s = await createSheet(env, String(input.title), (input.rows as unknown[][]) ?? [], input.account as string | undefined);
+        note("create_sheet", `Created sheet: ${s.title}`);
+        return s;
+      },
+    },
+    {
+      name: "append_rows",
+      description: "Add rows to the end of a Google Sheet (by file id, optional tab name).",
+      input_schema: {
+        type: "object",
+        properties: { file_id: { type: "string" }, rows: { type: "array", items: { type: "array", items: {} } }, sheet: { type: "string" }, account: { type: "string" } },
+        required: ["file_id", "rows"],
+      },
+      handler: async (input) => {
+        const r = await appendRows(env, String(input.file_id), input.rows as unknown[][], input.sheet as string | undefined, input.account as string | undefined);
+        note("append_rows", `Added ${r.appended} row(s) to a sheet`);
+        return r;
+      },
+    },
+    {
+      name: "search_drive",
+      description: "Find Google Drive files (Docs, Sheets, PDFs…) by name or content across connected accounts.",
+      input_schema: { type: "object", properties: { query: { type: "string" }, account: { type: "string" } }, required: ["query"] },
+      handler: async (input) => searchDrive(env, String(input.query), input.account as string | undefined),
+    },
+    {
+      name: "read_file",
+      description: "Read a Google Doc's text, a Sheet's values, or a text export of another Drive file, by file id.",
+      input_schema: { type: "object", properties: { file_id: { type: "string" }, account: { type: "string" } }, required: ["file_id"] },
+      handler: async (input) => readFile(env, String(input.file_id), input.account as string | undefined),
+    },
+    {
+      name: "share_file",
+      description: "Share a Drive file with someone by email. Waits for the user's approval before anything is shared.",
+      input_schema: {
+        type: "object",
+        properties: {
+          file_id: { type: "string" }, file_title: { type: "string" }, email: { type: "string" },
+          role: { type: "string", enum: ["reader", "commenter", "writer"] }, account: { type: "string" },
+        },
+        required: ["file_id", "email"],
+      },
+      handler: async (input) => {
+        const role = (input.role as string) || "reader";
+        const desc = `Share "${input.file_title ?? "file"}" with ${input.email} (${role === "reader" ? "can view" : role === "commenter" ? "can comment" : "can edit"})`;
+        const id = uid();
+        await run(env, "INSERT INTO pending_actions (id, action, payload, description, created_at) VALUES (?, ?, ?, ?, ?)",
+          id, "share_file", JSON.stringify({ file_id: input.file_id, email: input.email, role, account: input.account }), desc, now());
+        note("share_file", `Needs your approval: ${desc}`);
+        return { id, status: "pending_approval" };
+      },
+    },
+    {
       name: "send_whatsapp",
       description: "Prepare a WhatsApp message. It is NOT sent yet: the user gets it with Send / Edit / Cancel buttons, and only after Send does their computer send it through WhatsApp Web. Use the contact's name exactly as they'd appear in WhatsApp. Write in the user's voice and the language they use with that person.",
       input_schema: {
@@ -132,6 +245,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
       handler: async (input) => {
         const r = await queueWhatsApp(env, String(input.to), String(input.message));
+        await noteContact(env, String(input.to), "whatsapp");
         note("send_whatsapp", `WhatsApp to ${input.to} is waiting for your Send tap`);
         return r;
       },
@@ -153,6 +267,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           subject: input.subject as string | undefined, body: String(input.body), account: input.account as string | undefined,
         });
         note("draft_email", `Draft saved in ${d.from_account} to ${d.to}: ${d.subject}`);
+        await noteContact(env, d.to, "email");
         return d;
       },
     },
@@ -324,6 +439,9 @@ export async function executeApproved(env: Env, action: string, payload: Record<
     case "forget_memory":
       await run(env, "DELETE FROM memories WHERE id = ?", id);
       return "forgot memory";
+    case "share_file":
+      return shareFile(env, String(payload.file_id), String(payload.email),
+        (["reader", "commenter", "writer"].includes(String(payload.role)) ? payload.role : "reader") as "reader", payload.account as string | undefined);
     default:
       return "approved (no integration available yet to carry this out)";
   }
@@ -405,7 +523,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
     tier: "main",
     purpose: `chat:${mode}`,
     system: SYSTEM_PROMPT,
-    context: await buildContext(env, mode),
+    context: await buildContext(env, mode, text),
     history,
     tools,
   });

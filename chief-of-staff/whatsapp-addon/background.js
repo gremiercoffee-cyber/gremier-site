@@ -18,6 +18,7 @@ async function remember(patch) {
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === "config") { reply({ my_names: COS_CONFIG.my_names || [] }); return; }
+  if (msg.type === "seen") { remember({ last_seen: `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ${msg.note}` }); return; }
   if (msg.type === "status") { remember({ mode: msg.mode, mode_at: Date.now() }); return; }
   if (msg.type === "incoming" || msg.type === "replied") {
     const path = msg.type === "incoming" ? "/api/bridge/incoming" : "/api/bridge/replied";

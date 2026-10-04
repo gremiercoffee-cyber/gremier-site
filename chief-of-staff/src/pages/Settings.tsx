@@ -14,6 +14,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
   const [form, setForm] = useState(settings);
   const [saved, setSaved] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [people, setPeople] = useState<Awaited<ReturnType<typeof api.people>>>([]);
   const [usage, setUsage] = useState<Usage>([]);
   const [notif, setNotif] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("cos.theme") ?? "system"; } catch { return "system"; } });
@@ -54,6 +55,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
 
   useEffect(() => {
     api.memories().then(setMemories).catch(() => {});
+    api.people().then(setPeople).catch(() => {});
     api.usage().then(setUsage).catch(() => {});
   }, []);
 
@@ -186,6 +188,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                         {a.last_error ?? (a.last_sync_at ? `Calendar & Gmail · synced ${new Date(a.last_sync_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Calendar & Gmail · waiting for first sync")}
                       </p>
                     </div>
+                    {!a.last_error && !a.workspace && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Add Docs & Drive</Button>}
                     {a.last_error
                       ? <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Reconnect</Button>
                       : <Button variant="ghost" onClick={async () => {
@@ -223,6 +226,22 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             </p>
           </div>
         </div>
+      </Card>
+
+      <Card title={`People I know (${people.length})`}>
+        {people.length === 0 ? <Empty>No one yet. Mention someone ("my boss is David, david@…") and I'll remember them.</Empty> : (
+          <ul className="divide-y divide-line">
+            {people.map((p) => (
+              <li key={p.id} className="py-2 flex gap-2 items-start">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{p.name}{p.role && <span className="text-muted font-normal"> · {p.role}</span>}</p>
+                  <p className="text-xs text-muted truncate">{[p.email, p.whatsapp_name && `WhatsApp: ${p.whatsapp_name}`, p.preferred_channel && `prefers ${p.preferred_channel}`].filter(Boolean).join(" · ")}</p>
+                </div>
+                <button className="text-xs text-muted hover:text-danger" onClick={async () => { await api.deletePerson(p.id); setPeople((x) => x.filter((y) => y.id !== p.id)); }}>Forget</button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card title={`Memory (${memories.length})`}>
