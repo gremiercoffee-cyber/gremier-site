@@ -79,3 +79,5 @@ body {
 @media (prefers-reduced-motion: reduce) { .orb { animation: none; } }
 .drawer-in { animation: drawer-in .22s ease-out; }
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

@@ -11,6 +11,7 @@ import { findPeople, memoryContext, noteContact, recallMemories, savePerson } fr
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
 import { missionsSummary, startMission, updateMission } from "./missions";
 import { routinesSummary, saveRoutine } from "./routines";
+import { saveSituation, situationsSummary } from "./situations";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -22,6 +23,10 @@ What you do:
 - A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
 
 Areas: everything belongs to one of three areas: coffee (Gremier Coffee business: roasting, orders, deliveries, suppliers, customers), yeshiva (the yeshiva: rabbis, students, classes, staff), personal (family, home, health, money, errands). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly.
+
+Reminders can be at ANY time, not only at deadlines: for "remind me sometime this afternoon", pick a sensible time yourself and create a reminder with that due_at.
+
+Situations: when the user tells you their routine or where they'll be ("I'm in yeshiva Sun-Thu 9 to 1", "when I'm at events remind me to collect business cards"), save a situation with save_situation so they're reminded at that moment of what belongs there: a time window (weekdays + start/end, mode start or random) and/or calendar keywords (fires when a matching calendar entry starts), an area (category) and/or keywords for which open items to surface, and an optional standing note. Also remember the routine itself as a memory. Confirm in one line.
 
 Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
@@ -102,6 +107,8 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
     : "- WhatsApp: not set up yet.");
   const missions = await missionsSummary(env);
   if (missions) lines.push("", "## Missions (working in the background)", missions);
+  const situations = await situationsSummary(env);
+  if (situations) lines.push("", "## Situations (time/place reminders)", situations);
   const tasks = await routinesSummary(env);
   if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
@@ -154,6 +161,29 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           : await first<Record<string, unknown>>(env, `SELECT rr.*, r.name FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.routine_id = ? AND rr.status = 'done' ORDER BY rr.started_at DESC LIMIT 1`, String(input.task_id ?? ""));
         if (!r) return { error: "report not found" };
         return { name: r.name, date: r.started_at, summary: r.summary, doc_link: r.doc_link, report: String(r.report ?? "").slice(0, 14000) };
+      },
+    },
+    {
+      name: "save_situation",
+      description: "Create or change a situation reminder: fires when the user is somewhere/doing something (weekly time window and/or matching calendar entries), listing open items for that area/keywords plus a standing note. Pass id to change one; active=false pauses it.",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" }, name: { type: "string", description: 'e.g. "In yeshiva", "At events"' },
+          category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          keywords: { type: "string", description: "comma separated words; open items mentioning them are included" },
+          note: { type: "string", description: "standing reminder included every time" },
+          weekdays: { type: "array", items: { type: "integer" }, description: "0=Sunday … 6=Saturday" },
+          start_time: { type: "string", description: "HH:MM" }, end_time: { type: "string", description: "HH:MM" },
+          mode: { type: "string", enum: ["start", "random"], description: "remind at the start, or at a random moment in the window" },
+          calendar_keywords: { type: "string", description: 'comma separated; fires when a calendar entry with one of these in its title starts ("*" = any entry)' },
+          active: { type: "boolean" },
+        },
+      },
+      handler: async (input) => {
+        const s = await saveSituation(env, input);
+        note("save_situation", `Situation "${s.name}": ${s.when}`);
+        return s;
       },
     },
     {

@@ -19,7 +19,7 @@ import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
 type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Brain dump", lists: "Lists", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Missions", replies: "Replies", tasks: "Tasks" };
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Library", lists: "Lists", projects: "Lists", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks" };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -39,7 +39,7 @@ export default function App() {
   const [sheet, setSheet] = useState<{ item: Item | null; kind?: ItemKind } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
-  const [libraryTab, setLibraryTab] = useState<LibraryTab>("ideas");
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("dump");
   const [rescheduling, setRescheduling] = useState<Item | null>(null);
   const [toast, setToast] = useState("");
   // A task report opened from a notification (?report=id&mode=read|brief) or the Tasks page.
@@ -147,16 +147,24 @@ export default function App() {
             onDataChanged={refresh} refreshKey={refreshKey} />
         )}
         {view === "today" && <Today name={settings?.name ?? ""} onOpenItem={openItem} goChat={(p) => { openConversation(null); setAsk(p); }} refreshKey={refreshKey} />}
-        {view === "dump" && <BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />}
+        {(view === "lists" || view === "projects") && (
+          <Switch value={view} onChange={(v) => setView(v as View)} options={[["lists", "Lists"], ["projects", "Projects"]]} />
+        )}
         {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
         {view === "projects" && <Projects onOpenItem={openItem} refreshKey={refreshKey} />}
+        {(view === "tasks" || view === "missions") && (
+          <Switch value={view} onChange={(v) => setView(v as View)} options={[["tasks", "Recurring"], ["missions", "Missions"]]} />
+        )}
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
         {view === "tasks" && <Tasks refreshKey={refreshKey} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
         {view === "missions" && <Missions refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => { setTyping(p); }, 0); }} />}
-        {view === "library" && <Library tab={libraryTab} onTab={setLibraryTab} onOpenItem={openItem} refreshKey={refreshKey} />}
+        {(view === "library" || view === "dump") && (
+          <Library tab={view === "dump" ? "dump" : libraryTab} onTab={(t) => { setLibraryTab(t); setView("library"); }} onOpenItem={openItem} refreshKey={refreshKey}
+            brainDump={<BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />} />
+        )}
         {view === "settings" && settings && (
           <Settings settings={settings} onSaved={setSettings}
             installPrompt={install ? () => { install.prompt(); setInstall(null); } : null} />
@@ -172,19 +180,13 @@ export default function App() {
                 placeholder="🔍  Search everything" enterKeyHint="search"
                 className="w-full rounded-full bg-sunken px-4 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-accent/30" />
             </form>
-            <div className="px-2 grid grid-cols-2 gap-0.5">
-              <div className="col-span-2"><DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" /></div>
-              <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<path d="M4 6h16M4 12h16M4 18h9" />} label="Today" />
-              <DrawerItem active={view === "lists"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists" />
-              <DrawerItem active={view === "projects"} onClick={() => go("projects")} icon={<path d="M3 7h6l2 2h10v10H3z" />} label="Projects" />
-              <DrawerItem active={view === "dump"} onClick={() => go("dump")} icon={<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3" />} label="Brain dump" />
+            <div className="px-2 space-y-0.5">
+              <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
+              <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
               <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
-              <DrawerItem active={view === "tasks"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks" />
-              <DrawerItem active={view === "missions"} onClick={() => go("missions")} icon={<path d="M4 20V4l8 4 8-4v16l-8-4z" />} label="Missions" />
-              <DrawerItem active={view === "library" && libraryTab === "ideas"} onClick={() => { setLibraryTab("ideas"); go("library"); }} icon={<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />} label="Ideas & notes" />
-              <DrawerItem active={view === "library" && libraryTab === "people"} onClick={() => { setLibraryTab("people"); go("library"); }} icon={<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6" /></>} label="People" />
-              <DrawerItem active={view === "library" && libraryTab === "memory"} onClick={() => { setLibraryTab("memory"); go("library"); }} icon={<path d="M12 4a4 4 0 0 0-4 4 4 4 0 0 0-3 6.5A4 4 0 0 0 8 20h8a4 4 0 0 0 3-5.5A4 4 0 0 0 16 8a4 4 0 0 0-4-4zM12 4v16" />} label="Memory" />
-              <DrawerItem active={view === "library" && libraryTab === "dumps"} onClick={() => { setLibraryTab("dumps"); go("library"); }} icon={<path d="M4 5h16v14H4zM8 9h8M8 13h5" />} label="Past dumps" />
+              <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
+              <DrawerItem active={view === "tasks" || view === "missions"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & missions" />
+              <DrawerItem active={view === "library" || view === "dump"} onClick={() => go("library")} icon={<path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 7h6" />} label="Library" />
             </div>
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
               onOpen={(id) => openConversation(id)}
@@ -267,6 +269,18 @@ function Login({ health, onDone }: { health: { configured: boolean } | null; onD
           </>
         )}
       </form>
+    </div>
+  );
+}
+
+/** Small two-option switch at the top of paired pages (Lists/Projects, Recurring/Missions). */
+function Switch({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return (
+    <div className="flex gap-1 p-1 mb-4 rounded-full bg-sunken w-fit">
+      {options.map(([k, label]) => (
+        <button key={k} onClick={() => onChange(k)}
+          className={`rounded-full px-4 py-1.5 text-sm ${value === k ? "bg-surface shadow-card text-ink" : "text-muted"}`}>{label}</button>
+      ))}
     </div>
   );
 }

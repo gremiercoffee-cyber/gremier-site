@@ -71,14 +71,20 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     }
   }
 
+  // Ending while still connecting must win: the call is hung up the moment it connects.
+  const connectingRef = useRef(false);
+  const cancelledRef = useRef(false);
+
   async function startLive() {
-    if (callRef.current) return;
+    if (callRef.current || connectingRef.current) return;
     setError("");
+    connectingRef.current = true;
+    cancelledRef.current = false;
     try {
-      callRef.current = await startLiveCall({
+      const call = await startLiveCall({
         getConversation: () => convoRef.current,
         onConversation: (id) => { if (id !== convoRef.current) { convoRef.current = id; onConversation(id); } },
-        onStatus: (s) => setLive(s === "ended" ? "off" : s),
+        onStatus: (s) => { if (!cancelledRef.current) setLive(s === "ended" ? "off" : s); },
         onTranscript: (role, content) =>
           setMessages((m) => [...m, { id: `live-${Date.now()}-${role}`, role, content, mode: "voice", meta: null, created_at: new Date().toISOString() }]),
         onActions: (actions) => {
@@ -87,13 +93,22 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
         },
         onError: setError,
       });
+      if (cancelledRef.current) { call.hangUp(); setLive("off"); }
+      else callRef.current = call;
     } catch (e) {
-      setError((e as Error).message.includes("Permission") ? "Microphone permission denied." : (e as Error).message);
+      if (!cancelledRef.current) setError((e as Error).message.includes("Permission") ? "Microphone permission denied." : (e as Error).message);
       callRef.current = null;
       setLive("off");
+    } finally {
+      connectingRef.current = false;
     }
   }
-  function stopLive() { callRef.current?.hangUp(); callRef.current = null; setLive("off"); }
+  function stopLive() {
+    if (connectingRef.current) cancelledRef.current = true;
+    callRef.current?.hangUp();
+    callRef.current = null;
+    setLive("off");
+  }
 
   const act = async (n: Nudge, action: string) => {
     const r = await api.actNudge(n.id, action);
@@ -113,7 +128,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-4 no-scrollbar">
         {!inConversation ? (
           <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={live} dash={dash} onAct={act}
             onNudge={(ask) => { onConversation(null); convoRef.current = null; setMessages([]); send(ask); }}
@@ -142,60 +157,86 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   greeting: string; live: LiveState; dash: Dashboard | null;
   onAct: (n: Nudge, a: string) => void; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
 }) {
-  const next = dash?.events.find((e) => !e.all_day && new Date(e.start_at).getTime() > Date.now());
-  const overdue = dash?.overdue.length ?? 0;
-  const waiting = dash?.waiting.length ?? 0;
-  const lines = [
-    next && `Next up: ${next.summary} at ${new Date(next.start_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
-    overdue > 0 && `${overdue} thing${overdue > 1 ? "s are" : " is"} overdue.`,
-
-  ].filter(Boolean) as string[];
-  const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing").slice(0, 6);
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
+  const upcoming = [
+    ...(dash?.overdue ?? []).map((i) => ({ id: i.id, title: i.title, when: "Overdue", sort: "0", red: true })),
+    ...(dash?.events ?? []).filter((e) => e.all_day || new Date(e.end_at ?? e.start_at).getTime() > Date.now())
+      .map((e) => ({ id: e.id, title: e.summary, when: e.all_day ? "All day" : hhmm(e.start_at), sort: e.all_day ? "1" : e.start_at, red: false })),
+    ...(dash?.today ?? []).map((i) => ({ id: i.id, title: i.title, when: i.due_at ? hhmm(i.due_at) : "Today", sort: i.due_at ?? "2", red: false })),
+  ].sort((x, y) => x.sort.localeCompare(y.sort)).slice(0, 12);
+  const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing").slice(0, 5);
   const briefing = dash?.nudges.find((n) => n.type === "briefing");
+  const waiting = (dash?.waiting ?? []).slice(0, 3);
 
   return (
-    <div className="pt-6 space-y-6">
-      <div className="flex flex-col items-center text-center gap-4">
-        <Orb state={live} />
+    <div className="pt-4 space-y-5">
+      <div className="flex flex-col items-center text-center gap-3">
+        <div className="scale-[0.8] -my-3"><Orb state={live} /></div>
         <div>
-          <h1 className="font-display text-[34px] leading-tight">{greeting}</h1>
-          <p className="text-muted mt-1">{live === "off" ? "I'm here. Tell me what's going on." : "I'm listening."}</p>
+          <h1 className="font-display text-[30px] leading-tight">{greeting}</h1>
+          <p className="text-muted text-sm mt-0.5">{live === "off" ? "I'm here. Tell me what's going on." : "I'm listening."}</p>
         </div>
       </div>
 
-      {(dash?.waiting ?? []).slice(0, 4).map((w) => (
-        <FromCos key={w.id}>
-          <p>Waiting on <span className="font-medium">{w.person ?? "someone"}</span>: {w.title}</p>
-          <p className="text-xs text-muted mt-0.5">{timeAgo(w.created_at)}</p>
-          <div className="flex flex-wrap gap-1.5 mt-2.5">
-            {[["done", "Got it ✓"], ["nudge", "Nudge them"], ["dropped", "Not needed"]].map(([a, label]) => (
-              <button key={a} onClick={async () => {
-                if (a === "nudge") { onNudge(`Draft a friendly follow-up to ${w.person ?? "them"} about: ${w.title}`); return; }
-                await api.updateItem(w.id, { status: a as "done" | "dropped" });
-                onChanged();
-              }} className="rounded-full border border-line bg-bg px-3 py-1.5 text-[13px] font-medium hover:border-accent">{label}</button>
+      {upcoming.length > 0 && (
+        <div>
+          <p className="px-1 mb-1.5 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Coming up</p>
+          <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 snap-x no-scrollbar">
+            {upcoming.map((u) => (
+              <div key={u.id} className={`snap-start shrink-0 w-36 rounded-2xl px-3 py-2.5 border ${u.red ? "bg-danger/5 border-danger/20" : "bg-surface border-line/70"}`}>
+                <p className={`text-[11px] ${u.red ? "text-danger" : "text-accent"}`}>{u.when}</p>
+                <p className="text-[13px] leading-snug line-clamp-2 mt-0.5">{u.title}</p>
+              </div>
             ))}
           </div>
-        </FromCos>
-      ))}
-      {lines.length > 0 && (
-        <FromCos>
-          <p>{lines.join(" ")}</p>
-        </FromCos>
+        </div>
       )}
-      {briefing && (
-        <FromCos time={briefing.created_at}>
-          <p className="whitespace-pre-line">{briefing.body}</p>
-          <Chips n={briefing} onAct={onAct} />
-        </FromCos>
+
+      {(briefing || nudges.length > 0 || waiting.length > 0) && (
+        <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
+          {briefing && (
+            <Row icon="☀️" title="Today's briefing" time={briefing.created_at}>
+              <p className="whitespace-pre-line text-[14px]">{briefing.body}</p>
+              <Chips n={briefing} onAct={onAct} />
+            </Row>
+          )}
+          {waiting.map((w) => (
+            <Row key={w.id} icon="⏳" title={`Waiting on ${w.person ?? "someone"}: ${w.title}`} time={w.created_at}>
+              <div className="flex flex-wrap gap-1.5">
+                {[["done", "Got it ✓"], ["nudge", "Nudge them"], ["dropped", "Not needed"]].map(([a, label]) => (
+                  <button key={a} onClick={async () => {
+                    if (a === "nudge") { onNudge(`Draft a friendly follow-up to ${w.person ?? "them"} about: ${w.title}`); return; }
+                    await api.updateItem(w.id, { status: a as "done" | "dropped" });
+                    onChanged();
+                  }} className="rounded-full border border-line bg-bg px-3 py-1.5 text-[13px] font-medium hover:border-accent">{label}</button>
+                ))}
+              </div>
+            </Row>
+          ))}
+          {nudges.map((n) => (
+            <Row key={n.id} icon="•" title={n.title} time={n.created_at}>
+              {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
+              <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
+            </Row>
+          ))}
+        </div>
       )}
-      {nudges.map((n) => (
-        <FromCos key={n.id} time={n.created_at}>
-          <p className="font-medium">{n.title}</p>
-          {n.body && <p className="text-muted mt-0.5">{n.body}</p>}
-          <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
-        </FromCos>
-      ))}
+    </div>
+  );
+}
+
+/** One compact line; tap to open its details and buttons. */
+function Row({ icon, title, time, children }: { icon: string; title: string; time?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
+        <span className="w-5 shrink-0 text-center text-[13px] text-accent">{icon}</span>
+        <span className={`flex-1 min-w-0 text-[14px] ${open ? "" : "truncate"}`}>{title}</span>
+        {time && <span className="shrink-0 text-[11px] text-muted">{timeAgo(time)}</span>}
+      </button>
+      {open && <div className="px-4 pb-3 pl-11 space-y-2">{children}</div>}
     </div>
   );
 }
@@ -247,9 +288,18 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
   const LABELS: Record<LiveState, string> = { off: "", connecting: "Connecting…", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…", ended: "" };
   if (live !== "off") {
     return (
-      <div className="pb-2 flex flex-col items-center gap-3">
-        <p className="text-sm text-muted">{LABELS[live]} You can interrupt any time.</p>
-        <button onClick={onEnd} className="h-16 px-10 rounded-full bg-danger text-white font-medium text-[17px] shadow-card">End conversation</button>
+      <div className="pb-2 px-1">
+        <div className="flex items-center gap-3 rounded-full bg-surface border border-line shadow-card pl-5 pr-2 py-2">
+          <span className="relative h-3 w-3 shrink-0">
+            {live === "listening" && <span className="absolute inset-0 rounded-full bg-accent animate-ping opacity-60" />}
+            <span className={`absolute inset-0 rounded-full ${live === "speaking" ? "bg-ok" : live === "connecting" ? "bg-line" : "bg-accent"}`} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[15px] font-medium">{LABELS[live]}</span>
+            <span className="block text-xs text-muted">{live === "connecting" ? "One moment" : "Just talk. You can interrupt any time."}</span>
+          </span>
+          <button onClick={onEnd} className="h-11 px-5 rounded-full bg-danger/10 text-danger font-medium text-sm">End</button>
+        </div>
       </div>
     );
   }
@@ -272,15 +322,24 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
     );
   }
   return (
-    <div className="pb-2 flex items-center justify-center gap-5">
-      <DictateButton compact serverTranscription={serverTranscription} onText={(t) => onSend(t, "dictation")} />
-      <button onClick={onTalk} aria-label="Talk"
-        className="h-20 w-20 rounded-full bg-accent text-accent-ink grid place-items-center shadow-card active:scale-95 transition">
-        <MicIcon className="h-8 w-8" />
-      </button>
-      <button onClick={() => setTyping(true)} aria-label="Type" className="h-12 w-12 rounded-full bg-surface border border-line grid place-items-center text-muted">
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" /></svg>
-      </button>
+    <div className="pb-2 flex items-end justify-center gap-8">
+      <div className="flex flex-col items-center gap-1.5">
+        <DictateButton compact serverTranscription={serverTranscription} onText={(t) => onSend(t, "dictation")} />
+        <span className="text-[11px] text-muted">Dictate</span>
+      </div>
+      <div className="flex flex-col items-center gap-1.5">
+        <button onClick={onTalk} aria-label="Talk"
+          className="h-[72px] w-[72px] rounded-full bg-accent text-accent-ink grid place-items-center shadow-card active:scale-95 transition">
+          <MicIcon className="h-7 w-7" />
+        </button>
+        <span className="text-[11px] text-muted">Talk</span>
+      </div>
+      <div className="flex flex-col items-center gap-1.5">
+        <button onClick={() => setTyping(true)} aria-label="Type" className="h-12 w-12 rounded-full bg-surface border border-line grid place-items-center text-muted">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" /></svg>
+        </button>
+        <span className="text-[11px] text-muted">Type</span>
+      </div>
     </div>
   );
 }

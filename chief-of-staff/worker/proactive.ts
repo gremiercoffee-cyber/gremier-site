@@ -12,6 +12,7 @@ import { upcomingEventsText } from "./google";
 import { isShabbat, justAfterShabbat } from "./shabbat";
 import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines } from "./routines";
+import { runSituations } from "./situations";
 
 const WAITING_NUDGE_DAYS = 4;
 const POSTPONED_AFTER = 3;
@@ -99,7 +100,10 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   // 7. Missions: work through authorized goals in the background.
   if (!isShabbat(settings.timezone)) created += await runMissions(env);
 
-  // 8. Tasks: scheduled research and reports (one per pass).
+  // 8. Situations: "in yeshiva", "at events" — reminders tied to where you are, not deadlines.
+  if (!isShabbat(settings.timezone)) created += await runSituations(env);
+
+  // 9. Tasks: scheduled research and reports (one per pass).
   if (!isShabbat(settings.timezone)) created += await runDueRoutines(env);
   return { created };
 }

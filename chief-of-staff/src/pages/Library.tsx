@@ -1,15 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { BrainDump, Item, Memory } from "../../shared/types";
 import { api } from "../api";
 import { Card, Empty, ItemRow, timeAgo } from "../components/ui";
 
-export type LibraryTab = "ideas" | "people" | "memory" | "dumps";
-const TABS: [LibraryTab, string][] = [["ideas", "Ideas & notes"], ["people", "People"], ["memory", "Memory"], ["dumps", "Brain dumps"]];
+export type LibraryTab = "dump" | "ideas" | "people" | "memory" | "dumps";
+const TABS: [LibraryTab, string][] = [["dump", "Brain dump"], ["ideas", "Ideas"], ["people", "People"], ["memory", "Memory"]];
 const AREAS: [string, string][] = [["all", "All"], ["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]];
 
 /** Everything your Chief of Staff has organized, to browse: ideas, people, memories, past brain dumps. */
-export default function Library({ tab, onTab, onOpenItem, refreshKey }: {
-  tab: LibraryTab; onTab: (t: LibraryTab) => void; onOpenItem: (i: Item) => void; refreshKey: number;
+export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump }: {
+  tab: LibraryTab; onTab: (t: LibraryTab) => void; onOpenItem: (i: Item) => void; refreshKey: number; brainDump: ReactNode;
 }) {
   const [ideas, setIdeas] = useState<Item[]>([]);
   const [people, setPeople] = useState<Awaited<ReturnType<typeof api.people>>>([]);
@@ -34,6 +34,8 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey }: {
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm ${tab === k ? "bg-ink text-bg" : "bg-sunken text-muted"}`}>{label}</button>
         ))}
       </div>
+
+      {tab === "dump" && brainDump}
 
       {tab === "ideas" && (
         <Card title={`Ideas & notes (${shownIdeas.length})`}>

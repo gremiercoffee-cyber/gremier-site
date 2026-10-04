@@ -14,6 +14,10 @@ export interface RoutineRow {
   runs: { id: string; started_at: string; status: string; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
 }
 
+export interface SituationRow {
+  id: string; name: string; category: string | null; note: string; keywords: string; active: number; when: string;
+}
+
 export interface MissionRow {
   id: string; goal: string; category: string | null; status: string; steps: string; log: string;
   waiting_on_user: string | null; next_run_at: string | null; updated_at: string;
@@ -82,6 +86,9 @@ export const api = {
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
   people: () => request<Person[]>("GET", "/api/people"),
   missions: () => request<MissionRow[]>("GET", "/api/missions"),
+  situations: () => request<SituationRow[]>("GET", "/api/situations"),
+  saveSituation: (s: Record<string, unknown>) => request("POST", "/api/situations", s),
+  deleteSituation: (id: string) => request("DELETE", `/api/situations/${id}`),
   routines: () => request<RoutineRow[]>("GET", "/api/routines"),
   saveRoutine: (r: Record<string, unknown>) => request("POST", "/api/routines", r),
   deleteRoutine: (id: string) => request("DELETE", `/api/routines/${id}`),

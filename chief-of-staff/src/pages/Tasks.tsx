@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type RoutineRow, type RoutineSchedule } from "../api";
+import { api, type RoutineRow, type RoutineSchedule, type SituationRow } from "../api";
 import { Button, Card, Empty, Markdown, timeAgo } from "../components/ui";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -19,7 +19,11 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
 }) {
   const [list, setList] = useState<RoutineRow[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const load = () => api.routines().then(setList).catch(() => setList([]));
+  const [situations, setSituations] = useState<SituationRow[]>([]);
+  const load = () => {
+    api.routines().then(setList).catch(() => setList([]));
+    api.situations().then(setSituations).catch(() => {});
+  };
   useEffect(() => { load(); }, [refreshKey]);
 
   if (!list) return <p className="text-sm text-muted">Loading…</p>;
@@ -31,6 +35,27 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
       </p>
       <Button onClick={() => onAsk("Set up a recurring task: ")}>+ New task</Button>
       {list.length === 0 && <Empty>No tasks yet.</Empty>}
+
+      <Card title="Situations: reminders by time & place">
+        <p className="text-sm text-muted mb-2">
+          Reminders for when you're somewhere or doing something, e.g. "I'm in yeshiva Sun–Thu 9 to 1" or "at events, remind me to collect business cards".
+        </p>
+        {situations.length === 0 ? <Empty>None yet. Just tell me your routine.</Empty> : (
+          <ul className="divide-y divide-line">
+            {situations.map((s) => (
+              <li key={s.id} className="py-2.5 flex gap-2 items-start">
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[15px] font-medium ${s.active ? "" : "text-muted"}`}>{s.name}{s.category && <span className="text-muted font-normal"> · {({ coffee: "☕", yeshiva: "📚", personal: "🏠" } as Record<string, string>)[s.category]}</span>}</p>
+                  <p className="text-xs text-muted">{s.active ? s.when : "Paused"}{s.note ? ` · ${s.note}` : ""}</p>
+                </div>
+                <button className="text-xs text-accent" onClick={async () => { await api.saveSituation({ id: s.id, active: !s.active }); load(); }}>{s.active ? "Pause" : "Resume"}</button>
+                <button className="text-xs text-muted hover:text-danger" onClick={async () => { await api.deleteSituation(s.id); load(); }}>Delete</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button variant="soft" className="mt-2" onClick={() => onAsk("Set up a situation reminder: ")}>+ New situation</Button>
+      </Card>
       {list.map((r) => editing === r.id
         ? <Editor key={r.id} r={r} onDone={() => { setEditing(null); load(); }} />
         : <TaskCard key={r.id} r={r} onEdit={() => setEditing(r.id)} onChanged={load} onOpenReport={onOpenReport} />)}

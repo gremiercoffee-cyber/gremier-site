@@ -14,6 +14,7 @@ import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
+import { describeSituation, saveSituation, type Situation } from "./situations";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -217,6 +218,19 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Situations (time/place reminders) ---------------------------------------------
+route("GET", "/api/situations", async (_req, env) => {
+  const list = await all<Situation>(env, "SELECT * FROM situations ORDER BY active DESC, created_at");
+  return json(list.map((s) => ({ ...s, when: describeSituation(s) })));
+});
+route("POST", "/api/situations", async (req, env) => {
+  try { return json(await saveSituation(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("DELETE", "/api/situations/:id", async (_req, env, [id]) => {
+  await run(env, "DELETE FROM situations WHERE id = ?", id);
+  return json({ ok: true });
+});
+
 // ---- Tasks (recurring agent jobs) -----------------------------------------------------
 route("GET", "/api/routines", async (_req, env) => {
   const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY active DESC, created_at");

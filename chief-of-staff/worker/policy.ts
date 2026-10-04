@@ -17,6 +17,7 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "briefing":
     case "mission_ask": // a mission is stuck until the user answers
     case "routine_alert": // a task the user asked to be alerted about
+    case "situation":   // you're in yeshiva / at an event now: this is the moment
       return "now";
     case "overdue":
     case "headsup":
