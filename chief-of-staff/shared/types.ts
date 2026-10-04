@@ -123,6 +123,8 @@ export interface Dashboard {
   projects: Project[];
   counts: Record<string, number>;
   events: CalendarEvent[];
+  /** The time block the user is in right now, if any. */
+  now_block?: { id: string; name: string; category: string | null; until: string | null; count: number; items: { id: string; title: string }[] } | null;
 }
 
 export interface CalendarEvent {

@@ -36,11 +36,12 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
       <Button onClick={() => onAsk("Set up a recurring task: ")}>+ New task</Button>
       {list.length === 0 && <Empty>No tasks yet.</Empty>}
 
-      <Card title="Situations: reminders by time & place">
+      <Card title="Schedule: your time blocks">
         <p className="text-sm text-muted mb-2">
-          Reminders for when you're somewhere or doing something, e.g. "I'm in yeshiva Sun–Thu 9 to 1" or "at events, remind me to collect business cards".
+          Tell me your schedule and I'll remind you of the right things at the right time: "I'm in yeshiva Sun–Thu 9 to 1",
+          "I'm working on coffee from 2 to 6 today", or "remind me to ask Rabbi W during yeshiva".
         </p>
-        {situations.length === 0 ? <Empty>None yet. Just tell me your routine.</Empty> : (
+        {situations.length === 0 ? <Empty>No time blocks yet. Just tell me your schedule.</Empty> : (
           <ul className="divide-y divide-line">
             {situations.map((s) => (
               <li key={s.id} className="py-2.5 flex gap-2 items-start">
@@ -54,7 +55,7 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
             ))}
           </ul>
         )}
-        <Button variant="soft" className="mt-2" onClick={() => onAsk("Set up a situation reminder: ")}>+ New situation</Button>
+        <Button variant="soft" className="mt-2" onClick={() => onAsk("Add to my schedule: ")}>+ Add a time block</Button>
       </Card>
       {list.map((r) => editing === r.id
         ? <Editor key={r.id} r={r} onDone={() => { setEditing(null); load(); }} />

@@ -4,6 +4,7 @@ import { api } from "../api";
 import { DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
+import { startRecording } from "../voice";
 
 type LiveState = "off" | LiveStatus;
 
@@ -30,6 +31,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [live, setLive] = useState<LiveState>("off");
+  const [dictatingNow, setDictatingNow] = useState(false);
   const [dash, setDash] = useState<Dashboard | null>(null);
   const callRef = useRef<{ hangUp: () => void; levels: () => { input: number; output: number } } | null>(null);
   const levels = useRef(() => callRef.current?.levels() ?? { input: 0, output: 0 }).current;
@@ -132,7 +134,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-4 no-scrollbar">
         {!inConversation ? (
-          <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={live} dash={dash} onAct={act}
+          <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={dictatingNow ? "listening" : live} dash={dash} onAct={act}
             onNudge={(ask) => { onConversation(null); convoRef.current = null; setMessages([]); send(ask); }}
             onChanged={() => { api.dashboard().then(setDash).catch(() => {}); onDataChanged(); }}
             onReply={(n) => { onConversation(null); convoRef.current = null; setTyping(true); setInput(`About "${n.title}": `); }} />
@@ -149,7 +151,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
       <Composer
         live={live} typing={typing} setTyping={setTyping} input={input} setInput={setInput} sending={sending}
         serverTranscription={serverTranscription} onSend={(t, mode) => { setInput(""); send(t, mode); }}
-        onTalk={startLive} onEnd={stopLive} levels={levels}
+        onTalk={startLive} onEnd={stopLive} levels={levels} onDictating={setDictatingNow}
       />
     </div>
   );
@@ -180,6 +182,20 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
           <p className="text-muted text-sm mt-0.5">{live === "off" ? "I'm here. Tell me what's going on." : "I'm listening."}</p>
         </div>
       </div>
+
+      {dash?.now_block && (
+        <details className="rounded-2xl bg-accent/10 px-4 py-2.5">
+          <summary className="cursor-pointer text-[14px] list-none flex items-center gap-2">
+            <span className="text-accent font-medium">Now:</span>
+            <span className="flex-1 truncate">{({ coffee: "☕ ", yeshiva: "📚 ", personal: "🏠 " } as Record<string, string>)[dash.now_block.category ?? ""] ?? ""}{dash.now_block.name}
+              {dash.now_block.until && <span className="text-muted"> · until {dash.now_block.until}</span>}</span>
+            {dash.now_block.count > 0 && <span className="text-xs text-muted">{dash.now_block.count} thing{dash.now_block.count > 1 ? "s" : ""}</span>}
+          </summary>
+          {dash.now_block.items.length > 0 && (
+            <ul className="mt-2 space-y-1 text-[14px]">{dash.now_block.items.map((i) => <li key={i.id}>• {i.title}</li>)}</ul>
+          )}
+        </details>
+      )}
 
       {upcoming.length > 0 && (
         <div>
@@ -283,11 +299,46 @@ function Orb({ state }: { state: LiveState }) {
   );
 }
 
-function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, levels }: {
+function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, levels, onDictating }: {
   live: LiveState; typing: boolean; setTyping: (b: boolean) => void; input: string; setInput: (s: string | ((v: string) => string)) => void;
   sending: boolean; serverTranscription: boolean; onSend: (t: string, mode: "text" | "dictation") => void; onTalk: () => void; onEnd: () => void;
-  levels: () => { input: number; output: number };
+  levels: () => { input: number; output: number }; onDictating: (on: boolean) => void;
 }) {
+  const [dictating, setDictatingRaw] = useState<"off" | "recording" | "working">("off");
+  const [dictErr, setDictErr] = useState("");
+  const recRef = useRef<{ stop: () => Promise<Blob>; level: () => number } | null>(null);
+  const setDictating = (v: "off" | "recording" | "working") => { setDictatingRaw(v); onDictating(v !== "off"); };
+  const dictLevels = useRef(() => ({ input: recRef.current?.level() ?? 0, output: 0 })).current;
+  const startDictation = async () => {
+    setDictErr("");
+    try { recRef.current = await startRecording(); setDictating("recording"); }
+    catch { setDictErr("Microphone permission denied."); }
+  };
+  const finishDictation = async (send: boolean) => {
+    const r = recRef.current;
+    recRef.current = null;
+    if (!r) { setDictating("off"); return; }
+    setDictating("working");
+    try {
+      const blob = await r.stop();
+      if (send) { const { text } = await api.transcribe(blob); if (text.trim()) onSend(text.trim(), "dictation"); }
+    } catch (e) { setDictErr((e as Error).message); }
+    setDictating("off");
+  };
+  if (dictating !== "off") {
+    return (
+      <div className="pb-2 flex flex-col items-center">
+        <LiveOrb state={dictating === "working" ? "thinking" : "recording"} soft levels={dictLevels} size={88} />
+        <p className="-mt-2 text-[15px] font-medium">{dictating === "working" ? "Writing it down…" : "Listening…"}</p>
+        {dictating === "recording" && (
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => finishDictation(false)} className="h-10 px-5 rounded-full text-muted text-sm">Cancel</button>
+            <button onClick={() => finishDictation(true)} className="h-10 px-6 rounded-full bg-accent text-accent-ink font-medium text-sm">Done</button>
+          </div>
+        )}
+      </div>
+    );
+  }
   const LABELS: Record<LiveState, string> = { off: "", connecting: "Connecting…", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…", ended: "" };
   if (live !== "off") {
     return (
@@ -320,7 +371,12 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
   return (
     <div className="pb-2 flex items-end justify-center gap-8">
       <div className="flex flex-col items-center gap-1.5">
-        <DictateButton compact serverTranscription={serverTranscription} onText={(t) => onSend(t, "dictation")} />
+        {serverTranscription
+          ? <button onClick={startDictation} aria-label="Dictate" className="h-12 w-12 rounded-full grid place-items-center border bg-surface border-line text-muted">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h10M4 12h16M4 17h7" /><circle cx="18" cy="7" r="2" /></svg>
+            </button>
+          : <DictateButton compact serverTranscription={serverTranscription} onText={(t) => onSend(t, "dictation")} />}
+        {dictErr && <span className="sr-only">{dictErr}</span>}
         <span className="text-[11px] text-muted">Dictate</span>
       </div>
       <div className="flex flex-col items-center gap-1.5">

@@ -11,7 +11,7 @@ import { findPeople, memoryContext, noteContact, recallMemories, savePerson } fr
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
 import { missionsSummary, startMission, updateMission } from "./missions";
 import { routinesSummary, saveRoutine } from "./routines";
-import { saveSituation, situationsSummary } from "./situations";
+import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -26,7 +26,13 @@ Areas: everything belongs to one of three areas: coffee (Gremier Coffee business
 
 Reminders can be at ANY time, not only at deadlines: for "remind me sometime this afternoon", pick a sensible time yourself and create a reminder with that due_at.
 
-Situations: when the user tells you their routine or where they'll be ("I'm in yeshiva Sun-Thu 9 to 1", "when I'm at events remind me to collect business cards"), save a situation with save_situation so they're reminded at that moment of what belongs there: a time window (weekdays + start/end, mode start or random) and/or calendar keywords (fires when a matching calendar entry starts), an area (category) and/or keywords for which open items to surface, and an optional standing note. Also remember the routine itself as a memory. Confirm in one line.
+Schedule (time blocks): the user's day is made of blocks of time devoted to an area or activity. Keep it up to date with save_time_block:
+- Recurring: "I'm in yeshiva Sun-Thu 9 to 1" → name "In yeshiva", weekdays, start/end, category yeshiva.
+- One-off: "I'm working on coffee from 2 to 6 today" → name "Coffee time", date (YYYY-MM-DD), start/end, category coffee. It clears itself after that day.
+- Calendar-triggered: "when I'm at events remind me to collect business cards" → calendar_keywords + note.
+At the start of a block (or a random moment in it) the user is reminded of what belongs there: tasks attached to the block, then open items in its area/keywords (intuited), plus any standing note.
+When the user wants something reminded during a block ("remind me to ask Rabbi W during yeshiva", "do this in coffee time"), create or update the item with block set to that block's name. If no such block exists yet, ask when it is (or create it).
+The context tells you which block the user is in RIGHT NOW: use it when they ask what to do next.
 
 Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
@@ -108,7 +114,7 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   const missions = await missionsSummary(env);
   if (missions) lines.push("", "## Missions (working in the background)", missions);
   const situations = await situationsSummary(env);
-  if (situations) lines.push("", "## Situations (time/place reminders)", situations);
+  if (situations) lines.push("", "## Schedule (time blocks)", situations);
   const tasks = await routinesSummary(env);
   if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
@@ -124,7 +130,18 @@ const itemProps = {
   person: { type: "string", description: "Who it involves (waiting on / committed to)" },
   project: { type: "string", description: "Project name or id" },
   category: { type: "string", enum: ["coffee", "yeshiva", "personal"], description: "Life area. OMIT when not clearly one of them: the user will be asked." },
+  block: { type: "string", description: 'Time block to remind about this during (name or id, e.g. "In yeshiva"); "none" to detach' },
 };
+
+/** Attach an item to a time block (or detach with "none"). */
+async function attachBlock(env: Env, itemId: string, ref: unknown) {
+  if (ref === undefined || ref === null || ref === "") return null;
+  if (String(ref).toLowerCase() === "none") { await run(env, "UPDATE items SET block_id = NULL WHERE id = ?", itemId); return null; }
+  const b = await resolveBlock(env, String(ref));
+  if (!b) throw new Error(`No time block called "${ref}" yet. Ask the user when it is, then create it with save_time_block.`);
+  await run(env, "UPDATE items SET block_id = ? WHERE id = ?", b.id, itemId);
+  return b.name;
+}
 
 export function assistantTools(env: Env, source: string, notes: ActionNote[]): ToolDef[] {
   const note = (tool: string, summary: string) => notes.push({ tool, summary });
@@ -164,8 +181,8 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
-      name: "save_situation",
-      description: "Create or change a situation reminder: fires when the user is somewhere/doing something (weekly time window and/or matching calendar entries), listing open items for that area/keywords plus a standing note. Pass id to change one; active=false pauses it.",
+      name: "save_time_block",
+      description: "Create or change a time block in the user's schedule: recurring (weekdays) or one-off (date), with start/end times and an area; or calendar-triggered (calendar_keywords). At its start the user is reminded of attached tasks and open items in that area/keywords plus a standing note. Pass id to change one; active=false pauses it.",
       input_schema: {
         type: "object",
         properties: {
@@ -173,7 +190,8 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
           keywords: { type: "string", description: "comma separated words; open items mentioning them are included" },
           note: { type: "string", description: "standing reminder included every time" },
-          weekdays: { type: "array", items: { type: "integer" }, description: "0=Sunday … 6=Saturday" },
+          weekdays: { type: "array", items: { type: "integer" }, description: "Recurring: 0=Sunday … 6=Saturday" },
+          date: { type: "string", description: "One-off: YYYY-MM-DD (use today's local date for 'today')" },
           start_time: { type: "string", description: "HH:MM" }, end_time: { type: "string", description: "HH:MM" },
           mode: { type: "string", enum: ["start", "random"], description: "remind at the start, or at a random moment in the window" },
           calendar_keywords: { type: "string", description: 'comma separated; fires when a calendar entry with one of these in its title starts ("*" = any entry)' },
@@ -182,7 +200,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
       handler: async (input) => {
         const s = await saveSituation(env, input);
-        note("save_situation", `Situation "${s.name}": ${s.when}`);
+        note("save_time_block", `Schedule: ${s.name}, ${s.when}`);
         return s;
       },
     },
@@ -401,7 +419,8 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async (input) => {
         const project_id = await resolveProjectId(env, input.project as string);
         const item = await createItem(env, { ...(input as object), project_id, source } as never);
-        note("create_item", `Added ${item.kind}: ${item.title}`);
+        const block = await attachBlock(env, item.id, input.block);
+        note("create_item", `Added ${item.kind}: ${item.title}${block ? ` (during ${block})` : ""}`);
         return { id: item.id, kind: item.kind, due_at: item.due_at };
       },
     },
@@ -417,6 +436,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const patch: Record<string, unknown> = { ...input };
         if (input.project !== undefined) patch.project_id = await resolveProjectId(env, input.project as string);
         const item = await updateItem(env, String(input.id), patch);
+        await attachBlock(env, item.id, input.block);
         note("update_item", input.status === "done" ? `Completed: ${item.title}` : `Updated: ${item.title}`);
         return { id: item.id, status: item.status, due_at: item.due_at };
       },

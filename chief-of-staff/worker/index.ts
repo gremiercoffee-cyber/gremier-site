@@ -14,7 +14,7 @@ import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
-import { describeSituation, saveSituation, type Situation } from "./situations";
+import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -66,7 +66,9 @@ route("GET", "/api/dashboard", async (_req, env) => {
        WHERE hidden = 0 AND ((all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?))
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
+  const nowBlock = await currentBlock(env);
   const data: Dashboard = {
+    now_block: nowBlock,
     today, overdue, waiting, pending, projects, events,
     nudges: nudges.map((n) => ({ ...n, actions: actionsFor(n) })),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
