@@ -12,6 +12,7 @@ import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } 
 import { missionsSummary, startMission, updateMission } from "./missions";
 import { routinesSummary, saveRoutine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
+import { saveTracker, trackerEntries, trackersSummary } from "./trackers";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -33,6 +34,8 @@ Schedule (time blocks): the user's day is made of blocks of time devoted to an a
 At the start of a block (or a random moment in it) the user is reminded of what belongs there: tasks attached to the block, then open items in its area/keywords (intuited), plus any standing note.
 When the user wants something reminded during a block ("remind me to ask Rabbi W during yeshiva", "do this in coffee time"), create or update the item with block set to that block's name. If no such block exists yet, ask when it is (or create it).
 The context tells you which block the user is in RIGHT NOW: use it when they ask what to do next.
+
+Trackers: when the user wants something collected from WhatsApp continuously ("track everything the rabbis say about X", "collect all customer complaints about delivery"), create one with save_tracker: a name, the topic in plain words, keywords in Hebrew AND English (include spelling variants and related terms — be generous), optionally people/groups to limit it to, which WhatsApp (personal/business/both), and backfill_days if they want past messages too (WhatsApp Web only has recent history loaded). Every matching message goes into one Google Doc and the app. To analyze, call get_tracker_entries and give: the main positions/answers, who said what, agreements, disagreements, open questions. To the user there are just "tasks": one-time (a goal with an end → start_mission) or repeating (on a schedule → save_task); always call both "tasks" when talking to them. A tracker collects continuously.
 
 Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
@@ -115,6 +118,8 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   if (missions) lines.push("", "## Missions (working in the background)", missions);
   const situations = await situationsSummary(env);
   if (situations) lines.push("", "## Schedule (time blocks)", situations);
+  const trackers = await trackersSummary(env);
+  if (trackers) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
   const tasks = await routinesSummary(env);
   if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
@@ -203,6 +208,34 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         note("save_time_block", `Schedule: ${s.name}, ${s.when}`);
         return s;
       },
+    },
+    {
+      name: "save_tracker",
+      description: "Create or change a WhatsApp tracker that continuously collects messages on a topic into one Google Doc and the app. Pass id to change one; active=false pauses it.",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" }, name: { type: "string" },
+          topic: { type: "string", description: "What to collect, in plain words (used to filter out passing mentions)" },
+          keywords: { type: "string", description: "Comma separated, Hebrew and English, generous (variants, related terms)" },
+          people: { type: "string", description: "Optional: only messages from/in these people or groups (comma separated, partial names ok)" },
+          accounts: { type: "string", enum: ["personal", "business", "both"] },
+          include_mine: { type: "boolean", description: "Also collect the user's own messages" },
+          backfill_days: { type: "integer", description: "Also search this many past days of loaded WhatsApp history (0 = only new)" },
+          active: { type: "boolean" },
+        },
+      },
+      handler: async (input) => {
+        const t = await saveTracker(env, input);
+        note("save_tracker", `Tracker "${t.name}" ${t.active ? "collecting" : "paused"}${t.doc_link ? " · Doc created" : ""}`);
+        return { id: t.id, name: t.name, keywords: t.keywords, people: t.people, doc_link: t.doc_link };
+      },
+    },
+    {
+      name: "get_tracker_entries",
+      description: "Everything a tracker has collected (by name or id), to analyze or answer questions about it.",
+      input_schema: { type: "object", properties: { tracker: { type: "string" } }, required: ["tracker"] },
+      handler: async (input) => trackerEntries(env, String(input.tracker)),
     },
     {
       name: "save_task",

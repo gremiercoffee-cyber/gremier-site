@@ -15,6 +15,7 @@ import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
+import { capture, markBackfilled, saveTracker, trackerEntries, trackersForBridge, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -224,6 +225,24 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+// ---- Trackers ----------------------------------------------------------------------
+route("GET", "/api/trackers", async (_req, env) =>
+  json(await all<Tracker & { n: number; last: string | null }>(env,
+    `SELECT t.*, (SELECT COUNT(*) FROM tracker_entries e WHERE e.tracker_id = t.id) AS n,
+            (SELECT MAX(said_at) FROM tracker_entries e WHERE e.tracker_id = t.id) AS last
+     FROM trackers t ORDER BY t.active DESC, t.created_at DESC`)));
+route("POST", "/api/trackers", async (req, env) => {
+  try { return json(await saveTracker(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("GET", "/api/trackers/:id/entries", async (_req, env, [id]) => json(await trackerEntries(env, id, 500)));
+route("DELETE", "/api/trackers/:id", async (_req, env, [id]) => {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM tracker_entries WHERE tracker_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM trackers WHERE id = ?").bind(id),
+  ]);
+  return json({ ok: true });
+});
+
 // ---- Situations (time/place reminders) ---------------------------------------------
 route("GET", "/api/situations", async (_req, env) => {
   const list = await all<Situation>(env, "SELECT * FROM situations ORDER BY active DESC, created_at");
@@ -517,6 +536,16 @@ export default {
         const raw = (await req.json().catch(() => ({}))) as { account?: string };
         const key = raw.account === "business" ? "addon_diag_business" : "addon_diag";
         await run(env, "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, JSON.stringify(raw).slice(0, 2000));
+        return json({ ok: true });
+      }
+      if (url.pathname === "/api/bridge/trackers" && req.method === "GET") {
+        return json(await trackersForBridge(env, url.searchParams.get("account") === "business" ? "business" : "personal"));
+      }
+      if (url.pathname === "/api/bridge/track" && req.method === "POST") return json(await capture(env, await req.json()));
+      const bf = url.pathname.match(/^\/api\/bridge\/trackers\/([\w-]+)\/backfilled$/);
+      if (bf && req.method === "POST") {
+        const b = (await req.json().catch(() => ({}))) as { account?: string };
+        await markBackfilled(env, bf[1], b.account === "business" ? "business" : "personal");
         return json({ ok: true });
       }
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));

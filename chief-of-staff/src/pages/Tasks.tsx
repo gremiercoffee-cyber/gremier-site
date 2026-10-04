@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type RoutineRow, type RoutineSchedule, type SituationRow } from "../api";
 import { Button, Card, Empty, Markdown, timeAgo } from "../components/ui";
+import Missions from "./Missions";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEPTHS: { id: string; label: string; detail: string; cost: number }[] = [
@@ -30,11 +31,12 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted px-1">
-        Jobs I do for you on a schedule, like "every Sunday, a report on the coffee market in Israel" or "every morning, check green-bean prices".
-        Just tell me what you want; you can fine-tune it here.
+        Things I work on for you. <b>One-time</b>: a goal I work through until it's done ("get every rabbi's list by Monday").
+        <b> Repeating</b>: something I do on a schedule ("every Sunday, a report on the coffee market"). Just tell me what you need.
       </p>
-      <Button onClick={() => onAsk("Set up a recurring task: ")}>+ New task</Button>
-      {list.length === 0 && <Empty>No tasks yet.</Empty>}
+      <Button onClick={() => onAsk("New task: ")}>+ New task</Button>
+      <Missions embedded refreshKey={refreshKey} onAsk={onAsk} />
+      {list.length === 0 && <Empty>No repeating tasks yet.</Empty>}
 
       <Card title="Schedule: your time blocks">
         <p className="text-sm text-muted mb-2">
@@ -71,7 +73,7 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
   const depth = DEPTHS.find((d) => d.id === r.depth) ?? DEPTHS[1];
   const monthly = depth.cost * runsPerMonth(r.schedule);
   return (
-    <Card title={<span>{r.active ? "Active" : "Paused"} · {depth.label}</span>}>
+    <Card title={<span>Repeating · {r.active ? "Active" : "Paused"} · {depth.label}</span>}>
       <p className="font-display text-[20px] leading-snug">{r.name}</p>
       <p className="text-sm text-muted mt-0.5">
         {r.active ? r.schedule_text : "Paused"} · results {DELIVER.find(([k]) => k === r.deliver)?.[1].toLowerCase()} · ~${monthly < 1 ? monthly.toFixed(2) : monthly.toFixed(1)}/month

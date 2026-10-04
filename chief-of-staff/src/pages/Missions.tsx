@@ -6,7 +6,7 @@ const parse = <T,>(s: string, d: T): T => { try { return JSON.parse(s) as T; } c
 const AREA: Record<string, string> = { coffee: "☕ Coffee", yeshiva: "📚 Yeshiva", personal: "🏠 Personal" };
 
 /** Goals your Chief of Staff is working through in the background. */
-export default function Missions({ onAsk, refreshKey }: { onAsk: (text: string) => void; refreshKey: number }) {
+export default function Missions({ onAsk, refreshKey, embedded }: { onAsk: (text: string) => void; refreshKey: number; embedded?: boolean }) {
   const [missions, setMissions] = useState<MissionRow[] | null>(null);
   const load = () => api.missions().then(setMissions).catch(() => setMissions([]));
   useEffect(() => { load(); }, [refreshKey]);
@@ -16,19 +16,15 @@ export default function Missions({ onAsk, refreshKey }: { onAsk: (text: string) 
   if (!missions) return <p className="text-sm text-muted">Loading…</p>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted px-1">
-        Hand me a goal that takes a few steps over days, like "get every rabbi's list of guys who need help by Monday", and I'll work on it in the background,
-        report in your briefing, and only ask when I'm stuck.
-      </p>
-      <Button onClick={() => onAsk("I want you to take on a mission: ")}>+ New mission</Button>
-      {missions.length === 0 && <Empty>No missions yet.</Empty>}
+      {!embedded && <Button onClick={() => onAsk("New task: ")}>+ New task</Button>}
+      {missions.length === 0 && !embedded && <Empty>No one-time tasks yet.</Empty>}
       {missions.map((m) => {
         const steps = parse<{ id: string; text: string; status: string; note?: string }[]>(m.steps, []);
         const log = parse<{ at: string; text: string }[]>(m.log, []);
         const done = steps.filter((s) => s.status === "done").length;
         const finished = m.status === "done" || m.status === "cancelled";
         return (
-          <Card key={m.id} title={<span>{m.status === "active" ? "In progress" : m.status === "paused" ? "Paused" : m.status === "done" ? "Done" : "Cancelled"}{m.category ? ` · ${AREA[m.category] ?? m.category}` : ""}</span>}>
+          <Card key={m.id} title={<span>One-time · {m.status === "active" ? "In progress" : m.status === "paused" ? "Paused" : m.status === "done" ? "Done" : "Cancelled"}{m.category ? ` · ${AREA[m.category] ?? m.category}` : ""}</span>}>
             <p className={`font-display text-[20px] leading-snug ${finished ? "text-muted" : ""}`}>{m.goal}</p>
             {steps.length > 0 && (
               <div className="mt-2 h-1.5 rounded-full bg-sunken overflow-hidden">
@@ -39,7 +35,7 @@ export default function Missions({ onAsk, refreshKey }: { onAsk: (text: string) 
               <div className="mt-3 rounded-2xl bg-accent/10 px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-accent">Needs your answer</p>
                 <p className="text-[15px] mt-1">{m.waiting_on_user}</p>
-                <Button className="mt-2" onClick={() => onAsk(`About my mission "${m.goal}", your question "${m.waiting_on_user}": `)}>Answer…</Button>
+                <Button className="mt-2" onClick={() => onAsk(`About my task "${m.goal}", your question "${m.waiting_on_user}": `)}>Answer…</Button>
               </div>
             )}
             <ul className="mt-3 space-y-1.5">
@@ -65,8 +61,8 @@ export default function Missions({ onAsk, refreshKey }: { onAsk: (text: string) 
                 {m.status === "active"
                   ? <Button variant="soft" onClick={() => set(m.id, "paused")}>Pause</Button>
                   : <Button variant="soft" onClick={() => set(m.id, "active")}>Resume</Button>}
-                <Button variant="soft" onClick={() => onAsk(`About my mission "${m.goal}": `)}>Tell it something</Button>
-                <Button variant="danger" onClick={() => { if (window.confirm("Cancel this mission?")) set(m.id, "cancelled"); }}>Cancel</Button>
+                <Button variant="soft" onClick={() => onAsk(`About my task "${m.goal}": `)}>Tell it something</Button>
+                <Button variant="danger" onClick={() => { if (window.confirm("Cancel this task?")) set(m.id, "cancelled"); }}>Cancel</Button>
               </div>
             )}
           </Card>

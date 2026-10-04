@@ -57,8 +57,50 @@
     send({ type: "replied", payload: { chat: m.chat } });
   }
 
+  // ---- Trackers: collect every message on a topic (downloaded from the Chief of Staff) ----
+  let trackers = [];
+  let backfillPending = [];
+  const lc = (s) => (s || "").toLowerCase();
+  function matches(t, m) {
+    if (m.fromMe && !t.include_mine) return false;
+    const text = lc(m.text);
+    if (!text) return false;
+    const kwOk = !t.keywords.length || t.keywords.some((k) => text.includes(k));
+    const who = lc(`${m.chat} ${m.sender}`);
+    const peopleOk = !t.people.length || t.people.some((p) => who.includes(p));
+    return kwOk && peopleOk;
+  }
+  function track(m, only) {
+    for (const t of trackers) {
+      if (only && !only.includes(t.id)) continue;
+      if (!matches(t, m)) continue;
+      send({ type: "track", payload: { tracker_id: t.id, chat: m.chat, sender: m.fromMe ? "Me" : m.sender, text: m.text,
+        at: new Date((m.t || Date.now() / 1000) * 1000).toISOString() } });
+    }
+  }
+  async function refreshTrackers() {
+    const list = await send({ type: "trackers" });
+    if (!Array.isArray(list)) return;
+    trackers = list;
+    const want = list.filter((t) => t.backfill_days > 0);
+    if (want.length && mode === "store" && !backfillPending.length) {
+      backfillPending = want.map((t) => t.id);
+      const days = Math.max(...want.map((t) => t.backfill_days));
+      window.postMessage({ source: "cos-content", kind: "history", since: Date.now() / 1000 - days * 86400, requestId: Date.now() }, location.origin);
+    }
+  }
+  setTimeout(refreshTrackers, 8000);           // once WhatsApp has loaded
+  setInterval(refreshTrackers, 5 * 60_000);    // new trackers apply within minutes
+
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || e.data.source !== "cos-reader") return;
+    if (e.data.kind === "history") { track(e.data.message, backfillPending); return; }
+    if (e.data.kind === "history_done") {
+      for (const id of backfillPending) send({ type: "backfilled", id });
+      send({ type: "seen", note: `Searched ${e.data.count} loaded messages for trackers` });
+      backfillPending = [];
+      return;
+    }
     if (e.data.kind === "status") {
       status(e.data.mode);
       if (e.data.mode === "unavailable") startListMode();
@@ -66,6 +108,7 @@
       send({ type: "counts", counts: e.data.counts });
     } else if (e.data.kind === "message") {
       const m = e.data.message;
+      track(m);
       m.fromMe ? onMine(m) : onIncoming(m);
     }
   });

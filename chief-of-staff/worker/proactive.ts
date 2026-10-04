@@ -13,6 +13,7 @@ import { isShabbat, justAfterShabbat } from "./shabbat";
 import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines } from "./routines";
 import { runSituations } from "./situations";
+import { trackersToday } from "./trackers";
 
 const WAITING_NUDGE_DAYS = 4;
 const POSTPONED_AFTER = 3;
@@ -214,8 +215,10 @@ async function checkIns(env: Env, tz: string) {
       all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND kind IN ('task','commitment','reminder') AND due_at IS NOT NULL AND due_at <= ?", now()),
       waitingOnYou(),
     ]);
+    const collected = await trackersToday(env, dayStart);
     const lines = [
       doneToday.length ? `✓ ${doneToday.length} done today` : "",
+      ...collected.map((c) => `🗂 ${c.name}: ${c.n} new message${c.n > 1 ? "s" : ""} collected`),
       overdue.length ? `${overdue.length} still open from today: ${overdue.slice(0, 3).map((i) => i.title).join(", ")}${overdue.length > 3 ? "…" : ""}` : "",
       w.length ? `${w.length} waiting for a reply: ${names(w)}` : "",
     ].filter(Boolean);

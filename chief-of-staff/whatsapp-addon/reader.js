@@ -80,6 +80,25 @@
     return true;
   }
 
+  // History search for trackers: walk the messages WhatsApp Web already has loaded (read-only).
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data || e.data.source !== "cos-content" || e.data.kind !== "history") return;
+    const col = modules();
+    const since = Number(e.data.since) || 0;
+    let n = 0;
+    try {
+      const all = col && (typeof col.Msg.getModelsArray === "function" ? col.Msg.getModelsArray() : col.Msg._models || col.Msg.models || []);
+      for (const msg of all || []) {
+        if (!msg || (Number(msg.t) || 0) < since) continue;
+        const d = describe(col, msg);
+        if (!d.chatId || d.chatId === "status@broadcast" || !d.text) continue;
+        post({ kind: "history", message: d });
+        n++;
+      }
+    } catch { /* never disturb WhatsApp */ }
+    post({ kind: "history_done", requestId: e.data.requestId, count: n });
+  });
+
   // WhatsApp Web loads its modules a while after the page; try for ~2 minutes, then give up.
   let tries = 0;
   const timer = setInterval(() => {

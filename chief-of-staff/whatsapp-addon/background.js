@@ -36,6 +36,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === "seen") { remember({ last_seen: `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ${msg.note}` }); reply({ ok: true }); return; }
   if (msg.type === "counts") { remember({ counts: msg.counts }); reply({ ok: true }); return; }
   if (msg.type === "status") { remember({ mode: msg.mode, mode_at: Date.now() }); reply({ ok: true }); return; }
+  if (msg.type === "trackers") {
+    account().then((a) => fetch(`${COS_CONFIG.api_base.replace(/\/$/, "")}/api/bridge/trackers?account=${a}`, { headers: { "x-bridge-key": COS_CONFIG.bridge_key } }))
+      .then((r) => r.json()).then(reply).catch(() => reply([]));
+    return true; // async reply
+  }
+  if (msg.type === "track") {
+    call("/api/bridge/track", msg.payload)
+      .then((res) => { if (res.kept) remember({ last_event: `Tracker: saved a message from ${msg.payload.sender}` }); })
+      .catch(() => {});
+    reply({ ok: true });
+    return;
+  }
+  if (msg.type === "backfilled") {
+    account().then((a) => call(`/api/bridge/trackers/${msg.id}/backfilled`, { account: a })).catch(() => {});
+    reply({ ok: true });
+    return;
+  }
   if (msg.type === "incoming" || msg.type === "replied") {
     const path = msg.type === "incoming" ? "/api/bridge/incoming" : "/api/bridge/replied";
     call(path, msg.payload)

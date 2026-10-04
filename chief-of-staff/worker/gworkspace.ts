@@ -129,3 +129,14 @@ export async function shareFile(env: Env, fileId: string, email: string, role: "
   }
   throw new Error("Couldn't share that file from any connected account.");
 }
+
+/** Append plain text at the end of a Google Doc (used by Trackers). */
+export async function appendToDoc(env: Env, docId: string, text: string, account?: string) {
+  const { token } = await pickAccount(env, account);
+  const doc = await g<{ body: { content: { endIndex: number }[] } }>(token,
+    `https://docs.googleapis.com/v1/documents/${docId}?fields=body.content(endIndex)`);
+  const end = Math.max(1, (doc.body.content.at(-1)?.endIndex ?? 2) - 1);
+  await g(token, `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
+    method: "POST", body: JSON.stringify({ requests: [{ insertText: { location: { index: end }, text } }] }),
+  });
+}

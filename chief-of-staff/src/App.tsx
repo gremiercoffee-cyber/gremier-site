@@ -11,7 +11,6 @@ import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
 import Library, { type LibraryTab } from "./pages/Library";
-import Missions from "./pages/Missions";
 import Replies from "./pages/Replies";
 import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
@@ -114,7 +113,7 @@ export default function App() {
 
   if (!authed) return <Login health={health} onDone={() => setAuthed(true)} />;
 
-  const go = (v: View) => { setView(v); setDrawer(false); };
+  const go = (v: View) => { setView(v === "missions" ? "tasks" : v); setDrawer(false); };
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
   const openItem = (item: Item) => setSheet({ item });
   const current = conversations.find((c) => c.id === conversationId);
@@ -152,18 +151,16 @@ export default function App() {
         )}
         {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
         {view === "projects" && <Projects onOpenItem={openItem} refreshKey={refreshKey} />}
-        {(view === "tasks" || view === "missions") && (
-          <Switch value={view} onChange={(v) => setView(v as View)} options={[["tasks", "Recurring"], ["missions", "Missions"]]} />
-        )}
+
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
         {view === "tasks" && <Tasks refreshKey={refreshKey} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
-        {view === "missions" && <Missions refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => { setTyping(p); }, 0); }} />}
         {(view === "library" || view === "dump") && (
           <Library tab={view === "dump" ? "dump" : libraryTab} onTab={(t) => { setLibraryTab(t); setView("library"); }} onOpenItem={openItem} refreshKey={refreshKey}
-            brainDump={<BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />} />
+            brainDump={<BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />}
+            onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />
         )}
         {view === "settings" && settings && (
           <Settings settings={settings} onSaved={setSettings}
@@ -185,7 +182,7 @@ export default function App() {
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
               <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
               <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
-              <DrawerItem active={view === "tasks" || view === "missions"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & missions" />
+              <DrawerItem active={view === "tasks" || view === "missions"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks" />
               <DrawerItem active={view === "library" || view === "dump"} onClick={() => go("library")} icon={<path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 7h6" />} label="Library" />
             </div>
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}

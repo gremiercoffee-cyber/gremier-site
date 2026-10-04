@@ -128,7 +128,7 @@ async function workOn(env: Env, m: Mission) {
         const q = String(input.question).slice(0, 300);
         await run(env, "UPDATE missions SET waiting_on_user = ?, updated_at = ? WHERE id = ?", q, now(), m.id);
         await addLog(env, m.id, `Asked you: ${q}`);
-        await notify(env, "mission_ask", `Mission: ${m.goal.slice(0, 60)}`, q);
+        await notify(env, "mission_ask", `Task: ${m.goal.slice(0, 60)}`, q);
         return { ok: true, note: "Question sent. Stop now; the mission resumes when the user answers." };
       },
     },
@@ -139,7 +139,7 @@ async function workOn(env: Env, m: Mission) {
       handler: async (input) => {
         await run(env, "UPDATE missions SET status = 'done', updated_at = ? WHERE id = ?", now(), m.id);
         await addLog(env, m.id, `Done: ${input.summary}`);
-        await notify(env, "mission_done", `Mission complete: ${m.goal.slice(0, 60)}`, String(input.summary).slice(0, 200));
+        await notify(env, "mission_done", `Task done: ${m.goal.slice(0, 60)}`, String(input.summary).slice(0, 200));
         return { ok: true };
       },
     },
@@ -163,7 +163,7 @@ ${log.map((l) => `- ${l.at.slice(0, 16)} ${l.text}`).join("\n")}`;
   });
   if (notes.length) await addLog(env, m.id, notes.map((x) => x.summary).join(" · "));
   // Progress lands in the next briefing rather than buzzing (policy: mission_progress is "later").
-  if (notes.length) await notify(env, "mission_progress", `Mission: ${m.goal.slice(0, 60)}`, notes.map((x) => x.summary).join(" · ").slice(0, 300));
+  if (notes.length) await notify(env, "mission_progress", `Task: ${m.goal.slice(0, 60)}`, notes.map((x) => x.summary).join(" · ").slice(0, 300));
   return result.text;
 }
 
