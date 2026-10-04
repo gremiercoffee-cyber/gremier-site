@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+}
+
+:root {
+  --bg: #f7f5f0;
+  --surface: #ffffff;
+  --sunken: #efece5;
+  --ink: #1f1e1c;
+  --muted: #74716b;
+  --line: #e4e0d7;
+  --accent: #d48a1f;
+  --accent-ink: #ffffff;
+  --danger: #c2412d;
+  --ok: #3f7d4e;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --surface: #1f1f1d; --sunken: #262624; --ink: #f0eee9; --muted: #a09d96;
+    --line: #33322f; --accent: #e9a23b; --accent-ink: #1a1203; --danger: #ef6b55; --ok: #6fb07f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151514; --surface: #1f1f1d; --sunken: #262624; --ink: #f0eee9; --muted: #a09d96;
+  --line: #33322f; --accent: #e9a23b; --accent-ink: #1a1203; --danger: #ef6b55; --ok: #6fb07f;
+  color-scheme: dark;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.prose-chat p + p { margin-top: 0.5rem; }
+.prose-chat ul { list-style: disc; padding-left: 1.25rem; margin: 0.25rem 0; }
+.prose-chat ol { list-style: decimal; padding-left: 1.25rem; margin: 0.25rem 0; }
+@keyframes pulse-ring { 0% { transform: scale(1); opacity: .6 } 100% { transform: scale(1.8); opacity: 0 } }
+.pulse-ring::before { content: ""; position: absolute; inset: 0; border-radius: 9999px; background: var(--accent); animation: pulse-ring 1.4s ease-out infinite; }

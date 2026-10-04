@@ -1,0 +1,288 @@
+/** The single Chief of Staff assistant: prompt, context assembly and tools over the user's data. */
+import type { ActionNote, Item, Memory, Message, Project } from "../shared/types";
+import type { Env } from "./env";
+import { getProvider, type ToolDef, type Turn } from "./ai";
+import {
+  all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
+} from "./db";
+
+export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
+
+What you do:
+- Keep track of their tasks, reminders, commitments, ideas, projects and the things they are waiting on from other people.
+- Remember durable facts and preferences (use the remember tool) so they never have to repeat themselves.
+- Help them decide, prioritise and plan. Be proactive: point out overdue items, conflicts, forgotten follow-ups and sensible next steps.
+
+How to file things — keep these clearly separate:
+- task: something the user needs to do.
+- reminder: something to be reminded of at a specific time (always set due_at).
+- commitment: a promise the user made to someone (set person; due_at if there is a deadline).
+- waiting: something the user is waiting on from someone else (set person).
+- idea: a thought worth keeping that is not yet a commitment. Never turn an idea into a task unless asked.
+
+Rules:
+- When the user tells you something actionable, file it with the tools; do not just acknowledge it. Check for duplicates with search_items first when unsure.
+- Resolve relative dates ("tomorrow at 3", "Friday") using the current local time given in the context, and pass due_at as an ISO 8601 datetime with the user's UTC offset.
+- Deleting things, or anything that would affect the outside world (sending messages, contacting people, spending money), requires approval: use propose_action and tell the user it is waiting for their approval. You have no external integrations yet; say so plainly if asked to do something outside Chief of Staff.
+- Be concise and warm. Lead with what matters. Use short lists when listing items. Do not invent data you have not been given.`;
+
+const VOICE_ADDENDUM = `\n\nThis turn arrived by live voice and your reply will be spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
+
+export async function buildContext(env: Env, mode: string): Promise<string> {
+  const settings = await getSettings(env);
+  const tz = settings.timezone || "UTC";
+  const localNow = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz, dateStyle: "full", timeStyle: "short",
+  }).format(new Date());
+
+  const [memories, items, projects] = await Promise.all([
+    all<Memory>(env, "SELECT * FROM memories ORDER BY importance ASC, updated_at DESC LIMIT 60"),
+    all<Item>(
+      env,
+      `SELECT * FROM items WHERE status = 'open'
+       ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT 80`,
+    ),
+    all<Project>(env, "SELECT * FROM projects WHERE status != 'done' ORDER BY updated_at DESC LIMIT 30"),
+  ]);
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
+
+  const lines: string[] = [];
+  lines.push(`Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
+  if (settings.name) lines.push(`The user's name is ${settings.name}.`);
+  lines.push("", "## Memory");
+  lines.push(memories.length ? memories.map((m) => `- [${m.category}] ${m.content} (id ${m.id})`).join("\n") : "- (nothing yet)");
+  lines.push("", "## Projects");
+  lines.push(projects.length ? projects.map((p) => `- ${p.name} [${p.area}, ${p.status}]${p.description ? ` — ${p.description}` : ""}`).join("\n") : "- (none)");
+  lines.push("", "## Open items");
+  lines.push(
+    items.length
+      ? items
+          .map((i) => {
+            const bits = [i.kind, `p${i.priority}`];
+            if (i.due_at) bits.push(`due ${i.due_at}`);
+            if (i.person) bits.push(`person ${i.person}`);
+            if (i.project_id && projectName.has(i.project_id)) bits.push(`project ${projectName.get(i.project_id)}`);
+            return `- ${i.title} (${bits.join(", ")}; id ${i.id})`;
+          })
+          .join("\n")
+      : "- (none)",
+  );
+  if (mode === "voice") lines.push(VOICE_ADDENDUM);
+  return lines.join("\n");
+}
+
+const itemProps = {
+  kind: { type: "string", enum: ["task", "reminder", "idea", "commitment", "waiting"] },
+  title: { type: "string" },
+  notes: { type: "string" },
+  priority: { type: "integer", enum: [1, 2, 3], description: "1 high, 2 normal, 3 low" },
+  due_at: { type: "string", description: "ISO 8601 datetime with offset" },
+  person: { type: "string", description: "Who it involves (waiting on / committed to)" },
+  project: { type: "string", description: "Project name or id" },
+};
+
+export function assistantTools(env: Env, source: string, notes: ActionNote[]): ToolDef[] {
+  const note = (tool: string, summary: string) => notes.push({ tool, summary });
+  return [
+    {
+      name: "create_item",
+      description: "File a task, reminder, commitment, waiting-for entry or idea.",
+      input_schema: { type: "object", properties: itemProps, required: ["kind", "title"] },
+      handler: async (input) => {
+        const project_id = await resolveProjectId(env, input.project as string);
+        const item = await createItem(env, { ...(input as object), project_id, source } as never);
+        note("create_item", `Added ${item.kind}: ${item.title}`);
+        return { id: item.id, kind: item.kind, due_at: item.due_at };
+      },
+    },
+    {
+      name: "update_item",
+      description: "Change an item: complete it (status done), drop it, reschedule, rename, move to a project.",
+      input_schema: {
+        type: "object",
+        properties: { id: { type: "string" }, status: { type: "string", enum: ["open", "done", "dropped"] }, ...itemProps },
+        required: ["id"],
+      },
+      handler: async (input) => {
+        const patch: Record<string, unknown> = { ...input };
+        if (input.project !== undefined) patch.project_id = await resolveProjectId(env, input.project as string);
+        const item = await updateItem(env, String(input.id), patch);
+        note("update_item", input.status === "done" ? `Completed: ${item.title}` : `Updated: ${item.title}`);
+        return { id: item.id, status: item.status, due_at: item.due_at };
+      },
+    },
+    {
+      name: "search_items",
+      description: "Search items, including completed ones, by text, kind or status.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          kind: itemProps.kind,
+          status: { type: "string", enum: ["open", "done", "dropped", "any"] },
+        },
+      },
+      handler: async (input) => {
+        const where: string[] = [];
+        const binds: unknown[] = [];
+        if (input.query) {
+          where.push("(title LIKE ? OR notes LIKE ? OR person LIKE ?)");
+          const q = `%${input.query}%`;
+          binds.push(q, q, q);
+        }
+        if (input.kind) (where.push("kind = ?"), binds.push(input.kind));
+        if (input.status && input.status !== "any") (where.push("status = ?"), binds.push(input.status));
+        const sql = `SELECT id, kind, title, status, due_at, person, completed_at FROM items
+          ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY updated_at DESC LIMIT 25`;
+        return all(env, sql, ...binds);
+      },
+    },
+    {
+      name: "create_project",
+      description: "Create a project to group related items.",
+      input_schema: {
+        type: "object",
+        properties: { name: { type: "string" }, description: { type: "string" }, area: { type: "string", enum: ["personal", "business"] } },
+        required: ["name"],
+      },
+      handler: async (input) => {
+        const p = await createProject(env, input as never);
+        note("create_project", `Created project: ${p.name}`);
+        return { id: p.id };
+      },
+    },
+    {
+      name: "update_project",
+      description: "Rename, describe, pause or finish a project.",
+      input_schema: {
+        type: "object",
+        properties: {
+          project: { type: "string", description: "Project name or id" },
+          name: { type: "string" },
+          description: { type: "string" },
+          status: { type: "string", enum: ["active", "paused", "done"] },
+        },
+        required: ["project"],
+      },
+      handler: async (input) => {
+        const id = await resolveProjectId(env, input.project as string);
+        if (!id) throw new Error("project not found");
+        const p = await first<Project>(env, "SELECT * FROM projects WHERE id = ?", id);
+        await run(
+          env,
+          "UPDATE projects SET name = ?, description = ?, status = ?, updated_at = ? WHERE id = ?",
+          (input.name as string) || p!.name, (input.description as string) ?? p!.description,
+          (input.status as string) || p!.status, now(), id,
+        );
+        note("update_project", `Updated project: ${(input.name as string) || p!.name}`);
+        return { ok: true };
+      },
+    },
+    {
+      name: "remember",
+      description: "Store a durable fact, preference, or detail about a person or the business for future conversations.",
+      input_schema: {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          category: { type: "string", enum: ["fact", "preference", "person", "business", "personal"] },
+          importance: { type: "integer", enum: [1, 2, 3] },
+        },
+        required: ["content"],
+      },
+      handler: async (input) => {
+        const t = now();
+        const id = uid();
+        await run(
+          env,
+          "INSERT INTO memories (id, category, content, importance, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+          id, (input.category as string) || "fact", String(input.content), Number(input.importance) || 2, t, t,
+        );
+        note("remember", `Remembered: ${input.content}`);
+        return { id };
+      },
+    },
+    {
+      name: "update_memory",
+      description: "Correct an existing memory (by id) when something changed.",
+      input_schema: { type: "object", properties: { id: { type: "string" }, content: { type: "string" } }, required: ["id", "content"] },
+      handler: async (input) => {
+        await run(env, "UPDATE memories SET content = ?, updated_at = ? WHERE id = ?", String(input.content), now(), String(input.id));
+        note("update_memory", `Updated memory: ${input.content}`);
+        return { ok: true };
+      },
+    },
+    {
+      name: "propose_action",
+      description:
+        "Queue a consequential action for the user's approval. Use for deleting items/projects/memories, or anything external. Supported executable actions: delete_item {id}, delete_project {id}, forget_memory {id}. Anything else is recorded as an approved intent only.",
+      input_schema: {
+        type: "object",
+        properties: {
+          action: { type: "string" },
+          payload: { type: "object" },
+          description: { type: "string", description: "Plain-language description shown to the user" },
+        },
+        required: ["action", "description"],
+      },
+      handler: async (input) => {
+        const id = uid();
+        await run(
+          env,
+          "INSERT INTO pending_actions (id, action, payload, description, created_at) VALUES (?, ?, ?, ?, ?)",
+          id, String(input.action), JSON.stringify(input.payload ?? {}), String(input.description), now(),
+        );
+        note("propose_action", `Needs your approval: ${input.description}`);
+        return { id, status: "pending_approval" };
+      },
+    },
+  ];
+}
+
+/** Executes an approved pending action. Only internal actions exist in this phase. */
+export async function executeApproved(env: Env, action: string, payload: Record<string, unknown>) {
+  const id = String(payload.id ?? "");
+  switch (action) {
+    case "delete_item":
+      await run(env, "DELETE FROM items WHERE id = ?", id);
+      return "deleted item";
+    case "delete_project":
+      await run(env, "DELETE FROM projects WHERE id = ?", id);
+      return "deleted project";
+    case "forget_memory":
+      await run(env, "DELETE FROM memories WHERE id = ?", id);
+      return "forgot memory";
+    default:
+      return "approved (no integration available yet to carry this out)";
+  }
+}
+
+const HISTORY_LIMIT = 30;
+
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation") {
+  const provider = getProvider(env); // fail before storing anything if no model is configured
+  const userMsg: Message = { id: uid(), role: "user", content: text, mode, meta: null, created_at: now() };
+  await run(env, "INSERT INTO messages (id, role, content, mode, created_at) VALUES (?, ?, ?, ?, ?)",
+    userMsg.id, userMsg.role, userMsg.content, userMsg.mode, userMsg.created_at);
+
+  const recent = await all<Message>(env, "SELECT * FROM messages ORDER BY created_at DESC LIMIT ?", HISTORY_LIMIT);
+  const history: Turn[] = recent.reverse().map((m) => ({ role: m.role, content: m.content }));
+
+  const notes: ActionNote[] = [];
+  const result = await provider.runAgent({
+    tier: "main",
+    purpose: `chat:${mode}`,
+    system: SYSTEM_PROMPT,
+    context: await buildContext(env, mode),
+    history,
+    tools: assistantTools(env, mode === "text" ? "chat" : "voice", notes),
+  });
+
+  const reply: Message = {
+    id: uid(), role: "assistant", content: result.text, mode, meta: notes.length ? JSON.stringify(notes) : null,
+    created_at: new Date(Date.now() + 1).toISOString(),
+  };
+  await run(env, "INSERT INTO messages (id, role, content, mode, meta, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    reply.id, reply.role, reply.content, reply.mode, reply.meta, reply.created_at);
+  return { user: userMsg, reply, actions: notes };
+}

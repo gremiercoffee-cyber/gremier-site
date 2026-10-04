@@ -1,0 +1,30 @@
+name = "chief-of-staff"
+main = "worker/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The built React app is served as static assets; /api/* is handled by the Worker.
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chief-of-staff"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Proactive pass: morning briefing, overdue/reminder checks, stale "waiting for" nudges.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+MODEL_MAIN = "claude-opus-5-5"
+MODEL_FAST = "claude-haiku-4-5"
+TIMEZONE = "UTC"
+
+# Secrets (never in the frontend) — set with `wrangler secret put <NAME>`:
+#   COS_ACCESS_TOKEN  passcode the app uses to talk to the API
+#   ANTHROPIC_API_KEY  model provider key
+#   OPENAI_API_KEY     optional, only for batch dictation transcription (Whisper)

@@ -1,0 +1,203 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { Item, ItemKind } from "../../shared/types";
+import { api } from "../api";
+import { createRecognizer, speechRecognitionAvailable, startRecording } from "../voice";
+
+export function Card({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-2xl bg-surface border border-line p-4 ${className}`}>
+      {(title || action) && (
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">{title}</h2>
+          {action}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+export function Button({
+  children, onClick, variant = "primary", disabled, type = "button", className = "", title,
+}: {
+  children: ReactNode; onClick?: () => void; variant?: "primary" | "ghost" | "danger" | "soft";
+  disabled?: boolean; type?: "button" | "submit"; className?: string; title?: string;
+}) {
+  const styles = {
+    primary: "bg-accent text-accent-ink hover:opacity-90",
+    soft: "bg-sunken text-ink hover:bg-line",
+    ghost: "text-muted hover:text-ink hover:bg-sunken",
+    danger: "text-danger hover:bg-sunken",
+  }[variant];
+  return (
+    <button type={type} title={title} onClick={onClick} disabled={disabled}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition disabled:opacity-40 ${styles} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+export const KIND_META: Record<ItemKind, { label: string; plural: string; color: string }> = {
+  task: { label: "Task", plural: "Tasks", color: "#d48a1f" },
+  reminder: { label: "Reminder", plural: "Reminders", color: "#4a7fc1" },
+  commitment: { label: "Commitment", plural: "Commitments", color: "#9a5bb5" },
+  waiting: { label: "Waiting for", plural: "Waiting for", color: "#3f7d4e" },
+  idea: { label: "Idea", plural: "Ideas", color: "#8f8d89" },
+};
+
+export function formatDue(iso: string | null): { text: string; overdue: boolean } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const nowD = new Date();
+  const overdue = d.getTime() < nowD.getTime();
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const tomorrow = new Date(nowD.getTime() + 86400_000);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  let text: string;
+  if (sameDay(d, nowD)) text = `Today ${time}`;
+  else if (sameDay(d, tomorrow)) text = `Tomorrow ${time}`;
+  else if (Math.abs(d.getTime() - nowD.getTime()) < 6 * 86400_000) text = `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  else text = d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return { text, overdue };
+}
+
+export function timeAgo(iso: string) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+export function ItemRow({ item, onChange, onOpen }: { item: Item; onChange: () => void; onOpen?: (i: Item) => void }) {
+  const due = formatDue(item.due_at);
+  const done = item.status === "done";
+  const toggle = async () => {
+    await api.updateItem(item.id, { status: done ? "open" : "done" });
+    onChange();
+  };
+  return (
+    <div className="flex items-start gap-3 py-2.5 group">
+      {item.kind === "idea" ? (
+        <span className="mt-1.5 h-2.5 w-2.5 rounded-full shrink-0" style={{ background: KIND_META.idea.color }} />
+      ) : (
+        <button onClick={toggle} aria-label={done ? "Mark open" : "Mark done"}
+          className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 grid place-items-center transition ${done ? "bg-ok border-ok" : "border-line hover:border-accent"}`}>
+          {done && <svg viewBox="0 0 16 16" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3.5 8.5l3 3 6-7" /></svg>}
+        </button>
+      )}
+      <button className="flex-1 min-w-0 text-left" onClick={() => onOpen?.(item)}>
+        <div className={`text-[15px] leading-snug ${done ? "line-through text-muted" : ""}`}>{item.title}</div>
+        <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-xs text-muted">
+          {item.priority === 1 && <span className="text-danger font-medium">High</span>}
+          {due && <span className={due.overdue && !done ? "text-danger font-medium" : ""}>{due.text}</span>}
+          {item.person && <span>{item.kind === "waiting" ? "from" : "with"} {item.person}</span>}
+          {item.notes && <span className="truncate max-w-[16rem]">{item.notes}</span>}
+        </div>
+      </button>
+    </div>
+  );
+}
+
+export function Empty({ children }: { children: ReactNode }) {
+  return <p className="text-sm text-muted py-2">{children}</p>;
+}
+
+/** Tiny markdown renderer for assistant replies: paragraphs, lists, bold. Escapes everything else. */
+export function Markdown({ text }: { text: string }) {
+  const blocks = text.split(/\n{2,}/);
+  const inline = (s: string) =>
+    s.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : <span key={i}>{part}</span>,
+    );
+  return (
+    <div className="prose-chat">
+      {blocks.map((b, i) => {
+        const lines = b.split("\n");
+        if (lines.every((l) => /^\s*([-*•]|\d+\.)\s+/.test(l))) {
+          const ordered = /^\s*\d+\./.test(lines[0]);
+          const items = lines.map((l, j) => <li key={j}>{inline(l.replace(/^\s*([-*•]|\d+\.)\s+/, ""))}</li>);
+          return ordered ? <ol key={i}>{items}</ol> : <ul key={i}>{items}</ul>;
+        }
+        return <p key={i}>{lines.map((l, j) => <span key={j}>{j > 0 && <br />}{inline(l.replace(/^#+\s*/, ""))}</span>)}</p>;
+      })}
+    </div>
+  );
+}
+
+/**
+ * Batch dictation button: records a clip, transcribes it on the server (Whisper) and
+ * returns the text. Falls back to on-device recognition if the server can't transcribe.
+ */
+export function DictateButton({ onText, serverTranscription }: { onText: (t: string) => void; serverTranscription: boolean }) {
+  const [state, setState] = useState<"idle" | "recording" | "working">("idle");
+  const [error, setError] = useState("");
+  const recRef = useRef<{ stop: () => Promise<Blob> } | null>(null);
+  const srRef = useRef<{ stop: () => void } | null>(null);
+  const bufRef = useRef<string[]>([]);
+
+  useEffect(() => () => { srRef.current?.stop(); }, []);
+
+  const start = async () => {
+    setError("");
+    try {
+      if (serverTranscription && typeof MediaRecorder !== "undefined") {
+        recRef.current = await startRecording();
+      } else if (speechRecognitionAvailable()) {
+        bufRef.current = [];
+        const sr = createRecognizer({
+          continuous: true,
+          onFinal: (t) => bufRef.current.push(t),
+          onError: (e) => setError(e),
+        });
+        sr.start();
+        srRef.current = sr;
+      } else {
+        setError("Dictation isn't supported in this browser.");
+        return;
+      }
+      setState("recording");
+    } catch {
+      setError("Microphone permission denied.");
+    }
+  };
+
+  const stop = async () => {
+    if (recRef.current) {
+      setState("working");
+      try {
+        const blob = await recRef.current.stop();
+        const { text } = await api.transcribe(blob);
+        if (text.trim()) onText(text.trim());
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Transcription failed");
+      }
+      recRef.current = null;
+    } else if (srRef.current) {
+      srRef.current.stop();
+      srRef.current = null;
+      // Allow the final result event to land.
+      await new Promise((r) => setTimeout(r, 400));
+      const text = bufRef.current.join(" ").trim();
+      if (text) onText(text);
+    }
+    setState("idle");
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant={state === "recording" ? "primary" : "soft"} onClick={state === "recording" ? stop : start}
+        disabled={state === "working"} title="Dictate">
+        <MicIcon />
+        {state === "recording" ? "Stop" : state === "working" ? "Transcribing…" : "Dictate"}
+      </Button>
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </div>
+  );
+}
+
+export const MicIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </svg>
+);
