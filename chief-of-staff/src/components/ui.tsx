@@ -70,7 +70,7 @@ export function timeAgo(iso: string) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export function ItemRow({ item, onChange, onOpen }: { item: Item; onChange: () => void; onOpen?: (i: Item) => void }) {
+export function ItemRow({ item, onChange, onOpen, compact }: { item: Item; onChange: () => void; onOpen?: (i: Item) => void; compact?: boolean }) {
   const due = formatDue(item.due_at);
   const done = item.status === "done";
   const toggle = async () => {
@@ -95,7 +95,7 @@ export function ItemRow({ item, onChange, onOpen }: { item: Item; onChange: () =
           {item.person && <span>{item.kind === "waiting" ? "from" : "with"} {item.person}</span>}
           {item.notes && <span className="truncate max-w-[16rem]">{item.notes}</span>}
         </div>
-        {!done && item.kind !== "idea" && !item.category && (
+        {!compact && !done && item.kind !== "idea" && !item.category && (
           <span className="flex flex-wrap items-center gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
             <span className="text-[11px] text-accent mr-0.5">Which area?</span>
             {[["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]].map(([k, label]) => (

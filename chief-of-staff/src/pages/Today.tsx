@@ -29,7 +29,7 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
 
   const counts = data.counts;
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <header className="pt-1">
         <p className="text-muted text-sm">{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</p>
         <h1 className="font-display text-[32px] leading-tight">{greeting}{name ? `, ${name}` : ""}.</h1>
@@ -53,58 +53,57 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         </Card>
       )}
 
-      {data.nudges.length > 0 && (
-        <div className="space-y-2">
-          {data.nudges.map((n) => (
-            <div key={n.id} className={`rounded-2xl border p-4 ${n.type === "briefing" ? "bg-surface border-accent/40" : "bg-surface border-line"}`}>
-              <div className="flex items-start gap-3">
-                <span className="mt-1.5 h-2 w-2 rounded-full bg-accent shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className="font-medium">{n.title}</p>
-                    <span className="text-xs text-muted shrink-0">{timeAgo(n.created_at)}</span>
+      {groupNudges(data.nudges).map(([title, list]) => (
+        <Section key={title} title={title} count={list.length}>
+          {list.map((n) => (
+            <div key={n.id} className="flex items-start gap-2 py-2">
+              <span className={`mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 ${n.type === "briefing" ? "bg-accent" : "bg-accent/60"}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] leading-snug">{cleanTitle(n.title)}</p>
+                <p className="text-xs text-muted">{[n.type !== "briefing" && n.body?.split("\n")[0], timeAgo(n.created_at)].filter(Boolean).join(" · ")}</p>
+                {n.type === "briefing" && n.body && <p className="text-sm text-muted mt-1 whitespace-pre-line">{n.body}</p>}
+                {(n.type === "waiting" || (n.type === "auto_done" && n.item_id)) && (
+                  <div className="flex gap-1 -ml-3">
+                    {n.type === "waiting" && <Button variant="ghost" onClick={() => goChat(`Help me follow up on: ${cleanTitle(n.title)}`)}>Draft follow-up</Button>}
+                    {n.type === "auto_done" && <Button variant="ghost" onClick={async () => { await api.undoNudge(n.id); load(); }}>Undo</Button>}
                   </div>
-                  {n.body && <p className="text-sm text-muted mt-1 whitespace-pre-line">{n.body}</p>}
-                  <div className="flex gap-1 mt-2 -ml-3">
-                    {n.type === "waiting" && <Button variant="ghost" onClick={() => goChat(`Help me follow up on: ${n.title.replace(/^Still waiting: /, "")}`)}>Draft follow-up</Button>}
-                    {n.type === "auto_done" && n.item_id && <Button variant="ghost" onClick={async () => { await api.undoNudge(n.id); load(); }}>Undo</Button>}
-                    <Button variant="ghost" onClick={async () => { await api.dismissNudge(n.id); load(); }}>{n.type === "auto_done" ? "OK" : "Dismiss"}</Button>
-                  </div>
-                </div>
+                )}
               </div>
+              <button aria-label="Dismiss" onClick={async () => { await api.dismissNudge(n.id); load(); }}
+                className="shrink-0 -mr-1 h-7 w-7 grid place-items-center rounded-full text-muted hover:bg-sunken">✕</button>
             </div>
           ))}
-        </div>
-      )}
+        </Section>
+      ))}
 
       {data.events.length > 0 && (
-        <Card title="Schedule">
-          <div className="divide-y divide-line">{data.events.map((e) => <EventRow key={e.id} e={e} />)}</div>
-        </Card>
+        <Section title="Calendar" count={data.events.length}>
+          {data.events.map((e) => <EventRow key={e.id} e={e} />)}
+        </Section>
       )}
 
       {data.overdue.length > 0 && (
-        <Card title={<span className="text-danger">Overdue</span>}>
-          <div className="divide-y divide-line">
-            {data.overdue.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} />)}
-          </div>
-        </Card>
+        <Section title="Overdue" count={data.overdue.length} danger>
+          {data.overdue.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} compact />)}
+        </Section>
       )}
 
-      <Card title="Later today">
-        {data.today.length ? (
-          <div className="divide-y divide-line">{data.today.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} />)}</div>
-        ) : <Empty>Nothing else scheduled today.</Empty>}
-      </Card>
+      {data.today.length > 0 && (
+        <Section title="Later today" count={data.today.length}>
+          {data.today.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} compact />)}
+        </Section>
+      )}
 
-      <Card title="Waiting for">
-        {data.waiting.length ? (
-          <div className="divide-y divide-line">{data.waiting.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} />)}</div>
-        ) : <Empty>You're not waiting on anyone.</Empty>}
-      </Card>
+      {data.waiting.length > 0 && (
+        <Section title="Waiting on others" count={data.waiting.length}>
+          {data.waiting.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} compact />)}
+        </Section>
+      )}
+
+      {!data.nudges.length && !data.today.length && !data.overdue.length && <Empty>All clear. Nothing needs you right now.</Empty>}
 
       {data.projects.length > 0 && (
-        <Card title="Active projects">
+        <Section title="Active projects" count={data.projects.length}>
           <div className="grid grid-cols-2 gap-2">
             {data.projects.map((p) => (
               <div key={p.id} className="rounded-xl bg-sunken p-3">
@@ -113,7 +112,7 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
               </div>
             ))}
           </div>
-        </Card>
+        </Section>
       )}
 
       <div className="grid grid-cols-5 gap-2 text-center">
@@ -146,3 +145,36 @@ function EventRow({ e }: { e: CalendarEvent }) {
     </a>
   );
 }
+
+/** A headed group: small caps header with a count, rows in one white card. */
+function Section({ title, count, danger, children }: { title: string; count?: number; danger?: boolean; children: React.ReactNode }) {
+  return (
+    <section>
+      <h2 className={`px-1 mb-1.5 text-[12px] font-semibold uppercase tracking-wider ${danger ? "text-danger" : "text-muted"}`}>
+        {title}{count ? <span className="ml-1.5 font-normal opacity-70">{count}</span> : null}
+      </h2>
+      <div className="rounded-2xl bg-surface border border-line px-4 divide-y divide-line">{children}</div>
+    </section>
+  );
+}
+
+const GROUPS: [string, (n: Dashboard["nudges"][number]) => boolean][] = [
+  ["Briefing", (n) => n.type === "briefing"],
+  ["Right now", (n) => n.type === "situation"],
+  ["Don't forget", (n) => /^don't forget/i.test(n.title) || n.type === "reminder"],
+  ["Coming up", (n) => /^coming up/i.test(n.title) || n.type === "deadline"],
+  ["Waiting on others", (n) => n.type === "waiting"],
+  ["Done for you", (n) => n.type === "auto_done"],
+];
+
+function groupNudges(nudges: Dashboard["nudges"]) {
+  const out = new Map<string, Dashboard["nudges"]>();
+  for (const n of nudges) {
+    const g = GROUPS.find(([, test]) => test(n))?.[0] ?? "Updates";
+    out.set(g, [...(out.get(g) ?? []), n]);
+  }
+  const order = [...GROUPS.map(([t]) => t), "Updates"];
+  return [...out.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+}
+
+const cleanTitle = (t: string) => t.replace(/^(don't forget|coming up|still waiting|reminder|due soon)\s*:\s*/i, "");
