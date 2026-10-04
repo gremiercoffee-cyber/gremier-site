@@ -11,9 +11,16 @@ async function call(path, body) {
   return r.json();
 }
 
+let lastDiag = 0;
 async function remember(patch) {
   const cur = (await chrome.storage.local.get("cos")).cos || {};
-  await chrome.storage.local.set({ cos: { ...cur, ...patch } });
+  const next = { ...cur, ...patch };
+  await chrome.storage.local.set({ cos: next });
+  // Health report to the Chief of Staff (status words and sender names only, never message text).
+  if (Date.now() - lastDiag > 5000) {
+    lastDiag = Date.now();
+    call("/api/bridge/diag", { mode: next.mode, last_seen: next.last_seen, last_event: next.last_event, error: next.error, at: new Date().toISOString() }).catch(() => {});
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
