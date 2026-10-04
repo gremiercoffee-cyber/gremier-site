@@ -57,7 +57,11 @@ route("GET", "/api/dashboard", async (_req, env) => {
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind != 'waiting' AND due_at > ? AND due_at <= ? ORDER BY due_at`, t, endOfDay),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','reminder','commitment') AND due_at <= ? ORDER BY due_at`, t),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind='waiting' ORDER BY created_at LIMIT 10`),
-    all<Nudge>(env, `SELECT * FROM nudges WHERE dismissed=0 ORDER BY created_at DESC LIMIT 20`),
+    // Only what still needs you: no "done/sent/progress" notes, nothing about finished items.
+    all<Nudge>(env, `SELECT n.* FROM nudges n LEFT JOIN items i ON i.id = n.item_id
+      WHERE n.dismissed = 0 AND n.type NOT IN ('auto_done','wa_sent','mission_progress','mission_done')
+        AND (i.id IS NULL OR i.status = 'open')
+      ORDER BY n.created_at DESC LIMIT 20`),
     all<PendingAction>(env, `SELECT * FROM pending_actions WHERE status='pending' ORDER BY created_at DESC`),
     all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count
                        FROM projects p WHERE p.status='active' ORDER BY p.updated_at DESC LIMIT 6`),

@@ -101,6 +101,9 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
     next.completed_at = next.status === "done" ? now() : null;
   }
   next.updated_at = now();
+  if (next.status !== "open" && existing.status === "open") {
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", id);
+  }
   // A rescheduled item should be able to remind again.
   const resetReminder = input.due_at !== undefined && next.due_at !== existing.due_at;
   // Pushed later after it had already come due (or was about to): that's a postponement.
