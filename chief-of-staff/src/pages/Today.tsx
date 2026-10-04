@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Dashboard, Item } from "../../shared/types";
+import type { CalendarEvent, Dashboard, Item } from "../../shared/types";
 import { api } from "../api";
 import { Button, Card, Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
 
@@ -67,13 +67,20 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
                   {n.body && <p className="text-sm text-muted mt-1 whitespace-pre-line">{n.body}</p>}
                   <div className="flex gap-1 mt-2 -ml-3">
                     {n.type === "waiting" && <Button variant="ghost" onClick={() => goChat(`Help me follow up on: ${n.title.replace(/^Still waiting: /, "")}`)}>Draft follow-up</Button>}
-                    <Button variant="ghost" onClick={async () => { await api.dismissNudge(n.id); load(); }}>Dismiss</Button>
+                    {n.type === "auto_done" && n.item_id && <Button variant="ghost" onClick={async () => { await api.undoNudge(n.id); load(); }}>Undo</Button>}
+                    <Button variant="ghost" onClick={async () => { await api.dismissNudge(n.id); load(); }}>{n.type === "auto_done" ? "OK" : "Dismiss"}</Button>
                   </div>
                 </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {data.events.length > 0 && (
+        <Card title="Schedule">
+          <div className="divide-y divide-line">{data.events.map((e) => <EventRow key={e.id} e={e} />)}</div>
+        </Card>
       )}
 
       {data.overdue.length > 0 && (
@@ -122,5 +129,20 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         <Button variant="ghost" onClick={briefing} disabled={busy}>{busy ? "Preparing…" : "Brief me now"}</Button>
       </div>
     </div>
+  );
+}
+
+function EventRow({ e }: { e: CalendarEvent }) {
+  const start = new Date(e.start_at);
+  const past = !e.all_day && e.end_at ? new Date(e.end_at).getTime() < Date.now() : false;
+  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return (
+    <a href={e.html_link ?? undefined} target="_blank" rel="noreferrer" className={`flex gap-3 py-2.5 ${past ? "opacity-45" : ""}`}>
+      <span className="w-[4.5rem] shrink-0 text-sm tabular-nums text-muted whitespace-nowrap">{e.all_day ? "All day" : fmt(start)}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[15px] leading-snug truncate">{e.summary}</span>
+        {e.location && <span className="block text-xs text-muted truncate">{e.location}</span>}
+      </span>
+    </a>
   );
 }

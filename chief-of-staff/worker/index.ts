@@ -1,4 +1,4 @@
-import type { Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
+import type { CalendarEvent, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
 import { ProviderUnavailable } from "./ai";
 import { chat, executeApproved } from "./assistant";
@@ -8,6 +8,7 @@ import {
 } from "./db";
 import { runProactive } from "./proactive";
 import { pushConfigured, sendPush } from "./push";
+import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
 const json = (data: unknown, status = 200) =>
@@ -43,7 +44,9 @@ route("GET", "/api/dashboard", async (_req, env) => {
   const settings = await getSettings(env);
   const t = now();
   const endOfDay = endOfLocalDay(settings.timezone);
-  const [today, overdue, waiting, nudges, pending, projects, counts] = await Promise.all([
+  const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: settings.timezone }).format(new Date());
+  const startOfDay = endOfLocalDay(settings.timezone, new Date(Date.now() - 86400_000));
+  const [today, overdue, waiting, nudges, pending, projects, counts, events] = await Promise.all([
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind != 'waiting' AND due_at > ? AND due_at <= ? ORDER BY due_at`, t, endOfDay),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','reminder','commitment') AND due_at <= ? ORDER BY due_at`, t),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind='waiting' ORDER BY created_at LIMIT 10`),
@@ -52,9 +55,12 @@ route("GET", "/api/dashboard", async (_req, env) => {
     all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count
                        FROM projects p WHERE p.status='active' ORDER BY p.updated_at DESC LIMIT 6`),
     all<{ kind: string; n: number }>(env, `SELECT kind, COUNT(*) AS n FROM items WHERE status='open' GROUP BY kind`),
+    all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
+       WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?)
+       ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const data: Dashboard = {
-    today, overdue, waiting, nudges, pending, projects,
+    today, overdue, waiting, nudges, pending, projects, events,
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
   };
   return json(data);
@@ -175,6 +181,12 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
+route("POST", "/api/nudges/:id/undo", async (_req, env, [id]) => {
+  const n = await first<Nudge>(env, "SELECT * FROM nudges WHERE id = ?", id);
+  if (n?.item_id) await updateItem(env, n.item_id, { status: "open" });
+  await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
+  return json({ ok: true });
+});
 route("POST", "/api/proactive/run", async (req, env) => {
   const b = await body<{ briefing?: boolean }>(req).catch(() => ({ briefing: false }));
   return json(await runProactive(env, { forceBriefing: !!b.briefing }));
@@ -207,6 +219,15 @@ route("POST", "/api/push/subscribe", async (req, env) => {
 route("GET", "/api/push/key", async (_req, env) => json({ key: pushConfigured(env) ? env.VAPID_PUBLIC_KEY : null }));
 route("POST", "/api/push/test", async (_req, env) =>
   json(await sendPush(env, { title: "Notifications are on", body: "This is how your reminders will arrive.", url: "/?tab=today", tag: "test" })));
+// ---- Google (Calendar + Gmail) ---------------------------------------------
+route("GET", "/api/google/status", async (_req, env) => json(await googleStatus(env)));
+route("POST", "/api/google/connect", async (req, env) => {
+  try { return json({ url: await startGoogleAuth(env, req) }); }
+  catch (e) { if (e instanceof GoogleAuthError) throw new HttpError(400, e.message); throw e; }
+});
+route("POST", "/api/google/disconnect", async (_req, env) => { await disconnectGoogle(env); return json({ ok: true }); });
+route("POST", "/api/google/sync", async (_req, env) => json(await syncGoogle(env)));
+
 route("GET", "/api/export", async (_req, env) => {
   const [items, projects, memories, messages] = await Promise.all([
     all(env, "SELECT * FROM items"), all(env, "SELECT * FROM projects"),
@@ -222,6 +243,8 @@ export default {
     if (url.pathname === "/api/health") {
       return json({ ok: true, configured: !!env.COS_ACCESS_TOKEN, model: !!env.OPENAI_API_KEY, transcription: !!env.OPENAI_API_KEY, push: pushConfigured(env) });
     }
+    // Google redirects the browser here without our bearer token; the single-use state is the check.
+    if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
     if (!env.COS_ACCESS_TOKEN) return json({ error: "Server not configured: set the COS_ACCESS_TOKEN secret." }, 503);
     if (!authorised(req, env)) return json({ error: "unauthorised" }, 401);
 
@@ -242,6 +265,7 @@ export default {
   },
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runProactive(env).then(() => undefined));
+    // Pull Google first so new emails and meetings are in place before reminders and the briefing.
+    ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env)).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;

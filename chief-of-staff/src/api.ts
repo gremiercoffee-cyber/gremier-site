@@ -1,5 +1,5 @@
 import type {
-  BrainDump, ChatResponse, Dashboard, Item, Memory, Message, Project, Settings,
+  BrainDump, ChatResponse, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
 const TOKEN_KEY = "cos.token";
@@ -60,4 +60,9 @@ export const api = {
   subscribePush: (sub: PushSubscriptionJSON) => request("POST", "/api/push/subscribe", sub),
   pushKey: () => request<{ key: string | null }>("GET", "/api/push/key"),
   pushTest: () => request<{ sent: number; failed: number }>("POST", "/api/push/test"),
+  undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
+  googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
+  googleConnect: () => request<{ url: string }>("POST", "/api/google/connect"),
+  googleDisconnect: () => request("POST", "/api/google/disconnect"),
+  googleSync: () => request<{ events?: number; created?: number; completed?: number; errors?: string[]; error?: string }>("POST", "/api/google/sync"),
 };

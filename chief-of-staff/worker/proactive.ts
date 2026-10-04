@@ -6,16 +6,12 @@ import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { getProvider } from "./ai";
 import { all, first, getSettings, localParts, now, run, uid } from "./db";
-import { sendPush } from "./push";
+import { notify } from "./push";
+import { upcomingEventsText } from "./google";
 
 const WAITING_NUDGE_DAYS = 4;
 
-async function addNudge(env: Env, type: string, title: string, body = "", itemId: string | null = null) {
-  await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    uid(), type, title, body, itemId, now());
-  // Mirror every nudge to the lock screen; the tag collapses repeats for the same item.
-  await sendPush(env, { title, body, url: "/?tab=today", tag: itemId ?? type });
-}
+const addNudge = notify;
 
 export async function runProactive(env: Env, opts: { forceBriefing?: boolean } = {}) {
   const settings = await getSettings(env);
@@ -60,6 +56,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 }
 
 async function createBriefing(env: Env, date: string) {
+  const events = await upcomingEventsText(env, (await getSettings(env)).timezone);
   const items = await all<Item>(env,
     `SELECT * FROM items WHERE status = 'open' AND kind != 'idea'
      ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT 40`);
@@ -73,8 +70,8 @@ async function createBriefing(env: Env, date: string) {
       tier: "fast",
       purpose: "briefing",
       system:
-        "You are a personal Chief of Staff. Write a short morning briefing: the 3 most important things today, anything overdue, and who the user is waiting on. Under 120 words, plain text, warm and direct.",
-      prompt: `Today is ${date}. UTC now ${now()}.\nOpen items:\n${listing}`,
+        "You are a personal Chief of Staff. Write a short morning briefing: today's meetings (if a calendar is given), the 3 most important things today, anything overdue, and who the user is waiting on. Under 140 words, plain text, warm and direct.",
+      prompt: `Today is ${date}. UTC now ${now()}.\nOpen items:\n${listing}${events !== null ? `\n\nCalendar (next 48h):\n${events}` : ""}`,
       maxTokens: 600,
     });
   } catch {

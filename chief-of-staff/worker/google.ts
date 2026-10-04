@@ -1,0 +1,418 @@
+/**
+ * Google Calendar + Gmail: OAuth, the 15-minute sync, completion detection and drafts.
+ *
+ * Read-only except for one thing: creating Gmail drafts when the user asks. Nothing here sends mail.
+ * Subrequest budget per cron run stays well under the Workers free-plan limit of 50:
+ * ~1 token refresh + 1 calendar + 2 thread lists + up to MAX_THREADS thread fetches and model calls.
+ */
+import type { CalendarEvent, GoogleStatus, Item } from "../shared/types";
+import type { Env } from "./env";
+import { getProvider } from "./ai";
+import { all, createItem, first, getSettings, now, run, updateItem } from "./db";
+import { notify } from "./push";
+
+const SCOPES = [
+  "openid",
+  "email",
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.compose", // drafts only; this code never calls send
+];
+const MAX_THREADS = 10;
+const MEETING_LEAD_MIN = 45;
+const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
+
+export class GoogleAuthError extends Error {}
+
+export const googleConfigured = (env: Env) => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+
+interface Account {
+  email: string | null; refresh_token: string; access_token: string | null; expires_at: number | null;
+  last_sync_at: string | null; last_error: string | null;
+}
+
+// ---- Token encryption (AES-GCM, key derived from the client secret) ---------
+const enc = new TextEncoder();
+const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function tokenKey(env: Env) {
+  const raw = await crypto.subtle.digest("SHA-256", enc.encode(`cos-google-token:${env.GOOGLE_CLIENT_SECRET}`));
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function seal(env: Env, plain: string) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await tokenKey(env), enc.encode(plain)));
+  return `${b64(iv)}.${b64(ct)}`;
+}
+async function unseal(env: Env, sealed: string) {
+  const [iv, ct] = sealed.split(".");
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await tokenKey(env), unb64(ct)));
+}
+
+// ---- OAuth ---------------------------------------------------------------------
+const redirectUri = (req: Request) => new URL("/api/google/callback", req.url).toString();
+
+export async function googleStatus(env: Env): Promise<GoogleStatus> {
+  const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
+  return { configured: googleConfigured(env), connected: !!a, email: a?.email ?? null, last_sync_at: a?.last_sync_at ?? null, last_error: a?.last_error ?? null };
+}
+
+export async function startGoogleAuth(env: Env, req: Request): Promise<string> {
+  if (!googleConfigured(env)) throw new GoogleAuthError("Google isn't set up on the server yet.");
+  const state = crypto.randomUUID();
+  await run(env, "DELETE FROM oauth_states WHERE created_at < ?", new Date(Date.now() - 15 * 60_000).toISOString());
+  await run(env, "INSERT INTO oauth_states (state, created_at) VALUES (?, ?)", state, now());
+  const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  u.search = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID!, redirect_uri: redirectUri(req), response_type: "code",
+    scope: SCOPES.join(" "), access_type: "offline", prompt: "consent", include_granted_scopes: "true", state,
+  }).toString();
+  return u.toString();
+}
+
+/** Public route (Google redirects the browser here). Trust comes from the single-use state. */
+export async function finishGoogleAuth(env: Env, req: Request): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const back = (result: string) => Response.redirect(new URL(`/?tab=settings&google=${result}`, req.url).toString(), 302);
+  const state = q.get("state") ?? "";
+  const row = await first<{ created_at: string }>(env, "SELECT created_at FROM oauth_states WHERE state = ?", state);
+  await run(env, "DELETE FROM oauth_states WHERE state = ?", state);
+  if (!row || Date.now() - new Date(row.created_at).getTime() > 15 * 60_000) return back("expired");
+  if (q.get("error") || !q.get("code")) return back("cancelled");
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code: q.get("code")!, client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!,
+      redirect_uri: redirectUri(req), grant_type: "authorization_code",
+    }),
+  });
+  if (!res.ok) return back("failed");
+  const tok = (await res.json()) as { access_token: string; expires_in: number; refresh_token?: string; id_token?: string; scope: string };
+  if (!tok.refresh_token) return back("failed");
+  const granted = tok.scope.split(" ");
+  if (!SCOPES.slice(2).every((s) => granted.includes(s))) return back("missing_access");
+  let email: string | null = null;
+  try { email = JSON.parse(atob(tok.id_token!.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email ?? null; } catch { /* optional */ }
+
+  await run(env,
+    `INSERT OR REPLACE INTO oauth_accounts (provider, email, refresh_token, access_token, expires_at, connected_at)
+     VALUES ('google', ?, ?, ?, ?, ?)`,
+    email, await seal(env, tok.refresh_token), await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000, now());
+  return back("connected");
+}
+
+export async function disconnectGoogle(env: Env) {
+  const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
+  if (a) {
+    try {
+      await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(await unseal(env, a.refresh_token))}`, { method: "POST" });
+    } catch { /* best effort */ }
+  }
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM oauth_accounts WHERE provider = 'google'"),
+    env.DB.prepare("DELETE FROM calendar_events"),
+    env.DB.prepare("DELETE FROM gmail_threads"),
+  ]);
+}
+
+async function accessToken(env: Env): Promise<{ token: string; email: string | null } | null> {
+  const a = await first<Account>(env, "SELECT * FROM oauth_accounts WHERE provider = 'google'");
+  if (!a || !googleConfigured(env)) return null;
+  if (a.access_token && (a.expires_at ?? 0) > Date.now() + 60_000) return { token: await unseal(env, a.access_token), email: a.email };
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!,
+      refresh_token: await unseal(env, a.refresh_token), grant_type: "refresh_token",
+    }),
+  });
+  if (!res.ok) {
+    const msg = res.status === 400 ? "Google access has expired. Reconnect Google in Settings." : `Google sign-in failed (${res.status}).`;
+    await run(env, "UPDATE oauth_accounts SET last_error = ? WHERE provider = 'google'", msg);
+    throw new GoogleAuthError(msg);
+  }
+  const tok = (await res.json()) as { access_token: string; expires_in: number };
+  await run(env, "UPDATE oauth_accounts SET access_token = ?, expires_at = ? WHERE provider = 'google'",
+    await seal(env, tok.access_token), Date.now() + tok.expires_in * 1000);
+  return { token: tok.access_token, email: a.email };
+}
+
+async function gapi<T>(token: string, url: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(url, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Google API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return (await res.json()) as T;
+}
+
+// ---- Calendar ----------------------------------------------------------------
+interface GEvent {
+  id: string; status?: string; summary?: string; location?: string; htmlLink?: string;
+  start: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
+  attendees?: { self?: boolean; responseStatus?: string }[];
+}
+
+async function fetchEvents(token: string, timeMin: string, timeMax: string, q?: string): Promise<GEvent[]> {
+  const params = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "100" });
+  if (q) params.set("q", q);
+  const r = await gapi<{ items?: GEvent[] }>(token, `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`);
+  return (r.items ?? []).filter((e) => e.status !== "cancelled" && !e.attendees?.some((a) => a.self && a.responseStatus === "declined"));
+}
+
+const toRow = (e: GEvent) => {
+  const allDay = !e.start.dateTime;
+  return {
+    id: e.id, summary: e.summary ?? "(no title)", all_day: allDay ? 1 : 0, location: e.location ?? null, html_link: e.htmlLink ?? null,
+    start_at: allDay ? e.start.date! : new Date(e.start.dateTime!).toISOString(),
+    end_at: allDay ? e.end?.date ?? null : e.end?.dateTime ? new Date(e.end.dateTime).toISOString() : null,
+  };
+};
+
+async function syncCalendar(env: Env, token: string, alerts: boolean) {
+  const from = new Date(Date.now() - 86400_000).toISOString();
+  const events = (await fetchEvents(token, from, new Date(Date.now() + 14 * 86400_000).toISOString())).map(toRow);
+  const t = now();
+  const stmts = events.map((e) => env.DB.prepare(
+    `INSERT INTO calendar_events (id, summary, start_at, end_at, all_day, location, html_link, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET summary=excluded.summary, end_at=excluded.end_at, all_day=excluded.all_day,
+       location=excluded.location, html_link=excluded.html_link, updated_at=excluded.updated_at,
+       reminded_at = CASE WHEN calendar_events.start_at = excluded.start_at THEN calendar_events.reminded_at ELSE NULL END,
+       start_at=excluded.start_at`,
+  ).bind(e.id, e.summary, e.start_at, e.end_at, e.all_day, e.location, e.html_link, t));
+  // Anything not seen this run was deleted, declined or moved out of the window.
+  stmts.push(env.DB.prepare(`DELETE FROM calendar_events WHERE updated_at < ?`).bind(t));
+  await env.DB.batch(stmts);
+
+  if (!alerts) return events.length;
+  const soon = await all<CalendarEvent & { reminded_at: string | null }>(env,
+    `SELECT * FROM calendar_events WHERE all_day = 0 AND reminded_at IS NULL AND start_at > ? AND start_at <= ?`,
+    t, new Date(Date.now() + MEETING_LEAD_MIN * 60_000).toISOString());
+  const { timezone } = await getSettings(env);
+  for (const e of soon) {
+    const time = new Date(e.start_at).toLocaleTimeString("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit" });
+    const mins = Math.max(1, Math.round((new Date(e.start_at).getTime() - Date.now()) / 60_000));
+    await notify(env, "event", `${e.summary} at ${time}`, `In ${mins} min${e.location ? ` · ${e.location}` : ""}`, null);
+    await run(env, "UPDATE calendar_events SET reminded_at = ? WHERE id = ?", t, e.id);
+  }
+  return events.length;
+}
+
+// ---- Gmail -------------------------------------------------------------------
+interface GPart { mimeType: string; body?: { data?: string }; parts?: GPart[]; headers?: { name: string; value: string }[] }
+interface GMessage { id: string; threadId: string; labelIds?: string[]; internalDate: string; snippet: string; payload: GPart }
+interface GThread { id: string; historyId: string; messages: GMessage[] }
+
+const header = (m: GMessage, name: string) =>
+  m.payload.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
+const fromMe = (m: GMessage) => !!m.labelIds?.includes("SENT");
+const displayName = (addr: string) => addr.replace(/<[^>]+>/, "").replace(/"/g, "").trim() || addr;
+
+function decode(data: string) {
+  const bin = atob(data.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+/** Plain text of a message without quoted history. */
+function bodyText(m: GMessage): string {
+  const find = (p: GPart): string | null => {
+    if (p.mimeType === "text/plain" && p.body?.data) return decode(p.body.data);
+    for (const c of p.parts ?? []) { const r = find(c); if (r) return r; }
+    if (p.mimeType === "text/html" && p.body?.data) return decode(p.body.data).replace(/<[^>]+>/g, " ");
+    return null;
+  };
+  const text = find(m.payload) ?? m.snippet;
+  const lines: string[] = [];
+  for (const l of text.split(/\r?\n/)) {
+    if (/^On .+wrote:$/.test(l.trim()) || /^-{2,}\s*Original Message/i.test(l)) break;
+    if (!l.startsWith(">")) lines.push(l);
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 1500);
+}
+
+const TRIAGE_SYSTEM = `You triage email for a busy business owner. You see one email thread and the user's open items.
+Reply with JSON only, no prose:
+{"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"completes":string[]}
+- task: the latest message is from someone else and the user personally needs to do something (reply, send, pay, decide, book).
+- commitment: the user promised something in this thread that is not yet done.
+- waiting: the latest message is FROM THE USER and asks someone else for something they have not delivered yet.
+- none: newsletters, receipts, notifications, automated mail, FYI-only, or nothing left to do.
+- title: short imperative, e.g. "Reply to Dana about the roaster invoice". person: the other person's name.
+- due_at: ISO 8601 only if a date is stated or clearly implied, else null. priority 1 only for urgent or money/customer-critical.
+- completes: ids of the user's open items (listed) that this thread shows are clearly finished, e.g. the user sent what they promised. Only when certain; otherwise [].`;
+
+interface Triage { action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[] }
+
+async function syncGmail(env: Env, token: string, alerts: boolean) {
+  const queries = [
+    "in:inbox newer_than:3d -category:promotions -category:social -category:updates -category:forums",
+    "in:sent newer_than:3d",
+  ];
+  const listed = new Map<string, string>();
+  for (const q of queries) {
+    const r = await gapi<{ threads?: { id: string; historyId: string }[] }>(token, `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: "20" })}`);
+    for (const th of r.threads ?? []) listed.set(th.id, th.historyId);
+  }
+  if (!listed.size) return { threads: 0, created: 0, completed: 0 };
+
+  const known = new Map((await all<{ thread_id: string; history_id: string }>(env,
+    `SELECT thread_id, history_id FROM gmail_threads WHERE thread_id IN (${[...listed.keys()].map(() => "?").join(",")})`,
+    ...listed.keys())).map((r) => [r.thread_id, r.history_id]));
+  const changed = [...listed].filter(([id, h]) => known.get(id) !== h).slice(0, MAX_THREADS);
+
+  let created = 0, completed = 0;
+  for (const [threadId] of changed) {
+    const th = await gapi<GThread>(token, `${GMAIL}/threads/${threadId}?format=full`);
+    const last = th.messages.at(-1)!;
+    const other = [...th.messages].reverse().find((m) => !fromMe(m)) ?? last;
+    const counterpart = displayName(fromMe(last) ? header(last, "To") : header(last, "From"));
+    const subject = header(th.messages[0], "Subject") || "(no subject)";
+    const lastAt = new Date(Number(last.internalDate)).toISOString();
+    const prev = await first<{ analyzed_msg_id: string | null }>(env, "SELECT analyzed_msg_id FROM gmail_threads WHERE thread_id = ?", threadId);
+    await run(env,
+      `INSERT INTO gmail_threads (thread_id, history_id, last_msg_id, subject, counterpart, last_from_me, last_msg_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(thread_id) DO UPDATE SET history_id=excluded.history_id, last_msg_id=excluded.last_msg_id, subject=excluded.subject,
+         counterpart=excluded.counterpart, last_from_me=excluded.last_from_me, last_msg_at=excluded.last_msg_at, updated_at=excluded.updated_at`,
+      threadId, th.historyId, last.id, subject, counterpart, fromMe(last) ? 1 : 0, lastAt, now());
+    if (prev?.analyzed_msg_id === last.id) continue;
+
+    // 1. Deterministic completion: items born from this thread.
+    const linked = await all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND ext_source = 'gmail' AND ext_ref = ?", threadId);
+    for (const item of linked) {
+      if (lastAt <= item.created_at) continue;
+      const replied = fromMe(last) && item.kind !== "waiting";
+      const answered = !fromMe(last) && item.kind === "waiting";
+      if (!replied && !answered) continue;
+      await updateItem(env, item.id, { status: "done" });
+      completed++;
+      if (alerts) await notify(env, "auto_done", `Done: ${item.title}`,
+        replied ? `You replied to ${counterpart}. Tap Undo if it isn't finished.` : `${counterpart} got back to you.`, item.id);
+    }
+
+    // 2. Model triage of the latest exchange (skip when an open item already tracks the thread).
+    const stillTracked = await first(env, "SELECT 1 FROM items WHERE status = 'open' AND ext_source = 'gmail' AND ext_ref = ?", threadId);
+    const openItems = await all<Item>(env, "SELECT id, kind, title, person FROM items WHERE status = 'open' AND kind != 'idea' ORDER BY updated_at DESC LIMIT 40");
+    const transcript = th.messages.slice(-3).map((m) =>
+      `--- ${fromMe(m) ? "FROM THE USER" : `From ${header(m, "From")}`} to ${header(m, "To")} on ${new Date(Number(m.internalDate)).toISOString()}\n${bodyText(m)}`).join("\n\n");
+    let triage: Triage = { action: "none" };
+    try {
+      const out = await getProvider(env).complete({
+        tier: "fast", purpose: "email_triage", system: TRIAGE_SYSTEM, maxTokens: 400,
+        prompt: `Now: ${now()}\nSubject: ${subject}\n\n${transcript}\n\nUser's open items:\n${openItems.map((i) => `- ${i.id}: [${i.kind}] ${i.title}${i.person ? ` (${i.person})` : ""}`).join("\n") || "(none)"}`,
+      });
+      triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
+    } catch (e) {
+      console.error("triage failed", threadId, e);
+      continue; // leave analyzed_msg_id unset so the next run retries
+    }
+
+    for (const id of triage.completes ?? []) {
+      const item = openItems.find((i) => i.id === id);
+      if (!item) continue;
+      await updateItem(env, id, { status: "done" });
+      completed++;
+      if (alerts) await notify(env, "auto_done", `Looks done: ${item.title}`, `Based on your email "${subject}". Tap Undo if not.`, id);
+    }
+    if (!stillTracked && ["task", "commitment", "waiting"].includes(triage.action) && triage.title) {
+      const item = await createItem(env, {
+        kind: triage.action, title: triage.title, person: triage.person ?? (counterpart || null), due_at: triage.due_at ?? null,
+        priority: triage.priority, source: "gmail",
+        notes: `Email: "${subject}"\nhttps://mail.google.com/mail/u/0/#all/${threadId}`,
+      });
+      await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ? WHERE id = ?", threadId, item.id);
+      created++;
+      if (alerts && item.priority === 1) await notify(env, "email", `Email needs you: ${item.title}`, `From ${displayName(header(other, "From"))}`, item.id);
+    }
+    await run(env, "UPDATE gmail_threads SET analyzed_msg_id = ? WHERE thread_id = ?", last.id, threadId);
+  }
+  return { threads: changed.length, created, completed };
+}
+
+/** Runs from the cron trigger and from "Sync now". Never throws. */
+export async function syncGoogle(env: Env) {
+  let auth;
+  try { auth = await accessToken(env); } catch (e) { return { error: (e as Error).message }; }
+  if (!auth) return { skipped: true };
+  const alerts = (await getSettings(env)).proactive;
+  const result: Record<string, unknown> = {};
+  const errors: string[] = [];
+  try { result.events = await syncCalendar(env, auth.token, alerts); } catch (e) { errors.push(`Calendar: ${(e as Error).message}`); }
+  try { Object.assign(result, await syncGmail(env, auth.token, alerts)); } catch (e) { errors.push(`Gmail: ${(e as Error).message}`); }
+  await run(env, "UPDATE oauth_accounts SET last_sync_at = ?, last_error = ? WHERE provider = 'google'",
+    now(), errors.length ? errors.join(" · ").slice(0, 300) : null);
+  return { ...result, errors };
+}
+
+// ---- Assistant helpers -------------------------------------------------------
+export async function calendarLookup(env: Env, from: string, to: string, q?: string) {
+  const auth = await accessToken(env);
+  if (!auth) throw new Error("Google isn't connected.");
+  return (await fetchEvents(auth.token, new Date(from).toISOString(), new Date(to).toISOString(), q)).map(toRow);
+}
+
+export async function searchEmail(env: Env, q: string) {
+  const auth = await accessToken(env);
+  if (!auth) throw new Error("Google isn't connected.");
+  const r = await gapi<{ threads?: { id: string; snippet: string }[] }>(auth.token, `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: "8" })}`);
+  const rows = await all<{ thread_id: string; subject: string; counterpart: string; last_msg_at: string }>(env,
+    "SELECT thread_id, subject, counterpart, last_msg_at FROM gmail_threads");
+  const byId = new Map(rows.map((x) => [x.thread_id, x]));
+  return (r.threads ?? []).map((t) => ({ thread_id: t.id, snippet: t.snippet, ...(byId.get(t.id) ?? {}) }));
+}
+
+export async function readThread(env: Env, threadId: string) {
+  const auth = await accessToken(env);
+  if (!auth) throw new Error("Google isn't connected.");
+  const th = await gapi<GThread>(auth.token, `${GMAIL}/threads/${threadId}?format=full`);
+  return {
+    thread_id: th.id,
+    subject: header(th.messages[0], "Subject"),
+    messages: th.messages.slice(-6).map((m) => ({
+      from: header(m, "From"), to: header(m, "To"), date: new Date(Number(m.internalDate)).toISOString(),
+      from_user: fromMe(m), text: bodyText(m),
+    })),
+  };
+}
+
+const mimeWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...enc.encode(s)))}?=`);
+
+/** Saves a draft in Gmail. Replies stay in the thread. Never sends. */
+export async function createDraft(env: Env, opts: { threadId?: string; to?: string; subject?: string; body: string }) {
+  const auth = await accessToken(env);
+  if (!auth) throw new Error("Google isn't connected.");
+  let to = opts.to ?? "", subject = opts.subject ?? "", inReplyTo = "", references = "";
+  if (opts.threadId) {
+    const th = await gapi<GThread>(auth.token, `${GMAIL}/threads/${opts.threadId}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Reply-To&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References`);
+    const target = [...th.messages].reverse().find((m) => !fromMe(m)) ?? th.messages.at(-1)!;
+    to ||= fromMe(target) ? header(target, "To") : header(target, "Reply-To") || header(target, "From");
+    const s = header(th.messages[0], "Subject");
+    subject ||= /^re:/i.test(s) ? s : `Re: ${s}`;
+    inReplyTo = header(target, "Message-ID");
+    references = `${header(target, "References")} ${inReplyTo}`.trim();
+  }
+  if (!to) throw new Error("Who should the email go to?");
+  const lines = [`To: ${to}`, `Subject: ${mimeWord(subject)}`];
+  if (inReplyTo) lines.push(`In-Reply-To: ${inReplyTo}`, `References: ${references}`);
+  lines.push("MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "",
+    btoa(String.fromCharCode(...enc.encode(opts.body))));
+  const raw = btoa(String.fromCharCode(...enc.encode(lines.join("\r\n")))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const d = await gapi<{ id: string; message: { threadId: string } }>(auth.token, `${GMAIL}/drafts`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message: { raw, ...(opts.threadId ? { threadId: opts.threadId } : {}) } }),
+  });
+  return { draft_id: d.id, to, subject, open_in_gmail: "https://mail.google.com/mail/u/0/#drafts" };
+}
+
+/** Today's and tomorrow's events for the assistant's context (from the synced table, no API call). */
+export async function upcomingEventsText(env: Env, tz: string): Promise<string | null> {
+  if (!(await first(env, "SELECT 1 FROM oauth_accounts WHERE provider = 'google'"))) return null;
+  const evs = await all<CalendarEvent>(env,
+    "SELECT * FROM calendar_events WHERE (all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?) ORDER BY start_at",
+    new Date(Date.now() - 3600_000).toISOString(), new Date(Date.now() + 48 * 3600_000).toISOString(),
+    new Date(Date.now() + 48 * 3600_000).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10));
+  const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return evs.map((e) => `- ${e.all_day ? `${e.start_at} (all day)` : fmt.format(new Date(e.start_at))}: ${e.summary}${e.location ? ` @ ${e.location}` : ""}`).join("\n") || "- (nothing)";
+}
+

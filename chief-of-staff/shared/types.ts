@@ -12,6 +12,8 @@ export interface Item {
   person: string | null;
   project_id: string | null;
   source: string;
+  ext_source?: string | null;
+  ext_ref?: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -100,4 +102,23 @@ export interface Dashboard {
   pending: PendingAction[];
   projects: Project[];
   counts: Record<string, number>;
+  events: CalendarEvent[];
+}
+
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  start_at: string;
+  end_at: string | null;
+  all_day: number;
+  location: string | null;
+  html_link: string | null;
+}
+
+export interface GoogleStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+  last_sync_at: string | null;
+  last_error: string | null;
 }

@@ -17,4 +17,7 @@ export interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_JWK?: string;
   VAPID_SUBJECT?: string;
+  /** Google OAuth client (Calendar + Gmail). Both are secrets. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }

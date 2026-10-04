@@ -3,7 +3,7 @@
  * VAPID_PUBLIC_KEY is the raw P-256 public key (base64url); VAPID_PRIVATE_JWK is the private key as a JWK.
  */
 import type { Env } from "./env";
-import { all, run } from "./db";
+import { all, now, run, uid } from "./db";
 
 export interface PushMessage { title: string; body?: string; url?: string; tag?: string }
 
@@ -92,4 +92,12 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
     }
   }));
   return { sent, failed };
+}
+
+/** Records a nudge on the Today screen and mirrors it to the lock screen. */
+export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null) {
+  await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    uid(), type, title, body, itemId, now());
+  // The tag collapses repeats for the same item.
+  await sendPush(env, { title, body, url: "/?tab=today", tag: itemId ?? type });
 }

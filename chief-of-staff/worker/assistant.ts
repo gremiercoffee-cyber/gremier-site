@@ -5,6 +5,7 @@ import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
   all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
+import { calendarLookup, createDraft, readThread, searchEmail, upcomingEventsText } from "./google";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -23,7 +24,8 @@ How to file things — keep these clearly separate:
 Rules:
 - When the user tells you something actionable, file it with the tools; do not just acknowledge it. Check for duplicates with search_items first when unsure.
 - Resolve relative dates ("tomorrow at 3", "Friday") using the current local time given in the context, and pass due_at as an ISO 8601 datetime with the user's UTC offset.
-- Deleting things, or anything that would affect the outside world (sending messages, contacting people, spending money), requires approval: use propose_action and tell the user it is waiting for their approval. You have no external integrations yet; say so plainly if asked to do something outside Chief of Staff.
+- Deleting things, or anything that would affect the outside world (sending messages, contacting people, spending money), requires approval: use propose_action and tell the user it is waiting for their approval. The context says which outside accounts are connected; if something is not connected, say so plainly.
+- Email: when an item came from an email (it shows an email thread id), you can read the thread. Remind first; only write a draft when the user explicitly asks you to draft. Drafts are saved to their Gmail Drafts folder. You can never send email; tell them to review and send it from Gmail.
 - Be concise and warm. Lead with what matters. Use short lists when listing items. Do not invent data you have not been given.`;
 
 const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
@@ -62,11 +64,16 @@ export async function buildContext(env: Env, mode: string): Promise<string> {
             if (i.due_at) bits.push(`due ${i.due_at}`);
             if (i.person) bits.push(`person ${i.person}`);
             if (i.project_id && projectName.has(i.project_id)) bits.push(`project ${projectName.get(i.project_id)}`);
+            if (i.ext_source === "gmail" && i.ext_ref) bits.push(`email thread ${i.ext_ref}`);
             return `- ${i.title} (${bits.join(", ")}; id ${i.id})`;
           })
           .join("\n")
       : "- (none)",
   );
+  const events = await upcomingEventsText(env, tz);
+  lines.push("", "## Connected accounts");
+  lines.push(events === null ? "- Google: not connected (no calendar or email access)." : "- Google: connected. You can look up calendar events and read/search email, and save Gmail drafts when asked.");
+  if (events !== null) lines.push("", "## Calendar (next 48 hours)", events);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
   return lines.join("\n");
 }
@@ -84,6 +91,45 @@ const itemProps = {
 export function assistantTools(env: Env, source: string, notes: ActionNote[]): ToolDef[] {
   const note = (tool: string, summary: string) => notes.push({ tool, summary });
   return [
+    {
+      name: "calendar_lookup",
+      description: "Look up events on the user's Google Calendar between two datetimes, optionally matching text.",
+      input_schema: {
+        type: "object",
+        properties: { from: { type: "string", description: "ISO 8601" }, to: { type: "string", description: "ISO 8601" }, query: { type: "string" } },
+        required: ["from", "to"],
+      },
+      handler: async (input) => calendarLookup(env, String(input.from), String(input.to), input.query as string | undefined),
+    },
+    {
+      name: "search_email",
+      description: "Search the user's Gmail (Gmail search syntax, e.g. 'from:dana invoice newer_than:30d'). Returns thread ids and snippets.",
+      input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      handler: async (input) => searchEmail(env, String(input.query)),
+    },
+    {
+      name: "read_email_thread",
+      description: "Read the latest messages of a Gmail thread by id.",
+      input_schema: { type: "object", properties: { thread_id: { type: "string" } }, required: ["thread_id"] },
+      handler: async (input) => readThread(env, String(input.thread_id)),
+    },
+    {
+      name: "draft_email",
+      description: "Save an email draft in the user's Gmail Drafts. ONLY when the user explicitly asks you to draft something. Never sends. For a reply pass thread_id (recipient and subject are filled in); for a new email pass to and subject. Write the body in the user's voice and language.",
+      input_schema: {
+        type: "object",
+        properties: { thread_id: { type: "string" }, to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } },
+        required: ["body"],
+      },
+      handler: async (input) => {
+        const d = await createDraft(env, {
+          threadId: input.thread_id as string | undefined, to: input.to as string | undefined,
+          subject: input.subject as string | undefined, body: String(input.body),
+        });
+        note("draft_email", `Draft saved in Gmail to ${d.to}: ${d.subject}`);
+        return d;
+      },
+    },
     {
       name: "create_item",
       description: "File a task, reminder, commitment, waiting-for entry or idea.",

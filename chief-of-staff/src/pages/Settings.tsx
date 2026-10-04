@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Memory, Settings as S } from "../../shared/types";
+import type { GoogleStatus, Memory, Settings as S } from "../../shared/types";
 import { api, setToken } from "../api";
 import { Button, Card, Empty } from "../components/ui";
 
@@ -17,6 +17,37 @@ export default function Settings({ settings, onSaved, installPrompt }: {
   const [usage, setUsage] = useState<Usage>([]);
   const [notif, setNotif] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("cos.theme") ?? "system"; } catch { return "system"; } });
+
+  const [google, setGoogle] = useState<GoogleStatus | null>(null);
+  const [googleMsg, setGoogleMsg] = useState(() => {
+    const r = new URLSearchParams(location.search).get("google");
+    return ({
+      connected: "Google is connected. I'm reading your calendar and recent email now.",
+      cancelled: "Google sign-in was cancelled.",
+      expired: "That sign-in took too long. Please try again.",
+      missing_access: "Google didn't grant all the access needed. Try again and tick every box on Google's screen.",
+      failed: "Google sign-in didn't work. Please try again.",
+    } as Record<string, string>)[r ?? ""] ?? "";
+  });
+  const [syncing, setSyncing] = useState(false);
+  const syncGoogle = async () => {
+    setSyncing(true);
+    const r = await api.googleSync().catch((e) => ({ error: (e as Error).message }) as Awaited<ReturnType<typeof api.googleSync>>);
+    setSyncing(false);
+    setGoogleMsg(r.error ?? (r.errors?.length ? r.errors.join(" ") :
+      `Synced: ${r.events ?? 0} upcoming events, ${r.created ?? 0} new items from email${r.completed ? `, ${r.completed} marked done` : ""}.`));
+    api.googleStatus().then(setGoogle).catch(() => {});
+  };
+  useEffect(() => {
+    api.googleStatus().then((g) => {
+      setGoogle(g);
+      // Fresh from the Google sign-in screen: pull everything right away.
+      if (g.connected && new URLSearchParams(location.search).get("google") === "connected") {
+        history.replaceState(null, "", "/?tab=settings");
+        syncGoogle();
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.memories().then(setMemories).catch(() => {});
@@ -131,6 +162,36 @@ export default function Settings({ settings, onSaved, installPrompt }: {
           <p className="text-xs text-muted">
             Notifications: {pushState === "on" ? "on for this device" : notif === "denied" ? "blocked in your phone settings" : "off"}.
             On iPhone, add to Home Screen first (Share → Add to Home Screen) and open the app from that icon.
+          </p>
+        </div>
+      </Card>
+
+      <Card title="Connected accounts">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="h-9 w-9 rounded-full bg-sunken grid place-items-center text-sm font-semibold">G</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-[15px]">Google Calendar &amp; Gmail</p>
+              <p className="text-xs text-muted truncate">
+                {!google ? "Checking…" : !google.configured ? "Not set up on the server yet" : google.connected ? `Connected${google.email ? ` as ${google.email}` : ""}${google.last_sync_at ? ` · synced ${new Date(google.last_sync_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}` : "Not connected"}
+              </p>
+            </div>
+          </div>
+          {google?.last_error && <p className="text-sm text-danger">{google.last_error}</p>}
+          {googleMsg && <p className="text-sm">{googleMsg}</p>}
+          <div className="flex flex-wrap gap-2">
+            {google?.configured && !google.connected && (
+              <Button onClick={async () => { try { location.href = (await api.googleConnect()).url; } catch (e) { setGoogleMsg((e as Error).message); } }}>Connect Google</Button>
+            )}
+            {google?.connected && <>
+              <Button variant="soft" onClick={syncGoogle} disabled={syncing}>{syncing ? "Syncing…" : "Sync now"}</Button>
+              {google.last_error && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Reconnect</Button>}
+              <Button variant="danger" onClick={async () => { await api.googleDisconnect(); setGoogleMsg("Google disconnected."); setGoogle(await api.googleStatus()); }}>Disconnect</Button>
+            </>}
+          </div>
+          <p className="text-xs text-muted">
+            Reads your calendar and email to remind you of meetings, spot emails that need you, and notice when you've replied.
+            It only writes a draft when you ask, and it never sends anything.
           </p>
         </div>
       </Card>
