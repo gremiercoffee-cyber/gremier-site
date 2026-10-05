@@ -12,7 +12,7 @@ import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } 
 import { missionsSummary, startMission, updateMission } from "./missions";
 import { routinesSummary, saveRoutine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
-import { saveTracker, trackerEntries, trackersSummary } from "./trackers";
+import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
 
@@ -42,7 +42,7 @@ The context tells you which block the user is in RIGHT NOW: use it when they ask
 Trackers: when the user wants to collect what comes in from people or on a topic, on WhatsApp AND Gmail, use save_tracker. Two kinds:
 - Following people ("I asked the Night Seder rabbis for their lists of guys who aren't showing up, track what comes in"): set group (a contact group) or people, and expecting = what was asked for. EVERY message from them is considered (no keywords needed: a bare list of names counts), and it looks back 14 days by default so answers already sent are picked up. It shows who has answered and who hasn't.
 - A topic from anyone ("everything the rabbis say about X"): keywords in Hebrew AND English (generous) plus topic.
-Prefer following people whenever the user names who it's from. Don't create a one-time task for this. To report on it, call get_tracker_entries (includes who answered / who is still missing) and summarize: what each person sent, who is still missing, and any patterns.
+Prefer following people whenever the user names who it's from. Don't create a one-time task for this. If it's unclear what counts as an answer or who it's from, ask one short question before creating it. After creating it, ALWAYS report the preview back and check it: "So far: Menachemov sent 3 names, Heyman sent 1; nothing yet from the other 5. Does that look right?" If they say something was missed or wrong, adjust (update expecting/people) and mention they can tap ✓/✗ on messages and "Link WhatsApp" next to anyone not found. To report on it, call get_tracker_entries (includes who answered / who is still missing) and summarize: what each person sent, who is still missing, and any patterns.
 
 Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
@@ -454,9 +454,10 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         },
       },
       handler: async (input) => {
+        const isNew = !input.id;
         const t = await saveTracker(env, input);
-        note("save_tracker", `Tracker "${t.name}" ${t.active ? "collecting" : "paused"}${t.doc_link ? " · Doc created" : ""}`);
-        return { id: t.id, name: t.name, keywords: t.keywords, people: t.people, doc_link: t.doc_link };
+        note("save_tracker", `🗂 Tracker "${t.name}" ${t.active ? "collecting" : "paused"}`);
+        return { id: t.id, name: t.name, doc_link: t.doc_link, ...(isNew ? { preview: await setupPreview(env, t) } : {}) };
       },
     },
     {

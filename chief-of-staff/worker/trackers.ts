@@ -23,7 +23,7 @@ export interface Tracker {
   group_id: string | null; expecting: string; sources: string; gmail_checked_at: string | null;
   created_at: string; updated_at: string;
 }
-interface Who { name: string; aliases: string[]; email: string | null }
+interface Who { name: string; aliases: string[]; email: string | null; id?: string; whatsapp?: string | null }
 
 const list = (s: string) => (s ?? "").split(",").map((w) => w.trim()).filter(Boolean);
 
@@ -33,7 +33,7 @@ export async function trackedPeople(env: Env, t: Tracker): Promise<Who[]> {
   if (t.group_id) {
     for (const m of await members(env, t.group_id)) {
       const last = m.name.trim().split(/\s+/).slice(1).join(" ");
-      out.push({ name: m.name, email: m.email, aliases: [m.name, m.whatsapp_name, ...list(m.aliases), ...(last.length >= 4 ? [last] : [])].filter(Boolean) as string[] });
+      out.push({ id: m.id, whatsapp: m.whatsapp_name, name: m.name, email: m.email, aliases: [m.name, m.whatsapp_name, ...list(m.aliases), ...(last.length >= 4 ? [last] : [])].filter(Boolean) as string[] });
     }
   }
   for (const n of list(t.people)) if (!out.some((w) => w.name.toLowerCase() === n.toLowerCase())) out.push({ name: n, email: null, aliases: [n] });
@@ -126,11 +126,14 @@ async function relevant(env: Env, t: Tracker, sender: string, text: string) {
   const budget = await triageBudget(env);
   if (budget.used >= budget.cap * 3) return true; // over budget: keep rather than lose answers
   const what = t.expecting || t.topic;
+  const ex = await all<{ verdict: string; sender: string; text: string }>(env,
+    "SELECT verdict, sender, text FROM tracker_entries WHERE tracker_id = ? AND verdict IS NOT NULL ORDER BY created_at DESC LIMIT 12", t.id);
+  const examples = ex.length ? `\n\nThe user's own judgments on earlier messages (follow them):\n${ex.map((e) => `${e.verdict === "good" ? "YES" : "NO"}: ${e.sender}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}`).join("\n")}` : "";
   try {
     const out = await getProvider(env).complete({
       tier: "fast", purpose: "tracker_check", maxTokens: 5,
       system: `Answer only "yes" or "no". The user is collecting: ${what}
-Does this message contain, or relate to, that? Count it as yes if it is an answer, a partial answer, a bare list of names (even with no explanation), a correction, a question about the request, a promise to send it, or a file whose name suggests it is the answer (e.g. "attendance.xlsx"). Answer no for anything on a different subject: shiur materials, Torah files, PDFs of a daf, recordings, announcements, small talk, or files whose names show they're about something else.`,
+Does this message contain, or relate to, that? Count it as yes if it is an answer, a partial answer, a bare list of names (even with no explanation), a correction, a question about the request, a promise to send it, or a file whose name suggests it is the answer (e.g. "attendance.xlsx"). Answer no for anything on a different subject: shiur materials, Torah files, PDFs of a daf, recordings, announcements, small talk, or files whose names show they're about something else.${examples}`,
       prompt: `${sender}: ${text.slice(0, 2000)}`,
     });
     return !/^\s*no/i.test(out);
@@ -240,6 +243,7 @@ export async function runTrackerEmail(env: Env) {
 export async function matchWhatsappNames(env: Env, account: string, names: string[]) {
   const chats = [...new Set(names.map((n) => String(n).trim()).filter((n) => n.length > 1))].slice(0, 600);
   if (!chats.length) return { matched: 0 };
+  await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", `wa_chats:${account}`, JSON.stringify(chats));
   const ts = await all<Tracker>(env, "SELECT * FROM trackers WHERE active = 1 AND group_id IS NOT NULL");
   const missing = new Map<string, { id: string; name: string; email: string | null }>();
   for (const t of ts) {
@@ -272,16 +276,19 @@ export async function matchWhatsappNames(env: Env, account: string, names: strin
 /** Who has answered so far (for trackers that follow people). */
 export async function trackerStatus(env: Env, t: Tracker) {
   const people = await trackedPeople(env, t);
-  const got = new Set((await all<{ person: string }>(env, "SELECT DISTINCT person FROM tracker_entries WHERE tracker_id = ? AND person IS NOT NULL", t.id)).map((r) => r.person));
-  return { total: people.length, answered: people.filter((p) => got.has(p.name)).map((p) => p.name), waiting: people.filter((p) => !got.has(p.name)).map((p) => p.name) };
+  const got = new Set((await all<{ person: string }>(env, "SELECT DISTINCT person FROM tracker_entries WHERE tracker_id = ? AND person IS NOT NULL AND (verdict IS NULL OR verdict = 'good')", t.id)).map((r) => r.person));
+  return {
+    total: people.length, answered: people.filter((p) => got.has(p.name)).map((p) => p.name), waiting: people.filter((p) => !got.has(p.name)).map((p) => p.name),
+    people: people.map((p) => ({ id: p.id ?? null, name: p.name, answered: got.has(p.name), email: !!p.email, whatsapp: p.whatsapp ?? null })),
+  };
 }
 
 /** For the assistant: everything collected, plus who has / hasn't answered. */
 export async function trackerEntries(env: Env, ref: string, limit = 400) {
   const t = await first<Tracker>(env, "SELECT * FROM trackers WHERE id = ? OR lower(name) = lower(?) OR lower(name) LIKE lower(?)", ref, ref, `%${ref}%`);
   if (!t) return { error: "tracker not found" };
-  const entries = await all<{ person: string | null; source: string; chat: string; sender: string; text: string; said_at: string }>(env,
-    "SELECT person, source, chat, sender, text, said_at FROM tracker_entries WHERE tracker_id = ? ORDER BY said_at LIMIT ?", t.id, limit);
+  const entries = await all<{ id: string; person: string | null; source: string; chat: string; sender: string; text: string; said_at: string; verdict: string | null }>(env,
+    "SELECT id, person, source, chat, sender, text, said_at, verdict FROM tracker_entries WHERE tracker_id = ? AND (verdict IS NULL OR verdict = 'good') ORDER BY said_at LIMIT ?", t.id, limit);
   return { name: t.name, collecting: t.expecting || t.topic, doc_link: t.doc_link, status: await trackerStatus(env, t), count: entries.length, entries };
 }
 
@@ -295,4 +302,37 @@ export async function trackersSummary(env: Env) {
 export async function trackersToday(env: Env, since: string) {
   return all<{ name: string; n: number }>(env,
     "SELECT t.name, COUNT(e.id) AS n FROM trackers t JOIN tracker_entries e ON e.tracker_id = t.id WHERE e.created_at >= ? GROUP BY t.id", since);
+}
+
+/** The user's ✓ / ✗ on a collected message. ✗ hides it and teaches the check; ✓ confirms it. */
+export async function judgeEntry(env: Env, entryId: string, verdict: "good" | "bad") {
+  await run(env, "UPDATE tracker_entries SET verdict = ? WHERE id = ?", verdict, entryId);
+  return { ok: true };
+}
+
+/** One-tap linking: this person is this WhatsApp chat. Then the add-on searches history again. */
+export async function linkWhatsapp(env: Env, personId: string, chat: string) {
+  await run(env, "UPDATE people SET whatsapp_name = ?, updated_at = ? WHERE id = ?", chat.slice(0, 120), now(), personId);
+  await run(env, "UPDATE trackers SET backfilled = '' WHERE active = 1");
+  return { ok: true };
+}
+
+/** Chat names the add-on reported (both WhatsApp accounts), for the link picker. */
+export async function knownChats(env: Env) {
+  const rows = await all<{ value: string }>(env, "SELECT value FROM settings WHERE key LIKE 'wa_chats:%'");
+  return [...new Set(rows.flatMap((r) => { try { return JSON.parse(r.value) as string[]; } catch { return []; } }))].sort((a, b) => a.localeCompare(b));
+}
+
+/** Right after setup: what was found so far, for the assistant to confirm with the user. */
+export async function setupPreview(env: Env, t: Tracker) {
+  const status = await trackerStatus(env, t);
+  const found = await all<{ person: string | null; sender: string; source: string; text: string }>(env,
+    "SELECT person, sender, source, text FROM tracker_entries WHERE tracker_id = ? ORDER BY said_at DESC LIMIT 8", t.id);
+  const people = await trackedPeople(env, t);
+  return {
+    status,
+    found: found.map((f) => ({ from: f.person ?? f.sender, via: f.source, text: f.text.replace(/\s+/g, " ").slice(0, 160) })),
+    no_email: people.filter((p) => !p.email).map((p) => p.name),
+    note: "Gmail was searched just now. WhatsApp history is searched by the add-on within a few minutes.",
+  };
 }

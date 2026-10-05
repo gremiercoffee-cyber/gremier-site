@@ -59,8 +59,10 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
   const [list, setList] = useState<Awaited<ReturnType<typeof api.trackers>>>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
+  const [linking, setLinking] = useState<{ id: string; name: string; chats: string[]; q: string } | null>(null);
+  const pickChat = async (id: string, name: string) => setLinking({ id, name, chats: await api.whatsappChats().catch(() => []), q: name.split(" ").slice(-1)[0] });
   const [report, setReport] = useState<{ id: string; text: string } | null>(null);
-  const [entries, setEntries] = useState<{ chat: string; sender: string; text: string; said_at: string; person?: string | null; source?: string }[]>([]);
+  const [entries, setEntries] = useState<{ id: string; verdict?: string | null; chat: string; sender: string; text: string; said_at: string; person?: string | null; source?: string }[]>([]);
   const load = () => api.trackers().then(setList).catch(() => {});
   useEffect(() => { load(); }, [refreshKey]);
   const show = async (id: string) => {
@@ -74,6 +76,21 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
         I collect what comes in on WhatsApp and Gmail into one place and a Google Doc. Follow people ("I asked the Night Seder rabbis for their lists, track what comes in": every reply counts, and I show who has not answered yet) or a topic ("everything the rabbis say about it"). Ask me to analyze it any time.
       </p>
       <Button onClick={() => onAsk("Track what comes in: ")}>+ New tracker</Button>
+      {linking && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-end sm:items-center justify-center" onClick={() => setLinking(null)}>
+          <div className="w-full max-w-md max-h-[75vh] rounded-t-3xl sm:rounded-3xl bg-surface p-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <p className="font-medium">Which WhatsApp chat is {linking.name}?</p>
+            <input className="mt-2 rounded-xl border border-line bg-bg px-3 py-2" placeholder="Search your chats" value={linking.q} onChange={(e) => setLinking({ ...linking, q: e.target.value })} dir="auto" />
+            <div className="mt-2 overflow-y-auto divide-y divide-line">
+              {linking.chats.length === 0 && <p className="py-3 text-sm text-muted">No chat names yet. Reload the WhatsApp add-on and open WhatsApp Web, then try again.</p>}
+              {linking.chats.filter((c) => !linking.q || c.toLowerCase().includes(linking.q.toLowerCase())).slice(0, 60).map((c) => (
+                <button key={c} className="w-full text-left py-2.5 text-[15px]" dir="auto" onClick={async () => { await api.linkWhatsapp(linking.id, c); setLinking(null); load(); }}>{c}</button>
+              ))}
+            </div>
+            <button className="mt-2 text-sm text-muted" onClick={() => setLinking(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
       {list.length === 0 && <Empty>No trackers yet.</Empty>}
       {list.map((t) => (
         <Card key={t.id} title={<span>{t.active ? "Collecting" : "Paused"} · {t.n} message{t.n === 1 ? "" : "s"}{t.last ? ` · last ${timeAgo(t.last)}` : ""}</span>}>
@@ -86,6 +103,13 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
             <div className="mt-2 rounded-xl bg-sunken px-3 py-2 text-[13px]">
               <p><span className="font-medium">{t.status.answered.length}/{t.status.total} answered</span>{t.status.answered.length ? `: ${t.status.answered.join(", ")}` : ""}</p>
               {t.status.waiting.length > 0 && <p className="text-muted mt-0.5">Still waiting on: {t.status.waiting.join(", ")}</p>}
+              {(t.status.people ?? []).filter((p) => !p.answered && !p.whatsapp && p.id).length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {(t.status.people ?? []).filter((p) => !p.answered && !p.whatsapp && p.id).map((p) => (
+                    <button key={p.id} onClick={() => pickChat(p.id!, p.name)} className="rounded-full bg-surface border border-line px-2.5 py-1 text-[12px]">🔗 Link {p.name.split(" ").slice(-1)[0]}'s WhatsApp</button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="flex flex-wrap gap-2 mt-3">
@@ -109,6 +133,12 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
               {entries.length === 0 && <li className="text-sm text-muted">Nothing collected yet.</li>}
               {entries.slice().reverse().map((e, i) => (
                 <li key={i} className="rounded-2xl bg-sunken px-3 py-2">
+                  <div className="float-right flex gap-1 -mr-1">
+                    <button aria-label="Right" onClick={async () => { await api.judgeEntry(e.id, "good"); setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, verdict: "good" } : x))); }}
+                      className={`h-7 w-7 rounded-full text-sm ${e.verdict === "good" ? "bg-emerald-500/20 text-emerald-700" : "text-muted hover:bg-surface"}`}>✓</button>
+                    <button aria-label="Wrong" onClick={async () => { await api.judgeEntry(e.id, "bad"); setEntries((l) => l.filter((x) => x.id !== e.id)); load(); }}
+                      className="h-7 w-7 rounded-full text-sm text-muted hover:bg-surface">✕</button>
+                  </div>
                   <p className="text-xs text-muted">{e.person ?? e.sender} · {e.source === "gmail" ? `✉️ ${e.chat}` : `WhatsApp${e.chat !== e.sender ? ` · ${e.chat}` : ""}`} · {timeAgo(e.said_at)}</p>
                   <p className="text-[14px] whitespace-pre-wrap" dir="auto">{e.text}</p>
                 </li>
