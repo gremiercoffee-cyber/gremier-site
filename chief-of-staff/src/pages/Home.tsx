@@ -191,6 +191,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         </div>
       </div>
 
+      <div className="flex justify-center"><ReadAloud /></div>
+
       <div className="flex justify-center gap-1.5 flex-wrap">
         {[["all", "All"], ...areas.map((a) => [a.key, `${a.icon} ${a.label}`])].map(([k, label]) => (
           <button key={k} onClick={() => setArea(k)}
@@ -235,7 +237,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
             </Row>
           )}
           {nudges.map((n) => (
-            <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
+            <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
               {n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
                 {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
                 <ul className="space-y-1">
@@ -261,13 +263,43 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
 }
 
 /** One compact line; tap to open its details and buttons. */
-function Row({ icon, title, time, children, startOpen }: { icon: string; title: string; time?: string; children: ReactNode; startOpen?: boolean }) {
+/** What each kind of row is: an emoji, a short label and a color, so the list reads at a glance. */
+const KIND: Record<string, { emoji: string; label: string; tone: string }> = {
+  overdue: { emoji: "🔴", label: "Overdue", tone: "border-l-danger text-danger" },
+  reminder: { emoji: "⏰", label: "Reminder", tone: "border-l-amber-500 text-amber-700" },
+  checkin: { emoji: "❓", label: "Did you?", tone: "border-l-amber-500 text-amber-700" },
+  headsup: { emoji: "📅", label: "Coming up", tone: "border-l-sky-500 text-sky-700" },
+  event: { emoji: "🗓️", label: "Meeting", tone: "border-l-sky-500 text-sky-700" },
+  situation: { emoji: "📍", label: "Now", tone: "border-l-accent text-accent" },
+  unanswered: { emoji: "💬", label: "Reply", tone: "border-l-violet-500 text-violet-700" },
+  email: { emoji: "✉️", label: "Email", tone: "border-l-violet-500 text-violet-700" },
+  whatsapp: { emoji: "💬", label: "WhatsApp", tone: "border-l-emerald-500 text-emerald-700" },
+  waiting: { emoji: "⏳", label: "Waiting", tone: "border-l-line text-muted" },
+  auto_done: { emoji: "✅", label: "Done for you", tone: "border-l-emerald-500 text-emerald-700" },
+  digest: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
+  sweep: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
+  learn: { emoji: "✨", label: "To review", tone: "border-l-accent text-accent" },
+  idea: { emoji: "💡", label: "Idea", tone: "border-l-amber-500 text-amber-700" },
+  tracker: { emoji: "🗂️", label: "Tracker", tone: "border-l-sky-500 text-sky-700" },
+  routine: { emoji: "📄", label: "Report", tone: "border-l-sky-500 text-sky-700" },
+  routine_alert: { emoji: "📄", label: "Report", tone: "border-l-sky-500 text-sky-700" },
+  mission_ask: { emoji: "🙋", label: "Question", tone: "border-l-amber-500 text-amber-700" },
+};
+const kindOf = (type: string) => KIND[type] ?? { emoji: "•", label: "", tone: "border-l-line text-muted" };
+/** "Don't forget: Brew coffee" → "Brew coffee" (the label already says what it is). */
+const cleanTitle = (t: string) => t.replace(/^(don't forget|coming up|still waiting|reminder|due soon|heads up|overdue)\s*:\s*/i, "");
+
+function Row({ icon, title, time, children, startOpen, type }: { icon: string; title: string; time?: string; children: ReactNode; startOpen?: boolean; type?: string }) {
   const [open, setOpen] = useState(!!startOpen);
+  const k = type ? kindOf(type) : null;
   return (
-    <div>
+    <div className={k ? `border-l-4 ${k.tone.split(" ")[0]}` : ""}>
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
-        <span className="w-5 shrink-0 text-center text-[13px] text-accent">{icon}</span>
-        <span className={`flex-1 min-w-0 text-[14px] ${open ? "" : "truncate"}`}>{title}</span>
+        <span className="w-5 shrink-0 text-center text-[15px]">{k ? k.emoji : icon}</span>
+        <span className="flex-1 min-w-0">
+          {k?.label && <span className={`block text-[11px] font-semibold uppercase tracking-wide ${k.tone.split(" ")[1]}`}>{k.label}</span>}
+          <span className={`block text-[15px] leading-snug ${open ? "" : "truncate"}`}>{k ? cleanTitle(title) : title}</span>
+        </span>
         {time && <span className="shrink-0 text-[11px] text-muted">{timeAgo(time)}</span>}
       </button>
       {open && <div className="px-4 pb-3 pl-11 space-y-2">{children}</div>}
@@ -496,5 +528,32 @@ function LearnReview({ onChanged }: { onChanged: () => void }) {
       ))}
       <a href="/?tab=review" className="block text-[13px] text-accent pt-1">See everything I know →</a>
     </div>
+  );
+}
+
+/** 🔊 "What's coming up?": a short spoken rundown of the next few hours. Tap again to stop. */
+function ReadAloud() {
+  const [state, setState] = useState<"idle" | "loading" | "speaking">("idle");
+  const stop = () => { try { speechSynthesis.cancel(); } catch { /* fine */ } setState("idle"); };
+  const go = async () => {
+    if (state !== "idle") return stop();
+    if (typeof speechSynthesis === "undefined") return alert("This phone can't read aloud here.");
+    setState("loading");
+    try {
+      const { text } = await api.rundown();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "en-US"; u.rate = 1.02;
+      const voices = speechSynthesis.getVoices();
+      const v = voices.find((x) => /en[-_]US/i.test(x.lang) && /natural|google|samantha|premium/i.test(x.name)) ?? voices.find((x) => /^en/i.test(x.lang));
+      if (v) u.voice = v;
+      u.onend = () => setState("idle"); u.onerror = () => setState("idle");
+      speechSynthesis.cancel(); speechSynthesis.speak(u); setState("speaking");
+    } catch (e) { setState("idle"); alert((e as Error).message); }
+  };
+  return (
+    <button onClick={go} className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-medium shadow-card border ${state === "speaking" ? "bg-accent text-white border-accent" : "bg-surface border-line/70"}`}>
+      <span className="text-[18px]">{state === "speaking" ? "⏹️" : "🔊"}</span>
+      {state === "loading" ? "Getting your rundown…" : state === "speaking" ? "Stop" : "What's coming up?"}
+    </button>
   );
 }

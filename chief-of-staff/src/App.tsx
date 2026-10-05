@@ -14,6 +14,7 @@ import Library, { People, Trackers, type LibraryTab } from "./pages/Library";
 import Replies from "./pages/Replies";
 import Schedule from "./pages/Schedule";
 import Groups from "./pages/Groups";
+import NotifBanner from "./components/NotifBanner";
 import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
@@ -141,6 +142,7 @@ export default function App() {
         </button>
       </header>
 
+      <NotifBanner />
       {health && !health.model && (
         <div className="mx-4 mb-2 rounded-xl bg-sunken text-sm px-3 py-2 text-muted">
           The assistant isn't connected to a model yet. Set the <code>OPENAI_API_KEY</code> secret.

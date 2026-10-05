@@ -1,5 +1,6 @@
 import type { CalendarEvent, Conversation, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
+import { getProvider } from "./ai";
 import { ProviderUnavailable } from "./ai";
 import { chat, executeApproved } from "./assistant";
 import { processBrainDump } from "./braindump";
@@ -103,6 +104,34 @@ route("POST", "/api/areas", async (req, env) => {
 });
 route("DELETE", "/api/areas/:key", async (_req, env, [key]) => {
   try { return json(await removeArea(env, key)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+// A short spoken rundown of the next few hours, for the speaker button on the home screen.
+route("GET", "/api/rundown", async (_req, env) => {
+  const tz = (await getSettings(env)).timezone || "UTC";
+  const until = new Date(Date.now() + 5 * 3600_000).toISOString();
+  const [block, events, due, overdue] = await Promise.all([
+    currentBlock(env),
+    all<{ summary: string; start_at: string }>(env, "SELECT summary, start_at FROM calendar_events WHERE hidden = 0 AND all_day = 0 AND start_at BETWEEN ? AND ? GROUP BY summary, start_at ORDER BY start_at LIMIT 6", now(), until),
+    all<{ title: string; due_at: string; person: string | null }>(env, "SELECT title, due_at, person FROM items WHERE status = 'open' AND kind != 'idea' AND due_at BETWEEN ? AND ? ORDER BY due_at LIMIT 8", now(), until),
+    all<{ title: string }>(env, "SELECT title FROM items WHERE status = 'open' AND kind != 'idea' AND due_at < ? ORDER BY priority, due_at LIMIT 5", now()),
+  ]);
+  const t = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+  const facts = [
+    `Local time: ${new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "long", hour: "numeric", minute: "2-digit" }).format(new Date())}`,
+    block ? `Right now: ${block.name}${block.until ? ` until ${block.until}` : ""}; things for this block: ${block.items.map((i) => i.title).join("; ") || "none"}` : "No time block right now.",
+    events.length ? `Meetings: ${events.map((e) => `${t(e.start_at)} ${e.summary}`).join("; ")}` : "No meetings in the next few hours.",
+    due.length ? `Due soon: ${due.map((d) => `${t(d.due_at)} ${d.title}${d.person ? ` (${d.person})` : ""}`).join("; ")}` : "",
+    overdue.length ? `Overdue: ${overdue.map((o) => o.title).join("; ")}` : "",
+  ].filter(Boolean).join("\n");
+  let text: string;
+  try {
+    text = await getProvider(env).complete({
+      tier: "fast", purpose: "rundown", maxTokens: 220,
+      system: "You are the user's chief of staff speaking to them out loud. In about 60-90 words, tell them what's coming up in the next few hours: what they're in now, meetings, what's due, and the one or two overdue things that matter most. Natural spoken sentences, no lists, no emoji, no markdown. Don't read every item; group and prioritize. End with one suggestion of what to do first.",
+      prompt: facts,
+    });
+  } catch { text = facts.replace(/\n/g, ". "); }
+  return json({ text: text.trim() });
 });
 route("POST", "/api/conversations/tidy", async (req, env) => {
   const b = await body<{ keep?: string | null }>(req).catch(() => ({} as { keep?: string | null }));

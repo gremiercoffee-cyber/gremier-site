@@ -80,6 +80,7 @@ export const api = {
   areas: () => request<{ key: string; label: string; icon: string; about: string }[]>("GET", "/api/areas"),
   saveArea: (a: Record<string, unknown>) => request<{ key: string; label: string; icon: string; about: string }[]>("POST", "/api/areas", a),
   deleteArea: (key: string) => request<{ key: string; label: string; icon: string; about: string }[]>("DELETE", `/api/areas/${key}`),
+  rundown: () => request<{ text: string }>("GET", "/api/rundown"),
   deleteConversation: (id: string) => request("DELETE", `/api/conversations/${id}`),
   actNudge: (id: string, action: string) => request<{ ok: true; message: string; open?: string }>("POST", `/api/nudges/${id}/act`, { action }),
   transcribe: (audio: Blob) => {

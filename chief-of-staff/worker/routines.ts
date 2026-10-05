@@ -161,12 +161,19 @@ export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why
       } catch { /* fall back to the whole job as one question */ }
     }
     // 2. Hand every sub-question to OpenAI as a background research job.
-    const jobs: Job[] = [];
-    for (const q of subs) {
+    await run(env, "UPDATE routine_runs SET error = ? WHERE id = ?", `planned ${subs.length} parts, starting research…`, runId);
+    const t0 = Date.now();
+    const jobs: Job[] = await Promise.all(subs.map(async (q): Promise<Job> => {
       try {
-        jobs.push({ q, id: await provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`, maxSearches: depth.searches, maxTokens: 2500 }) });
-      } catch (e) { jobs.push({ q, id: null, failed: (e as Error).message.slice(0, 200) }); }
-    }
+        const id = await Promise.race([
+          provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`, maxSearches: depth.searches, maxTokens: 2500 }),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("OpenAI didn't accept the background job within 25s")), 25_000)),
+        ]);
+        return { q, id };
+      } catch (e) { return { q, id: null, failed: (e as Error).message.slice(0, 300) }; }
+    }));
+    console.log("routine jobs started", Date.now() - t0, "ms", JSON.stringify(jobs.map((j) => j.id ?? j.failed)));
+    await run(env, "UPDATE routine_runs SET error = NULL WHERE id = ?", runId);
     if (jobs.every((j) => !j.id)) throw new Error(`Couldn't start the research: ${jobs[0]?.failed ?? "unknown error"}`);
     const state: RunState = { eff, job, today, subs, jobs, escalated: opts.escalated ?? null };
     await run(env, "UPDATE routine_runs SET state = ? WHERE id = ?", JSON.stringify(state), runId);

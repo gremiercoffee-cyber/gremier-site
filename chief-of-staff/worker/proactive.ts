@@ -218,7 +218,7 @@ async function checkIns(env: Env, tz: string) {
     if (w.length || (quiet?.n ?? 0) > 0) {
       const lines = w.map((i) => `• ${i.person ?? "?"}: ${i.title}`);
       if ((quiet?.n ?? 0) > 0) lines.push(`• ${quiet!.n} more thing${quiet!.n > 1 ? "s" : ""} noted on your home screen`);
-      await notify(env, "digest", w.length ? `${w.length} ${w.length === 1 ? "reply" : "replies"} to catch up on` : "Midday check", lines.join("\n"),
+      await notify(env, w.length ? "digest" : "sweep", w.length ? `${w.length} ${w.length === 1 ? "reply" : "replies"} to catch up on` : "Midday check", lines.join("\n"),
         null, w.length ? "/?tab=replies" : "/");
       n++;
     }
