@@ -218,7 +218,10 @@ export async function runTrackerEmail(env: Env) {
         const d = await createDoc(env, `Tracker: ${t.name}`, `# ${t.name}\n${t.expecting || t.topic}\n\n## Collected messages\n${body}`);
         await run(env, "UPDATE trackers SET doc_id = ?, doc_link = ?, doc_account = ? WHERE id = ?", d.file_id, d.link, d.account, t.id);
         t.doc_id = d.file_id; t.doc_account = d.account;
-      } catch (e) { console.error("tracker doc", e); }
+      } catch (e) {
+        console.error("tracker doc", e);
+        await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('last_doc_error', ?)", String((e as Error).message).slice(0, 1500));
+      }
     }
     const n = await checkTrackerEmail(env, t).catch((e) => { console.error("tracker gmail", e); return 0; });
     if (n) {
