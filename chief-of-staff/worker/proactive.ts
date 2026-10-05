@@ -14,7 +14,7 @@ import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines } from "./routines";
 import { runSituations } from "./situations";
 import { nudgeStaleIdea, runIdeaResearch } from "./ideas";
-import { trackersToday } from "./trackers";
+import { runTrackerEmail, trackersToday } from "./trackers";
 
 const WAITING_NUDGE_DAYS = 4;
 const POSTPONED_AFTER = 3;
@@ -107,6 +107,9 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 9. Tasks: scheduled research and reports (one per pass).
   if (!isShabbat(settings.timezone)) created += await runDueRoutines(env);
+
+  // 9b. Trackers: new emails from the people being followed.
+  await runTrackerEmail(env).catch((e) => console.error("tracker email", e));
 
   // 10. Ideas: queued research, and once a day (late morning) bring back an idea you went quiet on.
   if (!isShabbat(settings.timezone)) {

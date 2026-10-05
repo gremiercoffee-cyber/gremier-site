@@ -58,7 +58,7 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump,
 export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
   const [list, setList] = useState<Awaited<ReturnType<typeof api.trackers>>>([]);
   const [open, setOpen] = useState<string | null>(null);
-  const [entries, setEntries] = useState<{ chat: string; sender: string; text: string; said_at: string }[]>([]);
+  const [entries, setEntries] = useState<{ chat: string; sender: string; text: string; said_at: string; person?: string | null; source?: string }[]>([]);
   const load = () => api.trackers().then(setList).catch(() => {});
   useEffect(() => { load(); }, [refreshKey]);
   const show = async (id: string) => {
@@ -69,15 +69,23 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted px-1">
-        I collect every WhatsApp message on a topic into one place and a Google Doc, e.g. "track everything the rabbis say about …". Ask me to analyze it any time.
+        I collect what comes in on WhatsApp and Gmail into one place and a Google Doc. Follow people ("I asked the Night Seder rabbis for their lists, track what comes in": every reply counts, and I show who has not answered yet) or a topic ("everything the rabbis say about it"). Ask me to analyze it any time.
       </p>
-      <Button onClick={() => onAsk("Track in WhatsApp: ")}>+ New tracker</Button>
+      <Button onClick={() => onAsk("Track what comes in: ")}>+ New tracker</Button>
       {list.length === 0 && <Empty>No trackers yet.</Empty>}
       {list.map((t) => (
         <Card key={t.id} title={<span>{t.active ? "Collecting" : "Paused"} · {t.n} message{t.n === 1 ? "" : "s"}{t.last ? ` · last ${timeAgo(t.last)}` : ""}</span>}>
           <p className="font-display text-[20px] leading-snug">{t.name}</p>
-          <p className="text-sm text-muted mt-0.5">{t.topic}</p>
-          <p className="text-xs text-muted mt-1">Watching for: {t.keywords || "—"}{t.people ? ` · from ${t.people}` : ""}{t.accounts !== "both" ? ` · ${t.accounts} WhatsApp` : ""}</p>
+          <p className="text-sm text-muted mt-0.5">{t.expecting || t.topic}</p>
+          <p className="text-xs text-muted mt-1">
+            {t.status?.total ? `Following ${t.status.total} people` : `Watching for: ${t.keywords || "—"}`}{t.people && !t.status?.total ? ` · from ${t.people}` : ""} · {(t.sources ?? "whatsapp").split(",").map((x) => (x === "gmail" ? "Gmail" : "WhatsApp")).join(" + ")}
+          </p>
+          {t.status && t.status.total > 0 && (
+            <div className="mt-2 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+              <p><span className="font-medium">{t.status.answered.length}/{t.status.total} answered</span>{t.status.answered.length ? `: ${t.status.answered.join(", ")}` : ""}</p>
+              {t.status.waiting.length > 0 && <p className="text-muted mt-0.5">Still waiting on: {t.status.waiting.join(", ")}</p>}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 mt-3">
             <Button onClick={() => onAsk(`Analyze everything my tracker "${t.name}" collected: the main answers/positions, who said what, where they agree and disagree, and open questions.`)}>Analyze</Button>
             {t.doc_link && <a href={t.doc_link} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-full bg-sunken px-4 py-2 text-sm font-medium">📄 Open Doc</a>}
@@ -90,7 +98,7 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
               {entries.length === 0 && <li className="text-sm text-muted">Nothing collected yet.</li>}
               {entries.slice().reverse().map((e, i) => (
                 <li key={i} className="rounded-2xl bg-sunken px-3 py-2">
-                  <p className="text-xs text-muted">{e.sender}{e.chat !== e.sender ? ` · ${e.chat}` : ""} · {timeAgo(e.said_at)}</p>
+                  <p className="text-xs text-muted">{e.person ?? e.sender} · {e.source === "gmail" ? `✉️ ${e.chat}` : `WhatsApp${e.chat !== e.sender ? ` · ${e.chat}` : ""}`} · {timeAgo(e.said_at)}</p>
                   <p className="text-[14px] whitespace-pre-wrap" dir="auto">{e.text}</p>
                 </li>
               ))}

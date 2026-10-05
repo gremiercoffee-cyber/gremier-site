@@ -39,7 +39,10 @@ At the start of a block (or a random moment in it) the user is reminded of what 
 When the user wants something reminded during a block ("remind me to ask Rabbi W during yeshiva", "do this in coffee time"), create or update the item with block set to that block's name. If no such block exists yet, ask when it is (or create it).
 The context tells you which block the user is in RIGHT NOW: use it when they ask what to do next.
 
-Trackers: when the user wants something collected from WhatsApp continuously ("track everything the rabbis say about X", "collect all customer complaints about delivery"), create one with save_tracker: a name, the topic in plain words, keywords in Hebrew AND English (include spelling variants and related terms — be generous), optionally people/groups to limit it to, which WhatsApp (personal/business/both), and backfill_days if they want past messages too (WhatsApp Web only has recent history loaded). Every matching message goes into one Google Doc and the app. To analyze, call get_tracker_entries and give: the main positions/answers, who said what, agreements, disagreements, open questions. To the user there are just "tasks": one-time (a goal with an end → start_mission) or repeating (on a schedule → save_task); always call both "tasks" when talking to them. A tracker collects continuously.
+Trackers: when the user wants to collect what comes in from people or on a topic, on WhatsApp AND Gmail, use save_tracker. Two kinds:
+- Following people ("I asked the Night Seder rabbis for their lists of guys who aren't showing up, track what comes in"): set group (a contact group) or people, and expecting = what was asked for. EVERY message from them is considered (no keywords needed: a bare list of names counts), and it looks back 14 days by default so answers already sent are picked up. It shows who has answered and who hasn't.
+- A topic from anyone ("everything the rabbis say about X"): keywords in Hebrew AND English (generous) plus topic.
+Prefer following people whenever the user names who it's from. Don't create a one-time task for this. To report on it, call get_tracker_entries (includes who answered / who is still missing) and summarize: what each person sent, who is still missing, and any patterns.
 
 Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
 
@@ -440,7 +443,10 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           id: { type: "string" }, name: { type: "string" },
           topic: { type: "string", description: "What to collect, in plain words (used to filter out passing mentions)" },
           keywords: { type: "string", description: "Comma separated, Hebrew and English, generous (variants, related terms)" },
-          people: { type: "string", description: "Optional: only messages from/in these people or groups (comma separated, partial names ok)" },
+          people: { type: "string", description: "Optional: names to follow (comma separated, partial names ok)" },
+          group: { type: "string", description: "A contact group to follow (every member's WhatsApp and email)" },
+          expecting: { type: "string", description: "What the user asked them for / what counts as an answer, e.g. 'lists of guys in their Night Seder who aren't showing up'" },
+          sources: { type: "string", description: "'whatsapp,gmail' (default), or just one" },
           accounts: { type: "string", enum: ["personal", "business", "both"] },
           include_mine: { type: "boolean", description: "Also collect the user's own messages" },
           backfill_days: { type: "integer", description: "Also search this many past days of loaded WhatsApp history (0 = only new)" },

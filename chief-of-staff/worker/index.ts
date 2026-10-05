@@ -18,7 +18,7 @@ import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
-import { capture, markBackfilled, saveTracker, trackerEntries, trackersForBridge, type Tracker } from "./trackers";
+import { capture, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -273,11 +273,13 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   return json({ ok: true });
 });
 // ---- Trackers ----------------------------------------------------------------------
-route("GET", "/api/trackers", async (_req, env) =>
-  json(await all<Tracker & { n: number; last: string | null }>(env,
+route("GET", "/api/trackers", async (_req, env) => {
+  const ts = await all<Tracker & { n: number; last: string | null }>(env,
     `SELECT t.*, (SELECT COUNT(*) FROM tracker_entries e WHERE e.tracker_id = t.id) AS n,
             (SELECT MAX(said_at) FROM tracker_entries e WHERE e.tracker_id = t.id) AS last
-     FROM trackers t ORDER BY t.active DESC, t.created_at DESC`)));
+     FROM trackers t ORDER BY t.active DESC, t.created_at DESC`);
+  return json(await Promise.all(ts.map(async (t) => ({ ...t, status: await trackerStatus(env, t) }))));
+});
 route("POST", "/api/trackers", async (req, env) => {
   try { return json(await saveTracker(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
