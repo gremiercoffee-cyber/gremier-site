@@ -14,6 +14,7 @@ import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines } from "./routines";
 import { runSituations } from "./situations";
 import { nudgeStaleIdea, runIdeaResearch } from "./ideas";
+import { tidyConversations } from "./tidy";
 import { runTrackerEmail, trackersToday } from "./trackers";
 
 const WAITING_NUDGE_DAYS = 4;
@@ -107,6 +108,9 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 9. Tasks: scheduled research and reports (one per pass).
   if (!isShabbat(settings.timezone)) created += await runDueRoutines(env);
+
+  // 9a. Once a day, early morning: tidy the chat list (delete throwaway chats, merge same-topic ones, archive old).
+  if (local.hour >= 3 && local.hour < 6) await tidyConversations(env).catch((e) => console.error("tidy", e));
 
   // 9b. Trackers: new emails from the people being followed.
   await runTrackerEmail(env).catch((e) => console.error("tracker email", e));

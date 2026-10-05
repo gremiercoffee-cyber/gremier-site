@@ -18,6 +18,18 @@ export default function ConversationList({ conversations, activeId, onOpen, onCh
   const [showArchived, setShowArchived] = useState(false);
   const [archived, setArchived] = useState<Conversation[]>([]);
   const [busy, setBusy] = useState(false);
+  const [tidyMsg, setTidyMsg] = useState("");
+  const tidy = async () => {
+    setBusy(true); setTidyMsg("Tidying…");
+    try {
+      const r = await api.tidyConversations(activeId);
+      const bits = [r.deleted ? `${r.deleted} deleted` : "", r.merged ? `${r.merged} merged` : "", r.archived ? `${r.archived} archived` : ""].filter(Boolean);
+      setTidyMsg(bits.length ? `Tidied: ${bits.join(", ")}` : "Already tidy");
+      onChanged();
+    } catch { setTidyMsg("Couldn't tidy right now"); }
+    setBusy(false);
+    setTimeout(() => setTidyMsg(""), 4000);
+  };
 
   useEffect(() => { if (showArchived) api.conversations(true).then(setArchived).catch(() => {}); }, [showArchived, conversations]);
 
@@ -43,12 +55,16 @@ export default function ConversationList({ conversations, activeId, onOpen, onCh
       <div className="flex items-center justify-between px-5 pt-5 pb-1.5">
         <p className="text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Conversations</p>
         {conversations.length > 0 && (
-          <button onClick={() => { setSelecting((v) => !v); setPicked(new Set()); }} className="text-xs text-accent">
-            {selecting ? "Cancel" : "Select"}
-          </button>
+          <span className="flex gap-3">
+            {!selecting && <button onClick={tidy} disabled={busy} className="text-xs text-accent">Tidy up</button>}
+            <button onClick={() => { setSelecting((v) => !v); setPicked(new Set()); }} className="text-xs text-accent">
+              {selecting ? "Cancel" : "Select"}
+            </button>
+          </span>
         )}
       </div>
 
+      {tidyMsg && <p className="px-5 pb-1 text-xs text-muted">{tidyMsg}</p>}
       <div className="flex-1 overflow-y-auto px-2">
         {conversations.length === 0 && <p className="px-3 py-2 text-sm text-muted">Nothing yet. Just start talking.</p>}
         {conversations.map((c) => (
@@ -61,10 +77,15 @@ export default function ConversationList({ conversations, activeId, onOpen, onCh
                   {picked.has(c.id) && <svg viewBox="0 0 16 16" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3.5 8.5l3 3 6-7" /></svg>}
                 </span>
               )}
-              <span className="min-w-0">
-                <span className="block text-[15px] truncate">{c.title || "New conversation"}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] truncate">{c.pinned ? "📌 " : ""}{c.title || "New conversation"}</span>
                 <span className="block text-xs text-muted">{timeAgo(c.last_message_at)}</span>
               </span>
+              {!selecting && (
+                <span role="button" aria-label={c.pinned ? "Unpin" : "Pin"} title={c.pinned ? "Unpin" : "Pin (never tidied away)"}
+                  onClick={async (e) => { e.stopPropagation(); await api.pinConversation(c.id, !c.pinned); onChanged(); }}
+                  className={`shrink-0 text-[13px] px-1 ${c.pinned ? "" : "opacity-30 hover:opacity-80"}`}>📌</span>
+              )}
             </button>
           </SwipeRow>
         ))}

@@ -75,6 +75,8 @@ export const api = {
   conversationsBulk: (ids: string[], action: "archive" | "restore" | "delete") =>
     request<{ ok: true; count: number }>("POST", "/api/conversations/bulk", { ids, action }),
   conversationMessages: (id: string) => request<Message[]>("GET", `/api/conversations/${id}/messages`),
+  pinConversation: (id: string, pinned: boolean) => request("POST", `/api/conversations/${id}/pin`, { pinned }),
+  tidyConversations: (keep: string | null) => request<{ deleted?: number; merged?: number; archived?: number }>("POST", "/api/conversations/tidy", { keep }),
   deleteConversation: (id: string) => request("DELETE", `/api/conversations/${id}`),
   actNudge: (id: string, action: string) => request<{ ok: true; message: string; open?: string }>("POST", `/api/nudges/${id}/act`, { action }),
   transcribe: (audio: Blob) => {

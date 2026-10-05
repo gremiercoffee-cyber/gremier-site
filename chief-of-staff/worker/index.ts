@@ -8,6 +8,7 @@ import {
 } from "./db";
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
+import { tidyConversations } from "./tidy";
 import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
 import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
@@ -88,7 +89,16 @@ route("GET", "/api/dashboard", async (_req, env) => {
 // ---- Chat (text, live voice and dictation share one conversation) -----------
 route("GET", "/api/conversations", async (req, env) => {
   const archived = new URL(req.url).searchParams.get("archived") === "1" ? 1 : 0;
-  return json(await all<Conversation>(env, "SELECT * FROM conversations WHERE archived = ? ORDER BY last_message_at DESC LIMIT 100", archived));
+  return json(await all<Conversation>(env, "SELECT * FROM conversations WHERE archived = ? ORDER BY pinned DESC, last_message_at DESC LIMIT 100", archived));
+});
+route("POST", "/api/conversations/:id/pin", async (req, env, [id]) => {
+  const b = await body<{ pinned?: boolean }>(req);
+  await run(env, "UPDATE conversations SET pinned = ?, archived = 0 WHERE id = ?", b.pinned ? 1 : 0, id);
+  return json({ ok: true });
+});
+route("POST", "/api/conversations/tidy", async (req, env) => {
+  const b = await body<{ keep?: string | null }>(req).catch(() => ({} as { keep?: string | null }));
+  return json(await tidyConversations(env, { force: true, keepId: b.keep ?? null }));
 });
 // Clean up: archive, restore or delete one or many conversations.
 route("POST", "/api/conversations/bulk", async (req, env) => {

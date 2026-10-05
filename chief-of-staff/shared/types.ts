@@ -81,6 +81,7 @@ export interface Conversation {
   title: string;
   created_at: string;
   last_message_at: string;
+  pinned?: number;
 }
 
 export interface PendingAction {
