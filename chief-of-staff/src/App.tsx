@@ -117,6 +117,7 @@ export default function App() {
 
   const go = (v: View) => { setView(v === "missions" ? "tasks" : v); setDrawer(false); };
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
+  const goHome = () => openConversation(null);
   const openItem = (item: Item) => setSheet({ item });
   const current = conversations.find((c) => c.id === conversationId);
 
@@ -126,9 +127,15 @@ export default function App() {
         <button onClick={() => setDrawer(true)} aria-label="Menu" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
         </button>
-        <p className="flex-1 min-w-0 text-center font-medium truncate">
+        {view !== "home" || conversationId ? (
+          <button onClick={goHome} aria-label="Home" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10" /></svg>
+          </button>
+        ) : <span className="w-11" />}
+        <button onClick={goHome} className="flex-1 min-w-0 text-center font-medium truncate">
           {view === "home" ? current?.title || "Chief of Staff" : VIEW_TITLES[view]}
-        </p>
+        </button>
+        <span className="w-11" />
         <button onClick={() => openConversation(null)} aria-label="New conversation" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z" /></svg>
         </button>
@@ -183,7 +190,7 @@ export default function App() {
       {drawer && (
         <div className="fixed inset-0 z-40 flex">
           <nav className="w-[82%] max-w-80 h-full bg-surface border-r border-line shadow-card flex flex-col pt-safe pb-safe drawer-in">
-            <div className="flex items-center gap-2.5 px-4 h-14 shrink-0"><Logo /><span className="font-medium">Chief of Staff</span></div>
+            <button onClick={goHome} className="flex items-center gap-2.5 px-4 h-14 shrink-0 text-left"><Logo /><span className="font-medium">Chief of Staff</span><span className="ml-auto text-xs text-muted">Home</span></button>
             <form className="px-3 pb-2" onSubmit={(e) => { e.preventDefault(); go("search"); }}>
               <input value={query} onChange={(e) => setQuery(e.target.value)} onFocus={() => { if (query) go("search"); }}
                 placeholder="🔍  Search everything" enterKeyHint="search"
