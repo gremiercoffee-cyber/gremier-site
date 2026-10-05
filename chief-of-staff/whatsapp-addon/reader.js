@@ -50,7 +50,7 @@
       const key = idOf(msg);
       if (!key || done.has(key)) return;
       const t = Number(msg.t) || 0;
-      if (t && t < started - 60) return;            // history loading, not live traffic
+      if (!t || t < started - 60) return;           // no timestamp or older than this tab: history loading, not live traffic
       const d = describe(col, msg);
       if (!d.chatId || d.chatId === "status@broadcast") return;
       if (!d.text && d.kind !== "chat") return;     // media without caption
