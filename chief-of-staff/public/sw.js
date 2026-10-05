@@ -1,6 +1,6 @@
 // Chief of Staff service worker: app-shell caching + notification plumbing.
 // API calls are never cached — data always comes fresh from the Worker.
-const CACHE = "cos-shell-v6";
+const CACHE = "cos-shell-v7";
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (e) => {
