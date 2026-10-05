@@ -39,7 +39,8 @@ export async function bridgeStatus(env: Env) {
 
 const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Reply with JSON only:
 {"action":"none"|"task"|"commitment"|"reminder","title":string,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null}
-- task: the sender needs the user to do or answer something. Title like "Reply to Avi about Thursday's order".
+- task: ONLY when the user genuinely owes something that matters and could slip: a real question or request waiting on them, a decision, an order, a deadline, money, a commitment. Title like "Reply to Avi about Thursday's order".
+- Be strict: most WhatsApps are "none": greetings, thanks, "ok"/"👍", reactions, jokes, casual chat, updates or FYIs, things already answered in the conversation, and anything they'd naturally reply to in the moment. When in doubt, "none".
 - reminder: something at a specific time (set due_at, ISO 8601). commitment: the user already promised something.
 - category: coffee = Gremier Coffee business (orders, deliveries, beans, customers, suppliers); yeshiva = the yeshiva (rabbis, students, classes); personal = family/home/money; null if unsure.
 - none: chit-chat, thanks, FYI, or nothing the user must do. Titles in the message's language is fine.

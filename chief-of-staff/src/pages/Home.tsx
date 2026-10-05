@@ -587,7 +587,8 @@ function TodoSection({ dash, shown, inArea, onChanged }: {
 }) {
   const [openList, setOpenList] = useState<string | null>(null);
   const [all, setAll] = useState(false);
-  const items = (dash?.todo ?? []).filter((i) => !shown.has(i.id) && inArea(i.category));
+  // "Reply to…" items from WhatsApp/email live on the Replies page, not here.
+  const items = (dash?.todo ?? []).filter((i) => !shown.has(i.id) && inArea(i.category) && !(i.source === "whatsapp" || i.source === "gmail"));
   if (!items.length) return null;
   const listName = (id: string) => dash?.lists?.find((l) => l.id === id)?.name ?? "List";
   const loose = items.filter((i) => !i.project_id);

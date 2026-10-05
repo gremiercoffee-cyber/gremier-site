@@ -2,7 +2,7 @@
 // Bundles a burst of messages from one chat into a single forward, and reports your own replies.
 // If WhatsApp's internals can't be read, falls back to watching the chat list (still read-only).
 (() => {
-  const BUNDLE_MS = 60_000;
+  const BUNDLE_MS = 15 * 60_000; // give the user 15 minutes to answer on their own before it becomes a to-do
   const buffers = new Map(); // chatId -> { chat, sender, isGroup, muted, lines: [], actionable, timer }
   const lastReplied = new Map();
   let myNames = [];
@@ -45,7 +45,7 @@
     if (m.text) b.lines.push(m.isGroup ? `${m.sender}: ${m.text}` : m.text);
     const ok = cosActionable(m, myNames);
     b.actionable = b.actionable || ok;
-    const why = ok ? "will forward in 1 min" : m.isGroup ? "skipped: group, you weren't mentioned" : m.muted ? "skipped: muted chat" : "skipped: didn't look like a request";
+    const why = ok ? "will forward in 15 min if you don't answer" : m.isGroup ? "skipped: group, you weren't mentioned" : m.muted ? "skipped: muted chat" : "skipped: didn't look like a request";
     send({ type: "seen", note: `${m.sender}${m.isGroup ? ` in ${m.chat}` : ""} (${why})` });
     clearTimeout(b.timer);
     b.timer = setTimeout(() => flush(m.chatId), BUNDLE_MS);
