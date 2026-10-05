@@ -281,7 +281,7 @@ function Chips({ n, onAct, onReply }: { n: Nudge; onAct: (n: Nudge, a: string) =
 function FromCos({ children, time }: { children: ReactNode; time?: string }) {
   return (
     <div className="flex gap-2.5 items-start">
-      <span className="mt-1 h-7 w-7 shrink-0 rounded-full bg-ink text-bg inline-flex items-center justify-center font-display text-[14px] leading-none">C<span className="text-accent">s</span></span>
+      <img src="/logo-orb.png" alt="" width={28} height={28} className="mt-1 h-7 w-7 shrink-0" />
       <div className="flex-1 min-w-0 rounded-2xl rounded-tl-md bg-surface border border-line/70 shadow-card px-4 py-3 text-[15px] leading-relaxed">
         {children}
         {time && <p className="text-[11px] text-muted mt-1.5">{timeAgo(time)}</p>}
@@ -411,7 +411,10 @@ function Bubble({ m }: { m: Message }) {
   return (
     <div className="space-y-1.5">
       {m.content && (
-        <FromCos><Markdown text={m.content} /></FromCos>
+        <FromCos>
+          <Markdown text={m.content} />
+          <CopyButton text={m.content} />
+        </FromCos>
       )}
       {actions.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pl-9">
@@ -423,6 +426,17 @@ function Bubble({ m }: { m: Message }) {
 }
 
 function safeParse(s: string) { try { return JSON.parse(s); } catch { return []; } }
+
+/** Copies the draft (the quoted part, if the reply has one) or the whole reply. */
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  const quoted = text.split("\n").filter((l) => /^>\s?/.test(l)).map((l) => l.replace(/^>\s?/, "")).join("\n").trim();
+  const value = (quoted || text).trim();
+  return (
+    <button onClick={async () => { try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); } catch { /* no clipboard */ } }}
+      className="mt-1 text-[12px] text-muted hover:text-ink">{done ? "✓ Copied" : quoted ? "Copy draft" : "Copy"}</button>
+  );
+}
 
 const Thinking = () => (
   <FromCos>
