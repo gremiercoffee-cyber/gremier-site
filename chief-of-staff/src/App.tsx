@@ -251,10 +251,8 @@ function DrawerItem({ active, onClick, label, icon }: { active?: boolean; onClic
   );
 }
 
-const Logo = () => (
-  <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-ink text-bg font-display text-[17px] leading-none">
-    C<span className="text-accent">s</span>
-  </span>
+const Logo = ({ size = 28 }: { size?: number }) => (
+  <img src="/logo-orb.png" alt="" width={size} height={size} className="shrink-0" />
 );
 
 function Login({ health, onDone }: { health: { configured: boolean } | null; onDone: () => void }) {
