@@ -44,6 +44,30 @@ export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => 
   const triggers = active.filter((s) => !s.start_time && s.calendar_keywords);
   const paused = list.filter((s) => !s.active && !s.date);
   const save = async (patch: Record<string, unknown>) => { await api.saveSituation(patch); load(); };
+  // The main daily schedule (the biggest group of blocks sharing the same days) is listed once.
+  const grouped = groups(recurring);
+  const main = grouped[0]?.[1].slice().sort(byStart);
+  const mainIds = new Set(main?.map((s) => s.id));
+  const mainToday = !!main && days(main[0]).includes(dow);
+  const extras = recurring.filter((s) => !mainIds.has(s.id)).sort((a, b) => days(a)[0] - days(b)[0] || byStart(a, b));
+  const todayExtras = todays.filter((s) => !mainIds.has(s.id));
+
+  /** A block line: "Off today" when it applies today; tap for Pause/Delete. */
+  const blockRow = (s: SituationRow, appliesToday: boolean, sub?: string) => {
+    const off = appliesToday && skipped(s, today);
+    return (
+      <div key={s.id} onClick={() => setSel(sel === s.id ? null : s.id)} className="cursor-pointer">
+        <Row s={s} muted={off} sub={off ? "Off today" : sub}>
+          {sel === s.id ? <>
+            <button className="text-xs text-accent" onClick={(e) => { e.stopPropagation(); save({ id: s.id, active: false }); }}>Pause</button>
+            <button className="text-xs text-muted hover:text-danger" onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Delete "${s.name}"?`)) { await api.deleteSituation(s.id); load(); } }}>Delete</button>
+          </> : appliesToday ? (
+            <button className="text-xs text-accent" onClick={(e) => { e.stopPropagation(); save({ id: s.id, [off ? "unskip_date" : "skip_date"]: today }); }}>{off ? "Back on" : "Off today"}</button>
+          ) : null}
+        </Row>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -53,17 +77,23 @@ export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => 
         <Button variant="soft" onClick={() => onAsk("My usual schedule: ")}>Change my usual week</Button>
       </div>
 
-      <Section title={`Today · ${DAYS[dow]}`}>
-        {todays.length === 0 ? <p className="py-3 text-sm text-muted">Nothing scheduled today.</p> : todays.map((s) => {
-          const off = skipped(s, today);
-          return (
-            <Row key={s.id} s={s} muted={off} sub={off ? "Off today" : s.date ? "Just today" : undefined}>
-              {!s.date && <button className="text-xs text-accent" onClick={() => save({ id: s.id, [off ? "unskip_date" : "skip_date"]: today })}>{off ? "Back on" : "Off today"}</button>}
-              {s.date && <button className="text-xs text-muted hover:text-danger" onClick={async () => { await api.deleteSituation(s.id); load(); }}>Remove</button>}
-            </Row>
-          );
-        })}
-      </Section>
+      {recurring.length === 0 && <Section title="Your daily schedule"><div className="py-3"><Empty>No usual schedule yet. Tell me, e.g. "I'm in yeshiva Sunday to Thursday 9 to 1".</Empty></div></Section>}
+
+      {main && (
+        <Section title={`Your daily schedule · ${dayRange(days(main[0]))}`}>
+          {main.map((s) => blockRow(s, mainToday))}
+        </Section>
+      )}
+
+      {(todayExtras.length > 0 || (!mainToday && todays.length === 0)) && (
+        <Section title={`Also today · ${DAYS[dow]}`}>
+          {todayExtras.length === 0 ? <p className="py-3 text-sm text-muted">Nothing scheduled today.</p> : todayExtras.map((s) => (
+            s.date
+              ? <Row key={s.id} s={s} sub="Just today"><button className="text-xs text-muted hover:text-danger" onClick={async () => { await api.deleteSituation(s.id); load(); }}>Remove</button></Row>
+              : blockRow(s, true)
+          ))}
+        </Section>
+      )}
 
       {upcoming.length > 0 && (
         <Section title="Coming days">
@@ -75,22 +105,11 @@ export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => 
         </Section>
       )}
 
-      {recurring.length === 0 ? (
-        <Section title="Your usual week"><div className="py-3"><Empty>No usual schedule yet. Tell me, e.g. "I'm in yeshiva Sunday to Thursday 9 to 1".</Empty></div></Section>
-      ) : groups(recurring).map(([key, blocks], gi) => (
-        <Section key={key} title={gi === 0 ? `Your usual day · ${dayRange(days(blocks[0]))}` : `Also ${dayRange(days(blocks[0]))}`}>
-          {blocks.sort(byStart).map((s) => (
-            <div key={s.id} onClick={() => setSel(sel === s.id ? null : s.id)} className="cursor-pointer">
-              <Row s={s}>
-                {sel === s.id ? <>
-                  <button className="text-xs text-accent" onClick={(e) => { e.stopPropagation(); save({ id: s.id, active: false }); }}>Pause</button>
-                  <button className="text-xs text-muted hover:text-danger" onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Delete "${s.name}"?`)) { await api.deleteSituation(s.id); load(); } }}>Delete</button>
-                </> : null}
-              </Row>
-            </div>
-          ))}
+      {extras.length > 0 && (
+        <Section title="Weekly extras">
+          {extras.map((s) => blockRow(s, false, dayRange(days(s))))}
         </Section>
-      ))}
+      )}
 
       {triggers.length > 0 && (
         <Section title="When something's on my calendar">
