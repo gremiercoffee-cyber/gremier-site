@@ -36,7 +36,11 @@ export async function trackedPeople(env: Env, t: Tracker): Promise<Who[]> {
       out.push({ id: m.id, whatsapp: m.whatsapp_name, name: m.name, email: m.email, aliases: [m.name, m.whatsapp_name, ...list(m.aliases), ...(last.length >= 4 ? [last] : [])].filter(Boolean) as string[] });
     }
   }
-  for (const n of list(t.people)) if (!out.some((w) => w.name.toLowerCase() === n.toLowerCase())) out.push({ name: n, email: null, aliases: [n] });
+  for (const n of list(t.people)) {
+    if (out.some((w) => w.name.toLowerCase() === n.toLowerCase())) continue;
+    const bare = n.replace(/\s*\((you|me|את|אתה)\)\s*$/i, "").trim();
+    out.push({ name: n, email: null, aliases: [...new Set([n, bare])].filter(Boolean) });
+  }
   return out;
 }
 
@@ -203,10 +207,20 @@ export async function checkTrackerEmail(env: Env, t: Tracker, report?: { threads
 export async function checkTrackerNow(env: Env, id: string, lookBackDays?: number) {
   const t = await first<Tracker>(env, "SELECT * FROM trackers WHERE id = ?", id);
   if (!t) throw new Error("tracker not found");
-  if (lookBackDays) t.gmail_checked_at = null, t.backfill_days = lookBackDays;
-  const report = { threads: 0, fromThem: 0, kept: 0, skipped: [] as string[] };
-  report.kept = await checkTrackerEmail(env, t, report);
-  return { ...report, status: await trackerStatus(env, t) };
+  const days = lookBackDays || t.backfill_days || 30;
+  const report = { threads: 0, fromThem: 0, kept: 0, skipped: [] as string[], gmail: false, whatsapp: false };
+  const sources = t.sources || "whatsapp,gmail";
+  if (sources.includes("whatsapp")) {
+    // The add-on picks this up within ~5 minutes and searches the chats WhatsApp Web has loaded.
+    await run(env, "UPDATE trackers SET backfilled = '', backfill_days = ? WHERE id = ?", Math.max(days, t.backfill_days || 0), t.id);
+    report.whatsapp = true;
+  }
+  if (sources.includes("gmail")) {
+    t.gmail_checked_at = null; t.backfill_days = days;
+    report.kept = await checkTrackerEmail(env, t, report);
+    report.gmail = true;
+  }
+  return { ...report, days, status: await trackerStatus(env, t) };
 }
 
 /** Cron: check Gmail for every active tracker that follows people; tell the user when answers come in. */

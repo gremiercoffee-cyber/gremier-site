@@ -97,9 +97,9 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
           <p className="font-display text-[20px] leading-snug">{t.name}</p>
           <p className="text-sm text-muted mt-0.5">{t.expecting || t.topic}</p>
           <p className="text-xs text-muted mt-1">
-            {t.status?.total ? `Following ${t.status.total} people` : `Watching for: ${t.keywords || "—"}`}{t.people && !t.status?.total ? ` · from ${t.people}` : ""} · {(t.sources ?? "whatsapp").split(",").map((x) => (x === "gmail" ? "Gmail" : "WhatsApp")).join(" + ")}
+            {t.status?.total ? `Following ${t.status.total === 1 ? (t.status.people?.[0]?.name ?? "1 chat") : `${t.status.total} people`}` : `Watching for: ${t.keywords || "—"}`}{t.people && !t.status?.total ? ` · from ${t.people}` : ""} · {(t.sources ?? "whatsapp").split(",").map((x) => (x === "gmail" ? "Gmail" : "WhatsApp")).join(" + ")}
           </p>
-          {t.status && t.status.total > 0 && (
+          {t.status && t.status.total > 1 && (
             <div className="mt-2 rounded-xl bg-sunken px-3 py-2 text-[13px]">
               <p><span className="font-medium">{t.status.answered.length}/{t.status.total} answered</span>{t.status.answered.length ? `: ${t.status.answered.join(", ")}` : ""}</p>
               {t.status.waiting.length > 0 && <p className="text-muted mt-0.5">Still waiting on: {t.status.waiting.join(", ")}</p>}
@@ -119,7 +119,10 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
               setChecking(t.id); setReport(null);
               try {
                 const r = await api.checkTracker(t.id, 30);
-                setReport({ id: t.id, text: `Searched Gmail (last 30 days): ${r.threads} email threads with them, ${r.fromThem} messages from them, ${r.kept} new added.${r.skipped.length ? `\nSkipped:\n${r.skipped.slice(0, 8).join("\n")}` : ""}` });
+                setReport({ id: t.id, text: [
+                  r.whatsapp ? `WhatsApp: asked the add-on to search your loaded chats (last ${r.days} days). New finds show up here within ~5 minutes. Keep WhatsApp Web open.` : "",
+                  r.gmail ? `Gmail (last ${r.days} days): ${r.threads} threads with them, ${r.fromThem} messages from them, ${r.kept} new added.${r.skipped.length ? `\nSkipped:\n${r.skipped.slice(0, 8).join("\n")}` : ""}` : "",
+                ].filter(Boolean).join("\n") });
               } catch (e) { setReport({ id: t.id, text: (e as Error).message }); }
               setChecking(null); load();
             }}>{checking === t.id ? "Checking…" : "Check now"}</Button>
