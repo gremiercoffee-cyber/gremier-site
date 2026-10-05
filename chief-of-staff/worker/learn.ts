@@ -54,13 +54,13 @@ export async function learnPass(env: Env, force = false) {
     all<{ content: string; status: string }>(env, "SELECT content, status FROM memories ORDER BY updated_at DESC LIMIT 200"),
     all<{ name: string; role: string }>(env, "SELECT name, role FROM people LIMIT 150"),
   ]);
-  const system = `You are the learning engine of a personal Chief of Staff. The user runs a coffee business (Gremier Coffee), works at a yeshiva, and has a personal/family life. All times below are the user's local time (${tz}); use them as given. From the new material below, pick out what reveals something LASTING about their life worth remembering: who a person or company is to them (e.g. "Bottle company X supplies the bottles for your coffee business"), suppliers, customers, colleagues, family, roles, routines and weekly schedule, preferences, ongoing commitments, places, prices, how things work in their businesses. Be aggressive: propose anything plausibly useful, but nothing one-off (a single errand is not a memory) and nothing already known. When you are guessing, say so in "question" (e.g. "Is X your bottle supplier for the coffee business?").
+  const system = `You are the learning engine of a personal Chief of Staff. The user runs a coffee business (Gremier Coffee), works at a yeshiva, and has a personal/family life. All times below are the user's local time (${tz}); use them as given. From the new material below, pick out what reveals something LASTING about their life worth remembering: who a person or company is to them (e.g. "Bottle company X supplies the bottles for your coffee business"), suppliers, customers, colleagues, family, roles, routines and weekly schedule, preferences, ongoing commitments, places, prices, how things work in their businesses. Be selective and minimalist: propose only what is ESSENTIAL and LASTING, things that will matter again and again. Not every person who writes is worth remembering: propose a person only if they clearly play an ongoing role (seen repeatedly, or a supplier/customer/colleague/family member), and set person.key=true only if they are central to the user's life. Prefer one summarizing fact over many small ones (e.g. "You oversee the Night Seder rabbis: A, B, C" instead of one suggestion per rabbi). Nothing one-off (a single errand or a single message is not a memory) and nothing already known. When you are guessing, say so in "question" (e.g. "Is X your bottle supplier for the coffee business?").
 Already known (don't repeat, don't re-propose ignored ones):
 ${known.map((k) => `- ${k.status === "ignored" ? "(ignored) " : ""}${k.content.slice(0, 160)}`).join("\n") || "- nothing yet"}
 People already known: ${people.map((p) => `${p.name}${p.role ? ` (${p.role})` : ""}`).join("; ") || "none"}
 
-Reply with ONLY JSON: {"suggestions":[{"kind":"fact|person|schedule|preference","content":"one plain sentence addressed to the user","area":"coffee|yeshiva|personal|null","about":"name of the person/company/thing or null","question":"short question if unsure, else null","evidence":"a few words of where you saw it","person":{"name":"","role":"","notes":""},"schedule":{"name":"","category":"coffee|yeshiva|personal","weekdays":[0],"start_time":"HH:MM","end_time":"HH:MM"}}]}
-"person" only for kind person; "schedule" only for kind schedule (a recurring weekly block, Sunday=0). At most 10. Empty list if nothing.`;
+Reply with ONLY JSON: {"suggestions":[{"kind":"fact|person|schedule|preference","content":"one plain sentence addressed to the user","area":"coffee|yeshiva|personal|null","about":"name of the person/company/thing or null","question":"short question if unsure, else null","evidence":"a few words of where you saw it","person":{"name":"","role":"","notes":"","key":false},"schedule":{"name":"","category":"coffee|yeshiva|personal","weekdays":[0],"start_time":"HH:MM","end_time":"HH:MM"}}]}
+"person" only for kind person; "schedule" only for kind schedule (a recurring weekly block, Sunday=0). At most 5, fewer is better. Empty list if nothing essential.`;
   let out: string;
   try {
     out = await getProvider(env).complete({ tier: "fast", purpose: "learn", maxTokens: 1500, system, prompt: snippets.join("\n").slice(0, 24000) });
@@ -71,7 +71,7 @@ Reply with ONLY JSON: {"suggestions":[{"kind":"fact|person|schedule|preference",
   try { list = (JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)).suggestions ?? []) as Suggestion[]; } catch { return { learned: 0 }; }
   const seen = new Set(known.map((k) => k.content.toLowerCase().trim()));
   let added = 0;
-  for (const s of list.slice(0, 10)) {
+  for (const s of list.slice(0, 5)) {
     const content = String(s.content ?? "").trim().slice(0, 400);
     if (!content || seen.has(content.toLowerCase())) continue;
     seen.add(content.toLowerCase());
@@ -113,7 +113,7 @@ export async function reviewMemory(env: Env, id: string, action: string, content
     try { data = m.data ? JSON.parse(m.data) : null; } catch { /* plain fact */ }
     // Structured suggestions also update People / the schedule.
     if (m.category === "person" && (data?.name || m.about)) {
-      await savePerson(env, edited ? { name: m.about ?? data?.name, notes: text } : { name: data?.name || m.about, role: data?.role, notes: data?.notes || text });
+      await savePerson(env, edited ? { name: m.about ?? data?.name, notes: text } : { name: data?.name || m.about, role: data?.role, notes: data?.notes || text, key: !!data?.key });
     }
     if (m.category === "schedule" && data && !edited) {
       try { await saveSituation(env, { ...data, mode: "start" }); } catch (e) { console.error("learn schedule", e); }

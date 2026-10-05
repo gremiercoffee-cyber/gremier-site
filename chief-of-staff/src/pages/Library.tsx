@@ -104,21 +104,30 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
 
 /** The people I know about: who they are to you and how to reach them. */
 export function People({ refreshKey }: { refreshKey: number }) {
-  const [people, setPeople] = useState<Awaited<ReturnType<typeof api.people>>>([]);
-  useEffect(() => { api.people().then(setPeople).catch(() => {}); }, [refreshKey]);
+  const [people, setPeople] = useState<(Awaited<ReturnType<typeof api.people>>[number] & { key?: number })[]>([]);
+  const load = () => api.people().then(setPeople).catch(() => {});
+  useEffect(() => { load(); }, [refreshKey]);
+  const sorted = [...people].sort((a, b) => (b.key ?? 0) - (a.key ?? 0) || a.name.localeCompare(b.name));
   return (
-        <Card title={`People (${people.length})`}>
-          {people.length === 0 ? <Empty>No one yet. Mention someone and I'll remember them.</Empty> : (
-            <ul className="divide-y divide-line">
-              {people.map((p) => (
-                <li key={p.id} className="py-2.5">
+    <div className="space-y-2 mt-4">
+      <p className="text-sm text-muted px-1">★ = always on my mind (sent with every message; keep it to the few central people). Everyone else I look up when you mention them.</p>
+      <Card title={`People (${people.length})`}>
+        {people.length === 0 ? <Empty>No one yet. Mention someone and I'll remember them.</Empty> : (
+          <ul className="divide-y divide-line">
+            {sorted.map((p) => (
+              <li key={p.id} className="py-2.5 flex gap-2 items-start">
+                <button aria-label={p.key ? "Unstar" : "Star"} onClick={async () => { await api.setKeyPerson(p.id, !p.key); load(); }}
+                  className={`text-[18px] leading-none mt-0.5 ${p.key ? "text-amber-500" : "text-line hover:text-muted"}`}>★</button>
+                <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-medium">{p.name}{p.role && <span className="text-muted font-normal"> · {p.role}</span>}</p>
                   <p className="text-xs text-muted">{[p.email, p.whatsapp_name && `WhatsApp: ${p.whatsapp_name}`, p.preferred_channel && `prefers ${p.preferred_channel}`].filter(Boolean).join(" · ") || "No contact details yet"}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
   );
 }
 

@@ -49,6 +49,7 @@ Memory, like a person with a good brain:
 - "People you know" is your address book. When the user mentions someone by role or name ("my boss", "the accountant", "Avi") look there first.
 - If you need someone you don't know yet (no person with that role or name), ask once: who they are and how to reach them (email and/or WhatsApp name). Save it with save_person. Never ask again for what is saved.
 - Channels: if the person has a usual channel, say you'll use it ("I'll email it to David as usual") and go ahead with the draft/approval flow; if not, ask "email or WhatsApp?". If the user states a preference ("always email him"), save it as preferred_channel.
+- Memory is minimalist: only what is essential and lasting about their life. Mark a person key (save_person key=true) only if they are central (family, boss, main partners, main suppliers/customers, people they deal with weekly); everyone else is saved without key and looked up when mentioned. Prefer one summarizing fact over many small ones ("You oversee the Night Seder rabbis: A, B, C" rather than a memory per rabbi). Don't save one-off contacts or passing details.
 - Save lasting facts and preferences with remember as soon as you learn them, without asking. If the user told you directly, save it as is; if you are inferring or connecting dots (e.g. "the bottle company is probably your coffee bottle supplier"), set inferred=true with a short question so they confirm it in their review list. Be generous: the more you understand about their life, the better. Update instead of duplicating. If a memory you need isn't shown, use recall.
 - Documents: create Google Docs and Sheets directly when asked, and give the link. Sharing a file with someone goes through share_file, which waits for the user's approval.
 
@@ -78,6 +79,38 @@ Rules:
 const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
 
 const OPEN_ITEMS = 40;
+const FEW_ITEMS = 12;
+
+/**
+ * Context triage, no AI involved: plain rules decide which saved sections ride along with a message.
+ * A section is included when the message has one of its trigger words, or mentions something by
+ * name that appears in that section (a group, tracker, idea, task, project or time block). With no
+ * message (live voice setup, background jobs) everything is included.
+ */
+const TRIGGERS: Record<string, RegExp> = {
+  schedule: /\b(today|tomorrow|tonight|morning|afternoon|evening|night|schedule|yeshiva|seder|week|weekend|sunday|monday|tuesday|wednesday|thursday|friday|shabbat|when|time|free|busy|off|block|routine|day)\b|היום|מחר|ישיבה|שבוע/i,
+  calendar: /\b(today|tomorrow|tonight|morning|afternoon|evening|calendar|meeting|event|appointment|schedule|busy|free|when|this week|next week)\b|היום|מחר|פגישה/i,
+  groups: /\b(group|groups|everyone|all the|broadcast|mass|announce|let them know|tell all|message all|email all)\b|קבוצה|כולם/i,
+  trackers: /\b(track|tracker|trackers|tracking|collect|collected|analy[sz]e|rabbis said|what did .* say)\b/i,
+  ideas: /\b(idea|ideas|what if|thinking about|brainstorm|business plan|concept|launch)\b|רעיון/i,
+  tasks: /\b(report|reports|every (day|week|month|morning|sunday)|weekly|daily|monthly|research|recurring|repeating|look into)\b/i,
+  missions: /\b(mission|in progress|progress|status|working on|follow ?up|by (monday|tuesday|wednesday|thursday|friday|sunday))\b/i,
+  projects: /\b(project|projects)\b|פרויקט/i,
+  manyItems: /\b(to-?dos?|list|lists|remind|reminders?|overdue|left|open|pending|due|tasks?|everything|what do i (have|need)|what's on|plate|catch me up|briefing)\b|משימ/i,
+};
+const SIGNIFICANT = (q: string) => (q.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []).filter((w) => !["that", "this", "with", "have", "what", "when", "from", "about", "just", "need", "want", "please", "tell", "them", "they", "will", "would", "could", "should", "there", "their", "make", "also", "some"].includes(w));
+
+export function triageSections(query: string, sections: Record<string, string>) {
+  if (!query.trim()) return new Set([...Object.keys(TRIGGERS), ...Object.keys(sections)]);
+  const want = new Set<string>();
+  for (const [k, re] of Object.entries(TRIGGERS)) if (re.test(query)) want.add(k);
+  const words = SIGNIFICANT(query);
+  for (const [k, text] of Object.entries(sections)) {
+    const t = text.toLowerCase();
+    if (words.some((w) => t.includes(w))) want.add(k);
+  }
+  return want;
+}
 
 export async function buildContext(env: Env, mode: string, query = ""): Promise<string> {
   const settings = await getSettings(env);
@@ -100,6 +133,14 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   const [situations, groups, tasks, trackers, ideas, missions] = await Promise.all([
     situationsSummary(env), groupsSummary(env), routinesSummary(env), trackersSummary(env), ideasSummary(env), missionsSummary(env),
   ]);
+  const projectsText = projects.map((p) => `- ${p.name} [${p.area}, ${p.status}]${p.description ? ` — ${p.description}` : ""}`).join("\n");
+  const want = triageSections(query, {
+    schedule: situations, groups, tasks, trackers, ideas, missions, projects: projectsText,
+  });
+  // Items mentioned by name always count; otherwise a short list unless the message is about to-dos.
+  const itemWords = SIGNIFICANT(query);
+  const shownItems = want.has("manyItems") || !query.trim() ? items
+    : [...items.slice(0, FEW_ITEMS), ...items.slice(FEW_ITEMS).filter((i) => itemWords.some((w) => `${i.title} ${i.person ?? ""}`.toLowerCase().includes(w)))];
 
   // Prompt caching: OpenAI bills the identical opening of a request ~90% cheaper. So the order is
   // (1) things that change rarely, (2) things that change during the day, (3) what changes every
@@ -107,12 +148,11 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   const lines: string[] = [];
   if (settings.name) lines.push(`The user's name is ${settings.name}.`);
   lines.push(memory);
-  if (situations) lines.push("", "## Schedule (time blocks)", situations);
-  if (groups) lines.push("", "## Contact groups", groups);
-  if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
-  if (trackers) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
-  lines.push("", "## Projects");
-  lines.push(projects.length ? projects.map((p) => `- ${p.name} [${p.area}, ${p.status}]${p.description ? ` — ${p.description}` : ""}`).join("\n") : "- (none)");
+  if (situations && want.has("schedule")) lines.push("", "## Schedule (time blocks)", situations);
+  if (groups && want.has("groups")) lines.push("", "## Contact groups", groups);
+  if (tasks && want.has("tasks")) lines.push("", "## Tasks (recurring jobs)", tasks);
+  if (trackers && want.has("trackers")) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
+  if (projectsText && want.has("projects")) lines.push("", "## Projects", projectsText);
   const g = await googleStatus(env).catch(() => null);
   const bridge = await bridgeStatus(env);
   lines.push("", "## Connected accounts");
@@ -121,12 +161,14 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   lines.push(bridge.configured
     ? "- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve); approved messages go out when their computer is on. Actionable incoming WhatsApps arrive as items with source whatsapp."
     : "- WhatsApp: not set up yet.");
-  if (ideas) lines.push("", "## Ideas (open)", ideas);
-  if (missions) lines.push("", "## Missions (working in the background)", missions);
-  lines.push("", `## Open items (soonest ${OPEN_ITEMS}; use search_items for others)`);
+  if (ideas && want.has("ideas")) lines.push("", "## Ideas (open)", ideas);
+  if (missions && want.has("missions")) lines.push("", "## Missions (working in the background)", missions);
+  const skipped = ["schedule", "groups", "tasks", "trackers", "projects", "ideas", "missions", "calendar"].filter((k) => !want.has(k));
+  if (skipped.length) lines.push("", `(Not shown for this message: ${skipped.join(", ")}. If you need one, use the matching lookup tool, e.g. search_items, calendar_lookup, recall, find_person, get_tracker_entries.)`);
+  lines.push("", `## Open items (soonest ${shownItems.length}; use search_items for others)`);
   lines.push(
-    items.length
-      ? items
+    shownItems.length
+      ? shownItems
           .map((i) => {
             const bits = [i.kind, `p${i.priority}`];
             if (i.due_at) bits.push(`due ${i.due_at}`);
@@ -138,7 +180,7 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
           .join("\n")
       : "- (none)",
   );
-  const events = g?.accounts.length ? await upcomingEventsText(env, tz) : null;
+  const events = g?.accounts.length && want.has("calendar") ? await upcomingEventsText(env, tz) : null;
   if (events) lines.push("", "## Calendar (next 48 hours)", events);
   // Changes every message: keep at the very end.
   lines.push("", `Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
@@ -422,6 +464,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       input_schema: {
         type: "object",
         properties: {
+          key: { type: "boolean", description: "true only for the few central people in their life (sent with every message); default false" },
           id: { type: "string" }, name: { type: "string" }, role: { type: "string" }, aliases: { type: "string" },
           email: { type: "string" }, phone: { type: "string" }, whatsapp_name: { type: "string" },
           preferred_channel: { type: "string", enum: ["email", "whatsapp", "call"] }, notes: { type: "string" },
@@ -819,7 +862,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
     tier: "main",
     purpose: `chat:${mode}`,
     system: SYSTEM_PROMPT,
-    context: await buildContext(env, mode, text),
+    context: await buildContext(env, mode, history.filter((h) => h.role === "user").slice(-3).map((h) => h.content).join("\n") || text),
     history,
     tools,
   });

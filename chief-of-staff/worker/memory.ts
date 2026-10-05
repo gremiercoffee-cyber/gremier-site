@@ -16,8 +16,8 @@ export interface Person {
   last_contact_at: string | null; created_at: string; updated_at: string;
 }
 
-const CORE_PEOPLE = 40;
-const CORE_MEMORIES = 20;
+const CORE_PEOPLE = 12;   // only people marked key
+const CORE_MEMORIES = 15;
 const RECALLED = 10;
 
 /** Usual channel: what the user said, else a clear learned habit (3+ uses and twice the alternative). */
@@ -57,7 +57,7 @@ export async function recallMemories(env: Env, text: string, limit = RECALLED): 
 }
 
 export async function findPeople(env: Env, text: string, limit = 8): Promise<Person[]> {
-  const words = (text.toLowerCase().match(/[\p{L}\p{N}@.]{2,}/gu) ?? []).slice(0, 10);
+  const words = (text.toLowerCase().match(/[\p{L}\p{N}@.]{3,}/gu) ?? []).filter((w) => !STOP.has(w)).slice(0, 10);
   if (!words.length) return [];
   const where = words.map(() => "(lower(name) LIKE ? OR lower(role) LIKE ? OR lower(aliases) LIKE ? OR lower(email) LIKE ? OR lower(whatsapp_name) LIKE ?)").join(" OR ");
   const binds = words.flatMap((w) => Array(5).fill(`%${w}%`));
@@ -69,15 +69,15 @@ export async function findPeople(env: Env, text: string, limit = 8): Promise<Per
  */
 export async function memoryContext(env: Env, query = ""): Promise<string> {
   const [people, core] = await Promise.all([
-    all<Person>(env, "SELECT * FROM people ORDER BY (role != '') DESC, name LIMIT ?", CORE_PEOPLE),
+    all<Person>(env, "SELECT * FROM people WHERE key = 1 ORDER BY name LIMIT ?", CORE_PEOPLE),
     all<Memory>(env, "SELECT * FROM memories WHERE status = 'confirmed' ORDER BY importance ASC, created_at LIMIT ?", CORE_MEMORIES),
   ]);
   const coreIds = new Set(core.map((m) => m.id));
   const recalled = query ? (await recallMemories(env, query)).filter((m) => !coreIds.has(m.id)) : [];
   const total = await first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM memories WHERE status != 'ignored'");
 
-  const lines = ["## People you know"];
-  lines.push(people.length ? people.map(personLine).join("\n") : "- (none saved yet)");
+  const lines = ["## Key people (others are in the address book: use find_person, or see 'People mentioned' below)"];
+  lines.push(people.length ? people.map(personLine).join("\n") : "- (none marked key yet)");
   lines.push("", "## Memory: key facts and preferences");
   lines.push(core.length ? core.map((m) => `- [${m.category}] ${m.content} (id ${m.id})`).join("\n") : "- (nothing yet)");
   if (recalled.length) {
@@ -91,10 +91,14 @@ export async function memoryContext(env: Env, query = ""): Promise<string> {
 /** Memories related to what the user just said (changes every message, so it goes last in the context). */
 export async function recallText(env: Env, query: string) {
   const core = new Set((await all<{ id: string }>(env, "SELECT id FROM memories WHERE status = 'confirmed' ORDER BY importance ASC, created_at LIMIT ?", CORE_MEMORIES)).map((m) => m.id));
-  const rec = (await recallMemories(env, query)).filter((m) => !core.has(m.id));
-  if (!rec.length) return "";
-  return ["## Memory: related to this message",
-    rec.map((m) => `- [${m.category}] ${m.content}${m.status === "suggested" ? " (unconfirmed guess, not yet reviewed by the user)" : ""} (id ${m.id})`).join("\n")].join("\n");
+  const [rec, people] = await Promise.all([recallMemories(env, query), findPeople(env, query, 6)]);
+  const mems = rec.filter((m) => !core.has(m.id));
+  const others = people.filter((p) => !(p as Person & { key?: number }).key);
+  const out: string[] = [];
+  if (others.length) out.push("## People mentioned", others.map(personLine).join("\n"));
+  if (mems.length) out.push("## Memory: related to this message",
+    mems.map((m) => `- [${m.category}] ${m.content}${m.status === "suggested" ? " (unconfirmed guess, not yet reviewed by the user)" : ""} (id ${m.id})`).join("\n"));
+  return out.join("\n");
 }
 
 export async function savePerson(env: Env, input: Record<string, unknown>) {
@@ -114,17 +118,18 @@ export async function savePerson(env: Env, input: Record<string, unknown>) {
     whatsapp_name: s("whatsapp_name") ?? existing?.whatsapp_name ?? null,
     preferred_channel: s("preferred_channel") ?? existing?.preferred_channel ?? null,
     notes: s("notes") ?? existing?.notes ?? "",
+    key: input.key === undefined ? (existing as (Person & { key?: number }) | null)?.key ?? 0 : input.key ? 1 : 0,
   };
   if (!merged.name) throw new Error("A person needs a name.");
   if (existing) {
-    await run(env, `UPDATE people SET name=?, role=?, aliases=?, email=?, phone=?, whatsapp_name=?, preferred_channel=?, notes=?, updated_at=? WHERE id=?`,
-      merged.name, merged.role, merged.aliases, merged.email, merged.phone, merged.whatsapp_name, merged.preferred_channel, merged.notes, t, existing.id);
+    await run(env, `UPDATE people SET name=?, role=?, aliases=?, email=?, phone=?, whatsapp_name=?, preferred_channel=?, notes=?, key=?, updated_at=? WHERE id=?`,
+      merged.name, merged.role, merged.aliases, merged.email, merged.phone, merged.whatsapp_name, merged.preferred_channel, merged.notes, merged.key, t, existing.id);
     return { id: existing.id, updated: true, ...merged };
   }
   const newId = uid();
-  await run(env, `INSERT INTO people (id, name, role, aliases, email, phone, whatsapp_name, preferred_channel, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    newId, merged.name, merged.role, merged.aliases, merged.email, merged.phone, merged.whatsapp_name, merged.preferred_channel, merged.notes, t, t);
+  await run(env, `INSERT INTO people (id, name, role, aliases, email, phone, whatsapp_name, preferred_channel, notes, key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    newId, merged.name, merged.role, merged.aliases, merged.email, merged.phone, merged.whatsapp_name, merged.preferred_channel, merged.notes, merged.key, t, t);
   return { id: newId, created: true, ...merged };
 }
 

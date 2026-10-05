@@ -253,6 +253,11 @@ route("POST", "/api/broadcasts/:id/send", async (_req, env, [id]) => {
 route("DELETE", "/api/broadcasts/:id", async (_req, env, [id]) => { await run(env, "DELETE FROM broadcasts WHERE id = ? AND status = 'draft'", id); return json({ ok: true }); });
 route("POST", "/api/learn", async (_req, env) => json(await learnPass(env, true)));
 route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
+route("POST", "/api/people/:id", async (req, env, [id]) => {
+  const b = await body<{ key?: boolean }>(req);
+  if (b.key !== undefined) await run(env, "UPDATE people SET key = ?, updated_at = ? WHERE id = ?", b.key ? 1 : 0, now(), id);
+  return json({ ok: true });
+});
 route("DELETE", "/api/people/:id", async (_req, env, [id]) => {
   await run(env, "DELETE FROM people WHERE id = ?", id);
   return json({ ok: true });

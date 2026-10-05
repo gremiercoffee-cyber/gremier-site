@@ -93,6 +93,7 @@ export const api = {
   updateProject: (id: string, p: Partial<Project>) => request<Project>("PATCH", `/api/projects/${id}`, p),
   deleteProject: (id: string) => request("DELETE", `/api/projects/${id}`),
   memories: () => request<Memory[]>("GET", "/api/memories"),
+  setKeyPerson: (id: string, key: boolean) => request("POST", `/api/people/${id}`, { key }),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
   reviewMemory: (id: string, action: "accept" | "edit" | "ignore", content?: string) => request("POST", `/api/memories/${id}/review`, { action, content }),
   ideas: () => request<IdeaRow[]>("GET", "/api/ideas"),
