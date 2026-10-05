@@ -130,7 +130,7 @@ async function relevant(env: Env, t: Tracker, sender: string, text: string) {
     const out = await getProvider(env).complete({
       tier: "fast", purpose: "tracker_check", maxTokens: 5,
       system: `Answer only "yes" or "no". The user is collecting: ${what}
-Does this message contain, or relate to, that? Count it as yes if it is an answer, a partial answer, a bare list of names or items (even with no explanation), a correction, an attachment/file mention, a question about the request, or a promise to send it. Answer no only for clearly unrelated small talk or a different subject.`,
+Does this message contain, or relate to, that? Count it as yes if it is an answer, a partial answer, a bare list of names (even with no explanation), a correction, a question about the request, a promise to send it, or a file whose name suggests it is the answer (e.g. "attendance.xlsx"). Answer no for anything on a different subject: shiur materials, Torah files, PDFs of a daf, recordings, announcements, small talk, or files whose names show they're about something else.`,
       prompt: `${sender}: ${text.slice(0, 2000)}`,
     });
     return !/^\s*no/i.test(out);
@@ -212,10 +212,10 @@ export async function runTrackerEmail(env: Env) {
   for (const t of ts) {
     if (!t.doc_id) {
       try {
-        const d = await createDoc(env, `Tracker: ${t.name}`, `# ${t.name}
-${t.expecting || t.topic}
-
-## Collected messages`);
+        const prior = await all<{ person: string | null; sender: string; source: string; text: string; said_at: string }>(env,
+          "SELECT person, sender, source, text, said_at FROM tracker_entries WHERE tracker_id = ? ORDER BY said_at", t.id);
+        const body = prior.map((e) => `### ${e.person ?? e.sender} · ${e.source === "gmail" ? "email" : "WhatsApp"} · ${e.said_at.slice(0, 10)}\n${e.text}`).join("\n\n");
+        const d = await createDoc(env, `Tracker: ${t.name}`, `# ${t.name}\n${t.expecting || t.topic}\n\n## Collected messages\n${body}`);
         await run(env, "UPDATE trackers SET doc_id = ?, doc_link = ?, doc_account = ? WHERE id = ?", d.file_id, d.link, d.account, t.id);
         t.doc_id = d.file_id; t.doc_account = d.account;
       } catch (e) { console.error("tracker doc", e); }
