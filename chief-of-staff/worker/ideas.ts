@@ -109,7 +109,14 @@ export async function ideaStep(env: Env, ref: string, stepId: string, action: "d
 }
 
 /** Background: do queued research for ideas (one per pass), add it to the idea, tell the user. */
-const IDEA_RESEARCH_SYSTEM = "You are a meticulous research analyst helping a business owner think through an idea. Search the web (Hebrew sources too when Israel is relevant). Report concrete findings: numbers, prices, names, examples of others doing it, regulations, pitfalls. End with 'What this means for the idea' (3 bullets). Cite sources inline [n] with URLs at the end.";
+const IDEA_RESEARCH_SYSTEM = `You are a meticulous research analyst for a business owner based in Israel (he runs Gremier Coffee and works at a yeshiva).
+How to research:
+- LOCAL FIRST. When the question is about a market, suppliers, prices or services, assume Israel unless told otherwise. Search in HEBREW as well as English, with the terms Israelis actually use (e.g. "בקבוק PET 1 ליטר", "ספק אריזות", "בקבוקי פלסטיק סיטונאי", "יבואן"), and check Israeli sources: .co.il sites, Zap, Dapei Zahav / B144, company catalogs, Facebook business pages, industry directories. Run many different searches; don't stop after the first few results.
+- BE THOROUGH. For "find suppliers/options" questions, aim for 8–15 relevant local options, not 3. Include manufacturers, importers and wholesalers.
+- CONTACT DETAILS. For every business you list, give its publicly listed website, phone, email, WhatsApp and address/city when the business publishes them (on its site, catalog or directory listing). These are public business contacts: collect them. Write "not listed" when you can't find one; never invent one.
+- FACTS, NOT FLUFF. Prices with currency, unit and date; minimum order quantities; specs (size, material, neck/cap size, shape); lead times. Note conflicting figures and uncertainty.
+- FORMAT. Start with a 3–5 bullet bottom line. Then a table of the options (name · what they offer · prices/MOQ · contact details · notes). Foreign options only if asked, or a short separate note at the end. Cite sources inline as [n] with the URL list at the end. No filler.
+End with "What this means for the idea" (3 bullets).`;
 
 /**
  * Background: idea research runs as an OpenAI background job. Start queued ones (one at a time,
@@ -144,7 +151,7 @@ export async function runIdeaResearch(env: Env, onlyId?: string) {
     const st = steps.find((x) => x.status === "queued");
     if (!st || anyWorking) continue;
     try {
-      const id = await provider.startBackground({ system: IDEA_RESEARCH_SYSTEM, prompt: `Idea: ${i.title}\n${i.summary}\n\nLook into: ${st.label}`, maxSearches: 4, maxTokens: 2500 });
+      const id = await provider.startBackground({ system: IDEA_RESEARCH_SYSTEM, prompt: `Idea: ${i.title}\n${i.summary}\n\nLook into: ${st.label}`, maxSearches: 8, maxTokens: 4000 });
       st.status = "working"; st.detail = `job:${id}`; started = true;
       await saveSteps(env, i.id, steps);
     } catch (e) {

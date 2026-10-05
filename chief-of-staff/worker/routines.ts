@@ -21,7 +21,7 @@ export interface Routine {
 }
 
 export const DEPTH: Record<string, { subs: number; searches: number; label: string; costPerRun: number }> = {
-  quick: { subs: 1, searches: 4, label: "Quick", costPerRun: 0.06 },
+  quick: { subs: 1, searches: 8, label: "Quick", costPerRun: 0.1 },
   standard: { subs: 4, searches: 4, label: "Standard", costPerRun: 0.25 },
   deep: { subs: 8, searches: 8, label: "Deep", costPerRun: 0.8 },
   // Adaptive: a full Standard report the first time, then Quick checks that go Standard only when they find something important.
@@ -125,7 +125,13 @@ export async function runDueRoutines(env: Env) {
   return 1;
 }
 
-const RESEARCH_SYSTEM = `You are a meticulous research analyst. Search the web thoroughly (several queries, local-language sources too, e.g. Hebrew for Israel) and read primary sources. Report concrete facts: numbers, prices with currency and date, names, dates. Note conflicting figures and uncertainty. Cite sources inline as [n] with the URL list at the end. No filler.`;
+export const RESEARCH_SYSTEM = `You are a meticulous research analyst for a business owner based in Israel (he runs Gremier Coffee and works at a yeshiva).
+How to research:
+- LOCAL FIRST. When the question is about a market, suppliers, prices or services, assume Israel unless told otherwise. Search in HEBREW as well as English, with the terms Israelis actually use (e.g. "בקבוק PET 1 ליטר", "ספק אריזות", "בקבוקי פלסטיק סיטונאי", "יבואן"), and check Israeli sources: .co.il sites, Zap, Dapei Zahav / B144, company catalogs, Facebook business pages, industry directories. Run many different searches; don't stop after the first few results.
+- BE THOROUGH. For "find suppliers/options" questions, aim for 8–15 relevant local options, not 3. Include manufacturers, importers and wholesalers.
+- CONTACT DETAILS. For every business you list, give its publicly listed website, phone, email, WhatsApp and address/city when the business publishes them (on its site, catalog or directory listing). These are public business contacts: collect them. Write "not listed" when you can't find one; never invent one.
+- FACTS, NOT FLUFF. Prices with currency, unit and date; minimum order quantities; specs (size, material, neck/cap size, shape); lead times. Note conflicting figures and uncertainty.
+- FORMAT. Start with a 3–5 bullet bottom line. Then a table of the options (name · what they offer · prices/MOQ · contact details · notes). Foreign options only if asked, or a short separate note at the end. Cite sources inline as [n] with the URL list at the end. No filler.`;
 const WRITE_SYSTEM = `Write a comprehensive, well-structured report in Markdown for a busy business owner.
 Structure: "## Key takeaways" (5-8 bullets with numbers), then sections by theme, then "## What changed since last time" (only if a previous report is given), then "## What this means for you" (practical implications/actions), then "## Sources" (numbered URLs).
 Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.`;
@@ -171,7 +177,7 @@ export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why
       if (i >= PARALLEL) return { q, id: null };
       try {
         const id = await Promise.race([
-          provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`, maxSearches: depth.searches, maxTokens: 2500 }),
+          provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`, maxSearches: depth.searches, maxTokens: 4000 }),
           new Promise<never>((_, rej) => setTimeout(() => rej(new Error("OpenAI didn't accept the background job within 25s")), 25_000)),
         ]);
         return { q, id };
@@ -238,7 +244,7 @@ async function advanceOne(env: Env, rr: { id: string; routine_id: string; state:
     if (running >= PARALLEL) break;
     if (j.id || j.text !== undefined || j.failed) continue;
     try {
-      j.id = await provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${st.today}\nOverall job: ${st.job}\nYour part: ${j.q}`, maxSearches: (DEPTH[st.eff] ?? DEPTH.standard).searches, maxTokens: 2500 });
+      j.id = await provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${st.today}\nOverall job: ${st.job}\nYour part: ${j.q}`, maxSearches: (DEPTH[st.eff] ?? DEPTH.standard).searches, maxTokens: 4000 });
       running++; changed = true;
     } catch (e) {
       const m = (e as Error).message;
