@@ -240,7 +240,10 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
           )}
           {nudges.map((n) => (
             <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
-              {n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
+              {n.type === "idea" ? <>
+                <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>
+                <a href="/?tab=ideas" className="inline-block text-[14px] font-medium text-accent">Open the idea → pick next steps</a>
+              </> : n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
                 {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
                 <ul className="space-y-1">
                   {n.items.map((it) => (

@@ -109,31 +109,47 @@ export async function ideaStep(env: Env, ref: string, stepId: string, action: "d
 }
 
 /** Background: do queued research for ideas (one per pass), add it to the idea, tell the user. */
+const IDEA_RESEARCH_SYSTEM = "You are a meticulous research analyst helping a business owner think through an idea. Search the web (Hebrew sources too when Israel is relevant). Report concrete findings: numbers, prices, names, examples of others doing it, regulations, pitfalls. End with 'What this means for the idea' (3 bullets). Cite sources inline [n] with URLs at the end.";
+
+/**
+ * Background: idea research runs as an OpenAI background job. Start queued ones (one at a time,
+ * to stay under the per-minute limit) and collect finished ones; add results to the idea and notify.
+ */
 export async function runIdeaResearch(env: Env, onlyId?: string) {
-  const list = await all<Idea>(env, onlyId ? "SELECT * FROM ideas WHERE id = ?" : "SELECT * FROM ideas WHERE steps LIKE '%\"queued\"%' ORDER BY updated_at LIMIT 5", ...(onlyId ? [onlyId] : []));
+  const list = await all<Idea>(env, onlyId ? "SELECT * FROM ideas WHERE id = ?" : `SELECT * FROM ideas WHERE steps LIKE '%"queued"%' OR steps LIKE '%"working"%' ORDER BY updated_at LIMIT 8`, ...(onlyId ? [onlyId] : []));
+  const provider = getProvider(env);
+  let started = false;
   for (const i of list) {
     const steps = parse<Step[]>(i.steps, []);
-    const st = steps.find((s) => s.status === "queued");
-    if (!st) continue;
-    st.status = "working";
-    await saveSteps(env, i.id, steps);
-    try {
-      const r = await getProvider(env).research({
-        purpose: "idea_research", maxSearches: 6, maxTokens: 2500,
-        system: "You are a meticulous research analyst helping a business owner think through an idea. Search the web (Hebrew sources too when Israel is relevant). Report concrete findings: numbers, prices, names, examples of others doing it, regulations, pitfalls. End with 'What this means for the idea' (3 bullets). Cite sources inline [n] with URLs at the end.",
-        prompt: `Idea: ${i.title}\n${i.summary}\n\nLook into: ${st.label}`,
-      });
-      const notes = parse<Note[]>(i.notes, []);
-      notes.push({ at: now(), kind: "research", text: `**${st.label}**\n\n${r.text}`, sources: r.sources.slice(0, 15) });
-      st.status = "done";
-      await saveSteps(env, i.id, steps, notes);
-      const gist = r.text.split("What this means for the idea").pop()?.replace(/[#*\[\]\d]+/g, "").trim().slice(0, 220) ?? "";
-      await notify(env, "idea", `💡 Looked into it: ${i.title}`.slice(0, 80), `${st.label}\n${gist}`.slice(0, 400), null, "/?tab=ideas");
-    } catch (e) {
-      st.status = "suggested"; st.detail = `Couldn't finish: ${(e as Error).message.slice(0, 100)}`;
-      await saveSteps(env, i.id, steps);
+    // Collect finished jobs.
+    for (const st of steps.filter((x) => x.status === "working" && x.detail?.startsWith("job:"))) {
+      try {
+        const c = await provider.checkBackground(st.detail!.slice(4), "idea_research");
+        if (!c.done) continue;
+        if ("text" in c) {
+          const notes = parse<Note[]>(i.notes, []);
+          notes.push({ at: now(), kind: "research", text: `**${st.label}**\n\n${c.text}`, sources: c.sources.slice(0, 15) });
+          st.status = "done"; st.detail = undefined;
+          await saveSteps(env, i.id, steps, notes);
+          i.notes = JSON.stringify(notes);
+          const gist = c.text.split("What this means for the idea").pop()?.replace(/[#*\[\]\d]+/g, "").trim().slice(0, 220) ?? "";
+          await notify(env, "idea", `💡 Looked into it: ${i.title}`.slice(0, 80), `${st.label}\n${gist}`.slice(0, 400), null, "/?tab=ideas");
+        } else if (/rate limit|tokens per min/i.test(c.failed)) { st.status = "queued"; st.detail = undefined; await saveSteps(env, i.id, steps); }
+        else { st.status = "suggested"; st.detail = `Couldn't finish: ${c.failed.slice(0, 100)}`; await saveSteps(env, i.id, steps); }
+      } catch (e) { console.error("idea research check", e); }
     }
-    if (!onlyId) break; // one research job per cron pass
+    // Start one queued job (unless one is already running somewhere).
+    if (started) continue;
+    const anyWorking = (await first(env, `SELECT 1 FROM ideas WHERE steps LIKE '%"working"%'`)) !== null;
+    const st = steps.find((x) => x.status === "queued");
+    if (!st || anyWorking) continue;
+    try {
+      const id = await provider.startBackground({ system: IDEA_RESEARCH_SYSTEM, prompt: `Idea: ${i.title}\n${i.summary}\n\nLook into: ${st.label}`, maxSearches: 4, maxTokens: 2500 });
+      st.status = "working"; st.detail = `job:${id}`; started = true;
+      await saveSteps(env, i.id, steps);
+    } catch (e) {
+      if (!/rate limit|tokens per min/i.test((e as Error).message)) { st.status = "suggested"; st.detail = `Couldn't start: ${(e as Error).message.slice(0, 100)}`; await saveSteps(env, i.id, steps); }
+    }
   }
 }
 

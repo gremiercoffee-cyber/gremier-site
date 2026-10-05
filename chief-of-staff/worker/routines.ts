@@ -96,6 +96,7 @@ export async function saveRoutine(env: Env, input: Record<string, unknown>) {
     category: (input.category as string) ?? existing?.category ?? null,
     active: input.active === undefined ? existing?.active ?? 1 : input.active ? 1 : 0,
     rules: String(input.rules ?? existing?.rules ?? "").slice(0, 2000),
+    oneoff: input.oneoff === undefined ? (existing as (Routine & { oneoff?: number }) | null)?.oneoff ?? 0 : input.oneoff ? 1 : 0,
   };
   if (!r.instructions) throw new Error("What should the task do?");
   const next = input.run_now ? t : nextRun(sched, tz).toISOString();
@@ -103,8 +104,8 @@ export async function saveRoutine(env: Env, input: Record<string, unknown>) {
     await run(env, `UPDATE routines SET name=?, instructions=?, schedule=?, depth=?, deliver=?, category=?, active=?, rules=?, next_run_at=?, updated_at=? WHERE id=?`,
       r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, r.rules, next, t, r.id);
   } else {
-    await run(env, `INSERT INTO routines (id, name, instructions, schedule, depth, deliver, category, active, rules, next_run_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, r.rules, next, t, t);
+    await run(env, `INSERT INTO routines (id, name, instructions, schedule, depth, deliver, category, active, rules, oneoff, next_run_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, r.rules, r.oneoff, r.oneoff ? null : next, t, t);
   }
   return { ...r, schedule: sched, schedule_text: describeSchedule(sched), next_run_at: next };
 }

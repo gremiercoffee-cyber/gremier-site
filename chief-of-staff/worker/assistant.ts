@@ -1,6 +1,7 @@
 /** The single Chief of Staff assistant: prompt, context assembly and tools over the user's data. */
 import type { ActionNote, Conversation, Item, Memory, Message, Project } from "../shared/types";
 import type { Env } from "./env";
+import { notify } from "./push";
 import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
   all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
@@ -10,7 +11,7 @@ import { bridgeStatus, queueWhatsApp } from "./whatsapp";
 import { findPeople, memoryContext, noteContact, recallMemories, recallText, savePerson } from "./memory";
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
 import { missionsSummary, startMission, updateMission } from "./missions";
-import { routinesSummary, saveRoutine } from "./routines";
+import { routinesSummary, saveRoutine, runRoutine, type Routine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
@@ -80,6 +81,8 @@ When the user refers to anything by name ("the rabbis group", "my cold brew idea
 Drafting text: when the user asks you to draft/write/word a message, email, post or text WITHOUT saying where it goes, just write it in your reply so they can use it however they want. Put the draft itself in a quote block (each line starting with "> ") so they can copy it with one tap; at most one short line before it. Do NOT save it anywhere: no draft_group_message, draft_email or send_whatsapp unless they explicitly say "for the X group", "save it in Gmail", "send it to Y" or similar. If it obviously relates to a group or person, you may offer in one short line afterwards ("Want me to put it in the Rabbis group?") but don't do it.
 
 Groups and group messages: the user can keep contact groups ("the rabbis", "wholesale customers") and message a whole group at once. Create/edit groups with save_group (members by name, plus email and phone when known; existing people are matched by name). Only when the user asks to message a group (or put a draft in a group), write it with draft_group_message (use {first_name} for a personal greeting). You never send it: tell the user it's ready under Replies & people → Groups, where they tap "Send email" (each person gets their own email from their Gmail) and can open WhatsApp with the same text preloaded for each person or a group chat. Slack isn't connected yet.
+
+Researching the web: you CAN look things up online. For a quick factual question about the world (prices, suppliers, competitors, what's available in Israel, news), use research_now: it searches the web in the background and the user gets a notification with the findings (usually within 10-20 minutes); tell them that. For an idea's next step use idea_step. Never say you can't browse the web.
 
 Ideas and thinking out loud: all talking happens here, so recognize when the user is sharing an idea or brain-dumping (a business idea, "what if we…", a plan they're mulling, a stream of thoughts). Then:
 1. Engage like a sharp chief of staff: reflect it back briefly, give an honest take (what's strong, what's risky, good or bad idea and why), and add an angle or two they may not have considered. Back-and-forth is fine.
@@ -398,6 +401,18 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
+      name: "research_now",
+      description: "Look something up on the web for the user (prices, suppliers, competitors, options available in Israel, news). Runs in the background; the user gets a notification with the findings and the full write-up is saved under Tasks. Use for one-off questions; for repeating research use save_task.",
+      input_schema: { type: "object", properties: { question: { type: "string", description: "exactly what to find out, with context (country, product, constraints)" }, name: { type: "string", description: "short title" } }, required: ["question"] },
+      handler: async (input) => {
+        const q = String(input.question).slice(0, 1500);
+        const r = await saveRoutine(env, { name: String(input.name ?? q.slice(0, 60)), instructions: q, depth: "quick", deliver: "alert", oneoff: true, active: false, schedule: { kind: "weekly", weekdays: [0], time: "08:00" } });
+        await runRoutine(env, { ...(r as unknown as Routine), schedule: JSON.stringify(r.schedule), active: 0, next_run_at: null, last_run_at: null, created_at: now(), updated_at: now() });
+        note("research_now", `🔎 Looking into: ${r.name}`);
+        return { ok: true, note: "Research started in the background. Tell the user you're on it and they'll get a notification with what you find (usually 10-20 minutes)." };
+      },
+    },
+    {
       name: "capture_idea",
       description: "File an idea or brain dump the user shared: title, summary, their words, your honest analysis and verdict, and 3-5 suggested next steps for them to choose from.",
       input_schema: {
@@ -415,7 +430,10 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async (input) => {
         const i = await captureIdea(env, input);
         note("capture_idea", `💡 Saved idea: ${i.title}`);
-        return { id: i.id, steps: JSON.parse(i.steps) };
+        const steps = JSON.parse(i.steps) as { label: string; kind: string }[];
+        // Show it on the home screen too, with its next steps.
+        if (steps.length) await notify(env, "idea", `💡 ${i.title}`.slice(0, 90), `Next steps I suggest:\n${steps.map((x) => `• ${x.label}`).join("\n")}`.slice(0, 600), null, "/?tab=ideas");
+        return { id: i.id, steps, now_do_this: "In your reply, list these next steps briefly (one line each) and ask which ones the user wants you to do. Don't skip this." };
       },
     },
     {
@@ -1026,7 +1044,7 @@ const GUIDE_HEADERS: [string, string][] = [
   ["schedule", "Schedule (time blocks):"], ["trackers", "Trackers:"], ["tasks", "Tasks (recurring jobs):"],
   ["missions", "Missions:"], ["groups", "Groups and group messages:"], ["ideas", "Ideas and thinking out loud:"],
 ];
-const GENERAL_STARTS = ["What you do:", "Areas:", "Reminders can", "Memory", "How to file", "How this app", "Drafting text:", "Rules:"];
+const GENERAL_STARTS = ["What you do:", "Areas:", "Reminders can", "Memory", "How to file", "How this app", "Drafting text:", "Researching the web:", "Rules:"];
 
 function splitPrompt() {
   const blocks = SYSTEM_PROMPT.split("\n\n");

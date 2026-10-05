@@ -62,7 +62,7 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
   const depth = DEPTHS.find((d) => d.id === r.depth) ?? DEPTHS[1];
   const monthly = depth.cost * runsPerMonth(r.schedule);
   return (
-    <Card title={<span>Repeating · {r.active ? "Active" : "Paused"} · {depth.label}</span>}>
+    <Card title={<span>{(r as RoutineRow & { oneoff?: number }).oneoff ? "🔎 One-time research" : `Repeating · ${r.active ? "Active" : "Paused"} · ${depth.label}`}</span>}>
       <p className="font-display text-[20px] leading-snug">{r.name}</p>
       <p className="text-sm text-muted mt-0.5">
         {r.active ? r.schedule_text : "Paused"} · results {DELIVER.find(([k]) => k === r.deliver)?.[1].toLowerCase()} · ~${monthly < 1 ? monthly.toFixed(2) : monthly.toFixed(1)}/month
