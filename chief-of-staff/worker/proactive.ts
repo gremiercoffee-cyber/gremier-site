@@ -223,22 +223,7 @@ async function checkIns(env: Env, tz: string) {
       n++;
     }
   }
-  if (local.hour >= 19 && await once(env, `eod:${local.date}`)) {
-    const dayStart = new Date(Date.now() - (local.hour * 3600_000)).toISOString();
-    const [doneToday, overdue, w] = await Promise.all([
-      all<Item>(env, "SELECT * FROM items WHERE status = 'done' AND completed_at >= ?", dayStart),
-      all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND kind IN ('task','commitment','reminder') AND due_at IS NOT NULL AND due_at <= ?", now()),
-      waitingOnYou(),
-    ]);
-    const collected = await trackersToday(env, dayStart);
-    const lines = [
-      doneToday.length ? `✓ ${doneToday.length} done today` : "",
-      ...collected.map((c) => `🗂 ${c.name}: ${c.n} new message${c.n > 1 ? "s" : ""} collected`),
-      overdue.length ? `${overdue.length} still open from today: ${overdue.slice(0, 3).map((i) => i.title).join(", ")}${overdue.length > 3 ? "…" : ""}` : "",
-      w.length ? `${w.length} waiting for a reply: ${names(w)}` : "",
-    ].filter(Boolean);
-    if (lines.length) { await notify(env, "digest", "End of day", lines.join("\n"), null, w.length ? "/?tab=replies" : "/"); n++; }
-  }
+  // (No end-of-day check-in: the user turned it off.)
   return n;
 }
 
