@@ -22,7 +22,7 @@ export interface Routine {
 
 export const DEPTH: Record<string, { subs: number; searches: number; label: string; costPerRun: number }> = {
   quick: { subs: 1, searches: 4, label: "Quick", costPerRun: 0.06 },
-  standard: { subs: 4, searches: 6, label: "Standard", costPerRun: 0.3 },
+  standard: { subs: 4, searches: 4, label: "Standard", costPerRun: 0.25 },
   deep: { subs: 8, searches: 8, label: "Deep", costPerRun: 0.8 },
   // Adaptive: a full Standard report the first time, then Quick checks that go Standard only when they find something important.
   adaptive: { subs: 1, searches: 4, label: "Adaptive", costPerRun: 0.1 },
@@ -131,7 +131,7 @@ Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.
 
 interface Job { q: string; id: string | null; text?: string; searches?: number; sources?: string[]; failed?: string; tries?: number }
 /** Web research reads a lot (~40k tokens a job); run a couple at a time to stay under the account's per-minute limit. */
-const PARALLEL = 2;
+const PARALLEL = 1;
 const isRateLimit = (m?: string) => !!m && /rate limit|tokens per min|TPM|429/i.test(m);
 interface RunState { eff: string; job: string; today: string; subs: string[]; jobs: Job[]; write_id?: string | null; escalated?: { why: string; focus: string } | null }
 
@@ -222,7 +222,7 @@ async function advanceOne(env: Env, rr: { id: string; routine_id: string; state:
     if (!c.done) { (j as Job & { last?: string }).last = `${(c as { status?: string }).status ?? "working"} at ${new Date().toISOString().slice(11, 16)}`; changed = true; continue; }
     changed = true;
     if ("text" in c) { j.text = c.text; j.searches = c.searches; j.sources = c.sources; }
-    else if (isRateLimit(c.failed) && (j.tries ?? 0) < 4) { j.id = null; j.tries = (j.tries ?? 0) + 1; }
+    else if (isRateLimit(c.failed) && (j.tries ?? 0) < 8) { j.id = null; j.tries = (j.tries ?? 0) + 1; }
     else j.failed = c.failed;
   }
   // A part taking over 25 minutes is dropped so the report can still go out with what came back.
@@ -241,7 +241,7 @@ async function advanceOne(env: Env, rr: { id: string; routine_id: string; state:
       running++; changed = true;
     } catch (e) {
       const m = (e as Error).message;
-      if (!(isRateLimit(m) && (j.tries ?? 0) < 4)) j.failed = m.slice(0, 300);
+      if (!(isRateLimit(m) && (j.tries ?? 0) < 8)) j.failed = m.slice(0, 300);
       j.tries = (j.tries ?? 0) + 1; changed = true;
       break; // the limit is account-wide: try the rest next time
     }
