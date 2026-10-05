@@ -14,7 +14,7 @@ import { all, first, getSettings, localParts, now, run, uid } from "./db";
 import { notify } from "./push";
 
 export interface Situation {
-  id: string; name: string; category: string | null; keywords: string; note: string; weekdays: string | null; date: string | null;
+  id: string; name: string; category: string | null; keywords: string; note: string; guidance: string; weekdays: string | null; date: string | null;
   start_time: string | null; end_time: string | null; mode: string; calendar_keywords: string; active: number;
   last_fired: string | null; skip_dates: string; created_at: string; updated_at: string;
 }
@@ -58,7 +58,7 @@ export async function saveSituation(env: Env, input: Record<string, unknown>) {
     id: existing?.id ?? uid(),
     name: str("name", "Time block").slice(0, 60),
     category: ["coffee", "yeshiva", "personal"].includes(String(input.category)) ? String(input.category) : existing?.category ?? null,
-    keywords: str("keywords"), note: str("note").slice(0, 500),
+    keywords: str("keywords"), note: str("note").slice(0, 500), guidance: str("guidance").slice(0, 800),
     weekdays: Array.isArray(input.weekdays) ? JSON.stringify((input.weekdays as number[]).map(Number).filter((d) => d >= 0 && d <= 6)) : existing?.weekdays ?? null,
     date: /^\d{4}-\d{2}-\d{2}$/.test(String(input.date ?? "")) ? String(input.date) : input.date === null ? null : existing?.date ?? null,
     start_time: time("start_time", existing?.start_time ?? null),
@@ -78,12 +78,12 @@ export async function saveSituation(env: Env, input: Record<string, unknown>) {
   if (!s.start_time && !s.calendar_keywords) throw new Error("A time block needs a time (and days or a date) or calendar keywords.");
   if (s.start_time && !s.date && !parse<number[]>(s.weekdays, []).length) throw new Error("Which days (or which date) is this time block?");
   if (existing) {
-    await run(env, `UPDATE situations SET name=?, category=?, keywords=?, note=?, weekdays=?, date=?, start_time=?, end_time=?, mode=?, calendar_keywords=?, active=?, skip_dates=?, updated_at=? WHERE id=?`,
-      s.name, s.category, s.keywords, s.note, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, s.skip_dates, t, s.id);
+    await run(env, `UPDATE situations SET name=?, category=?, keywords=?, note=?, guidance=?, weekdays=?, date=?, start_time=?, end_time=?, mode=?, calendar_keywords=?, active=?, skip_dates=?, updated_at=? WHERE id=?`,
+      s.name, s.category, s.keywords, s.note, s.guidance, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, s.skip_dates, t, s.id);
   } else {
-    await run(env, `INSERT INTO situations (id, name, category, keywords, note, weekdays, date, start_time, end_time, mode, calendar_keywords, active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      s.id, s.name, s.category, s.keywords, s.note, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, t, t);
+    await run(env, `INSERT INTO situations (id, name, category, keywords, note, guidance, weekdays, date, start_time, end_time, mode, calendar_keywords, active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      s.id, s.name, s.category, s.keywords, s.note, s.guidance, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, t, t);
   }
   const saved = await first<Situation>(env, "SELECT * FROM situations WHERE id = ?", s.id);
   return { ...saved!, when: describeSituation(saved!) };
@@ -183,7 +183,7 @@ export async function situationsSummary(env: Env) {
     "SELECT block_id, title FROM items WHERE status = 'open' AND block_id IS NOT NULL");
   const lines = list.map((s) => {
     const mine = attached.filter((a) => a.block_id === s.id).map((a) => a.title);
-    return `- ${s.name} (id ${s.id}; ${describeSituation(s)}${s.category ? `; area ${s.category}` : ""}${s.note ? `; note: ${s.note}` : ""}${mine.length ? `; attached: ${mine.slice(0, 5).join(" | ")}` : ""})`;
+    return `- ${s.name} (id ${s.id}; ${describeSituation(s)}${s.category ? `; area ${s.category}` : ""}${s.note ? `; note shown to user: ${s.note}` : ""}${s.guidance ? `; your guidance: ${s.guidance}` : ""}${mine.length ? `; attached: ${mine.slice(0, 5).join(" | ")}` : ""})`;
   });
   const cur = await currentBlock(env);
   if (cur) lines.unshift(`RIGHT NOW the user is in "${cur.name}"${cur.until ? ` until ${cur.until}` : ""}${cur.category ? ` (${cur.category} time)` : ""}: prefer these things when they ask what to do.`);

@@ -18,7 +18,19 @@ export default function Missions({ onAsk, refreshKey, embedded }: { onAsk: (text
     <div className="space-y-4">
       {!embedded && <Button onClick={() => onAsk("New task: ")}>+ New task</Button>}
       {missions.length === 0 && !embedded && <Empty>No one-time tasks yet.</Empty>}
-      {missions.map((m) => {
+      {missions.filter((m) => m.status === "active" || m.status === "paused").map(card)}
+      {missions.some((m) => m.status === "done" || m.status === "cancelled") && (
+        <details>
+          <summary className="px-1 text-[12px] font-semibold uppercase tracking-wider text-muted cursor-pointer">
+            Finished & cancelled ({missions.filter((m) => m.status === "done" || m.status === "cancelled").length})
+          </summary>
+          <div className="space-y-3 mt-2">{missions.filter((m) => m.status === "done" || m.status === "cancelled").map(card)}</div>
+        </details>
+      )}
+    </div>
+  );
+
+  function card(m: MissionRow) {
         const steps = parse<{ id: string; text: string; status: string; note?: string }[]>(m.steps, []);
         const log = parse<{ at: string; text: string }[]>(m.log, []);
         const done = steps.filter((s) => s.status === "done").length;
@@ -67,7 +79,5 @@ export default function Missions({ onAsk, refreshKey, embedded }: { onAsk: (text
             )}
           </Card>
         );
-      })}
-    </div>
-  );
+  }
 }

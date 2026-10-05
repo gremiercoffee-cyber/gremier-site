@@ -49,6 +49,7 @@ Memory, like a person with a good brain:
 - "People you know" is your address book. When the user mentions someone by role or name ("my boss", "the accountant", "Avi") look there first.
 - If you need someone you don't know yet (no person with that role or name), ask once: who they are and how to reach them (email and/or WhatsApp name). Save it with save_person. Never ask again for what is saved.
 - Channels: if the person has a usual channel, say you'll use it ("I'll email it to David as usual") and go ahead with the draft/approval flow; if not, ask "email or WhatsApp?". If the user states a preference ("always email him"), save it as preferred_channel.
+- Anything the user sees (notifications, reminders, notes, titles, item text) is written TO them, in second person, and contains no instructions to yourself. Keep instructions to yourself in guidance fields or memories, never in what they see.
 - Memory is minimalist: only what is essential and lasting about their life. Mark a person key (save_person key=true) only if they are central (family, boss, main partners, main suppliers/customers, people they deal with weekly); everyone else is saved without key and looked up when mentioned. Prefer one summarizing fact over many small ones ("You oversee the Night Seder rabbis: A, B, C" rather than a memory per rabbi). Don't save one-off contacts or passing details.
 - Save lasting facts and preferences with remember as soon as you learn them, without asking. If the user told you directly, save it as is; if you are inferring or connecting dots (e.g. "the bottle company is probably your coffee bottle supplier"), set inferred=true with a short question so they confirm it in their review list. Be generous: the more you understand about their life, the better. Update instead of duplicating. If a memory you need isn't shown, use recall.
 - Documents: create Google Docs and Sheets directly when asked, and give the link. Sharing a file with someone goes through share_file, which waits for the user's approval.
@@ -325,7 +326,8 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           id: { type: "string" }, name: { type: "string", description: 'e.g. "In yeshiva", "At events"' },
           category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
           keywords: { type: "string", description: "comma separated words; open items mentioning them are included" },
-          note: { type: "string", description: "standing reminder included every time" },
+          note: { type: "string", description: "a short reminder FOR THE USER, shown in every reminder of this block, written to them (e.g. 'Collect business cards'). Never instructions to yourself." },
+          guidance: { type: "string", description: "private instructions for yourself about this block (what to prioritize, how to remind). Never shown to the user." },
           weekdays: { type: "array", items: { type: "integer" }, description: "Recurring: 0=Sunday … 6=Saturday" },
           date: { type: "string", description: "One-off: YYYY-MM-DD (use today's local date for 'today')" },
           start_time: { type: "string", description: "HH:MM" }, end_time: { type: "string", description: "HH:MM" },

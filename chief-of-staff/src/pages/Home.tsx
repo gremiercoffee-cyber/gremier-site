@@ -161,17 +161,24 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   greeting: string; live: LiveState; dash: Dashboard | null;
   onAct: (n: Nudge, a: string) => void; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
 }) {
+  const [area, setAreaState] = useState<string>(() => { try { return localStorage.getItem("cos.area") || "all"; } catch { return "all"; } });
+  const setArea = (a: string) => { setAreaState(a); try { localStorage.setItem("cos.area", a); } catch { /* fine */ } };
+  const ICON: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal: "🏠" };
+  // A nudge's area: its item's area, else the area icon in its title (time-block reminders).
+  const nudgeArea = (n: Nudge) => n.area ?? Object.entries(ICON).find(([, i]) => n.title.includes(i))?.[0] ?? null;
+  const inArea = (a: string | null | undefined) => area === "all" || a === area;
+  const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing" && (area === "all" || nudgeArea(n) === area)).slice(0, 5);
+  const briefing = area === "all" ? dash?.nudges.find((n) => n.type === "briefing") : undefined;
+  const waiting = (dash?.waiting ?? []).filter((i) => inArea(i.category)).slice(0, 3);
+  const nowBlock = dash?.now_block && inArea(dash.now_block.category) ? dash.now_block : null;
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
   const upcoming = [
-    ...(dash?.overdue ?? []).map((i) => ({ id: i.id, title: i.title, when: "Overdue", sort: "0", red: true })),
-    ...(dash?.events ?? []).filter((e) => e.all_day || new Date(e.end_at ?? e.start_at).getTime() > Date.now())
+    ...(dash?.overdue ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: "Overdue", sort: "0", red: true })),
+    ...(area !== "all" ? [] : dash?.events ?? []).filter((e) => e.all_day || new Date(e.end_at ?? e.start_at).getTime() > Date.now())
       .map((e) => ({ id: e.id, title: e.summary, when: e.all_day ? "All day" : hhmm(e.start_at), sort: e.all_day ? "1" : e.start_at, red: false })),
-    ...(dash?.today ?? []).map((i) => ({ id: i.id, title: i.title, when: i.due_at ? hhmm(i.due_at) : "Today", sort: i.due_at ?? "2", red: false })),
+    ...(dash?.today ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: i.due_at ? hhmm(i.due_at) : "Today", sort: i.due_at ?? "2", red: false })),
   ].sort((x, y) => x.sort.localeCompare(y.sort)).slice(0, 12);
-  const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing").slice(0, 5);
-  const briefing = dash?.nudges.find((n) => n.type === "briefing");
-  const waiting = (dash?.waiting ?? []).slice(0, 3);
 
   return (
     <div className="pt-4 space-y-5">
@@ -183,7 +190,14 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         </div>
       </div>
 
-      {dash?.now_block && (
+      <div className="flex justify-center gap-1.5">
+        {[["all", "All"], ["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]].map(([k, label]) => (
+          <button key={k} onClick={() => setArea(k)}
+            className={`rounded-full px-3 py-1.5 text-[13px] ${area === k ? "bg-ink text-bg" : "bg-surface border border-line/70 text-muted"}`}>{label}</button>
+        ))}
+      </div>
+
+      {nowBlock && dash?.now_block && (
         <details className="rounded-2xl bg-accent/10 px-4 py-2.5">
           <summary className="cursor-pointer text-[14px] list-none flex items-center gap-2">
             <span className="text-accent font-medium">Now:</span>

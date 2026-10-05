@@ -62,7 +62,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','reminder','commitment') AND due_at <= ? ORDER BY due_at`, t),
     all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind='waiting' ORDER BY created_at LIMIT 10`),
     // Only what still needs you: no "done/sent/progress" notes, nothing about finished items.
-    all<Nudge>(env, `SELECT n.* FROM nudges n LEFT JOIN items i ON i.id = n.item_id
+    all<Nudge>(env, `SELECT n.*, i.category AS area FROM nudges n LEFT JOIN items i ON i.id = n.item_id
       WHERE n.dismissed = 0 AND n.type NOT IN ('auto_done','wa_sent','mission_progress','mission_done')
         AND (i.id IS NULL OR i.status = 'open')
       ORDER BY n.created_at DESC LIMIT 20`),
