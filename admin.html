@@ -1222,15 +1222,16 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">🔄 Generate / Refresh Images</button>
     </div>
     <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Builds a statement image per store from this month's deliveries. Send it over WhatsApp, then mark it billed and paid as you go — regenerating later won't reset either status.</p>
+    <div id="billStoreChips" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:none"></div>
     <div class="billing-modes" style="display:flex;gap:8px;margin-bottom:14px">
       <button type="button" class="btn btn-sm" id="billModeMonth" onclick="setBillingMode('month')">This month</button>
       <button type="button" class="btn btn-sm" id="billModeAll" onclick="setBillingMode('all')">All months</button>
     </div>
     <div id="billAllFilters" class="filter-bar" style="display:none;flex-wrap:wrap;gap:8px">
       <select class="form-input" style="width:auto" id="billGroup" onchange="renderBillingAll()">
+        <option value="store" selected>Group by store</option>
         <option value="status">Group by status</option>
         <option value="month">Group by month</option>
-        <option value="store">Group by store</option>
         <option value="none">No grouping (biggest first)</option>
       </select>
       <select class="form-input" style="width:auto" id="billStatus" onchange="renderBillingAll()">
@@ -1241,7 +1242,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <option value="paid">Paid</option>
         <option value="cancelled">Cancelled</option>
       </select>
-      <select class="form-input" style="width:auto" id="billStore" onchange="renderBillingAll()"><option value="">All stores</option></select>
+      <select class="form-input" style="width:auto" id="billStore" onchange="billFocusStore=this.value;renderBillStoreChips();renderBillingAll()"><option value="">All stores</option></select>
       <select class="form-input" style="width:auto" id="billMonth" onchange="renderBillingAll()"><option value="">All months</option></select>
     </div>
     <div id="billAllSummary" class="stat-grid" style="display:none"></div>
@@ -6937,7 +6938,8 @@ async function loadBillingBoard() {
     body.innerHTML = `<div class="empty-state">No statements generated for this month yet. Tap "Generate / Refresh Images" above.</div>`;
     return;
   }
-  body.innerHTML = rows.map(r => billingCardHtml(r, false)).join('');
+  const shown = billFocusStore ? rows.filter(r => r.store_id === billFocusStore) : rows;
+  body.innerHTML = shown.length ? shown.map(r => billingCardHtml(r, false)).join('') : '<div class="empty-state">No bill for this store this month.</div>';
 }
 
 async function downloadOutstandingBalancePNG(storeId) {
@@ -7121,7 +7123,30 @@ function billingCardHtml(r, showMonth) {
       </div>`}
     </div>`;
 }
+// Store chips: one tap focuses the board on a single store (all its months).
+let billFocusStore = '';
+function renderBillStoreChips() {
+  const el = document.getElementById('billStoreChips');
+  if (!el) return;
+  const stores = (typeof allStores !== 'undefined' ? allStores : []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const chip = (id, label) => `<button type="button" class="btn btn-sm ${billFocusStore === id ? 'btn-amber' : 'btn-outline'}" style="flex-shrink:0;white-space:nowrap" onclick="focusBillStore('${id}')">${escHtml(label)}</button>`;
+  el.innerHTML = chip('', 'All stores') + stores.map((st) => chip(st.id, st.name)).join('');
+  const on = el.querySelector('.btn-amber');
+  if (on) el.scrollLeft = Math.max(0, on.offsetLeft - el.clientWidth / 2 + on.offsetWidth / 2);
+}
+function focusBillStore(id) {
+  billFocusStore = id;
+  if (id) {
+    billingMode = 'all';
+    const g = document.getElementById('billGroup'); if (g) g.value = 'month';
+    const st = document.getElementById('billStatus'); if (st) st.value = 'all';
+  } else {
+    const g = document.getElementById('billGroup'); if (g) g.value = 'store';
+  }
+  loadBillingBoard();
+}
 function syncBillingModeUI() {
+  renderBillStoreChips();
   const all = billingMode === 'all';
   const m = document.getElementById('billModeMonth'), a = document.getElementById('billModeAll');
   if (m) m.className = 'btn btn-sm ' + (all ? 'btn-outline' : 'btn-amber');
@@ -7154,6 +7179,8 @@ async function loadBillingAll() {
   const months = [...new Map(billingAllRows.map(r => [billKey(r), billMonthLabel(r)])).entries()].sort((a, b) => b[0].localeCompare(a[0]));
   fill('billStore', stores, 'All stores');
   fill('billMonth', months, 'All months');
+  const storeSel = document.getElementById('billStore');
+  if (storeSel) storeSel.value = billFocusStore && stores.some(([v]) => v === billFocusStore) ? billFocusStore : (billFocusStore ? '' : storeSel.value);
   renderBillingAll();
 }
 function billKey(r) { return `${r.year}-${String(r.month).padStart(2, '0')}`; }
