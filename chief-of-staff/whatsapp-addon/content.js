@@ -63,14 +63,15 @@
   const lc = (s) => (s || "").toLowerCase();
   const squash = (s) => lc(s).replace(/[^\p{L}\p{N}]/gu, "");
   function matches(t, m) {
-    if (t.self_chat) return !!m.self && !!lc(m.text);   // the user's own chat, whatever it's named
-    if (m.fromMe && !t.include_mine) return false;
     const text = lc(m.text);
     if (!text) return false;
-    const kwOk = !t.keywords.length || t.keywords.some((k) => text.includes(k));
     const who = lc(`${m.chat} ${m.sender}`);
     const whoS = squash(who);
     const peopleOk = !t.people.length || t.people.some((p) => who.includes(p) || (squash(p).length >= 4 && whoS.includes(squash(p))));
+    // The user's own chat: recognised directly, or by its name as a fallback.
+    if (t.self_chat) return !!m.self || (!!m.fromMe && !m.isGroup && t.people.length > 0 && peopleOk);
+    if (m.fromMe && !t.include_mine) return false;
+    const kwOk = !t.keywords.length || t.keywords.some((k) => text.includes(k));
     return kwOk && peopleOk;
   }
   function track(m, only) {

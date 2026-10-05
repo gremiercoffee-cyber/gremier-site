@@ -164,13 +164,28 @@ Does this message contain, or relate to, that? Count it as yes if it is an answe
 export async function capture(env: Env, m: { tracker_id?: string; chat?: string; sender?: string; text?: string; at?: string; account?: string; source?: string }) {
   const t = m.tracker_id ? await first<Tracker>(env, "SELECT * FROM trackers WHERE id = ? AND active = 1", m.tracker_id) : null;
   const text = (m.text ?? "").trim().slice(0, 6000);
+  const r = await captureInner(env, t, m, text);
+  // Keep the last few decisions so "why didn't it catch X?" can be answered.
+  try {
+    const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'tracker_log'");
+    const log = (row ? JSON.parse(row.value) : []) as unknown[];
+    log.unshift({ at: now(), tracker: t?.name ?? m.tracker_id, from: m.sender, via: m.source ?? "whatsapp", text: text.slice(0, 100), kept: r.kept, reason: (r as { reason?: string }).reason });
+    await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('tracker_log', ?)", JSON.stringify(log.slice(0, 40)));
+  } catch { /* logging only */ }
+  return r;
+}
+
+async function captureInner(env: Env, t: Tracker | null, m: { tracker_id?: string; chat?: string; sender?: string; text?: string; at?: string; account?: string; source?: string }, text: string) {
   if (!t || !text) return { kept: false, reason: "no tracker or empty" };
   const chat = (m.chat ?? "").slice(0, 160), sender = (m.sender ?? chat).slice(0, 160);
   const source = m.source === "gmail" ? "gmail" : "whatsapp";
   const account = m.account === "business" ? "business" : "personal";
   const hash = await sha(`${source}|${sender}|${text}`);
   if (await first(env, "SELECT 1 FROM tracker_entries WHERE tracker_id = ? AND hash = ?", t.id, hash)) return { kept: false, reason: "duplicate" };
-  if (!(await relevant(env, t, sender, text))) return { kept: false, reason: "not about it" };
+  if (!(await relevant(env, t, sender, text))) {
+    console.log("tracker reject", t.name, sender, text.slice(0, 80));
+    return { kept: false, reason: "not about it" };
+  }
 
   const person = whoSent(await trackedPeople(env, t), `${sender} ${chat}`)?.name ?? null;
   const said = m.at && !isNaN(Date.parse(m.at)) ? new Date(m.at).toISOString() : now();
