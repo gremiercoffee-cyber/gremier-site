@@ -98,11 +98,24 @@ export async function saveTracker(env: Env, input: Record<string, unknown>) {
 }
 
 /** What the add-on needs. When a tracker follows people, every message from them is sent (no keyword filter). */
+/** "Y oni MY LOVE" ~ "yoni my love (you)": compare letters and digits only. */
+const compact = (s: string) => s.toLowerCase().replace(/\((you|me|את|אתה)\)/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+
+/** The user's real WhatsApp chat names that match a person's names (loosely). */
+async function chatsFor(env: Env, aliases: string[], account?: string) {
+  const rows = await all<{ key: string; value: string }>(env, "SELECT key, value FROM settings WHERE key LIKE 'wa_chats:%'");
+  const chats = rows.filter((r) => !account || r.key === `wa_chats:${account}`).flatMap((r) => { try { return JSON.parse(r.value) as string[]; } catch { return []; } });
+  const keys = aliases.map(compact).filter((k) => k.length >= 3);
+  return [...new Set(chats.filter((c) => { const cc = compact(c); return cc.length >= 3 && keys.some((k) => cc === k || (k.length >= 5 && (cc.includes(k) || k.includes(cc)))); }))];
+}
+
 export async function trackersForBridge(env: Env, account: string) {
   const ts = (await all<Tracker>(env, "SELECT * FROM trackers WHERE active = 1")).filter((t) => (t.sources ?? "whatsapp").includes("whatsapp"));
   const out = [];
   for (const t of ts.filter((x) => x.accounts === "both" || x.accounts === account)) {
-    const people = (await trackedPeople(env, t)).flatMap((p) => p.aliases).map((a) => a.toLowerCase()).filter((a) => a.length > 2);
+    const aliases = (await trackedPeople(env, t)).flatMap((p) => p.aliases);
+    // Send the exact chat names as WhatsApp shows them, plus the typed names (the add-on matches by "contains").
+    const people = [...new Set([...(await chatsFor(env, aliases, account)), ...aliases].map((a) => a.toLowerCase()).filter((a) => a.length > 2))];
     out.push({
       id: t.id, people, keywords: people.length ? [] : list(t.keywords).map((k) => k.toLowerCase()),
       include_mine: !!t.include_mine,
@@ -347,6 +360,9 @@ export async function setupPreview(env: Env, t: Tracker) {
     status,
     found: found.map((f) => ({ from: f.person ?? f.sender, via: f.source, text: f.text.replace(/\s+/g, " ").slice(0, 160) })),
     no_email: people.filter((p) => !p.email).map((p) => p.name),
+    whatsapp_not_found: t.sources?.includes("whatsapp")
+      ? (await Promise.all(people.map(async (p) => ((await chatsFor(env, p.aliases)).length ? null : p.name)))).filter(Boolean)
+      : [],
     note: "Gmail was searched just now. WhatsApp history is searched by the add-on within a few minutes.",
   };
 }
