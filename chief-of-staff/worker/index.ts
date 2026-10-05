@@ -313,14 +313,27 @@ route("POST", "/api/memories/:id/review", async (req, env, [id]) => {
 });
 route("GET", "/api/ideas", async (_req, env) =>
   json(await all<Idea>(env, "SELECT * FROM ideas WHERE status != 'dropped' ORDER BY status IN ('done', 'parked'), updated_at DESC")));
-route("POST", "/api/ideas/:id", async (req, env, [id]) => json(await updateIdea(env, id, await body(req))));
+/** An idea that's dropped, done or deleted takes its home-screen cards with it. */
+async function clearIdeaCards(env: Env, title: string) {
+  await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = 'idea' AND title LIKE ?", `%${title.slice(0, 60)}%`);
+}
+route("POST", "/api/ideas/:id", async (req, env, [id]) => {
+  const i = await updateIdea(env, id, await body(req));
+  if (i.status === "dropped" || i.status === "done") await clearIdeaCards(env, i.title);
+  return json(i);
+});
 route("POST", "/api/ideas/:id/steps/:step", async (req, env, [id, step], ctx) => {
   const b = await body<{ action?: string; when?: string }>(req);
   const r = await ideaStep(env, id, step, b.action === "dismiss" ? "dismiss" : "do", { when: b.when });
   if ((r as { queued?: boolean }).queued) ctx.waitUntil(runIdeaResearch(env, id).catch((e) => console.error("idea research", e)));
   return json(r);
 });
-route("DELETE", "/api/ideas/:id", async (_req, env, [id]) => { await run(env, "DELETE FROM ideas WHERE id = ?", id); return json({ ok: true }); });
+route("DELETE", "/api/ideas/:id", async (_req, env, [id]) => {
+  const i = await first<{ title: string }>(env, "SELECT title FROM ideas WHERE id = ?", id);
+  await run(env, "DELETE FROM ideas WHERE id = ?", id);
+  if (i) await clearIdeaCards(env, i.title);
+  return json({ ok: true });
+});
 route("GET", "/api/groups", async (_req, env) => {
   const gs = await all<Group>(env, "SELECT * FROM contact_groups ORDER BY name");
   return json(await Promise.all(gs.map(async (g) => ({ ...g, members: await members(env, g.id) }))));

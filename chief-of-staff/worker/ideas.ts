@@ -139,7 +139,7 @@ export async function runIdeaResearch(env: Env, onlyId?: string) {
           st.status = "done"; st.detail = undefined;
           await saveSteps(env, i.id, steps, notes);
           i.notes = JSON.stringify(notes);
-          const gist = c.text.split("What this means for the idea").pop()?.replace(/[#*\[\]\d]+/g, "").trim().slice(0, 220) ?? "";
+          const gist = c.text.split("What this means for the idea").pop()?.replace(/\[\d+\]|[#*]/g, "").trim().slice(0, 220) ?? "";
           await notify(env, "idea", `💡 Looked into it: ${i.title}`.slice(0, 80), `${st.label}\n${gist}`.slice(0, 400), null, "/?tab=ideas");
         } else if (/rate limit|tokens per min/i.test(c.failed)) { st.status = "queued"; st.detail = undefined; await saveSteps(env, i.id, steps); }
         else { st.status = "suggested"; st.detail = `Couldn't finish: ${c.failed.slice(0, 100)}`; await saveSteps(env, i.id, steps); }
