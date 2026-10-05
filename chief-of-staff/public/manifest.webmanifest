@@ -3,6 +3,7 @@
   "short_name": "Chief of Staff",
   "description": "Your personal AI Chief of Staff",
   "start_url": "/",
+  "share_target": { "action": "/", "method": "GET", "params": { "title": "share_title", "text": "share_text", "url": "share_url" } },
   "scope": "/",
   "display": "standalone",
   "background_color": "#0a0b0f",

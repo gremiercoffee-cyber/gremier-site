@@ -17,7 +17,7 @@ import { getAreas } from "./areas";
 export interface Situation {
   id: string; name: string; category: string | null; keywords: string; note: string; guidance: string; weekdays: string | null; date: string | null;
   start_time: string | null; end_time: string | null; mode: string; calendar_keywords: string; active: number;
-  last_fired: string | null; skip_dates: string; created_at: string; updated_at: string;
+  last_fired: string | null; last_wrapped?: string | null; skip_dates: string; created_at: string; updated_at: string;
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -156,6 +156,21 @@ export async function runSituations(env: Env) {
         const icon = s.category ? `${(await getAreas(env)).find((a) => a.key === s.category)?.icon ?? AREA_ICON[s.category] ?? ""} ` : "";
         if (await fire(env, s, `${icon}${s.name}${s.end_time ? ` until ${s.end_time}` : ""}: ${count ? `${count} thing${count > 1 ? "s" : ""} for now` : "a reminder"}`)) n++;
         await run(env, "UPDATE situations SET last_fired = ? WHERE id = ?", date, s.id);
+      }
+    }
+    // Block just ended: one tap per item to say what got done (what's left rolls on).
+    if (onDay(s, date, dow) && s.end_time && s.last_fired === date && s.last_wrapped !== date) {
+      const end = minutes(s.end_time);
+      if (mins >= end && mins < end + 90) {
+        await run(env, "UPDATE situations SET last_wrapped = ? WHERE id = ?", date, s.id);
+        const left = await itemsFor(env, s);
+        if (left.length) {
+          await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = 'situation' AND title LIKE ?", `%${s.name}%`);
+          const nid = await notify(env, "wrapup", `🏁 ${s.name} is over: did you get to these?`,
+            left.map((i) => `• ${i.title}`).join("\n"), null, "/");
+          await run(env, "UPDATE nudges SET item_ids = ? WHERE id = ?", JSON.stringify(left.map((i) => i.id)), nid);
+          n++;
+        }
       }
     }
     // Calendar triggers: entries starting from 15 min ago to 10 min ahead.

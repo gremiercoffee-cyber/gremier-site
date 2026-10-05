@@ -16,6 +16,7 @@ import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
+import { hubCall } from "./hub";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
@@ -398,6 +399,19 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const b = await draftBroadcast(env, input as never);
         note("draft_group_message", "👥 Group message ready to review and send (Replies & people → Groups)");
         return { id: b.id, status: b.status, where: "Replies & people → Groups" };
+      },
+    },
+    {
+      name: "coffee_app",
+      description: "Read the Gremier Coffee admin app (live business data): summary (today's jobs, next delivery, orders to fulfil, unpaid, money owed, concentrate, beans), schedule (jobs between dates), orders (to_fulfil|unpaid), stock, stores (with phone & prices), activity (timeline of deliveries/orders since a date). Read-only.",
+      input_schema: { type: "object", properties: {
+        action: { type: "string", enum: ["summary", "schedule", "orders", "stock", "stores", "activity"] },
+        from: { type: "string", description: "schedule: YYYY-MM-DD" }, to: { type: "string", description: "schedule: YYYY-MM-DD" },
+        status: { type: "string", enum: ["to_fulfil", "unpaid"] }, since: { type: "string", description: "activity: ISO date" }, limit: { type: "integer" },
+      }, required: ["action"] },
+      handler: async (input) => {
+        const { action, ...args } = input as Record<string, unknown>;
+        return hubCall(env, String(action), args);
       },
     },
     {
@@ -1033,11 +1047,13 @@ const TOOL_GROUPS: Record<string, string[]> = {
   tasks: ["save_task", "get_report"],
   missions: ["start_mission", "update_mission"],
   projects: ["create_project", "update_project"],
+  coffee: ["coffee_app"],
 };
 const TOOL_TRIGGERS: Record<string, RegExp> = {
   email: /\b(e-?mails?|gmail|inbox|mail(ed)?|wrote|replied|reply|thread|subject|draft)\b|מייל/i,
   whatsapp: /\b(whats ?app|text (him|her|them)|message (him|her|them)|send (him|her|them|it|a message)|tell (him|her|them))\b|וואטסאפ/i,
   docs: /\b(docs?|document|sheets?|spreadsheet|drive|file|pdf|google doc|share)\b|מסמך|קובץ/i,
+  coffee: /\b(coffee|brew|drain|bottl|label|deliver|store|stock|bean|concentrate|order|customer|unpaid|owe|invoice|gremier|cold ?brew|sales|sold)/i,
 };
 /** Feature sections of the system prompt, sent only with their feature. */
 const GUIDE_HEADERS: [string, string][] = [

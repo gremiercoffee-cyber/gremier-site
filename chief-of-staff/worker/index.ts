@@ -11,6 +11,7 @@ import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
 import { tidyConversations } from "./tidy";
 import { getAreas, removeArea, saveArea } from "./areas";
+import { hubConfigured } from "./hub";
 import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
 import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
@@ -137,11 +138,46 @@ route("GET", "/api/rundown", async (_req, env) => {
   try {
     text = await getProvider(env).complete({
       tier: "fast", purpose: "rundown", maxTokens: 220,
-      system: "You are the user's chief of staff speaking to them out loud. In about 60-90 words, tell them what's coming up in the next few hours: what they're in now, meetings, what's due, and the one or two overdue things that matter most. Natural spoken sentences, no lists, no emoji, no markdown. Don't read every item; group and prioritize. End with one suggestion of what to do first.",
+      system: "You are the user's chief of staff giving them a quick spoken briefing. In about 70-110 words: what they're in now, what's coming up today and in the next few hours (meetings, what's due), and the one or two overdue things that matter most. Natural spoken sentences, warm and direct, no lists, no emoji, no markdown. Group and prioritize; don't read every item. End with one suggestion of what to do first.",
       prompt: facts,
     });
   } catch { text = facts.replace(/\n/g, ". "); }
   return json({ text: text.trim() });
+});
+// Spoken briefing in a natural voice (OpenAI text-to-speech); the app falls back to the phone's voice.
+route("POST", "/api/speak", async (req, env) => {
+  const { text } = await body<{ text?: string }>(req);
+  if (!text?.trim() || !env.OPENAI_API_KEY) throw new HttpError(400, "nothing to say");
+  const res = await fetch(`${(env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "")}/audio/speech`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: env.TTS_MODEL || "gpt-4o-mini-tts", voice: env.TTS_VOICE || "marin", input: text.slice(0, 3000), response_format: "mp3",
+      instructions: "Speak like a warm, calm, capable chief of staff giving a quick spoken update to their boss. Natural pace, friendly, not robotic.",
+    }),
+  });
+  if (!res.ok) throw new HttpError(502, `voice unavailable: ${(await res.text()).slice(0, 200)}`);
+  return new Response(res.body, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });
+});
+
+// Health check: is everything connected and working?
+route("GET", "/api/status", async (_req, env) => {
+  const val = async (k: string) => (await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = ?", k))?.value ?? null;
+  const parse = (v: string | null) => { try { return v ? JSON.parse(v) : null; } catch { return v; } };
+  const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const [personal, business, accounts, pushSubs, usage, runs, lastCron, hubOk] = await Promise.all([
+    val("addon_diag"), val("addon_diag_business"),
+    all<{ email: string; last_sync_at: string | null; last_error: string | null }>(env, "SELECT email, last_sync_at, last_error FROM google_accounts"),
+    first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM push_subscriptions"),
+    first<{ calls: number; input: number; output: number; cached: number }>(env, "SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input, COALESCE(SUM(output_tokens),0) AS output, COALESCE(SUM(cached_tokens),0) AS cached FROM usage_log WHERE created_at >= ?", weekAgo),
+    all<{ status: string; n: number }>(env, "SELECT status, COUNT(*) AS n FROM routine_runs WHERE started_at >= ? GROUP BY status", weekAgo),
+    val("last_cron"), val("hub_last_ok"),
+  ]);
+  return json({
+    whatsapp: { personal: parse(personal), business: parse(business) },
+    google: accounts, push_devices: pushSubs?.n ?? 0, ai_week: usage, reports_week: runs,
+    last_background_run: lastCron, coffee_app: { connected: hubConfigured(env), last_ok: hubOk },
+  });
 });
 route("POST", "/api/conversations/tidy", async (req, env) => {
   const b = await body<{ keep?: string | null }>(req).catch(() => ({} as { keep?: string | null }));

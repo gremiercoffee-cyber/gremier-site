@@ -31,7 +31,9 @@ export default function App() {
   const params = new URLSearchParams(location.search);
   const legacyTab = params.get("tab");
   const [view, setView] = useState<View>(legacyTab === "review" || legacyTab === "ideas" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
-  const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? undefined);
+  // Shared from another app (Android share sheet): hand it to the Chief of Staff to file.
+  const shared = [params.get("share_title"), params.get("share_text"), params.get("share_url")].filter(Boolean).join("\n");
+  const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? (shared ? `I'm sharing this with you:\n${shared}\n\nFile it where it belongs (to-do, idea, tracker, memory, list) and tell me in one line what you did.` : undefined));
   const [startVoice] = useState(params.get("voice") === "1");
   const [startTyping] = useState(params.get("type") === "1");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export default function App() {
     const onInstall = (e: Event) => { e.preventDefault(); setInstall(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", onInstall);
     // Links like ?ask= are one-shot; keep the address bar clean.
-    if (params.get("ask") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("report")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
+    if (params.get("ask") || params.get("share_text") || params.get("share_url") || params.get("share_title") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("report")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
     return () => { window.removeEventListener("cos:unauthorised", onUnauth); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
 

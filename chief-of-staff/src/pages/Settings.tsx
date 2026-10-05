@@ -265,6 +265,8 @@ export default function Settings({ settings, onSaved, installPrompt }: {
         )}
       </Card>
 
+      <StatusCard />
+
       <Card title="Areas">
         <p className="text-sm text-muted mb-2">The parts of your life everything gets sorted into. Add your own, rename, or remove (things in a removed area just become unsorted).</p>
         <ul className="divide-y divide-line">
@@ -333,4 +335,54 @@ export default function Settings({ settings, onSaved, installPrompt }: {
 // A tiny inline confirm keeps an accidental tap from dropping an account (window.confirm is fine on mobile).
 function confirmRemove(email: string) {
   return window.confirm(`Disconnect ${email}? Its calendar and email will stop syncing.`);
+}
+
+/** Is everything working? WhatsApp, Google, notifications, the coffee app, background jobs, AI use. */
+function StatusCard() {
+  type St = { whatsapp: { personal: { at?: string; mode?: string } | null; business: { at?: string; mode?: string } | null };
+    google: { email: string; last_sync_at: string | null; last_error: string | null }[]; push_devices: number;
+    ai_week: { calls: number; input: number; output: number; cached: number } | null; reports_week: { status: string; n: number }[];
+    last_background_run: string | null; coffee_app: { connected: boolean; last_ok: string | null } };
+  const [st, setSt] = useState<St | null>(null);
+  const [notif, setNotif] = useState<string>("…");
+  useEffect(() => {
+    fetch("/api/status", { headers: { authorization: `Bearer ${localStorage.getItem("cos.token")}` } }).then((r) => r.json()).then(setSt).catch(() => {});
+    (async () => {
+      if (typeof Notification === "undefined") return setNotif("not supported here");
+      if (Notification.permission !== "granted") return setNotif(Notification.permission === "denied" ? "blocked" : "off");
+      const reg = await navigator.serviceWorker.ready; setNotif((await reg.pushManager.getSubscription()) ? "on" : "off");
+    })().catch(() => setNotif("off"));
+  }, []);
+  const ago = (iso?: string | null) => {
+    if (!iso) return null;
+    const m = (Date.now() - Date.parse(iso)) / 60000;
+    return m < 2 ? "just now" : m < 60 ? `${Math.round(m)} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+  };
+  const fresh = (iso?: string | null, mins = 30) => !!iso && Date.now() - Date.parse(iso) < mins * 60000;
+  const line = (ok: boolean | null, label: string, detail: string) => (
+    <li className="flex items-start gap-2 py-1.5">
+      <span>{ok === null ? "⚪" : ok ? "🟢" : "🔴"}</span>
+      <span className="flex-1"><span className="font-medium">{label}</span><span className="text-muted"> · {detail}</span></span>
+    </li>
+  );
+  if (!st) return <Card title="Status"><p className="text-sm text-muted">Checking…</p></Card>;
+  const failed = st.reports_week.find((r) => r.status === "failed")?.n ?? 0;
+  const done = st.reports_week.find((r) => r.status === "done")?.n ?? 0;
+  const ai = st.ai_week;
+  return (
+    <Card title="Status">
+      <ul className="text-[14px] divide-y divide-line/60">
+        {line(notif === "on", "Notifications on this phone", notif)}
+        {line(st.push_devices > 0, "Devices getting notifications", String(st.push_devices))}
+        {line(fresh(st.whatsapp.personal?.at), "WhatsApp (personal)", st.whatsapp.personal?.at ? `last seen ${ago(st.whatsapp.personal.at)}` : "not connected")}
+        {line(st.whatsapp.business ? fresh(st.whatsapp.business.at) : null, "WhatsApp (business)", st.whatsapp.business?.at ? `last seen ${ago(st.whatsapp.business.at)}` : "not connected")}
+        {st.google.map((g) => line(!g.last_error && fresh(g.last_sync_at, 60), g.email, g.last_error ? `error: ${g.last_error.slice(0, 80)}` : g.last_sync_at ? `synced ${ago(g.last_sync_at)}` : "waiting for first sync"))}
+        {line(st.coffee_app.connected ? (st.coffee_app.last_ok ? true : null) : false, "Coffee admin app", st.coffee_app.connected ? (st.coffee_app.last_ok ? `last read ${ago(st.coffee_app.last_ok)}` : "connected, not used yet") : "not connected")}
+        {line(fresh(st.last_background_run, 20), "Background checks", st.last_background_run ? `last ran ${ago(st.last_background_run)} (every 15 min)` : "no run recorded yet")}
+        {line(failed === 0, "Reports this week", `${done} done${failed ? `, ${failed} failed` : ""}`)}
+        {line(null, "AI use this week", ai ? `${ai.calls} calls · ${Math.round(ai.input / 1000)}k tokens in (${ai.input ? Math.round((100 * ai.cached) / ai.input) : 0}% cached) · ${Math.round(ai.output / 1000)}k out` : "—")}
+      </ul>
+      <p className="text-xs text-muted mt-1">WhatsApp needs WhatsApp Web open in Chrome with the add-on. Exact AI spend: platform.openai.com → Usage.</p>
+    </Card>
+  );
 }

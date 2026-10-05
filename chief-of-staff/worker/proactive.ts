@@ -14,6 +14,7 @@ import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines, advanceRoutineRuns } from "./routines";
 import { runSituations } from "./situations";
 import { nudgeStaleIdea, runIdeaResearch } from "./ideas";
+import { customersDue } from "./hub";
 import { tidyConversations } from "./tidy";
 import { runTrackerEmail, trackersToday } from "./trackers";
 
@@ -21,6 +22,7 @@ const WAITING_NUDGE_DAYS = 4;
 const POSTPONED_AFTER = 3;
 
 export async function runProactive(env: Env, opts: { forceBriefing?: boolean } = {}) {
+  await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('last_cron', ?)", now()).catch(() => {});
   const settings = await getSettings(env);
   if (!settings.proactive && !opts.forceBriefing) return { skipped: true };
   const t = now();
@@ -115,6 +117,13 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 9b. Trackers: new emails from the people being followed.
   await runTrackerEmail(env).catch((e) => console.error("tracker email", e));
+
+  // 9c. Sunday morning: the weekly review, and which coffee customers are due.
+  const dow = new Date(`${local.date}T12:00:00Z`).getUTCDay();
+  if (dow === 0 && local.hour >= 9 && !isShabbat(settings.timezone)) {
+    if (await once(env, `review:${local.date}`)) created += await weeklyReview(env).catch((e) => { console.error("review", e); return 0; });
+    created += await customersDue(env, local.date).catch((e) => { console.error("customers due", e); return 0; });
+  }
 
   // 10. Ideas: queued research, and once a day (late morning) bring back an idea you went quiet on.
   if (!isShabbat(settings.timezone)) {
@@ -228,3 +237,21 @@ async function checkIns(env: Env, tz: string) {
 }
 
 const names = (items: Item[]) => [...new Set(items.map((i) => i.person).filter(Boolean))].slice(0, 4).join(", ");
+
+/** Sunday: what got done, what keeps slipping, stale ideas, and three priorities for the week. */
+async function weeklyReview(env: Env) {
+  const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const [done, slipping, open, ideas] = await Promise.all([
+    all<Item>(env, "SELECT title, category FROM items WHERE status = 'done' AND completed_at >= ? ORDER BY completed_at DESC LIMIT 40", weekAgo),
+    all<Item & { snooze_count: number }>(env, "SELECT title, snooze_count FROM items WHERE status = 'open' AND snooze_count >= 2 ORDER BY snooze_count DESC LIMIT 8"),
+    all<Item>(env, "SELECT title, due_at, category, priority FROM items WHERE status = 'open' AND kind IN ('task','commitment','reminder') ORDER BY due_at IS NULL, due_at, priority LIMIT 40"),
+    all<{ title: string; status: string; updated_at: string }>(env, "SELECT title, status, updated_at FROM ideas WHERE status IN ('new','exploring') ORDER BY updated_at LIMIT 10"),
+  ]);
+  const text = await getProvider(env).complete({
+    tier: "main", purpose: "weekly_review", maxTokens: 700,
+    system: `Write the user's weekly review, warm and brief, in Markdown with these headers: "## ✅ Done this week" (count + highlights), "## 🔁 Keeps slipping" (what's been pushed off, with one suggestion each: drop, delegate or block time), "## 💡 Ideas waiting" (only if any; which one is worth a step this week), "## 🎯 This week's 3 priorities". Short lines, no filler. Address the user as "you".`,
+    prompt: `Done this week (${done.length}): ${done.map((d) => d.title).join("; ") || "none"}\nPushed off repeatedly: ${slipping.map((s) => `${s.title} (${s.snooze_count}x)`).join("; ") || "none"}\nOpen: ${open.map((o) => `${o.title}${o.due_at ? ` (due ${o.due_at.slice(0, 10)})` : ""}${o.category ? ` [${o.category}]` : ""}`).join("; ") || "none"}\nIdeas: ${ideas.map((i) => `${i.title} (${i.status}, last touched ${i.updated_at.slice(0, 10)})`).join("; ") || "none"}`,
+  });
+  await notify(env, "review", "🗓️ Your weekly review", text.trim(), null, "/");
+  return 1;
+}

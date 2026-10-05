@@ -240,7 +240,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
           )}
           {nudges.map((n) => (
             <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
-              {n.type === "idea" ? <>
+              {n.type === "review" ? <div className="text-[14px]"><Markdown text={n.body} /></div> : n.type === "idea" ? <>
                 <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>
                 <a href="/?tab=ideas" className="inline-block text-[14px] font-medium text-accent">Open the idea → pick next steps</a>
               </> : n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
@@ -286,6 +286,9 @@ const KIND: Record<string, { emoji: string; label: string; tone: string }> = {
   digest: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
   sweep: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
   learn: { emoji: "✨", label: "To review", tone: "border-l-accent text-accent" },
+  wrapup: { emoji: "🏁", label: "Wrap-up", tone: "border-l-amber-500 text-amber-700" },
+  review: { emoji: "🗓️", label: "Weekly review", tone: "border-l-accent text-accent" },
+  customers: { emoji: "☕", label: "Customers due", tone: "border-l-emerald-500 text-emerald-700" },
   idea: { emoji: "💡", label: "Idea", tone: "border-l-amber-500 text-amber-700" },
   tracker: { emoji: "🗂️", label: "Tracker", tone: "border-l-sky-500 text-sky-700" },
   routine: { emoji: "📄", label: "Report", tone: "border-l-sky-500 text-sky-700" },
@@ -538,16 +541,28 @@ function LearnReview({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-/** 🔊 "What's coming up?": a short spoken rundown of the next few hours. Tap again to stop. */
+let audioRef: HTMLAudioElement | null = null;
+
+/** 🔊 "Brief me": a short spoken rundown of today and the next few hours. Tap again to stop. */
 function ReadAloud() {
   const [state, setState] = useState<"idle" | "loading" | "speaking">("idle");
-  const stop = () => { try { speechSynthesis.cancel(); } catch { /* fine */ } setState("idle"); };
+  const stop = () => { try { speechSynthesis.cancel(); audioRef?.pause(); } catch { /* fine */ } setState("idle"); };
   const go = async () => {
     if (state !== "idle") return stop();
-    if (typeof speechSynthesis === "undefined") return alert("This phone can't read aloud here.");
+
     setState("loading");
     try {
       const { text } = await api.rundown();
+      // A natural voice from the server; the phone's own voice if that's not available.
+      try {
+        const r = await fetch("/api/speak", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("cos.token")}` }, body: JSON.stringify({ text }) });
+        if (!r.ok) throw new Error("no voice");
+        const audio = new Audio(URL.createObjectURL(await r.blob()));
+        audioRef = audio;
+        audio.onended = () => setState("idle"); audio.onerror = () => setState("idle");
+        await audio.play(); setState("speaking");
+        return;
+      } catch { /* fall back below */ }
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "en-US"; u.rate = 1.02;
       const voices = speechSynthesis.getVoices();
@@ -560,7 +575,7 @@ function ReadAloud() {
   return (
     <button onClick={go} className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-medium shadow-card border ${state === "speaking" ? "bg-accent text-white border-accent" : "bg-surface border-line/70"}`}>
       <span className="text-[18px]">{state === "speaking" ? "⏹️" : "🔊"}</span>
-      {state === "loading" ? "Getting your rundown…" : state === "speaking" ? "Stop" : "What's coming up?"}
+      {state === "loading" ? "Getting your briefing…" : state === "speaking" ? "Stop" : "Brief me"}
     </button>
   );
 }

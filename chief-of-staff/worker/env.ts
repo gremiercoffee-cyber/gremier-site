@@ -24,4 +24,10 @@ export interface Env {
   AI_DAILY_CAP?: string;
   /** Shared key for the desktop WhatsApp bridge (bridge/cos_bridge.py). */
   BRIDGE_KEY?: string;
+  /** Read-only key for the Gremier Coffee admin app (Hub API). */
+  HUB_KEY?: string;
+  HUB_URL?: string;
+  /** Text-to-speech for the spoken briefing. */
+  TTS_MODEL?: string;
+  TTS_VOICE?: string;
 }
