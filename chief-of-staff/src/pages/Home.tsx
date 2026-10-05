@@ -169,7 +169,6 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   const inArea = (a: string | null | undefined) => area === "all" || a === area;
   const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing" && (area === "all" || nudgeArea(n) === area)).slice(0, 5);
   const briefing = area === "all" ? dash?.nudges.find((n) => n.type === "briefing") : undefined;
-  const waiting = (dash?.waiting ?? []).filter((i) => inArea(i.category)).slice(0, 3);
   const nowBlock = dash?.now_block && inArea(dash.now_block.category) ? dash.now_block : null;
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
@@ -225,7 +224,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         </div>
       )}
 
-      {(briefing || nudges.length > 0 || waiting.length > 0) && (
+      {(briefing || nudges.length > 0) && (
         <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
           {briefing && (
             <Row icon="☀️" title="Today's briefing" time={briefing.created_at}>
@@ -233,19 +232,6 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
               <Chips n={briefing} onAct={onAct} />
             </Row>
           )}
-          {waiting.map((w) => (
-            <Row key={w.id} icon="⏳" title={`Waiting on ${w.person ?? "someone"}: ${w.title}`} time={w.created_at}>
-              <div className="flex flex-wrap gap-1.5">
-                {[["done", "Got it ✓"], ["nudge", "Nudge them"], ["dropped", "Not needed"]].map(([a, label]) => (
-                  <button key={a} onClick={async () => {
-                    if (a === "nudge") { onNudge(`Draft a friendly follow-up to ${w.person ?? "them"} about: ${w.title}`); return; }
-                    await api.updateItem(w.id, { status: a as "done" | "dropped" });
-                    onChanged();
-                  }} className="rounded-full border border-line bg-bg px-3 py-1.5 text-[13px] font-medium hover:border-accent">{label}</button>
-                ))}
-              </div>
-            </Row>
-          ))}
           {nudges.map((n) => (
             <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
               {n.type === "learn" ? <LearnReview onChanged={onChanged} /> : <>
