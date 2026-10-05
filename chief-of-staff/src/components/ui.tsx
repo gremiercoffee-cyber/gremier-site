@@ -144,7 +144,7 @@ export function Markdown({ text }: { text: string }) {
     if (!line.trim()) { flushPara(); flushList(); continue; }
     if (h) {
       flushPara(); flushList();
-      out.push(<p key={out.length} className={`${h[1].length <= 2 ? "text-[16px] mt-3" : "text-[15px] mt-2"} font-semibold`}>{inline(h[2])}</p>);
+      out.push(<p key={out.length} className={`${h[1].length <= 2 ? "font-display text-[21px] leading-snug mt-4 first:mt-0" : "text-[17px] font-semibold mt-3 first:mt-0"}`}>{inline(h[2])}</p>);
     } else if (li) {
       flushPara();
       const ordered = /\d/.test(li[1]);

@@ -151,8 +151,8 @@ function EventRow({ e }: { e: CalendarEvent }) {
 function Section({ title, count, danger, children }: { title: string; count?: number; danger?: boolean; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className={`px-1 mb-1.5 text-[12px] font-semibold uppercase tracking-wider ${danger ? "text-danger" : "text-muted"}`}>
-        {title}{count ? <span className="ml-1.5 font-normal opacity-70">{count}</span> : null}
+      <h2 className={`px-1 mb-2 font-display text-[21px] leading-tight ${danger ? "text-danger" : "text-ink"}`}>
+        {title}{count ? <span className="ml-2 font-sans text-[14px] text-muted">{count}</span> : null}
       </h2>
       <div className="rounded-2xl bg-surface border border-line px-4 divide-y divide-line">{children}</div>
     </section>

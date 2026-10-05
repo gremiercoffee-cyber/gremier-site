@@ -65,6 +65,7 @@ export interface Nudge {
   item_id: string | null;
   created_at: string;
   area?: string | null;
+  items?: { id: string; title: string; person: string | null }[];
   actions?: NudgeAction[];
 }
 

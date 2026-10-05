@@ -110,12 +110,13 @@ export async function notify(env: Env, type: string, title: string, body = "", i
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     id, type, title, body, itemId, now());
   // Shabbat: keep it on the Today screen, but don't buzz. A summary goes out after Shabbat.
-  if (isShabbat((await getSettings(env)).timezone)) return;
+  if (isShabbat((await getSettings(env)).timezone)) return id;
   const prio = itemId ? (await first<{ priority: number }>(env, "SELECT priority FROM items WHERE id = ?", itemId))?.priority : undefined;
-  if (urgencyFor(type, prio) === "later") return; // waits quietly for the next briefing / check-in
+  if (urgencyFor(type, prio) === "later") return id; // waits quietly for the next briefing / check-in
   // The tag collapses repeats for the same item; buttons act without opening the app.
   await sendPush(env, {
     title, body, url, tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
     actions: actionsFor({ type, item_id: itemId }).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
+  return id;
 }

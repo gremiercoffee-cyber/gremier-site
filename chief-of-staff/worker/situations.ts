@@ -132,7 +132,8 @@ async function fire(env: Env, s: Situation, title: string, extra: string[] = [])
     ...(s.note ? [`📝 ${s.note}`] : []),
     ...items.map((i) => `• ${i.title}${i.person ? ` (${i.person})` : ""}`),
   ];
-  await notify(env, "situation", title, lines.join("\n"), null, "/?tab=lists");
+  const nid = await notify(env, "situation", title, lines.join("\n"), null, "/?tab=lists");
+  await run(env, "UPDATE nudges SET item_ids = ? WHERE id = ?", JSON.stringify(items.map((i) => i.id)), nid);
   return true;
 }
 

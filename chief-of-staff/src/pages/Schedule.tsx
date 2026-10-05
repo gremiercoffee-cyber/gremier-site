@@ -138,7 +138,7 @@ export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="px-1 mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted">{title}</h2>
+      <h2 className="px-1 mb-2 font-display text-[21px] leading-tight">{title}</h2>
       <div className="rounded-2xl bg-surface border border-line px-4 divide-y divide-line">{children}</div>
     </section>
   );

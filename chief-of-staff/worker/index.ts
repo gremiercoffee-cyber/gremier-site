@@ -75,10 +75,11 @@ route("GET", "/api/dashboard", async (_req, env) => {
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const nowBlock = await currentBlock(env);
+  const live = await liveNudges(env, nudges);
   const data: Dashboard = {
     now_block: nowBlock,
     today, overdue, waiting, pending, projects, events,
-    nudges: nudges.map((n) => ({ ...n, actions: actionsFor(n) })),
+    nudges: live.map((n) => ({ ...n, actions: actionsFor(n) })),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
   };
   return json(data);
@@ -665,3 +666,39 @@ export default {
       .then(() => learnPass(env)).catch((e) => console.error("learn", e)).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Reminders and briefings that list to-dos stay current: finished items drop off (and a block
+ * reminder disappears once everything in it is done); briefings lose the lines for things done since.
+ */
+async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null })[]) {
+  const out: (Nudge & { items?: { id: string; title: string; person: string | null }[] })[] = [];
+  for (const n of nudges) {
+    if (n.item_ids) {
+      let ids: string[] = [];
+      try { ids = JSON.parse(n.item_ids); } catch { /* none */ }
+      const open = ids.length ? await all<{ id: string; title: string; person: string | null }>(env,
+        `SELECT id, title, person FROM items WHERE status = 'open' AND id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
+      const ordered = ids.map((id) => open.find((o) => o.id === id)).filter(Boolean) as typeof open;
+      if (!ordered.length) { await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", n.id); continue; }
+      const note = n.body.split("\n").filter((l) => l.startsWith("📝"));
+      out.push({
+        ...n, items: ordered,
+        title: n.title.replace(/\d+ things?( for now)?/, `${ordered.length} thing${ordered.length > 1 ? "s" : ""}$1`),
+        body: [...note, ...ordered.map((i) => `• ${i.title}${i.person ? ` (${i.person})` : ""}`)].join("\n"),
+      });
+      continue;
+    }
+    if (n.type === "briefing") {
+      const closed = await all<{ title: string }>(env, "SELECT title FROM items WHERE status != 'open' AND updated_at >= ?", n.created_at);
+      const keys = closed.map((c) => c.title.toLowerCase().slice(0, 30)).filter((k) => k.length >= 6);
+      if (keys.length) {
+        const body = n.body.split("\n").filter((l) => !(/^\s*([-*•]|\d+\.)\s/.test(l) && keys.some((k) => l.toLowerCase().includes(k)))).join("\n");
+        out.push({ ...n, body });
+        continue;
+      }
+    }
+    out.push(n);
+  }
+  return out;
+}

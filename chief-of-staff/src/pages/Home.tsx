@@ -228,13 +228,25 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
           {briefing && (
             <Row icon="☀️" title="Today's briefing" time={briefing.created_at}>
-              <p className="whitespace-pre-line text-[14px]">{briefing.body}</p>
+              <div className="text-[14px]"><Markdown text={briefing.body} /></div>
               <Chips n={briefing} onAct={onAct} />
             </Row>
           )}
           {nudges.map((n) => (
             <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
-              {n.type === "learn" ? <LearnReview onChanged={onChanged} /> : <>
+              {n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
+                {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
+                <ul className="space-y-1">
+                  {n.items.map((it) => (
+                    <li key={it.id} className="flex items-start gap-2 text-[14px]">
+                      <button aria-label="Done" onClick={async () => { await api.updateItem(it.id, { status: "done" }); onChanged(); }}
+                        className="mt-0.5 h-5 w-5 shrink-0 rounded-full border border-line hover:border-accent hover:bg-accent/10 text-[11px] leading-none">✓</button>
+                      <span>{it.title}{it.person && <span className="text-muted"> ({it.person})</span>}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
+              </> : <>
                 {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
                 <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
               </>}
