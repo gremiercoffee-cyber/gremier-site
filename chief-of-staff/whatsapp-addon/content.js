@@ -32,14 +32,16 @@
     if (!b || !b.actionable) return;
     send({
       type: "incoming",
-      payload: { chat: b.chat, sender: b.sender, text: b.lines.join("\n"), at: new Date().toISOString() },
+      payload: { chat: b.chat, sender: b.sender, text: b.lines.join("\n"), at: new Date().toISOString(), sent_at: b.t ? new Date(b.t * 1000).toISOString() : null },
     });
   }
 
   function onIncoming(m) {
     // Archived chats are ones you've put away: never turn them into things to do.
     if (m.archived) { send({ type: "seen", note: `${m.sender}${m.isGroup ? ` in ${m.chat}` : ""} (skipped: archived chat)` }); return; }
-    const b = buffers.get(m.chatId) || { chat: m.chat, sender: m.sender, isGroup: m.isGroup, muted: m.muted, lines: [], actionable: false };
+    // Only messages sent in the last 2 hours count as new (WhatsApp Web sometimes re-loads old ones).
+    if (m.t && Date.now() / 1000 - m.t > 2 * 3600) { send({ type: "seen", note: `${m.sender} (skipped: old message)` }); return; }
+    const b = buffers.get(m.chatId) || { chat: m.chat, sender: m.sender, isGroup: m.isGroup, muted: m.muted, lines: [], actionable: false, t: m.t };
     if (m.text) b.lines.push(m.isGroup ? `${m.sender}: ${m.text}` : m.text);
     const ok = cosActionable(m, myNames);
     b.actionable = b.actionable || ok;

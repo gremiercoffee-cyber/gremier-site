@@ -46,7 +46,7 @@ const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Rep
 - GROUP CHATS (the message is in a group, not a 1-on-1): almost always "none". Announcements, ads, job postings, event notices, links, general questions to the group, and messages addressed to someone else are NOT for the user. Only file it if it is clearly aimed at the user personally (uses their name, replies to them, or asks them specifically to do something).`;
 
 /** One forwarded WhatsApp notification. Returns what was filed, if anything. */
-export async function handleIncoming(env: Env, m: { chat?: string; sender?: string; text?: string; at?: string; account?: string }) {
+export async function handleIncoming(env: Env, m: { chat?: string; sender?: string; text?: string; at?: string; sent_at?: string | null; account?: string }) {
   await heartbeat(env);
   const chat = (m.chat ?? "").slice(0, 120), sender = (m.sender ?? chat).slice(0, 120), text = (m.text ?? "").trim().slice(0, 2000);
   const account = m.account === "business" ? "business" : "personal";
@@ -59,6 +59,8 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
 
   // A group chat (the sender isn't the chat itself) is rarely for the user; without the AI check, don't file it.
   const isGroup = chat !== sender;
+  // A message actually sent hours ago (WhatsApp Web re-loading history) isn't a new thing to do.
+  if (m.sent_at && Date.now() - Date.parse(m.sent_at) > 2 * 3600_000) return { filed: false, reason: "old message" };
   let triage: { action: string; title?: string; due_at?: string | null; priority?: number; category?: string | null } = isGroup
     ? { action: "none" }
     : { action: "task", title: `Reply to ${sender}: ${text.slice(0, 70)}${text.length > 70 ? "…" : ""}`, priority: 2 };
