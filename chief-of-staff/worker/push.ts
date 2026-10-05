@@ -109,7 +109,7 @@ export async function notify(env: Env, type: string, title: string, body = "", i
   const id = uid();
   // The same reminder again (same item, or same kind and title) replaces the older one instead of piling up.
   if (type !== "briefing") {
-    if (itemId) await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND item_id = ? AND type = ?", itemId, type);
+    if (itemId) await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND item_id = ? AND type != 'briefing'", itemId);
     else await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = ? AND title = ?", type, title);
   }
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",

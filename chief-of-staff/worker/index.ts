@@ -78,7 +78,9 @@ route("GET", "/api/dashboard", async (_req, env) => {
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const nowBlock = await currentBlock(env);
-  const live = await liveNudges(env, nudges);
+  // One row per to-do: the newest reminder about it wins.
+  const seenItems = new Set<string>();
+  const live = (await liveNudges(env, nudges)).filter((n) => !n.item_id || (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true)));
   const data: Dashboard = {
     now_block: nowBlock,
     today, overdue, waiting, pending, projects, events,
