@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import { api } from "../api";
+import { useAreas } from "../areas";
 import { DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
@@ -163,7 +164,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
 }) {
   const [area, setAreaState] = useState<string>(() => { try { return localStorage.getItem("cos.area") || "all"; } catch { return "all"; } });
   const setArea = (a: string) => { setAreaState(a); try { localStorage.setItem("cos.area", a); } catch { /* fine */ } };
-  const ICON: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal: "🏠" };
+  const areas = useAreas();
+  const ICON: Record<string, string> = Object.fromEntries(areas.map((a) => [a.key, a.icon]));
   // A nudge's area: its item's area, else the area icon in its title (time-block reminders).
   const nudgeArea = (n: Nudge) => n.area ?? Object.entries(ICON).find(([, i]) => n.title.includes(i))?.[0] ?? null;
   const inArea = (a: string | null | undefined) => area === "all" || a === area;
@@ -189,8 +191,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         </div>
       </div>
 
-      <div className="flex justify-center gap-1.5">
-        {[["all", "All"], ["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]].map(([k, label]) => (
+      <div className="flex justify-center gap-1.5 flex-wrap">
+        {[["all", "All"], ...areas.map((a) => [a.key, `${a.icon} ${a.label}`])].map(([k, label]) => (
           <button key={k} onClick={() => setArea(k)}
             className={`rounded-full px-3 py-1.5 text-[13px] ${area === k ? "bg-ink text-bg" : "bg-surface border border-line/70 text-muted"}`}>{label}</button>
         ))}
@@ -200,7 +202,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         <details className="rounded-2xl bg-accent/10 px-4 py-2.5">
           <summary className="cursor-pointer text-[14px] list-none flex items-center gap-2">
             <span className="text-accent font-medium">Now:</span>
-            <span className="flex-1 truncate">{({ coffee: "☕ ", yeshiva: "📚 ", personal: "🏠 " } as Record<string, string>)[dash.now_block.category ?? ""] ?? ""}{dash.now_block.name}
+            <span className="flex-1 truncate">{ICON[dash.now_block.category ?? ""] ? `${ICON[dash.now_block.category ?? ""]} ` : ""}{dash.now_block.name}
               {dash.now_block.until && <span className="text-muted"> · until {dash.now_block.until}</span>}</span>
             {dash.now_block.count > 0 && <span className="text-xs text-muted">{dash.now_block.count} thing{dash.now_block.count > 1 ? "s" : ""}</span>}
           </summary>

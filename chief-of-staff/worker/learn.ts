@@ -80,7 +80,7 @@ Reply with ONLY JSON: {"suggestions":[{"kind":"fact|person|schedule|preference",
     const t = now();
     await run(env, `INSERT INTO memories (id, category, content, importance, status, area, about, question, evidence, data, created_at, updated_at)
        VALUES (?, ?, ?, 2, 'suggested', ?, ?, ?, ?, ?, ?, ?)`,
-      uid(), kind, content, ["coffee", "yeshiva", "personal"].includes(String(s.area)) ? String(s.area) : null,
+      uid(), kind, content, /^[a-z0-9-]{2,24}$/.test(String(s.area)) ? String(s.area) : null,
       s.about ? String(s.about).slice(0, 80) : null, s.question ? String(s.question).slice(0, 200) : null,
       s.evidence ? String(s.evidence).slice(0, 200) : null, data ? JSON.stringify(data) : null, t, t);
     added++;

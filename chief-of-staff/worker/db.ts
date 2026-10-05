@@ -38,7 +38,7 @@ export interface ItemInput {
 }
 
 export const CATEGORIES = ["coffee", "yeshiva", "personal"];
-const validCategory = (c: unknown) => (typeof c === "string" && CATEGORIES.includes(c.toLowerCase()) ? c.toLowerCase() : null);
+const validCategory = (c: unknown) => (typeof c === "string" && /^[a-z0-9-]{2,24}$/.test(c.toLowerCase()) ? c.toLowerCase() : null);
 
 /** Remember which area a person belongs to, so their next requests are filed without asking. */
 export async function learnCategory(env: Env, person: string | null | undefined, category: string) {

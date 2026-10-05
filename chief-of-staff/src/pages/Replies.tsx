@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type ReplyCard } from "../api";
+import { iconOf, useAreas } from "../areas";
 import { Button, DictateButton, Empty } from "../components/ui";
 
-const AREA: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal: "🏠" };
+
 const waited = (iso: string) => {
   const h = (Date.now() - new Date(iso).getTime()) / 3600_000;
   return h < 1 ? "under an hour" : h < 24 ? `${Math.round(h)}h` : `${Math.round(h / 24)} day${h >= 48 ? "s" : ""}`;
@@ -15,6 +16,7 @@ const waited = (iso: string) => {
 export default function Replies({ serverTranscription, onDataChanged, refreshKey }: {
   serverTranscription: boolean; onDataChanged: () => void; refreshKey: number;
 }) {
+  useAreas();
   const [cards, setCards] = useState<ReplyCard[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [session, setSession] = useState(false);
@@ -110,7 +112,7 @@ function Card({ c, draft, setDraft, serverTranscription, busy, big, drafting, on
     <section className="rounded-[20px] bg-surface border border-line/70 shadow-card p-5 space-y-3">
       <div className="flex items-baseline justify-between gap-2">
         <p className={`${big ? "font-display text-[26px]" : "font-medium text-[16px]"} leading-tight`}>
-          {c.category && <span className="mr-1">{AREA[c.category]}</span>}{c.person ?? "Someone"}
+          {c.category && <span className="mr-1">{iconOf(c.category)}</span>}{c.person ?? "Someone"}
         </p>
         <span className="text-xs text-muted shrink-0">{c.channel === "email" ? "✉️ Email" : "💬 WhatsApp"} · {waited(c.waiting_since)}</span>
       </div>

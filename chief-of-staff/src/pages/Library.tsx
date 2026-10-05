@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { BrainDump, Item, Memory } from "../../shared/types";
 import { api } from "../api";
+import { areaName, useAreas } from "../areas";
 import { Button, Card, Empty, ItemRow, Markdown, timeAgo } from "../components/ui";
 
 export type LibraryTab = "dump" | "ideas" | "trackers" | "people" | "memory" | "dumps";
 const TABS: [LibraryTab, string][] = [["ideas", "Ideas"], ["memory", "What I know"]];
-const AREAS: [string, string][] = [["all", "All"], ["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]];
 
 /** Everything your Chief of Staff has organized, to browse: ideas, people, memories, past brain dumps. */
 export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump, onAsk }: {
@@ -183,11 +183,12 @@ export function People({ refreshKey }: { refreshKey: number }) {
   );
 }
 
-const MEM_AREAS: [string, string][] = [["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"], ["", "General"]];
 const KIND_LABEL: Record<string, string> = { person: "Who's who", schedule: "Schedule", preference: "Preference" };
 
 /** What I picked up (to review) and what I know (confirmed), grouped by area. */
 function MemoryReview({ memories, reload }: { memories: Memory[]; reload: () => void }) {
+  const areas = useAreas();
+  const MEM_AREAS: [string, string][] = [...areas.map((a): [string, string] => [a.key, `${a.icon} ${a.label}`]), ["", "General"]];
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -281,6 +282,7 @@ const pj = <T,>(s: string, d: T): T => { try { return JSON.parse(s) as T; } catc
 
 /** Ideas you work on together: summary, honest take, next steps to pick, and what was added since. */
 function Ideas({ onAsk, refreshKey, dumps }: { onAsk: (t: string) => void; refreshKey: number; dumps: BrainDump[] }) {
+  const areas = useAreas();
   const [list, setList] = useState<Awaited<ReturnType<typeof api.ideas>> | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -307,7 +309,7 @@ function Ideas({ onAsk, refreshKey, dumps }: { onAsk: (t: string) => void; refre
         <button className="w-full text-left" onClick={() => setOpen(isOpen ? null : i.id)}>
           <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted">
             <span>{STATUS_LABEL[i.status] ?? i.status}</span>
-            {i.area && <span>· {({ coffee: "☕ Coffee", yeshiva: "📚 Yeshiva", personal: "🏠 Personal" } as Record<string, string>)[i.area]}</span>}
+            {i.area && <span>· {areaName(areas, i.area)}</span>}
             <span>· {timeAgo(i.updated_at)}</span>
             {i.verdict && VERDICT[i.verdict] && <span className={`ml-auto normal-case tracking-normal rounded-full px-2 py-0.5 ${VERDICT[i.verdict][1]}`}>{VERDICT[i.verdict][0]}</span>}
           </div>

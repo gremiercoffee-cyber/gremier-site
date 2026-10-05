@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, type MissionRow } from "../api";
+import { nameOf, useAreas } from "../areas";
 import { Button, Card, Empty, timeAgo } from "../components/ui";
 
 const parse = <T,>(s: string, d: T): T => { try { return JSON.parse(s) as T; } catch { return d; } };
-const AREA: Record<string, string> = { coffee: "☕ Coffee", yeshiva: "📚 Yeshiva", personal: "🏠 Personal" };
+
 
 /** Goals your Chief of Staff is working through in the background. */
 export default function Missions({ onAsk, refreshKey, embedded }: { onAsk: (text: string) => void; refreshKey: number; embedded?: boolean }) {
+  useAreas();
   const [missions, setMissions] = useState<MissionRow[] | null>(null);
   const load = () => api.missions().then(setMissions).catch(() => setMissions([]));
   useEffect(() => { load(); }, [refreshKey]);
@@ -36,7 +38,7 @@ export default function Missions({ onAsk, refreshKey, embedded }: { onAsk: (text
         const done = steps.filter((s) => s.status === "done").length;
         const finished = m.status === "done" || m.status === "cancelled";
         return (
-          <Card key={m.id} title={<span>One-time · {m.status === "active" ? "In progress" : m.status === "paused" ? "Paused" : m.status === "done" ? "Done" : "Cancelled"}{m.category ? ` · ${AREA[m.category] ?? m.category}` : ""}</span>}>
+          <Card key={m.id} title={<span>One-time · {m.status === "active" ? "In progress" : m.status === "paused" ? "Paused" : m.status === "done" ? "Done" : "Cancelled"}{m.category ? ` · ${nameOf(m.category)}` : ""}</span>}>
             <p className={`font-display text-[20px] leading-snug ${finished ? "text-muted" : ""}`}>{m.goal}</p>
             {steps.length > 0 && (
               <div className="mt-2 h-1.5 rounded-full bg-sunken overflow-hidden">

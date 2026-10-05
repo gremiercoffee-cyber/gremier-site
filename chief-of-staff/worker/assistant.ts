@@ -14,6 +14,7 @@ import { routinesSummary, saveRoutine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
+import { areasText, saveArea } from "./areas";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
@@ -25,7 +26,7 @@ What you do:
 - Act like a trusted human chief of staff, not a chatbot. When they tell you what is going on ("here's how I'm doing deliveries today", "we're launching X next week"), quietly build the structure it needs: tasks and reminders at sensible times, a check-in reminder afterwards phrased as a question ("Did you…?") so you can ask whether it happened, a project to group related work, and memories for lasting facts. Do not ask permission for this internal organizing; just do it and tell them briefly what you set up.
 - A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
 
-Areas: everything belongs to one of three areas: coffee (Gremier Coffee business: roasting, orders, deliveries, suppliers, customers), yeshiva (the yeshiva: rabbis, students, classes, staff), personal (family, home, health, money, errands). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly.
+Areas: everything belongs to one of the user's areas, listed under "## Areas" in the context (keys like coffee, yeshiva, personal, plus any they added). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly. When the user wants a new area/category ("add a category for the house renovation"), create it with save_area and use it from then on.
 
 Reminders can be at ANY time, not only at deadlines: for "remind me sometime this afternoon", pick a sensible time yourself and create a reminder with that due_at.
 
@@ -179,6 +180,7 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   // message (time, recalled memories) LAST, so one change doesn't invalidate everything after it.
   const lines: string[] = [];
   if (settings.name) lines.push(`The user's name is ${settings.name}.`);
+  lines.push("## Areas", await areasText(env));
   lines.push(memory);
   if (situations && want.has("schedule")) lines.push("", "## Schedule (time blocks)", situations);
   if (groups && want.has("groups")) lines.push("", "## Contact groups", groups);
@@ -230,7 +232,7 @@ const itemProps = {
   due_at: { type: "string", description: "ISO 8601 datetime with offset" },
   person: { type: "string", description: "Who it involves (waiting on / committed to)" },
   project: { type: "string", description: "Project name or id" },
-  category: { type: "string", enum: ["coffee", "yeshiva", "personal"], description: "Life area. OMIT when not clearly one of them: the user will be asked." },
+  category: { type: "string", description: "Life area: one of the keys under ## Areas in the context. OMIT when not clearly one of them: the user will be asked." },
   block: { type: "string", description: 'Time block to remind about this during (name or id, e.g. "In yeshiva"); "none" to detach' },
 };
 
@@ -330,7 +332,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         type: "object",
         properties: {
           id: { type: "string" }, name: { type: "string", description: 'e.g. "In yeshiva", "At events"' },
-          category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          category: { type: "string", description: "area key (see ## Areas)" },
           keywords: { type: "string", description: "comma separated words; open items mentioning them are included" },
           note: { type: "string", description: "a short reminder FOR THE USER, shown in every reminder of this block, written to them (e.g. 'Collect business cards'). Never instructions to yourself." },
           guidance: { type: "string", description: "private instructions for yourself about this block (what to prioritize, how to remind). Never shown to the user." },
@@ -348,6 +350,16 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const s = await saveSituation(env, input);
         note("save_time_block", `Schedule: ${s.name}, ${s.when}`);
         return s;
+      },
+    },
+    {
+      name: "save_area",
+      description: "Add or change one of the user's life areas (categories): a name, an emoji and what it covers. Use when they ask for a new category or to rename one.",
+      input_schema: { type: "object", properties: { key: { type: "string", description: "existing area key to change" }, label: { type: "string" }, icon: { type: "string", description: "one emoji" }, about: { type: "string", description: "what belongs in it" } } },
+      handler: async (input) => {
+        const areas = await saveArea(env, input as never);
+        note("save_area", `🏷️ Areas: ${areas.map((a) => `${a.icon} ${a.label}`).join(", ")}`);
+        return { areas };
       },
     },
     {
@@ -390,7 +402,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       input_schema: {
         type: "object",
         properties: {
-          title: { type: "string" }, area: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          title: { type: "string" }, area: { type: "string", description: "area key (see ## Areas)" },
           summary: { type: "string", description: "clear summary of the idea in a few sentences" },
           transcript: { type: "string", description: "the user's own words, cleaned up lightly" },
           analysis: { type: "string", description: "honest take: what's strong, what's risky, what to watch, good or bad idea and why" },
@@ -492,7 +504,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           depth: { type: "string", enum: ["quick", "standard", "deep", "adaptive"], description: "adaptive = full report first, then cheap quick checks that go deeper only when something important turns up" },
           rules: { type: "string", description: "standing notes on how to do it (focus, things to skip, format)" },
           deliver: { type: "string", enum: ["briefing", "alert", "doc"] },
-          category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          category: { type: "string", description: "area key (see ## Areas)" },
           active: { type: "boolean" },
           run_now: { type: "boolean", description: "Also run it right away" },
         },
@@ -511,7 +523,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         properties: {
           goal: { type: "string" },
           steps: { type: "array", items: { type: "string" }, description: "3-8 concrete steps" },
-          category: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          category: { type: "string", description: "area key (see ## Areas)" },
           start_in_hours: { type: "number", description: "0 to begin right away" },
         },
         required: ["goal", "steps"],
@@ -811,7 +823,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           content: { type: "string" },
           category: { type: "string", enum: ["fact", "preference", "person", "business", "personal"] },
           importance: { type: "integer", enum: [1, 2, 3] },
-          area: { type: "string", enum: ["coffee", "yeshiva", "personal"] },
+          area: { type: "string", description: "area key (see ## Areas)" },
           inferred: { type: "boolean", description: "true when you're guessing/connecting dots rather than told directly; it goes to the user's review list" },
           question: { type: "string", description: "with inferred: what to ask the user, e.g. 'Is X your bottle supplier?'" },
         },

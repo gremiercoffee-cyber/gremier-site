@@ -12,6 +12,7 @@ import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { all, first, getSettings, localParts, now, run, uid } from "./db";
 import { notify } from "./push";
+import { getAreas } from "./areas";
 
 export interface Situation {
   id: string; name: string; category: string | null; keywords: string; note: string; guidance: string; weekdays: string | null; date: string | null;
@@ -20,7 +21,7 @@ export interface Situation {
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const AREA_ICON: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal: "🏠" };
+const AREA_ICON: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal: "🏠" }; // overridden by the user's areas at runtime
 const parse = <T>(s: string | null, d: T): T => { try { return s ? JSON.parse(s) as T : d; } catch { return d; } };
 const words = (s: string) => s.split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
 const minutes = (hhmm: string | null) => { const [h, m] = (hhmm ?? "00:00").split(":").map(Number); return (h || 0) * 60 + (m || 0); };
@@ -57,7 +58,7 @@ export async function saveSituation(env: Env, input: Record<string, unknown>) {
   const s = {
     id: existing?.id ?? uid(),
     name: str("name", "Time block").slice(0, 60),
-    category: ["coffee", "yeshiva", "personal"].includes(String(input.category)) ? String(input.category) : existing?.category ?? null,
+    category: /^[a-z0-9-]{2,24}$/.test(String(input.category)) ? String(input.category) : existing?.category ?? null,
     keywords: str("keywords"), note: str("note").slice(0, 500), guidance: str("guidance").slice(0, 800),
     weekdays: Array.isArray(input.weekdays) ? JSON.stringify((input.weekdays as number[]).map(Number).filter((d) => d >= 0 && d <= 6)) : existing?.weekdays ?? null,
     date: /^\d{4}-\d{2}-\d{2}$/.test(String(input.date ?? "")) ? String(input.date) : input.date === null ? null : existing?.date ?? null,
@@ -152,7 +153,7 @@ export async function runSituations(env: Env) {
       const at = s.mode === "random" ? randomMinute(s.id, date, from, to) : from;
       if (mins >= at && mins < to) {
         const count = (await itemsFor(env, s)).length;
-        const icon = s.category ? `${AREA_ICON[s.category]} ` : "";
+        const icon = s.category ? `${(await getAreas(env)).find((a) => a.key === s.category)?.icon ?? AREA_ICON[s.category] ?? ""} ` : "";
         if (await fire(env, s, `${icon}${s.name}${s.end_time ? ` until ${s.end_time}` : ""}: ${count ? `${count} thing${count > 1 ? "s" : ""} for now` : "a reminder"}`)) n++;
         await run(env, "UPDATE situations SET last_fired = ? WHERE id = ?", date, s.id);
       }

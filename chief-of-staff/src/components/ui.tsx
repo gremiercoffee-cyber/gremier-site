@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Item, ItemKind } from "../../shared/types";
 import { api } from "../api";
+import { useAreas } from "../areas";
 import { createRecognizer, speechRecognitionAvailable, startRecording } from "../voice";
 import LiveOrb from "./LiveOrb";
 
@@ -71,6 +72,7 @@ export function timeAgo(iso: string) {
 }
 
 export function ItemRow({ item, onChange, onOpen, compact }: { item: Item; onChange: () => void; onOpen?: (i: Item) => void; compact?: boolean }) {
+  const areas = useAreas();
   const due = formatDue(item.due_at);
   const done = item.status === "done";
   const toggle = async () => {
@@ -98,7 +100,7 @@ export function ItemRow({ item, onChange, onOpen, compact }: { item: Item; onCha
         {!compact && !done && item.kind !== "idea" && !item.category && (
           <span className="flex flex-wrap items-center gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
             <span className="text-[11px] text-accent mr-0.5">Which area?</span>
-            {[["coffee", "☕ Coffee"], ["yeshiva", "📚 Yeshiva"], ["personal", "🏠 Personal"]].map(([k, label]) => (
+            {areas.map((a) => [a.key, `${a.icon} ${a.label}`]).map(([k, label]) => (
               <span key={k} role="button" onClick={async () => { await api.updateItem(item.id, { category: k }); onChange(); }}
                 className="rounded-full bg-sunken px-2 py-0.5 text-[11px] hover:bg-line">{label}</span>
             ))}

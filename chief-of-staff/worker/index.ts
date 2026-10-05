@@ -9,6 +9,7 @@ import {
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
 import { tidyConversations } from "./tidy";
+import { getAreas, removeArea, saveArea } from "./areas";
 import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
 import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
@@ -95,6 +96,13 @@ route("POST", "/api/conversations/:id/pin", async (req, env, [id]) => {
   const b = await body<{ pinned?: boolean }>(req);
   await run(env, "UPDATE conversations SET pinned = ?, archived = 0 WHERE id = ?", b.pinned ? 1 : 0, id);
   return json({ ok: true });
+});
+route("GET", "/api/areas", async (_req, env) => json(await getAreas(env)));
+route("POST", "/api/areas", async (req, env) => {
+  try { return json(await saveArea(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("DELETE", "/api/areas/:key", async (_req, env, [key]) => {
+  try { return json(await removeArea(env, key)); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
 route("POST", "/api/conversations/tidy", async (req, env) => {
   const b = await body<{ keep?: string | null }>(req).catch(() => ({} as { keep?: string | null }));
@@ -522,10 +530,11 @@ route("POST", "/api/widget/act", async (req, env) => {
     }
     default: {
       const cat = (b.action ?? "").startsWith("cat:") ? b.action!.slice(4) : "";
-      if (!["coffee", "yeshiva", "personal"].includes(cat)) throw new HttpError(400, "unknown action");
+      const area = (await getAreas(env)).find((a) => a.key === cat);
+      if (!area) throw new HttpError(400, "unknown action");
       const item = await updateItem(env, b.id, { category: cat });
       await learnCategory(env, item.person, cat);
-      return json({ ok: true, message: `Filed under ${cat[0].toUpperCase() + cat.slice(1)}` });
+      return json({ ok: true, message: `Filed under ${area.label}` });
     }
   }
   // Any alert about this item is now moot.
@@ -589,7 +598,7 @@ route("POST", "/api/google/disconnect", async (req, env) => {
 });
 route("POST", "/api/google/area", async (req, env) => {
   const b = await body<{ email?: string; category?: string }>(req);
-  if (!b.email || !["coffee", "yeshiva", "personal"].includes(b.category ?? "")) throw new HttpError(400, "email and category required");
+  if (!b.email || !(await getAreas(env)).some((a) => a.key === b.category)) throw new HttpError(400, "email and category required");
   await run(env, "UPDATE google_accounts SET category = ? WHERE email = ?", b.category, b.email);
   return json({ ok: true });
 });

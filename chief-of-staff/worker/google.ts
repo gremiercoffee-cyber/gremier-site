@@ -8,6 +8,7 @@
  */
 import type { CalendarEvent, GoogleStatus, Item } from "../shared/types";
 import type { Env } from "./env";
+import { areaKeysJson } from "./areas";
 import { getProvider } from "./ai";
 import { all, createItem, first, getSettings, now, run, updateItem } from "./db";
 import { notify } from "./push";
@@ -301,7 +302,7 @@ function bodyText(m: GMessage): string {
 
 const TRIAGE_SYSTEM = `You triage email for a busy business owner. You see one email thread and the user's open items.
 Reply with JSON only, no prose:
-{"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"category":"coffee"|"yeshiva"|"personal"|null,"completes":string[]}
+{"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null,"completes":string[]}
 - task: the latest message is from someone else and the user personally needs to do something (reply, send, pay, decide, book).
 - commitment: the user promised something in this thread that is not yet done.
 - waiting: the latest message is FROM THE USER and asks someone else for something they have not delivered yet.
@@ -375,7 +376,7 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
     let triage: Triage = { action: "none" };
     try {
       const out = await getProvider(env).complete({
-        tier: "fast", purpose: "email_triage", system: TRIAGE_SYSTEM, maxTokens: 400,
+        tier: "fast", purpose: "email_triage", system: TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env)), maxTokens: 400,
         prompt: `Now: ${now()}\nSubject: ${subject}\n\n${transcript}\n\nUser's open items:\n${openItems.map((i) => `- ${i.id}: [${i.kind}] ${i.title}${i.person ? ` (${i.person})` : ""}`).join("\n") || "(none)"}`,
       });
       triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));

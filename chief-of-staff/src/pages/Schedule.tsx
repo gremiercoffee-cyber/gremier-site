@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, type SituationRow } from "../api";
+import { iconOf, useAreas } from "../areas";
 import { Button, Empty } from "../components/ui";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const ICON: Record<string, string> = { coffee: "☕", yeshiva: "📚", personal: "🏠" };
+
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const days = (s: SituationRow): number[] => { try { return JSON.parse(s.weekdays ?? "[]"); } catch { return []; } };
 const skipped = (s: SituationRow, date: string) => (s.skip_dates ?? "").split(",").includes(date);
@@ -30,6 +31,7 @@ const byStart = (a: SituationRow, b: SituationRow) => (a.start_time ?? "").local
 
 /** Your schedule: today (with one-day changes) and your usual week. Change it by just telling me. */
 export default function Schedule({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
+  useAreas();
   const [list, setList] = useState<SituationRow[] | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const load = () => api.situations().then(setList).catch(() => setList([]));
@@ -149,7 +151,7 @@ function Row({ s, sub, muted, children }: { s: SituationRow; sub?: string; muted
     <div className="py-2.5 flex gap-3 items-center">
       {s.start_time && <span className={`w-[5.5rem] shrink-0 text-sm tabular-nums ${muted ? "text-muted line-through" : "text-muted"}`}>{s.start_time}–{s.end_time ?? "?"}</span>}
       <div className="flex-1 min-w-0">
-        <p className={`text-[15px] leading-snug ${muted ? "text-muted" : ""}`}>{s.category && `${ICON[s.category]} `}{s.name}</p>
+        <p className={`text-[15px] leading-snug ${muted ? "text-muted" : ""}`}>{s.category && iconOf(s.category) ? `${iconOf(s.category)} ` : ""}{s.name}</p>
         {(sub || s.note) && <p className="text-xs text-muted truncate">{[sub, s.note].filter(Boolean).join(" · ")}</p>}
       </div>
       <div className="flex gap-3 shrink-0">{children}</div>

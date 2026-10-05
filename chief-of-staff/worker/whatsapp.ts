@@ -9,6 +9,7 @@
  */
 import type { Item } from "../shared/types";
 import type { Env } from "./env";
+import { areaKeysJson } from "./areas";
 import { getProvider } from "./ai";
 import { all, createItem, first, now, run, uid } from "./db";
 import { triageBudget } from "./google";
@@ -37,7 +38,7 @@ export async function bridgeStatus(env: Env) {
 }
 
 const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Reply with JSON only:
-{"action":"none"|"task"|"commitment"|"reminder","title":string,"due_at":string|null,"priority":1|2|3,"category":"coffee"|"yeshiva"|"personal"|null}
+{"action":"none"|"task"|"commitment"|"reminder","title":string,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null}
 - task: the sender needs the user to do or answer something. Title like "Reply to Avi about Thursday's order".
 - reminder: something at a specific time (set due_at, ISO 8601). commitment: the user already promised something.
 - category: coffee = Gremier Coffee business (orders, deliveries, beans, customers, suppliers); yeshiva = the yeshiva (rabbis, students, classes); personal = family/home/money; null if unsure.
@@ -62,7 +63,7 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   if (budget.used < budget.cap) {
     try {
       const out = await getProvider(env).complete({
-        tier: "fast", purpose: "whatsapp_triage", system: TRIAGE_SYSTEM, maxTokens: 200,
+        tier: "fast", purpose: "whatsapp_triage", system: TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env)), maxTokens: 200,
         prompt: `Now: ${now()}\nChat: ${chat}\nFrom: ${sender}\nMessage: ${text}`,
       });
       triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));

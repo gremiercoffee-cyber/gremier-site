@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { GoogleStatus, Memory, Settings as S } from "../../shared/types";
+import { setAreas, useAreas } from "../areas";
 import { api, setToken } from "../api";
 import { Button, Card, Empty } from "../components/ui";
 
@@ -11,6 +12,7 @@ type Usage = Awaited<ReturnType<typeof api.usage>>;
 export default function Settings({ settings, onSaved, installPrompt }: {
   settings: S; onSaved: (s: S) => void; installPrompt: (() => void) | null;
 }) {
+  const areas = useAreas();
   const [form, setForm] = useState(settings);
   const [saved, setSaved] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -187,9 +189,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                       <select value={a.category ?? "personal"} aria-label="Area for this account's calendar"
                         onChange={async (e) => { await api.googleArea(a.email, e.target.value); setGoogle(await api.googleStatus()); }}
                         className="mt-0.5 mb-0.5 rounded-full bg-sunken px-2 py-0.5 text-xs outline-none">
-                        <option value="coffee">☕ Coffee calendar</option>
-                        <option value="yeshiva">📚 Yeshiva calendar</option>
-                        <option value="personal">🏠 Personal calendar</option>
+                        {areas.map((ar) => <option key={ar.key} value={ar.key}>{ar.icon} {ar.label} calendar</option>)}
                       </select>
                       <p className={`text-xs truncate ${a.last_error ? "text-danger" : "text-muted"}`}>
                         {a.last_error ?? (a.last_sync_at ? `Calendar & Gmail · synced ${new Date(a.last_sync_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Calendar & Gmail · waiting for first sync")}
@@ -263,6 +263,37 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             ))}
           </ul>
         )}
+      </Card>
+
+      <Card title="Areas">
+        <p className="text-sm text-muted mb-2">The parts of your life everything gets sorted into. Add your own, rename, or remove (things in a removed area just become unsorted).</p>
+        <ul className="divide-y divide-line">
+          {areas.map((ar) => (
+            <li key={ar.key} className="py-2 flex items-center gap-2">
+              <input defaultValue={ar.icon} aria-label="Emoji" className="w-11 text-center rounded-lg bg-sunken py-1"
+                onBlur={async (e) => { if (e.target.value !== ar.icon) setAreas(await api.saveArea({ key: ar.key, icon: e.target.value })); }} />
+              <input defaultValue={ar.label} aria-label="Name" className="w-28 rounded-lg bg-sunken px-2 py-1 font-medium"
+                onBlur={async (e) => { if (e.target.value.trim() && e.target.value !== ar.label) setAreas(await api.saveArea({ key: ar.key, label: e.target.value })); }} />
+              <input defaultValue={ar.about} placeholder="What goes here" aria-label="Description" className="flex-1 min-w-0 rounded-lg bg-sunken px-2 py-1 text-sm"
+                onBlur={async (e) => { if (e.target.value !== ar.about) setAreas(await api.saveArea({ key: ar.key, about: e.target.value })); }} />
+              <button className="text-xs text-muted hover:text-danger" onClick={async () => {
+                if (window.confirm(`Remove "${ar.label}"? Things in it become unsorted.`)) { try { setAreas(await api.deleteArea(ar.key)); } catch (err) { alert((err as Error).message); } }
+              }}>Remove</button>
+            </li>
+          ))}
+        </ul>
+        <form className="flex gap-2 mt-2" onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget); const label = String(f.get("label") ?? "").trim();
+          if (!label) return;
+          setAreas(await api.saveArea({ label, icon: String(f.get("icon") || "🏷️"), about: String(f.get("about") ?? "") }));
+          e.currentTarget.reset();
+        }}>
+          <input name="icon" placeholder="🏷️" className="w-11 text-center rounded-lg bg-sunken py-1" />
+          <input name="label" placeholder="New area" className="w-28 rounded-lg bg-sunken px-2 py-1" />
+          <input name="about" placeholder="What goes here (optional)" className="flex-1 min-w-0 rounded-lg bg-sunken px-2 py-1 text-sm" />
+          <Button>Add</Button>
+        </form>
       </Card>
 
       <Card title="Model usage (30 days)">

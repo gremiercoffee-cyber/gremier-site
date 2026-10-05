@@ -18,7 +18,7 @@ export interface Idea {
 
 const KINDS = ["research", "plan", "remind", "task", "other"];
 const parse = <T>(s: string | null | undefined, d: T): T => { try { return s ? JSON.parse(s) as T : d; } catch { return d; } };
-const areaOf = (a: unknown) => (["coffee", "yeshiva", "personal"].includes(String(a)) ? String(a) : null);
+const areaOf = (a: unknown) => (/^[a-z0-9-]{2,24}$/.test(String(a)) ? String(a) : null);
 const newSteps = (list: unknown) => (Array.isArray(list) ? list : []).slice(0, 8).map((s: { label?: string; kind?: string }) => ({
   id: uid().slice(0, 8), label: String(s?.label ?? s).slice(0, 200), kind: KINDS.includes(String(s?.kind)) ? String(s.kind) : "other", status: "suggested",
 })).filter((s) => s.label);
