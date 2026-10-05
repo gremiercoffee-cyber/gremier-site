@@ -49,7 +49,7 @@ export interface ModelProvider {
   /** Research with live web search; returns the report text and how many searches it used. */
   research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }): Promise<{ text: string; searches: number; sources: string[] }>;
   startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }): Promise<string>;
-  checkBackground(id: string, purpose: string): Promise<{ done: false } | { done: true; failed: string } | { done: true; text: string; searches: number; sources: string[]; failed?: undefined }>;
+  checkBackground(id: string, purpose: string): Promise<{ done: false; status?: string } | { done: true; failed: string } | { done: true; text: string; searches: number; sources: string[]; failed?: undefined }>;
 }
 
 export class ProviderUnavailable extends Error {}
@@ -165,6 +165,7 @@ class OpenAIProvider implements ModelProvider {
       tools: [{ type: "web_search" }],
       max_tool_calls: Math.max(1, req.maxSearches),
       max_output_tokens: req.maxTokens ?? 4000,
+      reasoning: { effort: "low" },
     } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming;
     const response = await this.client.responses.create(params);
     const usage = response.usage;
@@ -189,6 +190,7 @@ class OpenAIProvider implements ModelProvider {
       input: req.prompt,
       ...(req.maxSearches ? { tools: [{ type: "web_search" }], max_tool_calls: Math.max(1, req.maxSearches) } : {}),
       max_output_tokens: req.maxTokens ?? 4000,
+      reasoning: { effort: "low" }, // research is search-and-summarize: long deliberation only makes it slow
       background: true,
     } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming;
     const r = await this.client.responses.create(params);
@@ -199,7 +201,7 @@ class OpenAIProvider implements ModelProvider {
   async checkBackground(id: string, purpose: string) {
     const r = await this.client.responses.retrieve(id);
     const status = (r as unknown as { status: string }).status;
-    if (status === "queued" || status === "in_progress") return { done: false as const };
+    if (status === "queued" || status === "in_progress") return { done: false as const, status };
     if (status !== "completed") {
       const err = (r as unknown as { error?: { message?: string }; incomplete_details?: { reason?: string } });
       // "incomplete" (e.g. hit the length limit) still has usable text.

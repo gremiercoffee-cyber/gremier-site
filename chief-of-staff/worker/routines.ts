@@ -199,7 +199,10 @@ export async function advanceRoutineRuns(env: Env) {
   let finished = 0;
   for (const rr of runs) {
     try { if (await advanceOne(env, rr)) finished++; }
-    catch (e) { console.error("advance run", e); }
+    catch (e) {
+      console.error("advance run", e);
+      await run(env, "UPDATE routine_runs SET error = ? WHERE id = ?", `Check failed: ${(e as Error).message}`.slice(0, 300), rr.id);
+    }
   }
   return finished;
 }
@@ -216,11 +219,17 @@ async function advanceOne(env: Env, rr: { id: string; routine_id: string; state:
   for (const j of st.jobs) {
     if (!j.id || j.text !== undefined || j.failed) continue;
     const c = await provider.checkBackground(j.id, "task_research");
-    if (!c.done) continue;
+    if (!c.done) { (j as Job & { last?: string }).last = `${(c as { status?: string }).status ?? "working"} at ${new Date().toISOString().slice(11, 16)}`; changed = true; continue; }
     changed = true;
     if ("text" in c) { j.text = c.text; j.searches = c.searches; j.sources = c.sources; }
     else if (isRateLimit(c.failed) && (j.tries ?? 0) < 4) { j.id = null; j.tries = (j.tries ?? 0) + 1; }
     else j.failed = c.failed;
+  }
+  // A part taking over 25 minutes is dropped so the report can still go out with what came back.
+  const tooOld = Date.now() - Date.parse(rr.started_at) > 45 * 60_000;
+  for (const j of st.jobs) {
+    if (j.text !== undefined || j.failed) continue;
+    if (tooOld && st.jobs.some((x) => x.text !== undefined)) { j.failed = "took too long"; changed = true; }
   }
   // Start waiting jobs while there's room.
   let running = st.jobs.filter((j) => j.id && j.text === undefined && !j.failed).length;
