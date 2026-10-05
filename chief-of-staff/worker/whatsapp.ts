@@ -42,7 +42,8 @@ const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Rep
 - task: the sender needs the user to do or answer something. Title like "Reply to Avi about Thursday's order".
 - reminder: something at a specific time (set due_at, ISO 8601). commitment: the user already promised something.
 - category: coffee = Gremier Coffee business (orders, deliveries, beans, customers, suppliers); yeshiva = the yeshiva (rabbis, students, classes); personal = family/home/money; null if unsure.
-- none: chit-chat, thanks, FYI, or nothing the user must do. Titles in the message's language is fine.`;
+- none: chit-chat, thanks, FYI, or nothing the user must do. Titles in the message's language is fine.
+- GROUP CHATS (the message is in a group, not a 1-on-1): almost always "none". Announcements, ads, job postings, event notices, links, general questions to the group, and messages addressed to someone else are NOT for the user. Only file it if it is clearly aimed at the user personally (uses their name, replies to them, or asks them specifically to do something).`;
 
 /** One forwarded WhatsApp notification. Returns what was filed, if anything. */
 export async function handleIncoming(env: Env, m: { chat?: string; sender?: string; text?: string; at?: string; account?: string }) {
@@ -56,15 +57,17 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   await run(env, "INSERT INTO whatsapp_inbox (id, hash, chat, sender, text, received_at, account) VALUES (?, ?, ?, ?, ?, ?, ?)",
     id, hash, chat, sender, text, m.at || now(), account);
 
-  let triage: { action: string; title?: string; due_at?: string | null; priority?: number; category?: string | null } = {
-    action: "task", title: `Reply to ${sender}: ${text.slice(0, 70)}${text.length > 70 ? "…" : ""}`, priority: 2,
-  };
+  // A group chat (the sender isn't the chat itself) is rarely for the user; without the AI check, don't file it.
+  const isGroup = chat !== sender;
+  let triage: { action: string; title?: string; due_at?: string | null; priority?: number; category?: string | null } = isGroup
+    ? { action: "none" }
+    : { action: "task", title: `Reply to ${sender}: ${text.slice(0, 70)}${text.length > 70 ? "…" : ""}`, priority: 2 };
   const budget = await triageBudget(env);
   if (budget.used < budget.cap) {
     try {
       const out = await getProvider(env).complete({
         tier: "fast", purpose: "whatsapp_triage", system: TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env)), maxTokens: 200,
-        prompt: `Now: ${now()}\nChat: ${chat}\nFrom: ${sender}\nMessage: ${text}`,
+        prompt: `Now: ${now()}\nChat: ${chat}${isGroup ? " (GROUP chat)" : " (1-on-1 chat)"}\nFrom: ${sender}\nMessage: ${text}`,
       });
       triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
     } catch { /* keep the no-AI fallback */ }
