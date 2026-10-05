@@ -39,7 +39,7 @@
     const self = !!id.fromMe && !isGroup && !!me && me === remote;
     return {
       chatId: remote, chat: chatName, sender, isGroup, fromMe: !!id.fromMe, self, text,
-      kind: str(msg.type), muted: !!(chat && chat.mute && chat.mute.isMuted), t: Number(msg.t) || 0,
+      kind: str(msg.type), muted: !!(chat && chat.mute && chat.mute.isMuted), archived: !!(chat && chat.archive), t: Number(msg.t) || 0,
     };
   }
 

@@ -37,6 +37,8 @@
   }
 
   function onIncoming(m) {
+    // Archived chats are ones you've put away: never turn them into things to do.
+    if (m.archived) { send({ type: "seen", note: `${m.sender}${m.isGroup ? ` in ${m.chat}` : ""} (skipped: archived chat)` }); return; }
     const b = buffers.get(m.chatId) || { chat: m.chat, sender: m.sender, isGroup: m.isGroup, muted: m.muted, lines: [], actionable: false };
     if (m.text) b.lines.push(m.isGroup ? `${m.sender}: ${m.text}` : m.text);
     const ok = cosActionable(m, myNames);
