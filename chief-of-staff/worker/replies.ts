@@ -45,34 +45,35 @@ export async function replyQueue(env: Env): Promise<ReplyCard[]> {
       why: i.why, suggested: i.suggested_reply, waiting_since: i.created_at, category: i.category ?? null,
     });
   }
-  const missing = cards.filter((c) => !c.suggested).slice(0, 10);
-  if (missing.length) {
-    try { await prepare(env, missing); } catch (e) { console.error("reply suggestions failed", e); }
-  }
-  return cards;
+  // Nothing is drafted until the user asks (Draft button): the list itself costs no AI.
+  return cards.map((c) => ({ ...c, suggested: null }));
 }
 
-async function prepare(env: Env, cards: ReplyCard[]) {
-  const { style, examples } = await styleNotes(env);
+/**
+ * Draft one reply on request. `guidance` is whatever the user typed in the box: notes on what to say
+ * ("tell him Tuesday works, keep it short"), a rough reply to polish, or nothing (draft from scratch).
+ */
+export async function draftReply(env: Env, id: string, guidance = "") {
+  const i = await first<Item>(env, "SELECT * FROM items WHERE id = ?", id);
+  if (!i) throw new Error("not found");
+  const said = await incomingText(env, i);
+  const { style, examples } = await styleNotes(env, i.person);
   const settings = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'name'");
   const me = settings ? JSON.parse(settings.value) : "the user";
-  const out = await getProvider(env).complete({
-    tier: "fast", purpose: "reply_suggest", maxTokens: 220 * cards.length,
-    system: `You draft short replies for ${me}, a busy business owner (Gremier Coffee, a yeshiva, family). For each message, return:
-- why: one short line on why replying matters (e.g. "customer order, needs a delivery date").
-- reply: a ready-to-send reply in ${me}'s own voice, in the same language as the message (Hebrew stays Hebrew). Short, warm, direct, like a WhatsApp/email he'd really send. Never invent facts, prices or dates: if the answer needs something only he knows, write the reply with a short [placeholder].
-${style ? `\nHis style:\n${style}` : ""}${examples.length ? `\n\nReplies he actually sent before:\n${examples.map((e) => `- (${e.channel}${e.person ? `, to ${e.person}` : ""}) They: "${e.incoming.slice(0, 120)}" → He: "${e.sent.slice(0, 200)}"`).join("\n")}` : ""}
-Return JSON only: {"replies":[{"id":"...","why":"...","reply":"..."}]}`,
-    prompt: cards.map((c) => `id ${c.id} · ${c.channel} from ${c.person ?? "unknown"}${c.subject ? ` · subject "${c.subject}"` : ""}:\n"${c.said.slice(0, 500)}"`).join("\n\n"),
+  const past = examples.map((e) => `- (${e.channel}${e.person ? `, to ${e.person}` : ""}) They: "${e.incoming.slice(0, 120)}" -> He: "${e.sent.slice(0, 200)}"`).join("\n");
+  const text = await getProvider(env).complete({
+    tier: "main", purpose: "reply_draft", maxTokens: 400,
+    system: [
+      `Write ONE reply for ${me} (Gremier Coffee, a yeshiva, family) to the message below, in his own voice and in the same language as the message (Hebrew stays Hebrew). Short, warm, direct, like a WhatsApp/email he'd really send.`,
+      guidance ? "He told you what he wants: follow it exactly (content, tone, length). If it's already a rough reply, polish it without changing the meaning." : "He hasn't said what to answer: write a sensible reply.",
+      "Never invent facts, prices or dates: if something only he knows is needed, put a short [placeholder].",
+      style ? `His style:\n${style}` : "",
+      past ? `Replies he actually sent before:\n${past}` : "",
+      "Return only the reply text.",
+    ].filter(Boolean).join("\n\n"),
+    prompt: `${i.source === "gmail" ? "Email" : "WhatsApp"} from ${i.person ?? "someone"}:\n"${said.slice(0, 1500)}"${guidance ? `\n\nWhat ${me} wants to say:\n${guidance.slice(0, 1500)}` : ""}`,
   });
-  const parsed = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)) as { replies: { id: string; why: string; reply: string }[] };
-  for (const r of parsed.replies ?? []) {
-    const c = cards.find((x) => x.id === r.id);
-    if (!c) continue;
-    c.why = r.why?.slice(0, 160) ?? null;
-    c.suggested = r.reply?.slice(0, 1000) ?? null;
-    await run(env, "UPDATE items SET why = ?, suggested_reply = ? WHERE id = ?", c.why, c.suggested, c.id);
-  }
+  return { text: text.trim() };
 }
 
 /**

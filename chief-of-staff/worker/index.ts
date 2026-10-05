@@ -15,7 +15,7 @@ import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOu
 import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
-import { replyQueue, sendReply } from "./replies";
+import { replyQueue, sendReply, draftReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine, tellRoutine } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
 import { capture, checkTrackerNow, judgeEntry, knownChats, linkWhatsapp, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
@@ -359,6 +359,11 @@ route("POST", "/api/routines/:id/run", async (_req, env, [id], ctx) => {
 
 // ---- Replies: consolidated catch-up ------------------------------------------------
 route("GET", "/api/replies", async (_req, env) => json(await replyQueue(env)));
+route("POST", "/api/replies/:id/draft", async (req, env, [id]) => {
+  const { guidance } = await body<{ guidance?: string }>(req);
+  try { return json(await draftReply(env, id, String(guidance ?? "").trim())); }
+  catch (e) { throw new HttpError(400, (e as Error).message); }
+});
 route("POST", "/api/replies/:id/send", async (req, env, [id]) => {
   const { text } = await body<{ text?: string }>(req);
   try { return json(await sendReply(env, id, String(text ?? ""))); }

@@ -128,6 +128,7 @@ export const api = {
   routineRun: (id: string) => request<{ id: string; name: string; started_at: string; summary: string | null; report: string | null; doc_link: string | null }>("GET", `/api/routine-runs/${id}`),
   runRoutine: (id: string) => request<{ ok: true; message: string }>("POST", `/api/routines/${id}/run`),
   replies: () => request<ReplyCard[]>("GET", "/api/replies"),
+  draftReply: (id: string, guidance: string) => request<{ text: string }>("POST", `/api/replies/${id}/draft`, { guidance }),
   sendReply: (id: string, text: string) => request<{ ok: true; message: string }>("POST", `/api/replies/${id}/send`, { text }),
   setMission: (id: string, status: string) => request("POST", `/api/missions/${id}`, { status }),
   search: (q: string) => request<{
