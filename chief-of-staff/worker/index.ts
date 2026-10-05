@@ -16,7 +16,7 @@ import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
-import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
+import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine, tellRoutine } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
 import { capture, checkTrackerNow, judgeEntry, knownChats, linkWhatsapp, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
@@ -344,6 +344,11 @@ route("DELETE", "/api/routines/:id", async (_req, env, [id]) => {
     env.DB.prepare("DELETE FROM routines WHERE id = ?").bind(id),
   ]);
   return json({ ok: true });
+});
+route("POST", "/api/routines/:id/tell", async (req, env, [id]) => {
+  const b = await body<{ text?: string }>(req);
+  if (!b.text?.trim()) throw new HttpError(400, "Say what to change.");
+  try { return json(await tellRoutine(env, id, b.text.trim().slice(0, 2000))); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
 route("POST", "/api/routines/:id/run", async (_req, env, [id], ctx) => {
   const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", id);

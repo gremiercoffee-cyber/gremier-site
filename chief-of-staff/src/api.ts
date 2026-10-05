@@ -10,7 +10,7 @@ export interface ReplyCard {
 export interface RoutineSchedule { kind: "hours" | "daily" | "weekly" | "monthly"; every_hours?: number; time?: string; weekdays?: number[]; day?: number }
 export interface RoutineRow {
   id: string; name: string; instructions: string; schedule: RoutineSchedule; schedule_text: string; depth: string; deliver: string;
-  category: string | null; active: number; next_run_at: string | null; last_run_at: string | null;
+  category: string | null; active: number; rules?: string; next_run_at: string | null; last_run_at: string | null;
   runs: { id: string; started_at: string; status: string; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
 }
 
@@ -121,6 +121,7 @@ export const api = {
   whatsappChats: () => request<string[]>("GET", "/api/whatsapp/chats"),
   linkWhatsapp: (personId: string, chat: string) => request("POST", `/api/people/${personId}/whatsapp`, { chat }),
   trackerEntries: (id: string) => request<{ entries?: { id: string; verdict?: string | null; chat: string; sender: string; text: string; said_at: string; person?: string | null; source?: string }[] }>("GET", `/api/trackers/${id}/entries`),
+  tellRoutine: (id: string, text: string) => request<{ reply: string; changed: string[] }>("POST", `/api/routines/${id}/tell`, { text }),
   routines: () => request<RoutineRow[]>("GET", "/api/routines"),
   saveRoutine: (r: Record<string, unknown>) => request("POST", "/api/routines", r),
   deleteRoutine: (id: string) => request("DELETE", `/api/routines/${id}`),

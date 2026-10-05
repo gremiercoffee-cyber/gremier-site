@@ -17,13 +17,15 @@ import { createDoc } from "./gworkspace";
 export interface Schedule { kind: "hours" | "daily" | "weekly" | "monthly"; every_hours?: number; time?: string; weekdays?: number[]; day?: number }
 export interface Routine {
   id: string; name: string; instructions: string; schedule: string; depth: string; deliver: string; category: string | null;
-  active: number; next_run_at: string | null; last_run_at: string | null; created_at: string; updated_at: string;
+  active: number; next_run_at: string | null; last_run_at: string | null; created_at: string; updated_at: string; rules?: string;
 }
 
 export const DEPTH: Record<string, { subs: number; searches: number; label: string; costPerRun: number }> = {
   quick: { subs: 1, searches: 4, label: "Quick", costPerRun: 0.06 },
   standard: { subs: 4, searches: 6, label: "Standard", costPerRun: 0.3 },
   deep: { subs: 8, searches: 8, label: "Deep", costPerRun: 0.8 },
+  // Adaptive: a full Standard report the first time, then Quick checks that go Standard only when they find something important.
+  adaptive: { subs: 1, searches: 4, label: "Adaptive", costPerRun: 0.1 },
 };
 
 const parse = <T>(s: string | null | undefined, d: T): T => { try { return s ? JSON.parse(s) as T : d; } catch { return d; } };
@@ -93,15 +95,16 @@ export async function saveRoutine(env: Env, input: Record<string, unknown>) {
     depth, deliver,
     category: (input.category as string) ?? existing?.category ?? null,
     active: input.active === undefined ? existing?.active ?? 1 : input.active ? 1 : 0,
+    rules: String(input.rules ?? existing?.rules ?? "").slice(0, 2000),
   };
   if (!r.instructions) throw new Error("What should the task do?");
   const next = input.run_now ? t : nextRun(sched, tz).toISOString();
   if (existing) {
-    await run(env, `UPDATE routines SET name=?, instructions=?, schedule=?, depth=?, deliver=?, category=?, active=?, next_run_at=?, updated_at=? WHERE id=?`,
-      r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, next, t, r.id);
+    await run(env, `UPDATE routines SET name=?, instructions=?, schedule=?, depth=?, deliver=?, category=?, active=?, rules=?, next_run_at=?, updated_at=? WHERE id=?`,
+      r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, r.rules, next, t, r.id);
   } else {
-    await run(env, `INSERT INTO routines (id, name, instructions, schedule, depth, deliver, category, active, next_run_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, next, t, t);
+    await run(env, `INSERT INTO routines (id, name, instructions, schedule, depth, deliver, category, active, rules, next_run_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.name, r.instructions, r.schedule, r.depth, r.deliver, r.category, r.active, r.rules, next, t, t);
   }
   return { ...r, schedule: sched, schedule_text: describeSchedule(sched), next_run_at: next };
 }
@@ -121,13 +124,16 @@ export async function runDueRoutines(env: Env) {
   return 1;
 }
 
-export async function runRoutine(env: Env, r: Routine) {
+export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why: string; focus: string } } = {}) {
   const runId = uid();
   await run(env, "INSERT INTO routine_runs (id, routine_id, started_at) VALUES (?, ?, ?)", runId, r.id, now());
-  const depth = DEPTH[r.depth] ?? DEPTH.standard;
   const today = new Date().toISOString().slice(0, 10);
   const last = await first<{ report: string; started_at: string }>(env,
-    "SELECT report, started_at FROM routine_runs WHERE routine_id = ? AND status = 'done' ORDER BY started_at DESC LIMIT 1", r.id);
+    "SELECT report, started_at FROM routine_runs WHERE routine_id = ? AND status = 'done' AND report IS NOT NULL ORDER BY started_at DESC LIMIT 1", r.id);
+  // Adaptive: full report first time, then quick checks.
+  const eff = opts.escalated ? "standard" : r.depth === "adaptive" ? (last ? "quick" : "standard") : r.depth;
+  const depth = DEPTH[eff] ?? DEPTH.standard;
+  const job = `${r.instructions}${r.rules ? `\nStanding notes from the user (follow them): ${r.rules}` : ""}${opts.escalated ? `\nThis time look especially at: ${opts.escalated.focus}` : ""}`;
   try {
     const provider = getProvider(env);
     // 1. Plan focused sub-questions.
@@ -136,7 +142,7 @@ export async function runRoutine(env: Env, r: Routine) {
       const plan = await provider.complete({
         tier: "fast", purpose: "task_plan", maxTokens: 600,
         system: `Break a research job into ${depth.subs} focused, non-overlapping sub-questions that together cover it comprehensively (market data, prices, players, news, regulation, trends, risks, opportunities — whatever fits). Prefer specific, searchable questions with the right geography and timeframe. Return JSON only: {"questions":["..."]}`,
-        prompt: `Today: ${today}\nJob: ${r.instructions}${last ? `\n\nLast report (${last.started_at.slice(0, 10)}), for what to update:\n${last.report.slice(0, 1500)}` : ""}`,
+        prompt: `Today: ${today}\nJob: ${job}${last ? `\n\nLast report (${last.started_at.slice(0, 10)}), for what to update:\n${last.report.slice(0, 1500)}` : ""}`,
       });
       try {
         const q = JSON.parse(plan.slice(plan.indexOf("{"), plan.lastIndexOf("}") + 1)).questions as string[];
@@ -148,7 +154,7 @@ export async function runRoutine(env: Env, r: Routine) {
     const found = await Promise.all(subs.map((q) => provider.research({
       purpose: "task_research", maxSearches: depth.searches, maxTokens: 2500,
       system: `You are a meticulous research analyst. Search the web thoroughly (several queries, local-language sources too, e.g. Hebrew for Israel) and read primary sources. Report concrete facts: numbers, prices with currency and date, names, dates. Note conflicting figures and uncertainty. Cite sources inline as [n] with the URL list at the end. No filler.`,
-      prompt: `Today: ${today}\nOverall job: ${r.instructions}\nYour part: ${q}`,
+      prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`,
     }).catch((e) => ({ text: `(research failed: ${(e as Error).message})`, searches: 0, sources: [] as string[] }))));
     const searches = found.reduce((n, f) => n + f.searches, 0);
     const sources = [...new Set(found.flatMap((f) => f.sources))].slice(0, 40);
@@ -161,14 +167,31 @@ export async function runRoutine(env: Env, r: Routine) {
         system: `Write a comprehensive, well-structured report in Markdown for a busy business owner.
 Structure: "## Key takeaways" (5-8 bullets with numbers), then sections by theme, then "## What changed since last time" (only if a previous report is given), then "## What this means for you" (practical implications/actions), then "## Sources" (numbered URLs).
 Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.`,
-        prompt: `Job: ${r.instructions}\nToday: ${today}\n\n${found.map((f, i) => `### Research ${i + 1}: ${subs[i]}\n${f.text}`).join("\n\n")}\n\nAll sources:\n${sources.map((u, i) => `${i + 1}. ${u}`).join("\n")}${last ? `\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}` : ""}`,
+        prompt: `Job: ${job}\nToday: ${today}\n\n${found.map((f, i) => `### Research ${i + 1}: ${subs[i]}\n${f.text}`).join("\n\n")}\n\nAll sources:\n${sources.map((u, i) => `${i + 1}. ${u}`).join("\n")}${last ? `\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}` : ""}`,
       });
     }
-    const summary = await provider.complete({
+    let summary = await provider.complete({
       tier: "fast", purpose: "task_summary", maxTokens: 200,
       system: "Summarize this report in 2-3 short lines for a morning briefing: the most important findings and anything that changed. Plain text.",
       prompt: report.slice(0, 8000),
     }).catch(() => report.slice(0, 280));
+
+    // Adaptive quick check: if it found something important or new, go deeper right away instead of reporting.
+    if (r.depth === "adaptive" && eff === "quick" && last && !opts.escalated) {
+      const verdict = await provider.complete({
+        tier: "fast", purpose: "task_escalate", maxTokens: 200,
+        system: `You decide whether a quick weekly check found something important enough to research properly. Compare with the previous report. Say yes only for meaningful new developments (a big competitor move, a notable new feature trend, important news, a real change in numbers), not routine noise. Reply ONLY JSON: {"deeper": true|false, "why": "one short line", "focus": "what to research in depth"}`,
+        prompt: `Job: ${job}\n\nQuick check today:\n${report.slice(0, 5000)}\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}`,
+      }).catch(() => "{}");
+      let v: { deeper?: boolean; why?: string; focus?: string } = {};
+      try { v = JSON.parse(verdict.slice(verdict.indexOf("{"), verdict.lastIndexOf("}") + 1)); } catch { /* no */ }
+      if (v.deeper) {
+        await run(env, "UPDATE routine_runs SET status='done', finished_at=?, summary=?, report=?, sources=?, searches=? WHERE id=?",
+          now(), `Quick check found something worth a closer look: ${v.why ?? ""}`, report, JSON.stringify(sources), searches, runId);
+        return runRoutine(env, r, { escalated: { why: v.why ?? "something new", focus: v.focus ?? v.why ?? "" } });
+      }
+    }
+    if (opts.escalated) summary = `🔎 Went deeper because: ${opts.escalated.why}\n${summary}`;
 
     let docLink: string | null = null;
     let docProblem = "";
@@ -197,4 +220,31 @@ Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.
 export async function routinesSummary(env: Env) {
   const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY created_at LIMIT 20");
   return rs.map((r) => `- ${r.name} (id ${r.id}; ${r.active ? describeSchedule(normalizeSchedule(r.schedule)) : "paused"}; ${r.depth}; results → ${r.deliver})`).join("\n");
+}
+
+/**
+ * "Tell it something": the user's plain-words change to a task ("after the first one do quick
+ * checks and only go deeper if something important comes up", "focus on Android", "move it to
+ * Sundays"). One AI call turns it into concrete changes; the reply says what changed.
+ */
+export async function tellRoutine(env: Env, id: string, text: string) {
+  const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", id);
+  if (!r) throw new Error("task not found");
+  const out = await getProvider(env).complete({
+    tier: "main", purpose: "task_tell", maxTokens: 900,
+    system: `You update a recurring research task from the user's message. Fields:
+- instructions: what the task does (rewrite only if the user changes WHAT it covers)
+- rules: standing notes on how to do it (focus, things to skip, format, tone). Merge new notes with the existing ones into one short list; drop ones the user reverses.
+- depth: "quick" (~$0.06/run), "standard" (~$0.30), "deep" (~$0.80), or "adaptive" (a full standard report the first time, then quick checks that go deeper only when something important or new turns up)
+- schedule: {"kind":"daily"|"weekly"|"monthly"|"hours","time":"HH:MM","weekdays":[0-6, Sunday=0],"day":1-28,"every_hours":N}
+- deliver: "doc" (Google Doc + notification), "alert" (notification), "briefing" (quietly in the briefing)
+- name, active (true/false)
+Reply ONLY JSON: {"changes": {only the fields that change}, "reply": "one or two plain sentences telling the user what you changed (mention cost if depth/schedule changed)"}`,
+    prompt: `Current task:\n${JSON.stringify({ name: r.name, instructions: r.instructions, rules: r.rules ?? "", depth: r.depth, schedule: JSON.parse(r.schedule), deliver: r.deliver, active: !!r.active })}\n\nUser says: ${text}`,
+  });
+  let parsed: { changes?: Record<string, unknown>; reply?: string } = {};
+  try { parsed = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { throw new Error("I didn't understand that. Try saying it another way."); }
+  const changes = parsed.changes ?? {};
+  if (Object.keys(changes).length) await saveRoutine(env, { id, ...changes });
+  return { reply: parsed.reply ?? "Updated.", changed: Object.keys(changes) };
 }

@@ -8,6 +8,7 @@ const DEPTHS: { id: string; label: string; detail: string; cost: number }[] = [
   { id: "quick", label: "Quick", detail: "a fast check, ~4 searches", cost: 0.06 },
   { id: "standard", label: "Standard", detail: "solid report, ~24 searches", cost: 0.3 },
   { id: "deep", label: "Deep", detail: "comprehensive research, ~64 searches", cost: 0.8 },
+  { id: "adaptive", label: "Adaptive", detail: "full report first, then quick checks; goes deeper only when something important turns up", cost: 0.1 },
 ];
 const DELIVER: [string, string][] = [["doc", "Google Doc + notification"], ["alert", "Notification only"], ["briefing", "Quietly, in my briefing"]];
 
@@ -49,6 +50,8 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
   r: RoutineRow; onEdit: () => void; onChanged: () => void; onOpenReport: (id: string, mode: "brief" | "read") => void;
 }) {
   const [msg, setMsg] = useState("");
+  const [tell, setTell] = useState("");
+  const [telling, setTelling] = useState(false);
   const depth = DEPTHS.find((d) => d.id === r.depth) ?? DEPTHS[1];
   const monthly = depth.cost * runsPerMonth(r.schedule);
   return (
@@ -58,6 +61,19 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
         {r.active ? r.schedule_text : "Paused"} · results {DELIVER.find(([k]) => k === r.deliver)?.[1].toLowerCase()} · ~${monthly < 1 ? monthly.toFixed(2) : monthly.toFixed(1)}/month
       </p>
       <p className="text-sm mt-2 whitespace-pre-wrap">{r.instructions}</p>
+      {r.rules && <p className="text-sm mt-2 text-muted whitespace-pre-wrap"><span className="font-medium text-ink">Your notes:</span> {r.rules}</p>}
+      <form className="mt-3 flex gap-2" onSubmit={async (e) => {
+        e.preventDefault(); if (!tell.trim()) return;
+        setTelling(true); setMsg("");
+        try { const res = await api.tellRoutine(r.id, tell.trim()); setMsg(res.reply); setTell(""); onChanged(); }
+        catch (err) { setMsg((err as Error).message); }
+        setTelling(false);
+      }}>
+        <input value={tell} onChange={(e) => setTell(e.target.value)} dir="auto"
+          placeholder="Tell it something: e.g. 'after this, quick checks; go deeper only if something big'"
+          className="flex-1 min-w-0 rounded-full border border-line bg-bg px-4 py-2 text-[14px]" />
+        <Button disabled={telling || !tell.trim()}>{telling ? "…" : "Update"}</Button>
+      </form>
       <div className="flex flex-wrap gap-2 mt-3">
         <Button onClick={async () => { const res = await api.runRoutine(r.id); setMsg(res.message); setTimeout(onChanged, 60_000); }}>Run now</Button>
         <Button variant="soft" onClick={onEdit}>Adjust</Button>
