@@ -1,7 +1,8 @@
 /**
  * Google Calendar + Gmail: OAuth, the 15-minute sync, completion detection and drafts.
  *
- * Read-only except for one thing: creating Gmail drafts when the user asks. Nothing here sends mail.
+ * Read-only except for: creating Gmail drafts when the user asks, and sending a group message the
+ * user tapped "Send email" on in the app (sendEmail; never called by the assistant on its own).
  * Subrequest budget per cron run stays well under the Workers free-plan limit of 50:
  * ~1 token refresh + 1 calendar + 2 thread lists + up to MAX_THREADS thread fetches and model calls.
  */
@@ -474,6 +475,21 @@ export async function readThread(env: Env, threadId: string, account?: string) {
 }
 
 const mimeWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...enc.encode(s)))}?=`);
+
+const b64bytes = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+
+/** Sends one plain-text email. Only for group messages the user explicitly sent from the app. */
+export async function sendEmail(env: Env, opts: { to: string; subject: string; body: string; account?: string }) {
+  const emails = await accountEmails(env);
+  const email = opts.account && emails.includes(opts.account) ? opts.account : emails[0];
+  if (!email) throw new Error("Google isn't connected.");
+  const token = await accessToken(env, email);
+  const lines = [`To: ${opts.to}`, `Subject: ${mimeWord(opts.subject)}`, "MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64", "", b64bytes(enc.encode(opts.body))];
+  const raw = b64bytes(enc.encode(lines.join("\r\n"))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  await gapi(token, `${GMAIL}/messages/send`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ raw }) });
+  return { from: email };
+}
 
 /** Saves a draft in Gmail. Replies stay in the thread. Never sends. */
 export async function createDraft(env: Env, opts: { threadId?: string; to?: string; subject?: string; body: string; account?: string }) {

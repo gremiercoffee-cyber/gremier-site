@@ -14,6 +14,7 @@ import { routinesSummary, saveRoutine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
+import { draftBroadcast, groupsSummary, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -57,6 +58,8 @@ How to file things — keep these clearly separate:
 - commitment: a promise the user made to someone (set person; due_at if there is a deadline).
 - waiting: something the user is waiting on from someone else (set person).
 - idea: never file ideas with create_item; use capture_idea (below).
+
+Groups and group messages: the user can keep contact groups ("the rabbis", "wholesale customers") and message a whole group at once. Create/edit groups with save_group (members by name, plus email and phone when known; existing people are matched by name). To message a group, write the message with draft_group_message (use {first_name} for a personal greeting). You never send it: tell the user it's ready under Replies & people → Groups, where they tap "Send email" (each person gets their own email from their Gmail) and can open WhatsApp with the same text preloaded for each person or a group chat. Slack isn't connected yet.
 
 Ideas and thinking out loud: all talking happens here, so recognize when the user is sharing an idea or brain-dumping (a business idea, "what if we…", a plan they're mulling, a stream of thoughts). Then:
 1. Engage like a sharp chief of staff: reflect it back briefly, give an honest take (what's strong, what's risky, good or bad idea and why), and add an angle or two they may not have considered. Back-and-forth is fine.
@@ -132,6 +135,8 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   if (trackers) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
   const ideas = await ideasSummary(env);
   if (ideas) lines.push("", "## Ideas (open)", ideas);
+  const groups = await groupsSummary(env);
+  if (groups) lines.push("", "## Contact groups", groups);
   const tasks = await routinesSummary(env);
   if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
@@ -221,6 +226,40 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const s = await saveSituation(env, input);
         note("save_time_block", `Schedule: ${s.name}, ${s.when}`);
         return s;
+      },
+    },
+    {
+      name: "save_group",
+      description: "Create or edit a contact group: name, description, members to add (name + email/phone; existing people matched by name) or remove (by name/email).",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" }, name: { type: "string" }, description: { type: "string" },
+          add: { type: "array", items: { type: "object", properties: { name: { type: "string" }, email: { type: "string" }, phone: { type: "string" } } } },
+          remove: { type: "array", items: { type: "string" } },
+        },
+      },
+      handler: async (input) => {
+        const g = await saveGroup(env, input as never);
+        note("save_group", `👥 Group "${g.name}": ${g.members.length} people`);
+        return { id: g.id, name: g.name, members: g.members.map((m) => ({ name: m.name, email: m.email, phone: m.phone })) };
+      },
+    },
+    {
+      name: "draft_group_message",
+      description: "Write a message to a whole contact group. It is saved as a draft; the user reviews and sends it in the app (email to everyone, WhatsApp preloaded). Never claims it was sent. Pass id to revise a draft.",
+      input_schema: {
+        type: "object",
+        properties: {
+          group: { type: "string" }, subject: { type: "string" }, body: { type: "string", description: "use {first_name} for a personal greeting" },
+          from_account: { type: "string", description: "which connected Gmail to send from" }, id: { type: "string" },
+        },
+        required: ["group", "body"],
+      },
+      handler: async (input) => {
+        const b = await draftBroadcast(env, input as never);
+        note("draft_group_message", "👥 Group message ready to review and send (Replies & people → Groups)");
+        return { id: b.id, status: b.status, where: "Replies & people → Groups" };
       },
     },
     {

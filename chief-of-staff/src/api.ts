@@ -14,6 +14,10 @@ export interface RoutineRow {
   runs: { id: string; started_at: string; status: string; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
 }
 
+export interface GroupMember { id: string; name: string; email: string | null; phone: string | null; role: string }
+export interface GroupRow { id: string; name: string; description: string; members: GroupMember[] }
+export interface BroadcastRow { id: string; group_id: string; subject: string; body: string; status: string; results: string; created_at: string; sent_at: string | null }
+
 export interface IdeaRow {
   id: string; title: string; area: string | null; summary: string; transcript: string; analysis: string; verdict: string | null;
   notes: string; steps: string; status: string; conversation_id: string | null; created_at: string; updated_at: string;
@@ -95,6 +99,13 @@ export const api = {
   updateIdea: (id: string, patch: Record<string, unknown>) => request("POST", `/api/ideas/${id}`, patch),
   ideaStep: (id: string, step: string, action: "do" | "dismiss", when?: string) => request<{ plan?: string; queued?: boolean }>("POST", `/api/ideas/${id}/steps/${step}`, { action, when }),
   deleteIdea: (id: string) => request("DELETE", `/api/ideas/${id}`),
+  groups: () => request<GroupRow[]>("GET", "/api/groups"),
+  saveGroup: (g: Record<string, unknown>) => request<GroupRow>("POST", "/api/groups", g),
+  deleteGroup: (id: string) => request("DELETE", `/api/groups/${id}`),
+  groupMessages: (id: string) => request<BroadcastRow[]>("GET", `/api/groups/${id}/messages`),
+  draftGroupMessage: (b: Record<string, unknown>) => request<BroadcastRow>("POST", "/api/broadcasts", b),
+  sendGroupMessage: (id: string) => request<{ sent: number; total: number; skipped: { name: string; error?: string }[] }>("POST", `/api/broadcasts/${id}/send`),
+  deleteGroupMessage: (id: string) => request("DELETE", `/api/broadcasts/${id}`),
   learnNow: () => request<{ learned?: number }>("POST", "/api/learn"),
   people: () => request<Person[]>("GET", "/api/people"),
   missions: () => request<MissionRow[]>("GET", "/api/missions"),

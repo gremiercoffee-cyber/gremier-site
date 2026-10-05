@@ -8,6 +8,7 @@ import {
 } from "./db";
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
+import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
 import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
@@ -226,6 +227,30 @@ route("POST", "/api/ideas/:id/steps/:step", async (req, env, [id, step], ctx) =>
   return json(r);
 });
 route("DELETE", "/api/ideas/:id", async (_req, env, [id]) => { await run(env, "DELETE FROM ideas WHERE id = ?", id); return json({ ok: true }); });
+route("GET", "/api/groups", async (_req, env) => {
+  const gs = await all<Group>(env, "SELECT * FROM contact_groups ORDER BY name");
+  return json(await Promise.all(gs.map(async (g) => ({ ...g, members: await members(env, g.id) }))));
+});
+route("POST", "/api/groups", async (req, env) => {
+  try { return json(await saveGroup(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("DELETE", "/api/groups/:id", async (_req, env, [id]) => {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM group_members WHERE group_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM broadcasts WHERE group_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM contact_groups WHERE id = ?").bind(id),
+  ]);
+  return json({ ok: true });
+});
+route("GET", "/api/groups/:id/messages", async (_req, env, [id]) =>
+  json(await all<Broadcast>(env, "SELECT * FROM broadcasts WHERE group_id = ? ORDER BY created_at DESC LIMIT 30", id)));
+route("POST", "/api/broadcasts", async (req, env) => {
+  try { return json(await draftBroadcast(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("POST", "/api/broadcasts/:id/send", async (_req, env, [id]) => {
+  try { return json(await sendBroadcast(env, id)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("DELETE", "/api/broadcasts/:id", async (_req, env, [id]) => { await run(env, "DELETE FROM broadcasts WHERE id = ? AND status = 'draft'", id); return json({ ok: true }); });
 route("POST", "/api/learn", async (_req, env) => json(await learnPass(env, true)));
 route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
 route("DELETE", "/api/people/:id", async (_req, env, [id]) => {
