@@ -107,6 +107,11 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
  */
 export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null, url = "/") {
   const id = uid();
+  // The same reminder again (same item, or same kind and title) replaces the older one instead of piling up.
+  if (type !== "briefing") {
+    if (itemId) await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND item_id = ? AND type = ?", itemId, type);
+    else await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = ? AND title = ?", type, title);
+  }
   await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     id, type, title, body, itemId, now());
   // Shabbat: keep it on the Today screen, but don't buzz. A summary goes out after Shabbat.
