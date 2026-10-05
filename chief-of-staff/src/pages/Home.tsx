@@ -174,12 +174,14 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   const nowBlock = dash?.now_block && inArea(dash.now_block.category) ? dash.now_block : null;
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
+  // Items already in the list below aren't repeated in the "Coming up" strip.
+  const shown = new Set((dash?.nudges ?? []).flatMap((n) => [n.item_id, ...(n.items ?? []).map((i) => i.id)]).filter(Boolean) as string[]);
   const upcoming = [
     ...(dash?.overdue ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: "Overdue", sort: "0", red: true })),
     ...(area !== "all" ? [] : dash?.events ?? []).filter((e) => e.all_day || new Date(e.end_at ?? e.start_at).getTime() > Date.now())
       .map((e) => ({ id: e.id, title: e.summary, when: e.all_day ? "All day" : hhmm(e.start_at), sort: e.all_day ? "1" : e.start_at, red: false })),
     ...(dash?.today ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: i.due_at ? hhmm(i.due_at) : "Today", sort: i.due_at ?? "2", red: false })),
-  ].sort((x, y) => x.sort.localeCompare(y.sort)).slice(0, 12);
+  ].filter((u) => !shown.has(u.id)).sort((x, y) => x.sort.localeCompare(y.sort)).slice(0, 12);
 
   return (
     <div className="pt-4 space-y-5">

@@ -80,7 +80,10 @@ route("GET", "/api/dashboard", async (_req, env) => {
   const nowBlock = await currentBlock(env);
   // One row per to-do: the newest reminder about it wins.
   const seenItems = new Set<string>();
-  const live = (await liveNudges(env, nudges)).filter((n) => !n.item_id || (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true)));
+  const liveAll = await liveNudges(env, nudges);
+  // A to-do already listed in a "Now" card (time block) doesn't also get its own row.
+  const inBlocks = new Set(liveAll.flatMap((n) => (n.items ?? []).map((i) => i.id)));
+  const live = liveAll.filter((n) => !n.item_id || (!inBlocks.has(n.item_id) && (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true))));
   const data: Dashboard = {
     now_block: nowBlock,
     today, overdue, waiting, pending, projects, events,
