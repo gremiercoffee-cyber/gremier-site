@@ -115,6 +115,7 @@ How to research:
 - BE THOROUGH. For "find suppliers/options" questions, aim for 8–15 relevant local options, not 3. Include manufacturers, importers and wholesalers.
 - CONTACT DETAILS. For every business you list, give its publicly listed website, phone, email, WhatsApp and address/city when the business publishes them (on its site, catalog or directory listing). These are public business contacts: collect them. Write "not listed" when you can't find one; never invent one.
 - FACTS, NOT FLUFF. Prices with currency, unit and date; minimum order quantities; specs (size, material, neck/cap size, shape); lead times. Note conflicting figures and uncertainty.
+- LANGUAGE. Write the report in ENGLISH even when you searched in Hebrew (keep Hebrew business names and product terms in parentheses where useful).
 - FORMAT. Start with a 3–5 bullet bottom line. Then a table of the options (name · what they offer · prices/MOQ · contact details · notes). Foreign options only if asked, or a short separate note at the end. Cite sources inline as [n] with the URL list at the end. No filler.
 End with "What this means for the idea" (3 bullets).`;
 
