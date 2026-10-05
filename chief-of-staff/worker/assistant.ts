@@ -65,6 +65,7 @@ How to file things — keep these clearly separate:
 - commitment: a promise the user made to someone (set person; due_at if there is a deadline).
 - waiting: something the user is waiting on from someone else (set person).
 - idea: never file ideas with create_item; use capture_idea (below).
+- Lists: when the user gives a LIST of things (a shopping list, things to pack, what to buy for an event), create a list with create_project (name it plainly, e.g. "🛒 Shopping", "Pesach prep") or reuse one with the same name, and add each entry as a task with that project. A single to-do never needs a list. Things on a list show on the home screen as one grouped row.
 
 How this app fits together (you ARE this app; everything below is yours to use, and things connect: a group's members are people, people have emails/WhatsApp names, items can belong to projects and time blocks):
 - Home: talk/dictate/type to you. Today: what needs them now, by section.
@@ -127,7 +128,7 @@ const TRIGGERS: Record<string, RegExp> = {
     ["דוח", "מחקר", "כל שבוע", "כל יום"]),
   missions: rule(["mission", "in progress", "progress", "status", "working on", "follow(ing)? ?up", "by (monday|tuesday|wednesday|thursday|friday|sunday|tomorrow|next week|the end)", "deadline", "goal", "get (every|all|each)", "make sure", "chase", "handle (it|this|that)", "take care of", "on it", "how('s| is) (it|that|the) going", "any (news|update|progress)", "did you (finish|manage|get)", "where (are|is) (we|it|that)", "task"],
     ["משימה", "התקדמות", "מעקב"]),
-  projects: rule(["project", "initiative", "campaign", "rollout", "build(ing)?", "website", "renovat", "launch", "program"], ["פרויקט", "פרוייקט"]),
+  projects: rule(["project", "initiative", "campaign", "rollout", "build(ing)?", "website", "renovat", "launch", "program", "list", "shopping", "groceries", "buy", "pack", "supplies", "need to get"], ["פרויקט", "פרוייקט", "רשימה", "קניות", "לקנות"]),
   manyItems: rule(["to-?dos?", "list", "remind", "overdue", "late", "left", "open", "pending", "due", "task", "everything", "anything", "what do i (have|need)", "what('s| is) (on|left|next|pending|due|urgent|important)", "plate", "catch me up", "briefing", "brief me", "summar", "status", "agenda", "priorit", "urgent", "important", "forget", "forgot", "did i", "have i", "done", "finish", "complet", "check off", "mark", "outstanding", "backlog", "behind", "waiting", "owe", "promis", "commit", "follow ?up", "focus", "work on", "should i (do|start|tackle)", "next", "free time", "spare", "productive"],
     ["משימ", "תזכ", "להזכיר", "מה נשאר", "מה יש לי", "דחוף", "חשוב"]),
 };

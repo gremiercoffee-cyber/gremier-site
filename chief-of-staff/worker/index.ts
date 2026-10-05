@@ -78,6 +78,11 @@ route("GET", "/api/dashboard", async (_req, env) => {
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const nowBlock = await currentBlock(env);
+  const todo = await all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment','reminder')
+      AND (due_at IS NULL OR due_at > ?) ORDER BY due_at IS NULL, due_at, priority, created_at LIMIT 60`, endOfDay);
+  const listIds = [...new Set(todo.map((i) => i.project_id).filter(Boolean))] as string[];
+  const lists = listIds.length ? await all<{ id: string; name: string }>(env,
+    `SELECT id, name FROM projects WHERE id IN (${listIds.map(() => "?").join(",")})`, ...listIds) : [];
   // One row per to-do: the newest reminder about it wins.
   const seenItems = new Set<string>();
   const liveAll = await liveNudges(env, nudges);
@@ -86,7 +91,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
   const live = liveAll.filter((n) => !n.item_id || (!inBlocks.has(n.item_id) && (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true))));
   const data: Dashboard = {
     now_block: nowBlock,
-    today, overdue, waiting, pending, projects, events,
+    today, overdue, waiting, pending, projects, events, todo, lists,
     nudges: live.map((n) => ({ ...n, actions: actionsFor(n) })),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
   };

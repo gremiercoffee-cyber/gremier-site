@@ -260,6 +260,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
           ))}
         </div>
       )}
+
+      <TodoSection dash={dash} shown={shown} inArea={inArea} onChanged={onChanged} />
     </div>
   );
 }
@@ -557,5 +559,61 @@ function ReadAloud() {
       <span className="text-[18px]">{state === "speaking" ? "⏹️" : "🔊"}</span>
       {state === "loading" ? "Getting your rundown…" : state === "speaking" ? "Stop" : "What's coming up?"}
     </button>
+  );
+}
+
+/** 📝 To do: open to-dos that aren't due today, with lists (shopping etc.) grouped into one row each. */
+function TodoSection({ dash, shown, inArea, onChanged }: {
+  dash: Dashboard | null; shown: Set<string>; inArea: (a: string | null | undefined) => boolean; onChanged: () => void;
+}) {
+  const [openList, setOpenList] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  const items = (dash?.todo ?? []).filter((i) => !shown.has(i.id) && inArea(i.category));
+  if (!items.length) return null;
+  const listName = (id: string) => dash?.lists?.find((l) => l.id === id)?.name ?? "List";
+  const loose = items.filter((i) => !i.project_id);
+  const grouped = new Map<string, typeof items>();
+  for (const i of items) if (i.project_id) grouped.set(i.project_id, [...(grouped.get(i.project_id) ?? []), i]);
+  const done = async (id: string) => { await api.updateItem(id, { status: "done" }); onChanged(); };
+  const when = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso), days = Math.round((d.getTime() - Date.now()) / 86400_000);
+    return days <= 1 ? d.toLocaleDateString([], { weekday: "short" }) : days < 7 ? d.toLocaleDateString([], { weekday: "long" }) : d.toLocaleDateString([], { day: "numeric", month: "short" });
+  };
+  const row = (i: (typeof items)[number]) => (
+    <li key={i.id} className="flex items-center gap-3 px-4 py-2.5">
+      <button aria-label="Done" onClick={() => done(i.id)} className="h-5 w-5 shrink-0 rounded-full border-2 border-line hover:border-accent hover:bg-accent/10" />
+      <span className="flex-1 min-w-0 text-[15px] leading-snug">{i.title}</span>
+      {i.due_at && <span className="shrink-0 text-[12px] text-muted">{when(i.due_at)}</span>}
+    </li>
+  );
+  const shownLoose = all ? loose : loose.slice(0, 6);
+  return (
+    <section>
+      <div className="flex items-baseline justify-between px-1 mb-1.5">
+        <p className="text-[11px] font-medium text-muted uppercase tracking-[0.14em]">📝 To do</p>
+        <a href="/?tab=lists" className="text-[12px] text-accent">All lists →</a>
+      </div>
+      <div className="rounded-[20px] bg-surface border border-line/70 shadow-card overflow-hidden">
+        <ul className="divide-y divide-line/70">
+          {[...grouped.entries()].map(([id, list]) => (
+            <li key={id}>
+              <button onClick={() => setOpenList(openList === id ? null : id)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                <span className="text-[15px]">🗒️</span>
+                <span className="flex-1 min-w-0 text-[15px] font-medium truncate">{listName(id)}</span>
+                <span className="text-[12px] text-muted">{list.length} item{list.length > 1 ? "s" : ""} {openList === id ? "▾" : "▸"}</span>
+              </button>
+              {openList === id && <ul className="divide-y divide-line/50 bg-sunken/40">{list.map(row)}</ul>}
+            </li>
+          ))}
+          {shownLoose.map(row)}
+        </ul>
+        {loose.length > 6 && (
+          <button onClick={() => setAll((v) => !v)} className="w-full py-2.5 text-[13px] text-accent border-t border-line/70">
+            {all ? "Show less" : `Show ${loose.length - 6} more`}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }

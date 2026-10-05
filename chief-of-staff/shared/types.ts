@@ -129,6 +129,9 @@ export interface Dashboard {
   nudges: Nudge[];
   pending: PendingAction[];
   projects: Project[];
+  /** Open to-dos not due today (no date, or later), and the names of the lists they belong to. */
+  todo?: Item[];
+  lists?: { id: string; name: string }[];
   counts: Record<string, number>;
   events: CalendarEvent[];
   /** The time block the user is in right now, if any. */
