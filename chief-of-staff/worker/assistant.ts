@@ -87,16 +87,31 @@ const FEW_ITEMS = 12;
  * name that appears in that section (a group, tracker, idea, task, project or time block). With no
  * message (live voice setup, background jobs) everything is included.
  */
+/** Word stems (matched at word start, any ending: "meet" catches meeting/meetings) plus Hebrew substrings. */
+const rule = (stems: string[], hebrew: string[] = [], phrases: string[] = []) =>
+  new RegExp([`\\b(?:${stems.join("|")})`, ...phrases, ...hebrew].join("|"), "i");
+const DAYS_EN = ["sun(day)?", "mon(day)?", "tue(s|sday)?", "wed(nesday)?", "thu(rs|rsday)?", "fri(day)?", "sat(urday)?", "shabbos", "shabbat", "motzei", "erev"];
+const TIME_EN = ["today", "tomorrow", "tonight", "yesterday", "morning", "afternoon", "evening", "night", "noon", "midday", "week", "weekend", "month", "later", "soon", "next", "this (morning|afternoon|evening|week)", "\\d{1,2}(:\\d{2})?\\s*(am|pm)", "\\d{1,2}:\\d{2}", "o'?clock", "hour", "minute", "early", "late", "now", "asap", "until", "till", "before", "after"];
+const DAYS_HE = ["היום", "מחר", "אתמול", "הערב", "בבוקר", "בערב", "בלילה", "השבוע", "שבוע", "ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "מוצ\"ש", "שעה"];
+
 const TRIGGERS: Record<string, RegExp> = {
-  schedule: /\b(today|tomorrow|tonight|morning|afternoon|evening|night|schedule|yeshiva|seder|week|weekend|sunday|monday|tuesday|wednesday|thursday|friday|shabbat|when|time|free|busy|off|block|routine|day)\b|היום|מחר|ישיבה|שבוע/i,
-  calendar: /\b(today|tomorrow|tonight|morning|afternoon|evening|calendar|meeting|event|appointment|schedule|busy|free|when|this week|next week)\b|היום|מחר|פגישה/i,
-  groups: /\b(group|groups|everyone|all the|broadcast|mass|announce|let them know|tell all|message all|email all)\b|קבוצה|כולם/i,
-  trackers: /\b(track|tracker|trackers|tracking|collect|collected|analy[sz]e|rabbis said|what did .* say)\b/i,
-  ideas: /\b(idea|ideas|what if|thinking about|brainstorm|business plan|concept|launch)\b|רעיון/i,
-  tasks: /\b(report|reports|every (day|week|month|morning|sunday)|weekly|daily|monthly|research|recurring|repeating|look into)\b/i,
-  missions: /\b(mission|in progress|progress|status|working on|follow ?up|by (monday|tuesday|wednesday|thursday|friday|sunday))\b/i,
-  projects: /\b(project|projects)\b|פרויקט/i,
-  manyItems: /\b(to-?dos?|list|lists|remind|reminders?|overdue|left|open|pending|due|tasks?|everything|what do i (have|need)|what's on|plate|catch me up|briefing)\b|משימ/i,
+  schedule: rule([...DAYS_EN, ...TIME_EN, "schedul", "calendar", "yeshiva", "seder", "night seder", "shiur", "kollel", "chavrusa", "mashgiach", "roast", "shop", "deliver", "commut", "drive", "free", "busy", "availab", "off", "block", "routine", "plan(ning)? my", "when", "where am i", "in (yeshiva|the shop)", "going in", "not going", "skip", "cancel", "reschedul", "move", "day"],
+    [...DAYS_HE, "ישיבה", "סדר", "שיעור", "לוח זמנים", "פנוי", "עסוק"]),
+  calendar: rule([...DAYS_EN, ...TIME_EN, "calendar", "meet", "event", "appoint", "call with", "zoom", "simcha", "wedding", "bris", "bar mitzvah", "chasuna", "class", "shiur", "schedul", "busy", "free", "availab", "when", "what('s| is) (on|happening|coming)", "agenda", "upcoming", "reschedul", "postpone", "move"],
+    [...DAYS_HE, "פגישה", "אירוע", "חתונה", "ברית", "יומן"]),
+  groups: rule(["group", "everyone", "every(body| one)", "all (the|my|of)", "broadcast", "mass", "announc", "let (them|everyone) know", "tell (them|all|everyone|the)", "message (all|them|the|everyone)", "email (all|them|the|everyone)", "send (it )?to (all|everyone|the)", "blast", "newsletter", "mailing", "list of (people|contacts)", "contacts", "staff", "team", "rabbis", "rebbeim", "customers", "clients", "wholesale", "parents", "talmidim", "students", "bochurim", "alumni"],
+    ["קבוצה", "כולם", "הרבנים", "רבנים", "לקוחות", "הורים", "תלמידים", "בחורים"]),
+  trackers: rule(["track", "collect", "gather", "compil", "analy[sz]", "summar(y|ize|ise) (what|everything|all)", "what (did|have|has) .{1,40} (say|said|answer|written|wrote)", "answers", "responses", "opinions", "positions", "psak", "pesak", "teshuv", "ruling", "keep (an eye|tabs|watch)", "monitor", "watch for"],
+    ["מעקב", "תשובות", "פסק", "תשובה", "מה אמרו"]),
+  ideas: rule(["idea", "what if", "thinking (about|of)", "brainstorm", "business plan", "concept", "launch", "venture", "startup", "side (project|business|hustle)", "i('ve| have) been thinking", "i was thinking", "maybe (we|i) (should|could)", "how about", "could we", "should (we|i) (start|try|open|build|make)", "opportunit", "pitch", "new product", "new line", "expand", "grow (the|my)", "strategy", "vision", "dream", "invent"],
+    ["רעיון", "רעיונות", "מה אם", "חשבתי"]),
+  tasks: rule(["report", "every (day|week|month|morning|evening|night|sunday|monday|tuesday|wednesday|thursday|friday)", "each (day|week|month)", "weekly", "daily", "monthly", "nightly", "recurring", "repeat", "routine", "research", "look (in)?to", "look up", "find out", "keep me (posted|updated)", "check (on|in)", "monitor", "price", "market", "news", "updates? (on|about)", "subscription", "automat", "schedule (a|the) (task|job|report)", "task"],
+    ["דוח", "מחקר", "כל שבוע", "כל יום"]),
+  missions: rule(["mission", "in progress", "progress", "status", "working on", "follow(ing)? ?up", "by (monday|tuesday|wednesday|thursday|friday|sunday|tomorrow|next week|the end)", "deadline", "goal", "get (every|all|each)", "make sure", "chase", "handle (it|this|that)", "take care of", "on it", "how('s| is) (it|that|the) going", "any (news|update|progress)", "did you (finish|manage|get)", "where (are|is) (we|it|that)", "task"],
+    ["משימה", "התקדמות", "מעקב"]),
+  projects: rule(["project", "initiative", "campaign", "rollout", "build(ing)?", "website", "renovat", "launch", "program"], ["פרויקט", "פרוייקט"]),
+  manyItems: rule(["to-?dos?", "list", "remind", "overdue", "late", "left", "open", "pending", "due", "task", "everything", "anything", "what do i (have|need)", "what('s| is) (on|left|next|pending|due|urgent|important)", "plate", "catch me up", "briefing", "brief me", "summar", "status", "agenda", "priorit", "urgent", "important", "forget", "forgot", "did i", "have i", "done", "finish", "complet", "check off", "mark", "outstanding", "backlog", "behind", "waiting", "owe", "promis", "commit", "follow ?up", "focus", "work on", "should i (do|start|tackle)", "next", "free time", "spare", "productive"],
+    ["משימ", "תזכ", "להזכיר", "מה נשאר", "מה יש לי", "דחוף", "חשוב"]),
 };
 const SIGNIFICANT = (q: string) => (q.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []).filter((w) => !["that", "this", "with", "have", "what", "when", "from", "about", "just", "need", "want", "please", "tell", "them", "they", "will", "would", "could", "should", "there", "their", "make", "also", "some"].includes(w));
 
@@ -164,7 +179,7 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   if (ideas && want.has("ideas")) lines.push("", "## Ideas (open)", ideas);
   if (missions && want.has("missions")) lines.push("", "## Missions (working in the background)", missions);
   const skipped = ["schedule", "groups", "tasks", "trackers", "projects", "ideas", "missions", "calendar"].filter((k) => !want.has(k));
-  if (skipped.length) lines.push("", `(Not shown for this message: ${skipped.join(", ")}. If you need one, use the matching lookup tool, e.g. search_items, calendar_lookup, recall, find_person, get_tracker_entries.)`);
+  if (skipped.length) lines.push("", `(Not shown for this message: ${skipped.join(", ")}. If the answer could depend on one, load it with get_context first; never guess.)`);
   lines.push("", `## Open items (soonest ${shownItems.length}; use search_items for others)`);
   lines.push(
     shownItems.length
@@ -481,6 +496,27 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Look up people by name, role, email or WhatsApp name.",
       input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
       handler: async (input) => findPeople(env, String(input.query)),
+    },
+    {
+      name: "get_context",
+      description: "Load a section of the user's saved information that wasn't included for this message (see 'Not shown for this message'). Use it whenever the answer might depend on it rather than guessing.",
+      input_schema: { type: "object", properties: { section: { type: "string", enum: ["schedule", "calendar", "groups", "tasks", "trackers", "ideas", "missions", "projects", "items", "people"] } }, required: ["section"] },
+      handler: async (input) => {
+        const tz = (await getSettings(env)).timezone || "UTC";
+        switch (String(input.section)) {
+          case "schedule": return (await situationsSummary(env)) || "(no time blocks)";
+          case "calendar": return (await upcomingEventsText(env, tz)) || "(nothing in the next 48 hours or Google not connected)";
+          case "groups": return (await groupsSummary(env)) || "(no groups)";
+          case "tasks": return (await routinesSummary(env)) || "(no recurring tasks)";
+          case "trackers": return (await trackersSummary(env)) || "(no trackers)";
+          case "ideas": return (await ideasSummary(env)) || "(no open ideas)";
+          case "missions": return (await missionsSummary(env)) || "(no missions)";
+          case "projects": return (await all<Project>(env, "SELECT name, area, status, description FROM projects WHERE status != 'done' ORDER BY created_at LIMIT 50")) ;
+          case "items": return all<Item>(env, "SELECT id, kind, title, due_at, person, priority FROM items WHERE status = 'open' ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at LIMIT 120");
+          case "people": return all(env, "SELECT id, name, role, email, phone, whatsapp_name FROM people ORDER BY name LIMIT 200");
+        }
+        return "unknown section";
+      },
     },
     {
       name: "recall",
