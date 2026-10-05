@@ -1588,10 +1588,33 @@ const [showForm, setShowForm] = useState2(false);
 
 async function handleDelete(job) {
     if (!window.confirm('Delete this job?')) return;
-    setJobs(prev=>prev.filter(j=>j.id!==job.id));
+    // A pending drain belongs to a brew that is still "brewing". Deleting only the drain left
+    // that brew stuck in Brewing Now forever (and its beans used) — offer to cancel it too.
+    const brewId = job.type==='drain' && !job.done ? (job.sourceBrewId||job.source_brew_id) : null;
+    const brew = brewId ? jobs.find(j=>j.id===brewId && j.type==='brew' && j.brewStarted && !j.done) : null;
+    const cancelBrewToo = !!brew && window.confirm(`This drain is for a ${brew.product} ${brew.kg}kg brew that hasn't been drained.
+
+Cancel that brew too and put ${brew.kg} kg of beans back in stock?
+
+OK = cancel the brew too · Cancel = only delete the drain`);
+    setJobs(prev=>prev.filter(j=>j.id!==job.id && !(cancelBrewToo && j.id===brew.id)));
     await reverseJobSideEffects2(job, stores);
     await deleteJobFromDB2(job.id);
+    if (cancelBrewToo) {
+      await reverseJobSideEffects2(brew, stores);   // returns the beans
+      await deleteJobFromDB2(brew.id);
+    }
     await reload();
+  }
+  async function cancelBrew(brew) {
+    if (!window.confirm(`Cancel this ${brew.product} ${brew.kg}kg brew?
+
+Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
+    setJobs(prev=>prev.filter(j=>j.id!==brew.id && (j.sourceBrewId||j.source_brew_id)!==brew.id));
+    await reverseJobSideEffects2(brew, stores);     // returns beans + deletes the pending drain
+    await deleteJobFromDB2(brew.id);
+    await reload();
+    showToast('Brew cancelled — beans returned');
   }
 
   async function markWaSent(jobId) {
@@ -1735,6 +1758,7 @@ async function addJobFromForm(job, mode) {
           {brewingJobs.map(j=>(
             <div key={j.id} style={{fontSize:13,color:'#3f7fc4',fontWeight:600,padding:'4px 0'}}>
               ☕ {j.product} — {j.kg}kg — tap drain job when ready
+              <button onClick={()=>cancelBrew(j)} title="Cancel this brew" style={{marginLeft:8,background:'none',border:'1px solid #3f7fc4',color:'#3f7fc4',borderRadius:6,padding:'1px 7px',fontSize:11,cursor:'pointer'}}>✕ cancel</button>
             </div>
           ))}
         </div>

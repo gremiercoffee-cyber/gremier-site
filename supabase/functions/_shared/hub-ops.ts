@@ -109,6 +109,11 @@ export async function startBrew(sb: Sb, args: { product: string; kg?: number }) 
   const kg = Number(args.kg ?? 3);
   if (!CONCENTRATES.includes(product as any)) throw new HubError("bad_product", `product must be one of ${CONCENTRATES.join(", ")}`);
   if (![1, 1.5, 2, 3].includes(kg)) throw new HubError("bad_kg", "kg must be 1, 1.5, 2 or 3");
+  // Double/triple taps on the widget started several brews at once (Oct 4). Refuse a second
+  // brew of the same coffee started in the last 2 minutes.
+  const { data: recent } = await sb.from("jobs").select("id").eq("type", "brew").eq("product", product)
+    .gte("created_at", new Date(Date.now() - 120e3).toISOString()).limit(1);
+  if (recent?.length) throw new HubError("just_started", `A ${product} brew was started less than 2 minutes ago — not starting another`);
   const now = jerusalemParts(new Date());
   const brewId = newId("hub_");
   await sb.from("jobs").insert({ id: brewId, type: "brew", product, kg, date: now.date, time: now.time, done: false, brew_started: true, label: `Brew ${product} ${kg}kg`, created_at: new Date().toISOString() });
