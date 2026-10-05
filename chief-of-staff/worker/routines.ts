@@ -129,7 +129,10 @@ const WRITE_SYSTEM = `Write a comprehensive, well-structured report in Markdown 
 Structure: "## Key takeaways" (5-8 bullets with numbers), then sections by theme, then "## What changed since last time" (only if a previous report is given), then "## What this means for you" (practical implications/actions), then "## Sources" (numbered URLs).
 Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.`;
 
-interface Job { q: string; id: string | null; text?: string; searches?: number; sources?: string[]; failed?: string }
+interface Job { q: string; id: string | null; text?: string; searches?: number; sources?: string[]; failed?: string; tries?: number }
+/** Web research reads a lot (~40k tokens a job); run a couple at a time to stay under the account's per-minute limit. */
+const PARALLEL = 2;
+const isRateLimit = (m?: string) => !!m && /rate limit|tokens per min|TPM|429/i.test(m);
 interface RunState { eff: string; job: string; today: string; subs: string[]; jobs: Job[]; write_id?: string | null; escalated?: { why: string; focus: string } | null }
 
 /**
@@ -163,7 +166,8 @@ export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why
     // 2. Hand every sub-question to OpenAI as a background research job.
     await run(env, "UPDATE routine_runs SET error = ? WHERE id = ?", `planned ${subs.length} parts, starting research…`, runId);
     const t0 = Date.now();
-    const jobs: Job[] = await Promise.all(subs.map(async (q): Promise<Job> => {
+    const jobs: Job[] = await Promise.all(subs.map(async (q, i): Promise<Job> => {
+      if (i >= PARALLEL) return { q, id: null };
       try {
         const id = await Promise.race([
           provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`, maxSearches: depth.searches, maxTokens: 2500 }),
@@ -174,7 +178,7 @@ export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why
     }));
     console.log("routine jobs started", Date.now() - t0, "ms", JSON.stringify(jobs.map((j) => j.id ?? j.failed)));
     await run(env, "UPDATE routine_runs SET error = NULL WHERE id = ?", runId);
-    if (jobs.every((j) => !j.id)) throw new Error(`Couldn't start the research: ${jobs[0]?.failed ?? "unknown error"}`);
+    if (jobs.every((j) => !j.id) && jobs.every((j) => j.failed)) throw new Error(`Couldn't start the research: ${jobs[0]?.failed ?? "unknown error"}`);
     const state: RunState = { eff, job, today, subs, jobs, escalated: opts.escalated ?? null };
     await run(env, "UPDATE routine_runs SET state = ? WHERE id = ?", JSON.stringify(state), runId);
   } catch (e) {
@@ -207,17 +211,34 @@ async function advanceOne(env: Env, rr: { id: string; routine_id: string; state:
   const provider = getProvider(env);
   const save = () => run(env, "UPDATE routine_runs SET state = ? WHERE id = ?", JSON.stringify(st), rr.id);
 
-  // Research jobs.
+  // Research jobs: collect finished ones; a job that hit the per-minute limit goes back in the queue.
   let changed = false;
   for (const j of st.jobs) {
     if (!j.id || j.text !== undefined || j.failed) continue;
     const c = await provider.checkBackground(j.id, "task_research");
     if (!c.done) continue;
     changed = true;
-    if ("text" in c) { j.text = c.text; j.searches = c.searches; j.sources = c.sources; } else j.failed = c.failed;
+    if ("text" in c) { j.text = c.text; j.searches = c.searches; j.sources = c.sources; }
+    else if (isRateLimit(c.failed) && (j.tries ?? 0) < 4) { j.id = null; j.tries = (j.tries ?? 0) + 1; }
+    else j.failed = c.failed;
+  }
+  // Start waiting jobs while there's room.
+  let running = st.jobs.filter((j) => j.id && j.text === undefined && !j.failed).length;
+  for (const j of st.jobs) {
+    if (running >= PARALLEL) break;
+    if (j.id || j.text !== undefined || j.failed) continue;
+    try {
+      j.id = await provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${st.today}\nOverall job: ${st.job}\nYour part: ${j.q}`, maxSearches: (DEPTH[st.eff] ?? DEPTH.standard).searches, maxTokens: 2500 });
+      running++; changed = true;
+    } catch (e) {
+      const m = (e as Error).message;
+      if (!(isRateLimit(m) && (j.tries ?? 0) < 4)) j.failed = m.slice(0, 300);
+      j.tries = (j.tries ?? 0) + 1; changed = true;
+      break; // the limit is account-wide: try the rest next time
+    }
   }
   if (changed) await save();
-  if (st.jobs.some((j) => j.id && j.text === undefined && !j.failed)) return false; // still researching
+  if (st.jobs.some((j) => j.text === undefined && !j.failed)) return false; // still researching
   const ok = st.jobs.filter((j) => j.text);
   if (!ok.length) {
     await run(env, "UPDATE routine_runs SET status='failed', finished_at=?, error=? WHERE id=?", now(), `Research failed: ${st.jobs[0]?.failed ?? "no results"}`.slice(0, 300), rr.id);
