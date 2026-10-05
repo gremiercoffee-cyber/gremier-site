@@ -18,7 +18,7 @@ import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
-import { capture, checkTrackerNow, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
+import { capture, checkTrackerNow, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -595,6 +595,10 @@ export default {
         return json(await trackersForBridge(env, url.searchParams.get("account") === "business" ? "business" : "personal"));
       }
       if (url.pathname === "/api/bridge/track" && req.method === "POST") return json(await capture(env, await req.json()));
+      if (url.pathname === "/api/bridge/chats" && req.method === "POST") {
+        const b = (await req.json().catch(() => ({}))) as { account?: string; names?: string[] };
+        return json(await matchWhatsappNames(env, b.account === "business" ? "business" : "personal", Array.isArray(b.names) ? b.names : []));
+      }
       const bf = url.pathname.match(/^\/api\/bridge\/trackers\/([\w-]+)\/backfilled$/);
       if (bf && req.method === "POST") {
         const b = (await req.json().catch(() => ({}))) as { account?: string };

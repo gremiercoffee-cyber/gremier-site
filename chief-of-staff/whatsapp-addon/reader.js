@@ -80,6 +80,18 @@
     return true;
   }
 
+  // Chat names, so the Chief of Staff can match "R' Silber" / "הרב זילבר" to people it follows (read-only).
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data || e.data.source !== "cos-content" || e.data.kind !== "chats") return;
+    const col = modules();
+    let names = [];
+    try {
+      const all = col && (typeof col.Chat.getModelsArray === "function" ? col.Chat.getModelsArray() : col.Chat._models || col.Chat.models || []);
+      names = (all || []).map((c) => str(c.formattedTitle || c.name)).filter(Boolean).slice(0, 600);
+    } catch { /* never disturb WhatsApp */ }
+    post({ kind: "chats", names });
+  });
+
   // History search for trackers: walk the messages WhatsApp Web already has loaded (read-only).
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || e.data.source !== "cos-content" || e.data.kind !== "history") return;

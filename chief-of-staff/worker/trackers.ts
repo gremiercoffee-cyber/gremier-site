@@ -168,7 +168,13 @@ export async function checkTrackerEmail(env: Env, t: Tracker, report?: { threads
   if (!emails.length) { report?.skipped.push("Nobody being followed has an email saved."); return 0; }
   const since = t.gmail_checked_at ? Date.parse(t.gmail_checked_at) - 3600_000 : Date.now() - Math.max(1, t.backfill_days || 14) * 86400_000;
   const started = now();
-  const threads = await searchEmail(env, `{${emails.map((e) => `from:${e}`).join(" ")}} after:${Math.floor(since / 1000)}`, undefined, 20);
+  const after = `after:${Math.floor(since / 1000)}`;
+  const [fromThem, toThem] = await Promise.all([
+    searchEmail(env, `{${emails.map((e) => `from:${e}`).join(" ")}} ${after}`, undefined, 25),
+    searchEmail(env, `from:me {${emails.map((e) => `to:${e} cc:${e} bcc:${e}`).join(" ")}} ${after}`, undefined, 15).catch(() => []),
+  ]);
+  const askedThreads = new Set(toThem.map((th) => th.thread_id));
+  const threads = [...new Map([...fromThem, ...toThem].map((th) => [th.thread_id, th])).values()];
   let kept = 0;
   if (report) report.threads = threads.length;
   for (const th of threads) {
@@ -176,7 +182,8 @@ export async function checkTrackerEmail(env: Env, t: Tracker, report?: { threads
     if (!full) continue;
     for (const msg of full.messages) {
       if (msg.from_user || Date.parse(msg.date) < since) continue;
-      const who = whoSent(people, msg.from);
+      // Known address or name; in a thread where you asked them, any reply counts (they may write from another address).
+      const who = whoSent(people, msg.from) ?? (askedThreads.has(th.thread_id) ? { name: msg.from.replace(/<.*>/, "").replace(/"/g, "").trim() || msg.from, email: null, aliases: [] } : null);
       if (!who) continue;
       if (report) report.fromThem++;
       const body = msg.text.replace(/\n>.*$/gs, "").replace(/\nOn .{10,80}wrote:[\s\S]*$/, "").trim(); // drop quoted history
@@ -220,6 +227,43 @@ ${t.expecting || t.topic}
         st.total ? `${st.answered.length}/${st.total} have answered${st.waiting.length ? ` · still waiting on ${st.waiting.slice(0, 4).join(", ")}${st.waiting.length > 4 ? "…" : ""}` : ""}` : "", null, "/?tab=trackers");
     }
   }
+}
+
+/**
+ * The add-on reports the user's WhatsApp chat names. For tracked people with no WhatsApp name yet,
+ * one small AI call matches them (Hebrew/English, titles, nicknames: "הרב זילבר" = Jacob Silber),
+ * saves it on the person, and asks the add-on to search history again for those trackers.
+ */
+export async function matchWhatsappNames(env: Env, account: string, names: string[]) {
+  const chats = [...new Set(names.map((n) => String(n).trim()).filter((n) => n.length > 1))].slice(0, 600);
+  if (!chats.length) return { matched: 0 };
+  const ts = await all<Tracker>(env, "SELECT * FROM trackers WHERE active = 1 AND group_id IS NOT NULL");
+  const missing = new Map<string, { id: string; name: string; email: string | null }>();
+  for (const t of ts) {
+    for (const m of await members(env, t.group_id!)) if (!m.whatsapp_name) missing.set(m.id, { id: m.id, name: m.name, email: m.email });
+  }
+  if (!missing.size) return { matched: 0 };
+  const key = `wa_match:${account}:${[...missing.keys()].sort().join(",")}:${chats.length}`;
+  if (await first(env, "SELECT 1 FROM settings WHERE key = ?", key)) return { matched: 0, skipped: "already tried" };
+  await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, now());
+  let map: Record<string, string> = {};
+  try {
+    const out = await getProvider(env).complete({
+      tier: "fast", purpose: "wa_match", maxTokens: 600,
+      system: `Match people to WhatsApp chat names. Names may be in Hebrew or English, with titles (Rabbi, R', Rav, הרב), first or last name only, or nicknames. Only match when you're fairly sure; leave out anyone you can't find. Reply with ONLY JSON: {"matches": {"<person id>": "<exact chat name>"}}`,
+      prompt: `People:\n${[...missing.values()].map((p) => `- ${p.id}: ${p.name}${p.email ? ` (${p.email})` : ""}`).join("\n")}\n\nWhatsApp chat names:\n${chats.join("\n")}`,
+    });
+    map = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)).matches ?? {};
+  } catch (e) { console.error("wa match", e); return { matched: 0 }; }
+  let matched = 0;
+  for (const [id, chat] of Object.entries(map)) {
+    if (!missing.has(id) || !chats.includes(String(chat))) continue;
+    await run(env, "UPDATE people SET whatsapp_name = ?, updated_at = ? WHERE id = ?", String(chat), now(), id);
+    matched++;
+  }
+  // New names → search the loaded WhatsApp history again for these trackers.
+  if (matched) await run(env, "UPDATE trackers SET backfilled = '' WHERE active = 1 AND group_id IS NOT NULL");
+  return { matched };
 }
 
 /** Who has answered so far (for trackers that follow people). */

@@ -82,6 +82,7 @@
     const list = await send({ type: "trackers" });
     if (!Array.isArray(list)) return;
     trackers = list;
+    if (list.length && mode === "store") window.postMessage({ source: "cos-content", kind: "chats" }, location.origin);
     const want = list.filter((t) => t.backfill_days > 0);
     if (want.length && mode === "store" && !backfillPending.length) {
       backfillPending = want.map((t) => t.id);
@@ -95,6 +96,7 @@
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || e.data.source !== "cos-reader") return;
     if (e.data.kind === "history") { track(e.data.message, backfillPending); return; }
+    if (e.data.kind === "chats") { send({ type: "chats", names: e.data.names }); return; }
     if (e.data.kind === "history_done") {
       for (const id of backfillPending) send({ type: "backfilled", id });
       send({ type: "seen", note: `Searched ${e.data.count} loaded messages for trackers` });
