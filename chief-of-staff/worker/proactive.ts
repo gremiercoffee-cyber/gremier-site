@@ -14,7 +14,7 @@ import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines, advanceRoutineRuns } from "./routines";
 import { runSituations } from "./situations";
 import { nudgeStaleIdea, runIdeaResearch } from "./ideas";
-import { customersDue } from "./hub";
+import { customersDue, hubCall } from "./hub";
 import { tidyConversations } from "./tidy";
 import { runTrackerEmail, trackersToday } from "./trackers";
 
@@ -117,6 +117,15 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 9b. Trackers: new emails from the people being followed.
   await runTrackerEmail(env).catch((e) => console.error("tracker email", e));
+
+  // 9b2. Coffee admin app: a light check every few hours so the Status card shows whether it's working.
+  if (env.HUB_KEY) {
+    const lastOk = (await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'hub_last_ok'"))?.value;
+    if (!lastOk || Date.now() - Date.parse(lastOk) > 6 * 3600_000) {
+      try { await hubCall(env, "summary"); await run(env, "DELETE FROM settings WHERE key = 'hub_last_error'"); }
+      catch (e) { await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('hub_last_error', ?)", (e as Error).message.slice(0, 300)); }
+    }
+  }
 
   // 9c. Sunday morning: the weekly review, and which coffee customers are due.
   const dow = new Date(`${local.date}T12:00:00Z`).getUTCDay();
