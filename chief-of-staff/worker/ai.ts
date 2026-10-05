@@ -80,8 +80,8 @@ class OpenAIProvider implements ModelProvider {
     try {
       await run(
         this.env,
-        "INSERT INTO usage_log (id, model, purpose, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        uid(), model, purpose, usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0, now(),
+        "INSERT INTO usage_log (id, model, purpose, input_tokens, output_tokens, cached_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        uid(), model, purpose, usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0, usage?.prompt_tokens_details?.cached_tokens ?? 0, now(),
       );
     } catch {
       /* usage logging must never break a turn */
@@ -164,7 +164,7 @@ class OpenAIProvider implements ModelProvider {
     } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming;
     const response = await this.client.responses.create(params);
     const usage = response.usage;
-    await this.logUsage(model, req.purpose, usage ? { prompt_tokens: usage.input_tokens, completion_tokens: usage.output_tokens, total_tokens: usage.total_tokens } as OpenAI.CompletionUsage : undefined);
+    await this.logUsage(model, req.purpose, usage ? { prompt_tokens: usage.input_tokens, completion_tokens: usage.output_tokens, total_tokens: usage.total_tokens, prompt_tokens_details: { cached_tokens: usage.input_tokens_details?.cached_tokens ?? 0 } } as OpenAI.CompletionUsage : undefined);
     const searches = response.output.filter((o) => o.type === "web_search_call").length;
     // Source links the model cited.
     const sources = new Set<string>();

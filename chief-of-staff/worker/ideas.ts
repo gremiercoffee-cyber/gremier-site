@@ -154,7 +154,7 @@ export async function nudgeStaleIdea(env: Env, today: string) {
 
 /** For the assistant's context. */
 export async function ideasSummary(env: Env) {
-  const list = await all<Idea>(env, "SELECT * FROM ideas WHERE status IN ('new', 'exploring', 'parked') ORDER BY updated_at DESC LIMIT 25");
+  const list = await all<Idea>(env, "SELECT * FROM ideas WHERE status IN ('new', 'exploring', 'parked') ORDER BY created_at DESC LIMIT 25");
   return list.map((i) => {
     const open = parse<Step[]>(i.steps, []).filter((s) => s.status === "suggested").map((s) => `${s.label} [step ${s.id}, ${s.kind}]`);
     return `- ${i.title} (id ${i.id}; ${i.status}${i.area ? `; ${i.area}` : ""}${i.verdict ? `; ${i.verdict}` : ""}${open.length ? `; suggested next steps: ${open.slice(0, 4).join(" | ")}` : ""})`;

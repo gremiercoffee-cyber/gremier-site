@@ -519,7 +519,7 @@ route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) =>
 route("GET", "/api/settings", async (_req, env) => json(await getSettings(env)));
 route("PUT", "/api/settings", async (req, env) => json(await saveSettings(env, await body(req))));
 route("GET", "/api/usage", async (_req, env) =>
-  json(await all(env, `SELECT model, purpose, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens
+  json(await all(env, `SELECT model, purpose, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, SUM(cached_tokens) AS cached_tokens
      FROM usage_log WHERE created_at >= ? GROUP BY model, purpose ORDER BY calls DESC`,
     new Date(Date.now() - 30 * 86400_000).toISOString())));
 route("POST", "/api/push/subscribe", async (req, env) => {

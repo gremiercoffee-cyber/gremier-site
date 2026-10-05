@@ -69,8 +69,8 @@ export async function findPeople(env: Env, text: string, limit = 8): Promise<Per
  */
 export async function memoryContext(env: Env, query = ""): Promise<string> {
   const [people, core] = await Promise.all([
-    all<Person>(env, "SELECT * FROM people ORDER BY (role != '') DESC, COALESCE(last_contact_at, updated_at) DESC LIMIT ?", CORE_PEOPLE),
-    all<Memory>(env, "SELECT * FROM memories WHERE status = 'confirmed' ORDER BY importance ASC, updated_at DESC LIMIT ?", CORE_MEMORIES),
+    all<Person>(env, "SELECT * FROM people ORDER BY (role != '') DESC, name LIMIT ?", CORE_PEOPLE),
+    all<Memory>(env, "SELECT * FROM memories WHERE status = 'confirmed' ORDER BY importance ASC, created_at LIMIT ?", CORE_MEMORIES),
   ]);
   const coreIds = new Set(core.map((m) => m.id));
   const recalled = query ? (await recallMemories(env, query)).filter((m) => !coreIds.has(m.id)) : [];
@@ -86,6 +86,15 @@ export async function memoryContext(env: Env, query = ""): Promise<string> {
   }
   if ((total?.n ?? 0) > core.length + recalled.length) lines.push(`(More memories exist; use recall to search them.)`);
   return lines.join("\n");
+}
+
+/** Memories related to what the user just said (changes every message, so it goes last in the context). */
+export async function recallText(env: Env, query: string) {
+  const core = new Set((await all<{ id: string }>(env, "SELECT id FROM memories WHERE status = 'confirmed' ORDER BY importance ASC, created_at LIMIT ?", CORE_MEMORIES)).map((m) => m.id));
+  const rec = (await recallMemories(env, query)).filter((m) => !core.has(m.id));
+  if (!rec.length) return "";
+  return ["## Memory: related to this message",
+    rec.map((m) => `- [${m.category}] ${m.content}${m.status === "suggested" ? " (unconfirmed guess, not yet reviewed by the user)" : ""} (id ${m.id})`).join("\n")].join("\n");
 }
 
 export async function savePerson(env: Env, input: Record<string, unknown>) {

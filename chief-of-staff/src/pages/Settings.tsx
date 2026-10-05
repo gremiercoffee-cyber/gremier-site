@@ -268,13 +268,14 @@ export default function Settings({ settings, onSaved, installPrompt }: {
       <Card title="Model usage (30 days)">
         {usage.length === 0 ? <Empty>No model calls yet.</Empty> : (
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs text-muted"><th className="font-normal">Purpose</th><th className="font-normal">Calls</th><th className="font-normal text-right">Tokens in / out</th></tr></thead>
+            <thead><tr className="text-left text-xs text-muted"><th className="font-normal">Purpose</th><th className="font-normal">Calls</th><th className="font-normal text-right">Tokens in / out</th><th className="font-normal text-right">Cached</th></tr></thead>
             <tbody>
               {usage.map((u) => (
                 <tr key={u.model + u.purpose} className="border-t border-line">
                   <td className="py-1.5">{u.purpose}<div className="text-[10px] text-muted">{u.model}</div></td>
                   <td>{u.calls}</td>
                   <td className="text-right tabular-nums">{u.input_tokens.toLocaleString()} / {u.output_tokens.toLocaleString()}</td>
+                  <td className="text-right tabular-nums text-muted">{u.input_tokens ? Math.round((100 * (u.cached_tokens ?? 0)) / u.input_tokens) : 0}%</td>
                 </tr>
               ))}
             </tbody>

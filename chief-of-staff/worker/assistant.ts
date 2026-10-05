@@ -7,7 +7,7 @@ import {
 } from "./db";
 import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upcomingEventsText } from "./google";
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
-import { findPeople, memoryContext, noteContact, recallMemories, savePerson } from "./memory";
+import { findPeople, memoryContext, noteContact, recallMemories, recallText, savePerson } from "./memory";
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
 import { missionsSummary, startMission, updateMission } from "./missions";
 import { routinesSummary, saveRoutine } from "./routines";
@@ -77,6 +77,8 @@ Rules:
 
 const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
 
+const OPEN_ITEMS = 40;
+
 export async function buildContext(env: Env, mode: string, query = ""): Promise<string> {
   const settings = await getSettings(env);
   const tz = settings.timezone || "UTC";
@@ -84,25 +86,44 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
     timeZone: tz, dateStyle: "full", timeStyle: "short",
   }).format(new Date());
 
-  const [memory, items, projects] = await Promise.all([
-    memoryContext(env, query),
+  const [memory, recalled, items, projects] = await Promise.all([
+    memoryContext(env), // core only: stable between messages
+    query ? recallText(env, query) : Promise.resolve(""),
     all<Item>(
       env,
       `SELECT * FROM items WHERE status = 'open'
-       ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT 80`,
+       ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT ${OPEN_ITEMS}`,
     ),
-    all<Project>(env, "SELECT * FROM projects WHERE status != 'done' ORDER BY updated_at DESC LIMIT 30"),
+    all<Project>(env, "SELECT * FROM projects WHERE status != 'done' ORDER BY created_at LIMIT 30"),
   ]);
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
+  const [situations, groups, tasks, trackers, ideas, missions] = await Promise.all([
+    situationsSummary(env), groupsSummary(env), routinesSummary(env), trackersSummary(env), ideasSummary(env), missionsSummary(env),
+  ]);
 
-  // Stable, slowly-changing parts first so OpenAI's prompt cache can reuse them between messages.
+  // Prompt caching: OpenAI bills the identical opening of a request ~90% cheaper. So the order is
+  // (1) things that change rarely, (2) things that change during the day, (3) what changes every
+  // message (time, recalled memories) LAST, so one change doesn't invalidate everything after it.
   const lines: string[] = [];
   if (settings.name) lines.push(`The user's name is ${settings.name}.`);
   lines.push(memory);
-  lines.push("", `Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
+  if (situations) lines.push("", "## Schedule (time blocks)", situations);
+  if (groups) lines.push("", "## Contact groups", groups);
+  if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
+  if (trackers) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
   lines.push("", "## Projects");
   lines.push(projects.length ? projects.map((p) => `- ${p.name} [${p.area}, ${p.status}]${p.description ? ` — ${p.description}` : ""}`).join("\n") : "- (none)");
-  lines.push("", "## Open items");
+  const g = await googleStatus(env).catch(() => null);
+  const bridge = await bridgeStatus(env);
+  lines.push("", "## Connected accounts");
+  lines.push(!g || !g.accounts.length ? "- Google: not connected (no calendar or email access)."
+    : `- Google accounts: ${g.accounts.map((a) => a.email).join(", ")}. Calendar lookups cover all of them; email search covers all unless you pass account. Drafts go from the account the thread is in (or the account you pass for new mail).`);
+  lines.push(bridge.configured
+    ? "- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve); approved messages go out when their computer is on. Actionable incoming WhatsApps arrive as items with source whatsapp."
+    : "- WhatsApp: not set up yet.");
+  if (ideas) lines.push("", "## Ideas (open)", ideas);
+  if (missions) lines.push("", "## Missions (working in the background)", missions);
+  lines.push("", `## Open items (soonest ${OPEN_ITEMS}; use search_items for others)`);
   lines.push(
     items.length
       ? items
@@ -117,28 +138,12 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
           .join("\n")
       : "- (none)",
   );
-  const events = await upcomingEventsText(env, tz);
-  lines.push("", "## Connected accounts");
-  const g = events === null ? null : await googleStatus(env);
-  lines.push(g === null ? "- Google: not connected (no calendar or email access)."
-    : `- Google accounts: ${g.accounts.map((a) => a.email).join(", ")}. Calendar lookups cover all of them; email search covers all unless you pass account. Drafts go from the account the thread is in (or the account you pass for new mail).`);
-  if (events !== null) lines.push("", "## Calendar (next 48 hours)", events);
-  const bridge = await bridgeStatus(env);
-  lines.push(bridge.configured
-    ? `- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve). Their computer is ${bridge.online ? "online" : "offline right now, so approved messages send when it's back"}. Actionable incoming WhatsApps arrive as items with source whatsapp.`
-    : "- WhatsApp: not set up yet.");
-  const missions = await missionsSummary(env);
-  if (missions) lines.push("", "## Missions (working in the background)", missions);
-  const situations = await situationsSummary(env);
-  if (situations) lines.push("", "## Schedule (time blocks)", situations);
-  const trackers = await trackersSummary(env);
-  if (trackers) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
-  const ideas = await ideasSummary(env);
-  if (ideas) lines.push("", "## Ideas (open)", ideas);
-  const groups = await groupsSummary(env);
-  if (groups) lines.push("", "## Contact groups", groups);
-  const tasks = await routinesSummary(env);
-  if (tasks) lines.push("", "## Tasks (recurring jobs)", tasks);
+  const events = g?.accounts.length ? await upcomingEventsText(env, tz) : null;
+  if (events) lines.push("", "## Calendar (next 48 hours)", events);
+  // Changes every message: keep at the very end.
+  lines.push("", `Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
+  if (bridge.configured && !bridge.online) lines.push("(The user's computer is offline right now, so approved WhatsApps wait until it's back.)");
+  if (recalled) lines.push("", recalled);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
   return lines.join("\n");
 }
@@ -738,7 +743,7 @@ export async function executeApproved(env: Env, action: string, payload: Record<
   }
 }
 
-const HISTORY_LIMIT = 30;
+const HISTORY_LIMIT = 16;
 
 /** A conversation goes quiet after this long; the next message starts a fresh one. */
 const CONVERSATION_IDLE_MS = 6 * 3600_000;
