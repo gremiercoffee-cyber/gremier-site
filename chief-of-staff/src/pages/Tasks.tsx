@@ -62,16 +62,19 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
       </p>
       <p className="text-sm mt-2 whitespace-pre-wrap">{r.instructions}</p>
       {r.rules && <p className="text-sm mt-2 text-muted whitespace-pre-wrap"><span className="font-medium text-ink">Your notes:</span> {r.rules}</p>}
-      <form className="mt-3 flex gap-2" onSubmit={async (e) => {
+      <form className="mt-3 flex gap-2 items-end" onSubmit={async (e) => {
         e.preventDefault(); if (!tell.trim()) return;
+        const box = e.currentTarget.querySelector("textarea");
         setTelling(true); setMsg("");
-        try { const res = await api.tellRoutine(r.id, tell.trim()); setMsg(res.reply); setTell(""); onChanged(); }
+        try { const res = await api.tellRoutine(r.id, tell.trim()); setMsg(res.reply); setTell(""); box?.style.setProperty("height", "auto"); onChanged(); }
         catch (err) { setMsg((err as Error).message); }
         setTelling(false);
       }}>
-        <input value={tell} onChange={(e) => setTell(e.target.value)} dir="auto"
+        <textarea value={tell} rows={1} dir="auto"
+          onChange={(e) => { setTell(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
           placeholder="Tell it something: e.g. 'after this, quick checks; go deeper only if something big'"
-          className="flex-1 min-w-0 rounded-full border border-line bg-bg px-4 py-2 text-[14px]" />
+          className="flex-1 min-w-0 resize-none overflow-hidden rounded-2xl border border-line bg-bg px-4 py-2 text-[14px] leading-snug max-h-60" />
         <Button disabled={telling || !tell.trim()}>{telling ? "…" : "Update"}</Button>
       </form>
       <div className="flex flex-wrap gap-2 mt-3">
