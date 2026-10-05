@@ -14,7 +14,7 @@ import { routinesSummary, saveRoutine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
-import { draftBroadcast, groupsSummary, saveGroup } from "./groups";
+import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
@@ -60,6 +60,16 @@ How to file things — keep these clearly separate:
 - waiting: something the user is waiting on from someone else (set person).
 - idea: never file ideas with create_item; use capture_idea (below).
 
+How this app fits together (you ARE this app; everything below is yours to use, and things connect: a group's members are people, people have emails/WhatsApp names, items can belong to projects and time blocks):
+- Home: talk/dictate/type to you. Today: what needs them now, by section.
+- Replies & people: Replies (unanswered WhatsApp/email with suggested replies) · People (address book; ★ key people) · Groups (contact groups and group messages).
+- Lists & projects: to-dos, reminders, commitments, waiting-for, grouped into projects.
+- Tasks & trackers: one-time tasks (missions) and repeating tasks (scheduled research/reports) · trackers (WhatsApp topics collected into a Doc).
+- Schedule: daily schedule, weekly extras, one-day changes.
+- Library: Ideas (with your take and next steps) · What I know (memories; suggestions to review).
+- Settings: connected accounts, notifications, usage.
+When the user refers to anything by name ("the rabbis group", "my cold brew idea", "the coffee report", "evening yeshiva"), resolve it with your tools (get_group, get_context, find_person, search_items, get_tracker_entries…) and act across features: e.g. "check emails from the rabbis group" → search_email with group="Rabbis"; "any WhatsApps from my wholesale customers?" → check_group_messages.
+
 Groups and group messages: the user can keep contact groups ("the rabbis", "wholesale customers") and message a whole group at once. Create/edit groups with save_group (members by name, plus email and phone when known; existing people are matched by name). To message a group, write the message with draft_group_message (use {first_name} for a personal greeting). You never send it: tell the user it's ready under Replies & people → Groups, where they tap "Send email" (each person gets their own email from their Gmail) and can open WhatsApp with the same text preloaded for each person or a group chat. Slack isn't connected yet.
 
 Ideas and thinking out loud: all talking happens here, so recognize when the user is sharing an idea or brain-dumping (a business idea, "what if we…", a plan they're mulling, a stream of thoughts). Then:
@@ -73,7 +83,7 @@ Rules:
 - When the user tells you something actionable, file it with the tools; do not just acknowledge it. Check for duplicates with search_items first when unsure.
 - Resolve relative dates ("tomorrow at 3", "Friday") using the current local time given in the context, and pass due_at as an ISO 8601 datetime with the user's UTC offset.
 - Deleting things, or anything that would affect the outside world (sending messages, contacting people, spending money), requires approval: use propose_action and tell the user it is waiting for their approval. The context says which outside accounts are connected; if something is not connected, say so plainly.
-- Email: when an item came from an email (it shows an email thread id), you can read the thread. Remind first; only write a draft when the user explicitly asks you to draft. Drafts are saved to their Gmail Drafts folder. You can never send email; tell them to review and send it from Gmail.
+- Email: you can search all their Gmail (search_email, also by group) and read threads. Remind first; only write a draft when the user explicitly asks you to draft. Drafts are saved to their Gmail Drafts folder. You never send a single email yourself; tell them to review and send it from Gmail. (Group messages are sent by the user from the Groups screen.)
 - Be concise and warm. Lead with what matters. Use short lists when listing items. Do not invent data you have not been given.`;
 
 const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
@@ -99,7 +109,7 @@ const TRIGGERS: Record<string, RegExp> = {
     [...DAYS_HE, "ישיבה", "סדר", "שיעור", "לוח זמנים", "פנוי", "עסוק"]),
   calendar: rule([...DAYS_EN, ...TIME_EN, "calendar", "meet", "event", "appoint", "call with", "zoom", "simcha", "wedding", "bris", "bar mitzvah", "chasuna", "class", "shiur", "schedul", "busy", "free", "availab", "when", "what('s| is) (on|happening|coming)", "agenda", "upcoming", "reschedul", "postpone", "move"],
     [...DAYS_HE, "פגישה", "אירוע", "חתונה", "ברית", "יומן"]),
-  groups: rule(["group", "everyone", "every(body| one)", "all (the|my|of)", "broadcast", "mass", "announc", "let (them|everyone) know", "tell (them|all|everyone|the)", "message (all|them|the|everyone)", "email (all|them|the|everyone)", "send (it )?to (all|everyone|the)", "blast", "newsletter", "mailing", "list of (people|contacts)", "contacts", "staff", "team", "rabbis", "rebbeim", "customers", "clients", "wholesale", "parents", "talmidim", "students", "bochurim", "alumni"],
+  groups: rule(["group", "everyone", "every(body| one)", "all (the|my|of)", "broadcast", "mass", "announc", "let (them|everyone) know", "tell (them|all|everyone|the)", "message (all|them|the|everyone)", "email (all|them|the|everyone)", "send (it )?to (all|everyone|the)", "blast", "newsletter", "mailing", "list of (people|contacts)", "contacts", "staff", "team", "rabbis", "rebbeim", "customers", "clients", "wholesale", "parents", "talmidim", "students", "bochurim", "alumni", "emails? from", "messages? from", "heard from", "inbox"],
     ["קבוצה", "כולם", "הרבנים", "רבנים", "לקוחות", "הורים", "תלמידים", "בחורים"]),
   trackers: rule(["track", "collect", "gather", "compil", "analy[sz]", "summar(y|ize|ise) (what|everything|all)", "what (did|have|has) .{1,40} (say|said|answer|written|wrote)", "answers", "responses", "opinions", "positions", "psak", "pesak", "teshuv", "ruling", "keep (an eye|tabs|watch)", "monitor", "watch for"],
     ["מעקב", "תשובות", "פסק", "תשובה", "מה אמרו"]),
@@ -242,9 +252,51 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "search_email",
-      description: "Search the user's Gmail (Gmail search syntax, e.g. 'from:dana invoice newer_than:30d'). Returns thread ids and snippets.",
-      input_schema: { type: "object", properties: { query: { type: "string" }, account: { type: "string", description: "Optional: one account email" } }, required: ["query"] },
-      handler: async (input) => searchEmail(env, String(input.query), input.account as string | undefined),
+      description: "Search the user's Gmail (Gmail search syntax, e.g. 'from:dana invoice newer_than:30d'). Pass group to limit it to emails from/to everyone in one of their contact groups. Returns thread ids and snippets.",
+      input_schema: { type: "object", properties: { query: { type: "string", description: "Gmail search; may be empty when group is given" }, group: { type: "string", description: "contact group name" }, account: { type: "string", description: "Optional: one account email" } } },
+      handler: async (input) => {
+        let q = String(input.query ?? "").trim();
+        if (input.group) {
+          const g = await findGroup(env, String(input.group));
+          if (!g) return { error: `No group called "${input.group}".` };
+          const emails = (await members(env, g.id)).map((m) => m.email).filter(Boolean) as string[];
+          if (!emails.length) return { error: `Nobody in "${g.name}" has an email saved yet.` };
+          q = `{${emails.map((e) => `from:${e} to:${e}`).join(" ")}} ${q || "newer_than:14d"}`;
+        }
+        if (!q) return { error: "What should I search for?" };
+        return searchEmail(env, q, input.account as string | undefined, input.group ? 15 : 6);
+      },
+    },
+    {
+      name: "get_group",
+      description: "A contact group's members with their emails, phones and WhatsApp names (by group name or id).",
+      input_schema: { type: "object", properties: { group: { type: "string" } }, required: ["group"] },
+      handler: async (input) => {
+        const g = await findGroup(env, String(input.group));
+        if (!g) return { error: `No group called "${input.group}".`, groups: await groupsSummary(env) };
+        return { id: g.id, name: g.name, description: g.description, members: (await members(env, g.id)).map((m) => ({ name: m.name, email: m.email, phone: m.phone, whatsapp_name: m.whatsapp_name, role: m.role })) };
+      },
+    },
+    {
+      name: "check_group_messages",
+      description: "Recent messages from everyone in a contact group, across Gmail and WhatsApp (last N days, default 7).",
+      input_schema: { type: "object", properties: { group: { type: "string" }, days: { type: "integer" } }, required: ["group"] },
+      handler: async (input) => {
+        const g = await findGroup(env, String(input.group));
+        if (!g) return { error: `No group called "${input.group}".` };
+        const ppl = await members(env, g.id);
+        const days = Math.min(90, Math.max(1, Number(input.days) || 7));
+        const emails = ppl.map((m) => m.email).filter(Boolean) as string[];
+        const email = emails.length
+          ? await searchEmail(env, `{${emails.map((e) => `from:${e}`).join(" ")}} newer_than:${days}d`, undefined, 15).catch((e) => ({ error: (e as Error).message }))
+          : "nobody in the group has an email saved";
+        const names = ppl.flatMap((m) => [m.name, m.whatsapp_name].filter(Boolean) as string[]).map((n) => n.toLowerCase());
+        const since = new Date(Date.now() - days * 86400_000).toISOString();
+        const wa = names.length ? (await all<{ chat: string; sender: string; text: string; received_at: string }>(env,
+          "SELECT chat, sender, text, received_at FROM whatsapp_inbox WHERE received_at > ? ORDER BY received_at DESC LIMIT 300", since))
+          .filter((m) => names.some((n) => m.sender.toLowerCase().includes(n) || m.chat.toLowerCase().includes(n))).slice(0, 40) : [];
+        return { group: g.name, members: ppl.map((m) => m.name), email, whatsapp: wa.length ? wa : "no WhatsApp messages from them in that time (only messages the WhatsApp add-on saw are available)" };
+      },
     },
     {
       name: "read_email_thread",

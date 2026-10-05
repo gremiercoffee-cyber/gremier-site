@@ -449,12 +449,12 @@ export async function calendarLookup(env: Env, from: string, to: string, q?: str
   return out.sort((a, b) => a.start_at.localeCompare(b.start_at));
 }
 
-export async function searchEmail(env: Env, q: string, account?: string) {
+export async function searchEmail(env: Env, q: string, account?: string, max = 6) {
   const emails = (await accountEmails(env)).filter((e) => !account || e === account);
   if (!emails.length) throw new Error("Google isn't connected.");
   const out = [];
   for (const email of emails) {
-    const r = await gapi<{ threads?: { id: string; snippet: string }[] }>(await accessToken(env, email), `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: "6" })}`);
+    const r = await gapi<{ threads?: { id: string; snippet: string }[] }>(await accessToken(env, email), `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: String(max) })}`);
     out.push(...(r.threads ?? []).map((t) => ({ account: email, thread_id: t.id, snippet: t.snippet })));
   }
   return out;
