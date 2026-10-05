@@ -32,7 +32,8 @@ export async function trackedPeople(env: Env, t: Tracker): Promise<Who[]> {
   const out: Who[] = [];
   if (t.group_id) {
     for (const m of await members(env, t.group_id)) {
-      out.push({ name: m.name, email: m.email, aliases: [m.name, m.whatsapp_name, ...list(m.aliases)].filter(Boolean) as string[] });
+      const last = m.name.trim().split(/\s+/).slice(1).join(" ");
+      out.push({ name: m.name, email: m.email, aliases: [m.name, m.whatsapp_name, ...list(m.aliases), ...(last.length >= 4 ? [last] : [])].filter(Boolean) as string[] });
     }
   }
   for (const n of list(t.people)) if (!out.some((w) => w.name.toLowerCase() === n.toLowerCase())) out.push({ name: n, email: null, aliases: [n] });
@@ -161,14 +162,15 @@ export async function capture(env: Env, m: { tracker_id?: string; chat?: string;
 }
 
 /** Gmail side: new emails from the tracked people since the last check (first time: back backfill_days). */
-export async function checkTrackerEmail(env: Env, t: Tracker) {
+export async function checkTrackerEmail(env: Env, t: Tracker, report?: { threads: number; fromThem: number; kept: number; skipped: string[] }) {
   const people = await trackedPeople(env, t);
   const emails = people.map((p) => p.email).filter(Boolean) as string[];
-  if (!emails.length) return 0;
+  if (!emails.length) { report?.skipped.push("Nobody being followed has an email saved."); return 0; }
   const since = t.gmail_checked_at ? Date.parse(t.gmail_checked_at) - 3600_000 : Date.now() - Math.max(1, t.backfill_days || 14) * 86400_000;
   const started = now();
   const threads = await searchEmail(env, `{${emails.map((e) => `from:${e}`).join(" ")}} after:${Math.floor(since / 1000)}`, undefined, 20);
   let kept = 0;
+  if (report) report.threads = threads.length;
   for (const th of threads) {
     const full = await readThread(env, th.thread_id, th.account).catch(() => null);
     if (!full) continue;
@@ -176,13 +178,25 @@ export async function checkTrackerEmail(env: Env, t: Tracker) {
       if (msg.from_user || Date.parse(msg.date) < since) continue;
       const who = whoSent(people, msg.from);
       if (!who) continue;
+      if (report) report.fromThem++;
       const body = msg.text.replace(/\n>.*$/gs, "").replace(/\nOn .{10,80}wrote:[\s\S]*$/, "").trim(); // drop quoted history
       const r = await capture(env, { tracker_id: t.id, source: "gmail", chat: full.subject || "(no subject)", sender: who.name, text: `${full.subject ? `Subject: ${full.subject}\n` : ""}${body}`, at: msg.date });
       if (r.kept) kept++;
+      else if (report && r.reason !== "duplicate") report.skipped.push(`${who.name}: ${r.reason} — "${body.slice(0, 80).replace(/\s+/g, " ")}"`);
     }
   }
   await run(env, "UPDATE trackers SET gmail_checked_at = ? WHERE id = ?", started, t.id);
   return kept;
+}
+
+/** "Check now" from the app: run the Gmail search immediately and say what happened. */
+export async function checkTrackerNow(env: Env, id: string, lookBackDays?: number) {
+  const t = await first<Tracker>(env, "SELECT * FROM trackers WHERE id = ?", id);
+  if (!t) throw new Error("tracker not found");
+  if (lookBackDays) t.gmail_checked_at = null, t.backfill_days = lookBackDays;
+  const report = { threads: 0, fromThem: 0, kept: 0, skipped: [] as string[] };
+  report.kept = await checkTrackerEmail(env, t, report);
+  return { ...report, status: await trackerStatus(env, t) };
 }
 
 /** Cron: check Gmail for every active tracker that follows people; tell the user when answers come in. */

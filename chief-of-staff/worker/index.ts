@@ -18,7 +18,7 @@ import { updateMission } from "./missions";
 import { replyQueue, sendReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
-import { capture, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
+import { capture, checkTrackerNow, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -282,6 +282,10 @@ route("GET", "/api/trackers", async (_req, env) => {
 });
 route("POST", "/api/trackers", async (req, env) => {
   try { return json(await saveTracker(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("POST", "/api/trackers/:id/check", async (req, env, [id]) => {
+  const b = await body<{ days?: number }>(req).catch(() => ({} as { days?: number }));
+  try { return json(await checkTrackerNow(env, id, b.days)); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
 route("GET", "/api/trackers/:id/entries", async (_req, env, [id]) => json(await trackerEntries(env, id, 500)));
 route("DELETE", "/api/trackers/:id", async (_req, env, [id]) => {

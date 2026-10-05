@@ -115,6 +115,7 @@ export const api = {
   deleteSituation: (id: string) => request("DELETE", `/api/situations/${id}`),
   trackers: () => request<{ id: string; name: string; topic: string; keywords: string; people: string; accounts: string; active: number; doc_link: string | null; n: number; last: string | null; expecting?: string; sources?: string; group_id?: string | null; status?: { total: number; answered: string[]; waiting: string[] } }[]>("GET", "/api/trackers"),
   saveTracker: (t: Record<string, unknown>) => request("POST", "/api/trackers", t),
+  checkTracker: (id: string, days?: number) => request<{ threads: number; fromThem: number; kept: number; skipped: string[]; status: { total: number; answered: string[]; waiting: string[] } }>("POST", `/api/trackers/${id}/check`, { days }),
   deleteTracker: (id: string) => request("DELETE", `/api/trackers/${id}`),
   trackerEntries: (id: string) => request<{ entries?: { chat: string; sender: string; text: string; said_at: string; person?: string | null; source?: string }[] }>("GET", `/api/trackers/${id}/entries`),
   routines: () => request<RoutineRow[]>("GET", "/api/routines"),

@@ -58,6 +58,8 @@ export default function Library({ tab, onTab, onOpenItem, refreshKey, brainDump,
 export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
   const [list, setList] = useState<Awaited<ReturnType<typeof api.trackers>>>([]);
   const [open, setOpen] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [report, setReport] = useState<{ id: string; text: string } | null>(null);
   const [entries, setEntries] = useState<{ chat: string; sender: string; text: string; said_at: string; person?: string | null; source?: string }[]>([]);
   const load = () => api.trackers().then(setList).catch(() => {});
   useEffect(() => { load(); }, [refreshKey]);
@@ -89,10 +91,19 @@ export function Trackers({ onAsk, refreshKey }: { onAsk: (t: string) => void; re
           <div className="flex flex-wrap gap-2 mt-3">
             <Button onClick={() => onAsk(`Analyze everything my tracker "${t.name}" collected: the main answers/positions, who said what, where they agree and disagree, and open questions.`)}>Analyze</Button>
             {t.doc_link && <a href={t.doc_link} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-full bg-sunken px-4 py-2 text-sm font-medium">📄 Open Doc</a>}
+            <Button variant="soft" disabled={checking === t.id} onClick={async () => {
+              setChecking(t.id); setReport(null);
+              try {
+                const r = await api.checkTracker(t.id, 30);
+                setReport({ id: t.id, text: `Searched Gmail (last 30 days): ${r.threads} email threads with them, ${r.fromThem} messages from them, ${r.kept} new added.${r.skipped.length ? `\nSkipped:\n${r.skipped.slice(0, 8).join("\n")}` : ""}` });
+              } catch (e) { setReport({ id: t.id, text: (e as Error).message }); }
+              setChecking(null); load();
+            }}>{checking === t.id ? "Checking…" : "Check now"}</Button>
             <Button variant="soft" onClick={() => show(t.id)}>{open === t.id ? "Hide messages" : "See messages"}</Button>
             <Button variant="soft" onClick={async () => { await api.saveTracker({ id: t.id, active: !t.active }); load(); }}>{t.active ? "Pause" : "Resume"}</Button>
             <Button variant="danger" onClick={async () => { if (window.confirm(`Delete "${t.name}" and what it collected? (The Google Doc stays.)`)) { await api.deleteTracker(t.id); load(); } }}>Delete</Button>
           </div>
+          {report?.id === t.id && <p className="mt-2 text-xs text-muted whitespace-pre-wrap">{report.text}</p>}
           {open === t.id && (
             <ul className="mt-3 space-y-2">
               {entries.length === 0 && <li className="text-sm text-muted">Nothing collected yet.</li>}
