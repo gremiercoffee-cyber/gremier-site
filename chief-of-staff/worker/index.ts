@@ -371,11 +371,22 @@ route("DELETE", "/api/situations/:id", async (_req, env, [id]) => {
 route("GET", "/api/routines", async (_req, env) => {
   await advanceRoutineRuns(env).catch((e) => console.error("advance runs", e));
   const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY active DESC, created_at");
-  const runs = await all(env, `SELECT id, routine_id, started_at, finished_at, status, summary, report, sources, searches, doc_link, error
+  const runs = await all<{ routine_id: string; status: string; state: string | null; error: string | null }>(env, `SELECT id, routine_id, started_at, finished_at, status, summary, report, sources, searches, doc_link, error, state
     FROM routine_runs WHERE routine_id IN (SELECT id FROM routines) ORDER BY started_at DESC LIMIT 60`);
+  // Progress for runs in flight, in plain words.
+  const progress = (x: { status: string; state: string | null; error: string | null }) => {
+    if (x.status !== "running") return null;
+    if (!x.state) return x.error ?? "Planning the research…";
+    try {
+      const st = JSON.parse(x.state) as { jobs: { text?: string; failed?: string; id?: string | null }[]; write_id?: string | null };
+      const done = st.jobs.filter((j) => j.text !== undefined).length;
+      if (done === st.jobs.length || st.write_id) return "Writing the report…";
+      return `Researching: ${done} of ${st.jobs.length} parts done`;
+    } catch { return null; }
+  };
   return json(rs.map((r) => ({
     ...r, schedule: normalizeSchedule(r.schedule), schedule_text: describeSchedule(normalizeSchedule(r.schedule)),
-    runs: (runs as { routine_id: string }[]).filter((x) => x.routine_id === r.id).slice(0, 8),
+    runs: runs.filter((x) => x.routine_id === r.id).slice(0, 8).map(({ state, ...x }) => ({ ...x, progress: progress({ ...x, state }) })),
   })));
 });
 route("POST", "/api/routines", async (req, env) => {

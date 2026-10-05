@@ -11,7 +11,7 @@ export interface RoutineSchedule { kind: "hours" | "daily" | "weekly" | "monthly
 export interface RoutineRow {
   id: string; name: string; instructions: string; schedule: RoutineSchedule; schedule_text: string; depth: string; deliver: string;
   category: string | null; active: number; rules?: string; next_run_at: string | null; last_run_at: string | null;
-  runs: { id: string; started_at: string; status: string; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
+  runs: { id: string; started_at: string; status: string; progress?: string | null; summary: string | null; report: string | null; searches: number; doc_link: string | null; error: string | null }[];
 }
 
 export interface GroupMember { id: string; name: string; email: string | null; phone: string | null; role: string }

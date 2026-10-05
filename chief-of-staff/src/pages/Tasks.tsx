@@ -27,6 +27,13 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
     api.situations().then(setSituations).catch(() => {});
   };
   useEffect(() => { load(); }, [refreshKey]);
+  // While a report is being made, check every 30 seconds (each check also moves it along).
+  const busy = (list ?? []).some((r) => r.runs.some((x) => x.status === "running"));
+  useEffect(() => {
+    if (!busy) return;
+    const t = setInterval(() => { api.routines().then(setList).catch(() => {}); }, 30_000);
+    return () => clearInterval(t);
+  }, [busy]);
 
   if (!list) return <p className="text-sm text-muted">Loading…</p>;
   return (
@@ -90,7 +97,7 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
           {r.runs.map((x) => (
             <details key={x.id} className="rounded-2xl bg-sunken px-4 py-3">
               <summary className="cursor-pointer text-sm">
-                {x.status === "running" ? "⏳ Working on it…" : x.status === "failed" ? "⚠️ Didn't finish" : "📄 Report"} · {timeAgo(x.started_at)}
+                {x.status === "running" ? `⏳ ${x.progress ?? "Working on it…"}` : x.status === "failed" ? "⚠️ Didn't finish" : "📄 Report"} · {timeAgo(x.started_at)}
                 {x.searches ? <span className="text-muted"> · {x.searches} searches</span> : null}
                 {x.summary && <span className="block text-muted mt-1">{x.summary}</span>}
               </summary>
