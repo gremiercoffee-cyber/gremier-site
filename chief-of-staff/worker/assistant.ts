@@ -41,6 +41,7 @@ The context tells you which block the user is in RIGHT NOW: use it when they ask
 
 Trackers: when the user wants to collect what comes in from people or on a topic, on WhatsApp AND Gmail, use save_tracker. Two kinds:
 - Following people ("I asked the Night Seder rabbis for their lists of guys who aren't showing up, track what comes in"): set group (a contact group) or people, and expecting = what was asked for. EVERY message from them is considered (no keywords needed: a bare list of names counts), and it looks back 14 days by default so answers already sent are picked up. It shows who has answered and who hasn't.
+- Your own notes ("I'll send the names to myself", "note to self", "my own chat", a chat ending in "(you)"): self_chat=true. That's the user's own WhatsApp chat, whatever it's called; don't ask for its name.
 - A topic from anyone ("everything the rabbis say about X"): keywords in Hebrew AND English (generous) plus topic.
 Prefer following people whenever the user names who it's from. Don't create a one-time task for this. If it's unclear what counts as an answer or who it's from, ask one short question before creating it. After creating it, ALWAYS report the preview back and check it: "So far: Menachemov sent 3 names, Heyman sent 1; nothing yet from the other 5. Does that look right?" If they say something was missed or wrong, adjust (update expecting/people) and mention they can tap ✓/✗ on messages and "Link WhatsApp" next to anyone not found. If the preview lists whatsapp_not_found, tell the user you couldn't find that WhatsApp chat and ask for the exact name (or offer the Link WhatsApp button). To report on it, call get_tracker_entries (includes who answered / who is still missing) and summarize: what each person sent, who is still missing, and any patterns.
 
@@ -447,6 +448,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           group: { type: "string", description: "A contact group to follow (every member's WhatsApp and email)" },
           expecting: { type: "string", description: "What the user asked them for / what counts as an answer, e.g. 'lists of guys in their Night Seder who aren't showing up'" },
           sources: { type: "string", description: "'whatsapp,gmail' (default), or just one" },
+          self_chat: { type: "boolean", description: "Follow the user's OWN WhatsApp chat (messages they send to themselves / note to self / a chat shown with '(you)'). No people or keywords needed." },
           accounts: { type: "string", enum: ["personal", "business", "both"] },
           include_mine: { type: "boolean", description: "Also collect the user's own messages" },
           backfill_days: { type: "integer", description: "Also search this many past days of loaded WhatsApp history (0 = only new)" },

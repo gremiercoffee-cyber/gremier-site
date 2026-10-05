@@ -34,8 +34,11 @@
       sender = str(c && (c.formattedName || c.name || c.pushname)) || str(msg.notifyName) || "Someone";
     }
     const text = str(msg.type === "chat" ? msg.body : msg.caption);
+    // Your own chat ("note to self"): the chat is with your own number.
+    const me = str(msg.from && (msg.from._serialized || msg.from));
+    const self = !!id.fromMe && !isGroup && !!me && me === remote;
     return {
-      chatId: remote, chat: chatName, sender, isGroup, fromMe: !!id.fromMe, text,
+      chatId: remote, chat: chatName, sender, isGroup, fromMe: !!id.fromMe, self, text,
       kind: str(msg.type), muted: !!(chat && chat.mute && chat.mute.isMuted), t: Number(msg.t) || 0,
     };
   }

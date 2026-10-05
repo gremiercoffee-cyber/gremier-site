@@ -61,13 +61,16 @@
   let trackers = [];
   let backfillPending = [];
   const lc = (s) => (s || "").toLowerCase();
+  const squash = (s) => lc(s).replace(/[^\p{L}\p{N}]/gu, "");
   function matches(t, m) {
+    if (t.self_chat) return !!m.self && !!lc(m.text);   // the user's own chat, whatever it's named
     if (m.fromMe && !t.include_mine) return false;
     const text = lc(m.text);
     if (!text) return false;
     const kwOk = !t.keywords.length || t.keywords.some((k) => text.includes(k));
     const who = lc(`${m.chat} ${m.sender}`);
-    const peopleOk = !t.people.length || t.people.some((p) => who.includes(p));
+    const whoS = squash(who);
+    const peopleOk = !t.people.length || t.people.some((p) => who.includes(p) || (squash(p).length >= 4 && whoS.includes(squash(p))));
     return kwOk && peopleOk;
   }
   function track(m, only) {

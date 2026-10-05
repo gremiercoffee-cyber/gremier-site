@@ -20,7 +20,7 @@ import { notify } from "./push";
 export interface Tracker {
   id: string; name: string; topic: string; keywords: string; people: string; accounts: string; include_mine: number;
   doc_id: string | null; doc_link: string | null; doc_account: string | null; active: number; backfill_days: number; backfilled: string;
-  group_id: string | null; expecting: string; sources: string; gmail_checked_at: string | null;
+  group_id: string | null; expecting: string; sources: string; gmail_checked_at: string | null; self_chat?: number;
   created_at: string; updated_at: string;
 }
 interface Who { name: string; aliases: string[]; email: string | null; id?: string; whatsapp?: string | null }
@@ -74,17 +74,20 @@ export async function saveTracker(env: Env, input: Record<string, unknown>) {
     accounts: ["personal", "business", "both"].includes(String(input.accounts)) ? String(input.accounts) : existing?.accounts ?? "both",
     include_mine: input.include_mine === undefined ? existing?.include_mine ?? 0 : input.include_mine ? 1 : 0,
     active: input.active === undefined ? existing?.active ?? 1 : input.active ? 1 : 0,
+    // Your own chat: said outright, or a name ending in "(you)" as WhatsApp shows it.
+    self_chat: input.self_chat !== undefined ? (input.self_chat ? 1 : 0) : /\((you|me)\)/i.test(String(input.people ?? "")) ? 1 : existing?.self_chat ?? 0,
     backfill_days: Math.min(90, Math.max(0, Number(input.backfill_days ?? existing?.backfill_days ?? (groupId || input.people ? 14 : 0)) || 0)),
   };
   if (!tr.topic) throw new Error("What should this tracker collect?");
-  if (!list(tr.keywords).length && !list(tr.people).length && !groupId) throw new Error("Who should I follow (a group or people), or which keywords should I look for?");
+  if (tr.self_chat) { tr.include_mine = 1; if (!tr.sources.includes("whatsapp")) tr.sources = "whatsapp"; }
+  if (!list(tr.keywords).length && !list(tr.people).length && !groupId && !tr.self_chat) throw new Error("Who should I follow (a group or people), or which keywords should I look for?");
   if (existing) {
-    await run(env, `UPDATE trackers SET name=?, topic=?, keywords=?, people=?, group_id=?, expecting=?, sources=?, accounts=?, include_mine=?, active=?, backfill_days=?, updated_at=? WHERE id=?`,
-      tr.name, tr.topic, tr.keywords, tr.people, groupId, tr.expecting, tr.sources, tr.accounts, tr.include_mine, tr.active, tr.backfill_days, t, tr.id);
+    await run(env, `UPDATE trackers SET name=?, topic=?, keywords=?, people=?, group_id=?, expecting=?, sources=?, accounts=?, include_mine=?, active=?, backfill_days=?, self_chat=?, updated_at=? WHERE id=?`,
+      tr.name, tr.topic, tr.keywords, tr.people, groupId, tr.expecting, tr.sources, tr.accounts, tr.include_mine, tr.active, tr.backfill_days, tr.self_chat, t, tr.id);
   } else {
-    await run(env, `INSERT INTO trackers (id, name, topic, keywords, people, group_id, expecting, sources, accounts, include_mine, active, backfill_days, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      tr.id, tr.name, tr.topic, tr.keywords, tr.people, groupId, tr.expecting, tr.sources, tr.accounts, tr.include_mine, tr.active, tr.backfill_days, t, t);
+    await run(env, `INSERT INTO trackers (id, name, topic, keywords, people, group_id, expecting, sources, accounts, include_mine, active, backfill_days, self_chat, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      tr.id, tr.name, tr.topic, tr.keywords, tr.people, groupId, tr.expecting, tr.sources, tr.accounts, tr.include_mine, tr.active, tr.backfill_days, tr.self_chat, t, t);
     try {
       const d = await createDoc(env, `Tracker: ${tr.name}`,
         `# ${tr.name}\n${tr.expecting || tr.topic}\n\n${tr.keywords ? `Keywords: ${tr.keywords}\n` : ""}\n## Collected messages`);
@@ -118,7 +121,7 @@ export async function trackersForBridge(env: Env, account: string) {
     const people = [...new Set([...(await chatsFor(env, aliases, account)), ...aliases].map((a) => a.toLowerCase()).filter((a) => a.length > 2))];
     out.push({
       id: t.id, people, keywords: people.length ? [] : list(t.keywords).map((k) => k.toLowerCase()),
-      include_mine: !!t.include_mine,
+      include_mine: !!t.include_mine, self_chat: !!t.self_chat,
       backfill_days: t.backfill_days && !list(t.backfilled).includes(account) ? t.backfill_days : 0,
     });
   }
@@ -302,7 +305,7 @@ export async function matchWhatsappNames(env: Env, account: string, names: strin
 
 /** Who has answered so far (for trackers that follow people). */
 export async function trackerStatus(env: Env, t: Tracker) {
-  const people = await trackedPeople(env, t);
+  const people = t.self_chat && !t.group_id ? [] : await trackedPeople(env, t);
   const got = new Set((await all<{ person: string }>(env, "SELECT DISTINCT person FROM tracker_entries WHERE tracker_id = ? AND person IS NOT NULL AND (verdict IS NULL OR verdict = 'good')", t.id)).map((r) => r.person));
   return {
     total: people.length, answered: people.filter((p) => got.has(p.name)).map((p) => p.name), waiting: people.filter((p) => !got.has(p.name)).map((p) => p.name),
