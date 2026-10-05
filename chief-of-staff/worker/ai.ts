@@ -90,10 +90,11 @@ class OpenAIProvider implements ModelProvider {
 
   async runAgent(req: AgentRequest): Promise<AgentResult> {
     const model = this.model(req.tier);
-    const tools: OpenAI.Chat.ChatCompletionTool[] = req.tools.map((t) => ({
+    const toolSpecs = (): OpenAI.Chat.ChatCompletionTool[] => req.tools.map((t) => ({
       type: "function",
       function: { name: t.name, description: t.description, parameters: t.input_schema },
     }));
+    let tools = toolSpecs();
     // Stable instructions first so OpenAI's automatic prefix caching can reuse them.
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "developer", content: req.system },
@@ -104,6 +105,7 @@ class OpenAIProvider implements ModelProvider {
     const maxRounds = req.maxToolRounds ?? 6;
 
     for (let round = 0; round <= maxRounds; round++) {
+      tools = toolSpecs(); // load_tools may have added some
       const response = await this.client.chat.completions.create({
         model,
         messages,

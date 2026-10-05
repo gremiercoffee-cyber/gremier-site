@@ -888,7 +888,7 @@ export async function executeApproved(env: Env, action: string, payload: Record<
   }
 }
 
-const HISTORY_LIMIT = 16;
+const HISTORY_LIMIT = 10;
 
 /** A conversation goes quiet after this long; the next message starts a fresh one. */
 const CONVERSATION_IDLE_MS = 6 * 3600_000;
@@ -937,11 +937,16 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
     userMsg.id, userMsg.role, userMsg.content, userMsg.mode, userMsg.created_at, convo.id);
 
   const recent = await all<Message>(env, "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?", convo.id, HISTORY_LIMIT);
-  const history: Turn[] = recent.reverse().map((m) => ({ role: m.role, content: m.content }));
+  // Older long replies (reports, drafts) are trimmed; the latest few stay whole.
+  const history: Turn[] = recent.reverse().map((m, i, arr) => ({
+    role: m.role, content: i < arr.length - 4 && m.content.length > 700 ? `${m.content.slice(0, 700)}… [trimmed]` : m.content,
+  }));
 
   const notes: ActionNote[] = [];
   let switched = false;
-  const tools = assistantTools(env, mode === "text" ? "chat" : "voice", notes);
+  const routeQuery = history.filter((h) => h.role === "user").slice(-3).map((h) => h.content).join("\n") || text;
+  const features = await featuresFor(env, routeQuery);
+  const tools = toolsFor(assistantTools(env, mode === "text" ? "chat" : "voice", notes), features, new Set());
   if (history.length > 1) {
     tools.push({
       name: "new_topic",
@@ -963,8 +968,8 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
-    system: SYSTEM_PROMPT,
-    context: await buildContext(env, mode, history.filter((h) => h.role === "user").slice(-3).map((h) => h.content).join("\n") || text),
+    system: promptFor(features),
+    context: await buildContext(env, mode, routeQuery),
     history,
     tools,
   });
@@ -979,4 +984,90 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   await run(env, "UPDATE conversations SET last_message_at = ? WHERE id = ?", reply.created_at, convo.id);
   if (!convo.title) await titleConversation(env, convo, text);
   return { user: userMsg, reply, actions: notes, conversation: convo };
+}
+
+
+// ---- Token diet: send only the abilities (and their instructions) a message needs -----------
+
+/** Which tools belong to which feature. Anything not listed is always sent. */
+const TOOL_GROUPS: Record<string, string[]> = {
+  schedule: ["save_time_block"],
+  calendar: ["calendar_lookup"],
+  email: ["search_email", "read_email_thread", "draft_email"],
+  whatsapp: ["send_whatsapp"],
+  docs: ["create_doc", "create_sheet", "append_rows", "search_drive", "read_file", "share_file"],
+  groups: ["save_group", "draft_group_message", "get_group", "check_group_messages"],
+  trackers: ["save_tracker", "get_tracker_entries"],
+  ideas: ["capture_idea", "update_idea", "idea_step"],
+  tasks: ["save_task", "get_report"],
+  missions: ["start_mission", "update_mission"],
+  projects: ["create_project", "update_project"],
+};
+const TOOL_TRIGGERS: Record<string, RegExp> = {
+  email: /\b(e-?mails?|gmail|inbox|mail(ed)?|wrote|replied|reply|thread|subject|draft)\b|מייל/i,
+  whatsapp: /\b(whats ?app|text (him|her|them)|message (him|her|them)|send (him|her|them|it|a message)|tell (him|her|them))\b|וואטסאפ/i,
+  docs: /\b(docs?|document|sheets?|spreadsheet|drive|file|pdf|google doc|share)\b|מסמך|קובץ/i,
+};
+/** Feature sections of the system prompt, sent only with their feature. */
+const GUIDE_HEADERS: [string, string][] = [
+  ["schedule", "Schedule (time blocks):"], ["trackers", "Trackers:"], ["tasks", "Tasks (recurring jobs):"],
+  ["missions", "Missions:"], ["groups", "Groups and group messages:"], ["ideas", "Ideas and thinking out loud:"],
+];
+const GENERAL_STARTS = ["What you do:", "Areas:", "Reminders can", "Memory", "How to file", "How this app", "Drafting text:", "Rules:"];
+
+function splitPrompt() {
+  const blocks = SYSTEM_PROMPT.split("\n\n");
+  const base: string[] = [];
+  const guides: Record<string, string[]> = {};
+  let current: string | null = null;
+  for (const b of blocks) {
+    const g = GUIDE_HEADERS.find(([, h]) => b.startsWith(h));
+    if (g) { current = g[0]; (guides[current] ??= []).push(b); continue; }
+    if (GENERAL_STARTS.some((h) => b.startsWith(h)) || !current) { current = null; base.push(b); continue; }
+    guides[current].push(b); // continuation paragraph of a feature section
+  }
+  return { base: base.join("\n\n"), guides: Object.fromEntries(Object.entries(guides).map(([k, v]) => [k, v.join("\n\n")])) };
+}
+const PROMPT_PARTS = splitPrompt();
+
+/** The system prompt for this message: the general part plus the guides for the features in play. */
+export function promptFor(features: Set<string>) {
+  const extra = GUIDE_HEADERS.map(([k]) => k).filter((k) => features.has(k) && PROMPT_PARTS.guides[k]).map((k) => PROMPT_PARTS.guides[k]);
+  const off = GUIDE_HEADERS.map(([k]) => k).filter((k) => !features.has(k));
+  return [PROMPT_PARTS.base, ...extra,
+    off.length ? `Some abilities aren't loaded for this message (${off.join(", ")}${Object.keys(TOOL_TRIGGERS).filter((k) => !features.has(k)).map((k) => `, ${k}`).join("")}). If you need one, call load_tools first; never say you can't do something without trying that.` : ""]
+    .filter(Boolean).join("\n\n");
+}
+
+/** Which features a message needs: the context triage plus tool-only triggers. */
+export async function featuresFor(env: Env, query: string) {
+  if (!query.trim()) return new Set([...Object.keys(TOOL_GROUPS)]);
+  const [situations, groups, tasks, trackers, ideas, missions] = await Promise.all([
+    situationsSummary(env), groupsSummary(env), routinesSummary(env), trackersSummary(env), ideasSummary(env), missionsSummary(env),
+  ]);
+  const want = triageSections(query, { schedule: situations, groups, tasks, trackers, ideas, missions });
+  for (const [k, re] of Object.entries(TOOL_TRIGGERS)) if (re.test(query)) want.add(k);
+  return want;
+}
+
+/** Narrow a full tool list to what the features need, plus load_tools to add more mid-turn. */
+export function toolsFor(all: ToolDef[], features: Set<string>, loaded: Set<string>) {
+  const grouped = new Set(Object.values(TOOL_GROUPS).flat());
+  const allowed = (t: ToolDef) => !grouped.has(t.name) || Object.entries(TOOL_GROUPS).some(([k, names]) => names.includes(t.name) && (features.has(k) || loaded.has(k)));
+  const live = all.filter(allowed);
+  live.push({
+    name: "load_tools",
+    description: "Load more abilities for this reply when you need one that isn't available: schedule, calendar, email, whatsapp, docs, groups, trackers, ideas, tasks, missions, projects.",
+    input_schema: { type: "object", properties: { features: { type: "array", items: { type: "string", enum: Object.keys(TOOL_GROUPS) } } }, required: ["features"] },
+    handler: async (input) => {
+      const add = ((input.features as string[]) ?? []).filter((f) => TOOL_GROUPS[f]);
+      for (const f of add) {
+        loaded.add(f);
+        for (const t of all) if (TOOL_GROUPS[f].includes(t.name) && !live.some((x) => x.name === t.name)) live.push(t);
+      }
+      const guides = add.map((f) => PROMPT_PARTS.guides[f]).filter(Boolean);
+      return { loaded: add, ...(guides.length ? { instructions: guides.join("\n\n") } : {}), note: "These tools are available now; call them." };
+    },
+  });
+  return live;
 }
