@@ -113,8 +113,8 @@ export async function saveRoutine(env: Env, input: Record<string, unknown>) {
 export async function runDueRoutines(env: Env) {
   const tz = (await getSettings(env)).timezone;
   // A run the Worker never finished (e.g. it was cut off) shouldn't show "working on it" forever.
-  await run(env, "UPDATE routine_runs SET status = 'failed', finished_at = ?, error = 'Took too long and was stopped. It will run again on schedule.' WHERE status = 'running' AND started_at < ?",
-    now(), new Date(Date.now() - 30 * 60_000).toISOString());
+  await run(env, "UPDATE routine_runs SET status = 'failed', finished_at = ?, error = 'Took too long and was stopped. Tap Run now to try again.' WHERE status = 'running' AND started_at < ?",
+    now(), new Date(Date.now() - 120 * 60_000).toISOString());
   const due = await first<Routine>(env, "SELECT * FROM routines WHERE active = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at LIMIT 1", now());
   if (!due) return 0;
   // Move the clock first so a slow or failing run can never loop.
@@ -124,20 +124,31 @@ export async function runDueRoutines(env: Env) {
   return 1;
 }
 
+const RESEARCH_SYSTEM = `You are a meticulous research analyst. Search the web thoroughly (several queries, local-language sources too, e.g. Hebrew for Israel) and read primary sources. Report concrete facts: numbers, prices with currency and date, names, dates. Note conflicting figures and uncertainty. Cite sources inline as [n] with the URL list at the end. No filler.`;
+const WRITE_SYSTEM = `Write a comprehensive, well-structured report in Markdown for a busy business owner.
+Structure: "## Key takeaways" (5-8 bullets with numbers), then sections by theme, then "## What changed since last time" (only if a previous report is given), then "## What this means for you" (practical implications/actions), then "## Sources" (numbered URLs).
+Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.`;
+
+interface Job { q: string; id: string | null; text?: string; searches?: number; sources?: string[]; failed?: string }
+interface RunState { eff: string; job: string; today: string; subs: string[]; jobs: Job[]; write_id?: string | null; escalated?: { why: string; focus: string } | null }
+
+/**
+ * Start a report. Long work (web research, writing the report) runs as OpenAI background jobs, so
+ * nothing here takes more than a few seconds; advanceRoutineRuns() checks back and finishes it.
+ */
 export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why: string; focus: string } } = {}) {
   const runId = uid();
   await run(env, "INSERT INTO routine_runs (id, routine_id, started_at) VALUES (?, ?, ?)", runId, r.id, now());
   const today = new Date().toISOString().slice(0, 10);
-  const last = await first<{ report: string; started_at: string }>(env,
-    "SELECT report, started_at FROM routine_runs WHERE routine_id = ? AND status = 'done' AND report IS NOT NULL ORDER BY started_at DESC LIMIT 1", r.id);
+  const last = await lastReport(env, r.id);
   // Adaptive: full report first time, then quick checks.
   const eff = opts.escalated ? "standard" : r.depth === "adaptive" ? (last ? "quick" : "standard") : r.depth;
   const depth = DEPTH[eff] ?? DEPTH.standard;
   const job = `${r.instructions}${r.rules ? `\nStanding notes from the user (follow them): ${r.rules}` : ""}${opts.escalated ? `\nThis time look especially at: ${opts.escalated.focus}` : ""}`;
   try {
     const provider = getProvider(env);
-    // 1. Plan focused sub-questions.
-    let subs = [r.instructions];
+    // 1. Plan focused sub-questions (a few seconds).
+    let subs = [job];
     if (depth.subs > 1) {
       const plan = await provider.complete({
         tier: "fast", purpose: "task_plan", maxTokens: 600,
@@ -149,70 +160,131 @@ export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why
         if (q?.length) subs = q.slice(0, depth.subs);
       } catch { /* fall back to the whole job as one question */ }
     }
-
-    // 2. Research every sub-question in parallel, each with its own searches.
-    const found = await Promise.all(subs.map((q) => provider.research({
-      purpose: "task_research", maxSearches: depth.searches, maxTokens: 2500,
-      system: `You are a meticulous research analyst. Search the web thoroughly (several queries, local-language sources too, e.g. Hebrew for Israel) and read primary sources. Report concrete facts: numbers, prices with currency and date, names, dates. Note conflicting figures and uncertainty. Cite sources inline as [n] with the URL list at the end. No filler.`,
-      prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`,
-    }).catch((e) => ({ text: `(research failed: ${(e as Error).message})`, searches: 0, sources: [] as string[] }))));
-    const searches = found.reduce((n, f) => n + f.searches, 0);
-    const sources = [...new Set(found.flatMap((f) => f.sources))].slice(0, 40);
-
-    // 3. Write one report (quick jobs: the single research pass is the report).
-    let report = found[0].text;
-    if (subs.length > 1) {
-      report = await provider.complete({
-        tier: "main", purpose: "task_report", maxTokens: 6000,
-        system: `Write a comprehensive, well-structured report in Markdown for a busy business owner.
-Structure: "## Key takeaways" (5-8 bullets with numbers), then sections by theme, then "## What changed since last time" (only if a previous report is given), then "## What this means for you" (practical implications/actions), then "## Sources" (numbered URLs).
-Keep every figure tied to a source. Flag uncertainty. Be thorough but skimmable.`,
-        prompt: `Job: ${job}\nToday: ${today}\n\n${found.map((f, i) => `### Research ${i + 1}: ${subs[i]}\n${f.text}`).join("\n\n")}\n\nAll sources:\n${sources.map((u, i) => `${i + 1}. ${u}`).join("\n")}${last ? `\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}` : ""}`,
-      });
+    // 2. Hand every sub-question to OpenAI as a background research job.
+    const jobs: Job[] = [];
+    for (const q of subs) {
+      try {
+        jobs.push({ q, id: await provider.startBackground({ system: RESEARCH_SYSTEM, prompt: `Today: ${today}\nOverall job: ${job}\nYour part: ${q}`, maxSearches: depth.searches, maxTokens: 2500 }) });
+      } catch (e) { jobs.push({ q, id: null, failed: (e as Error).message.slice(0, 200) }); }
     }
-    let summary = await provider.complete({
-      tier: "fast", purpose: "task_summary", maxTokens: 200,
-      system: "Summarize this report in 2-3 short lines for a morning briefing: the most important findings and anything that changed. Plain text.",
-      prompt: report.slice(0, 8000),
-    }).catch(() => report.slice(0, 280));
-
-    // Adaptive quick check: if it found something important or new, go deeper right away instead of reporting.
-    if (r.depth === "adaptive" && eff === "quick" && last && !opts.escalated) {
-      const verdict = await provider.complete({
-        tier: "fast", purpose: "task_escalate", maxTokens: 200,
-        system: `You decide whether a quick weekly check found something important enough to research properly. Compare with the previous report. Say yes only for meaningful new developments (a big competitor move, a notable new feature trend, important news, a real change in numbers), not routine noise. Reply ONLY JSON: {"deeper": true|false, "why": "one short line", "focus": "what to research in depth"}`,
-        prompt: `Job: ${job}\n\nQuick check today:\n${report.slice(0, 5000)}\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}`,
-      }).catch(() => "{}");
-      let v: { deeper?: boolean; why?: string; focus?: string } = {};
-      try { v = JSON.parse(verdict.slice(verdict.indexOf("{"), verdict.lastIndexOf("}") + 1)); } catch { /* no */ }
-      if (v.deeper) {
-        await run(env, "UPDATE routine_runs SET status='done', finished_at=?, summary=?, report=?, sources=?, searches=? WHERE id=?",
-          now(), `Quick check found something worth a closer look: ${v.why ?? ""}`, report, JSON.stringify(sources), searches, runId);
-        return runRoutine(env, r, { escalated: { why: v.why ?? "something new", focus: v.focus ?? v.why ?? "" } });
-      }
-    }
-    if (opts.escalated) summary = `🔎 Went deeper because: ${opts.escalated.why}\n${summary}`;
-
-    let docLink: string | null = null;
-    let docProblem = "";
-    if (r.deliver === "doc") {
-      try { docLink = (await createDoc(env, `${r.name} — ${today}`, report)).link; }
-      catch (e) { docProblem = (e as Error).message; console.error("task doc failed", e); }
-    }
-    await run(env, "UPDATE routine_runs SET status='done', finished_at=?, summary=?, report=?, sources=?, searches=?, doc_link=? WHERE id=?",
-      now(), summary, report, JSON.stringify(sources), searches, docLink, runId);
-    // Delivery: Doc reports and alerts buzz once, and tapping opens the Doc (or the report in Tasks);
-    // "briefing" waits quietly for the next briefing.
-    if (r.deliver === "doc" && !docLink) {
-      await notify(env, "routine_alert", `${r.name}: report ready`,
-        `${summary}\n(Couldn't create the Google Doc: ${docProblem.slice(0, 120)}. The full report is in Tasks.)`.slice(0, 400), runId, "/?tab=tasks");
-    } else {
-      await notify(env, r.deliver === "briefing" ? "routine" : "routine_alert",
-        r.deliver === "doc" ? `📄 ${r.name}` : `${r.name}: new report`,
-        `${summary}${docLink ? "\nTap to open the Google Doc." : ""}`.slice(0, 400), runId, docLink ?? "/?tab=tasks");
-    }
+    if (jobs.every((j) => !j.id)) throw new Error(`Couldn't start the research: ${jobs[0]?.failed ?? "unknown error"}`);
+    const state: RunState = { eff, job, today, subs, jobs, escalated: opts.escalated ?? null };
+    await run(env, "UPDATE routine_runs SET state = ? WHERE id = ?", JSON.stringify(state), runId);
   } catch (e) {
     await run(env, "UPDATE routine_runs SET status='failed', finished_at=?, error=? WHERE id=?", now(), (e as Error).message.slice(0, 300), runId);
+  }
+  return runId;
+}
+
+async function lastReport(env: Env, routineId: string) {
+  return first<{ report: string; started_at: string }>(env,
+    "SELECT report, started_at FROM routine_runs WHERE routine_id = ? AND status = 'done' AND report IS NOT NULL ORDER BY started_at DESC LIMIT 1", routineId);
+}
+
+/** Check on reports in progress: collect finished research, start the write-up, deliver when done. */
+export async function advanceRoutineRuns(env: Env) {
+  const runs = await all<{ id: string; routine_id: string; state: string | null; started_at: string }>(env,
+    "SELECT id, routine_id, state, started_at FROM routine_runs WHERE status = 'running' AND state IS NOT NULL ORDER BY started_at LIMIT 5");
+  let finished = 0;
+  for (const rr of runs) {
+    try { if (await advanceOne(env, rr)) finished++; }
+    catch (e) { console.error("advance run", e); }
+  }
+  return finished;
+}
+
+async function advanceOne(env: Env, rr: { id: string; routine_id: string; state: string | null; started_at: string }) {
+  const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", rr.routine_id);
+  if (!r) return false;
+  const st = JSON.parse(rr.state!) as RunState;
+  const provider = getProvider(env);
+  const save = () => run(env, "UPDATE routine_runs SET state = ? WHERE id = ?", JSON.stringify(st), rr.id);
+
+  // Research jobs.
+  let changed = false;
+  for (const j of st.jobs) {
+    if (!j.id || j.text !== undefined || j.failed) continue;
+    const c = await provider.checkBackground(j.id, "task_research");
+    if (!c.done) continue;
+    changed = true;
+    if ("text" in c) { j.text = c.text; j.searches = c.searches; j.sources = c.sources; } else j.failed = c.failed;
+  }
+  if (changed) await save();
+  if (st.jobs.some((j) => j.id && j.text === undefined && !j.failed)) return false; // still researching
+  const ok = st.jobs.filter((j) => j.text);
+  if (!ok.length) {
+    await run(env, "UPDATE routine_runs SET status='failed', finished_at=?, error=? WHERE id=?", now(), `Research failed: ${st.jobs[0]?.failed ?? "no results"}`.slice(0, 300), rr.id);
+    return false;
+  }
+  const searches = ok.reduce((n, j) => n + (j.searches ?? 0), 0);
+  const sources = [...new Set(ok.flatMap((j) => j.sources ?? []))].slice(0, 40);
+  const last = await lastReport(env, r.id);
+
+  // Write-up (only when there were several research parts).
+  let report: string;
+  if (ok.length > 1) {
+    if (!st.write_id) {
+      st.write_id = await provider.startBackground({
+        tier: "main", maxTokens: 6000, system: WRITE_SYSTEM,
+        prompt: `Job: ${st.job}\nToday: ${st.today}\n\n${ok.map((j, i) => `### Research ${i + 1}: ${j.q}\n${j.text}`).join("\n\n")}\n\nAll sources:\n${sources.map((u, i) => `${i + 1}. ${u}`).join("\n")}${last ? `\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}` : ""}`,
+      });
+      await save();
+      return false;
+    }
+    const w = await provider.checkBackground(st.write_id, "task_report");
+    if (!w.done) return false;
+    report = "text" in w ? w.text : ok.map((j) => `## ${j.q}\n\n${j.text}`).join("\n\n");
+  } else {
+    report = ok[0].text!;
+  }
+  await finishRun(env, r, rr.id, st, report, sources, searches, last);
+  return true;
+}
+
+async function finishRun(env: Env, r: Routine, runId: string, st: RunState, report: string, sources: string[], searches: number,
+  last: { report: string; started_at: string } | null) {
+  const provider = getProvider(env);
+  let summary = await provider.complete({
+    tier: "fast", purpose: "task_summary", maxTokens: 200,
+    system: "Summarize this report in 2-3 short lines for a morning briefing: the most important findings and anything that changed. Plain text.",
+    prompt: report.slice(0, 8000),
+  }).catch(() => report.slice(0, 280));
+
+  // Adaptive quick check: if it found something important or new, go deeper instead of reporting.
+  if (r.depth === "adaptive" && st.eff === "quick" && last && !st.escalated) {
+    const verdict = await provider.complete({
+      tier: "fast", purpose: "task_escalate", maxTokens: 200,
+      system: `You decide whether a quick weekly check found something important enough to research properly. Compare with the previous report. Say yes only for meaningful new developments (a big competitor move, a notable new feature trend, important news, a real change in numbers), not routine noise. Reply ONLY JSON: {"deeper": true|false, "why": "one short line", "focus": "what to research in depth"}`,
+      prompt: `Job: ${st.job}\n\nQuick check today:\n${report.slice(0, 5000)}\n\nPrevious report (${last.started_at.slice(0, 10)}):\n${last.report.slice(0, 3000)}`,
+    }).catch(() => "{}");
+    let v: { deeper?: boolean; why?: string; focus?: string } = {};
+    try { v = JSON.parse(verdict.slice(verdict.indexOf("{"), verdict.lastIndexOf("}") + 1)); } catch { /* no */ }
+    if (v.deeper) {
+      await run(env, "UPDATE routine_runs SET status='done', finished_at=?, summary=?, report=?, sources=?, searches=? WHERE id=?",
+        now(), `Quick check found something worth a closer look: ${v.why ?? ""}`, report, JSON.stringify(sources), searches, runId);
+      await runRoutine(env, r, { escalated: { why: v.why ?? "something new", focus: v.focus ?? v.why ?? "" } });
+      return;
+    }
+  }
+  if (st.escalated) summary = `🔎 Went deeper because: ${st.escalated.why}\n${summary}`;
+
+  let docLink: string | null = null;
+  let docProblem = "";
+  if (r.deliver === "doc") {
+    try { docLink = (await createDoc(env, `${r.name} — ${st.today}`, report)).link; }
+    catch (e) { docProblem = (e as Error).message; console.error("task doc failed", e); }
+  }
+  await run(env, "UPDATE routine_runs SET status='done', finished_at=?, summary=?, report=?, sources=?, searches=?, doc_link=? WHERE id=?",
+    now(), summary, report, JSON.stringify(sources), searches, docLink, runId);
+  // Delivery: Doc reports and alerts buzz once, and tapping opens the Doc (or the report in Tasks);
+  // "briefing" waits quietly for the next briefing.
+  if (r.deliver === "doc" && !docLink) {
+    await notify(env, "routine_alert", `${r.name}: report ready`,
+      `${summary}\n(Couldn't create the Google Doc: ${docProblem.slice(0, 120)}. The full report is in Tasks.)`.slice(0, 400), runId, "/?tab=tasks");
+  } else {
+    await notify(env, r.deliver === "briefing" ? "routine" : "routine_alert",
+      r.deliver === "doc" ? `📄 ${r.name}` : `${r.name}: new report`,
+      `${summary}${docLink ? "\nTap to open the Google Doc." : ""}`.slice(0, 400), runId, docLink ?? "/?tab=tasks");
   }
 }
 

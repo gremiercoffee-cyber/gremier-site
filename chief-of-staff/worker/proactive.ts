@@ -11,7 +11,7 @@ import { notify } from "./push";
 import { upcomingEventsText } from "./google";
 import { isShabbat, justAfterShabbat } from "./shabbat";
 import { missionsSummary, runMissions } from "./missions";
-import { runDueRoutines } from "./routines";
+import { runDueRoutines, advanceRoutineRuns } from "./routines";
 import { runSituations } from "./situations";
 import { nudgeStaleIdea, runIdeaResearch } from "./ideas";
 import { tidyConversations } from "./tidy";
@@ -106,8 +106,9 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   // 8. Situations: "in yeshiva", "at events" — reminders tied to where you are, not deadlines.
   if (!isShabbat(settings.timezone)) created += await runSituations(env);
 
-  // 9. Tasks: scheduled research and reports (one per pass).
+  // 9. Tasks: scheduled research and reports (one per pass), and check on reports in progress.
   if (!isShabbat(settings.timezone)) created += await runDueRoutines(env);
+  created += await advanceRoutineRuns(env).catch((e) => { console.error("advance runs", e); return 0; });
 
   // 9a. Once a day, early morning: tidy the chat list (delete throwaway chats, merge same-topic ones, archive old).
   if (local.hour >= 3 && local.hour < 6) await tidyConversations(env).catch((e) => console.error("tidy", e));

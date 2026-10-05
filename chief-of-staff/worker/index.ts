@@ -18,7 +18,7 @@ import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
 import { replyQueue, sendReply, draftReply } from "./replies";
-import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine, tellRoutine } from "./routines";
+import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine, tellRoutine, advanceRoutineRuns } from "./routines";
 import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
 import { capture, checkTrackerNow, judgeEntry, knownChats, linkWhatsapp, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
@@ -340,6 +340,7 @@ route("DELETE", "/api/situations/:id", async (_req, env, [id]) => {
 
 // ---- Tasks (recurring agent jobs) -----------------------------------------------------
 route("GET", "/api/routines", async (_req, env) => {
+  await advanceRoutineRuns(env).catch((e) => console.error("advance runs", e));
   const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY active DESC, created_at");
   const runs = await all(env, `SELECT id, routine_id, started_at, finished_at, status, summary, report, sources, searches, doc_link, error
     FROM routine_runs WHERE routine_id IN (SELECT id FROM routines) ORDER BY started_at DESC LIMIT 60`);
@@ -372,8 +373,10 @@ route("POST", "/api/routines/:id/tell", async (req, env, [id]) => {
 route("POST", "/api/routines/:id/run", async (_req, env, [id], ctx) => {
   const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", id);
   if (!r) throw new HttpError(404, "task not found");
-  ctx.waitUntil(runRoutine(env, r)); // keeps going after we answer
-  return json({ ok: true, message: "Started. The report will appear here in a few minutes." });
+  await run(env, "UPDATE routine_runs SET status = 'failed', finished_at = ?, error = 'Replaced by a new run.' WHERE routine_id = ? AND status = 'running'", now(), id);
+  await runRoutine(env, r); // plans and hands the research to OpenAI; finishes in the background
+  void ctx;
+  return json({ ok: true, message: "Started. Researching now — the report usually lands within 10–20 minutes, and you'll get a notification." });
 });
 
 // ---- Replies: consolidated catch-up ------------------------------------------------

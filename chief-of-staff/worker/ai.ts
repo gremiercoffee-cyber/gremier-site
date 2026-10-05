@@ -48,6 +48,8 @@ export interface ModelProvider {
   complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }): Promise<string>;
   /** Research with live web search; returns the report text and how many searches it used. */
   research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }): Promise<{ text: string; searches: number; sources: string[] }>;
+  startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }): Promise<string>;
+  checkBackground(id: string, purpose: string): Promise<{ done: false } | { done: true; failed: string } | { done: true; text: string; searches: number; sources: string[]; failed?: undefined }>;
 }
 
 export class ProviderUnavailable extends Error {}
@@ -177,6 +179,40 @@ class OpenAIProvider implements ModelProvider {
       }
     }
     return { text: response.output_text.trim(), searches, sources: [...sources].slice(0, 15) };
+  }
+
+  /** Start a long job on OpenAI's side (background mode) and return its id right away. */
+  async startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }) {
+    const params = {
+      model: this.model(req.tier ?? "main"),
+      instructions: req.system,
+      input: req.prompt,
+      ...(req.maxSearches ? { tools: [{ type: "web_search" }], max_tool_calls: Math.max(1, req.maxSearches) } : {}),
+      max_output_tokens: req.maxTokens ?? 4000,
+      background: true,
+    } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming;
+    const r = await this.client.responses.create(params);
+    return r.id;
+  }
+
+  /** Check a background job: still working, failed, or done with its text, search count and sources. */
+  async checkBackground(id: string, purpose: string) {
+    const r = await this.client.responses.retrieve(id);
+    const status = (r as unknown as { status: string }).status;
+    if (status === "queued" || status === "in_progress") return { done: false as const };
+    if (status !== "completed") {
+      const err = (r as unknown as { error?: { message?: string }; incomplete_details?: { reason?: string } });
+      // "incomplete" (e.g. hit the length limit) still has usable text.
+      if (status !== "incomplete" || !r.output_text) return { done: true as const, failed: err.error?.message ?? err.incomplete_details?.reason ?? status };
+    }
+    const usage = r.usage;
+    await this.logUsage(r.model, purpose, usage ? { prompt_tokens: usage.input_tokens, completion_tokens: usage.output_tokens, total_tokens: usage.total_tokens, prompt_tokens_details: { cached_tokens: usage.input_tokens_details?.cached_tokens ?? 0 } } as OpenAI.CompletionUsage : undefined);
+    const sources = new Set<string>();
+    for (const o of r.output) {
+      if (o.type !== "message") continue;
+      for (const c of o.content) if (c.type === "output_text") for (const a of c.annotations ?? []) if (a.type === "url_citation") sources.add(a.url);
+    }
+    return { done: true as const, text: r.output_text.trim(), searches: r.output.filter((o) => o.type === "web_search_call").length, sources: [...sources].slice(0, 15) };
   }
 
   async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }) {
