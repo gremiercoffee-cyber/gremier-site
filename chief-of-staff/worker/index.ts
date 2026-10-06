@@ -10,6 +10,7 @@ import {
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
 import { tidyConversations } from "./tidy";
+import { detectMeeting } from "./meetings";
 import { getAreas, removeArea, saveArea } from "./areas";
 import { hubConfigured } from "./hub";
 import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
@@ -642,6 +643,7 @@ export default {
         await markBackfilled(env, bf[1], b.account === "business" ? "business" : "personal");
         return json({ ok: true });
       }
+      if (url.pathname === "/api/bridge/convo" && req.method === "POST") return json(await detectMeeting(env, await req.json()));
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));
       if (url.pathname === "/api/bridge/outbox" && req.method === "GET") return json(await takeOutbox(env));
       const m = url.pathname.match(/^\/api\/bridge\/outbox\/([\w-]+)$/);

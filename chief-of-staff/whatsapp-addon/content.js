@@ -61,6 +61,23 @@
     send({ type: "replied", payload: { chat: m.chat } });
   }
 
+  // ---- Meetings: "let's meet tonight" in a 1-on-1 chat → the Chief of Staff checks if it's agreed ----
+  const MEET_RE = /\b(meet|meeting|come (over|by)|stop by|swing by|see you|catch up|get together|hang out|tonight|tomorrow night|after work|this evening|let'?s do|works for me|sounds good|i'?ll be there|be there|what time|when are you free)\b|ניפגש|נפגש|להיפגש|נתראה|בוא |תבוא|תקפוץ|אקפוץ|הערב|מחר בערב|אחרי העבודה|מתאים לי|סגרנו|בסדר גמור/i;
+  const threads = new Map(); // chatId -> last messages
+  const lastMeetCheck = new Map();
+  function watchMeetings(m) {
+    if (m.isGroup || m.archived || !m.text) return;
+    const list = threads.get(m.chatId) || [];
+    list.push({ fromMe: !!m.fromMe, text: String(m.text).slice(0, 300), t: m.t || Math.floor(Date.now() / 1000) });
+    threads.set(m.chatId, list.slice(-10));
+    if (!MEET_RE.test(m.text)) return;
+    const prev = lastMeetCheck.get(m.chatId) || 0;
+    if (Date.now() - prev < 45_000) return; // a burst of messages → one check
+    lastMeetCheck.set(m.chatId, Date.now());
+    // Wait a moment so the other side's quick "ok" lands in the same check.
+    setTimeout(() => send({ type: "convo", payload: { chat: m.chat, msgs: threads.get(m.chatId) || [] } }), 20_000);
+  }
+
   // ---- Trackers: collect every message on a topic (downloaded from the Chief of Staff) ----
   let trackers = [];
   let backfillPending = [];
@@ -119,6 +136,7 @@
     } else if (e.data.kind === "message") {
       const m = e.data.message;
       track(m);
+      watchMeetings(m);
       m.fromMe ? onMine(m) : onIncoming(m);
     }
   });
