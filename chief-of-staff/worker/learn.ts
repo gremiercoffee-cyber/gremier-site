@@ -11,7 +11,9 @@ import { saveSituation } from "./situations";
 import { notify } from "./push";
 
 const KEY = "learn_since";
-const MIN_GAP_MS = 25 * 60_000;
+// A few times a day over a batch is plenty: each pass re-sends everything already known.
+const MIN_GAP_MS = 6 * 3600_000;
+const MIN_SNIPPETS = 8; // wait for enough new material (unless a day has passed)
 
 async function setting(env: Env, key: string) {
   return (await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = ?", key))?.value ?? null;
@@ -30,7 +32,6 @@ export async function learnPass(env: Env, force = false) {
   if (!force && last && Date.now() - Date.parse(last) < MIN_GAP_MS) return { skipped: "too soon" };
   const since = (await setting(env, KEY)) ?? new Date(Date.now() - 3 * 86400_000).toISOString();
   const started = now();
-  await put(env, "learn_last_run", started);
 
   const [said, dumps, wa, mail, cal] = await Promise.all([
     all<{ content: string }>(env, "SELECT content FROM messages WHERE role = 'user' AND created_at > ? ORDER BY created_at LIMIT 40", since),
@@ -48,6 +49,8 @@ export async function learnPass(env: Env, force = false) {
     ...mail.map((m) => `[email with ${m.counterpart}] ${cut(m.subject, 150)}`),
     ...cal.map((e) => `[calendar ${localTime(e.start_at, tz)}] ${cut(e.summary, 150)}${e.location ? ` @ ${e.location}` : ""}`),
   ];
+  if (!force && snippets.length < MIN_SNIPPETS && Date.now() - Date.parse(since) < 86400_000) return { skipped: "not enough new" };
+  await put(env, "learn_last_run", started);
   if (!snippets.length) { await put(env, KEY, started); return { learned: 0 }; }
 
   const [known, people] = await Promise.all([
