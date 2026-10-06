@@ -81,11 +81,14 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   if (!isShabbat(settings.timezone)) {
     const unanswered = await all<Item>(env,
       `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'task' AND source IN ('gmail', 'whatsapp')
-         AND reminded_at IS NULL AND COALESCE(nudge_after, strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+2 hours')) <= ? LIMIT 20`, t);
+         AND reminded_at IS NULL AND COALESCE(nudge_after, strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+4 hours')) <= ? LIMIT 20`, t);
     for (const item of unanswered) {
-      const hours = Math.max(2, Math.round((Date.now() - new Date(item.created_at).getTime()) / 3600_000));
-      await notify(env, "unanswered", `${item.person ?? "Someone"} is waiting for your reply`,
-        `${item.title} · ${hours}h on ${item.source === "gmail" ? "email" : "WhatsApp"}`, item.id);
+      const hours = Math.max(4, Math.round((Date.now() - new Date(item.created_at).getTime()) / 3600_000));
+      const said = item.source === "whatsapp"
+        ? (await first<{ text: string }>(env, "SELECT text FROM whatsapp_inbox WHERE item_id = ? ORDER BY received_at DESC LIMIT 1", item.id))?.text
+        : null;
+      await notify(env, "unanswered", `Reply to ${item.person ?? "them"}?`,
+        `${said ? `"${said.slice(0, 140)}"` : item.title} · ${hours}h on ${item.source === "gmail" ? "email" : "WhatsApp"}`, item.id);
       await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
       created++;
     }

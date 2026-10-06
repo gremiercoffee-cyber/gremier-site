@@ -4,6 +4,8 @@
  * service worker never needs the passcode.
  */
 import type { Item, Nudge, NudgeAction } from "../shared/types";
+import { draftReply } from "./replies";
+import { queueWhatsApp } from "./whatsapp";
 import type { Env } from "./env";
 import { first, getSettings, localParts, run, updateItem } from "./db";
 import { decideOutbox } from "./whatsapp";
@@ -28,9 +30,12 @@ export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   const base: NudgeAction[] = [done, { id: "reschedule", title: "Reschedule", opens: true }, { id: "ok", title: "Dismiss" }, { id: "ignore", title: "Ignore" }];
   switch (n.type) {
     case "unanswered":
+      // Android shows the first three on the notification: quick yes / no, or draft it yourself.
+      return [{ id: "reply_yes", title: "👍 Yes" }, { id: "reply_no", title: "👎 No" }, { id: "reply", title: "✍️ Draft…", opens: true },
+        done, { id: "reschedule", title: "Later", opens: true }, { id: "ok", title: "Dismiss" }, { id: "hold", title: "Holding reply" }];
     case "whatsapp":
     case "email":
-      return [...base, { id: "reply", title: "Reply…", opens: true }, ...(n.type === "unanswered" ? [{ id: "hold", title: "Holding reply" }] : [])];
+      return [...base, { id: "reply", title: "Reply…", opens: true }];
     case "waiting":
       return [...base, { id: "nudge", title: "Draft follow-up", opens: true }];
     default:
@@ -119,6 +124,25 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       break;
     case "hold":
       if (item) message = await holdingReply(env, item);
+      break;
+    case "reply_yes":
+    case "reply_no":
+      if (item) {
+        const guidance = action === "reply_yes"
+          ? "Answer positively / say yes. Keep it short and warm."
+          : "Decline or say no politely. Keep it short and kind.";
+        const { text } = await draftReply(env, item.id, guidance);
+        if (item.source === "whatsapp") {
+          const chat = (await first<{ chat: string }>(env, "SELECT chat FROM whatsapp_inbox WHERE item_id = ? ORDER BY received_at DESC LIMIT 1", item.id))?.chat ?? item.person ?? "";
+          await queueWhatsApp(env, chat, text); // "Send to X: …?" notification with Send / Edit
+          message = "Drafted. Tap Send on the next notification.";
+        } else {
+          await createDraft(env, { threadId: item.ext_ref ?? undefined, body: text, account: item.ext_account ?? undefined });
+          message = "Saved as a Gmail draft. Send it from Gmail.";
+        }
+        await updateItem(env, item.id, { status: "done" });
+        await dismiss();
+      }
       break;
     case "snooze3d":
       if (item) { await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", new Date(Date.now() - 86400_000).toISOString(), item.id); message = "I'll check again in 3 days."; }

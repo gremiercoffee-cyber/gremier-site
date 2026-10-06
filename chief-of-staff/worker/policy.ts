@@ -27,7 +27,8 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "email":
     case "whatsapp":
       return priority === 1 ? "now" : "later";
-    case "unanswered":  // gathered into "N replies to catch up on" (Replies) instead
+    case "unanswered":  // 4h+ without a reply: ask, with Yes / No / Draft buttons
+      return "now";
     default:            // waiting nudges, auto-done notes, sent confirmations, sweeps, mission progress
       return "later";
   }
