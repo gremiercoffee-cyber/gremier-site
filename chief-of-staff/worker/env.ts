@@ -29,5 +29,7 @@ export interface Env {
   HUB_URL?: string;
   /** Text-to-speech for the spoken briefing. */
   TTS_MODEL?: string;
+  /** Optional: Groq key for much faster dictation (Whisper on Groq). */
+  GROQ_API_KEY?: string;
   TTS_VOICE?: string;
 }

@@ -231,7 +231,7 @@ route("POST", "/api/realtime/log", async (req, env) => {
 // Batch dictation: audio in, transcript out, via OpenAI transcription. If it is unavailable
 // the client falls back to on-device speech recognition.
 route("POST", "/api/transcribe", async (req, env) => {
-  if (!env.OPENAI_API_KEY) throw new HttpError(501, "server transcription not configured");
+  if (!env.OPENAI_API_KEY && !env.GROQ_API_KEY) throw new HttpError(501, "server transcription not configured");
   const form = await req.formData();
   const audio = form.get("audio");
   if (!audio || typeof audio === "string") throw new HttpError(400, "audio file required");
@@ -239,19 +239,27 @@ route("POST", "/api/transcribe", async (req, env) => {
   const t0 = Date.now();
   const out = new FormData();
   out.append("file", audio, audio.name || "dictation.webm");
-  out.append("model", env.TRANSCRIBE_MODEL || "gpt-transcribe");
-  const r = await fetch(`${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, {
+  // Groq (Whisper, very fast) when its key is set; otherwise OpenAI.
+  const groq = !!env.GROQ_API_KEY;
+  out.append("model", groq ? "whisper-large-v3-turbo" : env.TRANSCRIBE_MODEL || "gpt-transcribe");
+  let r = await fetch(groq ? "https://api.groq.com/openai/v1/audio/transcriptions" : `${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, {
     method: "POST",
-    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    headers: { authorization: `Bearer ${groq ? env.GROQ_API_KEY : env.OPENAI_API_KEY}` },
     body: out,
   });
+  if (!r.ok && groq && env.OPENAI_API_KEY) {
+    const again = new FormData();
+    again.append("file", audio, audio.name || "dictation.webm");
+    again.append("model", env.TRANSCRIBE_MODEL || "gpt-transcribe");
+    r = await fetch(`${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, { method: "POST", headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` }, body: again });
+  }
   if (!r.ok) throw new HttpError(502, `transcription failed (${r.status})`);
   const data = (await r.json()) as { text: string };
   // How long transcription takes (for tuning; last 20 kept).
   try {
     const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'transcribe_ms'");
     const list = (row ? JSON.parse(row.value) : []) as { ms: number; kb: number }[];
-    list.unshift({ ms: Date.now() - t0, kb: Math.round(audio.size / 1024) });
+    list.unshift({ ms: Date.now() - t0, kb: Math.round(audio.size / 1024), via: groq ? "groq" : "openai" } as never);
     await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('transcribe_ms', ?)", JSON.stringify(list.slice(0, 20)));
   } catch { /* timing only */ }
   return json({ text: data.text });
