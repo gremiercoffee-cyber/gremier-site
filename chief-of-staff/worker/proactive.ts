@@ -54,6 +54,8 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
     `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind IN ('task','commitment') AND heads_up_at IS NULL
        AND due_at > ? AND due_at <= ? LIMIT 30`, new Date(Date.now() + 30 * 60_000).toISOString(), new Date(Date.now() + 24 * 3600_000).toISOString());
   for (const item of soon) {
+    // One heads-up per to-do: moving its due time doesn't earn a second one within a day.
+    if (await first(env, "SELECT 1 FROM nudges WHERE item_id = ? AND type = 'headsup' AND created_at > ?", item.id, new Date(Date.now() - 24 * 3600_000).toISOString())) continue;
     const hoursLeft = (new Date(item.due_at!).getTime() - Date.now()) / 3600_000;
     if (item.priority !== 1 && hoursLeft < 3) continue; // ordinary items: one heads-up, a day ahead, is enough
     const when = new Date(item.due_at!).toLocaleString("en-GB", { timeZone: settings.timezone, weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -169,7 +171,7 @@ async function createBriefing(env: Env, date: string, tz: string) {
     .join("\n") || "(nothing open)";
   // Things that waited quietly for this briefing instead of buzzing.
   const quiet = await all<{ title: string; body: string }>(env,
-    "SELECT title, body FROM nudges WHERE dismissed = 0 AND type NOT IN ('briefing','digest') AND created_at > ? ORDER BY created_at DESC LIMIT 12",
+    "SELECT title, body FROM nudges WHERE dismissed = 0 AND type NOT IN ('briefing','digest','sweep','auto_done','wa_sent','learn','mission_progress','mission_done','tracker','routine','idea','customers','review','wrapup') AND created_at > ? ORDER BY created_at DESC LIMIT 12",
     new Date(Date.now() - 24 * 3600_000).toISOString());
   const sunday = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short" }).format(new Date()) === "Sun";
   const sweep = sunday ? await cracks(env) : [];
@@ -185,7 +187,8 @@ async function createBriefing(env: Env, date: string, tz: string) {
 Today: meetings (if a calendar is given) and the 3 most important things, with why.
 Heads-up: deadlines in the next day or two, and anything overdue.
 Decisions for you: up to 3 things only the user can decide (undated promises, things postponed repeatedly, approvals, unanswered requests), each with 2-3 concrete options.
-${sweep.length ? "Weekly check — may have slipped: pick the ones that matter from the list and suggest an action for each.\n" : ""}Missions: one line of progress per active mission.
+${sweep.length ? "Weekly check — may have slipped: pick the ones that matter from the list and suggest an action for each.\n" : ""}Missions: only if an active mission needs the user's input; otherwise leave this section out.
+Only include what still needs the user. NEVER mention things already done, handled, replied to or cleared.
 Use short lines, no markdown symbols except "•".`,
       prompt: `Today is ${date}. UTC now ${now()}.
 Open items:
