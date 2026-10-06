@@ -208,13 +208,13 @@ route("DELETE", "/api/conversations/:id", async (_req, env, [id]) => {
   ]);
   return json({ ok: true });
 });
-route("POST", "/api/chat", async (req, env) => {
+route("POST", "/api/chat", async (req, env, _p, ctx) => {
   const b = await body<{ text?: string; mode?: string; conversation_id?: string | null }>(req);
   const text = (b.text ?? "").trim();
   if (!text) throw new HttpError(400, "text is required");
   if (text.length > 20000) throw new HttpError(413, "message too long");
   const mode = b.mode === "voice" || b.mode === "dictation" ? b.mode : "text";
-  return json(await chat(env, text, mode, b.conversation_id));
+  return json(await chat(env, text, mode, b.conversation_id, { defer: (p) => ctx.waitUntil(p) }));
 });
 
 // Live voice (OpenAI Realtime over WebRTC).
@@ -236,6 +236,7 @@ route("POST", "/api/transcribe", async (req, env) => {
   const audio = form.get("audio");
   if (!audio || typeof audio === "string") throw new HttpError(400, "audio file required");
   if (audio.size > 24 * 1024 * 1024) throw new HttpError(413, "audio too large");
+  const t0 = Date.now();
   const out = new FormData();
   out.append("file", audio, audio.name || "dictation.webm");
   out.append("model", env.TRANSCRIBE_MODEL || "gpt-transcribe");
@@ -246,6 +247,13 @@ route("POST", "/api/transcribe", async (req, env) => {
   });
   if (!r.ok) throw new HttpError(502, `transcription failed (${r.status})`);
   const data = (await r.json()) as { text: string };
+  // How long transcription takes (for tuning; last 20 kept).
+  try {
+    const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'transcribe_ms'");
+    const list = (row ? JSON.parse(row.value) : []) as { ms: number; kb: number }[];
+    list.unshift({ ms: Date.now() - t0, kb: Math.round(audio.size / 1024) });
+    await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('transcribe_ms', ?)", JSON.stringify(list.slice(0, 20)));
+  } catch { /* timing only */ }
   return json({ text: data.text });
 });
 

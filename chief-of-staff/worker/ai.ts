@@ -35,6 +35,8 @@ export interface AgentRequest {
   maxToolRounds?: number;
   /** Requests sharing a key and an identical start reuse OpenAI's prompt cache (kept up to 24h). */
   cacheKey?: string;
+  /** Tools that only save/change things: if the model already wrote its reply alongside them, skip the extra round trip. */
+  noFollowUp?: string[];
 }
 
 export interface AgentResult {
@@ -163,6 +165,9 @@ class OpenAIProvider implements ModelProvider {
         }
         messages.push({ role: "tool", tool_call_id: call.id, content });
       }
+      // Speed: the reply is already written and the tools just saved things → done, no second call.
+      const last = result.toolCalls.slice(-calls.length);
+      if (msg.content?.trim() && req.noFollowUp && calls.every((c) => req.noFollowUp!.includes(c.function.name)) && last.every((t) => !t.error)) return result;
     }
     if (!result.text) result.text = "Done.";
     return result;

@@ -93,6 +93,7 @@ Ideas and thinking out loud: all talking happens here, so recognize when the use
 A brain dump with several things: file tasks/reminders/commitments as usual, and capture each idea separately.
 
 Rules:
+- SPEED: when your tool calls only save or change things (add a to-do, set a reminder, remember something, update the schedule…), write your short reply to the user in the SAME message as the tool calls, assuming they succeed. Make all the calls you need at once rather than one per turn.
 - GET IT DONE. When the user asks for something, do the whole thing end to end with your tools, not advice about it: look it up (research_now / idea_step), file it, schedule it, draft it, start the task or tracker, chain several steps in one go. If a tool you need isn't loaded, call load_tools. Only stop to ask when you genuinely can't continue without the user (a choice only they can make, or something outside the world). Then report briefly what you DID and what happens next ("I'm researching it now; you'll get the results in ~15 min"), never what they could do themselves. Never say you can't do something your tools can do.
 - Be thorough: for research or lists, go for complete and useful (many options, concrete details, contacts), not a thin sample.
 - When the user tells you something actionable, file it with the tools; do not just acknowledge it. Check for duplicates with search_items first when unsure.
@@ -973,7 +974,7 @@ Topic label:`,
   return title;
 }
 
-export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null) {
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void } = {}) {
   const provider = getProvider(env); // fail before storing anything if no model is configured
   const existing = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
   const stale = existing && Date.now() - new Date(existing.last_message_at).getTime() > CONVERSATION_IDLE_MS;
@@ -1018,6 +1019,9 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
     purpose: `chat:${mode}`,
     system: SYSTEM_PROMPT,
     cacheKey: "cos-chat",
+    noFollowUp: ["create_item", "update_item", "remember", "update_memory", "save_person", "save_time_block", "save_task", "save_tracker",
+      "save_group", "update_idea", "create_project", "update_project", "save_area", "research_now", "start_mission", "update_mission",
+      "draft_group_message", "propose_action", "send_whatsapp", "draft_email"],
     context: await buildContext(env, mode, routeQuery),
     history,
     tools,
@@ -1031,7 +1035,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
     reply.id, reply.role, reply.content, reply.mode, reply.meta, reply.created_at, convo.id);
   convo.last_message_at = reply.created_at;
   await run(env, "UPDATE conversations SET last_message_at = ? WHERE id = ?", reply.created_at, convo.id);
-  if (!convo.title) await titleConversation(env, convo, text);
+  if (!convo.title) (opts.defer ?? ((p: Promise<unknown>) => p))(titleConversation(env, convo, text).catch(() => {})); // naming happens after you have your reply
   return { user: userMsg, reply, actions: notes, conversation: convo };
 }
 
