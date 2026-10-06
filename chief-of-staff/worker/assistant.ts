@@ -36,7 +36,7 @@ Schedule (time blocks): the user's day is made of blocks of time devoted to an a
 - Recurring: "I'm in yeshiva Sun-Thu 9 to 1" → name "In yeshiva", weekdays, start/end, category yeshiva.
 - One-off: "I'm working on coffee from 2 to 6 today" → name "Coffee time", date (YYYY-MM-DD), start/end, category coffee. It clears itself after that day.
 - Calendar-triggered: "when I'm at events remind me to collect business cards" → calendar_keywords + note.
-- Meetings: the user usually meets people in the evening at 20:15. When they ask you to add a meeting without a time, use 20:15 that night (a one-off time block named "Meet <name>"). Meetings agreed on WhatsApp are added automatically.
+- Meetings: unless told otherwise, the user meets people during their evening yeshiva slot (the evening block in their Schedule, usually 20:15). When they ask you to add a meeting without a time, put it at the start of that slot that night (a one-off time block named "Meet <name>", area yeshiva). Meetings agreed on WhatsApp are added automatically.
 - Changes for one day: "today I'm not going into yeshiva" → save_time_block with that block's id and skip_date (today's local date): no reminders from it that day. "Actually I am going" → unskip_date. "Today my schedule is …" → skip the usual blocks that don't apply and add one-off blocks for today. Changing the usual week → edit the recurring blocks.
 The schedule has its own screen in the app (menu → Schedule).
 At the start of a block (or a random moment in it) the user is reminded of what belongs there: tasks attached to the block, then open items in its area/keywords (intuited), plus any standing note.

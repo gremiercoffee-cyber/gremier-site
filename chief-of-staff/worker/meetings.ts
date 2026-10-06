@@ -7,7 +7,7 @@
  */
 import type { Env } from "./env";
 import { getProvider } from "./ai";
-import { first, getSettings, localParts, now, run } from "./db";
+import { all, first, getSettings, localParts, now, run } from "./db";
 import { saveSituation } from "./situations";
 import { notify } from "./push";
 
@@ -31,7 +31,7 @@ export async function detectMeeting(env: Env, m: { chat?: string; account?: stri
     const out = await getProvider(env).complete({
       tier: "fast", purpose: "meeting_detect", maxTokens: 200,
       system: `You read a WhatsApp chat between the user ("Me") and ${chat}. Decide if they have AGREED to meet in person (both sides said yes, or the user confirmed a time/day they proposed). A suggestion nobody confirmed is NOT agreed. Today is ${weekday} ${local.date} (${tz}).
-Date: the night they agreed on. "tonight", "later", "after work", "this evening", or agreeing to meet without naming a day = today (${local.date}); "tomorrow" = the next day; a weekday name = its next occurrence. Time: only if a time was explicitly agreed, else null (the user's default is 20:15).
+Date: the night they agreed on. "tonight", "later", "after work", "this evening", or agreeing to meet without naming a day = today (${local.date}); "tomorrow" = the next day; a weekday name = its next occurrence. Time: only if a time was explicitly agreed, else null (the user's default is their evening yeshiva slot).
 Reply ONLY JSON: {"agreed": true|false, "date": "YYYY-MM-DD"|null, "time": "HH:MM"|null, "what": "2-5 words, e.g. 'Meet Ephy' or 'Coffee with Avi'", "place": "place or null"}`,
       prompt: msgs.map((x) => `${fmt(x.t)} ${x.fromMe ? "Me" : chat}: ${String(x.text).slice(0, 300)}`).join("\n"),
     });
@@ -40,7 +40,13 @@ Reply ONLY JSON: {"agreed": true|false, "date": "YYYY-MM-DD"|null, "time": "HH:M
   if (!v.agreed || !/^\d{4}-\d{2}-\d{2}$/.test(String(v.date ?? "")) || String(v.date) < local.date) return { ok: true, agreed: false };
 
   const date = String(v.date);
-  const start = /^\d{1,2}:\d{2}$/.test(String(v.time ?? "")) ? String(v.time).padStart(5, "0") : DEFAULT_TIME;
+  // Default: during the user's evening yeshiva slot that night (the evening block in their Schedule).
+  const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const evening = (await all<{ name: string; weekdays: string | null; start_time: string; end_time: string | null; category: string | null }>(env,
+    "SELECT name, weekdays, start_time, end_time, category FROM situations WHERE active = 1 AND date IS NULL AND start_time >= '17:00' ORDER BY (category = 'yeshiva') DESC, (lower(name) LIKE '%evening%' OR lower(name) LIKE '%night%') DESC, start_time"))
+    .find((b) => { try { return (JSON.parse(b.weekdays ?? "[]") as number[]).includes(dow); } catch { return false; } });
+  const explicit = /^\d{1,2}:\d{2}$/.test(String(v.time ?? ""));
+  const start = explicit ? String(v.time).padStart(5, "0") : evening?.start_time ?? DEFAULT_TIME;
   const name = String(v.what || `Meet ${chat}`).slice(0, 60);
   // One upcoming meeting per person: same date → nothing to do; different date → move it.
   const existing = await first<{ id: string; date: string; start_time: string }>(env,
@@ -49,7 +55,8 @@ Reply ONLY JSON: {"agreed": true|false, "date": "YYYY-MM-DD"|null, "time": "HH:M
   const s = await saveSituation(env, {
     ...(existing ? { id: existing.id } : {}),
     name, date, start_time: start, end_time: addMinutes(start, 60), keywords: `wa-meet:${chat}`,
-    note: v.place ? `📍 ${v.place}` : "", mode: "start",
+    category: explicit ? undefined : evening?.category ?? "yeshiva",
+    note: [v.place ? `📍 ${v.place}` : "", !explicit && evening ? `During ${evening.name}` : ""].filter(Boolean).join(" · "), mode: "start",
   });
   const when = date === local.date ? "tonight" : new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
   await notify(env, "meeting", `📅 ${existing ? "Moved" : "Added"}: ${name} · ${when} ${start}`,
