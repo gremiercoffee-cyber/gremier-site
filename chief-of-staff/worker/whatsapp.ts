@@ -101,6 +101,13 @@ export async function handleReplied(env: Env, m: { chat?: string; account?: stri
   const open = await all<Item>(env,
     `SELECT i.* FROM items i JOIN whatsapp_inbox w ON w.item_id = i.id
      WHERE w.chat = ? AND w.account = ? AND i.status = 'open' AND i.kind IN ('task', 'commitment')`, chat, m.account === "business" ? "business" : "personal");
+  // Keep a short log of reply signals, to check "why didn't it notice I replied?".
+  try {
+    const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'replied_log'");
+    const log = (row ? JSON.parse(row.value) : []) as unknown[];
+    log.unshift({ at: now(), chat, account: m.account ?? "personal", closed: open.length });
+    await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('replied_log', ?)", JSON.stringify(log.slice(0, 40)));
+  } catch { /* log only */ }
   for (const item of open) {
     await run(env, "UPDATE items SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?", now(), now(), item.id);
     await notify(env, "auto_done", `Done: ${item.title}`, `You replied to ${chat} on WhatsApp. Tap Undo if it isn't finished.`, item.id);
