@@ -184,7 +184,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   ].filter((u) => !shown.has(u.id)).sort((x, y) => x.sort.localeCompare(y.sort)).slice(0, 12);
 
   return (
-    <div className="pt-4 space-y-5">
+    <div className="pt-4 space-y-5 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8 lg:items-start">
+      <div className="space-y-5 lg:sticky lg:top-4">
       <div className="flex flex-col items-center text-center gap-3">
         {live === "off" && <div className="scale-[0.8] -my-3"><Orb state={live} /></div>}
         <div>
@@ -230,6 +231,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         </div>
       )}
 
+      </div>
+      <div className="space-y-5">
       {(briefing || nudges.length > 0) && (
         <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
           {briefing && (
@@ -266,6 +269,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
       )}
 
       <TodoSection dash={dash} shown={shown} inArea={inArea} onChanged={onChanged} />
+      </div>
     </div>
   );
 }

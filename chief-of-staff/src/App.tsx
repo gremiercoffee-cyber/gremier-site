@@ -123,11 +123,52 @@ export default function App() {
   const goHome = () => openConversation(null);
   const openItem = (item: Item) => setSheet({ item });
   const current = conversations.find((c) => c.id === conversationId);
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  const navInner = (
+    <>
+            <button onClick={goHome} className="flex items-center gap-2.5 px-4 h-14 shrink-0 text-left"><Logo /><span className="font-medium">Chief of Staff</span><span className="ml-auto text-xs text-muted">Home</span></button>
+            <form className="px-3 pb-2" onSubmit={(e) => { e.preventDefault(); go("search"); }}>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} onFocus={() => { if (query) go("search"); }}
+                placeholder="🔍  Search everything" enterKeyHint="search"
+                className="w-full rounded-full bg-sunken px-4 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-accent/30" />
+            </form>
+            <div className="px-2 space-y-0.5">
+              <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
+              <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
+              <DrawerItem active={view === "schedule"} onClick={() => go("schedule")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>} label="Schedule" />
+              <DrawerItem active={view === "replies" || view === "people" || view === "groups"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies & people" />
+              <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
+              <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
+              <DrawerItem active={view === "library" || view === "dump"} onClick={() => go("library")} icon={<path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 7h6" />} label="Library" />
+            </div>
+            <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
+              onOpen={(id) => openConversation(id)}
+              onChanged={() => api.conversations().then((list) => {
+                setConversations(list);
+                if (conversationId && !list.some((c) => c.id === conversationId)) setConversationId(null);
+              }).catch(() => {})} />
+            <div className="px-2 pt-2 border-t border-line">
+              <DrawerItem active={view === "settings"} onClick={() => go("settings")}
+                icon={<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>} label="Settings" />
+            </div>
+    </>
+  );
 
   return (
-    <div className="h-full flex flex-col max-w-2xl mx-auto">
+    <div className="h-full flex">
+      {wide && (
+        <aside className="w-72 shrink-0 h-full bg-surface border-r border-line flex flex-col pt-safe pb-safe">{navInner}</aside>
+      )}
+    <div className={`h-full flex flex-col flex-1 min-w-0 mx-auto ${wide ? (view === "home" ? "max-w-6xl" : "max-w-4xl") : "max-w-2xl"}`}>
       <header className="pt-safe px-2 flex items-center gap-1 h-14 shrink-0">
-        <button onClick={() => setDrawer(true)} aria-label="Menu" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
+        <button onClick={() => setDrawer(true)} aria-label="Menu" className={`p-2.5 rounded-xl text-ink hover:bg-sunken ${wide ? "invisible" : ""}`}>
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
         </button>
         {view !== "home" || conversationId ? (
@@ -191,34 +232,10 @@ export default function App() {
         )}
       </main>
 
-      {drawer && (
+      {drawer && !wide && (
         <div className="fixed inset-0 z-40 flex">
           <nav className="w-[82%] max-w-80 h-full bg-surface border-r border-line shadow-card flex flex-col pt-safe pb-safe drawer-in">
-            <button onClick={goHome} className="flex items-center gap-2.5 px-4 h-14 shrink-0 text-left"><Logo /><span className="font-medium">Chief of Staff</span><span className="ml-auto text-xs text-muted">Home</span></button>
-            <form className="px-3 pb-2" onSubmit={(e) => { e.preventDefault(); go("search"); }}>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} onFocus={() => { if (query) go("search"); }}
-                placeholder="🔍  Search everything" enterKeyHint="search"
-                className="w-full rounded-full bg-sunken px-4 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-accent/30" />
-            </form>
-            <div className="px-2 space-y-0.5">
-              <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
-              <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
-              <DrawerItem active={view === "schedule"} onClick={() => go("schedule")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>} label="Schedule" />
-              <DrawerItem active={view === "replies" || view === "people" || view === "groups"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies & people" />
-              <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
-              <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
-              <DrawerItem active={view === "library" || view === "dump"} onClick={() => go("library")} icon={<path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 7h6" />} label="Library" />
-            </div>
-            <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
-              onOpen={(id) => openConversation(id)}
-              onChanged={() => api.conversations().then((list) => {
-                setConversations(list);
-                if (conversationId && !list.some((c) => c.id === conversationId)) setConversationId(null);
-              }).catch(() => {})} />
-            <div className="px-2 pt-2 border-t border-line">
-              <DrawerItem active={view === "settings"} onClick={() => go("settings")}
-                icon={<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>} label="Settings" />
-            </div>
+            {navInner}
           </nav>
           <button aria-label="Close menu" className="flex-1 bg-black/40" onClick={() => setDrawer(false)} />
         </div>
@@ -242,6 +259,7 @@ export default function App() {
         <ItemSheet item={sheet.item} defaultKind={sheet.kind} onClose={() => setSheet(null)}
           onSaved={() => { setSheet(null); refresh(); }} />
       )}
+    </div>
     </div>
   );
 }
