@@ -33,6 +33,8 @@ export interface AgentRequest {
   history: Turn[];
   tools: ToolDef[];
   maxToolRounds?: number;
+  /** Requests sharing a key and an identical start reuse OpenAI's prompt cache (kept up to 24h). */
+  cacheKey?: string;
 }
 
 export interface AgentResult {
@@ -62,6 +64,8 @@ export function getProvider(env: Env): ModelProvider {
 type Effort = OpenAI.Chat.ChatCompletionCreateParams["reasoning_effort"];
 
 class OpenAIProvider implements ModelProvider {
+  /** Set once if the API rejects the 24h prompt cache option, so we stop sending it. */
+  static noLongCache = false;
   readonly name = "openai";
   private client: OpenAI;
 
@@ -108,14 +112,23 @@ class OpenAIProvider implements ModelProvider {
 
     for (let round = 0; round <= maxRounds; round++) {
       tools = toolSpecs(); // load_tools may have added some
-      const response = await this.client.chat.completions.create({
+      const base = {
         model,
         messages,
         tools,
         // gpt-6-luna on chat/completions only accepts tools with reasoning_effort "none".
         reasoning_effort: (tools.length ? "none" : this.effort(req.tier)) as Effort,
         max_completion_tokens: 8192,
-      });
+      };
+      const cacheOpts = req.cacheKey && !OpenAIProvider.noLongCache ? { prompt_cache_key: req.cacheKey, prompt_cache_retention: "24h" } : {};
+      let response: OpenAI.Chat.ChatCompletion;
+      try {
+        response = await this.client.chat.completions.create({ ...base, ...cacheOpts } as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+      } catch (e) {
+        if (!Object.keys(cacheOpts).length || !/prompt_cache/i.test(String((e as Error).message))) throw e;
+        OpenAIProvider.noLongCache = true; // this model doesn't take the long cache: plain caching still applies
+        response = await this.client.chat.completions.create(base as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+      }
       await this.logUsage(model, req.purpose, response.usage);
 
       const msg = response.choices[0]?.message;

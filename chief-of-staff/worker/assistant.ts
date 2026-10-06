@@ -992,8 +992,9 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const notes: ActionNote[] = [];
   let switched = false;
   const routeQuery = history.filter((h) => h.role === "user").slice(-3).map((h) => h.content).join("\n") || text;
-  const features = await featuresFor(env, routeQuery);
-  const tools = toolsFor(assistantTools(env, mode === "text" ? "chat" : "voice", notes), features, new Set());
+  // Caching beats trimming: the same tools and instructions every time make the start of each request
+  // identical, which OpenAI bills at ~10%. (The saved-info picker still trims the context per message.)
+  const tools = assistantTools(env, mode === "text" ? "chat" : "voice", notes);
   if (history.length > 1) {
     tools.push({
       name: "new_topic",
@@ -1015,7 +1016,8 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
-    system: promptFor(features),
+    system: SYSTEM_PROMPT,
+    cacheKey: "cos-chat",
     context: await buildContext(env, mode, routeQuery),
     history,
     tools,
