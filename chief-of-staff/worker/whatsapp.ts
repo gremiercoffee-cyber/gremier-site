@@ -7,6 +7,7 @@
  * Out: the assistant queues a message; it waits for the user's Send tap; the bridge then has
  *      Claude Code send it through WhatsApp Web and reports back. Nothing sends without that tap.
  */
+import { checkWatches } from "./watches";
 import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { areaKeysJson } from "./areas";
@@ -57,6 +58,9 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   const id = uid();
   await run(env, "INSERT INTO whatsapp_inbox (id, hash, chat, sender, text, received_at, account) VALUES (?, ?, ?, ?, ?, ?, ?)",
     id, hash, chat, sender, text, m.at || now(), account);
+  // The user's own watch rules ("anyone who wants to come back to yeshiva") see every new message, groups included.
+  if (!(m.sent_at && Date.now() - Date.parse(m.sent_at) > 2 * 3600_000))
+    await checkWatches(env, { inbox_id: id, chat, sender, text }).catch((e) => console.error("watches", e));
 
   // A group chat (the sender isn't the chat itself) is rarely for the user; without the AI check, don't file it.
   const isGroup = chat !== sender;

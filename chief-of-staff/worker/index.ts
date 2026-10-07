@@ -9,6 +9,7 @@ import {
 } from "./db";
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
+import { scanNewWatches } from "./watches";
 import { tidyConversations } from "./tidy";
 import { detectMeeting } from "./meetings";
 import { getAreas, removeArea, saveArea } from "./areas";
@@ -681,6 +682,7 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+      .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
       .then(() => learnPass(env)).catch((e) => console.error("learn", e)).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;

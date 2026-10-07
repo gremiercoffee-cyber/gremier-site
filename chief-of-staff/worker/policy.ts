@@ -19,6 +19,7 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "routine_alert": // a task the user asked to be alerted about
     case "situation":   // you're in yeshiva / at an event now: this is the moment
     case "wrapup":      // a block just ended: quick "did you get to these?"
+    case "watch":       // a WhatsApp watch rule matched
     case "meeting":     // a meeting you just arranged on WhatsApp
     case "review":      // the weekly review
       return "now";
