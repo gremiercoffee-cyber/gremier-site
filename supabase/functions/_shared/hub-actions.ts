@@ -1,7 +1,7 @@
 // Shared by hub-api (plain JSON) and hub-mcp (Claude / MCP). See docs/HUB_API.md.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  adjustStock, completeDelivery, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
+  adjustStock, BOTTLES, completeDelivery, logBottling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
   readSchedule, readStock, readStores, readSummary, startBrew,
 } from "./hub-ops.ts";
 import { cleanText } from "./security.ts";
@@ -18,6 +18,7 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   stock: { properties: {} },
   stores: { properties: {} },
   activity: { properties: { since: str("ISO timestamp"), limit: num("Max 200") } },
+  log_bottling: { properties: { product: { type: "string", enum: ["classic_liter", "sweetened_classic", "house_blend", "colombia_liter", "decaf_liter", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini", "house_blend_mini", "jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"] }, units: { type: "integer", description: "Bottles / minis / jerry cans made" } }, required: ["product", "units"] },
   start_brew: { properties: { product: { type: "string", enum: ["classic", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
   complete_drain: { properties: { job_id: str("Drain job id (from schedule)"), product: str("Or: complete the earliest pending drain of this coffee") } },
   log_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles, e.g. {\"classic_liter\": 6, \"vanilla_mini\": 4}" }, date: str("YYYY-MM-DD, default today") }, required: ["store", "quantities"] },
@@ -52,6 +53,7 @@ export const ACTIONS: Record<string, Handler> = {
   widget_config: { scope: "read", describe: "Buttons for the Android widget (server-driven, with live counts).", run: ({ sb }) => widgetConfig(sb) },
   stock_view: { scope: "read", describe: "Stock as a short readable list (for the widget's Stock pop-up).", run: ({ sb }) => stockView(sb) },
   voice_parse: { scope: "read", describe: "Turn a spoken sentence into a proposed action (nothing is changed). Args: text.", run: ({ sb }, a) => voiceParse(sb, String(a.text || "")) },
+  log_bottling: { scope: "write", describe: "Log bottling just done. Args: product (bottled product key), units (how many bottles/minis/jerry cans). Adds stock, uses concentrate.", run: ({ sb }, a) => logBottling(sb, a as any) },
   log_note: {
     scope: "write", describe: "Add a note to the activity timeline. Args: text.",
     run: async ({ sb, app }, a) => {
@@ -122,17 +124,32 @@ async function widgetConfig(sb: Sb) {
   const drain = (drains.data || [])[0] as any;
   const next = s.next_delivery as any;
   const nextWho = next ? (next.store_name || next.cb_name || next.private_name || next.label || "delivery") : "";
-  const quickBrew = (product: string, label: string) => ({
-    id: `brew_${product}`, icon: "☕", label, sub: "3 kg", kind: "run", action: "start_brew", args: { product, kg: 3 },
-    done_message: `${label} brew started (3 kg)`,
-  });
+  // Bottling buttons: pick the product (with how many are in stock now), then how many were made.
+  const { data: inv } = await sb.from("inventory").select("product, qty");
+  const stockOf = Object.fromEntries((inv || []).map((r: any) => [r.product, Number(r.qty) || 0]));
+  const bottling = (cat: "liter" | "mini" | "jerry", icon: string, label: string, unitWord: string) => {
+    const opts = Object.entries(BOTTLES).filter(([, m]) => m.category === cat);
+    return {
+      id: `bottle_${cat}`, icon, label, kind: "form", action: "log_bottling", title: label, submit: "Log bottling",
+      fields: [
+        { key: "product", type: "choice", label: "What did you bottle?", options: opts.map(([k, m]) => ({ value: k, label: `${m.label} · ${stockOf[k] ?? 0} in stock` })), default: opts[0][0] },
+        { key: "units", type: "number", label: `How many ${unitWord}?` },
+      ],
+    };
+  };
   const buttons = [
     // ── page 1 ──
-    quickBrew("classic", "Brew Classic"),
-    drain
-      ? { id: "drain", icon: "💧", label: "Drain", sub: `${drain.product} ${drain.time || ""}`.trim(), kind: "confirm", action: "complete_drain", args: { job_id: drain.id },
-          confirm: `Mark the ${drain.product} drain (${drain.kg} kg, due ${drain.date} ${drain.time || ""}) done? This adds the concentrate.` }
-      : { id: "drain", icon: "💧", label: "Drain", sub: "none due", kind: "info", title: "Drain", message: "No drain is due right now." },
+    { id: "brew_classic", icon: "☕", label: "Brew Classic", sub: "3 kg", kind: "confirm", action: "start_brew", args: { product: "classic", kg: 3 },
+      title: "Brew Classic", confirm: "Start a Classic brew with 3 kg of beans? The drain will be scheduled automatically.", submit: "Start brew" },
+    bottling("liter", "🍾", "Bottled liters", "liter bottles"),
+    bottling("mini", "🧃", "Bottled minis", "minis"),
+    bottling("jerry", "🛢️", "Bottled jerry cans", "jerry cans"),
+    // ── page 2 ──
+    { id: "brew", icon: "☕", label: "Start brew", sub: "choose", kind: "form", action: "start_brew", title: "Start a brew", submit: "Start brew",
+      fields: [
+        { key: "product", type: "choice", label: "Coffee", options: COFFEES.map(([v, l]) => ({ value: v, label: l })), default: "classic" },
+        { key: "kg", type: "choice", label: "Beans", options: [1, 1.5, 2, 3].map((k) => ({ value: k, label: `${k} kg` })), default: 3 },
+      ] },
     { id: "store", icon: "🏪", label: "Store drop", kind: "form", action: "log_store_delivery", title: "Log a store delivery", submit: "Log delivery",
       fields: [
         { key: "store", type: "choice", label: "Store", options: (stores as any[]).map((st) => ({ value: st.name, label: st.name })) },
@@ -142,17 +159,9 @@ async function widgetConfig(sb: Sb) {
       ? { id: "delivered", icon: "🚚", label: "Delivered", sub: nextWho, kind: "confirm", action: "complete_delivery", args: { job_id: next.id },
           confirm: `Mark ${nextWho} delivered (${next.date}${next.time ? " " + next.time : ""})? Stock is updated with the planned amounts.` }
       : { id: "delivered", icon: "🚚", label: "Delivered", sub: "none today", kind: "info", title: "Deliveries", message: "No deliveries scheduled for today." },
-    // ── page 2 ──
-    quickBrew("houseBlend", "Brew House Blend"),
-    quickBrew("colombia", "Brew Colombia"),
     { id: "stock", icon: "📦", label: "Stock", kind: "view", action: "stock_view", title: "Stock" },
-    { id: "voice", icon: "🎙️", label: "Voice log", kind: "voice", action: "voice_parse", title: "Voice log" },
     // ── page 3 ──
-    { id: "brew", icon: "☕", label: "Start brew", sub: "choose", kind: "form", action: "start_brew", title: "Start a brew", submit: "Start brew",
-      fields: [
-        { key: "product", type: "choice", label: "Coffee", options: COFFEES.map(([v, l]) => ({ value: v, label: l })), default: "classic" },
-        { key: "kg", type: "choice", label: "Beans", options: [1, 1.5, 2, 3].map((k) => ({ value: k, label: `${k} kg` })), default: 3 },
-      ] },
+    { id: "voice", icon: "🎙️", label: "Voice log", kind: "voice", action: "voice_parse", title: "Voice log" },
   ];
   return { per_page: 4, buttons, refreshed_at: new Date().toISOString() };
 }
@@ -173,7 +182,7 @@ async function stockView(sb: Sb) {
 }
 
 // ── Voice: sentence → one proposed action (the app confirms, then runs it) ──
-const VOICE_ACTIONS = ["start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"];
+const VOICE_ACTIONS = ["log_bottling", "start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"];
 async function voiceParse(sb: Sb, text: string) {
   text = text.trim().slice(0, 500);
   if (!text) throw new HubError("no_text", "Didn't catch that");
@@ -211,6 +220,7 @@ function describeProposal(action: string, a: Record<string, any>): string {
   const names = Object.fromEntries(DELIVERY_PRODUCTS);
   const qty = (q: Record<string, number> | undefined) => Object.entries(q || {}).map(([k, v]) => `${v} × ${names[k] || k}`).join(", ");
   switch (action) {
+    case "log_bottling": return `Bottled ${a.units} × ${(BOTTLES as any)[a.product]?.label || a.product}`;
     case "start_brew": return `Start a ${coffee[a.product] || a.product} brew (${a.kg ?? 3} kg)`;
     case "complete_drain": return `Mark the ${a.product ? (coffee[a.product] || a.product) + " " : "next "}drain done`;
     case "log_store_delivery": return `Store delivery to ${a.store}: ${qty(a.quantities)}`;

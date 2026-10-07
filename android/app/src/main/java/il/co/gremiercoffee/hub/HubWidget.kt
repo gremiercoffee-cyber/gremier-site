@@ -25,12 +25,15 @@ class HubWidget : AppWidgetProvider() {
     companion object {
         private const val ACT_PAGE = "il.co.gremiercoffee.hub.PAGE"
         private const val ACT_RUN = "il.co.gremiercoffee.hub.RUN"
-        private val SLOTS = listOf(
-            arrayOf(R.id.b0, R.id.b0_icon, R.id.b0_label, R.id.b0_sub),
-            arrayOf(R.id.b1, R.id.b1_icon, R.id.b1_label, R.id.b1_sub),
-            arrayOf(R.id.b2, R.id.b2_icon, R.id.b2_label, R.id.b2_sub),
-            arrayOf(R.id.b3, R.id.b3_icon, R.id.b3_label, R.id.b3_sub),
-        )
+        private const val ROWS = 3
+        private const val COLS = 5
+        private val ROW_IDS = intArrayOf(R.id.r0, R.id.r1, R.id.r2)
+        /** [container, icon, label, sub] view ids for slot i (row-major, 3×5). */
+        private fun slot(c: Context, i: Int): IntArray {
+            val r = c.resources
+            fun id(n: String) = r.getIdentifier(n, "id", c.packageName)
+            return intArrayOf(id("b$i"), id("b${i}_icon"), id("b${i}_label"), id("b${i}_sub"))
+        }
 
         /** Redraw every widget from the cache, then fetch fresh buttons/counts in the background. */
         fun refreshAll(c: Context, fetch: Boolean = true) {
@@ -43,42 +46,60 @@ class HubWidget : AppWidgetProvider() {
             }
         }
 
-        private fun perPage(@Suppress("UNUSED_PARAMETER") mgr: AppWidgetManager, @Suppress("UNUSED_PARAMETER") id: Int): Int = 4
+        /** Rows × columns of fixed-size buttons that fit the widget as currently sized. */
+        private fun grid(mgr: AppWidgetManager, id: Int): Pair<Int, Int> {
+            val o = mgr.getAppWidgetOptions(id)
+            val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)   // portrait width
+            val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 70)   // portrait height
+            val cols = ((w - 44) / 64).coerceIn(1, COLS)   // 36dp arrows + padding, 64dp per button
+            val rows = ((h - 20) / 60).coerceIn(1, ROWS)   // dots + padding, 60dp per button
+            return rows to cols
+        }
 
         fun render(c: Context, mgr: AppWidgetManager, id: Int) {
             val v = RemoteViews(c.packageName, R.layout.widget)
             val cfg = Hub.cachedConfig(c)
             val buttons: JSONArray = cfg?.optJSONArray("buttons") ?: JSONArray()
-            val per = perPage(mgr, id)
+            val (rows, cols) = grid(mgr, id)
+            val per = rows * cols
             val pages = maxOf(1, (buttons.length() + per - 1) / per)
             val page = Hub.page(c, id).coerceIn(0, pages - 1)
 
             if (Hub.key(c) == null || buttons.length() == 0) {
                 // Not set up yet: one slot that opens the app.
-                SLOTS.forEachIndexed { i, s -> v.setViewVisibility(s[0], if (i == 0) View.VISIBLE else View.INVISIBLE) }
+                ROW_IDS.forEachIndexed { r, rid -> v.setViewVisibility(rid, if (r == 0) View.VISIBLE else View.GONE) }
+                for (i in 0 until ROWS * COLS) v.setViewVisibility(slot(c, i)[0], if (i == 0) View.VISIBLE else View.GONE)
                 v.setTextViewText(R.id.b0_icon, "☕")
                 v.setTextViewText(R.id.b0_label, if (Hub.key(c) == null) "Set up" else "Loading…")
                 v.setTextViewText(R.id.b0_sub, "Gremier Hub")
-                v.setOnClickPendingIntent(R.id.b0, PendingIntent.getActivity(c, id * 100, Intent(c, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                v.setOnClickPendingIntent(R.id.b0, PendingIntent.getActivity(c, id * 1000 + 999, Intent(c, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 v.setTextViewText(R.id.dots, "")
                 mgr.updateAppWidget(id, v)
                 return
             }
 
             val flash = Hub.flash(c)
-            SLOTS.forEachIndexed { i, s ->
-                val idx = page * per + i
-                if (idx >= buttons.length()) { v.setViewVisibility(s[0], View.INVISIBLE); return@forEachIndexed }
-                val b = buttons.getJSONObject(idx)
-                v.setViewVisibility(s[0], View.VISIBLE)
-                val justDone = flash != null && flash.first == b.optString("id") && System.currentTimeMillis() - flash.second < 60_000
-                v.setTextViewText(s[1], if (justDone) "✅" else b.optString("icon", "•"))
-                val badge = b.optInt("badge", 0)
-                v.setTextViewText(s[2], b.optString("label") + if (badge > 0) " ($badge)" else "")
-                v.setTextViewText(s[3], if (justDone) "done" else b.optString("sub", ""))
-                v.setOnClickPendingIntent(s[0], buttonIntent(c, id, idx, b))
+            for (r in 0 until ROWS) {
+                v.setViewVisibility(ROW_IDS[r], if (r < rows) View.VISIBLE else View.GONE)
+                for (col in 0 until COLS) {
+                    val sl = slot(c, r * COLS + col)
+                    if (r >= rows || col >= cols) { v.setViewVisibility(sl[0], View.GONE); continue }
+                    val idx = page * per + r * cols + col
+                    if (idx >= buttons.length()) { v.setViewVisibility(sl[0], View.INVISIBLE); continue }
+                    val b = buttons.getJSONObject(idx)
+                    v.setViewVisibility(sl[0], View.VISIBLE)
+                    val justDone = flash != null && flash.first == b.optString("id") && System.currentTimeMillis() - flash.second < 60_000
+                    v.setTextViewText(sl[1], if (justDone) "✅" else b.optString("icon", "•"))
+                    val badge = b.optInt("badge", 0)
+                    v.setTextViewText(sl[2], b.optString("label") + if (badge > 0) " ($badge)" else "")
+                    v.setTextViewText(sl[3], if (justDone) "done" else b.optString("sub", ""))
+                    v.setOnClickPendingIntent(sl[0], buttonIntent(c, id, idx, b))
+                }
             }
-            v.setTextViewText(R.id.dots, (0 until pages).joinToString(" ") { if (it == page) "●" else "○" })
+            // Everything fits on one page → no arrows or dots.
+            v.setViewVisibility(R.id.prev, if (pages > 1) View.VISIBLE else View.INVISIBLE)
+            v.setViewVisibility(R.id.next, if (pages > 1) View.VISIBLE else View.INVISIBLE)
+            v.setTextViewText(R.id.dots, if (pages > 1) (0 until pages).joinToString(" ") { if (it == page) "●" else "○" } else "")
             v.setOnClickPendingIntent(R.id.prev, pageIntent(c, id, (page - 1 + pages) % pages))
             v.setOnClickPendingIntent(R.id.next, pageIntent(c, id, (page + 1) % pages))
             mgr.updateAppWidget(id, v)
@@ -87,11 +108,11 @@ class HubWidget : AppWidgetProvider() {
         private fun pageIntent(c: Context, id: Int, page: Int): PendingIntent {
             val i = Intent(c, HubWidget::class.java).setAction(ACT_PAGE)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra("page", page)
-            return PendingIntent.getBroadcast(c, id * 100 + 90 + page, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            return PendingIntent.getBroadcast(c, id * 1000 + 900 + page, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
 
         private fun buttonIntent(c: Context, id: Int, idx: Int, b: JSONObject): PendingIntent {
-            val req = id * 100 + idx
+            val req = id * 1000 + idx
             val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             return when (b.optString("kind")) {
                 "open" -> PendingIntent.getActivity(c, req, Intent(Intent.ACTION_VIEW, Uri.parse(b.optString("url"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), flags)

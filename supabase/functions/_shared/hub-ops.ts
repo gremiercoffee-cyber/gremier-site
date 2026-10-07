@@ -213,6 +213,48 @@ export async function completeDelivery(sb: Sb, args: { job_id?: string; quantiti
   };
 }
 
+// Bottled products → concentrate used (window.__OPS_PRODUCTS_FULL__ in admin-src/react-1.jsx).
+export const BOTTLES: Record<string, { label: string; category: "liter" | "mini" | "jerry"; concentrate: string }> = {
+  classic_liter: { label: "Classic", category: "liter", concentrate: "classic" },
+  sweetened_classic: { label: "Sweetened Classic", category: "liter", concentrate: "classic" },
+  house_blend: { label: "House Blend", category: "liter", concentrate: "houseBlend" },
+  colombia_liter: { label: "Colombia", category: "liter", concentrate: "colombia" },
+  decaf_liter: { label: "Decaf", category: "liter", concentrate: "decaf" },
+  classic_mini: { label: "Classic mini", category: "mini", concentrate: "classic" },
+  vanilla_mini: { label: "Vanilla mini", category: "mini", concentrate: "classic" },
+  original_mini: { label: "Original mini", category: "mini", concentrate: "classic" },
+  caramel_mini: { label: "Caramel mini", category: "mini", concentrate: "classic" },
+  house_blend_mini: { label: "House Blend mini", category: "mini", concentrate: "houseBlend" },
+  jerry_can: { label: "Classic jerry can", category: "jerry", concentrate: "classic" },
+  jerry_can_houseblend: { label: "House Blend jerry can", category: "jerry", concentrate: "houseBlend" },
+  jerry_can_colombia: { label: "Colombia jerry can", category: "jerry", concentrate: "colombia" },
+  jerry_can_decaf: { label: "Decaf jerry can", category: "jerry", concentrate: "decaf" },
+};
+const CONC_RATIO: Record<string, number> = { classic: 0.44, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
+
+/** Log bottles just made: adds them to stock and uses the matching concentrate (same math as the admin). */
+export async function logBottling(sb: Sb, args: { product: string; units: number }) {
+  const product = String(args.product || "");
+  const meta = BOTTLES[product];
+  if (!meta) throw new HubError("bad_product", "Unknown bottled product");
+  const units = Math.round(Number(args.units));
+  if (!(units > 0 && units <= 2000)) throw new HubError("bad_units", "How many did you bottle?");
+  // Admin bottling jobs are entered in liters: minis are 4 per liter, jerry cans are 5 L.
+  const liters = meta.category === "mini" ? units / 4 : meta.category === "jerry" ? units * 5 : units;
+  const ratio = meta.category === "mini" ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.44);
+  const now = jerusalemParts(new Date());
+  const id = newId("hub_");
+  await sb.from("jobs").insert({
+    id, type: "bottling", product, liters, actual_qty: liters, qty: meta.category === "jerry" ? units : null,
+    date: now.date, time: now.time, done: true, needs_confirmation: false,
+    label: `Bottled ${units} ${meta.label}`, created_at: new Date().toISOString(),
+  });
+  const concentrateNow = await incConcentrate(sb, meta.concentrate, -(liters * ratio));
+  await incInventoryBatch(sb, { [product]: units });
+  const { data: inv } = await sb.from("inventory").select("qty").eq("product", product).maybeSingle();
+  return { refs: [`jobs:${id}`], product, units, liters, concentrate_used_l: Number((liters * ratio).toFixed(1)), concentrate_now_l: concentrateNow, in_stock_now: Number((inv as any)?.qty ?? units) };
+}
+
 /** Manual stock correction. kind: inventory | concentrate | beans | labeled. */
 export async function adjustStock(sb: Sb, args: { kind: string; product: string; delta: number }) {
   const delta = Number(args.delta);
