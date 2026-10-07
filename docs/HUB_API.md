@@ -45,6 +45,7 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 | `complete_drain` | `job_id` or `product` | adds concentrate (3kg→19L, 2→12.7, 1.5→9.5, 1→6.4), closes the brew |
 | `log_store_delivery` | `store` (fuzzy), `quantities` {product_key: n}, `date` | done delivery job, deducts inventory, adds the `store_deliveries` billing row, flags the WhatsApp delivery note |
 | `complete_delivery` | `job_id` (default next due), `quantities` (actuals) | marks a scheduled delivery done with the same stock/billing effects |
+| `log_bottling` | `product` (bottled key, e.g. classic_liter, vanilla_mini, jerry_can), `units` | adds the bottles to stock and uses concentrate (minis 4/L ×0.29; liters ×0.44 classic / ×0.5 others; jerry cans 5 L) |
 | `adjust_stock` | `kind` (inventory\|concentrate\|beans\|labeled), `product`, `delta` | stock correction |
 | `log_note` | `text` | adds a note to the timeline |
 
