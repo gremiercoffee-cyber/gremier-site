@@ -692,14 +692,16 @@ export default {
  * reminder disappears once everything in it is done); briefings lose the lines for things done since.
  */
 async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null })[]) {
-  const out: (Nudge & { items?: { id: string; title: string; person: string | null }[] })[] = [];
+  const out: (Nudge & { items?: { id: string; title: string; person: string | null; due_at?: string | null }[] })[] = [];
   for (const n of nudges) {
     if (n.item_ids) {
       let ids: string[] = [];
       try { ids = JSON.parse(n.item_ids); } catch { /* none */ }
-      const open = ids.length ? await all<{ id: string; title: string; person: string | null }>(env,
-        `SELECT id, title, person FROM items WHERE status = 'open' AND id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
-      const ordered = ids.map((id) => open.find((o) => o.id === id)).filter(Boolean) as typeof open;
+      const open = ids.length ? await all<{ id: string; title: string; person: string | null; due_at: string | null }>(env,
+        `SELECT id, title, person, due_at FROM items WHERE status = 'open' AND id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
+      // On a wrap-up, "not yet" pushes an item to tomorrow: it leaves the card.
+      const ordered = ids.map((id) => open.find((o) => o.id === id))
+        .filter((o) => o && !(n.type === "wrapup" && o.due_at && o.due_at > now())) as typeof open;
       if (!ordered.length) { await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", n.id); continue; }
       const note = n.body.split("\n").filter((l) => l.startsWith("📝"));
       out.push({

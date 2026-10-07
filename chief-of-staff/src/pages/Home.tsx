@@ -251,14 +251,20 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
                 {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
                 <ul className="space-y-1">
                   {n.items.map((it) => (
-                    <li key={it.id} className="flex items-start gap-2 text-[14px]">
-                      <button aria-label="Done" onClick={async () => { await api.updateItem(it.id, { status: "done" }); onChanged(); }}
-                        className="mt-0.5 h-5 w-5 shrink-0 rounded-full border border-line hover:border-accent hover:bg-accent/10 text-[11px] leading-none">✓</button>
-                      <span>{it.title}{it.person && <span className="text-muted"> ({it.person})</span>}</span>
+                    <li key={it.id} className="text-[14px] rounded-xl bg-sunken/60 px-3 py-2">
+                      <p>{it.title}{it.person && <span className="text-muted"> ({it.person})</span>}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <button onClick={async () => { await api.updateItem(it.id, { status: "done" }); onChanged(); }}
+                          className="rounded-full bg-ok/15 text-ok px-3 py-1 text-[13px] font-medium">✓ Done</button>
+                        <button onClick={async () => { await api.updateItem(it.id, { due_at: tomorrowNine() }); onChanged(); }}
+                          className="rounded-full bg-surface border border-line px-3 py-1 text-[13px] font-medium">Not yet → tomorrow</button>
+                        <button onClick={async () => { await api.updateItem(it.id, { status: "dropped" }); onChanged(); }}
+                          className="rounded-full px-3 py-1 text-[13px] text-muted">Not needed</button>
+                      </div>
                     </li>
                   ))}
                 </ul>
-                <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
+                <Chips n={n} onAct={onAct} onReply={n.type === "wrapup" ? undefined : () => onReply(n)} />
               </> : <>
                 {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
                 <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
@@ -650,4 +656,12 @@ function TodoSection({ dash, shown, inArea, onChanged }: {
       </div>
     </section>
   );
+}
+
+/** 9:00 tomorrow, local time: "not yet" on a wrap-up moves it there. */
+function tomorrowNine() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return d.toISOString();
 }
