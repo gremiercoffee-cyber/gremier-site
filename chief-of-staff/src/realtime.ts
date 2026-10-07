@@ -6,6 +6,7 @@
 import type { ActionNote } from "../shared/types";
 import { getToken } from "./api";
 import { meter, type Meter } from "./audioLevel";
+import { holdAudioFocus } from "./audioFocus";
 
 export type LiveStatus = "connecting" | "listening" | "thinking" | "speaking" | "ended";
 
@@ -30,9 +31,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => void; levels: () => { input: number; output: number } }> {
+export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => void; setMuted: (m: boolean) => void; levels: () => { input: number; output: number } }> {
   cb.onStatus("connecting");
-  const { client_secret } = await post<{ client_secret: string }>("/api/realtime/session", {});
+  const release = holdAudioFocus();
+  let client_secret: string;
+  try { ({ client_secret } = await post<{ client_secret: string }>("/api/realtime/session", {})); } catch (e) { release(); throw e; }
 
   const pc = new RTCPeerConnection();
   const audio = new Audio();
@@ -40,7 +43,9 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
   let outMeter: Meter | null = null;
   pc.ontrack = (e) => { audio.srcObject = e.streams[0]; outMeter?.close(); outMeter = meter(e.streams[0]); };
 
-  const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  let mic: MediaStream;
+  try { mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e) { pc.close(); release(); throw e; }
   mic.getTracks().forEach((t) => pc.addTrack(t, mic));
   const inMeter = meter(mic);
 
@@ -139,9 +144,11 @@ export async function startLiveCall(cb: LiveCallbacks): Promise<{ hangUp: () => 
     mic.getTracks().forEach((t) => t.stop());
     pc.close();
     audio.srcObject = null;
+    release();
   }
 
   return {
+    setMuted: (m: boolean) => mic.getAudioTracks().forEach((t) => { t.enabled = !m; }),
     hangUp: () => { inMeter.close(); outMeter?.close(); hangUpAll(); cb.onStatus("ended"); },
     levels: () => ({ input: inMeter.level(), output: outMeter?.level() ?? 0 }),
   };

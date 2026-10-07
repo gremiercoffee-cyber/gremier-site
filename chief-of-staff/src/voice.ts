@@ -1,4 +1,5 @@
 import { meter } from "./audioLevel";
+import { holdAudioFocus } from "./audioFocus";
 /**
  * Dictation helpers. Dictation records audio and sends it to the Worker for transcription
  * (OpenAI gpt-transcribe), falling back to on-device recognition when that isn't configured.
@@ -40,7 +41,9 @@ export function createRecognizer(opts: {
 }
 
 export async function startRecording(): Promise<{ stop: () => Promise<Blob>; level: () => number }> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const release = holdAudioFocus(); // pause the user's music while they speak
+  let stream: MediaStream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { release(); throw e; }
   const m = meter(stream);
   const rec = new MediaRecorder(stream);
   const chunks: BlobPart[] = [];
@@ -53,6 +56,7 @@ export async function startRecording(): Promise<{ stop: () => Promise<Blob>; lev
         rec.onstop = () => {
           m.close();
           stream.getTracks().forEach((t) => t.stop());
+          release();
           resolve(new Blob(chunks, { type: rec.mimeType || "audio/webm" }));
         };
         rec.stop();

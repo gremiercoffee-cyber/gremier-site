@@ -34,7 +34,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const [live, setLive] = useState<LiveState>("off");
   const [dictatingNow, setDictatingNow] = useState(false);
   const [dash, setDash] = useState<Dashboard | null>(null);
-  const callRef = useRef<{ hangUp: () => void; levels: () => { input: number; output: number } } | null>(null);
+  const callRef = useRef<{ hangUp: () => void; setMuted: (m: boolean) => void; levels: () => { input: number; output: number } } | null>(null);
   const levels = useRef(() => callRef.current?.levels() ?? { input: 0, output: 0 }).current;
   const convoRef = useRef<string | null>(conversationId);
   const endRef = useRef<HTMLDivElement>(null);
@@ -152,7 +152,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
       <Composer
         live={live} typing={typing} setTyping={setTyping} input={input} setInput={setInput} sending={sending}
         serverTranscription={serverTranscription} onSend={(t, mode) => { setInput(""); send(t, mode); }}
-        onTalk={startLive} onEnd={stopLive} levels={levels} onDictating={setDictatingNow}
+        onTalk={startLive} onEnd={stopLive} onMute={(m) => callRef.current?.setMuted(m)} levels={levels} onDictating={setDictatingNow}
       />
     </div>
   );
@@ -364,10 +364,10 @@ function Orb({ state }: { state: LiveState }) {
   );
 }
 
-function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, levels, onDictating }: {
+function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, onMute, levels, onDictating }: {
   live: LiveState; typing: boolean; setTyping: (b: boolean) => void; input: string; setInput: (s: string | ((v: string) => string)) => void;
   sending: boolean; serverTranscription: boolean; onSend: (t: string, mode: "text" | "dictation") => void; onTalk: () => void; onEnd: () => void;
-  levels: () => { input: number; output: number }; onDictating: (on: boolean) => void;
+  levels: () => { input: number; output: number }; onDictating: (on: boolean) => void; onMute: (m: boolean) => void;
 }) {
   const [dictating, setDictatingRaw] = useState<"off" | "recording" | "working">("off");
   const [dictErr, setDictErr] = useState("");
@@ -404,14 +404,21 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
       </div>
     );
   }
+  const [muted, setMuted] = useState(false);
+  useEffect(() => { if (live === "off") setMuted(false); }, [live]);
+  const toggleMute = () => { onMute(!muted); setMuted(!muted); };
   const LABELS: Record<LiveState, string> = { off: "", connecting: "Connecting…", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…", ended: "" };
   if (live !== "off") {
     return (
       <div className="pb-2 flex flex-col items-center">
         <LiveOrb state={live === "ended" ? "connecting" : live} levels={levels} size={104} />
-        <p className="-mt-3 text-[15px] font-medium">{LABELS[live]}</p>
-        <p className="text-xs text-muted">{live === "connecting" ? "One moment" : "Just talk. You can interrupt any time."}</p>
-        <button onClick={onEnd} className="mt-3 h-10 px-6 rounded-full bg-danger/10 text-danger font-medium text-sm">End</button>
+        <p className="-mt-3 text-[15px] font-medium">{muted ? "Muted" : LABELS[live]}</p>
+        <p className="text-xs text-muted">{live === "connecting" ? "One moment" : muted ? "I can't hear you. Tap Unmute to talk." : "Just talk. You can interrupt any time."}</p>
+        <div className="mt-3 flex gap-2">
+          <button onClick={toggleMute} disabled={live === "connecting"} aria-pressed={muted}
+            className={`h-10 px-5 rounded-full font-medium text-sm ${muted ? "bg-ink text-surface" : "bg-sunken text-ink"}`}>{muted ? "🔇 Unmute" : "🎙️ Mute"}</button>
+          <button onClick={onEnd} className="h-10 px-6 rounded-full bg-danger/10 text-danger font-medium text-sm">End</button>
+        </div>
       </div>
     );
   }

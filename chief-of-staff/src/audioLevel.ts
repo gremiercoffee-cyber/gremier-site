@@ -1,5 +1,6 @@
 /** Live loudness (0..1) of a media stream, for the pulsing orb. Runs on the device; costs nothing. */
 let ctx: AudioContext | null = null;
+let open = 0; // meters in use; the context is closed when none are, so the phone gets its audio back
 
 export interface Meter { level: () => number; close: () => void }
 
@@ -12,6 +13,8 @@ export function meter(stream: MediaStream): Meter {
     an.fftSize = 512;
     an.smoothingTimeConstant = 0.6;
     src.connect(an); // analyser only: nothing is played back through it
+    open++;
+    let closed = false;
     const buf = new Uint8Array(an.fftSize);
     let smooth = 0;
     return {
@@ -25,7 +28,12 @@ export function meter(stream: MediaStream): Meter {
         smooth += (target - smooth) * (target > smooth ? 0.5 : 0.15);
         return smooth;
       },
-      close: () => { try { src.disconnect(); } catch { /* already gone */ } },
+      close: () => {
+        if (closed) return;
+        closed = true;
+        try { src.disconnect(); } catch { /* already gone */ }
+        if (--open <= 0 && ctx) { open = 0; void ctx.close().catch(() => {}); ctx = null; }
+      },
     };
   } catch {
     return { level: () => 0, close: () => {} };
