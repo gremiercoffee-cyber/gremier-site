@@ -994,13 +994,16 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const notes: ActionNote[] = [];
   let switched = false;
   const routeQuery = history.filter((h) => h.role === "user").slice(-3).map((h) => h.content).join("\n") || text;
-  // Caching beats trimming: the same tools and instructions every time make the start of each request
-  // identical, which OpenAI bills at ~10%. (The saved-info picker still trims the context per message.)
-  const tools = assistantTools(env, mode === "text" ? "chat" : "voice", notes);
+  // Lean by default: the everyday tools and general rules always; each feature's tools AND its rules
+  // come along only when the message calls for it (free keyword triage), or when the model asks for
+  // them with load_tools (the rules arrive with the tools). OpenAI's cache only lasts minutes, so a
+  // small prompt beats an identical big one.
+  const features = await featuresFor(env, routeQuery);
+  const tools = toolsFor(assistantTools(env, mode === "text" ? "chat" : "voice", notes), features, new Set());
   if (history.length > 1) {
     tools.push({
       name: "new_topic",
-      description: "Call when the user's latest message starts a clearly unrelated subject from this conversation. Their message moves into a fresh conversation. Do not call for follow-ups on the same subject.",
+      description: "Call when the user's latest message starts a clearly unrelated subject from this conversation. Their message moves into a fresh conversation. Do not call for follow-ups on the same subject. Call it in the SAME message as your other tool calls and your reply, never on its own first.",
       input_schema: { type: "object", properties: { title: { type: "string", description: "2-5 word title" } }, required: ["title"] },
       handler: async (input) => {
         if (switched) return { ok: true };
@@ -1018,15 +1021,23 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
-    system: SYSTEM_PROMPT,
+    system: promptFor(features),
     cacheKey: "cos-chat",
     noFollowUp: ["create_item", "update_item", "remember", "update_memory", "save_person", "save_time_block", "save_task", "save_tracker",
       "save_group", "update_idea", "create_project", "update_project", "save_area", "research_now", "start_mission", "update_mission",
-      "draft_group_message", "propose_action", "send_whatsapp", "draft_email"],
+      "draft_group_message", "propose_action", "send_whatsapp", "draft_email", "new_topic", "capture_idea", "save_watch"],
     context: await buildContext(env, mode, routeQuery),
     history,
     tools,
   });
+
+  // Which tools each message used, to see where extra rounds (= tokens) come from.
+  try {
+    const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'chat_rounds_log'");
+    const log = (row ? JSON.parse(row.value) : []) as unknown[];
+    log.unshift({ at: now(), features: [...features], tools: result.toolCalls.map((t) => t.name) });
+    await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_rounds_log', ?)", JSON.stringify(log.slice(0, 30)));
+  } catch { /* log only */ }
 
   const reply: Message = {
     id: uid(), role: "assistant", content: result.text, mode, meta: notes.length ? JSON.stringify(notes) : null,
