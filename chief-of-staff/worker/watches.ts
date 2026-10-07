@@ -5,8 +5,9 @@
  */
 import type { Env } from "./env";
 import { getProvider } from "./ai";
-import { all, createItem, first, now, run, uid } from "./db";
+import { all, first, now, run, uid } from "./db";
 import { notify } from "./push";
+import { suggest } from "./suggestions";
 
 export interface Watch { id: string; instruction: string; action: string; todo_title: string | null; category: string | null; keywords: string; active: number; hits: number; created_at: string }
 
@@ -69,17 +70,16 @@ export async function checkWatches(env: Env, m: { inbox_id: string; chat: string
     const name = String(v.name || m.sender).slice(0, 60);
     let itemId: string | null = null;
     if (w.action === "todo") {
+      // Ask first: "add it?" with Yes / No. Nothing lands in the To-do until Yes.
       const title = (w.todo_title || `${w.instruction.slice(0, 50)}: {name}`).replace(/\{name\}/gi, name) + (v.when ? ` (${v.when})` : "");
-      const item = await createItem(env, {
-        kind: "task", title: title.slice(0, 140), person: name, category: w.category, source: "whatsapp",
-        notes: `WhatsApp from ${m.sender}${m.chat !== m.sender ? ` in ${m.chat}` : ""}: "${m.text.slice(0, 500)}"`,
-      });
-      itemId = item.id;
+      itemId = await suggest(env, "item", { title: title.slice(0, 140), person: name, category: w.category ?? null,
+        notes: `WhatsApp from ${m.sender}${m.chat !== m.sender ? ` in ${m.chat}` : ""}: "${m.text.slice(0, 500)}"` },
+        m.chat, `👀 ${name}: ${v.summary ?? "matches your watch"}. ${title}?`, `"${m.text.slice(0, 160)}"`);
     }
     await run(env, "INSERT OR REPLACE INTO watch_hits (watch_id, inbox_id, item_id, created_at) VALUES (?, ?, ?, ?)", w.id, m.inbox_id, itemId, now());
     await run(env, "UPDATE watches SET hits = hits + 1 WHERE id = ?", w.id);
     found++;
-    if (!quiet) await notify(env, "watch", `👀 ${name}: ${v.summary ?? "matches your watch"}`,
+    if (!quiet && w.action !== "todo") await notify(env, "watch", `👀 ${name}: ${v.summary ?? "matches your watch"}`,
       `${v.when ? `${v.when}\n` : ""}"${m.text.slice(0, 160)}"${itemId ? "\nAdded to your To-do." : ""}`, itemId, "/");
   }
   return found;
@@ -93,7 +93,7 @@ export async function scanWatch(env: Env, w: Watch, days = 60) {
   const cands = rows.filter((r) => hitsKeywords(w, r.text)).slice(-80);
   let found = 0;
   for (const r of cands) found += await checkWatches(env, { inbox_id: r.id, chat: r.chat, sender: r.sender, text: r.text }, [w], true);
-  if (found) await notify(env, "watch", `👀 Found ${found} in past WhatsApps: ${w.instruction.slice(0, 60)}`, w.action === "todo" ? "Added to your To-do." : "", null, "/");
+  if (found) await notify(env, "watch", `👀 Found ${found} in past WhatsApps: ${w.instruction.slice(0, 60)}`, w.action === "todo" ? "Each one is waiting for your Yes / No." : "", null, "/");
   return { checked: cands.length, found };
 }
 

@@ -16,6 +16,7 @@ import { now, uid } from "./db";
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
+  if (n.type === "meeting") return [{ id: "ok", title: "Got it" }, { id: "not_meeting", title: "Not a meeting" }];
   if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
   if (n.type === "postponed") return [{ id: "done", title: "Do it now ✓" }, { id: "breakdown", title: "Break it down", opens: true },
@@ -33,8 +34,8 @@ export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   switch (n.type) {
     case "unanswered":
       // Android shows the first three on the notification: quick yes / no, or draft it yourself.
-      return [{ id: "reply_yes", title: "👍 Yes" }, { id: "reply_no", title: "👎 No" }, { id: "reply", title: "✍️ Draft…", opens: true },
-        done, { id: "reschedule", title: "Later", opens: true }, { id: "ok", title: "Dismiss" }, { id: "hold", title: "Holding reply" }];
+      return [{ id: "reply", title: "✍️ Draft…", opens: true }, { id: "notneeded", title: "Dismiss" }, { id: "reply_yes", title: "👍 Yes" },
+        { id: "reply_no", title: "👎 No" }, done, { id: "reschedule", title: "Later", opens: true }, { id: "hold", title: "Holding reply" }];
     case "whatsapp":
     case "email":
       return [...base, { id: "reply", title: "Reply…", opens: true }];
@@ -97,6 +98,12 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       return { ok: true, message: "Let's change it.", open: `/?ask=${encodeURIComponent(`Change the WhatsApp to ${row?.recipient}: "${row?.text}"`)}` };
     }
   }
+  if (n.type === "meeting") {
+    // For meetings item_id is the Schedule block.
+    if (action === "not_meeting" && n.item_id) await run(env, "UPDATE situations SET active = 0 WHERE id = ?", n.item_id);
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    return { ok: true, message: action === "not_meeting" ? "Removed from your Schedule." : "OK." };
+  }
   if (n.type === "suggest" && n.item_id) {
     // For suggestions item_id is the suggestion id.
     const message = await decideSuggestion(env, n.item_id, action === "accept");
@@ -128,7 +135,11 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       if (item) { await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL, snooze_count = snooze_count + 1 WHERE id = ?", new Date(Date.now() + 2 * 3600_000).toISOString(), item.id); message = "I'll check again in 2 hours."; }
       break;
     case "notneeded":
-      if (item) { await updateItem(env, item.id, { status: "dropped" }); message = "Dropped. No reply needed."; }
+      if (item) {
+        await updateItem(env, item.id, { status: "dropped" });
+        await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", item.id);
+        message = n.type === "unanswered" ? "OK, you don't need to get back to them." : "Dropped.";
+      }
       break;
     case "hold":
       if (item) message = await holdingReply(env, item);

@@ -98,7 +98,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
       const said = item.source === "whatsapp"
         ? (await first<{ text: string }>(env, "SELECT text FROM whatsapp_inbox WHERE item_id = ? ORDER BY received_at DESC LIMIT 1", item.id))?.text
         : null;
-      await notify(env, "unanswered", `Reply to ${item.person ?? "them"}?`,
+      await notify(env, "unanswered", `Get back to ${item.person ?? "them"}`,
         `${said ? `"${said.slice(0, 140)}"` : item.title} · ${hours}h on ${item.source === "gmail" ? "email" : "WhatsApp"}`, item.id);
       await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
       created++;
