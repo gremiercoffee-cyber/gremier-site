@@ -8,6 +8,14 @@ import { Button, Card, Empty } from "../components/ui";
 const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"];
 
 type Usage = Awaited<ReturnType<typeof api.usage>>;
+type UsageRange = "day" | "week" | "month" | "all";
+/** Start of the period: today = since local midnight. */
+function usageSince(r: UsageRange) {
+  if (r === "all") return undefined;
+  const d = new Date();
+  if (r === "day") d.setHours(0, 0, 0, 0); else d.setDate(d.getDate() - (r === "week" ? 7 : 30));
+  return d.toISOString();
+}
 
 export default function Settings({ settings, onSaved, installPrompt }: {
   settings: S; onSaved: (s: S) => void; installPrompt: (() => void) | null;
@@ -18,6 +26,8 @@ export default function Settings({ settings, onSaved, installPrompt }: {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [people, setPeople] = useState<Awaited<ReturnType<typeof api.people>>>([]);
   const [usage, setUsage] = useState<Usage>([]);
+  const [usageRange, setUsageRange] = useState<UsageRange>("day");
+  useEffect(() => { api.usage(usageSince(usageRange)).then(setUsage).catch(() => {}); }, [usageRange]);
   const [notif, setNotif] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("cos.theme") ?? "system"; } catch { return "system"; } });
 
@@ -58,7 +68,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
   useEffect(() => {
     api.memories().then(setMemories).catch(() => {});
     api.people().then(setPeople).catch(() => {});
-    api.usage().then(setUsage).catch(() => {});
+
   }, []);
 
   const save = async () => {
@@ -298,8 +308,20 @@ export default function Settings({ settings, onSaved, installPrompt }: {
         </form>
       </Card>
 
-      <Card title="Model usage (30 days)">
-        {usage.length === 0 ? <Empty>No model calls yet.</Empty> : (
+      <Card title="AI usage">
+        <div className="flex gap-1.5 mb-3">
+          {(["day", "week", "month", "all"] as UsageRange[]).map((r) => (
+            <button key={r} onClick={() => setUsageRange(r)}
+              className={`rounded-full px-3 py-1 text-sm font-medium ${usageRange === r ? "bg-ink text-bg" : "bg-sunken text-muted"}`}>
+              {{ day: "Today", week: "7 days", month: "30 days", all: "All time" }[r]}
+            </button>
+          ))}
+        </div>
+        {usage.length > 0 && (() => {
+          const t = usage.reduce((a, u) => ({ calls: a.calls + u.calls, i: a.i + u.input_tokens, o: a.o + u.output_tokens, c: a.c + (u.cached_tokens ?? 0) }), { calls: 0, i: 0, o: 0, c: 0 });
+          return <p className="text-sm mb-2"><b>{t.calls.toLocaleString()}</b> calls · <b>{(t.i + t.o).toLocaleString()}</b> tokens · {t.i ? Math.round((100 * t.c) / t.i) : 0}% cached</p>;
+        })()}
+        {usage.length === 0 ? <Empty>No model calls in this period.</Empty> : (
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs text-muted"><th className="font-normal">Purpose</th><th className="font-normal">Calls</th><th className="font-normal text-right">Tokens in / out</th><th className="font-normal text-right">Cached</th></tr></thead>
             <tbody>

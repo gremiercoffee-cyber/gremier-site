@@ -148,7 +148,7 @@ export const api = {
   decide: (id: string, decision: "approve" | "reject") => request<{ outcome: string }>("POST", `/api/actions/${id}/${decision}`),
   settings: () => request<Settings>("GET", "/api/settings"),
   saveSettings: (s: Partial<Settings>) => request<Settings>("PUT", "/api/settings", s),
-  usage: () => request<{ model: string; purpose: string; calls: number; input_tokens: number; output_tokens: number; cached_tokens: number }[]>("GET", "/api/usage"),
+  usage: (since?: string) => request<{ model: string; purpose: string; calls: number; input_tokens: number; output_tokens: number; cached_tokens: number }[]>("GET", `/api/usage${since ? `?since=${encodeURIComponent(since)}` : ""}`),
   subscribePush: (sub: PushSubscriptionJSON) => request("POST", "/api/push/subscribe", sub),
   pushKey: () => request<{ key: string | null }>("GET", "/api/push/key"),
   pushTest: () => request<{ sent: number; failed: number }>("POST", "/api/push/test"),
