@@ -6,7 +6,7 @@
 import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { getProvider } from "./ai";
-import { all, first, getSettings, localParts, now, run } from "./db";
+import { all, createItem, first, getSettings, localParts, now, run } from "./db";
 import { notify } from "./push";
 import { upcomingEventsText } from "./google";
 import { isShabbat, justAfterShabbat } from "./shabbat";
@@ -79,6 +79,17 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 4. Open loops: emails/WhatsApps that still haven't been answered after 2 hours (or after a snooze).
   if (!isShabbat(settings.timezone)) {
+    // WhatsApp questions are only marked when they arrive; still unanswered after 4h → a "Reply to X" item now.
+    const fourH = new Date(Date.now() - 4 * 3600_000).toISOString(), twoDays = new Date(Date.now() - 2 * 86400_000).toISOString();
+    const waiting = await all<{ chat: string; sender: string; account: string; text: string; received_at: string }>(env,
+      `SELECT chat, sender, account, text, max(received_at) AS received_at FROM whatsapp_inbox
+        WHERE awaiting_reply = 1 AND item_id IS NULL AND received_at <= ? AND received_at > ? GROUP BY chat, account LIMIT 10`, fourH, twoDays);
+    for (const w of waiting) {
+      const item = await createItem(env, { kind: "task", title: `Reply to ${w.sender}: ${w.text.slice(0, 60)}${w.text.length > 60 ? "…" : ""}`, person: w.sender,
+        category: w.account === "business" ? "coffee" : null, source: "whatsapp", notes: `WhatsApp from ${w.sender}${w.chat !== w.sender ? ` in ${w.chat}` : ""}: "${w.text}"` });
+      await run(env, "UPDATE items SET created_at = ? WHERE id = ?", w.received_at, item.id);
+      await run(env, "UPDATE whatsapp_inbox SET item_id = ?, awaiting_reply = 0 WHERE chat = ? AND account = ? AND awaiting_reply = 1", item.id, w.chat, w.account);
+    }
     const unanswered = await all<Item>(env,
       `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'task' AND source IN ('gmail', 'whatsapp')
          AND reminded_at IS NULL AND COALESCE(nudge_after, strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+4 hours')) <= ? LIMIT 20`, t);

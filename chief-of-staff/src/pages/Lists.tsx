@@ -4,24 +4,34 @@ import { api } from "../api";
 import { Button, Empty, ItemRow, KIND_META } from "../components/ui";
 
 const TAB_KEY = "cos.listTab";
+// Tasks, reminders and promises are all just things to do: one list. A reminder is a to-do with a time.
+const TODO: ItemKind[] = ["task", "reminder", "commitment"];
+type Tab = "todo" | ItemKind;
+const kindsFor = (t: Tab): ItemKind[] => (t === "todo" ? TODO : [t]);
 
 export default function Lists({ onOpenItem, onNew, refreshKey }: {
   onOpenItem: (i: Item) => void; onNew: (k: ItemKind) => void; refreshKey: number;
 }) {
-  const [kind, setKind] = useState<ItemKind>(() => { try { return (localStorage.getItem(TAB_KEY) as ItemKind) || "task"; } catch { return "task"; } });
+  const [kind, setKind] = useState<Tab>(() => {
+    try { const v = localStorage.getItem(TAB_KEY) as Tab | null; return !v || TODO.includes(v as ItemKind) ? "todo" : v; } catch { return "todo"; }
+  });
   const [showDone, setShowDone] = useState(false);
   const [items, setItems] = useState<Item[] | null>(null);
   const [quick, setQuick] = useState("");
 
   const load = useCallback(() => {
-    api.items({ kind, status: showDone ? "all" : "open" }).then(setItems).catch(() => setItems([]));
+    Promise.all(kindsFor(kind).map((k) => api.items({ kind: k, status: showDone ? "all" : "open" })))
+      .then((lists) => setItems(lists.flat().sort((a, b) =>
+        // Things with a time first (soonest first), then the rest, newest first.
+        (a.due_at ? 0 : 1) - (b.due_at ? 0 : 1) || (a.due_at && b.due_at ? a.due_at.localeCompare(b.due_at) : b.created_at.localeCompare(a.created_at)))))
+      .catch(() => setItems([]));
   }, [kind, showDone]);
   useEffect(load, [load, refreshKey]);
   useEffect(() => { try { localStorage.setItem(TAB_KEY, kind); } catch { /* ignore */ } }, [kind]);
 
   const addQuick = async () => {
     if (!quick.trim()) return;
-    await api.createItem({ kind, title: quick.trim() });
+    await api.createItem({ kind: kind === "todo" ? "task" : kind, title: quick.trim() });
     setQuick("");
     load();
   };
@@ -30,18 +40,18 @@ export default function Lists({ onOpenItem, onNew, refreshKey }: {
     <div className="space-y-4">
       <header className="flex items-center justify-between">
         <h1 className="font-display text-[32px] leading-tight">Lists</h1>
-        <Button variant="soft" onClick={() => onNew(kind)}>+ New</Button>
+        <Button variant="soft" onClick={() => onNew(kind === "todo" ? "task" : kind)}>+ New</Button>
       </header>
       <div className="flex gap-1.5 overflow-x-auto -mx-4 px-4 pb-1">
-        {(Object.keys(KIND_META) as ItemKind[]).map((k) => (
+        {(["todo", ...(Object.keys(KIND_META) as ItemKind[]).filter((k) => !TODO.includes(k))] as Tab[]).map((k) => (
           <button key={k} onClick={() => setKind(k)}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${kind === k ? "bg-ink text-bg" : "bg-surface border border-line text-muted"}`}>
-            {KIND_META[k].plural}
+            {k === "todo" ? "To-do" : KIND_META[k].plural}
           </button>
         ))}
       </div>
       <form onSubmit={(e) => { e.preventDefault(); addQuick(); }} className="flex gap-2">
-        <input value={quick} onChange={(e) => setQuick(e.target.value)} placeholder={`Quick add ${KIND_META[kind].label.toLowerCase()}…`}
+        <input value={quick} onChange={(e) => setQuick(e.target.value)} placeholder={kind === "todo" ? "Add a to-do…" : `Quick add ${KIND_META[kind].label.toLowerCase()}…`}
           className="flex-1 rounded-xl bg-surface border border-line px-3.5 py-2.5 outline-none text-[15px] focus:border-accent" />
         <Button type="submit" disabled={!quick.trim()}>Add</Button>
       </form>

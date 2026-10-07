@@ -3,6 +3,7 @@
  * Notification buttons call the public /api/act route with an HMAC signature per nudge, so the
  * service worker never needs the passcode.
  */
+import { decideSuggestion } from "./suggestions";
 import type { Item, Nudge, NudgeAction } from "../shared/types";
 import { draftReply } from "./replies";
 import { queueWhatsApp } from "./whatsapp";
@@ -15,6 +16,7 @@ import { now, uid } from "./db";
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
+  if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
   if (n.type === "postponed") return [{ id: "done", title: "Do it now ✓" }, { id: "breakdown", title: "Break it down", opens: true },
     { id: "notneeded", title: "Drop it" }, { id: "delegate", title: "Hand it off", opens: true }, { id: "reschedule", title: "Reschedule", opens: true }];
@@ -94,6 +96,12 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       await dismissIt();
       return { ok: true, message: "Let's change it.", open: `/?ask=${encodeURIComponent(`Change the WhatsApp to ${row?.recipient}: "${row?.text}"`)}` };
     }
+  }
+  if (n.type === "suggest" && n.item_id) {
+    // For suggestions item_id is the suggestion id.
+    const message = await decideSuggestion(env, n.item_id, action === "accept");
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    return { ok: true, message };
   }
   const item = n.item_id ? await first<Item>(env, "SELECT * FROM items WHERE id = ?", n.item_id) : null;
   const dismiss = () => run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);

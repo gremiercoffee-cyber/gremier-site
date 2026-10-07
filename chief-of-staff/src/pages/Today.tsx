@@ -116,11 +116,11 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         </Section>
       )}
 
-      <div className="grid grid-cols-5 gap-2 text-center">
-        {(["task", "reminder", "commitment", "waiting", "idea"] as const).map((k) => (
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {(["todo", "waiting", "idea"] as const).map((k) => (
           <div key={k} className="rounded-xl bg-surface border border-line py-2">
-            <div className="text-lg font-semibold">{counts[k] ?? 0}</div>
-            <div className="text-[10px] text-muted leading-tight">{KIND_META[k].plural}</div>
+            <div className="text-lg font-semibold">{k === "todo" ? (counts.task ?? 0) + (counts.reminder ?? 0) + (counts.commitment ?? 0) : counts[k] ?? 0}</div>
+            <div className="text-[10px] text-muted leading-tight">{k === "todo" ? "To-do" : KIND_META[k].plural}</div>
           </div>
         ))}
       </div>

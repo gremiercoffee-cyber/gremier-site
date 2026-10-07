@@ -8,6 +8,7 @@
  *      Claude Code send it through WhatsApp Web and reports back. Nothing sends without that tap.
  */
 import { checkWatches } from "./watches";
+import { suggest } from "./suggestions";
 import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { areaKeysJson } from "./areas";
@@ -38,14 +39,13 @@ export async function bridgeStatus(env: Env) {
   return { configured: !!env.BRIDGE_KEY, last_seen: last, online: !!last && Date.now() - new Date(last).getTime() < BRIDGE_STALE_MS };
 }
 
-const TRIAGE_SYSTEM = `You file WhatsApp messages for a busy business owner. Reply with JSON only:
-{"action":"none"|"task"|"commitment"|"reminder","title":string,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null}
-- task: ONLY when the user genuinely owes something that matters and could slip: a real question or request waiting on them, a decision, an order, a deadline, money, a commitment. Title like "Reply to Avi about Thursday's order".
-- Be strict: most WhatsApps are "none": greetings, thanks, "ok"/"👍", reactions, jokes, casual chat, updates or FYIs, things already answered in the conversation, and anything they'd naturally reply to in the moment. When in doubt, "none".
-- reminder: something at a specific time (set due_at, ISO 8601). commitment: the user already promised something.
+const TRIAGE_SYSTEM = `You read WhatsApp messages for a busy business owner. Nothing gets added without asking them first. Reply with JSON only:
+{"action":"none"|"reply"|"suggest","title":string|null,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null}
+- reply: the sender asked the user a real question or made a request that needs an ANSWER from them (not "how are you", not rhetorical). If they don't answer in a few hours, the user gets a "Reply to X?" reminder. No title needed.
+- suggest: the message means the user has to DO something beyond replying, that could slip: deliver/send/pay/buy/order something, a deadline, a date or appointment to keep. Title = the thing to do, short ("Send Avi 3 bags of beans"). due_at (ISO 8601) only if a specific time/date was given. The user will be asked "add this?".
+- none: everything else, and that is MOST messages: greetings, thanks, "ok"/"👍", reactions, jokes, chit-chat, news, FYIs, things already handled, plans that are just talk. When in doubt, "none". When unsure between reply and suggest, use "reply".
 - category: coffee = Gremier Coffee business (orders, deliveries, beans, customers, suppliers); yeshiva = the yeshiva (rabbis, students, classes); personal = family/home/money; null if unsure.
-- none: chit-chat, thanks, FYI, or nothing the user must do. Titles in the message's language is fine.
-- GROUP CHATS (the message is in a group, not a 1-on-1): almost always "none". Announcements, ads, job postings, event notices, links, general questions to the group, and messages addressed to someone else are NOT for the user. Only file it if it is clearly aimed at the user personally (uses their name, replies to them, or asks them specifically to do something).`;
+- GROUP CHATS: almost always "none". Only "reply"/"suggest" if it's clearly aimed at the user personally (uses their name, replies to them, asks them specifically).`;
 
 /** One forwarded WhatsApp notification. Returns what was filed, if anything. */
 export async function handleIncoming(env: Env, m: { chat?: string; sender?: string; text?: string; at?: string; sent_at?: string | null; account?: string }) {
@@ -68,7 +68,7 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   if (m.sent_at && Date.now() - Date.parse(m.sent_at) > 2 * 3600_000) return { filed: false, reason: "old message" };
   let triage: { action: string; title?: string; due_at?: string | null; priority?: number; category?: string | null } = isGroup
     ? { action: "none" }
-    : { action: "task", title: `Reply to ${sender}: ${text.slice(0, 70)}${text.length > 70 ? "…" : ""}`, priority: 2 };
+    : { action: "reply" };
   const budget = await triageBudget(env);
   if (budget.used < budget.cap) {
     try {
@@ -79,17 +79,20 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
       triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
     } catch { /* keep the no-AI fallback */ }
   }
-  if (triage.action === "none" || !triage.title) return { filed: false, reason: "not actionable" };
-
-  const item: Item = await createItem(env, {
-    kind: triage.action, title: triage.title, person: sender, due_at: triage.due_at ?? null, priority: triage.priority,
+  if (triage.action === "reply") {
+    // Only marked: it becomes a "Reply to X?" reminder if still unanswered after 4 hours (proactive.ts).
+    await run(env, "UPDATE whatsapp_inbox SET awaiting_reply = 1 WHERE id = ?", id);
+    return { filed: false, awaiting_reply: true };
+  }
+  if (triage.action !== "suggest" || !triage.title) return { filed: false, reason: "not actionable" };
+  const when = triage.due_at ? ` (${new Date(triage.due_at).toLocaleString("en-GB", { timeZone: "Asia/Jerusalem", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})` : "";
+  const sid = await suggest(env, "item", {
+    title: triage.title, due_at: triage.due_at ?? null, priority: triage.priority, person: sender,
     // The business number is Gremier Coffee unless the message clearly says otherwise.
     category: triage.category ?? (account === "business" ? "coffee" : null),
-    source: "whatsapp",
     notes: `${account === "business" ? "Business WhatsApp" : "WhatsApp"} from ${sender}${chat !== sender ? ` in ${chat}` : ""}: "${text}"`,
-  });
-  await run(env, "UPDATE whatsapp_inbox SET item_id = ? WHERE id = ?", item.id, id);
-  return { filed: true, item_id: item.id };
+  }, chat, `📲 ${sender}: add "${triage.title}"${when}?`, `I just saw this on your WhatsApp:\n"${text.slice(0, 160)}"`);
+  return { filed: false, suggested: sid };
 }
 
 async function sha(s: string) {
@@ -102,6 +105,7 @@ export async function handleReplied(env: Env, m: { chat?: string; account?: stri
   await heartbeat(env);
   const chat = (m.chat ?? "").slice(0, 120);
   if (!chat) return { closed: 0 };
+  await run(env, "UPDATE whatsapp_inbox SET awaiting_reply = 0 WHERE chat = ? AND account = ? AND awaiting_reply = 1", chat, m.account === "business" ? "business" : "personal");
   const open = await all<Item>(env,
     `SELECT i.* FROM items i JOIN whatsapp_inbox w ON w.item_id = i.id
      WHERE w.chat = ? AND w.account = ? AND i.status = 'open' AND i.kind IN ('task', 'commitment')`, chat, m.account === "business" ? "business" : "personal");

@@ -8,8 +8,7 @@
 import type { Env } from "./env";
 import { getProvider } from "./ai";
 import { all, first, getSettings, localParts, now, run } from "./db";
-import { saveSituation } from "./situations";
-import { notify } from "./push";
+import { suggest } from "./suggestions";
 
 const DEFAULT_TIME = "20:15";
 const addMinutes = (hhmm: string, mins: number) => {
@@ -52,15 +51,18 @@ Reply ONLY JSON: {"agreed": true|false, "date": "YYYY-MM-DD"|null, "time": "HH:M
   const existing = await first<{ id: string; date: string; start_time: string }>(env,
     "SELECT id, date, start_time FROM situations WHERE active = 1 AND date >= ? AND keywords = ? ORDER BY date LIMIT 1", local.date, `wa-meet:${chat}`);
   if (existing && existing.date === date && existing.start_time === start) return { ok: true, agreed: true, unchanged: true };
-  const s = await saveSituation(env, {
-    ...(existing ? { id: existing.id } : {}),
+  // Already asked about this one and not answered / said no → don't ask again.
+  const asked = await first(env, "SELECT 1 FROM suggestions WHERE kind = 'meeting' AND chat = ? AND payload LIKE ? AND created_at > ?",
+    chat, `%"date":"${date}","start_time":"${start}"%`, new Date(Date.now() - 3 * 86400_000).toISOString());
+  if (asked) return { ok: true, agreed: true, unchanged: true };
+  const when = date === local.date ? "tonight" : new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
+  const s = { id: await suggest(env, "meeting", {
     name, date, start_time: start, end_time: addMinutes(start, 60), keywords: `wa-meet:${chat}`,
     category: explicit ? undefined : evening?.category ?? "yeshiva",
-    note: [v.place ? `📍 ${v.place}` : "", !explicit && evening ? `During ${evening.name}` : ""].filter(Boolean).join(" · "), mode: "start",
-  });
-  const when = date === local.date ? "tonight" : new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
-  await notify(env, "meeting", `📅 ${existing ? "Moved" : "Added"}: ${name} · ${when} ${start}`,
-    `From your WhatsApp with ${chat}.${v.place ? ` 📍 ${v.place}` : ""} It's in your Schedule; tell me if it's wrong.`, null, "/?tab=schedule");
+    note: [v.place ? `📍 ${v.place}` : "", !explicit && evening ? `During ${evening.name}` : ""].filter(Boolean).join(" · "),
+    ...(existing ? { existing_id: existing.id } : {}),
+  }, chat, `📅 ${existing ? "Move" : "Add"} to your Schedule? ${name} · ${when} ${start}`,
+    `I just saw this on your WhatsApp with ${chat}.${v.place ? ` 📍 ${v.place}` : ""}`) };
   await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('last_meeting_detect', ?)", JSON.stringify({ at: now(), chat, date, start, moved: !!existing }));
   return { ok: true, agreed: true, id: s.id };
 }
