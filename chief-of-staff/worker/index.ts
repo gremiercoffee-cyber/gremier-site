@@ -568,6 +568,14 @@ route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) =>
 
 // ---- Settings, usage, notifications foundation ------------------------------
 route("GET", "/api/settings", async (_req, env) => json(await getSettings(env)));
+route("POST", "/api/client-error", async (req, env) => {
+  const e = await body<Record<string, unknown>>(req);
+  const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'client_errors'");
+  const list = (row ? JSON.parse(row.value) : []) as unknown[];
+  list.unshift({ at: now(), ...e });
+  await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('client_errors', ?)", JSON.stringify(list.slice(0, 20)));
+  return json({ ok: true });
+});
 route("PUT", "/api/settings", async (req, env) => json(await saveSettings(env, await body(req))));
 route("GET", "/api/usage", async (req, env) =>
   json(await all(env, `SELECT model, purpose, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, SUM(cached_tokens) AS cached_tokens

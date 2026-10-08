@@ -12,10 +12,25 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
 
+/** Crashes are sent to the Worker (Settings → stored as client_errors) so they can be fixed. */
+function report(kind: string, err: unknown, extra = "") {
+  try {
+    const e = err as { message?: string; stack?: string };
+    fetch("/api/client-error", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${localStorage.getItem("cos.token") ?? ""}` },
+      body: JSON.stringify({ kind, message: String(e?.message ?? err).slice(0, 500), stack: String(e?.stack ?? "").slice(0, 1500), extra: extra.slice(0, 1500), ua: navigator.userAgent, url: location.href }),
+    }).catch(() => {});
+  } catch { /* never throw from here */ }
+}
+window.addEventListener("error", (e) => report("error", e.error ?? e.message));
+window.addEventListener("unhandledrejection", (e) => report("promise", e.reason));
+
 /** If anything crashes, show a way back instead of a blank white screen. */
 class Recover extends Component<{ children: ReactNode }, { err: string | null }> {
   state = { err: null as string | null };
   static getDerivedStateFromError(e: Error) { return { err: e.message || "error" }; }
+  componentDidCatch(e: Error, info: { componentStack?: string | null }) { report("render", e, info.componentStack ?? ""); }
   render() {
     if (!this.state.err) return this.props.children;
     return (
