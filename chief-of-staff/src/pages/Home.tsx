@@ -380,6 +380,9 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
 }) {
   const [dictating, setDictatingRaw] = useState<"off" | "recording" | "working">("off");
   const [dictErr, setDictErr] = useState("");
+  // (Hooks must stay above the early returns below, or the screen goes blank.)
+  const [muted, setMuted] = useState(false);
+  useEffect(() => { if (live === "off") setMuted(false); }, [live]);
   const recRef = useRef<{ stop: () => Promise<Blob>; level: () => number } | null>(null);
   const setDictating = (v: "off" | "recording" | "working") => { setDictatingRaw(v); onDictating(v !== "off"); };
   const dictLevels = useRef(() => ({ input: recRef.current?.level() ?? 0, output: 0 })).current;
@@ -413,8 +416,6 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
       </div>
     );
   }
-  const [muted, setMuted] = useState(false);
-  useEffect(() => { if (live === "off") setMuted(false); }, [live]);
   const toggleMute = () => { onMute(!muted); setMuted(!muted); };
   const LABELS: Record<LiveState, string> = { off: "", connecting: "Connecting…", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…", ended: "" };
   if (live !== "off") {
