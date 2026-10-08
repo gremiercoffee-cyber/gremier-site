@@ -10,6 +10,7 @@ import {
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
 import { scanNewWatches } from "./watches";
+import { offerMeetingPrep, processSelfNotes, saveSelfNote } from "./meetingnotes";
 import { tidyConversations } from "./tidy";
 import { detectMeeting } from "./meetings";
 import { getAreas, removeArea, saveArea } from "./areas";
@@ -644,6 +645,7 @@ export default {
         await markBackfilled(env, bf[1], b.account === "business" ? "business" : "personal");
         return json({ ok: true });
       }
+      if (url.pathname === "/api/bridge/selfnote" && req.method === "POST") return json(await saveSelfNote(env, await req.json()));
       if (url.pathname === "/api/bridge/convo" && req.method === "POST") return json(await detectMeeting(env, await req.json()));
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));
       if (url.pathname === "/api/bridge/outbox" && req.method === "GET") return json(await takeOutbox(env));
@@ -683,6 +685,8 @@ export default {
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
       .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
+      .then(() => processSelfNotes(env)).catch((e) => console.error("self notes", e))
+      .then(() => offerMeetingPrep(env)).catch((e) => console.error("prep", e))
       .then(() => learnPass(env)).catch((e) => console.error("learn", e)).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;

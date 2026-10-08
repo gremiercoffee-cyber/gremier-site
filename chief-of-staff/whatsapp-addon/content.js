@@ -137,6 +137,7 @@
       const m = e.data.message;
       track(m);
       watchMeetings(m);
+      if (m.self && m.text) send({ type: "selfnote", payload: { text: m.text, t: m.t || Math.floor(Date.now() / 1000) } });
       m.fromMe ? onMine(m) : onIncoming(m);
     }
   });

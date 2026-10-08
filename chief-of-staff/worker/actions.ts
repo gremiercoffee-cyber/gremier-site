@@ -16,6 +16,7 @@ import { now, uid } from "./db";
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
+  if (n.type === "prep") return [{ id: "prep", title: "📋 Prep", opens: true }, { id: "ok", title: "No thanks" }];
   if (n.type === "meeting") return [{ id: "ok", title: "Got it" }, { id: "not_meeting", title: "Not a meeting" }];
   if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
@@ -97,6 +98,12 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       await dismissIt();
       return { ok: true, message: "Let's change it.", open: `/?ask=${encodeURIComponent(`Change the WhatsApp to ${row?.recipient}: "${row?.text}"`)}` };
     }
+  }
+  if (n.type === "prep") {
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    if (action !== "prep") return { ok: true, message: "OK." };
+    const what = n.title.replace(/^📋\s*/, "").replace(/\.\s*Want to prep\?$/, "");
+    return { ok: true, message: "Let's prep.", open: `/?ask=${encodeURIComponent(`Let's prep for ${what}.`)}` };
   }
   if (n.type === "meeting") {
     // For meetings item_id is the Schedule block.

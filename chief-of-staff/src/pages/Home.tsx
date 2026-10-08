@@ -298,6 +298,8 @@ const KIND: Record<string, { emoji: string; label: string; tone: string }> = {
   sweep: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
   learn: { emoji: "✨", label: "To review", tone: "border-l-accent text-accent" },
   wrapup: { emoji: "🏁", label: "Wrap-up", tone: "border-l-amber-500 text-amber-700" },
+  prep: { emoji: "📋", label: "Meeting prep", tone: "border-l-sky-500 text-sky-700" },
+  meeting_notes: { emoji: "📝", label: "Meeting notes", tone: "border-l-emerald-500 text-emerald-700" },
   suggest: { emoji: "📲", label: "Add this?", tone: "border-l-sky-500 text-sky-700" },
   watch: { emoji: "👀", label: "Watch", tone: "border-l-violet-500 text-violet-700" },
   meeting: { emoji: "📅", label: "Meeting", tone: "border-l-sky-500 text-sky-700" },

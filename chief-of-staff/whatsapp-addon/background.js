@@ -48,6 +48,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     reply({ ok: true });
     return;
   }
+  if (msg.type === "selfnote") {
+    call("/api/bridge/selfnote", msg.payload).catch(() => {});
+    reply({ ok: true });
+    return;
+  }
   if (msg.type === "convo") {
     account().then((a) => call("/api/bridge/convo", { ...msg.payload, account: a })).catch(() => {});
     reply({ ok: true });

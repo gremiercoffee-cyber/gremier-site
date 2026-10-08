@@ -16,6 +16,7 @@ import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
+import { makePrepDoc } from "./meetingnotes";
 import { hubCall } from "./hub";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
 
@@ -81,6 +82,8 @@ How this app fits together (you ARE this app; everything below is yours to use, 
 When the user refers to anything by name ("the rabbis group", "my cold brew idea", "the coffee report", "evening yeshiva"), resolve it with your tools (get_group, get_context, find_person, search_items, get_tracker_entries…) and act across features: e.g. "check emails from the rabbis group" → search_email with group="Rabbis"; "any WhatsApps from my wholesale customers?" → check_group_messages.
 
 Drafting text: when the user asks you to draft/write/word a message, email, post or text WITHOUT saying where it goes, just write it in your reply so they can use it however they want. Put the draft itself in a quote block (each line starting with "> ") so they can copy it with one tap; at most one short line before it. Do NOT save it anywhere: no draft_group_message, draft_email or send_whatsapp unless they explicitly say "for the X group", "save it in Gmail", "send it to Y" or similar. If it obviously relates to a group or person, you may offer in one short line afterwards ("Want me to put it in the Rabbis group?") but don't do it.
+
+Meeting prep: when the user wants to prep for a meeting ("let's prep for…"), ask what they'll need there if they haven't said. Then, once, look for up to 3 things you ALREADY have that connect to it (one search_items / find_person / get_context lookup on the person or topic: open to-dos with them, things you're waiting on from them, a recent idea or tracker) and ask in one line "Want me to add: A, B, C?". Don't research the web for this unless asked. Then make it with meeting_prep_doc and give the link. Their notes from a meeting (typed to themselves on WhatsApp) are turned into meeting notes automatically.
 
 Groups and group messages: the user can keep contact groups ("the rabbis", "wholesale customers") and message a whole group at once. Create/edit groups with save_group (members by name, plus email and phone when known; existing people are matched by name). Only when the user asks to message a group (or put a draft in a group), write it with draft_group_message (use {first_name} for a personal greeting). You never send it: tell the user it's ready under Replies & people → Groups, where they tap "Send email" (each person gets their own email from their Gmail) and can open WhatsApp with the same text preloaded for each person or a group chat. Slack isn't connected yet.
 
@@ -369,6 +372,19 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const areas = await saveArea(env, input as never);
         note("save_area", `🏷️ Areas: ${areas.map((a) => `${a.icon} ${a.label}`).join(", ")}`);
         return { areas };
+      },
+    },
+    {
+      name: "meeting_prep_doc",
+      description: "Make the prep Google Doc for an upcoming meeting: what to bring/have ready, background, questions to ask. Returns the link.",
+      input_schema: { type: "object", properties: {
+        meeting: { type: "string", description: "e.g. 'Meeting with Avi'" }, when: { type: "string" },
+        items: { type: "array", items: { type: "string" } }, context: { type: "array", items: { type: "string" } },
+        questions: { type: "array", items: { type: "string" } } }, required: ["meeting"] },
+      handler: async (input) => {
+        const d = await makePrepDoc(env, input as never);
+        note("meeting_prep_doc", `📋 Prep doc: ${d.title}`);
+        return d;
       },
     },
     {
@@ -1068,8 +1084,10 @@ const TOOL_GROUPS: Record<string, string[]> = {
   missions: ["start_mission", "update_mission"],
   projects: ["create_project", "update_project"],
   coffee: ["coffee_app"],
+  meetings: ["meeting_prep_doc"],
 };
 const TOOL_TRIGGERS: Record<string, RegExp> = {
+  meetings: /\b(prep|prepare|meeting|agenda)|פגישה|להתכונן/i,
   email: /\b(e-?mails?|gmail|inbox|mail(ed)?|wrote|replied|reply|thread|subject|draft)\b|מייל/i,
   whatsapp: /\b(whats ?app|text (him|her|them)|message (him|her|them)|send (him|her|them|it|a message)|tell (him|her|them))\b|וואטסאפ/i,
   docs: /\b(docs?|document|sheets?|spreadsheet|drive|file|pdf|google doc|share)\b|מסמך|קובץ/i,
@@ -1078,7 +1096,7 @@ const TOOL_TRIGGERS: Record<string, RegExp> = {
 /** Feature sections of the system prompt, sent only with their feature. */
 const GUIDE_HEADERS: [string, string][] = [
   ["schedule", "Schedule (time blocks):"], ["trackers", "Trackers:"], ["tasks", "Tasks (recurring jobs):"],
-  ["missions", "Missions:"], ["groups", "Groups and group messages:"], ["ideas", "Ideas and thinking out loud:"],
+  ["missions", "Missions:"], ["meetings", "Meeting prep:"], ["groups", "Groups and group messages:"], ["ideas", "Ideas and thinking out loud:"],
 ];
 const GENERAL_STARTS = ["What you do:", "Areas:", "Reminders can", "Memory", "How to file", "How this app", "Drafting text:", "Researching the web:", "Rules:"];
 
@@ -1124,7 +1142,7 @@ export function toolsFor(all: ToolDef[], features: Set<string>, loaded: Set<stri
   const live = all.filter(allowed);
   live.push({
     name: "load_tools",
-    description: "Load more abilities for this reply when you need one that isn't available: schedule, calendar, email, whatsapp, docs, groups, trackers, ideas, tasks, missions, projects.",
+    description: "Load more abilities for this reply when you need one that isn't available: schedule, calendar, email, whatsapp, docs, groups, trackers, ideas, tasks, missions, projects, meetings.",
     input_schema: { type: "object", properties: { features: { type: "array", items: { type: "string", enum: Object.keys(TOOL_GROUPS) } } }, required: ["features"] },
     handler: async (input) => {
       const add = ((input.features as string[]) ?? []).filter((f) => TOOL_GROUPS[f]);
