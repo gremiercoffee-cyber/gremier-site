@@ -56,6 +56,13 @@ export async function removeArea(env: Env, key: string) {
 export async function areaKeysJson(env: Env) {
   return (await getAreas(env)).map((a) => `"${a.key}"`).join("|");
 }
+/** The user's own fixes ("that was a favor: personal, not yeshiva"), for anything that picks an area. */
+export async function areaCorrections(env: Env) {
+  const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'area_corrections'");
+  const list = (row ? JSON.parse(row.value) : []) as { title: string; person: string | null; from: string; to: string }[];
+  return list.length ? `The user corrected these areas before; file similar things the same way:\n${list.slice(0, 12).map((c) => `- "${c.title}"${c.person ? ` (${c.person})` : ""}: ${c.from} → ${c.to}`).join("\n")}` : "";
+}
 export async function areasText(env: Env) {
-  return (await getAreas(env)).map((a) => `- ${a.key} (${a.icon} ${a.label})${a.about ? `: ${a.about}` : ""}`).join("\n");
+  const corr = await areaCorrections(env);
+  return (await getAreas(env)).map((a) => `- ${a.key} (${a.icon} ${a.label})${a.about ? `: ${a.about}` : ""}`).join("\n") + (corr ? `\n${corr}` : "");
 }

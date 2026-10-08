@@ -628,6 +628,7 @@ function TodoSection({ dash, shown, inArea, onChanged }: {
       <button aria-label="Done" onClick={() => done(i.id)} className="h-5 w-5 shrink-0 rounded-full border-2 border-line hover:border-accent hover:bg-accent/10" />
       <span className="flex-1 min-w-0 text-[15px] leading-snug">{i.title}</span>
       {i.due_at && <span className="shrink-0 text-[12px] text-muted">{when(i.due_at)}</span>}
+      <AreaPicker item={i} onChanged={onChanged} />
     </li>
   );
   const shownLoose = all ? loose : loose.slice(0, 6);
@@ -667,4 +668,26 @@ function tomorrowNine() {
   d.setDate(d.getDate() + 1);
   d.setHours(9, 0, 0, 0);
   return d.toISOString();
+}
+
+/** The item's area as a small emoji; tap to move it to another area (and the app learns from it). */
+function AreaPicker({ item, onChanged }: { item: { id: string; category?: string | null }; onChanged: () => void }) {
+  const areas = useAreas();
+  const [open, setOpen] = useState(false);
+  const cur = areas.find((a) => a.key === item.category);
+  return (
+    <span className="relative shrink-0">
+      <button onClick={() => setOpen(!open)} aria-label="Change area" title={cur ? `${cur.label}: tap to change` : "Set area"}
+        className="h-7 min-w-7 px-1 rounded-full bg-sunken text-[14px] leading-none">{cur?.icon ?? "＋"}</button>
+      {open && (
+        <span className="absolute right-0 top-8 z-20 flex flex-col gap-1 rounded-2xl bg-surface border border-line shadow-card p-1.5 w-40">
+          <span className="px-2 pt-1 text-[11px] text-muted">Move to…</span>
+          {areas.map((a) => (
+            <button key={a.key} onClick={async () => { setOpen(false); if (a.key !== item.category) { await api.updateItem(item.id, { category: a.key }); onChanged(); } }}
+              className={`text-left rounded-xl px-2.5 py-1.5 text-[14px] ${a.key === item.category ? "bg-sunken font-medium" : "hover:bg-sunken"}`}>{a.icon} {a.label}</button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
 }

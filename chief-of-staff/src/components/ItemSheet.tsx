@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Item, ItemKind, Project } from "../../shared/types";
 import { api } from "../api";
 import { Button, KIND_META } from "./ui";
+import { useAreas } from "../areas";
 
 /** Bottom sheet for creating or editing an item. */
 export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved }: {
@@ -15,7 +16,9 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
     due: item?.due_at ? toLocalInput(item.due_at) : "",
     person: item?.person ?? "",
     project_id: item?.project_id ?? "",
+    category: item?.category ?? "",
   });
+  const areas = useAreas();
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState("");
   useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, []);
@@ -26,7 +29,7 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
     const payload: Partial<Item> = {
       kind: form.kind, title: form.title, notes: form.notes, priority: form.priority,
       due_at: form.due ? new Date(form.due).toISOString() : null,
-      person: form.person || null, project_id: form.project_id || null,
+      person: form.person || null, project_id: form.project_id || null, category: form.category || null,
     };
     try {
       if (item) await api.updateItem(item.id, payload);
@@ -50,6 +53,13 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
               className={`rounded-full px-3 py-1 text-xs font-medium ${form.kind === k ? "bg-ink text-bg" : "bg-sunken text-muted"}`}>
               {KIND_META[k].label}
             </button>
+          ))}
+        </div>
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className="text-xs text-muted mr-1">Area</span>
+          {areas.map((a) => (
+            <button key={a.key} onClick={() => set("category", form.category === a.key ? "" : a.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${form.category === a.key ? "bg-ink text-bg" : "bg-sunken text-muted"}`}>{a.icon} {a.label}</button>
           ))}
         </div>
         <input autoFocus className={field} placeholder="What is it?" value={form.title} onChange={(e) => set("title", e.target.value)} />

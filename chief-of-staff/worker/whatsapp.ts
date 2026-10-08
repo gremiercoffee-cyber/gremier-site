@@ -11,7 +11,7 @@ import { checkWatches } from "./watches";
 import { suggest } from "./suggestions";
 import type { Item } from "../shared/types";
 import type { Env } from "./env";
-import { areaKeysJson } from "./areas";
+import { areaCorrections, areaKeysJson } from "./areas";
 import { getProvider } from "./ai";
 import { all, createItem, first, now, run, uid } from "./db";
 import { triageBudget } from "./google";
@@ -73,7 +73,7 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   if (budget.used < budget.cap) {
     try {
       const out = await getProvider(env).complete({
-        tier: "fast", purpose: "whatsapp_triage", system: TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env)), maxTokens: 200,
+        tier: "fast", purpose: "whatsapp_triage", system: `${TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env))}\n${await areaCorrections(env)}`, maxTokens: 200,
         prompt: `Now: ${now()}\nChat: ${chat}${isGroup ? " (GROUP chat)" : " (1-on-1 chat)"}\nFrom: ${sender}\nMessage: ${text}`,
       });
       triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));

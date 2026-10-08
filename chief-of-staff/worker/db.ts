@@ -95,7 +95,16 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   if (input.due_at !== undefined) next.due_at = toIso(input.due_at);
   if (input.person !== undefined) next.person = input.person || null;
   if (input.project_id !== undefined) next.project_id = input.project_id || null;
-  if (input.category !== undefined) next.category = validCategory(input.category);
+  if (input.category !== undefined) {
+    next.category = validCategory(input.category);
+    // The user moved it to another area: remember, so similar things are filed right next time.
+    if (existing.category && next.category && existing.category !== next.category) {
+      const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'area_corrections'");
+      const list = (row ? JSON.parse(row.value) : []) as unknown[];
+      list.unshift({ title: next.title.slice(0, 80), person: next.person, from: existing.category, to: next.category });
+      await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('area_corrections', ?)", JSON.stringify(list.slice(0, 20)));
+    }
+  }
   if (input.status !== undefined && ["open", "done", "dropped"].includes(input.status)) {
     next.status = input.status as Item["status"];
     next.completed_at = next.status === "done" ? now() : null;
