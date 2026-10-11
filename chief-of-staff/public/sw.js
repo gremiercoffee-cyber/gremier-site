@@ -1,6 +1,6 @@
 // Chief of Staff service worker: app-shell caching + notification plumbing.
 // API calls are never cached — data always comes fresh from the Worker.
-const CACHE = "cos-shell-v10";
+const CACHE = "cos-shell-v11";
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -58,6 +58,9 @@ self.addEventListener("notificationclick", (e) => {
       .then((r) => r.json())
       .then((res) => {
         if (btn.opens || res.open) return focusOrOpen(res.open || "/");
+        // A plain dismiss gets no confirmation at all: a new notification popping up would disturb the
+        // notification screen, and you couldn't clear several in a row.
+        if (["ok", "notneeded", "ignore", "decline"].includes(btn.action)) return;
         // Quiet confirmation that replaces itself.
         return self.registration.showNotification(res.message || "Done", { tag: "cos-ack", silent: true, icon: "/icon-192.png" })
           .then(() => new Promise((r) => setTimeout(r, 4000)))

@@ -169,8 +169,12 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   // A nudge's area: its item's area, else the area icon in its title (time-block reminders).
   const nudgeArea = (n: Nudge) => n.area ?? Object.entries(ICON).find(([, i]) => n.title.includes(i))?.[0] ?? null;
   const inArea = (a: string | null | undefined) => area === "all" || a === area;
-  const nudges = (dash?.nudges ?? []).filter((n) => n.type !== "briefing" && (area === "all" || nudgeArea(n) === area)).slice(0, 5);
-  const briefing = area === "all" ? dash?.nudges.find((n) => n.type === "briefing") : undefined;
+  // Dismissed ones vanish right away (before the server round-trip), so you can clear several in a row.
+  const [gone, setGone] = useState<Set<string>>(new Set());
+  const dismissAction = (n: Nudge) => (n.actions ?? []).find((a) => /^(dismiss|got it|no thanks)$/i.test(a.title));
+  const dismiss = (n: Nudge) => { const a = dismissAction(n); if (!a) return; setGone((g) => new Set(g).add(n.id)); void onAct(n, a.id); };
+  const nudges = (dash?.nudges ?? []).filter((n) => !gone.has(n.id) && n.type !== "briefing" && (area === "all" || nudgeArea(n) === area)).slice(0, 5);
+  const briefing = area === "all" ? dash?.nudges.find((n) => n.type === "briefing" && !gone.has(n.id)) : undefined;
   const nowBlock = dash?.now_block && inArea(dash.now_block.category) ? dash.now_block : null;
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
@@ -236,14 +240,19 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
       {(briefing || nudges.length > 0) && (
         <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
           {briefing && (
-            <Row icon="☀️" title="Today's briefing" time={briefing.created_at}>
+            <Row icon="☀️" title="Today's briefing" time={briefing.created_at}
+              onDismiss={dismissAction(briefing) ? () => dismiss(briefing) : undefined}>
               <div className="text-[14px]"><Markdown text={briefing.body} /></div>
               <Chips n={briefing} onAct={onAct} />
             </Row>
           )}
           {nudges.map((n) => (
-            <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}>
-              {n.type === "review" ? <div className="text-[14px]"><Markdown text={n.body} /></div> : n.type === "idea" ? <>
+            <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}
+              onDismiss={dismissAction(n) ? () => dismiss(n) : undefined}>
+              {n.type === "review" ? <>
+                <div className="text-[14px]"><Markdown text={n.body} /></div>
+                <Chips n={n} onAct={onAct} />
+              </> : n.type === "idea" ? <>
                 <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>
                 <a href="/?tab=ideas" className="inline-block text-[14px] font-medium text-accent">Open the idea → pick next steps</a>
                 <Chips n={n} onAct={onAct} />
@@ -318,19 +327,28 @@ const kindOf = (type: string) => KIND[type] ?? { emoji: "•", label: "", tone: 
 /** "Don't forget: Brew coffee" → "Brew coffee" (the label already says what it is). */
 const cleanTitle = (t: string) => t.replace(/^(don't forget|coming up|still waiting|reminder|due soon|heads up|overdue)\s*:\s*/i, "");
 
-function Row({ icon, title, time, children, startOpen, type }: { icon: string; title: string; time?: string; children: ReactNode; startOpen?: boolean; type?: string }) {
+function Row({ icon, title, time, children, startOpen, type, onDismiss }: {
+  icon: string; title: string; time?: string; children: ReactNode; startOpen?: boolean; type?: string; onDismiss?: () => void;
+}) {
   const [open, setOpen] = useState(!!startOpen);
   const k = type ? kindOf(type) : null;
   return (
     <div className={k ? `border-l-4 ${k.tone.split(" ")[0]}` : ""}>
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
-        <span className="w-5 shrink-0 text-center text-[15px]">{k ? k.emoji : icon}</span>
-        <span className="flex-1 min-w-0">
-          {k?.label && <span className={`block text-[11px] font-semibold uppercase tracking-wide ${k.tone.split(" ")[1]}`}>{k.label}</span>}
-          <span className={`block text-[15px] leading-snug ${open ? "" : "truncate"}`}>{k ? cleanTitle(title) : title}</span>
-        </span>
-        {time && <span className="shrink-0 text-[11px] text-muted">{timeAgo(time)}</span>}
-      </button>
+      <div className="flex items-center">
+        <button onClick={() => setOpen((v) => !v)} className="flex-1 min-w-0 flex items-center gap-2.5 pl-4 pr-2 py-3 text-left">
+          <span className="w-5 shrink-0 text-center text-[15px]">{k ? k.emoji : icon}</span>
+          <span className="flex-1 min-w-0">
+            {k?.label && <span className={`block text-[11px] font-semibold uppercase tracking-wide ${k.tone.split(" ")[1]}`}>{k.label}</span>}
+            <span className={`block text-[15px] leading-snug ${open ? "" : "truncate"}`}>{k ? cleanTitle(title) : title}</span>
+          </span>
+          {time && <span className="shrink-0 text-[11px] text-muted">{timeAgo(time)}</span>}
+        </button>
+        {/* One tap to clear it without opening it, so a whole pile can be cleared in one go. */}
+        {onDismiss && (
+          <button onClick={onDismiss} aria-label="Dismiss" title="Dismiss"
+            className="shrink-0 h-9 w-9 mr-2 grid place-items-center rounded-full text-muted hover:bg-sunken hover:text-ink">✕</button>
+        )}
+      </div>
       {open && <div className="px-4 pb-3 pl-11 space-y-2">{children}</div>}
     </div>
   );
