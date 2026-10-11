@@ -31,6 +31,9 @@ export interface Project {
   created_at: string;
   updated_at: string;
   open_count?: number;
+  done_count?: number;
+  /** Open items, on the dashboard only. */
+  items?: { id: string; title: string; due_at: string | null; category: string | null }[];
 }
 
 export interface Memory {

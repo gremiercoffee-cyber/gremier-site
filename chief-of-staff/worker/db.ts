@@ -81,7 +81,31 @@ export async function createItem(env: Env, input: ItemInput): Promise<Item> {
     item.id, item.kind, item.title, item.notes, item.status, item.priority, item.due_at,
     item.person, item.project_id, item.source, item.category, item.created_at, item.updated_at,
   );
+  await syncProject(env, item.project_id);
   return item;
+}
+
+/**
+ * Projects tidy themselves: when the last open item in a project is finished, the project is archived
+ * (status "done"); if something new is added to an archived project, it comes back. Projects with no
+ * finished item at all are left alone (an empty or brand-new project isn't "done").
+ */
+export async function syncProject(env: Env, projectId: string | null | undefined) {
+  if (!projectId) return;
+  const p = await first<{ status: string }>(env, "SELECT status FROM projects WHERE id = ?", projectId);
+  if (!p || p.status === "paused") return;
+  const c = await first<{ open: number; done: number }>(env,
+    "SELECT SUM(status = 'open') AS open, SUM(status = 'done') AS done FROM items WHERE project_id = ?", projectId);
+  const open = c?.open ?? 0, done = c?.done ?? 0;
+  if (p.status === "active" && open === 0 && done > 0) await run(env, "UPDATE projects SET status = 'done', updated_at = ? WHERE id = ?", now(), projectId);
+  else if (p.status === "done" && open > 0) await run(env, "UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?", now(), projectId);
+}
+
+/** Cron safety net for items closed outside updateItem (e.g. "you replied on WhatsApp"). Archives only. */
+export async function archiveFinishedProjects(env: Env) {
+  await run(env, `UPDATE projects SET status = 'done', updated_at = ? WHERE status = 'active'
+    AND EXISTS (SELECT 1 FROM items WHERE project_id = projects.id AND status = 'done')
+    AND NOT EXISTS (SELECT 1 FROM items WHERE project_id = projects.id AND status = 'open')`, now());
 }
 
 export async function updateItem(env: Env, id: string, input: ItemInput): Promise<Item> {
@@ -126,6 +150,8 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
     next.kind, next.title, next.notes, next.status, next.priority, next.due_at, next.person,
     next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, resetReminder ? 1 : 0, postponed ? 1 : 0, id,
   );
+  await syncProject(env, next.project_id);
+  if (existing.project_id !== next.project_id) await syncProject(env, existing.project_id);
   return next;
 }
 

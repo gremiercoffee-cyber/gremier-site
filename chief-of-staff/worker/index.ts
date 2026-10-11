@@ -5,7 +5,7 @@ import { ProviderUnavailable } from "./ai";
 import { chat, executeApproved } from "./assistant";
 import { processBrainDump } from "./braindump";
 import {
-  HttpError, all, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, updateItem,
+  HttpError, all, archiveFinishedProjects, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, syncProject, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
@@ -74,14 +74,24 @@ route("GET", "/api/dashboard", async (_req, env) => {
         AND (i.id IS NULL OR i.status = 'open')
       ORDER BY n.created_at DESC LIMIT 20`),
     all<PendingAction>(env, `SELECT * FROM pending_actions WHERE status='pending' ORDER BY created_at DESC`),
-    all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count
-                       FROM projects p WHERE p.status='active' ORDER BY p.updated_at DESC LIMIT 6`),
+    // Active projects that still have something open, for the home screen (finished ones archive themselves).
+    all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count,
+                         (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='done') AS done_count
+                       FROM projects p WHERE p.status='active'
+                         AND EXISTS (SELECT 1 FROM items i WHERE i.project_id=p.id AND i.status='open')
+                       ORDER BY p.updated_at DESC LIMIT 12`),
     all<{ kind: string; n: number }>(env, `SELECT kind, COUNT(*) AS n FROM items WHERE status='open' GROUP BY kind`),
     all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
        WHERE hidden = 0 AND ((all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?))
        GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
   ]);
   const nowBlock = await currentBlock(env);
+  if (projects.length) {
+    const open = await all<{ id: string; title: string; due_at: string | null; category: string | null; project_id: string }>(env,
+      `SELECT id, title, due_at, category, project_id FROM items WHERE status='open' AND project_id IN (${projects.map(() => "?").join(",")})
+       ORDER BY due_at IS NULL, due_at, priority, created_at`, ...projects.map((p) => p.id));
+    for (const p of projects) p.items = open.filter((i) => i.project_id === p.id).map(({ project_id: _p, ...i }) => i);
+  }
   const todo = await all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment','reminder')
       AND (due_at IS NULL OR due_at > ?) ORDER BY due_at IS NULL, due_at, priority, created_at LIMIT 60`, endOfDay);
   const listIds = [...new Set(todo.map((i) => i.project_id).filter(Boolean))] as string[];
@@ -295,7 +305,9 @@ route("POST", "/api/items", async (req, env) => json(await createItem(env, await
 route("PATCH", "/api/items/:id", async (req, env, [id]) => json(await updateItem(env, id, await body(req))));
 // Deleting from the UI is the user's own explicit action, so no approval round-trip.
 route("DELETE", "/api/items/:id", async (_req, env, [id]) => {
+  const gone = await first<{ project_id: string | null }>(env, "SELECT project_id FROM items WHERE id = ?", id);
   await run(env, "DELETE FROM items WHERE id = ?", id);
+  await syncProject(env, gone?.project_id);
   return json({ ok: true });
 });
 
@@ -692,6 +704,7 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+      .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
       .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
       .then(() => processSelfNotes(env)).catch((e) => console.error("self notes", e))
       .then(() => offerMeetingPrep(env)).catch((e) => console.error("prep", e))

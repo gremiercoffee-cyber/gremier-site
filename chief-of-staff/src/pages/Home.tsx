@@ -275,6 +275,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
       )}
 
       <TodoSection dash={dash} shown={shown} inArea={inArea} onChanged={onChanged} />
+      <ProjectsSection dash={dash} inArea={inArea} onChanged={onChanged} />
       </div>
     </div>
   );
@@ -608,15 +609,12 @@ function ReadAloud() {
 function TodoSection({ dash, shown, inArea, onChanged }: {
   dash: Dashboard | null; shown: Set<string>; inArea: (a: string | null | undefined) => boolean; onChanged: () => void;
 }) {
-  const [openList, setOpenList] = useState<string | null>(null);
   const [all, setAll] = useState(false);
-  // "Reply to…" items from WhatsApp/email live on the Replies page, not here.
-  const items = (dash?.todo ?? []).filter((i) => !shown.has(i.id) && inArea(i.category) && !(i.source === "whatsapp" || i.source === "gmail"));
+  // "Reply to…" items from WhatsApp/email live on the Replies page, not here. Items in a project show
+  // under Projects (with their progress) instead of twice.
+  const items = (dash?.todo ?? []).filter((i) => !shown.has(i.id) && inArea(i.category) && !i.project_id && !(i.source === "whatsapp" || i.source === "gmail"));
   if (!items.length) return null;
-  const listName = (id: string) => dash?.lists?.find((l) => l.id === id)?.name ?? "List";
-  const loose = items.filter((i) => !i.project_id);
-  const grouped = new Map<string, typeof items>();
-  for (const i of items) if (i.project_id) grouped.set(i.project_id, [...(grouped.get(i.project_id) ?? []), i]);
+  const loose = items;
   const done = async (id: string) => { await api.updateItem(id, { status: "done" }); onChanged(); };
   const when = (iso: string | null) => {
     if (!iso) return "";
@@ -640,16 +638,6 @@ function TodoSection({ dash, shown, inArea, onChanged }: {
       </div>
       <div className="rounded-[20px] bg-surface border border-line/70 shadow-card overflow-hidden">
         <ul className="divide-y divide-line/70">
-          {[...grouped.entries()].map(([id, list]) => (
-            <li key={id}>
-              <button onClick={() => setOpenList(openList === id ? null : id)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
-                <span className="text-[15px]">🗒️</span>
-                <span className="flex-1 min-w-0 text-[15px] font-medium truncate">{listName(id)}</span>
-                <span className="text-[12px] text-muted">{list.length} item{list.length > 1 ? "s" : ""} {openList === id ? "▾" : "▸"}</span>
-              </button>
-              {openList === id && <ul className="divide-y divide-line/50 bg-sunken/40">{list.map(row)}</ul>}
-            </li>
-          ))}
           {shownLoose.map(row)}
         </ul>
         {loose.length > 6 && (
@@ -657,6 +645,55 @@ function TodoSection({ dash, shown, inArea, onChanged }: {
             {all ? "Show less" : `Show ${loose.length - 6} more`}
           </button>
         )}
+      </div>
+    </section>
+  );
+}
+
+/** Active projects and lists with what's left and how far along they are. A project that's all done archives itself. */
+function ProjectsSection({ dash, inArea, onChanged }: { dash: Dashboard | null; inArea: (a: string | null | undefined) => boolean; onChanged: () => void }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const projects = (dash?.projects ?? [])
+    .map((p) => ({ ...p, items: (p.items ?? []).filter((i) => inArea(i.category)) }))
+    .filter((p) => p.items.length > 0);
+  if (!projects.length) return null;
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) : "");
+  const done = async (id: string) => { await api.updateItem(id, { status: "done" }); onChanged(); };
+  return (
+    <section>
+      <div className="flex items-baseline justify-between px-1 mb-1.5">
+        <p className="text-[11px] font-medium text-muted uppercase tracking-[0.14em]">🗂️ Projects</p>
+        <a href="/?tab=projects" className="text-[12px] text-accent">All projects →</a>
+      </div>
+      <div className="rounded-[20px] bg-surface border border-line/70 shadow-card overflow-hidden divide-y divide-line/70">
+        {projects.map((p) => {
+          const left = p.open_count ?? p.items.length, finished = p.done_count ?? 0, total = left + finished;
+          const open = openId === p.id;
+          return (
+            <div key={p.id}>
+              <button onClick={() => setOpenId(open ? null : p.id)} className="w-full px-4 py-3 text-left" aria-expanded={open}>
+                <div className="flex items-center gap-3">
+                  <span className="flex-1 min-w-0 text-[15px] font-medium truncate">{p.name}</span>
+                  <span className="text-[12px] text-muted">{finished} of {total} done {open ? "▾" : "▸"}</span>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-sunken overflow-hidden">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${total ? Math.round((100 * finished) / total) : 0}%` }} />
+                </div>
+              </button>
+              {open && (
+                <ul className="divide-y divide-line/50 bg-sunken/40">
+                  {p.items.map((i) => (
+                    <li key={i.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <button aria-label="Done" onClick={() => done(i.id)} className="h-5 w-5 shrink-0 rounded-full border-2 border-line hover:border-accent hover:bg-accent/10" />
+                      <span className="flex-1 min-w-0 text-[15px] leading-snug">{i.title}</span>
+                      {i.due_at && <span className="shrink-0 text-[12px] text-muted">{when(i.due_at)}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
