@@ -36,6 +36,9 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 | `stores` | – | stores with phone & prices |
 | `activity` | `since` (ISO), `limit` | the timeline |
 | `widget_config` | – | the Android widget's buttons (server-driven) |
+| `marketing_products` | – | website catalog (id, names, price, category, active) — used by the Status Assistant |
+| `marketing_sales` | `from`, `to` (≤120 days) | paid website sales per product per Israel day: units, revenue, orders. Aggregates only, no customer data |
+| `marketing_inventory` | – | bottled stock per website product id |
 
 **Write** (needs `write` scope; every write lands in the timeline credited to `app:<key name>`)
 

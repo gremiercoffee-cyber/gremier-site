@@ -50,7 +50,7 @@ function mapItemNameToOpsKey(name: string): string | null {
   return null;
 }
 
-async function buildWebIdToOps(supabase: SupabaseClient): Promise<Record<string, string>> {
+export async function buildWebIdToOps(supabase: SupabaseClient): Promise<Record<string, string>> {
   const { data: products } = await supabase.from("products").select("id,name_en,category");
   const idToOps: Record<string, string> = {};
   for (const wp of products || []) {

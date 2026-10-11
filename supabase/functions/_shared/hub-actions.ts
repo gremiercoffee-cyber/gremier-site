@@ -4,6 +4,7 @@ import {
   adjustStock, BOTTLES, completeDelivery, logBottling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
   readSchedule, readStock, readStores, readSummary, startBrew,
 } from "./hub-ops.ts";
+import { marketingInventory, marketingProducts, marketingSales } from "./hub-marketing.ts";
 import { cleanText } from "./security.ts";
 
 export { HubError };
@@ -18,6 +19,9 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   stock: { properties: {} },
   stores: { properties: {} },
   activity: { properties: { since: str("ISO timestamp"), limit: num("Max 200") } },
+  marketing_products: { properties: {} },
+  marketing_sales: { properties: { from: str("YYYY-MM-DD"), to: str("YYYY-MM-DD (max 120 days)") }, required: ["from", "to"] },
+  marketing_inventory: { properties: {} },
   log_bottling: { properties: { product: { type: "string", enum: ["classic_liter", "sweetened_classic", "house_blend", "colombia_liter", "decaf_liter", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini", "house_blend_mini", "jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"] }, units: { type: "integer", description: "Bottles / minis / jerry cans made" } }, required: ["product", "units"] },
   start_brew: { properties: { product: { type: "string", enum: ["classic", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
   complete_drain: { properties: { job_id: str("Drain job id (from schedule)"), product: str("Or: complete the earliest pending drain of this coffee") } },
@@ -44,6 +48,9 @@ export const ACTIONS: Record<string, Handler> = {
   stock: { scope: "read", describe: "Inventory (bottles), concentrate (L), beans (kg), labeled bottles.", run: ({ sb }) => readStock(sb) },
   stores: { scope: "read", describe: "Stores with phone and prices.", run: ({ sb }) => readStores(sb) },
   activity: { scope: "read", describe: "Timeline of everything done (admin, website, apps). Args: since (ISO time), limit.", run: ({ sb }, a) => readActivity(sb, a as any) },
+  marketing_products: { scope: "read", describe: "Website product catalog for marketing (id, names, price, category, active).", run: ({ sb }) => marketingProducts(sb) },
+  marketing_sales: { scope: "read", describe: "Paid website sales per product per day (units, revenue, orders). No customer data. Args: from, to.", run: ({ sb }, a) => marketingSales(sb, a as any) },
+  marketing_inventory: { scope: "read", describe: "Bottled stock per website product.", run: ({ sb }) => marketingInventory(sb) },
   // ── write ──
   start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|houseBlend|colombia|decaf), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },
   complete_drain: { scope: "write", describe: "Mark a drain done (adds concentrate). Args: job_id or product; default = earliest pending drain.", run: ({ sb }, a) => completeDrain(sb, a as any) },
