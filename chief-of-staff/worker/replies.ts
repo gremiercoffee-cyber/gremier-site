@@ -36,7 +36,9 @@ async function styleNotes(env: Env, person?: string | null) {
 /** The list, oldest first. Fills in missing "why" + suggestion for up to 10 cards in one call. */
 export async function replyQueue(env: Env): Promise<ReplyCard[]> {
   const items = await all<Item & { why: string | null; suggested_reply: string | null }>(env,
-    `SELECT * FROM items WHERE status = 'open' AND kind = 'task' AND source IN ('gmail','whatsapp') ORDER BY created_at LIMIT 30`);
+    // Put off with "Later" (a future due time) → hidden until then.
+    `SELECT * FROM items WHERE status = 'open' AND kind = 'task' AND source IN ('gmail','whatsapp')
+       AND (due_at IS NULL OR due_at <= ?) ORDER BY created_at LIMIT 30`, new Date().toISOString());
   const cards: ReplyCard[] = [];
   for (const i of items) {
     cards.push({

@@ -258,6 +258,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
                           className="rounded-full bg-ok/15 text-ok px-3 py-1 text-[13px] font-medium">✓ Done</button>
                         <button onClick={async () => { await api.updateItem(it.id, { due_at: tomorrowNine() }); onChanged(); }}
                           className="rounded-full bg-surface border border-line px-3 py-1 text-[13px] font-medium">Not yet → tomorrow</button>
+                        <button onClick={() => window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: it.id }))}
+                          className="rounded-full bg-surface border border-line px-3 py-1 text-[13px] font-medium">⏰ Later…</button>
                         <button onClick={async () => { await api.updateItem(it.id, { status: "dropped" }); onChanged(); }}
                           className="rounded-full px-3 py-1 text-[13px] text-muted">Not needed</button>
                       </div>

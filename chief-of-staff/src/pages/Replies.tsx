@@ -131,6 +131,7 @@ function Card({ c, draft, setDraft, serverTranscription, busy, big, drafting, on
           {busy ? "Sending…" : c.channel === "email" ? "Save as draft" : "Send"}
         </Button>
         {onSkip && <Button variant="soft" onClick={onSkip}>Skip</Button>}
+        <Button variant="soft" onClick={() => window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: c.id }))}>⏰ Later</Button>
         <Button variant="ghost" onClick={onDrop}>No reply needed</Button>
       </div>
     </section>

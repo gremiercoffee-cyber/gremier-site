@@ -137,8 +137,12 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   if (next.status !== "open" && existing.status === "open") {
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", id);
   }
-  // A rescheduled item should be able to remind again.
+  // A rescheduled item should be able to remind again, at the new time (not right away).
   const resetReminder = input.due_at !== undefined && next.due_at !== existing.due_at;
+  const later = resetReminder && !!next.due_at && next.due_at > now();
+  // Moved to later: the reminder on screen about it goes away, and the "get back to them" check
+  // (which has its own timer) waits for the new time too, instead of coming straight back.
+  if (later) await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ? AND dismissed = 0", id);
   // Pushed later after it had already come due (or was about to): that's a postponement.
   const postponed = resetReminder && !!existing.due_at && !!next.due_at && next.due_at > existing.due_at
     && new Date(existing.due_at).getTime() <= Date.now() + 3600_000;
@@ -146,9 +150,11 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
     env,
     `UPDATE items SET kind=?, title=?, notes=?, status=?, priority=?, due_at=?, person=?, project_id=?, category=?,
        completed_at=?, updated_at=?, reminded_at = CASE WHEN ? THEN NULL ELSE reminded_at END,
-       heads_up_at = CASE WHEN ? THEN NULL ELSE heads_up_at END, snooze_count = snooze_count + ? WHERE id=?`,
+       heads_up_at = CASE WHEN ? THEN NULL ELSE heads_up_at END, nudge_after = CASE WHEN ? THEN ? ELSE nudge_after END,
+       snooze_count = snooze_count + ? WHERE id=?`,
     next.kind, next.title, next.notes, next.status, next.priority, next.due_at, next.person,
-    next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, resetReminder ? 1 : 0, postponed ? 1 : 0, id,
+    next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, resetReminder ? 1 : 0,
+    resetReminder ? 1 : 0, later ? next.due_at : null, postponed ? 1 : 0, id,
   );
   await syncProject(env, next.project_id);
   if (existing.project_id !== next.project_id) await syncProject(env, existing.project_id);

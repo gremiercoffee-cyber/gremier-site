@@ -21,7 +21,7 @@ export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
   if (n.type === "postponed") return [{ id: "done", title: "Do it now ✓" }, { id: "breakdown", title: "Break it down", opens: true },
-    { id: "notneeded", title: "Drop it" }, { id: "delegate", title: "Hand it off", opens: true }, { id: "reschedule", title: "Reschedule", opens: true }];
+    { id: "notneeded", title: "Drop it" }, { id: "delegate", title: "Hand it off", opens: true }, { id: "reschedule", title: "⏰ Reschedule", opens: true }];
   if (n.type === "routine" || n.type === "routine_alert") return [
     { id: "report_doc", title: "📄 Open Doc", opens: true }, { id: "report_brief", title: "💬 Tell me about it", opens: true },
     { id: "report_read", title: "🔊 Read it to me", opens: true }];
@@ -31,12 +31,12 @@ export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   // Every alert about a task: the same four, in this order. Android shows the first three on the
   // lock screen; the app shows all of them plus the extras for that kind of alert.
   const done: NudgeAction = { id: "done", title: n.type === "checkin" ? "Yes, done ✓" : "Done ✓" };
-  const base: NudgeAction[] = [done, { id: "reschedule", title: "Reschedule", opens: true }, { id: "ok", title: "Dismiss" }, { id: "ignore", title: "Ignore" }];
+  const base: NudgeAction[] = [done, { id: "reschedule", title: "⏰ Reschedule", opens: true }, { id: "ok", title: "Dismiss" }, { id: "ignore", title: "Ignore" }];
   switch (n.type) {
     case "unanswered":
-      // Android shows the first three on the notification: quick yes / no, or draft it yourself.
-      return [{ id: "reply", title: "✍️ Draft…", opens: true }, { id: "notneeded", title: "Dismiss" }, { id: "reply_yes", title: "👍 Yes" },
-        { id: "reply_no", title: "👎 No" }, done, { id: "reschedule", title: "Later", opens: true }, { id: "hold", title: "Holding reply" }];
+      // The notification shows the first three: draft it, put it off, or nothing needed. The rest are in the app.
+      return [{ id: "reply", title: "✍️ Draft…", opens: true }, { id: "reschedule", title: "⏰ Later", opens: true }, { id: "notneeded", title: "Dismiss" },
+        { id: "reply_yes", title: "👍 Yes" }, { id: "reply_no", title: "👎 No" }, done, { id: "hold", title: "Holding reply" }];
     case "whatsapp":
     case "email":
       return [...base, { id: "reply", title: "Reply…", opens: true }];
