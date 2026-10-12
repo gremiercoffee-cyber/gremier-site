@@ -5,6 +5,7 @@ import { useAreas } from "../areas";
 import { BriefingView, DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
+import Celebration from "../components/Celebration";
 import { startRecording } from "../voice";
 
 type LiveState = "off" | LiveStatus;
@@ -45,6 +46,14 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     api.conversationMessages(conversationId).then(setMessages).catch((e) => setError(e.message));
   }, [conversationId]);
   useEffect(() => { api.dashboard().then(setDash).catch(() => {}); }, [refreshKey]);
+  // A project just finished: confetti once, then it's marked as celebrated.
+  const [party, setParty] = useState<{ id: string; name: string; done: number } | null>(null);
+  useEffect(() => {
+    const list = dash?.celebrate ?? [];
+    if (!list.length || party) return;
+    setParty(list[0]);
+    list.forEach((c) => api.projectCelebrated(c.id).catch(() => {}));
+  }, [dash, party]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sending]);
   useEffect(() => () => callRef.current?.hangUp(), []);
   useEffect(() => { if (startVoice) startLive(); }, [startVoice]);
@@ -148,6 +157,8 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
         {error && <p className="text-danger text-sm mt-2">{error}</p>}
         <div ref={endRef} />
       </div>
+
+      {party && <Celebration name={party.name} done={party.done} onClose={() => setParty(null)} />}
 
       <Composer
         live={live} typing={typing} setTyping={setTyping} input={input} setInput={setInput} sending={sending}

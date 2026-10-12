@@ -136,6 +136,8 @@ export interface Dashboard {
   todo?: Item[];
   lists?: { id: string; name: string }[];
   counts: Record<string, number>;
+  /** Projects that just finished: the app throws a little party for each, once. */
+  celebrate?: { id: string; name: string; done: number }[];
   events: CalendarEvent[];
   /** The time block the user is in right now, if any. */
   now_block?: { id: string; name: string; category: string | null; until: string | null; count: number; items: { id: string; title: string }[] } | null;

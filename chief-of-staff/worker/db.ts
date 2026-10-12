@@ -110,15 +110,15 @@ export async function syncProject(env: Env, projectId: string | null | undefined
   const c = await first<{ open: number; done: number }>(env,
     "SELECT SUM(status = 'open') AS open, SUM(status = 'done') AS done FROM items WHERE project_id = ?", projectId);
   const open = c?.open ?? 0, done = c?.done ?? 0;
-  if (p.status === "active" && open === 0 && done > 0) await run(env, "UPDATE projects SET status = 'done', updated_at = ? WHERE id = ?", now(), projectId);
-  else if (p.status === "done" && open > 0) await run(env, "UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?", now(), projectId);
+  if (p.status === "active" && open === 0 && done > 0) await run(env, "UPDATE projects SET status = 'done', celebrate_at = ?, updated_at = ? WHERE id = ?", now(), now(), projectId);
+  else if (p.status === "done" && open > 0) await run(env, "UPDATE projects SET status = 'active', celebrate_at = NULL, updated_at = ? WHERE id = ?", now(), projectId);
 }
 
 /** Cron safety net for items closed outside updateItem (e.g. "you replied on WhatsApp"). Archives only. */
 export async function archiveFinishedProjects(env: Env) {
-  await run(env, `UPDATE projects SET status = 'done', updated_at = ? WHERE status = 'active'
+  await run(env, `UPDATE projects SET status = 'done', celebrate_at = ?, updated_at = ? WHERE status = 'active'
     AND EXISTS (SELECT 1 FROM items WHERE project_id = projects.id AND status = 'done')
-    AND NOT EXISTS (SELECT 1 FROM items WHERE project_id = projects.id AND status = 'open')`, now());
+    AND NOT EXISTS (SELECT 1 FROM items WHERE project_id = projects.id AND status = 'open')`, now(), now());
 }
 
 export async function updateItem(env: Env, id: string, input: ItemInput): Promise<Item> {

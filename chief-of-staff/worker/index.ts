@@ -103,8 +103,12 @@ route("GET", "/api/dashboard", async (_req, env) => {
   // A to-do already listed in a "Now" card (time block) doesn't also get its own row.
   const inBlocks = new Set(liveAll.flatMap((n) => (n.items ?? []).map((i) => i.id)));
   const live = liveAll.filter((n) => !n.item_id || (!inBlocks.has(n.item_id) && (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true))));
+  // Projects that just finished and haven't been celebrated yet (recent only, so nothing old pops up).
+  const celebrate = await all<{ id: string; name: string; done: number }>(env,
+    `SELECT p.id, p.name, (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done
+     FROM projects p WHERE p.celebrate_at IS NOT NULL AND p.celebrate_at > ? ORDER BY p.celebrate_at`, new Date(Date.now() - 3 * 86400_000).toISOString());
   const data: Dashboard = {
-    now_block: nowBlock,
+    now_block: nowBlock, celebrate,
     today, overdue, waiting, pending, projects, events, todo, lists,
     nudges: await Promise.all(live.map(async (n) => ({ ...n, actions: await actionsForNudge(env, n) }))),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
@@ -329,6 +333,10 @@ route("PATCH", "/api/projects/:id", async (req, env, [id]) => {
   await run(env, "UPDATE projects SET name=?, description=?, area=?, status=?, updated_at=? WHERE id=?",
     next.name, next.description, next.area, next.status, now(), id);
   return json({ ...p, ...next });
+});
+route("POST", "/api/projects/:id/celebrated", async (_req, env, [id]) => {
+  await run(env, "UPDATE projects SET celebrate_at = NULL WHERE id = ?", id);
+  return json({ ok: true });
 });
 route("DELETE", "/api/projects/:id", async (_req, env, [id]) => {
   await run(env, "DELETE FROM projects WHERE id = ?", id);

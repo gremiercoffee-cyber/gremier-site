@@ -98,6 +98,7 @@ export const api = {
   createProject: (p: Partial<Project>) => request<Project>("POST", "/api/projects", p),
   updateProject: (id: string, p: Partial<Project>) => request<Project>("PATCH", `/api/projects/${id}`, p),
   deleteProject: (id: string) => request("DELETE", `/api/projects/${id}`),
+  projectCelebrated: (id: string) => request("POST", `/api/projects/${id}/celebrated`),
   memories: () => request<Memory[]>("GET", "/api/memories"),
   setKeyPerson: (id: string, key: boolean) => request("POST", `/api/people/${id}`, { key }),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
