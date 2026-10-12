@@ -15,6 +15,7 @@ import { all, createItem, first, getSettings, now, run, uid } from "./db";
 import { areaKeysJson } from "./areas";
 import { createDoc } from "./gworkspace";
 import { notify } from "./push";
+import { askProject, matchProject } from "./projectmatch";
 
 const QUIET_MS = 30 * 60_000;   // notes stop for this long → the meeting is over
 const SESSION_GAP_MS = 45 * 60_000;
@@ -72,13 +73,18 @@ Reply ONLY JSON: {"is_meeting": true|false, "title": "Meeting with X: topic", "w
     const d = await createDoc(env, `${title} · ${date}`, `# ${title}\n${date}${v.with ? ` · with ${v.with}` : ""}\n\n${v.notes_md ?? ""}\n\n## Your original notes\n${notes.map((n) => `- ${n.text.replace(/\n+/g, " ")}`).join("\n")}`);
     link = d.link;
   } catch (e) { console.error("meeting doc", e); }
+  // Is the meeting about one of the user's projects? Clear → its to-dos go there; unsure → asked once for all of them.
+  const todos = (v.todos ?? []).filter((t) => t.title).slice(0, 12);
+  const pm = todos.length ? await matchProject(env, { title, text: `${v.notes_md ?? ""}`, person: v.with }).catch(() => ({ project_id: null as string | null, maybe: [] as { id: string; name: string }[] })) : { project_id: null, maybe: [] };
   let added = 0;
-  for (const t of (v.todos ?? []).slice(0, 12)) {
-    if (!t.title) continue;
-    await createItem(env, { kind: t.due_at ? "reminder" : "task", title: t.title, due_at: t.due_at ?? null, person: t.person ?? v.with ?? null,
-      category: v.area ?? null, source: "meeting", notes: `From your notes: ${title}${link ? `\n${link}` : ""}` });
+  const made: { id: string; title: string }[] = [];
+  for (const t of todos) {
+    const item = await createItem(env, { kind: t.due_at ? "reminder" : "task", title: t.title!, due_at: t.due_at ?? null, person: t.person ?? v.with ?? null,
+      category: v.area ?? null, project_id: pm.project_id, source: "meeting", notes: `From your notes: ${title}${link ? `\n${link}` : ""}` });
+    made.push({ id: item.id, title: item.title });
     added++;
   }
+  if (!pm.project_id && pm.maybe.length) await askProject(env, made, pm.maybe, title);
   await notify(env, "meeting_notes", `📝 ${title}`,
     `${link ? "Your notes are in a Google Doc." : "I couldn't make the Doc (Google not connected)."}${added ? ` ${added} to-do${added > 1 ? "s" : ""} added.` : ""}`, null, link ?? "/");
 }

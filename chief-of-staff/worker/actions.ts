@@ -3,7 +3,8 @@
  * Notification buttons call the public /api/act route with an HMAC signature per nudge, so the
  * service worker never needs the passcode.
  */
-import { decideSuggestion } from "./suggestions";
+import { decideSuggestion, suggestionChoices } from "./suggestions";
+import { assignProject } from "./projectmatch";
 import type { Item, Nudge, NudgeAction } from "../shared/types";
 import { draftReply } from "./replies";
 import { queueWhatsApp } from "./whatsapp";
@@ -12,6 +13,25 @@ import { first, getSettings, localParts, run, updateItem } from "./db";
 import { decideOutbox } from "./whatsapp";
 import { createDraft } from "./google";
 import { now, uid } from "./db";
+
+/**
+ * The buttons for one nudge. Most are fixed per type (actionsFor); the "which project?" ones depend on
+ * the candidates stored for that question, so they're looked up here. The first three show on the lock screen.
+ */
+export async function actionsForNudge(env: Env, n: Pick<Nudge, "type" | "item_id">): Promise<NudgeAction[]> {
+  if (n.type === "project_ask" && n.item_id) {
+    const row = await first<{ candidates: string }>(env, "SELECT candidates FROM project_asks WHERE id = ?", n.item_id);
+    const cands = (row ? JSON.parse(row.candidates) : []) as { id: string; name: string }[];
+    return [...cands.map((c) => ({ id: `proj:${c.id}`, title: `🗂️ ${c.name}` })), { id: "proj:none", title: "None of these" }];
+  }
+  if (n.type === "suggest" && n.item_id) {
+    const c = await suggestionChoices(env, n.item_id);
+    if (c.project_id) return [{ id: "accept", title: `✓ Yes, add to ${c.project ?? "the project"}` }, { id: "accept_p:none", title: "Add, no project" }, { id: "decline", title: "✗ No" }];
+    if (c.candidates.length) return [...c.candidates.slice(0, 2).map((p) => ({ id: `accept_p:${p.id}`, title: `✓ Add to ${p.name}` })),
+      { id: "accept_p:none", title: "✓ Add, no project" }, { id: "decline", title: "✗ No" }];
+  }
+  return actionsFor(n);
+}
 
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
@@ -111,9 +131,19 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
     return { ok: true, message: action === "not_meeting" ? "Removed from your Schedule." : "OK." };
   }
+  if (n.type === "project_ask" && n.item_id) {
+    // For these item_id is the question (project_asks row): one tap on a project files the item(s) there.
+    const row = await first<{ item_ids: string }>(env, "SELECT item_ids FROM project_asks WHERE id = ?", n.item_id);
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    if (!row) return { ok: true, message: "Already handled." };
+    if (action === "proj:none") return { ok: true, message: "OK, left without a project." };
+    const p = await assignProject(env, JSON.parse(row.item_ids) as string[], action.replace(/^proj:/, ""));
+    return { ok: true, message: p ? `Filed under ${p.name}.` : "Done." };
+  }
   if (n.type === "suggest" && n.item_id) {
-    // For suggestions item_id is the suggestion id.
-    const message = await decideSuggestion(env, n.item_id, action === "accept");
+    // For suggestions item_id is the suggestion id. "accept_p:<id>" = yes, in that project.
+    const message = await decideSuggestion(env, n.item_id, action === "accept" || action.startsWith("accept_p:"),
+      action.startsWith("accept_p:") ? action.slice("accept_p:".length) : undefined);
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
     return { ok: true, message };
   }

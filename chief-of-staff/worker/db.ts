@@ -57,6 +57,19 @@ export async function createItem(env: Env, input: ItemInput): Promise<Item> {
   }
   const title = (input.title ?? "").trim();
   if (!title) throw new HttpError(400, "title is required");
+  // The same thing twice (same words, ignoring case and punctuation) → the open one already there is used,
+  // filled in with anything new (a project, a time), instead of a second copy.
+  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  if (norm(title).length >= 4) {
+    const same = (await all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND kind = ? ORDER BY created_at DESC LIMIT 200", kind)).find((o) => norm(o.title) === norm(title));
+    if (same) {
+      const fill: ItemInput = {};
+      if (!same.project_id && input.project_id) fill.project_id = input.project_id;
+      if (!same.due_at && input.due_at) fill.due_at = input.due_at;
+      if (!same.category && validCategory(input.category)) fill.category = input.category;
+      return Object.keys(fill).length ? updateItem(env, same.id, fill) : same;
+    }
+  }
   const t = now();
   const item: Item = {
     id: uid(),

@@ -4,7 +4,7 @@
  */
 import type { Env } from "./env";
 import { all, first, now, run, uid } from "./db";
-import { actionsFor, signNudge } from "./actions";
+import { actionsForNudge, signNudge } from "./actions";
 import { isShabbat } from "./shabbat";
 import { urgencyFor } from "./policy";
 import { getSettings } from "./db";
@@ -121,7 +121,7 @@ export async function notify(env: Env, type: string, title: string, body = "", i
   // The tag collapses repeats for the same item; buttons act without opening the app.
   await sendPush(env, {
     title, body, url, tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
-    actions: actionsFor({ type, item_id: itemId }).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
+    actions: (await actionsForNudge(env, { type, item_id: itemId })).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
   return id;
 }

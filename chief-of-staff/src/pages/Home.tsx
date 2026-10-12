@@ -179,7 +179,12 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
   // Items already in the list below aren't repeated in the "Coming up" strip.
-  const shown = new Set((dash?.nudges ?? []).flatMap((n) => [n.item_id, ...(n.items ?? []).map((i) => i.id)]).filter(Boolean) as string[]);
+  // Each thing appears once on this screen: reminders and the "Now" card first, then Coming up, then
+  // Projects, then To-do. (Anything already shown higher up is left out of the lower sections.)
+  const shown = new Set([
+    ...(dash?.nudges ?? []).flatMap((n) => [n.item_id, ...(n.items ?? []).map((i) => i.id)]),
+    ...(dash?.now_block?.items ?? []).map((i) => i.id),
+  ].filter(Boolean) as string[]);
   const upcoming = [
     ...(dash?.overdue ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: "Overdue", sort: "0", red: true })),
     ...(area !== "all" ? [] : dash?.events ?? []).filter((e) => e.all_day || new Date(e.end_at ?? e.start_at).getTime() > Date.now())
@@ -259,8 +264,9 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
               </> : n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
                 {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
                 <ul className="space-y-1">
-                  {n.items.map((it) => (
+                  {groupItems(n.items).map(({ header, it }) => (
                     <li key={it.id} className="text-[14px] rounded-xl bg-sunken/60 px-3 py-2">
+                      {header && <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">🗂️ {header}</p>}
                       <p>{it.title}{it.person && <span className="text-muted"> ({it.person})</span>}</p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         <button onClick={async () => { await api.updateItem(it.id, { status: "done" }); onChanged(); }}
@@ -285,8 +291,8 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         </div>
       )}
 
-      <TodoSection dash={dash} shown={shown} inArea={inArea} onChanged={onChanged} />
-      <ProjectsSection dash={dash} inArea={inArea} onChanged={onChanged} />
+      <ProjectsSection dash={dash} inArea={inArea} hide={new Set([...shown, ...upcoming.map((u) => u.id)])} onChanged={onChanged} />
+      <TodoSection dash={dash} shown={new Set([...shown, ...upcoming.map((u) => u.id)])} inArea={inArea} onChanged={onChanged} />
       </div>
     </div>
   );
@@ -298,6 +304,7 @@ const KIND: Record<string, { emoji: string; label: string; tone: string }> = {
   overdue: { emoji: "🔴", label: "Overdue", tone: "border-l-danger text-danger" },
   reminder: { emoji: "⏰", label: "Reminder", tone: "border-l-amber-500 text-amber-700" },
   checkin: { emoji: "❓", label: "Did you?", tone: "border-l-amber-500 text-amber-700" },
+  project_ask: { emoji: "🗂️", label: "Which project?", tone: "border-l-violet-500 text-violet-700" },
   headsup: { emoji: "📅", label: "Coming up", tone: "border-l-sky-500 text-sky-700" },
   event: { emoji: "🗓️", label: "Meeting", tone: "border-l-sky-500 text-sky-700" },
   situation: { emoji: "📍", label: "Now", tone: "border-l-accent text-accent" },
@@ -670,12 +677,32 @@ function TodoSection({ dash, shown, inArea, onChanged }: {
   );
 }
 
+/** Steps of the same project sit together under the project's name (shown once), not scattered through the list. */
+function groupItems<T extends { id: string; project_id?: string | null; project?: string | null }>(items: T[]) {
+  const size = new Map<string, number>();
+  for (const i of items) if (i.project_id) size.set(i.project_id, (size.get(i.project_id) ?? 0) + 1);
+  const first = new Map<string, number>();
+  items.forEach((i, idx) => { if (i.project_id && !first.has(i.project_id)) first.set(i.project_id, idx); });
+  const key = (i: T, idx: number) => (i.project_id && (size.get(i.project_id) ?? 0) > 1 ? first.get(i.project_id)! : idx);
+  return items
+    .map((it, idx) => ({ it, idx, k: key(it, idx) }))
+    .sort((a, b) => a.k - b.k || a.idx - b.idx)
+    .map(({ it, idx }, pos, arr) => ({
+      it,
+      header: it.project_id && (size.get(it.project_id) ?? 0) > 1 && (pos === 0 || arr[pos - 1].it.project_id !== it.project_id) && idx >= 0 ? it.project ?? null : null,
+    }));
+}
+
 /** Active projects and lists with what's left and how far along they are. A project that's all done archives itself. */
-function ProjectsSection({ dash, inArea, onChanged }: { dash: Dashboard | null; inArea: (a: string | null | undefined) => boolean; onChanged: () => void }) {
+function ProjectsSection({ dash, inArea, hide, onChanged }: { dash: Dashboard | null; inArea: (a: string | null | undefined) => boolean; hide: Set<string>; onChanged: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  // Steps already shown above (a reminder, "Now", Coming up) aren't listed again; the count says how many.
   const projects = (dash?.projects ?? [])
-    .map((p) => ({ ...p, items: (p.items ?? []).filter((i) => inArea(i.category)) }))
-    .filter((p) => p.items.length > 0);
+    .map((p) => {
+      const mine = (p.items ?? []).filter((i) => inArea(i.category));
+      return { ...p, items: mine.filter((i) => !hide.has(i.id)), above: mine.filter((i) => hide.has(i.id)).length, any: mine.length > 0 };
+    })
+    .filter((p) => p.any);
   if (!projects.length) return null;
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) : "");
   const done = async (id: string) => { await api.updateItem(id, { status: "done" }); onChanged(); };
@@ -709,6 +736,7 @@ function ProjectsSection({ dash, inArea, onChanged }: { dash: Dashboard | null; 
                       {i.due_at && <span className="shrink-0 text-[12px] text-muted">{when(i.due_at)}</span>}
                     </li>
                   ))}
+                  {p.above > 0 && <li className="px-4 py-2 text-[12px] text-muted">{p.above} more {p.above > 1 ? "are" : "is"} shown above</li>}
                 </ul>
               )}
             </div>

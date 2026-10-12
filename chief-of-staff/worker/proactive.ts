@@ -180,13 +180,16 @@ async function createBriefing(env: Env, date: string, tz: string) {
   const items = await all<Item & { snooze_count: number }>(env,
     `SELECT * FROM items WHERE status = 'open' AND kind != 'idea'
      ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT 40`);
+  const projectNames = new Map((await all<{ id: string; name: string }>(env, "SELECT id, name FROM projects")).map((p) => [p.id, p.name]));
   const listing = items
-    .map((i) => `- ${i.kind}: ${i.title}${i.due_at ? ` (due ${i.due_at})` : ""}${i.person ? ` [${i.person}]` : ""} p${i.priority}${i.snooze_count >= 2 ? ` (postponed ${i.snooze_count}x)` : ""}${i.category ? ` {${i.category}}` : ""}`)
+    .map((i) => `- ${i.kind}: ${i.title}${i.due_at ? ` (due ${i.due_at})` : ""}${i.person ? ` [${i.person}]` : ""} p${i.priority}${i.snooze_count >= 2 ? ` (postponed ${i.snooze_count}x)` : ""}${i.category ? ` {${i.category}}` : ""}${i.project_id && projectNames.has(i.project_id) ? ` <project: ${projectNames.get(i.project_id)}>` : ""}`)
     .join("\n") || "(nothing open)";
-  // Things that waited quietly for this briefing instead of buzzing.
-  const quiet = await all<{ title: string; body: string }>(env,
-    "SELECT title, body FROM nudges WHERE dismissed = 0 AND type NOT IN ('briefing','digest','sweep','auto_done','wa_sent','learn','mission_progress','mission_done','tracker','routine','idea','customers','review','wrapup') AND created_at > ? ORDER BY created_at DESC LIMIT 12",
-    new Date(Date.now() - 24 * 3600_000).toISOString());
+  // Things that waited quietly for this briefing instead of buzzing. Reminders about an item already listed
+  // above are left out, so nothing is said twice.
+  const listed = new Set(items.map((i) => i.id));
+  const quiet = (await all<{ title: string; body: string; item_id: string | null }>(env,
+    "SELECT title, body, item_id FROM nudges WHERE dismissed = 0 AND type NOT IN ('briefing','digest','sweep','auto_done','wa_sent','learn','mission_progress','mission_done','tracker','routine','idea','customers','review','wrapup','situation','project_ask','suggest') AND created_at > ? ORDER BY created_at DESC LIMIT 12",
+    new Date(Date.now() - 24 * 3600_000).toISOString())).filter((q) => !q.item_id || !listed.has(q.item_id));
   const sunday = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short" }).format(new Date()) === "Sun";
   const sweep = sunday ? await cracks(env) : [];
   const missions = await missionsSummary(env);
@@ -203,6 +206,7 @@ Heads-up: deadlines in the next day or two, and anything overdue.
 Decisions for you: up to 3 things only the user can decide (undated promises, things postponed repeatedly, approvals, unanswered requests), each with 2-3 concrete options.
 ${sweep.length ? "Weekly check — may have slipped: pick the ones that matter from the list and suggest an action for each.\n" : ""}Missions: only if an active mission needs the user's input; otherwise leave this section out.
 Only include what still needs the user. NEVER mention things already done, handled, replied to or cleared.
+Say each thing ONCE, in one section only. Items tagged <project: X> are steps of project X: mention the project once with its steps together (e.g. "Bottles: order cups, confirm sizes"), never the project and its steps as separate points.
 Use short lines, no markdown symbols except "•".`,
       prompt: `Today is ${date}. UTC now ${now()}.
 Open items:

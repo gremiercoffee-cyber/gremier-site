@@ -16,6 +16,7 @@ import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
+import { activeProjects } from "./projectmatch";
 import { makePrepDoc } from "./meetingnotes";
 import { hubCall } from "./hub";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
@@ -30,6 +31,12 @@ What you do:
 - A reminder whose title starts with "Did you…?" is sent as a check-in with Yes / Not yet buttons. Use that for follow-ups.
 
 Areas: everything belongs to one of the user's areas, listed under "## Areas" in the context (keys like coffee, yeshiva, personal, plus any they added). Set category on every item when it is clear. If it is genuinely unclear, leave it out: the user gets a "Which area?" prompt to choose. When the user tells you someone's area, save it on that person (save_person notes) so future items from them are filed correctly. When the user wants a new area/category ("add a category for the house renovation"), create it with save_area and use it from then on.
+
+Projects: the user's active projects are under "## Projects" (name, what it's for, a few open items). EVERY time you create or file a to-do, reminder, commitment or waiting-for, decide whether it belongs to one of them, so their work is organized by project as well as by area.
+- Clearly part of one (they name the project, or it's obviously a step of it: same goal, product, supplier or person) → set project on create_item right away, no question, and say so in a few words ("…under Bottles").
+- Plausibly part of one or a few but not sure (e.g. "I'm working on the coffee thing now") → create it WITHOUT a project and ask once, in the same reply: "Is this part of A or B?" (at most 3). When they answer, move it with update_item (project).
+- Nothing fits → no project, no question. Never make a new project for one to-do; a project is a goal with several steps (or when they ask for one).
+- Each thing appears once: don't create a to-do that repeats an open one (check search_items), and don't list a project AND its steps as separate to-dos.
 
 Reminders can be at ANY time, not only at deadlines: for "remind me sometime this afternoon", pick a sensible time yourself and create a reminder with that due_at.
 
@@ -198,7 +205,10 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
   if (groups && want.has("groups")) lines.push("", "## Contact groups", groups);
   if (tasks && want.has("tasks")) lines.push("", "## Tasks (recurring jobs)", tasks);
   if (trackers && want.has("trackers")) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
-  if (projectsText && want.has("projects")) lines.push("", "## Projects", projectsText);
+  // Projects are always shown (short): every to-do being filed is checked against them.
+  const activeP = await activeProjects(env);
+  if (activeP.length) lines.push("", "## Projects (active)", activeP.map((p) => `- ${p.name}${p.description ? ` — ${p.description.slice(0, 80)}` : ""}${p.samples.length ? ` (open: ${p.samples.join("; ")})` : ""}`).join("\n"));
+  else if (projectsText && want.has("projects")) lines.push("", "## Projects", projectsText);
   const g = await googleStatus(env).catch(() => null);
   const bridge = await bridgeStatus(env);
   lines.push("", "## Connected accounts");
@@ -209,7 +219,7 @@ export async function buildContext(env: Env, mode: string, query = ""): Promise<
     : "- WhatsApp: not set up yet.");
   if (ideas && want.has("ideas")) lines.push("", "## Ideas (open)", ideas);
   if (missions && want.has("missions")) lines.push("", "## Missions (working in the background)", missions);
-  const skipped = ["schedule", "groups", "tasks", "trackers", "projects", "ideas", "missions", "calendar"].filter((k) => !want.has(k));
+  const skipped = ["schedule", "groups", "tasks", "trackers", ...(activeP.length ? [] : ["projects"]), "ideas", "missions", "calendar"].filter((k) => !want.has(k));
   if (skipped.length) lines.push("", `(Not shown for this message: ${skipped.join(", ")}. If the answer could depend on one, load it with get_context first; never guess.)`);
   lines.push("", `## Open items (soonest ${shownItems.length}; use search_items for others)`);
   lines.push(
@@ -1098,7 +1108,7 @@ const GUIDE_HEADERS: [string, string][] = [
   ["schedule", "Schedule (time blocks):"], ["trackers", "Trackers:"], ["tasks", "Tasks (recurring jobs):"],
   ["missions", "Missions:"], ["meetings", "Meeting prep:"], ["groups", "Groups and group messages:"], ["ideas", "Ideas and thinking out loud:"],
 ];
-const GENERAL_STARTS = ["What you do:", "Areas:", "Reminders can", "Memory", "How to file", "How this app", "Drafting text:", "Researching the web:", "Rules:"];
+const GENERAL_STARTS = ["What you do:", "Areas:", "Projects:", "Reminders can", "Memory", "How to file", "How this app", "Drafting text:", "Researching the web:", "Rules:"];
 
 function splitPrompt() {
   const blocks = SYSTEM_PROMPT.split("\n\n");

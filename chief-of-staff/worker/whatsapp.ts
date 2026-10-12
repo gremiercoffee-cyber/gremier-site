@@ -9,6 +9,7 @@
  */
 import { checkWatches } from "./watches";
 import { suggest } from "./suggestions";
+import { matchProject } from "./projectmatch";
 import type { Item } from "../shared/types";
 import type { Env } from "./env";
 import { areaCorrections, areaKeysJson } from "./areas";
@@ -86,12 +87,17 @@ export async function handleIncoming(env: Env, m: { chat?: string; sender?: stri
   }
   if (triage.action !== "suggest" || !triage.title) return { filed: false, reason: "not actionable" };
   const when = triage.due_at ? ` (${new Date(triage.due_at).toLocaleString("en-GB", { timeZone: "Asia/Jerusalem", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})` : "";
+  // Part of one of the user's projects? Clear → the question says so; unsure → the likely projects become buttons.
+  const pm = await matchProject(env, { title: triage.title, text, person: sender }).catch(() => ({ project_id: null as string | null, maybe: [] as { id: string; name: string }[] }));
+  const pmName = pm.project_id ? (await first<{ name: string }>(env, "SELECT name FROM projects WHERE id = ?", pm.project_id))?.name : null;
   const sid = await suggest(env, "item", {
     title: triage.title, due_at: triage.due_at ?? null, priority: triage.priority, person: sender,
     // The business number is Gremier Coffee unless the message clearly says otherwise.
     category: triage.category ?? (account === "business" ? "coffee" : null),
+    project_id: pm.project_id, candidates: pm.maybe,
     notes: `${account === "business" ? "Business WhatsApp" : "WhatsApp"} from ${sender}${chat !== sender ? ` in ${chat}` : ""}: "${text}"`,
-  }, chat, `📲 ${sender}: add "${triage.title}"${when}?`, `I just saw this on your WhatsApp:\n"${text.slice(0, 160)}"`);
+  }, chat, `📲 ${sender}: add "${triage.title}"${when}${pmName ? ` to ${pmName}` : ""}?`,
+    `I just saw this on your WhatsApp:\n"${text.slice(0, 160)}"${pm.maybe.length ? `\nMight be part of: ${pm.maybe.map((p) => p.name).join(" or ")}` : ""}`);
   return { filed: false, suggested: sid };
 }
 

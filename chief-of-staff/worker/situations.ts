@@ -106,7 +106,15 @@ export async function itemsFor(env: Env, s: Situation, extra: string[] = []) {
   const attached = open.filter((i) => i.block_id === s.id);
   const intuited = open.filter((i) => i.block_id !== s.id && !i.block_id && ((s.category && i.category === s.category)
     || kw.some((w) => `${i.title} ${i.notes} ${i.person ?? ""}`.toLowerCase().includes(w))));
-  return [...attached, ...intuited].slice(0, 8);
+  // Each thing once: the same words twice, and "Reply to X" items (those live on the Replies page).
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const seen = new Set<string>();
+  return [...attached, ...intuited].filter((i) => {
+    const k = norm(i.title);
+    if (seen.has(k) || (i.source === "whatsapp" || i.source === "gmail") && i.kind === "task") return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 8);
 }
 
 /** The block the user is in right now (time windows only), if any. */
@@ -129,9 +137,23 @@ function randomMinute(id: string, date: string, from: number, to: number) {
 async function fire(env: Env, s: Situation, title: string, extra: string[] = []) {
   const items = await itemsFor(env, s, extra);
   if (!items.length && !s.note) return false; // nothing to say: stay quiet
+  // Steps of one project are one line under the project's name, not a list inside the list.
+  const names = new Map((await all<{ id: string; name: string }>(env, "SELECT id, name FROM projects")).map((p) => [p.id, p.name]));
+  const byProject = new Map<string, string[]>();
+  for (const i of items) if (i.project_id && names.has(i.project_id)) byProject.set(i.project_id, [...(byProject.get(i.project_id) ?? []), i.title]);
+  const doneProjects = new Set<string>();
+  const bullets: string[] = [];
+  for (const i of items) {
+    const pid = i.project_id && byProject.get(i.project_id)!.length > 1 ? i.project_id : null;
+    if (pid) {
+      if (doneProjects.has(pid)) continue;
+      doneProjects.add(pid);
+      bullets.push(`• 🗂️ ${names.get(pid)}: ${byProject.get(pid)!.join(", ")}`);
+    } else bullets.push(`• ${i.title}${i.person ? ` (${i.person})` : ""}`);
+  }
   const lines = [
     ...(s.note ? [`📝 ${s.note}`] : []),
-    ...items.map((i) => `• ${i.title}${i.person ? ` (${i.person})` : ""}`),
+    ...bullets,
   ];
   const nid = await notify(env, "situation", title, lines.join("\n"), null, "/?tab=lists");
   await run(env, "UPDATE nudges SET item_ids = ? WHERE id = ?", JSON.stringify(items.map((i) => i.id)), nid);

@@ -17,7 +17,7 @@ import { getAreas, removeArea, saveArea } from "./areas";
 import { hubConfigured } from "./hub";
 import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
-import { actionsFor, applyAction, tomorrowMorning, verifyNudge } from "./actions";
+import { actionsForNudge, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
 import { findPeople, recallMemories } from "./memory";
@@ -106,7 +106,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
   const data: Dashboard = {
     now_block: nowBlock,
     today, overdue, waiting, pending, projects, events, todo, lists,
-    nudges: live.map((n) => ({ ...n, actions: actionsFor(n) })),
+    nudges: await Promise.all(live.map(async (n) => ({ ...n, actions: await actionsForNudge(env, n) }))),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
   };
   return json(data);
@@ -722,8 +722,9 @@ async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null 
     if (n.item_ids) {
       let ids: string[] = [];
       try { ids = JSON.parse(n.item_ids); } catch { /* none */ }
-      const open = ids.length ? await all<{ id: string; title: string; person: string | null; due_at: string | null }>(env,
-        `SELECT id, title, person, due_at FROM items WHERE status = 'open' AND id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
+      const open = ids.length ? await all<{ id: string; title: string; person: string | null; due_at: string | null; project_id: string | null; project: string | null }>(env,
+        `SELECT i.id, i.title, i.person, i.due_at, i.project_id, p.name AS project FROM items i LEFT JOIN projects p ON p.id = i.project_id
+          WHERE i.status = 'open' AND i.id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
       // On a wrap-up, "not yet" pushes an item to tomorrow: it leaves the card.
       const ordered = ids.map((id) => open.find((o) => o.id === id))
         .filter((o) => o && !(n.type === "wrapup" && o.due_at && o.due_at > now())) as typeof open;
