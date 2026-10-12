@@ -488,7 +488,11 @@ async function createDrain2(brewJob) {
 // store delivery sync (ops checkoff → admin store_deliveries table)
 async function syncStoreDeliveryToAdmin(job, qtys) {
   const PRODUCTS2 = window.__OPS_PRODUCTS__;
-  const large = Object.entries(qtys || {}).filter(([p]) => PRODUCTS2[p]?.category === 'liter').reduce((s, [, q]) => s + (q || 0), 0);
+  // Unfiltered has its own store price, so it's counted separately from regular Large bottles.
+  const isUnf = p => /unfilter|אנפילטר/i.test(PRODUCTS2[p]?.label || '') || p === 'unfiltered_liter';
+  const unfiltered = Object.entries(qtys || {}).filter(([p]) => isUnf(p)).reduce((s, [, q]) => s + (q || 0), 0);
+  const large = Object.entries(qtys || {}).filter(([p]) => PRODUCTS2[p]?.category === 'liter' && !isUnf(p)).reduce((s, [, q]) => s + (q || 0), 0);
+  const dairyFree = Object.entries(qtys || {}).filter(([p]) => PRODUCTS2[p]?.category === 'dairy_free').reduce((s, [, q]) => s + (q || 0), 0);
   const mini = Object.entries(qtys || {}).filter(([p]) => PRODUCTS2[p]?.category === 'mini').reduce((s, [, q]) => s + (q || 0), 0);
   const syrup = Object.entries(qtys || {}).filter(([p]) => PRODUCTS2[p]?.category === 'syrup').reduce((s, [, q]) => s + (q || 0), 0);
   // search ALL stores, not just active ones — a store deactivated after a delivery was scheduled
@@ -509,6 +513,8 @@ async function syncStoreDeliveryToAdmin(job, qtys) {
       store_name: job.storeName,
       qty_large: large,
       qty_small: mini,
+      qty_dairy_free: dairyFree,
+      qty_unfiltered: unfiltered,
       qty_syrup: syrup,
       quantities: Object.keys(qtys).length ? qtys : null,
       delivery_date: job.date,

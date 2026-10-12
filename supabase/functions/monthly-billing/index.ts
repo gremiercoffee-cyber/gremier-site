@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
 
     const { data: deliveries, error } = await sb
       .from("store_deliveries")
-      .select("*, stores(name, price_large, price_small, price_syrup, phone)")
+      .select("*, stores(name, price_large, price_small, price_dairy_free, price_unfiltered, price_syrup, phone)")
       .gte("delivery_date", start)
       .lt("delivery_date", end);
 
@@ -104,16 +104,20 @@ Deno.serve(async (req) => {
           largePrice: d.stores?.price_large ?? 0,
           smallPrice: d.stores?.price_small ?? 0,
           syrupPrice: d.stores?.price_syrup ?? 0,
-          qtyLarge: 0, qtySmall: 0, qtySyrup: 0,
+          dairyFreePrice: Number(d.stores?.price_dairy_free ?? 0),
+          unfilteredPrice: Number(d.stores?.price_unfiltered ?? 0),
+          qtyLarge: 0, qtySmall: 0, qtySyrup: 0, qtyDairyFree: 0, qtyUnfiltered: 0,
         };
       }
       storeMap[sid].qtyLarge += d.qty_large ?? 0;
       storeMap[sid].qtySmall += d.qty_small ?? 0;
       storeMap[sid].qtySyrup += d.qty_syrup ?? 0;
+      storeMap[sid].qtyDairyFree += d.qty_dairy_free ?? 0;
+      storeMap[sid].qtyUnfiltered += d.qty_unfiltered ?? 0;
     }
 
     const activeStores = Object.values(storeMap).filter(
-      (s: any) => s.qtyLarge > 0 || s.qtySmall > 0 || s.qtySyrup > 0
+      (s: any) => s.qtyLarge > 0 || s.qtySmall > 0 || s.qtySyrup > 0 || s.qtyDairyFree > 0 || s.qtyUnfiltered > 0
     );
 
     if (!activeStores.length) {
@@ -130,7 +134,9 @@ Deno.serve(async (req) => {
       const storeTotal =
         (store.qtyLarge * store.largePrice) +
         (store.qtySmall * store.smallPrice) +
-        (store.qtySyrup * store.syrupPrice);
+        (store.qtySyrup * store.syrupPrice) +
+        (store.qtyDairyFree * store.dairyFreePrice) +
+        (store.qtyUnfiltered * store.unfilteredPrice);
 
       grandTotal  += storeTotal;
       totalLarge  += store.qtyLarge;
@@ -145,6 +151,8 @@ Deno.serve(async (req) => {
       let rows = "";
       if (store.qtyLarge > 0) rows += `<tr><td>${store.qtyLarge}</td><td>בקבוק גדול</td><td>${store.largePrice.toFixed(2)}</td><td>${(store.qtyLarge * store.largePrice).toFixed(2)}</td></tr>`;
       if (store.qtySmall > 0) rows += `<tr><td>${store.qtySmall}</td><td>בקבוק קטן</td><td>${store.smallPrice.toFixed(2)}</td><td>${(store.qtySmall * store.smallPrice).toFixed(2)}</td></tr>`;
+      if (store.qtyUnfiltered > 0) rows += `<tr><td>${store.qtyUnfiltered}</td><td>אנפילטרד ליטר</td><td>${store.unfilteredPrice.toFixed(2)}</td><td>${(store.qtyUnfiltered * store.unfilteredPrice).toFixed(2)}</td></tr>`;
+      if (store.qtyDairyFree > 0) rows += `<tr><td>${store.qtyDairyFree}</td><td>ללא חלב</td><td>${store.dairyFreePrice.toFixed(2)}</td><td>${(store.qtyDairyFree * store.dairyFreePrice).toFixed(2)}</td></tr>`;
       if (store.qtySyrup > 0) rows += `<tr><td>${store.qtySyrup}</td><td>סירופ</td><td>${store.syrupPrice.toFixed(2)}</td><td>${(store.qtySyrup * store.syrupPrice).toFixed(2)}</td></tr>`;
 
       const invoiceHTML = `<!DOCTYPE html>
@@ -206,6 +214,8 @@ tbody td{padding:7px 10px;border-bottom:1px solid #eee}
         qty_large: store.qtyLarge,
         qty_small: store.qtySmall,
         qty_syrup: store.qtySyrup,
+        qty_dairy_free: store.qtyDairyFree,
+        qty_unfiltered: store.qtyUnfiltered,
         image_path: path,
         image_url: url,
         updated_at: new Date().toISOString(),

@@ -149,6 +149,14 @@ export async function completeDrain(sb: Sb, args: { job_id?: string; product?: s
   return { refs: [`jobs:${job.id}`], drain_id: job.id, product: job.product, liters_added: liters, concentrate_now_l: concentrateNow };
 }
 
+/** Stock keys of Unfiltered products (website product id or its stock key). */
+async function unfilteredKeys(sb: Sb): Promise<Set<string>> {
+  const { data } = await sb.from("products").select("id, stock_key, name_en, name_he").or("name_en.ilike.%unfilter%,name_he.ilike.%אנפילטר%");
+  const keys = new Set<string>(["unfiltered_liter"]);
+  for (const p of (data || []) as any[]) { keys.add(String(p.id)); if (p.stock_key) keys.add(String(p.stock_key)); }
+  return keys;
+}
+
 async function deliverySideEffects(sb: Sb, job: any, qtys: Record<string, number>, store: { id: string; name: string; phone: string | null } | null) {
   const deltas: Record<string, number> = {};
   for (const [pid, qty] of Object.entries(qtys)) if (qty > 0) deltas[pid] = (deltas[pid] || 0) - qty;
@@ -160,10 +168,13 @@ async function deliverySideEffects(sb: Sb, job: any, qtys: Record<string, number
   await incInventoryBatch(sb, deltas);
   let storeDeliveryId: string | null = null;
   if ((job.delivery_type === "store" || !job.delivery_type) && store) {
-    const sum = (cat: string) => Object.entries(qtys).filter(([p]) => categoryOf(p) === cat).reduce((s, [, q]) => s + q, 0);
+    // Unfiltered has its own store price: count it apart from regular Large bottles.
+    const unf = await unfilteredKeys(sb);
+    const sum = (cat: string) => Object.entries(qtys).filter(([p]) => !unf.has(p) && categoryOf(p) === cat).reduce((s, [, q]) => s + q, 0);
+    const unfiltered = Object.entries(qtys).filter(([p]) => unf.has(p)).reduce((s, [, q]) => s + q, 0);
     const { data: sd } = await sb.from("store_deliveries").insert({
       store_id: store.id, store_name: store.name,
-      qty_large: sum("liter"), qty_small: sum("mini"), qty_syrup: sum("syrup"),
+      qty_large: sum("liter"), qty_small: sum("mini"), qty_dairy_free: sum("dairy_free"), qty_unfiltered: unfiltered, qty_syrup: sum("syrup"),
       quantities: Object.keys(qtys).length ? qtys : null,
       delivery_date: job.date, notes: null, updated_at: new Date().toISOString(),
     }).select("id").single();
