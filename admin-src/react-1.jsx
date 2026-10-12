@@ -483,7 +483,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
   const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const CONC_TYPES = {classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
   const PRODS = window.__OPS_PRODUCTS__;
 
   if (job.type==='brew') {
@@ -514,7 +514,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty!=null?job.actualQty:(job.liters||0);
-      const baseRatio = MINI_P.includes(job.product)?0.29:(CONC_TYPES[concType]?.ratio||0.44);
+      const baseRatio = MINI_P.includes(job.product)?0.29:(CONC_TYPES[concType]?.ratio||0.43);
       const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, -(liters*ratio));
       const units = MINI_P.includes(job.product)?Math.round(liters*4):JERRY_P.includes(job.product)?Math.round(liters/5):Math.round(liters);
@@ -555,7 +555,7 @@ async function reverseJobSideEffects2(job, stores) {
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
   const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const CONC_TYPES = {classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
 
   // BREW — beans were deducted at brew-start, restore them
   if (job.type === 'brew' && job.brewStarted) {
@@ -586,7 +586,7 @@ async function reverseJobSideEffects2(job, stores) {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty != null ? job.actualQty : (job.liters || 0);
-      const baseRatio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.44);
+      const baseRatio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.43);
       const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, +(liters * ratio));  // give concentrate back
       const units = MINI_P.includes(job.product) ? Math.round(liters * 4)

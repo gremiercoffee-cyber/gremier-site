@@ -2128,11 +2128,10 @@ function gremierOpsConcentrateForProduct(product, category) {
   return 'classic';
 }
 // Concentrate per liter of finished product, for products that differ from their coffee type's
-// default (Classic 44%, others 50%, flavored minis 29%). Used by bottling, undo and stock planning.
+// default (Classic 43%, House Blend/Colombia/Decaf 50%, flavored minis 29%). Used by bottling, undo and stock planning.
 window.gremierConcentrateRatio = function gremierConcentrateRatio(pid, base) {
   const label = window.__OPS_PRODUCTS_FULL__?.[pid]?.label || window.__OPS_PRODUCTS__?.[pid]?.label || '';
   if (pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(label)) return 0.40;   // Unfiltered: 40% Classic concentrate
-  if (pid === 'classic_liter') return 0.43;                                          // Classic liter: 43%
   return base;
 };
 function gremierOpsLitersPerUnit(category) {
@@ -7269,7 +7268,7 @@ async function unmarkBillingBilled(billingId) {
 
 // ══ DASHBOARD BRIEFING HELPERS ══
 const BRIEFING_CONCENTRATES = {
-  classic:    { label: 'Classic Dark Roast', ratio: 0.44 },
+  classic:    { label: 'Classic Dark Roast', ratio: 0.43 },
   houseBlend: { label: 'House Blend',        ratio: 0.50 },
   colombia:   { label: 'Colombia',           ratio: 0.50 },
   decaf:      { label: 'Decaf',              ratio: 0.50 },
@@ -7570,6 +7569,11 @@ function briefingInProgressBrews(jobs) {
   });
   return map;
 }
+// Same per-product rates as bottling: flavored minis 29%, Unfiltered 40%, otherwise the coffee's rate.
+function briefingRatio(pid, meta) {
+  const base = ['vanilla_mini','original_mini','caramel_mini'].includes(pid) ? 0.29 : (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.43);
+  return window.gremierConcentrateRatio?.(pid, base) ?? base;
+}
 function briefingConcentrateDemand(jobs, bottleShortfalls) {
   const demand = { classic:0, houseBlend:0, colombia:0, decaf:0 };
   (jobs || []).forEach(job => {
@@ -7578,13 +7582,13 @@ function briefingConcentrateDemand(jobs, bottleShortfalls) {
     const meta = resolved.meta;
     if (!meta?.concentrate) return;
     const units = briefingProductUnitsFromJob(job);
-    demand[meta.concentrate] += units * (meta.litersPerUnit || 1) * (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
+    demand[meta.concentrate] += units * (meta.litersPerUnit || 1) * briefingRatio(job.product, meta);
   });
   (bottleShortfalls || []).forEach(({ pid, gap }) => {
     const resolved = briefingResolveProduct(pid);
     const meta = resolved.meta;
     if (!meta?.concentrate) return;
-    demand[meta.concentrate] += briefingNum(gap) * (meta.litersPerUnit || 1) * (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
+    demand[meta.concentrate] += briefingNum(gap) * (meta.litersPerUnit || 1) * briefingRatio(pid, meta);
   });
   return demand;
 }
@@ -9244,8 +9248,8 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-react-1.js?v=9a9c9120a7"></script>
-<script src="/admin-react-2.js?v=bc499f120b"></script>
+<script src="/admin-react-1.js?v=ccbe157a03"></script>
+<script src="/admin-react-2.js?v=431989f887"></script>
 
 <script src="/admin-react-3.js?v=dc90928d38"></script>
 

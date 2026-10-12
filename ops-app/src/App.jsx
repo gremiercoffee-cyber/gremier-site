@@ -209,7 +209,7 @@ async function sbCreateDrain(brewJob) {
   })});
 }
 const CONCENTRATE_TYPES = {
-  classic:    { label: "Classic (Dark Roast)",  color: "#101010", ratio: 0.44 },
+  classic:    { label: "Classic (Dark Roast)",  color: "#101010", ratio: 0.43 },
   houseBlend: { label: "House Blend",            color: "#101010", ratio: 0.50 },
   colombia:   { label: "Colombia (Light Roast)", color: "#6B8E23", ratio: 0.50 },
   decaf:      { label: "Decaf",                  color: "#5C4033", ratio: 0.50 },
@@ -266,7 +266,8 @@ const LABELED_PRODUCTS = ["classic_liter", "sweetened_classic", "house_blend", "
 const LABELED_WARN = { classic_liter: 30, sweetened_classic: 25, house_blend: 20, colombia_liter: 20, vanilla_mini: 80, original_mini: 80, caramel_mini: 100, classic_mini: null, house_blend_mini: null };
 const MINI_PRODUCTS = ["vanilla_mini", "original_mini", "caramel_mini"];
 function getProductRatio(pid, concType) {
-  return MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
+  if (pid === "unfiltered_liter" || /unfilter|אנפילטר/i.test(PRODUCTS[pid]?.label || "")) return 0.40;   // Unfiltered: 40% Classic
+  return MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.43;
 }
 const WEBSITE_NAME_TO_OPS = [
   [/sweetened.*classic|classic.*sweet/i, "sweetened_classic"],
@@ -2437,7 +2438,7 @@ function ScheduleScreen({onSubmit,onBack,existingJob,initialMode,websiteOrder,on
                   <div style={S.field}>
                     <div style={S.lbl}>{PRODUCTS[product]?.category==="jerry"?"Number of Jerry Cans":"Liters to Produce"}</div>
                     <input type="number" style={S.inp} value={liters} onChange={e=>setLiters(e.target.value)} placeholder=""/>
-                    {PRODUCTS[product]?.category==="jerry"&&liters>0&&<div style={S.hint}>{liters} cans × 5L = {(Number(liters)*5*(CONCENTRATE_TYPES[PRODUCTS[product]?.concentrate]?.ratio||0.44)).toFixed(1)}L of concentrate needed</div>}
+                    {PRODUCTS[product]?.category==="jerry"&&liters>0&&<div style={S.hint}>{liters} cans × 5L = {(Number(liters)*5*(CONCENTRATE_TYPES[PRODUCTS[product]?.concentrate]?.ratio||0.43)).toFixed(1)}L of concentrate needed</div>}
                   </div>
                   {concNeeded>0&&PRODUCTS[product]?.category!=="jerry"&&<div style={S.hint}>Requires {concNeeded.toFixed(1)}L of {CONCENTRATE_TYPES[concKey]?.label}</div>}
                 </div>

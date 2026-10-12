@@ -40,7 +40,7 @@ window.opsFetch = async function opsFetch(path, options = {}) {
 const CONCENTRATE_TYPES = {
   classic: {
     label: 'Classic (Dark Roast)',
-    ratio: 0.44
+    ratio: 0.43
   },
   houseBlend: {
     label: 'House Blend',
@@ -204,7 +204,7 @@ const LABELED_WARN = {
 };
 const MINI_PRODUCTS = ['vanilla_mini', 'original_mini', 'caramel_mini'];
 function getProductRatio(pid, concType) {
-  const base = MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
+  const base = MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.43;
   return window.gremierConcentrateRatio?.(pid, base) ?? base;
 }
 
