@@ -200,14 +200,17 @@ async function createBriefing(env: Env, date: string, tz: string) {
     body = await getProvider(env).complete({
       tier: "fast",
       purpose: "briefing",
-      system: `You are a personal Chief of Staff writing the morning briefing. Plain text, warm and direct, under ${sweep.length ? 220 : 170} words. Sections, each only if it has content:
-Today: meetings (if a calendar is given) and the 3 most important things, with why.
-Heads-up: deadlines in the next day or two, and anything overdue.
-Decisions for you: up to 3 things only the user can decide (undated promises, things postponed repeatedly, approvals, unanswered requests), each with 2-3 concrete options.
-${sweep.length ? "Weekly check — may have slipped: pick the ones that matter from the list and suggest an action for each.\n" : ""}Missions: only if an active mission needs the user's input; otherwise leave this section out.
+      system: `You are a personal Chief of Staff writing the morning briefing. It must be SCANNABLE at a glance: short, concrete, warm and direct, under ${sweep.length ? 220 : 170} words.
+Format EXACTLY like this:
+First line, no heading: one bold summary sentence of the day's shape, e.g. "**Light day:** 2 meetings, 1 deadline, 1 decision for you."
+Then sections, each ONLY if it has content, each starting with a heading line "## Name" (use exactly these names) and followed by "- " bullets:
+## Today — meetings (if a calendar is given, with times) and the 3 most important things.
+## Heads-up — deadlines in the next day or two, and anything overdue.
+## Decisions for you — up to 3 things only the user can decide (undated promises, things postponed repeatedly, approvals, unanswered requests), with the options in the same bullet.
+${sweep.length ? "## Weekly check — may have slipped: the ones that matter, each with a suggested action.\n" : ""}## Missions — only if an active mission needs the user's input.
+Every bullet: ONE line (about 15 words max) that starts with a **bold lead** (the thing, or "10:00 · Dentist"), then a short dash and why or what to do. At most 5 bullets per section. No paragraphs, no other markdown.
 Only include what still needs the user. NEVER mention things already done, handled, replied to or cleared.
-Say each thing ONCE, in one section only. Items tagged <project: X> are steps of project X: mention the project once with its steps together (e.g. "Bottles: order cups, confirm sizes"), never the project and its steps as separate points.
-Use short lines, no markdown symbols except "•".`,
+Say each thing ONCE, in one section only. Items tagged <project: X> are steps of project X: mention the project once with its steps together (e.g. "**Bottles** — order cups, confirm sizes"), never the project and its steps as separate points.`,
       prompt: `Today is ${date}. UTC now ${now()}.
 Open items:
 ${listing}${events !== null ? `\n\nCalendar (next 48h):\n${events}` : ""}
@@ -219,8 +222,8 @@ ${missions ? `\nMissions:\n${missions}` : ""}`,
     });
   } catch {
     // No provider configured or the call failed: fall back to a plain list.
-    const top = items.slice(0, 5).map((i) => `• ${i.title}`).join("\n");
-    body = top ? `Top of your list:\n${top}` : "Nothing open. A clear day.";
+    const top = items.slice(0, 5).map((i) => `- **${i.title}**`).join("\n");
+    body = top ? `## Today\n${top}` : "**A clear day.** Nothing open.";
   }
   await notify(env, "briefing", sunday ? `Briefing + weekly check, ${date}` : `Briefing for ${date}`, body);
 }

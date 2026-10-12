@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CalendarEvent, Dashboard, Item } from "../../shared/types";
 import { api } from "../api";
-import { Button, Card, Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
+import { BriefingView, Button, Card, Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
 
 export default function Today({ name, onOpenItem, goChat, refreshKey }: {
   name: string; onOpenItem: (i: Item) => void; goChat: (prompt?: string) => void; refreshKey: number;
@@ -62,7 +62,7 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
                 <p className="text-[15px] leading-snug">{cleanTitle(n.title)}</p>
                 <p className="text-xs text-muted">{[n.type !== "briefing" && n.body?.split("\n")[0], timeAgo(n.created_at)].filter(Boolean).join(" · ")}</p>
                 {n.type === "learn" && <a href="/?tab=review" className="text-sm text-accent font-medium">Review now →</a>}
-                {n.type === "briefing" && n.body && <p className="text-sm text-muted mt-1 whitespace-pre-line">{n.body}</p>}
+                {n.type === "briefing" && n.body && <div className="mt-2"><BriefingView text={n.body} /></div>}
                 {(n.type === "waiting" || (n.type === "auto_done" && n.item_id)) && (
                   <div className="flex gap-1 -ml-3">
                     {n.type === "waiting" && <Button variant="ghost" onClick={() => goChat(`Help me follow up on: ${cleanTitle(n.title)}`)}>Draft follow-up</Button>}

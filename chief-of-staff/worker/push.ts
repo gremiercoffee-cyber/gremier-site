@@ -119,8 +119,10 @@ export async function notify(env: Env, type: string, title: string, body = "", i
   const prio = itemId ? (await first<{ priority: number }>(env, "SELECT priority FROM items WHERE id = ?", itemId))?.priority : undefined;
   if (urgencyFor(type, prio) === "later") return id; // waits quietly for the next briefing / check-in
   // The tag collapses repeats for the same item; buttons act without opening the app.
+  // The briefing is written with headings and bold for the app; the phone notification gets it as plain lines.
+  const pushBody = type === "briefing" ? body.replace(/^#{1,4}\s+(.*)$/gm, "$1:").replace(/\*\*/g, "").replace(/^\s*[-*]\s+/gm, "• ") : body;
   await sendPush(env, {
-    title, body, url, tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
+    title, body: pushBody, url, tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
     actions: (await actionsForNudge(env, { type, item_id: itemId })).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
   return id;

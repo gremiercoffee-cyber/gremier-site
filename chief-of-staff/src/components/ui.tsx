@@ -119,6 +119,66 @@ export function Empty({ children }: { children: ReactNode }) {
  * Small markdown renderer for replies and reports: headings, bullet/numbered lists, bold, links.
  * Escapes everything else (React text nodes).
  */
+/** Section looks for the briefing: a bold coloured label, a colour dot per bullet. */
+const BRIEF_STYLES: { re: RegExp; emoji: string; chip: string; dot: string }[] = [
+  { re: /overdue|heads|due|deadline/i, emoji: "⚠️", chip: "bg-amber-500/15 text-amber-700", dot: "bg-amber-500" },
+  { re: /today|coming up|schedule|היום/i, emoji: "📅", chip: "bg-sky-500/15 text-sky-700", dot: "bg-sky-500" },
+  { re: /decision|your call|approval/i, emoji: "🤔", chip: "bg-violet-500/15 text-violet-700", dot: "bg-violet-500" },
+  { re: /weekly|slipped|week/i, emoji: "🔎", chip: "bg-emerald-500/15 text-emerald-700", dot: "bg-emerald-500" },
+  { re: /mission/i, emoji: "🚀", chip: "bg-fuchsia-500/15 text-fuchsia-700", dot: "bg-fuchsia-500" },
+];
+const BRIEF_FALLBACK = { emoji: "•", chip: "bg-sunken text-muted", dot: "bg-muted" };
+
+/**
+ * The morning briefing, made scannable: a one-line summary, then colour-coded sections with a bold label
+ * and short bullets (bold lead phrase). Reads both the new "## Section" format and older "Today:" briefings.
+ */
+export function BriefingView({ text }: { text: string }) {
+  const bold = (s: string) => s.split(/(\*\*[^*]+\*\*)/g).map((p, i) => (p.startsWith("**") && p.endsWith("**") ? <strong key={i} className="font-semibold text-ink">{p.slice(2, -2)}</strong> : <span key={i}>{p}</span>));
+  const NAMED = /^(today|heads-?up|decisions for you|decisions|weekly check[^:]*|missions?|overdue|coming up)\s*:\s*(.*)$/i;
+  const lead: string[] = [];
+  const sections: { title: string; items: string[]; notes: string[] }[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const h = line.match(/^#{1,4}\s+(.*)$/), named = line.match(NAMED);
+    if (h || named) {
+      sections.push({ title: (h ? h[1] : named![1]).replace(/\*\*/g, "").replace(/^[^\p{L}\p{N}]+/u, "").trim(), items: [], notes: [] });
+      if (named && named[2]) sections[sections.length - 1].items.push(named[2]);
+      continue;
+    }
+    const li = line.match(/^([-*•]|\d+\.)\s+(.*)$/);
+    const cur = sections[sections.length - 1];
+    if (!cur) { lead.push(line.replace(/^[-*•]\s+/, "")); continue; }
+    if (li) cur.items.push(li[2]); else cur.notes.push(line);
+  }
+  return (
+    <div className="space-y-4 text-[15px] leading-snug">
+      {lead.length > 0 && <p className="rounded-2xl bg-sunken px-3.5 py-2.5 text-[15px]">{bold(lead.join(" "))}</p>}
+      {sections.map((s, i) => {
+        const st = BRIEF_STYLES.find((b) => b.re.test(s.title)) ?? BRIEF_FALLBACK;
+        return (
+          <section key={i}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold uppercase tracking-wide ${st.chip}`}>{st.emoji} {s.title}</span>
+              <span className="h-px flex-1 bg-line" />
+            </div>
+            <ul className="space-y-1.5">
+              {s.items.map((it, j) => (
+                <li key={j} className="flex gap-2.5">
+                  <span className={`mt-[7px] h-2 w-2 shrink-0 rounded-full ${st.dot}`} />
+                  <span>{bold(it)}</span>
+                </li>
+              ))}
+            </ul>
+            {s.notes.map((n, j) => <p key={j} className="mt-1 text-muted text-[14px]">{bold(n)}</p>)}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Markdown({ text }: { text: string }) {
   const inline = (s: string) =>
     s.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).map((part, i) => {

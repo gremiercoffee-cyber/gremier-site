@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import { api } from "../api";
 import { useAreas } from "../areas";
-import { DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
+import { BriefingView, DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
 import { startRecording } from "../voice";
@@ -247,7 +247,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
           {briefing && (
             <Row icon="☀️" title="Today's briefing" time={briefing.created_at}
               onDismiss={dismissAction(briefing) ? () => dismiss(briefing) : undefined}>
-              <div className="text-[14px]"><Markdown text={briefing.body} /></div>
+              <BriefingView text={briefing.body} />
               <Chips n={briefing} onAct={onAct} />
             </Row>
           )}
