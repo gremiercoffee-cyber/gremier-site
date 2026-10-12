@@ -514,7 +514,8 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty!=null?job.actualQty:(job.liters||0);
-      const ratio = MINI_P.includes(job.product)?0.29:(CONC_TYPES[concType]?.ratio||0.44);
+      const baseRatio = MINI_P.includes(job.product)?0.29:(CONC_TYPES[concType]?.ratio||0.44);
+      const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, -(liters*ratio));
       const units = MINI_P.includes(job.product)?Math.round(liters*4):JERRY_P.includes(job.product)?Math.round(liters/5):Math.round(liters);
       await incrementInventory2(job.product, units);
@@ -585,7 +586,8 @@ async function reverseJobSideEffects2(job, stores) {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty != null ? job.actualQty : (job.liters || 0);
-      const ratio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.44);
+      const baseRatio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.44);
+      const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, +(liters * ratio));  // give concentrate back
       const units = MINI_P.includes(job.product) ? Math.round(liters * 4)
                   : JERRY_P.includes(job.product) ? Math.round(liters / 5)

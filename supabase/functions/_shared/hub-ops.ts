@@ -242,6 +242,9 @@ export const BOTTLES: Record<string, { label: string; category: "liter" | "mini"
   jerry_can_decaf: { label: "Decaf jerry can", category: "jerry", concentrate: "decaf" },
 };
 const CONC_RATIO: Record<string, number> = { classic: 0.44, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
+// Products that use a different share of concentrate than their coffee type (keep in sync with
+// window.gremierConcentrateRatio in admin.html).
+const PRODUCT_RATIO: Record<string, number> = { classic_liter: 0.43, unfiltered_liter: 0.40 };
 
 /** Log bottles just made: adds them to stock and uses the matching concentrate (same math as the admin). */
 export async function logBottling(sb: Sb, args: { product: string; units: number }) {
@@ -252,7 +255,7 @@ export async function logBottling(sb: Sb, args: { product: string; units: number
   if (!(units > 0 && units <= 2000)) throw new HubError("bad_units", "How many did you bottle?");
   // Admin bottling jobs are entered in liters: minis are 4 per liter, jerry cans are 5 L.
   const liters = meta.category === "mini" ? units / 4 : meta.category === "jerry" ? units * 5 : units;
-  const ratio = meta.category === "mini" ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.44);
+  const ratio = PRODUCT_RATIO[product] ?? (meta.category === "mini" ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.44));
   const now = jerusalemParts(new Date());
   const id = newId("hub_");
   await sb.from("jobs").insert({

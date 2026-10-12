@@ -2127,6 +2127,14 @@ function gremierOpsConcentrateForProduct(product, category) {
   if (/decaf|נטול/.test(text)) return 'decaf';
   return 'classic';
 }
+// Concentrate per liter of finished product, for products that differ from their coffee type's
+// default (Classic 44%, others 50%, flavored minis 29%). Used by bottling, undo and stock planning.
+window.gremierConcentrateRatio = function gremierConcentrateRatio(pid, base) {
+  const label = window.__OPS_PRODUCTS_FULL__?.[pid]?.label || window.__OPS_PRODUCTS__?.[pid]?.label || '';
+  if (pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(label)) return 0.40;   // Unfiltered: 40% Classic concentrate
+  if (pid === 'classic_liter') return 0.43;                                          // Classic liter: 43%
+  return base;
+};
 function gremierOpsLitersPerUnit(category) {
   if (category === 'mini') return 0.25;
   if (category === 'jerry') return 5;
@@ -9236,8 +9244,8 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-react-1.js?v=c5e01b37b9"></script>
-<script src="/admin-react-2.js?v=997d5b8c13"></script>
+<script src="/admin-react-1.js?v=9a9c9120a7"></script>
+<script src="/admin-react-2.js?v=bc499f120b"></script>
 
 <script src="/admin-react-3.js?v=dc90928d38"></script>
 
