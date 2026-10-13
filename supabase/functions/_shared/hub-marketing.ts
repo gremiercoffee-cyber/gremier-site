@@ -11,7 +11,7 @@ const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
 const israelDate = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 
 export async function marketingProducts(sb: Sb) {
-  const { data, error } = await sb.from("products").select("id, name_en, name_he, price, is_active, category, is_subscription");
+  const { data, error } = await sb.from("products").select("id, name_en, name_he, description_en, price, is_active, category, is_subscription, images");
   if (error) throw error;
   return (data || []).map((p: any) => ({
     externalId: String(p.id),
@@ -21,6 +21,9 @@ export async function marketingProducts(sb: Sb) {
     price: p.price != null ? Number(p.price) : null,
     active: p.is_active !== false,
     url: `${SITE}/#shop`,
+    // The real product photos from the website (used so generated ads show the actual product).
+    images: (Array.isArray(p.images) ? p.images : []).filter((u: unknown) => typeof u === "string" && (u as string).startsWith("https://")).slice(0, 3),
+    description: p.description_en ? String(p.description_en).slice(0, 400) : null,
   }));
 }
 
