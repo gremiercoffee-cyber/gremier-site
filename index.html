@@ -2162,7 +2162,10 @@ function pdOnGuestChange(select) {
   pdUpdateDrawerPrice();
 }
 function openProductDrawerUI(productId) {
-  const p = products.find(x => String(x.id) === String(productId));
+  // Links can use the product id or a readable name (e.g. #product=classic-dark-roast, used in Status ads).
+  const key = String(productId || '').toLowerCase();
+  const p = products.find(x => String(x.id) === String(productId))
+    || products.find(x => slugifyProductName(x.name_en) === key);
   if (!p) return false;
   pdCurrentProduct = p;
   pdQty = 1;

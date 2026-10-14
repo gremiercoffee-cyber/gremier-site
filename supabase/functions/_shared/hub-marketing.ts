@@ -10,6 +10,8 @@ const SITE = "https://gremiercoffee.co.il";
 const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
 const israelDate = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 
+const slugify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
 export async function marketingProducts(sb: Sb) {
   const { data, error } = await sb.from("products").select("id, name_en, name_he, description_en, price, is_active, category, is_subscription, images");
   if (error) throw error;
@@ -20,7 +22,8 @@ export async function marketingProducts(sb: Sb) {
     category: p.is_subscription ? "subscription" : (p.category || null),
     price: p.price != null ? Number(p.price) : null,
     active: p.is_active !== false,
-    url: `${SITE}/#shop`,
+    // The product's own page on the website (readable form; the site resolves it — same slug rule as index.html).
+    url: p.name_en ? `${SITE}/#product=${slugify(String(p.name_en))}` : `${SITE}/#product=${p.id}`,
     // The real product photos from the website (used so generated ads show the actual product).
     images: (Array.isArray(p.images) ? p.images : []).filter((u: unknown) => typeof u === "string" && (u as string).startsWith("https://")).slice(0, 3),
     description: p.description_en ? String(p.description_en).slice(0, 400) : null,
