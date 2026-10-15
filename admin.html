@@ -721,6 +721,7 @@ window.gremierUiCacheSave = function (key, ids) {
   } catch {}
 };
 </script>
+<link rel="stylesheet" href="/admin-dashboard.css?v=20261015-2">
 </head>
 <body>
 <!-- CONFIG -->
@@ -1256,18 +1257,29 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="page-header">
     <div class="flex-between">
       <div>
-        <h1 class="page-title">📊 Dashboard</h1>
-        <p class="page-sub">Everything at a glance — orders, store deliveries, monthly revenue</p>
+        <p class="dash-eyebrow">GREMIER · BUSINESS OVERVIEW</p>
+        <h1 class="page-title">How’s the business doing?</h1>
+        <p class="page-sub">Your money, your orders, and what needs attention.</p>
       </div>
       <div class="header-actions">
-        <select class="form-input" style="width:auto" id="dashPeriod" onchange="loadDashboard()">
+        <select class="form-input" style="width:auto" id="dashPeriod" aria-label="Dashboard reporting period" onchange="loadDashboard()">
           <option value="month" selected>This Month</option>
-          <option value="week">This Week</option>
+          <option value="week">Last 7 Days</option>
           <option value="year">This Year</option>
         </select>
+        <button class="btn btn-outline" id="dashRefresh" onclick="loadDashboard()" type="button">Refresh</button>
       </div>
     </div>
   </div>
+
+  <p id="dashUpdated" role="status" aria-live="polite" class="dash-updated">Loading business data…</p>
+  <div id="dashKPIs" class="dash-metrics"></div>
+  <div class="dash-overview-grid">
+    <section class="dash-panel"><div class="dash-section-head"><div><p class="dash-eyebrow">NEXT UP</p><h2>Needs your attention</h2></div><span class="dash-tag">Across all dates</span></div><div id="dashAttention"></div></section>
+    <section class="dash-panel dash-money-panel"><p class="dash-eyebrow">THE MONEY PICTURE</p><h2>Sales &amp; payments</h2><div id="dashMoney"></div></section>
+  </div>
+  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><p class="dash-eyebrow">SALES ACTIVITY</p><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Paid online orders</span><span><i class="dash-store-dot"></i>Store delivery value</span></div></div><div id="dashTrend"></div><p class="dash-footnote">Online orders use the order date. Store deliveries use delivery dates and current store prices. This is sales activity, not bank cash flow.</p></section>
+  <section class="dash-panel dash-coverage"><div><p class="dash-eyebrow">BUILDING A COMPLETE PICTURE</p><h2>Sales are here. Expenses are the next step.</h2><p>Next: connect WhatsApp and email receipts to a shared expense ledger, match duplicates, and review uncertain records. Profit becomes available once the expense data is reliable.</p></div><div class="dash-coverage-status"><span class="dash-tag">Expenses · not connected</span><span class="dash-tag">Profit · unavailable</span></div></section>
 
   <!-- Daily Operations Briefing -->
   <div class="card briefing-card" id="dashBriefingCard">
@@ -1284,13 +1296,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
   </div>
 
-  <!-- Top KPI row -->
-  <div class="stat-grid" id="dashKPIs" style="margin-bottom:28px"></div>
-
   <!-- Revenue chart -->
   <div class="card collapse-card" data-collapse-key="dash_chart" data-collapse-default="collapsed" style="margin-bottom:24px">
     <div class="collapse-head">
-      <h3 class="collapse-head-title">Revenue chart</h3>
+      <h3 class="collapse-head-title">Sales detail</h3>
       <span class="collapse-chevron">▾</span>
     </div>
     <div class="collapse-body" style="padding:0 20px 20px" id="dashChart">
@@ -1328,13 +1337,13 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <!-- Store monthly breakdown -->
   <div class="card collapse-card" data-collapse-key="dash_store_totals" data-collapse-default="collapsed" style="margin-bottom:24px">
     <div class="collapse-head">
-      <h3 class="collapse-head-title">Store Totals This Month</h3>
+      <h3 class="collapse-head-title">Store totals · selected period</h3>
       <span class="collapse-chevron">▾</span>
     </div>
     <div class="collapse-body" style="padding:0">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Dairy Free</th><th>Unfiltered</th><th>Syrup</th><th class="cell-total">Revenue</th></tr></thead>
+          <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Dairy Free</th><th>Unfiltered</th><th>Syrup</th><th class="cell-total">Value</th></tr></thead>
           <tbody id="dashStoreBreakdown"></tbody>
         </table>
       </div>
@@ -1344,7 +1353,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <!-- Bottles sold this month -->
   <div class="card collapse-card" data-collapse-key="dash_bottles" data-collapse-default="collapsed" style="margin-bottom:24px">
     <div class="collapse-head">
-      <h3 class="collapse-head-title">Bottles Sold This Month</h3>
+      <h3 class="collapse-head-title">Bottles sold · selected period</h3>
       <span class="collapse-chevron">▾</span>
     </div>
     <div class="collapse-body" style="padding:0 20px 16px" id="dashBottlesSold"></div>
@@ -9715,5 +9724,6 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
+<script src="/admin-dashboard.js?v=20261015-1"></script>
 </body>
 </html>
