@@ -64,7 +64,7 @@ export async function draftReply(env: Env, id: string, guidance = "") {
   const me = settings ? JSON.parse(settings.value) : "the user";
   const past = examples.map((e) => `- (${e.channel}${e.person ? `, to ${e.person}` : ""}) They: "${e.incoming.slice(0, 120)}" -> He: "${e.sent.slice(0, 200)}"`).join("\n");
   const text = await getProvider(env).complete({
-    tier: "main", purpose: "reply_draft", maxTokens: 400,
+    tier: "main", purpose: guidance.trim() ? "reply_draft" : "reply_decision", maxTokens: 400,
     system: [
       `Write ONE reply for ${me} (Gremier Coffee, a yeshiva, family) to the message below, in his own voice and in the same language as the message (Hebrew stays Hebrew). Short, warm, direct, like a WhatsApp/email he'd really send.`,
       guidance ? "He told you what he wants: follow it exactly (content, tone, length). If it's already a rough reply, polish it without changing the meaning." : "He hasn't said what to answer: write a sensible reply.",

@@ -2,14 +2,15 @@
  * Model-provider abstraction. The rest of the Worker only talks to `ModelProvider`,
  * so adding another provider (or routing per task) never touches the assistant logic.
  *
- * Tiers keep cost in check: "main" for the conversational assistant, "fast" for
- * background work (brain-dump sorting, briefings) where a small model is plenty.
+ * Sol owns judgment and tool use. Luna only phrases already-decided replies.
+ * Legacy main/fast labels do not route triage to the wording model.
  */
 import OpenAI from "openai";
 import type { Env } from "./env";
 import { now, run, uid } from "./db";
 
-export type Tier = "main" | "fast";
+import { modelRoute, BRAIN_HANDOFF, WRITER_SYSTEM, type Tier } from "./ai-routing";
+export type { Tier } from "./ai-routing";
 
 export interface ToolDef {
   name: string;
@@ -33,7 +34,9 @@ export interface AgentRequest {
   history: Turn[];
   tools: ToolDef[];
   maxToolRounds?: number;
-  /** Requests sharing a key and an identical start reuse OpenAI's prompt cache (kept up to 24h). */
+  /** Sol decides and executes; Luna phrases only the compact final handoff. */
+  renderReply?: boolean;
+  /** Stable key for automatic prefix caching. */
   cacheKey?: string;
   /** Tools that only save/change things: if the model already wrote its reply alongside them, skip the extra round trip. */
   noFollowUp?: string[];
@@ -63,25 +66,12 @@ export function getProvider(env: Env): ModelProvider {
   throw new ProviderUnavailable("No model provider configured. Set the OPENAI_API_KEY secret.");
 }
 
-type Effort = OpenAI.Chat.ChatCompletionCreateParams["reasoning_effort"];
-
 class OpenAIProvider implements ModelProvider {
-  /** Set once if the API rejects the 24h prompt cache option, so we stop sending it. */
-  static noLongCache = false;
   readonly name = "openai";
   private client: OpenAI;
 
   constructor(private env: Env) {
     this.client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL || undefined });
-  }
-
-  private model(tier: Tier) {
-    return tier === "main" ? this.env.MODEL_MAIN || "gpt-6-luna" : this.env.MODEL_FAST || "gpt-6-luna";
-  }
-
-  /** Reasoning depth per tier: a little for conversation, none for background sorting/briefings. */
-  private effort(tier: Tier): Effort {
-    return (tier === "main" ? this.env.EFFORT_MAIN || "low" : this.env.EFFORT_FAST || "none") as Effort;
   }
 
   private async logUsage(model: string, purpose: string, usage?: OpenAI.CompletionUsage) {
@@ -96,85 +86,98 @@ class OpenAIProvider implements ModelProvider {
     }
   }
 
+  private async logResponse(model: string, purpose: string, response: OpenAI.Responses.Response) {
+    const u = response.usage;
+    await this.logUsage(model, purpose, u ? {
+      prompt_tokens: u.input_tokens, completion_tokens: u.output_tokens, total_tokens: u.total_tokens,
+      prompt_tokens_details: { cached_tokens: u.input_tokens_details?.cached_tokens ?? 0 },
+    } as OpenAI.CompletionUsage : undefined);
+  }
+
   async runAgent(req: AgentRequest): Promise<AgentResult> {
-    const model = this.model(req.tier);
-    const toolSpecs = (): OpenAI.Chat.ChatCompletionTool[] => req.tools.map((t) => ({
-      type: "function",
-      function: { name: t.name, description: t.description, parameters: t.input_schema },
-    }));
-    let tools = toolSpecs();
-    // Stable instructions first so OpenAI's automatic prefix caching can reuse them.
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: "developer", content: req.system },
+    const route = modelRoute(this.env, req.purpose, "brain");
+    const input: OpenAI.Responses.ResponseInput = [
+      { role: "developer", content: req.system + (req.renderReply ? "\n\n" + BRAIN_HANDOFF : "") },
       { role: "developer", content: req.context },
       ...normaliseHistory(req.history),
     ];
     const result: AgentResult = { text: "", toolCalls: [] };
+    const executed = new Map<string, string>();
     const maxRounds = req.maxToolRounds ?? 6;
-
+    let refusal = false;
     for (let round = 0; round <= maxRounds; round++) {
-      tools = toolSpecs(); // load_tools may have added some
-      const base = {
-        model,
-        messages,
-        tools,
-        // gpt-6-luna on chat/completions only accepts tools with reasoning_effort "none".
-        reasoning_effort: (tools.length ? "none" : this.effort(req.tier)) as Effort,
-        max_completion_tokens: 8192,
-      };
-      const cacheOpts = req.cacheKey && !OpenAIProvider.noLongCache ? { prompt_cache_key: req.cacheKey, prompt_cache_retention: "24h" } : {};
-      let response: OpenAI.Chat.ChatCompletion;
-      try {
-        response = await this.client.chat.completions.create({ ...base, ...cacheOpts } as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
-      } catch (e) {
-        if (!Object.keys(cacheOpts).length || !/prompt_cache/i.test(String((e as Error).message))) throw e;
-        OpenAIProvider.noLongCache = true; // this model doesn't take the long cache: plain caching still applies
-        response = await this.client.chat.completions.create(base as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
-      }
-      await this.logUsage(model, req.purpose, response.usage);
-
-      const msg = response.choices[0]?.message;
-      if (!msg) break;
-      if (msg.refusal) {
-        result.text = msg.refusal;
-        return result;
-      }
-      if (msg.content?.trim()) result.text = msg.content.trim();
-
-      const calls = (msg.tool_calls ?? []).filter(
-        (c): c is OpenAI.Chat.ChatCompletionMessageFunctionToolCall => c.type === "function",
-      );
-      if (calls.length === 0) return result;
-      if (round === maxRounds) break;
-
-      messages.push(msg);
+      // Rebuild: load_tools can extend the list between rounds. Preserve optional fields.
+      const tools: OpenAI.Responses.Tool[] = req.tools.map(t => ({
+        type: "function", name: t.name, description: t.description, parameters: t.input_schema, strict: false,
+      }));
+      const response = await this.client.responses.create({
+        model: route.model, input, tools,
+        reasoning: { effort: route.effort },
+        max_output_tokens: 4096,
+        tool_choice: round === maxRounds ? "none" : "auto",
+        ...(req.cacheKey ? { prompt_cache_key: req.cacheKey } : {}),
+      });
+      await this.logResponse(route.model, `${req.purpose}:brain`, response);
+      if (response.status !== "completed") throw new Error("The decision could not finish. Check the saved actions before trying again.");
+      const refused = response.output.flatMap(o => o.type === "message" ? o.content.filter(c => c.type === "refusal") : []);
+      if (refused.length) { result.text = refused.map(c => c.refusal).join("\n"); refusal = true; break; }
+      if (response.output_text?.trim()) result.text = response.output_text.trim();
+      const calls = response.output.filter(o => o.type === "function_call");
+      if (!calls.length) break;
+      if (round === maxRounds) { result.text = "Some requested work could not finish within this turn. Check the saved actions; do not assume the remaining work was completed."; break; }
+      // Carry reasoning and function-call items intact, as required by Responses.
+      input.push(...response.output as unknown as OpenAI.Responses.ResponseInputItem[]);
       for (const call of calls) {
-        const def = req.tools.find((t) => t.name === call.function.name);
-        let input: Record<string, unknown> = {};
-        let content: string;
-        try {
-          input = JSON.parse(call.function.arguments || "{}");
-          if (!def) throw new Error(`unknown tool ${call.function.name}`);
-          const out = await def.handler(input);
-          result.toolCalls.push({ name: def.name, input, result: out });
-          content = JSON.stringify(out ?? { ok: true });
-        } catch (e) {
-          const msgText = e instanceof Error ? e.message : String(e);
-          result.toolCalls.push({ name: call.function.name, input, result: null, error: msgText });
-          content = JSON.stringify({ error: msgText });
+        let output = executed.get(call.call_id);
+        if (output === undefined) {
+          let args: Record<string, unknown> = {};
+          try {
+            const parsed = JSON.parse(call.arguments || "{}");
+            if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Tool arguments must be an object");
+            args = parsed;
+            const tool = req.tools.find(t => t.name === call.name);
+            if (!tool) throw new Error(`unknown tool ${call.name}`);
+            const value = await tool.handler(args);
+            result.toolCalls.push({ name: call.name, input: args, result: value });
+            output = JSON.stringify(value ?? { ok: true });
+          } catch (e) {
+            const error = e instanceof Error ? e.message : String(e);
+            result.toolCalls.push({ name: call.name, input: args, result: null, error });
+            output = JSON.stringify({ error });
+          }
+          executed.set(call.call_id, output);
         }
-        messages.push({ role: "tool", tool_call_id: call.id, content });
+        input.push({ type: "function_call_output", call_id: call.call_id, output });
       }
-      // Speed: the reply is already written and the tools just saved things → done, no second call.
       const last = result.toolCalls.slice(-calls.length);
-      if (msg.content?.trim() && req.noFollowUp && calls.every((c) => req.noFollowUp!.includes(c.function.name)) && last.every((t) => !t.error)) return result;
+      if (response.output_text?.trim() && req.noFollowUp && calls.every(c => req.noFollowUp!.includes(c.name)) && last.every(t => !t.error)) break;
+      // A pre-tool handoff may no longer describe the outcome after an error.
+      result.text = "";
     }
-    if (!result.text) result.text = "Done.";
+    if (!result.text) result.text = "The actions shown in the execution receipts were processed. Do not assume any other requested work was completed.";
+    if (req.renderReply && !refusal) {
+      const handoff = result.text;
+      try {
+        const text = await this.complete({
+          tier: "writer", purpose: "chat_wording", maxTokens: 1600, system: WRITER_SYSTEM,
+          prompt: JSON.stringify({
+            user_request: req.history.filter(t => t.role === "user").slice(-1)[0]?.content,
+            decision_handoff: handoff,
+            // No full history, memory catalog or tool schemas are sent to Luna.
+            execution_receipts: result.toolCalls.map(t => ({ name: t.name, error: t.error, result: t.result })),
+          }),
+        });
+        if (text.trim()) result.text = text.trim();
+      } catch {
+        // Wording failure must not replay mutations or hide completed work.
+        result.text = handoff;
+      }
+    }
     return result;
   }
 
   async research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }) {
-    const model = this.model("main");
+    const model = modelRoute(this.env, req.purpose, "brain").model;
     // max_tool_calls caps paid web searches; the API accepts it though this SDK version doesn't type it.
     const params = {
       model,
@@ -203,7 +206,7 @@ class OpenAIProvider implements ModelProvider {
   /** Start a long job on OpenAI's side (background mode) and return its id right away. */
   async startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }) {
     const params = {
-      model: this.model(req.tier ?? "main"),
+      model: modelRoute(this.env, "background_research", "brain").model,
       instructions: req.system,
       input: req.prompt,
       ...(req.maxSearches ? { tools: [{ type: "web_search" }], max_tool_calls: Math.max(1, req.maxSearches) } : {}),
@@ -236,23 +239,32 @@ class OpenAIProvider implements ModelProvider {
   }
 
   async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }) {
-    const model = this.model(req.tier);
+    const route = modelRoute(this.env, req.purpose, req.tier);
+    if (route.role === "brain") {
+      const response = await this.client.responses.create({
+        model: route.model, instructions: req.system, input: req.prompt,
+        reasoning: { effort: route.effort },
+        // The token allowance includes reasoning as well as the requested JSON/text.
+        max_output_tokens: Math.max(2048, (req.maxTokens ?? 2048) + 1024),
+        prompt_cache_key: `cos:${req.purpose}`,
+      });
+      await this.logResponse(route.model, req.purpose, response);
+      if (response.status !== "completed" || !response.output_text?.trim()) throw new Error("The decision could not finish. No classification was applied.");
+      return response.output_text.trim();
+    }
     const response = await this.client.chat.completions.create({
-      model,
-      messages: [
-        { role: "developer", content: req.system },
-        { role: "user", content: req.prompt },
-      ],
-      reasoning_effort: this.effort(req.tier),
+      model: route.model,
+      messages: [{ role: "developer", content: req.system }, { role: "user", content: req.prompt }],
+      reasoning_effort: route.effort,
       max_completion_tokens: req.maxTokens ?? 2048,
     });
-    await this.logUsage(model, req.purpose, response.usage);
+    await this.logUsage(route.model, req.purpose, response.usage);
     return response.choices[0]?.message?.content?.trim() ?? "";
   }
 }
 
 /** Merge consecutive same-role turns and start with a user turn. */
-function normaliseHistory(history: Turn[]): OpenAI.Chat.ChatCompletionMessageParam[] {
+function normaliseHistory(history: Turn[]): Turn[] {
   const out: Turn[] = [];
   for (const t of history) {
     if (!t.content.trim()) continue;

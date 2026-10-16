@@ -1,6 +1,7 @@
 import type { CalendarEvent, Conversation, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
 import { getProvider } from "./ai";
+import { modelRoute } from "./ai-routing";
 import { ProviderUnavailable } from "./ai";
 import { chat, executeApproved } from "./assistant";
 import { processBrainDump } from "./braindump";
@@ -194,6 +195,7 @@ route("GET", "/api/status", async (_req, env) => {
     whatsapp: { personal: parse(personal), business: parse(business) },
     google: accounts, push_devices: pushSubs?.n ?? 0, ai_week: usage, reports_week: runs,
     last_background_run: lastCron, coffee_app: { connected: hubConfigured(env), last_ok: hubOk },
+    ai_routing: { brain: modelRoute(env, 'judgment').model, writer: modelRoute(env, 'chat_wording').model, fixed_reminders: 'code' },
   });
 });
 route("POST", "/api/conversations/tidy", async (req, env) => {

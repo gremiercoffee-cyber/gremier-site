@@ -1047,6 +1047,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
+    renderReply: true,
     system: promptFor(features),
     cacheKey: "cos-chat",
     noFollowUp: ["create_item", "update_item", "remember", "update_memory", "save_person", "save_time_block", "save_task", "save_tracker",

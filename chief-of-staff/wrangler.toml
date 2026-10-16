@@ -20,8 +20,10 @@ migrations_dir = "migrations"
 crons = ["*/15 * * * *"]
 
 [vars]
-# OpenAI GPT-6 Luna for both tiers; the fast tier just reasons less.
-MODEL_MAIN = "gpt-6-luna"
+# Judgment (including legacy fast-tier triage) goes to Sol; wording stays on Luna.
+MODEL_BRAIN = "gpt-6.1-sol"
+MODEL_WRITER = "gpt-6-luna"
+MODEL_MAIN = "gpt-6.1-sol"
 MODEL_FAST = "gpt-6-luna"
 EFFORT_MAIN = "low"    # none | low | medium | high | xhigh | max
 EFFORT_FAST = "none"
