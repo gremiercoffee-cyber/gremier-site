@@ -1186,6 +1186,7 @@
         <div class="form-group"><label class="form-label" id="t-co-phone">Phone <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label><input class="form-input" id="coPhone" type="tel" placeholder="05X-XXXXXXX" required/><div id="t-co-delivery-note" style="font-size:.76rem;color:var(--text2);line-height:1.5;margin-top:6px">🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.</div></div>
         <div class="form-group"><label class="form-label" id="t-co-email">Email <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label><input class="form-input" id="coEmail" type="email" placeholder="you@email.com" required/></div>
       </div>
+      <div id="coDeliveryAddressFields">
       <div class="form-group">
         <label class="form-label" id="t-co-city">City</label>
         <div class="city-ac" id="coCityWrap">
@@ -1206,9 +1207,10 @@
           <span id="t-co-apt-na">Private house — not applicable</span>
         </label>
       </div>
+      </div>
       <div class="form-group">
         <label class="form-label" id="t-co-ship">Shipping Type</label>
-        <div style="display:flex;gap:10px;margin-top:4px">
+        <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipRegularLabel">
             <input type="radio" name="shipType" value="regular" id="shipRegular" onchange="updateDeliveryPrice();toggleExpeditedOptions()" checked style="accent-color:#1a1a1a"/>
             <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-regular">Regular Delivery</div><div style="font-size:.74rem;color:var(--text2)">2-5 days <span id="shipRegularPrice">—</span></div></div>
@@ -1220,6 +1222,10 @@
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipEventLabel">
             <input type="radio" name="shipType" value="event" id="shipEvent" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
             <div><div style="font-size:.85rem;color:var(--cream)">Event Delivery</div><div style="font-size:.74rem;color:var(--text2)">Choose your date &amp; time <span id="shipEventPrice">—</span></div></div>
+          </label>
+          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipPickupLabel">
+            <input type="radio" name="shipType" value="pickup" id="shipPickup" onchange="updateDeliveryPrice();toggleExpeditedOptions()" style="accent-color:#1a1a1a"/>
+            <div><div style="font-size:.85rem;color:var(--cream)">Pickup</div><div style="font-size:.74rem;color:var(--text2)">Free</div></div>
           </label>
         </div>
         <!-- Regular delivery: optional requested date -->
@@ -2673,17 +2679,18 @@ function toggleAptNA() {
 }
 
 async function submitOrder() {
+  const isPickup = document.getElementById('shipPickup')?.checked;
   const name = document.getElementById('coName').value.trim();
   const phone = document.getElementById('coPhone').value.trim();
   const email = document.getElementById('coEmail').value.trim();
   const addr = document.getElementById('coAddr').value.trim();
-  if (!name || !phone || !email || !addr) {
+  if (!name || !phone || !email || (!isPickup && !addr)) {
     alert(lang==='he'?'אנא מלאו שם, טלפון, אימייל וכתובת':'Please fill in name, phone, email and address'); return;
   }
   const aptNA = document.getElementById('coAptNA')?.checked;
   const apt = document.getElementById('coApt').value.trim();
   const floor = document.getElementById('coFloor').value.trim();
-  if (!aptNA && (!apt || !floor)) {
+  if (!isPickup && !aptNA && (!apt || !floor)) {
     alert(lang==='he'
       ? 'אנא מלאו מספר דירה וקומה, או סמנו בית פרטי'
       : 'Please enter apartment and floor, or tick “Private house”'); return;
@@ -2695,7 +2702,7 @@ async function submitOrder() {
   if (!isValidPhone(phone)) {
     alert(lang==='he'?'אנא הזינו מספר טלפון תקין':'Please enter a valid phone number'); return;
   }
-  if (!selectedCheckoutCity) {
+  if (!isPickup && !selectedCheckoutCity) {
     alert(lang==='he'?'אנא בחרו ישוב מהרשימה':'Please select your city from the list'); return;
   }
   // The subscription order's total becomes the recurring monthly charge, so it has to be
@@ -2745,13 +2752,14 @@ const deliveryDate = document.getElementById('coDeliveryDate')?.value || null;
 const regularDate = document.getElementById('coRegularDate')?.value || null;
 const eventDate = document.getElementById('coEventDate')?.value || null;
 const eventTime = document.getElementById('coEventTime')?.value || null;
-const shipType = isEvent ? 'event' : (isExpedited ? 'expedited' : 'regular');    const cityLabel = lang==='he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
+const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expedited' : 'regular'));
+    const cityLabel = lang==='he' ? selectedCheckoutCity?.he : selectedCheckoutCity?.en;
     const orderData = {
       user_id: currentUser?.id || null,
       customer_name: name,
       customer_email: email,
       customer_phone: phone,
-      delivery_address: cityLabel + ', ' + addr + aptSuffix,
+      delivery_address: isPickup ? null : cityLabel + ', ' + addr + aptSuffix,
       notes: document.getElementById('coNotes').value.trim(),
       items: cart.map(i=>({
         product_id: i.base_product_id || String(i.id).split('_')[0],
@@ -2780,13 +2788,13 @@ delivery_date: isEvent ? eventDate : (isExpedited && priorityType === 'specific_
 date_requested: shipType === 'regular' ? !!regularDate : null,
 event_time: isEvent ? eventTime : null,
         delivery_fee: deliveryFee,
-        city_en: selectedCheckoutCity.en,
-        city_he: selectedCheckoutCity.he,
-        city_code: selectedCheckoutCity.code || null,
-        region: selectedCheckoutCity.region,
-        zone_id: pricing.zone?.id || null,
-        zone_name: pricing.zone?.name_en || '',
-        pricing_source: pricing.source,
+        city_en: isPickup ? null : selectedCheckoutCity.en,
+        city_he: isPickup ? null : selectedCheckoutCity.he,
+        city_code: isPickup ? null : (selectedCheckoutCity.code || null),
+        region: isPickup ? null : selectedCheckoutCity.region,
+        zone_id: isPickup ? null : (pricing.zone?.id || null),
+        zone_name: isPickup ? '' : (pricing.zone?.name_en || ''),
+        pricing_source: isPickup ? 'pickup' : pricing.source,
         subscription: cart.some(i => i.is_subscription) ? {
           interval: cart.find(i => i.is_subscription)?.subscription_interval || 'monthly',
         } : null,
@@ -3634,6 +3642,17 @@ function updateDeliveryPrice() {
   const isExpedited = document.getElementById('shipExpedited')?.checked;
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
+  if (document.getElementById('shipPickup')?.checked) {
+    if (feeRow) feeRow.style.display = 'flex';
+    document.getElementById('deliveryFeeAmt').textContent = lang === 'he' ? 'חינם' : 'Free';
+    if (freeNote) freeNote.style.display = 'none';
+    refreshGiftCardDiscount(0);
+    const summaryTotal = document.getElementById('coSummaryTotal');
+    const redeemDiscount = appliedRedeem ? Number(appliedRedeem.discount) || 0 : 0;
+    if (summaryTotal) summaryTotal.textContent = `₪${Math.max(0, cartTotal - redeemDiscount)}`;
+    return 0;
+  }
+
  if (!selectedCheckoutCity) {
     if (feeRow) feeRow.style.display = 'none';
     if (freeNote) freeNote.style.display = 'none';
@@ -3896,6 +3915,11 @@ async function purchaseGiftCardFromPage() {
   }
 }
   function toggleExpeditedOptions() {
+  const isPickup = document.getElementById('shipPickup')?.checked;
+  const addressFields = document.getElementById('coDeliveryAddressFields');
+  if (addressFields) addressFields.style.display = isPickup ? 'none' : '';
+  const deliveryNote = document.getElementById('t-co-delivery-note');
+  if (deliveryNote) deliveryNote.style.display = isPickup ? 'none' : '';
   const isExpedited = document.getElementById('shipExpedited')?.checked;
   const isEvent = document.getElementById('shipEvent')?.checked;
   const isRegular = document.getElementById('shipRegular')?.checked;
@@ -4637,6 +4661,8 @@ async function sendChatMessageText(text) {
     ["Let's make your next occasion unforgettable. Message us on WhatsApp and we'll get back to you within hours.", 'בואו נהפוך את האירוע הבא שלכם לבלתי נשכח. כתבו לנו בוואטסאפ ונחזור אליכם תוך שעות.'],
     ['Book Your Event on WhatsApp ☕', 'הזמינו אירוע בוואטסאפ ☕'],
     ['Shipping Type', 'סוג משלוח'],
+    ['Pickup', 'איסוף עצמי'],
+    ['Free', 'חינם'],
     ['Regular Delivery', 'משלוח רגיל'],
     ['2-5 days', '2–5 ימים'],
     ['Expedited Delivery', 'משלוח מהיר'],

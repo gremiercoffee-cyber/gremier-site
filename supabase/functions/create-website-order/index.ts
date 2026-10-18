@@ -200,6 +200,7 @@ function computeDeliveryFee(
   settings: Record<string, unknown> | null,
 ): { fee: number; source: string; zone: Record<string, unknown> | null } {
   const rawShipType = String(deliveryInfo.delivery_type || "regular");
+  if (rawShipType === "pickup") return { fee: 0, source: "pickup", zone: null };
   const shipType = rawShipType === "expedited" ? "expedited" : rawShipType === "event" ? "event" : "regular";
   const cityCode = String(deliveryInfo.city_code || "").trim();
   const cityEn = normalizeCityName(deliveryInfo.city_en);
@@ -252,7 +253,7 @@ Deno.serve(async (req) => {
     // Only the customer's delivery choices — every other delivery_info field is server-set.
     const deliveryInfo = pickDeliveryChoice(body.delivery_info);
 
-    if (!customerName || !customerEmail || !customerPhone || !deliveryAddress) {
+    if (!customerName || !customerEmail || !customerPhone || (deliveryInfo.delivery_type !== "pickup" && !deliveryAddress)) {
       return json({ error: "Missing customer details" }, 400);
     }
     if (!items.length) return json({ error: "Invalid order" }, 400);
