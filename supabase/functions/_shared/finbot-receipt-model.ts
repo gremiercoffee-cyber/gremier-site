@@ -1,4 +1,4 @@
-// Pure mappings: type 1 is a קבלה, with payment details and no taxable sale lines.
+// Pure mappings: type 1 is a קבלה; Finbot requires an amount summary matching its payment.
 export function israelDate(value: string | Date): string {
   const date=new Date(value);
   if (!Number.isFinite(date.getTime())) throw Error('invalid_date');
@@ -39,14 +39,17 @@ export function receiptPayload(order: any, paymentDate: string, now=new Date()):
   const fmt=(iso:string)=>iso.split('-').reverse().join('/');
   const card=String(order.delivery_info?.receipt_card_last4||'');
   if(!/^\d{4}$/.test(card))throw Error('card_last_four_required');
+  const installments=Number(order.delivery_info?.receipt_installments);
+  if(!Number.isInteger(installments)||installments<1||installments>999)throw Error('installment_count_required');
   return {
-    type:'1',date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:true,rounding:false,
+    // This business is exempt: Finbot explicitly rejects vatType=true with validation code 115.
+    type:'1',date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:false,rounding:false,
     title:`Gremier order ${order.order_number||order.id}`,
     description:`תשלום עבור הזמנה ${order.order_number||order.id}`,
-    remark:`Order ID: ${order.id}`,
+    remark:`הזמנה מספר ${order.order_number||order.id}`,
     customer:{name:String(order.customer_name).trim().slice(0,100),phone:String(order.customer_phone||'').slice(0,20),save:false},
-    // Website checkout is explicitly configured for one installment in create-payment.
-    payments:[{type:'2',date:fmt(paymentDate),sum:amountMinor(order.total)/100,cardNumber:Number(card),numberPayments:1,transactionNumber:String(order.delivery_info?.payme_transaction_id||paymentReference(order).slice(6)).slice(0,40)}],
+    items:[{name:`תשלום עבור הזמנה ${order.order_number||order.id}`,amount:1,price:amountMinor(order.total)/100,save:false}],
+    payments:[{type:'2',date:fmt(paymentDate),sum:amountMinor(order.total)/100,cardNumber:Number(card),numberPayments:installments,transactionNumber:String(order.delivery_info?.payme_transaction_id||paymentReference(order).slice(6)).slice(0,40)}],
     // No customer email: our confirmation email carries the original PDF, avoiding a second provider email.
   };
 }

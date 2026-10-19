@@ -1,10 +1,10 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {eligibleOrder,receiptPayload,resultDocument,missingReceiptReport}=require('../supabase/functions/_shared/finbot-receipt-model.ts');
-const env={FINBOT_API_KEY:'fixture-only',RESEND_API_KEY:'fixture-only',NOTIFY_EMAIL:'owner@example.test'};
+const env={FINBOT_API_KEY:'fixture-only',RESEND_API_KEY:'fixture-only',NOTIFY_EMAIL:'owner@example.test',PAYME_SELLER_ID:'seller-fixture',PAYME_API_URL:'https://payme.example.test/'};
 global.Deno={env:{get:key=>env[key]}};
 const {issueFinbotReceipt,repairReceiptPdf,originalPdf,sendReceiptTest}=require('../supabase/functions/_shared/finbot-receipts.ts');
-const order=(patch={})=>({id:'a',order_number:123,customer_name:'Example buyer',customer_email:'buyer@example.test',source:'website',payment_status:'paid',status:'confirmed',payment_method:'payme',total:125.25,created_at:'2026-10-10T10:00:00Z',payment_confirmed_at:'2026-10-19T08:00:00Z',delivery_info:{payme_sale_id:'SALE-fixture',receipt_card_last4:'1234'},...patch});
+const order=(patch={})=>({id:'a',order_number:123,customer_name:'Example buyer',customer_email:'buyer@example.test',source:'website',payment_status:'paid',status:'confirmed',payment_method:'payme',total:125.25,created_at:'2026-10-10T10:00:00Z',payment_confirmed_at:'2026-10-19T08:00:00Z',delivery_info:{payme_sale_id:'SALE-fixture',receipt_card_last4:'1234',receipt_installments:1},...patch});
 function database(orders=[order()]){
  const receipts=new Map(),files=new Map();
  const settings={id:1,enabled:true,starts_at:'2026-10-19T07:00:00Z'};
@@ -27,6 +27,7 @@ function provider(mode='ok'){
  const calls=[];
  global.fetch=async(url,init={})=>{
   calls.push({url,init});
+  if(url==='https://payme.example.test/api/get-sales')return Response.json({items:[{sale_payme_id:'SALE-fixture',sale_status:'completed',sale_price:12525,transaction_id:'a',sale_paid_date:'2026-10-19 11:00:00',sale_currency:'ILS',sale_installments:1,sale_buyer_details:{buyer_card_mask:'****1234'},sale_invoices:[]}]});
   if(url==='https://api.resend.com/emails')return new Response('{}',{status:200});
   if(url==='https://api.finbotai.co.il/income'){
    if(mode==='timeout')throw Error('network timeout');
@@ -36,11 +37,12 @@ function provider(mode='ok'){
  };
  return calls;
 }
-test('קבלה payload uses exact collected amount, card reference, Hebrew and no sale lines or customer-email side effect',()=>{
+test('קבלה payload uses exact collected amount, card reference, Hebrew and matching summary without provider-email side effect',()=>{
  const p=receiptPayload(order(),'2026-10-19',new Date('2026-10-20T10:00:00Z'));
  assert.equal(p.type,'1');assert.equal(p.language,'HE');assert.equal(p.date,'20/10/2026');
+ assert.equal(p.vatType,false,'This exempt business cannot issue VAT-inclusive receipts');
  assert.equal(p.payments[0].date,'19/10/2026');assert.equal(p.payments[0].sum,125.25);assert.equal(p.payments[0].type,'2');
- assert.equal(p.items,undefined);assert.equal(p.customer.email,undefined);assert.equal(p.email,undefined);
+ assert.equal(p.items.length,1);assert.equal(p.items[0].price*p.items[0].amount,p.payments[0].sum);assert.equal(p.customer.email,undefined);assert.equal(p.email,undefined);
  assert.throws(()=>receiptPayload(order(),'2026-02-30'));assert.throws(()=>receiptPayload(order(),'2099-01-01'));
 });
 test('reject unpaid, test, refunded, unsupported payment, gift-card and invalid-amount cases',()=>{
@@ -61,7 +63,7 @@ test('concurrent callbacks issue exactly one receipt and persist original PDF',a
  await issueFinbotReceipt(db,'a');assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
 });
 test('same payment cannot create receipts against two orders',async()=>{
- const calls=provider(),db=database([order(),order({id:'b',delivery_info:{payme_sale_id:'SALE-fixture',payme_transaction_id:'TX-added-later',receipt_card_last4:'1234'}})]);await issueFinbotReceipt(db,'a');await issueFinbotReceipt(db,'b');
+ const calls=provider(),db=database([order(),order({id:'b',delivery_info:{payme_sale_id:'SALE-fixture',payme_transaction_id:'TX-added-later',receipt_card_last4:'1234'}})]);await issueFinbotReceipt(db,'a');await assert.rejects(issueFinbotReceipt(db,'b'),/payment_verification_required/);
  assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
 });
 test('timeout and HTTP-200 business failure stop for review without automatic reissuance',async()=>{
@@ -74,6 +76,18 @@ test('HTML viewer cannot be disguised as PDF; repairing download never reissues 
 test('PDF requests reject unknown hosts and redirects to private hosts',async()=>{
  await assert.rejects(originalPdf('https://example.test/r.pdf'));
  await assert.rejects(originalPdf('https://api.finbotai.co.il/r.pdf',async()=>new Response(null,{status:302,headers:{location:'http://127.0.0.1/private'}})));
+});
+test('Finbot original viewer resolves only the observed same-host PDF source',async()=>{
+ const seen=[];
+ const bytes=await originalPdf('https://arusi.finbot.co.il/show_doc_app.php?doc=fixture',async(url,options)=>{
+  seen.push(url);if(seen.length===1)return new Response(`<script>image_url='/load_pdf_doc.php?auth=fixture'</script>`,{headers:{'set-cookie':'PHPSESSID=fixture-session; Path=/; HttpOnly'}});
+  assert.equal(options.headers.Cookie,'PHPSESSID=fixture-session');assert.ok(options.headers.Referer.includes('/show_doc_app.php'));
+  return new Response('%PDF-1.7\nfixture');
+ });
+ assert.ok(new TextDecoder().decode(bytes).startsWith('%PDF-'));assert.equal(seen.length,2);assert.equal(new URL(seen[1]).pathname,'/load_pdf_doc.php');
+ await assert.rejects(originalPdf('https://arusi.finbot.co.il/show_doc_app.php',async()=>new Response(`<script>image_url='https://untrusted.example.test/load_pdf_doc.php'</script>`)));
+ const redirected=await originalPdf('https://arusi.finbot.co.il/show_doc_app.php',async url=>new Response(new URL(url).pathname==='/show_doc_app.php'?null:new URL(url).pathname==='/show_image.php'?`<script>image_url='/load_pdf_doc.php?auth=fixture'</script>`:'%PDF-1.7\nfixture',new URL(url).pathname==='/show_doc_app.php'?{status:302,headers:{location:'/show_image.php'}}:{}));
+ assert.ok(new TextDecoder().decode(redirected).startsWith('%PDF-'));
 });
 test('real test email goes only to owner, includes PDF and sends once',async()=>{
  const calls=provider(),db=database();db.settings.enabled=false;

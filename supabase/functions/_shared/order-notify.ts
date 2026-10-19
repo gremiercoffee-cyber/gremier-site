@@ -350,7 +350,7 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
   }
 
   let receiptPdf = null;
-  try { receiptPdf = await receiptAttachment(supabase, orderId); } catch { /* receipt tables may not be configured yet */ }
+  try { receiptPdf = await receiptAttachment(supabase, orderId, order.order_number); } catch { /* receipt tables may not be configured yet */ }
   const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force, receiptPdf });
 
   const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);

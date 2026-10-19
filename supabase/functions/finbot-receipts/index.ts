@@ -1,6 +1,6 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
-import {receiptSettings,receiptRow,receiptOrder,receiptPreviewOrder,issueFinbotReceipt,repairReceiptPdf,sendReceiptTest} from '../_shared/finbot-receipts.ts';
+import {receiptSettings,receiptRow,receiptOrder,receiptPaymentMetadata,receiptPreviewOrder,issueFinbotReceipt,repairReceiptPdf,sendReceiptTest,originalPdf} from '../_shared/finbot-receipts.ts';
 import {amountMinor,israelDate,receiptPayload} from '../_shared/finbot-receipt-model.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -13,22 +13,44 @@ Deno.serve(async req=>{
     const body=await req.json();
     const db=createClient(Deno.env.get('SUPABASE_URL')!,serviceKey(),{auth:{persistSession:false}});
     if(body.action==='settings')return json({settings:await receiptSettings(db),configured:!!Deno.env.get('FINBOT_API_KEY')});
+    if(body.action==='connection_check') {
+      const key=(Deno.env.get('FINBOT_API_KEY')||'').trim();
+      if(!key)return json({error:'finbot_not_configured'},409);
+      // Deliberately empty: no document type, customer, date or payments. Cannot be a valid issuance.
+      let validationOnly:any=body.check_format===true?{type:'1',date:israelDate(new Date()).split('-').reverse().join('/'),language:body.language==='he'?'he':'HE',currency:'ILS',vatType:true,rounding:false,customer:{},payments:[]}:{};
+      if(body.check_order_format===true) {
+        const order=await receiptPreviewOrder(db,String(body.order_id||''));
+        validationOnly=receiptPayload(order,order.receipt_payment_date);
+        // Retain the real field formats, but remove the mandatory customer identity so issuance is impossible.
+        validationOnly.customer={...validationOnly.customer,name:''};
+      }
+      const r=await fetch('https://api.finbotai.co.il/income',{method:'POST',headers:{'Content-Type':'application/json',secret:key},body:JSON.stringify(validationOnly),signal:AbortSignal.timeout(20000)});
+      const text=(await r.text()).split(key).join('[redacted]').slice(0,1200);
+      return json({http_status:r.status,content_type:r.headers.get('content-type'),validation_response:text,creates_document:false});
+    }
     const id=String(body.order_id||'');
     if(body.action==='disable') {
       const {error}=await db.from('finbot_receipt_settings').update({enabled:false,starts_at:null,updated_at:new Date().toISOString()}).eq('id',1);
       if(error)throw Error('settings_save_failed');return json({enabled:false});
     }
     if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))return json({error:'invalid_order_id'},400);
+    if(body.action==='payment_metadata')return json(await receiptPaymentMetadata(db,id));
+    if(body.action==='pdf_diagnostics') {
+      const row=await receiptRow(db,id);if(!row?.document_url)return json({error:'no_issued_document'},404);
+      const steps:Record<string,unknown>[]=[];
+      try {const pdf=await originalPdf(row.document_url,fetch,step=>steps.push(step));return json({steps,pdf_bytes:pdf.length});}
+      catch(e){return json({steps,error:e instanceof Error?e.message:'pdf_error'});}
+    }
     if(body.action==='preview') {
       const order=await receiptPreviewOrder(db,id);
-      const paymentDate=order.payment_confirmed_at?israelDate(order.payment_confirmed_at):String(body.payment_date||'');
+      const paymentDate=order.receipt_payment_date;
       return json({payload:receiptPayload(order,paymentDate),existing:await receiptRow(db,id),creates_document:false});
     }
     if(body.action==='issue_test') {
       if(body.confirm_real_receipt!==true)return json({error:'real_receipt_confirmation_required'},400);
       const settings=await receiptSettings(db);
       if(settings.enabled)return json({error:'disable_automation_before_test'},409);
-      const result=await issueFinbotReceipt(db,id,{test:true,paymentDate:String(body.payment_date||'')});
+      const result=await issueFinbotReceipt(db,id,{test:true,paymentDate:String(body.payment_date||''),retryValidatedRejection:body.retry_validated_rejection===true});
       if(result.receipt?.status==='issued'&&result.receipt.is_test&&result.receipt.pdf_path)await sendReceiptTest(db,id);
       return json(result);
     }
