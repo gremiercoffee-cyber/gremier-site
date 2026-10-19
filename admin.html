@@ -6755,7 +6755,10 @@ async function saveDelivery() {
     const syrup = hasBreakdown ? aggregated.syrup : (parseInt(document.getElementById('ldSyrup').value) || 0);
     const deliveryDate = document.getElementById('ldDate').value;
     if (!deliveryDate) { showToast('Please pick a date'); return; }
-    const hasAnyQty = (large + small + dairyFree + unfiltered + syrup) > 0;
+    const deliveryItemTotal = hasBreakdown
+      ? Object.values(ldQuantities).reduce((sum, qty) => sum + (Number(qty) > 0 ? Number(qty) : 0), 0)
+      : large + small + dairyFree + unfiltered + syrup;
+    const hasAnyQty = deliveryItemTotal > 0;
 
     const data = {
       store_id: storeId,
@@ -6820,7 +6823,7 @@ async function saveDelivery() {
           delivery_type: 'store',
           store_name: store.name,
           quantities: data.quantities,
-          planned_total: large + small + dairyFree + unfiltered + syrup,
+          planned_total: deliveryItemTotal,
           date: deliveryDate,
           time: null,
           done: true,
@@ -9257,7 +9260,7 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-react-1.js?v=ccbe157a03"></script>
+<script src="/admin-react-1.js?v=9cb01b147a"></script>
 <script src="/admin-react-2.js?v=431989f887"></script>
 
 <script src="/admin-react-3.js?v=dc90928d38"></script>

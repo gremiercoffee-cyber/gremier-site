@@ -114,23 +114,36 @@ function jobWaDrawerEligible2(job, stores) {
 function generateWAMessage2(storeName, job) {
   const dateStr = new Date().toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
   const q = job.quantities || {};
-  let large, mini, dairyFree, syrup;
-  if (q._agg_large !== undefined || q._agg_small !== undefined || q._agg_dairy_free !== undefined || q._agg_syrup !== undefined) {
-    // Logged via the simple number boxes — no per-product breakdown, use the aggregate counts.
-    large = q._agg_large || 0; mini = q._agg_small || 0; dairyFree = q._agg_dairy_free || 0; syrup = q._agg_syrup || 0;
-  } else {
-    const PRODUCTS2 = window.__OPS_PRODUCTS__ || {};
-    large = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='liter').reduce((s,[,qty])=>s+(qty||0),0);
-    mini  = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='mini' ).reduce((s,[,qty])=>s+(qty||0),0);
-    dairyFree = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='dairy_free').reduce((s,[,qty])=>s+(qty||0),0);
-    syrup = Object.entries(q).filter(([p])=>PRODUCTS2[p]?.category==='syrup').reduce((s,[,qty])=>s+(qty||0),0);
-  }
-  const total = large+mini+dairyFree+syrup;
+  // Read every saved item, rather than filtering through a fixed category list.
+  // Aggregate-only deliveries use synthetic keys; those are items too, not stock IDs.
+  const aggregateLabels = {
+    _agg_large: 'בקבוק גדול', _agg_small: 'בקבוק קטן',
+    _agg_dairy_free: 'ללא חלב', _agg_unfiltered: 'Unfiltered Liter Bottle', _agg_syrup: 'סירופ',
+  };
+  const legacyLabels = {
+    classic_liter:'Classic Liter', sweetened_classic:'Sweetened Classic',
+    house_blend:'House Blend', colombia_liter:'Colombia Liter', decaf_liter:'Decaf Liter',
+    unfiltered_liter:'Unfiltered Liter Bottle', classic_mini:'Classic Mini',
+    house_blend_mini:'House Blend Mini', vanilla_mini:'Vanilla Mini',
+    original_mini:'Original Mini', caramel_mini:'Caramel Mini',
+    jerry_can:'Jerry Can', jerry_can_houseblend:'House Blend Jerry Can',
+    jerry_can_colombia:'Colombia Jerry Can', jerry_can_decaf:'Decaf Jerry Can',
+    vanilla_syrup:'Vanilla Syrup', caramel_syrup:'Caramel Syrup', sugar_syrup:'Sugar Syrup',
+    dispenser:'Dispenser',
+  };
   const lines = [`תעודת משלוח - גרמיר קפה`,`תאריך: ${dateStr}`,`לכבוד: ${storeName}`,`----------------------------`];
-  if (large>0) lines.push(`בקבוק גדול: ${large} יחידות`);
-  if (mini>0)  lines.push(`בקבוק קטן: ${mini} יחידות`);
-  if (dairyFree>0) lines.push(`ללא חלב: ${dairyFree} יחידות`);
-  if (syrup>0) lines.push(`סירופ: ${syrup} יחידות`);
+  let total = 0;
+  Object.entries(q).forEach(([pid, value]) => {
+    const qty = Number(value);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    const label = aggregateLabels[pid]
+      || window.__OPS_PRODUCTS__?.[pid]?.label
+      || window.__OPS_PRODUCTS_FULL__?.[pid]?.label
+      || legacyLabels[pid]
+      || pid;
+    lines.push(`${label}: ${qty} יחידות`);
+    total += qty;
+  });
   lines.push(`----------------------------`,`סה"כ: ${total} יחידות`,`תודה! גרמיר קפה`);
   return lines.join('\n');
 }
