@@ -130,6 +130,14 @@ test('missing sale references are recovered only from a verified completed payme
  await assert.rejects(issueFinbotReceipt(noMatch,'a',{backfillYear:2026}),/missing_payment_reference/);
  assert.equal(noMatch.receipts.size,0);
 });
+
+test('recovered order 14 cannot issue again after its receipt is linked',async()=>{
+ const id='b4a22283-01cb-43c9-86eb-6a18ffeff640',calls=provider();
+ const db=database([order({id,order_number:14,created_at:'2026-06-09T19:35:32Z',delivery_info:{}})]);
+ db.receipts.set(id,{order_id:id,status:'issued',pdf_path:id+'/receipt.pdf'});
+ const result=await issueFinbotReceipt(db,id,{backfillYear:2026,recoverOrder14:true});
+ assert.equal(result.receipt.status,'issued');assert.equal(calls.length,0);assert.equal(db.receipts.size,1);
+});
 test('timeout and HTTP-200 business failure stop for review without automatic reissuance',async()=>{
  for(const mode of ['timeout','reject']){const calls=provider(mode),db=database();await issueFinbotReceipt(db,'a');await issueFinbotReceipt(db,'a');assert.equal(db.receipts.get('a').status,'needs_review');assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);}
 });

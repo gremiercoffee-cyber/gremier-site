@@ -34,7 +34,20 @@ Deno.serve(async req=>{
       if(error)throw Error('settings_save_failed');return json({enabled:false});
     }
     if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))return json({error:'invalid_order_id'},400);
+    if(body.action==='order14_payment_check') {
+      if(id!=='b4a22283-01cb-43c9-86eb-6a18ffeff640')return json({error:'order_not_authorized'},403);
+      const {recoverOrder14Payment}=await import('../_shared/recover-order14-payment.ts');
+      const order=await recoverOrder14Payment(db,await receiptOrder(db,id));
+      return json({creates_document:false,verified:true,amount:order.total,payment_date:order.receipt_payment_date});
+    }
     if(body.action==='payment_metadata')return json(await receiptPaymentMetadata(db,id));
+    if(body.action==='issue_recovered_order14') {
+      if(id!=='b4a22283-01cb-43c9-86eb-6a18ffeff640'||body.confirm_real_receipt!==true)return json({error:'legacy_recovery_not_authorized'},400);
+      const result=await issueFinbotReceipt(db,id,{backfillYear:2026,recoverOrder14:true});
+      const row=result.receipt;
+      return json({skipped:result.skipped||null,error:result.error||null,
+        receipt:row?{status:row.status,has_pdf:!!row.pdf_path,amount_minor:row.amount_minor,payment_date:row.payment_date}:null});
+    }
     if(body.action==='pdf_diagnostics') {
       const row=await receiptRow(db,id);if(!row?.document_url)return json({error:'no_issued_document'},404);
       const steps:Record<string,unknown>[]=[];

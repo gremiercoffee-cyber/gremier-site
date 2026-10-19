@@ -135,7 +135,7 @@ async function savePdf(db:any,row:any) {
     return {...row,error_code:code};
   }
 }
-export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:boolean;paymentDate?:string;retryValidatedRejection?:boolean;backfillYear?:number}={}) {
+export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:boolean;paymentDate?:string;retryValidatedRejection?:boolean;backfillYear?:number;recoverOrder14?:boolean}={}) {
   let order=await receiptOrder(db,orderId);
   const settings=await receiptSettings(db);
   if(options.backfillYear!==undefined) {
@@ -144,6 +144,13 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
   } else if(!options.test) {
     if(!settings.enabled||!settings.starts_at)return {skipped:'automation_disabled'};
     if(!order.payment_confirmed_at||new Date(order.payment_confirmed_at)<new Date(settings.starts_at))return {skipped:'historical_order'};
+  }
+  if(options.recoverOrder14) {
+    if(options.backfillYear!==2026||options.test)throw Error('legacy_recovery_not_authorized');
+    const prior=await receiptRow(db,orderId);
+    if(prior)return {skipped:'already_claimed_or_linked',receipt:prior};
+    const {recoverOrder14Payment}=await import('./recover-order14-payment.ts');
+    order=await recoverOrder14Payment(db,order);
   }
   order=await eligibleReceiptOrder(order);
   const existing=await receiptRow(db,orderId);
@@ -156,7 +163,7 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
   }
   const key=(Deno.env.get('FINBOT_API_KEY')||'').trim();
   if(!key)return {skipped:'finbot_not_configured'};
-  const completeOrder=await receiptPreviewOrder(db,orderId);
+  const completeOrder=options.recoverOrder14?order:await receiptPreviewOrder(db,orderId);
   const paymentDate=completeOrder.receipt_payment_date;
   if(options.backfillYear!==undefined&&!paymentDate.startsWith('2026-'))throw Error('historical_payment_year_mismatch');
   if(options.paymentDate&&options.paymentDate!==paymentDate)throw Error('payment_date_does_not_match_payme');

@@ -65,6 +65,18 @@ The local execution ledger is in `.codex-artifacts/finbot-2026-{preview,issue}.j
 - Verified all 89 private PDFs exist in storage, all receipt amounts match the order totals, and every receipt payment date falls in 2026. No attempts remain issuing or needing review. Automation is confirmed enabled.
 - Historical issuance did not replay customer or owner emails. The separate original owner-only test email remains the sole test email.
 - Finbot's confirmed recent-document rejections for orders 85/129 were resolved after a pause. Order 168's explicit phone-validation rejection was resolved by normalizing punctuation in the optional receipt phone. The same handling is deployed for future receipts.
-- **Order 14 / ILS 147:** still has no verified PayMe reference. The original payment link is absent, and exact order/link transaction lookup did not recover a completed matching payment. The owner could not identify the payment. No receipt was invented.
+- **Order 14 / ILS 147: subsequently resolved**, following the owner's explicit confirmation that no manual receipt existed. See the recovery record below.
 - **Gift-card activity remains outside the current accounting mapping:** order 58 is a paid ILS 10 gift-card purchase; orders 83 and 90 used gift-card balances of ILS 127 and ILS 198 and collected ILS 0 by card. None was issued a guessed receipt. They remain visible in the missing-link report for separate reconciliation.
 - Source-of-truth reconciliation output: `.codex-artifacts/finbot-2026-final-audit.json`. Nineteen receipt integration/model regression tests pass.
+
+## Order 14 recovered — 20 October 2026
+
+The original restored row had no sale ID, phone/email or payment timestamp. The owner confirmed it had never been receipted. An admin-only check restricted to this order recovered one completed PayMe payment for ILS 147, paid **9 June 2026 at 21:50:33**, matching the customer name and restoration day. The restored order was created at 22:35 that day. The payment carried an original order UUID which no longer exists, rather than the restored order UUID or retained payment-link reference. This explains the failed ordinary lookup.
+
+Recovery required complete merchant history, exactly one matching completed payment, exact amount/currency/date/customer tokens, absent original order, no current order linked to the sale, no receipt claiming the sale, no PayMe invoice and valid original card/installment data. These checks ran on the server; no buyer identities or unrelated transaction IDs were exposed. An initial broader diagnostic deployment was rejected by automatic approval review and replaced by this narrower check.
+
+The official receipt for order 14 is now **issued**, using the original **9 June payment date**, today's issue date, and the verified ILS 147 amount. Its original PDF is stored privately and linked to order 14. No old customer confirmation was resent. Repeated recovery requests return the existing receipt without another provider call.
+
+Final reconciliation: **90 orders / ILS 37,653.80**, comprising 89 catch-up receipts plus the original reviewed receipt. All 90 PDFs exist; zero amount or payment-year mismatches. Automation remains enabled. Gift-card records remain outside this mapping; the owner clarified that the zero-new-payment redemptions do not require additional receipts.
+
+Verification: `node --test scripts/test-finbot-receipts.cjs scripts/test-recover-order14.cjs` — 23 tests pass, including ambiguity, wrong buyer/date/amount/seller, existing linkage, incomplete history, and repeat-issuance protection.
