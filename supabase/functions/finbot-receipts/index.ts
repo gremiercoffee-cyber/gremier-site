@@ -49,7 +49,7 @@ Deno.serve(async req=>{
     if(body.action==='issue_historical') {
       if(body.confirm_real_receipt!==true||body.year!==2026)return json({error:'historical_receipt_confirmation_required'},400);
       // No customer/owner confirmation email replay. The original PDF is stored and linked.
-      const result=await issueFinbotReceipt(db,id,{backfillYear:2026});
+      const result=await issueFinbotReceipt(db,id,{backfillYear:2026,retryValidatedRejection:body.retry_validated_rejection===true});
       const row=result.receipt;
       return json({skipped:result.skipped||null,error:result.error||null,provider_detail:result.provider_detail||null,
         receipt:row?{order_id:row.order_id,status:row.status,has_pdf:!!row.pdf_path,error_code:row.error_code}:null});

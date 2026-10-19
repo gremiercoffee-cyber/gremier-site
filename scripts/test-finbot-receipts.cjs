@@ -126,6 +126,38 @@ test('missing sale references are recovered only from a verified completed payme
 test('timeout and HTTP-200 business failure stop for review without automatic reissuance',async()=>{
  for(const mode of ['timeout','reject']){const calls=provider(mode),db=database();await issueFinbotReceipt(db,'a');await issueFinbotReceipt(db,'a');assert.equal(db.receipts.get('a').status,'needs_review');assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);}
 });
+
+test('explicit historical retry is limited to definite HTTP 400 rejections, retaining the unique claim',async()=>{
+ const db=database();provider();
+ db.receipts.set('a',{order_id:'a',status:'needs_review',is_test:false,error_code:'provider_http_400_codes_n1_needs_review',payment_reference:'payme:SALE-fixture'});
+ const calls=provider();
+ await issueFinbotReceipt(db,'a',{backfillYear:2026});
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,0);
+ await issueFinbotReceipt(db,'a',{backfillYear:2026,retryValidatedRejection:true});
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+ assert.equal(db.receipts.size,1);assert.equal(db.receipts.get('a').status,'issued');
+ for(const error_code of ['provider_result_unknown','provider_http_500_needs_review']){
+  const uncertain=database();uncertain.receipts.set('a',{order_id:'a',status:'needs_review',is_test:false,error_code});
+  const seen=provider();await issueFinbotReceipt(uncertain,'a',{backfillYear:2026,retryValidatedRejection:true});
+  assert.equal(seen.filter(c=>c.url.endsWith('/income')).length,0);
+ }
+});
+
+test('Finbot recent-document throttle waits once while retaining the claim; unknown failures never enter that retry',async()=>{
+ const calls=provider(),fetcher=global.fetch,db=database();let attempts=0,paused=false;
+ const timer=global.setTimeout;
+ global.setTimeout=(callback,ms)=>{
+  assert.equal(ms,30000);assert.equal(db.receipts.get('a').status,'issuing');paused=true;
+  callback();return 0;
+ };
+ global.fetch=async(url,init)=>{
+  if(url.endsWith('/income')&&attempts++===0)return Response.json([{code:-1,message:'מסמך זהה הופק לאחרונה, אנא המתן מספר שניות לפני הפקת מסמך נוסף'}],{status:400});
+  return fetcher(url,init);
+ };
+ try{await issueFinbotReceipt(db,'a');}finally{global.setTimeout=timer;}
+ assert.equal(paused,true);assert.equal(attempts,2);assert.equal(db.receipts.get('a').status,'issued');
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+});
 test('HTML viewer cannot be disguised as PDF; repairing download never reissues receipt',async()=>{
  const calls=provider('html'),db=database();await issueFinbotReceipt(db,'a');assert.equal(db.receipts.get('a').status,'issued');assert.equal(db.receipts.get('a').pdf_path,undefined);
  const retryCalls=provider();await repairReceiptPdf(db,'a');assert.ok(db.receipts.get('a').pdf_path);assert.equal(retryCalls.filter(c=>c.url.endsWith('/income')).length,0);assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);

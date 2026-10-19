@@ -148,7 +148,8 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
   order=await eligibleReceiptOrder(order);
   const existing=await receiptRow(db,orderId);
   const knownRejection=existing?.error_code==='provider_vat_validation_confirmed'||/^provider_http_400(?:_codes_[n0-9_]+)?_needs_review$/.test(existing?.error_code||'');
-  const retryRejected=!!(options.test&&options.retryValidatedRejection&&existing?.is_test&&existing.status==='needs_review'&&knownRejection);
+  const retryRejected=!!(options.retryValidatedRejection&&existing?.status==='needs_review'&&knownRejection&&
+    ((options.test&&existing.is_test)||(options.backfillYear===2026&&!existing.is_test)));
   if(existing&&!retryRejected) {
     if(existing.status==='issued')return {receipt:existing};
     return {skipped:'already_claimed_or_linked',receipt:existing};
@@ -171,8 +172,23 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
   }
   let providerDetail:string|null=null;
   try {
-    const response=await fetch('https://api.finbotai.co.il/income',{method:'POST',
-      headers:{'Content-Type':'application/json',secret:key},body:JSON.stringify(payload),signal:AbortSignal.timeout(25000)});
+    let response:Response|undefined;
+    for(let attempt=0;attempt<2;attempt++) {
+      response=await fetch('https://api.finbotai.co.il/income',{method:'POST',
+        headers:{'Content-Type':'application/json',secret:key},body:JSON.stringify(payload),signal:AbortSignal.timeout(25000)});
+      if(attempt===0&&response.status===400) {
+        const rejection=await response.clone().json().catch(()=>null);
+        if(Array.isArray(rejection)&&rejection.length===1&&Number(rejection[0]?.code)===-1&&
+          String(rejection[0]?.message||'').includes('מסמך זהה הופק לאחרונה')) {
+          // Finbot explicitly refused this request and asks us to wait. Keep our unique
+          // claim issuing during the pause; no concurrent worker may issue or email it.
+          await new Promise(resolve=>setTimeout(resolve,30000));
+          continue;
+        }
+      }
+      break;
+    }
+    if(!response)throw Error('provider_result_unknown');
     // Even a non-2xx response can be ambiguous: don't repeat document creation.
     if(!response.ok) {
       const raw=await response.text();
