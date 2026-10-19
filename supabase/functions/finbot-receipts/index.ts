@@ -46,6 +46,14 @@ Deno.serve(async req=>{
       const paymentDate=order.receipt_payment_date;
       return json({payload:receiptPayload(order,paymentDate),existing:await receiptRow(db,id),creates_document:false});
     }
+    if(body.action==='issue_historical') {
+      if(body.confirm_real_receipt!==true||body.year!==2026)return json({error:'historical_receipt_confirmation_required'},400);
+      // No customer/owner confirmation email replay. The original PDF is stored and linked.
+      const result=await issueFinbotReceipt(db,id,{backfillYear:2026});
+      const row=result.receipt;
+      return json({skipped:result.skipped||null,error:result.error||null,provider_detail:result.provider_detail||null,
+        receipt:row?{order_id:row.order_id,status:row.status,has_pdf:!!row.pdf_path,error_code:row.error_code}:null});
+    }
     if(body.action==='issue_test') {
       if(body.confirm_real_receipt!==true)return json({error:'real_receipt_confirmation_required'},400);
       const settings=await receiptSettings(db);

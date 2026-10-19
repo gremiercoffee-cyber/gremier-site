@@ -1,17 +1,32 @@
 import {eligibleOrder,israelDate,paymentReference,amountMinor,receiptPayload,resultDocument} from './finbot-receipt-model.ts';
 
 const bucket='order-receipts';
+async function eligibleReceiptOrder(order:any) {
+  try {eligibleOrder(order);return order;} catch(e) {
+    if(!(e instanceof Error)||e.message!=='missing_payment_reference')throw e;
+  }
+  // Some restored historical orders lost the sale ID. Recover only through PayMe's
+  // verified order/link transaction lookup and exact amount, never names or dates.
+  const {resolvePayMePaymentStatus}=await import('./payme-query.ts');
+  const verified=await resolvePayMePaymentStatus('',[order.id,order.delivery_info?.payment_link_code?'pl_'+order.delivery_info.payment_link_code:'']);
+  if(!verified?.isCompleted||verified.priceAgorot!==amountMinor(order.total))throw Error('missing_payment_reference');
+  order.delivery_info={...order.delivery_info,payme_sale_id:verified.paymeSaleId};
+  eligibleOrder(order);
+  return order;
+}
 export async function receiptPaymentMetadata(db:any,orderId:string) {
-  const order=await receiptOrder(db,orderId);eligibleOrder(order);
+  const order=await eligibleReceiptOrder(await receiptOrder(db,orderId));
   const {resolvePayMePaymentStatus,getPayMeBase}=await import('./payme-query.ts');
   const saleId=String(order.delivery_info?.payme_sale_id||''),seller=Deno.env.get('PAYME_SELLER_ID');
   const expected=[orderId,order.delivery_info?.payment_link_code?'pl_'+order.delivery_info.payment_link_code:''];
   const verified=await resolvePayMePaymentStatus(saleId,expected);
   if(!verified?.isCompleted||verified.priceAgorot!==amountMinor(order.total))throw Error('payment_verification_required');
+  // A retried checkout may have paid a replacement sale rather than the stored original.
+  const verifiedSaleId=verified.paymeSaleId;
   const response=await fetch(`${getPayMeBase()}api/get-sales`,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({seller_payme_id:seller,sale_payme_id:saleId}),signal:AbortSignal.timeout(15000)});
+    body:JSON.stringify({seller_payme_id:seller,sale_payme_id:verifiedSaleId}),signal:AbortSignal.timeout(15000)});
   const body=await response.json();
-  const sale=(Array.isArray(body.items)?body.items:[]).find((s:any)=>String(s.sale_payme_id||s.payme_sale_id||'')===saleId);
+  const sale=(Array.isArray(body.items)?body.items:[]).find((s:any)=>String(s.sale_payme_id||s.payme_sale_id||'')===verifiedSaleId);
   if(!response.ok||!sale)throw Error('payment_details_unavailable');
   // Expose only structure and date fields for reconciliation, never buyer keys or card data.
   const fields:string[]=[],dates:Record<string,unknown>={};
@@ -19,7 +34,7 @@ export async function receiptPaymentMetadata(db:any,orderId:string) {
   walk(sale);
   const last4=String(sale.sale_buyer_details?.buyer_card_mask||'').replace(/\D/g,'').slice(-4);
   const paidDate=String(sale.sale_paid_date||'').slice(0,10);
-  return {verified:true,amount:verified.priceAgorot!/100,fields,dates,
+  return {verified:true,sale_id:verifiedSaleId,amount:verified.priceAgorot!/100,fields,dates,
     card_last4:/^\d{4}$/.test(last4)?last4:null,
     payment_date:/^\d{4}-\d{2}-\d{2}$/.test(paidDate)?paidDate:null,
     installments:Number(sale.sale_installments),currency:String(sale.sale_currency||'').toUpperCase(),
@@ -28,14 +43,13 @@ export async function receiptPaymentMetadata(db:any,orderId:string) {
       typeof sale.sale_invoices==='string'&&sale.sale_invoices.trim()?1:0};
 }
 export async function receiptPreviewOrder(db:any,orderId:string) {
-  const order=await receiptOrder(db,orderId);
-  eligibleOrder(order);
+  const order=await eligibleReceiptOrder(await receiptOrder(db,orderId));
   const payment=await receiptPaymentMetadata(db,orderId);
   if(payment.currency!=='ILS')throw Error('payment_currency_needs_review');
   if(payment.existing_payme_invoices>0)throw Error('existing_payme_invoice_needs_review');
   if(!payment.card_last4||!Number.isInteger(payment.installments)||payment.installments<1)throw Error('payment_card_details_required');
   if(!payment.payment_date)throw Error('actual_payment_date_required');
-  order.delivery_info={...order.delivery_info,receipt_card_last4:payment.card_last4,receipt_installments:payment.installments};
+  order.delivery_info={...order.delivery_info,payme_sale_id:payment.sale_id,receipt_card_last4:payment.card_last4,receipt_installments:payment.installments};
   order.receipt_payment_date=payment.payment_date;
   return order;
 }
@@ -121,14 +135,17 @@ async function savePdf(db:any,row:any) {
     return {...row,error_code:code};
   }
 }
-export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:boolean;paymentDate?:string;retryValidatedRejection?:boolean}={}) {
-  const order=await receiptOrder(db,orderId);
+export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:boolean;paymentDate?:string;retryValidatedRejection?:boolean;backfillYear?:number}={}) {
+  let order=await receiptOrder(db,orderId);
   const settings=await receiptSettings(db);
-  if(!options.test) {
+  if(options.backfillYear!==undefined) {
+    // Explicit admin-only catch-up; never weaken the cutoff for ordinary callbacks.
+    if(options.test||options.backfillYear!==2026||!israelDate(order.created_at).startsWith('2026-'))throw Error('historical_year_mismatch');
+  } else if(!options.test) {
     if(!settings.enabled||!settings.starts_at)return {skipped:'automation_disabled'};
     if(!order.payment_confirmed_at||new Date(order.payment_confirmed_at)<new Date(settings.starts_at))return {skipped:'historical_order'};
   }
-  eligibleOrder(order);
+  order=await eligibleReceiptOrder(order);
   const existing=await receiptRow(db,orderId);
   const knownRejection=existing?.error_code==='provider_vat_validation_confirmed'||/^provider_http_400(?:_codes_[n0-9_]+)?_needs_review$/.test(existing?.error_code||'');
   const retryRejected=!!(options.test&&options.retryValidatedRejection&&existing?.is_test&&existing.status==='needs_review'&&knownRejection);
@@ -140,12 +157,13 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
   if(!key)return {skipped:'finbot_not_configured'};
   const completeOrder=await receiptPreviewOrder(db,orderId);
   const paymentDate=completeOrder.receipt_payment_date;
+  if(options.backfillYear!==undefined&&!paymentDate.startsWith('2026-'))throw Error('historical_payment_year_mismatch');
   if(options.paymentDate&&options.paymentDate!==paymentDate)throw Error('payment_date_does_not_match_payme');
   const payload=receiptPayload(completeOrder,paymentDate);
   // Committed unique claim BEFORE contacting Finbot. Never automatically retry an uncertain result.
   const claimQuery=retryRejected
     ?db.from('order_receipts').update({status:'issuing',error_code:null,attempted_at:new Date().toISOString()}).eq('order_id',orderId).eq('status','needs_review').eq('error_code',existing.error_code)
-    :db.from('order_receipts').insert({order_id:orderId,status:'issuing',payment_reference:paymentReference(order),amount_minor:amountMinor(order.total),payment_date:paymentDate,is_test:!!options.test});
+    :db.from('order_receipts').insert({order_id:orderId,status:'issuing',payment_reference:paymentReference(completeOrder),amount_minor:amountMinor(order.total),payment_date:paymentDate,is_test:!!options.test});
   const {data:claim,error:claimError}=await claimQuery.select('*').single();
   if(claimError) {
     if(claimError.code==='23505')return {skipped:'already_claimed_or_payment_linked'};
@@ -171,7 +189,7 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
   } catch(e) {
     const code=e instanceof Error&&/^[a-z0-9_]+$/.test(e.message)?e.message:'provider_result_unknown';
     await db.from('order_receipts').update({status:'needs_review',error_code:code}).eq('order_id',claim.order_id).eq('status','issuing');
-    return {skipped:'needs_review',error:code,...(options.test&&providerDetail?{provider_detail:providerDetail}:{})};
+    return {skipped:'needs_review',error:code,...((options.test||options.backfillYear!==undefined)&&providerDetail?{provider_detail:providerDetail}:{})};
   }
 }
 export async function repairReceiptPdf(db:any,orderId:string) {

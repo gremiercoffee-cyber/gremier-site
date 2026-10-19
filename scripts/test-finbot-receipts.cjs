@@ -56,6 +56,39 @@ test('disabled automation and historical order do not contact Finbot',async()=>{
  const calls=provider(),db=database();db.settings.enabled=false;await issueFinbotReceipt(db,'a');
  db.settings.enabled=true;db.settings.starts_at='2026-10-20T00:00:00Z';await issueFinbotReceipt(db,'a');assert.equal(calls.length,0);assert.equal(db.receipts.size,0);
 });
+
+test('explicit historical issuance bypasses the cutoff, stores a real receipt and sends no email',async()=>{
+ const calls=provider(),db=database([order({payment_confirmed_at:null})]);
+ db.settings.starts_at='2026-10-20T00:00:00Z';
+ await issueFinbotReceipt(db,'a',{backfillYear:2026});
+ await issueFinbotReceipt(db,'a',{backfillYear:2026});
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+ assert.equal(calls.filter(c=>c.url==='https://api.resend.com/emails').length,0);
+ assert.equal(db.receipts.get('a').status,'issued');
+ assert.equal(db.receipts.get('a').is_test,false);
+ assert.equal(db.receipts.get('a').payment_date,'2026-10-19');
+ assert.equal(db.files.size,1);
+});
+
+test('historical issuance rejects other years, unpaid orders and payments outside 2026',async()=>{
+ const calls=provider();
+ for(const [patch,options,error] of [
+  [{created_at:'2025-12-01T00:00:00Z'},{backfillYear:2026},/historical_year_mismatch/],
+  [{},{backfillYear:2025},/historical_year_mismatch/],
+  [{},{backfillYear:2026,test:true},/historical_year_mismatch/],
+  [{payment_status:'unpaid'},{backfillYear:2026},/not_paid/],
+ ])await assert.rejects(issueFinbotReceipt(database([order(patch)]),'a',options),error);
+ const fetcher=global.fetch;
+ global.fetch=async(url,init)=>{
+  const response=await fetcher(url,init);
+  if(url==='https://payme.example.test/api/get-sales'){
+   const body=await response.json();body.items[0].sale_paid_date='2025-12-31 12:00:00';return Response.json(body);
+  }
+  return response;
+ };
+ await assert.rejects(issueFinbotReceipt(database(),'a',{backfillYear:2026}),/historical_payment_year_mismatch/);
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,0);
+});
 test('concurrent callbacks issue exactly one receipt and persist original PDF',async()=>{
  const calls=provider(),db=database();await Promise.all(Array.from({length:5},()=>issueFinbotReceipt(db,'a')));
  assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
@@ -65,6 +98,30 @@ test('concurrent callbacks issue exactly one receipt and persist original PDF',a
 test('same payment cannot create receipts against two orders',async()=>{
  const calls=provider(),db=database([order(),order({id:'b',delivery_info:{payme_sale_id:'SALE-fixture',payme_transaction_id:'TX-added-later',receipt_card_last4:'1234'}})]);await issueFinbotReceipt(db,'a');await assert.rejects(issueFinbotReceipt(db,'b'),/payment_verification_required/);
  assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+});
+
+test('checkout retries use the verified replacement sale for details and the unique receipt claim',async()=>{
+ const calls=provider(),fetcher=global.fetch;
+ global.fetch=async(url,init)=>{
+  if(url==='https://payme.example.test/api/get-sales'&&JSON.parse(init.body).sale_payme_id==='OLD-SALE')return Response.json({items:[]});
+  return fetcher(url,init);
+ };
+ const db=database([order({delivery_info:{payme_sale_id:'OLD-SALE'}})]);
+ await issueFinbotReceipt(db,'a',{backfillYear:2026});
+ assert.equal(db.receipts.get('a').status,'issued');
+ assert.equal(db.receipts.get('a').payment_reference,'payme:SALE-fixture');
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+});
+
+test('missing sale references are recovered only from a verified completed payment for this order',async()=>{
+ const calls=provider(),db=database([order({delivery_info:{}})]);
+ await issueFinbotReceipt(db,'a',{backfillYear:2026});
+ assert.equal(db.receipts.get('a').payment_reference,'payme:SALE-fixture');
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+ const noMatch=database([order({delivery_info:{}})]);
+ global.fetch=async()=>Response.json({items:[]});
+ await assert.rejects(issueFinbotReceipt(noMatch,'a',{backfillYear:2026}),/missing_payment_reference/);
+ assert.equal(noMatch.receipts.size,0);
 });
 test('timeout and HTTP-200 business failure stop for review without automatic reissuance',async()=>{
  for(const mode of ['timeout','reject']){const calls=provider(mode),db=database();await issueFinbotReceipt(db,'a');await issueFinbotReceipt(db,'a');assert.equal(db.receipts.get('a').status,'needs_review');assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);}
