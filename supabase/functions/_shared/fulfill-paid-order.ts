@@ -4,6 +4,7 @@ import { ensureOrderPaidFromPayMe } from "./ensure-order-paid.ts";
 import { notifyPaidOrderOnce } from "./order-notify.ts";
 import { enqueuePendingWebsiteDelivery } from "./pending-delivery.ts";
 import { redeemOrderCodes } from "./redeem-order-codes.ts";
+import { issueFinbotReceipt } from "./finbot-receipts.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -74,6 +75,17 @@ export async function fulfillPaidOrder(
   if (order.source === "gift_card") await issuePurchasedGiftCard(orderId);
 
   await enqueuePendingWebsiteDelivery(supabase, orderId);
+  // Disabled until an official test PDF/email is reviewed. Receipt failure never loses the paid order.
+  try {
+    const issuance = await issueFinbotReceipt(supabase, orderId);
+    const receipt = issuance.receipt;
+    // A concurrent callback must not send the confirmation before the issuing worker attaches its PDF.
+    if (receipt?.status === "issuing" || (receipt?.status === "issued" && !receipt.pdf_path && !receipt.error_code)) {
+      return { paid: true, notified: false, skipped: "receipt_in_progress" };
+    }
+  } catch {
+    console.error("Finbot receipt unavailable; review receipt status for this order", orderId);
+  }
   const result = await notifyPaidOrderOnce(supabase, orderId, { force: options?.force });
 
   return {

@@ -43,6 +43,8 @@ export async function sendOrderEmails(params: {
   force?: boolean;
 
   skipOwner?: boolean;
+  customerAttachments?: Array<{ filename: string; content: string }>;
+  ownerAttachments?: Array<{ filename: string; content: string }>;
 
 }): Promise<{ ok: boolean; detail?: string }> {
 
@@ -64,7 +66,7 @@ export async function sendOrderEmails(params: {
 
 
 
-  async function sendOne(to: string, subject: string, text: string): Promise<boolean> {
+  async function sendOne(to: string, subject: string, text: string, attachments?: Array<{ filename: string; content: string }>): Promise<boolean> {
 
     try {
 
@@ -91,6 +93,7 @@ export async function sendOrderEmails(params: {
           subject,
 
           text,
+          ...(attachments?.length ? { attachments } : {}),
 
         }),
 
@@ -121,13 +124,13 @@ export async function sendOrderEmails(params: {
 
 
   if (!params.skipOwner) {
-    await sendOne(owner, params.ownerSubject, params.ownerText);
+    await sendOne(owner, params.ownerSubject, params.ownerText, params.ownerAttachments);
   }
 
   const customer = String(params.customerEmail || "").trim();
   if (customer && customer.toLowerCase() !== owner.toLowerCase()) {
     if (params.customerSubject && params.customerText) {
-      await sendOne(customer, params.customerSubject, params.customerText);
+      await sendOne(customer, params.customerSubject, params.customerText, params.customerAttachments);
     }
   }
 

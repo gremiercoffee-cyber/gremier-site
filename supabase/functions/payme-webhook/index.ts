@@ -5,6 +5,7 @@ import { ensurePendingWebsiteDelivery } from "../_shared/pending-delivery.ts";
 import { isReusablePaymentLink, resetReusablePaymentLink } from "../_shared/payment-link.ts";
 import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-order.ts";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
+import { receiptCardFields } from "../_shared/finbot-receipt-model.ts";
 import { findCheckoutOrder } from "../_shared/find-checkout-order.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 import { resolvePayMePaymentStatus } from "../_shared/payme-query.ts";
@@ -431,6 +432,7 @@ async function fulfillPaymentLink(
 
 
   const paymeInfo = {
+    ...receiptCardFields(payload),
 
     payme_sale_id: String(payload.payme_sale_id || ""),
 
@@ -873,6 +875,7 @@ async function handleSubscriptionCallback(
         delivery_info: {
           ...info,
           subscription_first_iteration_key: key || `${paymeSubId}:first`,
+          ...receiptCardFields(payload),
           payme_subscription_id: info.payme_subscription_id || paymeSubId || null,
           payme_sale_id: String(payload.payme_sale_id || info.payme_sale_id || paymeSubId || ""),
         },
@@ -916,6 +919,8 @@ async function handleSubscriptionCallback(
     childInfo.subscription_iteration_key = key || null;
     childInfo.payme_subscription_id = paymeSubId || info.payme_subscription_id || null;
     childInfo.payme_sale_id = String(payload.payme_sale_id || "");
+    Object.assign(childInfo, receiptCardFields(payload));
+    childInfo.payme_transaction_id = String(payload.payme_transaction_id || "");
 
     const { data: child, error } = await supabase.from("orders").insert({
       user_id: parent.user_id ?? null,
@@ -1164,6 +1169,7 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
     const deliveryInfo = {
 
       ...(order.delivery_info && typeof order.delivery_info === "object" ? order.delivery_info : {}),
+      ...receiptCardFields(payload),
 
       payme_sale_id: String(payload.payme_sale_id || ""),
 

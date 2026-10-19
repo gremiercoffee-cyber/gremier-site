@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
 import { sendWebPushToAdmins } from "./web-push.ts";
+import { receiptAttachment } from "./finbot-receipts.ts";
 
 export type OrderNotifyRow = {
   id: string;
@@ -267,7 +268,7 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
 /** Notify when an order is paid. Resend (primary) + optional Google Sheet + Pushover fallback. */
 export async function sendOrderPaidNotification(
   order: OrderNotifyRow,
-  options?: { force?: boolean },
+  options?: { force?: boolean; receiptPdf?: {filename:string;content:string} | null },
 ): Promise<{ ok: boolean; detail?: string }> {
   const { subject, text, payload } = buildOrderMessage(order);
   const itemsSummary = String(payload.items_summary || "—");
@@ -295,6 +296,7 @@ export async function sendOrderPaidNotification(
     customerSubject: customerReceipt.subject,
     customerText: customerReceipt.text,
     force: options?.force,
+    customerAttachments: options?.receiptPdf ? [options.receiptPdf] : undefined,
   });
   if (resend.ok) emailOk = true;
   else detail = resend.detail || detail;
@@ -347,7 +349,9 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
     }
   }
 
-  const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force });
+  let receiptPdf = null;
+  try { receiptPdf = await receiptAttachment(supabase, orderId); } catch { /* receipt tables may not be configured yet */ }
+  const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force, receiptPdf });
 
   const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);
   // Lead a requested delivery date so it can't be missed at a glance.
