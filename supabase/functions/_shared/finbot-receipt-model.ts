@@ -41,13 +41,14 @@ export function receiptPayload(order: any, paymentDate: string, now=new Date()):
   if(!/^\d{4}$/.test(card))throw Error('card_last_four_required');
   const installments=Number(order.delivery_info?.receipt_installments);
   if(!Number.isInteger(installments)||installments<1||installments>999)throw Error('installment_count_required');
+  const phone=String(order.customer_phone||'').trim().replace(/[\s().-]/g,'');
   return {
     // This business is exempt: Finbot explicitly rejects vatType=true with validation code 115.
     type:'1',date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:false,rounding:false,
     title:`Gremier order ${order.order_number||order.id}`,
     description:`תשלום עבור הזמנה ${order.order_number||order.id}`,
     remark:`הזמנה מספר ${order.order_number||order.id}`,
-    customer:{name:String(order.customer_name).trim().slice(0,100),phone:String(order.customer_phone||'').slice(0,20),save:false},
+    customer:{name:String(order.customer_name).trim().slice(0,100),...(/^\+?\d{7,15}$/.test(phone)?{phone}:{}),save:false},
     items:[{name:`תשלום עבור הזמנה ${order.order_number||order.id}`,amount:1,price:amountMinor(order.total)/100,save:false}],
     payments:[{type:'2',date:fmt(paymentDate),sum:amountMinor(order.total)/100,cardNumber:Number(card),numberPayments:installments,transactionNumber:String(order.delivery_info?.payme_transaction_id||paymentReference(order).slice(6)).slice(0,40)}],
     // No customer email: our confirmation email carries the original PDF, avoiding a second provider email.

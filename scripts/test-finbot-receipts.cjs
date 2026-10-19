@@ -48,6 +48,13 @@ test('קבלה payload uses exact collected amount, card reference, Hebrew and m
 test('reject unpaid, test, refunded, unsupported payment, gift-card and invalid-amount cases',()=>{
  for(const patch of [{payment_status:'unpaid'},{status:'refunded'},{is_test:true},{customer_name:'TEST-order'},{source:'gift_card'},{payment_method:'gift_card'},{gift_card_discount:20},{total:0},{total:-10},{total:null},{total:1.001},{delivery_info:{payme_sale_id:'SUB-1'}}])assert.throws(()=>eligibleOrder(order(patch)));
 });
+
+test('optional receipt phones normalize presentation punctuation without inventing missing digits',()=>{
+ const payload=phone=>receiptPayload(order({customer_phone:phone}),'2026-10-19',new Date('2026-10-20T00:00:00Z'));
+ assert.equal(payload('(050) 123-4567').customer.phone,'0501234567');
+ assert.equal(payload('+972-50-123-4567').customer.phone,'+972501234567');
+ for(const phone of ['', '0501234567 / 0507654321', 'phone unknown','123'])assert.equal(payload(phone).customer.phone,undefined);
+});
 test('successful result must include an HTTPS original-document URL',()=>{
  assert.equal(resultDocument({status:1,data:'https://api.finbotai.co.il/r.pdf'}).url,'https://api.finbotai.co.il/r.pdf');
  for(const b of [{status:0},{status:1,data:'http://localhost/private'},{status:1,data:{url:'x'}}])assert.throws(()=>resultDocument(b));
