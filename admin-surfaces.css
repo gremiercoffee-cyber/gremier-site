@@ -13,6 +13,7 @@
 #appScreen .cell-actions-wrap{gap:8px;align-items:center}
 #appScreen .product-row{background:#fff;border:1px solid #d9dde3;border-radius:14px;box-shadow:var(--surface-shadow);padding:16px;margin-bottom:12px}
 #appScreen .products-list{background:transparent;border:0;box-shadow:none}
+#appScreen .product-row.inactive-row{opacity:1}#appScreen .product-row.inactive-row .product-row-thumb{opacity:.6}
 .pl-menu-drop{background:#fff!important;border-color:#d6dce4!important;border-radius:12px!important;box-shadow:0 12px 38px rgba(22,32,48,.18)!important;padding:6px!important;max-height:calc(100vh - 20px);overflow:auto}.pl-menu-item{padding:11px 12px!important;color:#303946!important;border-radius:7px}.pl-menu-item:hover{background:#f0f3f6!important}.pl-menu-item.danger{color:#b42332!important}
 @media(max-width:650px){#appScreen .page-header .flex-between{gap:12px}#appScreen .page-header .header-actions{align-items:center;gap:8px}#appScreen .filter-bar>.form-input{max-width:100%}#appScreen .product-row-name{line-height:1.5}#appScreen .product-row-actions{gap:8px}}
 #appScreen [hidden]{display:none!important}
