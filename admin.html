@@ -796,7 +796,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Orders</h1>
-          
+
         </div>
         <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
           <div class="collapse-head">
@@ -902,7 +902,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-paylinks" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Payment Links</h1>
-          
+
         </div>
 
         <div class="paylinks-section">
@@ -991,7 +991,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-members" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Members</h1>
-          
+
         </div>
         <div class="filter-bar">
           <input type="text" class="product-search" placeholder="Search by name, email, or phone..." oninput="filterMembers(this.value)" id="memberSearch"/>
@@ -1055,7 +1055,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-siteimages" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">🖼️ Site Content</h1>
-          
+
         </div>
         <!-- Sub-tab toggles -->
         <div class="seg-control" style="display:flex;margin-bottom:28px">
@@ -1118,7 +1118,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="flex-between">
       <div>
         <h1 class="page-title">🏪 Store Deliveries</h1>
-        
+
       </div>
       <div class="header-actions">
         <button class="btn btn-amber btn-sm" onclick="openLogDeliveryModal()">+ Log Delivery</button>
@@ -1256,9 +1256,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="page-header">
     <div class="flex-between">
       <div>
-        
+
         <h1 class="page-title">Dashboard</h1>
-        
+
       </div>
       <div class="header-actions">
         <select class="form-input" style="width:auto" id="dashPeriod" aria-label="Dashboard reporting period" onchange="loadDashboard()">
@@ -1358,7 +1358,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="collapse-body" style="padding:0 20px 16px" id="dashBottlesSold"></div>
   </div>
 </div>
- 
+
 <!-- COUPONS TAB -->
 <div id="tab-coupons" class="tab-content" style="display:none">
   <div class="page-header">
@@ -1387,7 +1387,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </table></div>
   </div>
 </div>
- 
+
 <!-- GIFT CARDS TAB -->
 <div id="tab-workers" class="tab-content" style="display:none">
   <div class="page-header">
@@ -1451,7 +1451,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </table></div>
   </div>
 </div>
- 
+
     </div><!-- /websiteMain -->
     </div><!-- /main -->
   </div>
@@ -1930,7 +1930,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
   </div>
 </div>
- 
+
 <!-- GIFT CARD MODAL -->
 <div class="modal-backdrop" id="giftCardModal">
   <div class="modal-box" style="max-width:480px">
@@ -8644,7 +8644,7 @@ async function sendCustomerReceipt(orderId) {
 // ══════════════ COUPONS ══════════════
 let allCoupons = [];
 let couponSearchTerm = '';
- 
+
 async function loadCoupons() {
   const { data, error } = await sb.from('coupons').select('*').order('created_at', { ascending: false });
   if (error) { console.error(error); showToast('Could not load coupons'); }
@@ -8827,11 +8827,11 @@ async function deleteCoupon() {
   closeCouponModal();
   loadCoupons();
 }
- 
+
 // ══════════════ GIFT CARDS ══════════════
 let allGiftCards = [];
 let giftCardSearchTerm = '';
- 
+
 async function loadGiftCards() {
   const { data, error } = await sb.from('gift_cards').select('*').order('created_at', { ascending: false });
   if (error) console.error(error);
@@ -9205,7 +9205,7 @@ async function generateCouponForMember(userId, memberEmail) {
 }
 </script>
 
-  
+
 <script>
 // Shared Ops REST helper: define this BEFORE the Stock/Schedule/Dashboard React tabs.
 // This prevents mobile from loading Schedule before Stock has created window.opsFetch.
