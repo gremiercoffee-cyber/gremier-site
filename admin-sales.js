@@ -108,6 +108,7 @@
   function change(){try{sync();load();}catch(e){get('salesStatus').textContent=e.message;get('salesResults').innerHTML='';get('salesExport').disabled=true;}}
   jewishOptions();mode.onchange=change;q('.sales-month').onchange=change;q('.sales-hebrew-month').onchange=change;
   q('.sales-hebrew-year').onchange=()=>{try{jewishOptions();change();}catch(e){get('salesStatus').textContent=e.message;get('salesResults').innerHTML='';get('salesExport').disabled=true;}};
+  q('.sales-hebrew-year').oninput=()=>{const year=Number(q('.sales-hebrew-year').value);if(Number.isInteger(year)&&year>=5700&&year<=5900)q('.sales-hebrew-year').onchange();};
   row.querySelectorAll('.sales-label,.sales-from,.sales-to').forEach(i=>i.onchange=()=>{if(i.type==='date'){mode.value='custom';sync();q('.sales-period-range').textContent=q('.sales-from').value+' → '+q('.sales-to').value;}load();});
   q('.sales-remove').onclick=()=>{if(get('salesPeriods').children.length<=1)return;row.remove();render();};
   if(kind==='selectedmonth')sync();
