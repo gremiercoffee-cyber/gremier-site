@@ -147,9 +147,29 @@
         <section class="fin-panel"><h2>Revenue to result</h2>${row('Revenue',money(t.income))}${row('Less cost of sales',money(t.cost_of_sales))}${row('Gross result',money(m.grossProfit))}${row('Less operating expenses',money(t.operating_expenses))}${row('Accounting result',money(t.net))}</section></div>
         <section class="fin-panel"><h2>Monthly revenue vs. expenses</h2><p class="fin-note">Document dates · revenue in green, expenses in grey · October includes historical receipt catch-up.</p><div class="table-wrap"><table class="fin-table"><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Result</th></tr></thead><tbody>${trends}</tbody></table></div></section>
         <div class="fin-grid"><section class="fin-panel"><h2>Cost of sales</h2>${list(m.categories.filter(c=>c.group==='cost_of_sales'))}</section><section class="fin-panel"><h2>Operating expenses</h2>${list(m.categories.filter(c=>c.group==='operating_expenses'))}</section></div>
-        <div class="fin-grid"><section class="fin-panel"><h2>Supplier spending</h2><details><summary>View ${m.suppliers.length} suppliers</summary>${m.suppliers.map(([name,n])=>row(name,money(n))).join('')||'<p class="fin-note">No suppliers in this period.</p>'}</details></section><section class="fin-panel"><h2>Fixed assets</h2>${row('Recorded asset purchases',money(t.fixed_assets))}<p class="fin-note">Shown separately. Asset purchases are not added to the P&L expense total.</p></section></div>${coverage}`;
+        <div class="fin-grid"><section class="fin-panel"><h2>Supplier spending</h2><details><summary>View ${m.suppliers.length} suppliers</summary>${m.suppliers.map(([name,n])=>row(name,money(n))).join('')||'<p class="fin-note">No suppliers in this period.</p>'}</details></section><section class="fin-panel"><h2>Fixed assets</h2>${row('Recorded asset purchases',money(t.fixed_assets))}<p class="fin-note">Shown separately. Asset purchases are not added to the P&L expense total.</p></section></div><section class="fin-panel" id="financialReceiptActivity"><h2>Receipts since this snapshot</h2><p class="fin-note">Loading the live receipt register…</p></section>${coverage}`;
+      loadReceiptActivity(snapshot,get('financialMonth').value);
     }catch{
       current=null;get('financialExport').disabled=true;get('financialResults').innerHTML='<p class="fin-note">This snapshot could not be validated. Reload saved data to retry.</p>';
+    }
+  }
+  async function loadReceiptActivity(record,month) {
+    try {
+      const all=[];
+      for(const table of ['business_receipts','order_receipts']){
+        for(let offset=0;offset<100000;offset+=1000){
+          const r=await client().from(table).select('amount_minor,issued_at').eq('status','issued').gt('issued_at',record.captured_at).order('issued_at').order(table==='order_receipts'?'order_id':'id').range(offset,offset+999);
+          if(r.error)throw r.error;all.push(...r.data);if(r.data.length<1000)break;if(offset===99000)throw Error('Receipt register too large');
+        }
+      }
+      if(snapshot!==record||get('financialMonth').value!==month||!get('financialReceiptActivity'))return;
+      const date=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+      const rows=all.filter(r=>date(r.issued_at).startsWith(month==='all'?String(record.report_year):month));
+      const total=rows.reduce((s,r)=>s+amount(Number(r.amount_minor)),0);
+      get('financialReceiptActivity').innerHTML=`<h2>Receipts since this snapshot</h2>${row('New official receipts',String(rows.length))}${row('Received amounts on those receipts',money(total))}<p class="fin-note">Live register, by receipt issuance date for the selected period. These amounts are separate from the saved accounting totals above; expenses have not been refreshed. Reimporting FinBot accounts moves the snapshot cutoff forward.</p><button class="btn btn-outline btn-sm" id="financialOpenReceipts">Open all receipts</button>`;
+      get('financialOpenReceipts').onclick=()=>root.showTab('finance');
+    }catch{
+      if(snapshot===record&&get('financialReceiptActivity'))get('financialReceiptActivity').innerHTML='<h2>Receipts since this snapshot</h2><p class="fin-note">Live receipt activity is unavailable. The accounting snapshot above is unchanged.</p>';
     }
   }
   function renderUS(m,coverage) {

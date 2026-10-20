@@ -1,0 +1,13 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const code=fs.readFileSync('scripts/gmail-expense-intake.gs','utf8');
+function fixture({recipient='gremiercoffee+expenses@gmail.com',mime='application/pdf',failure=false}={}){
+ const data={EXPENSE_INGRESS_SECRET:'fixture-secret'},uploads=[],logs=[],properties={getProperty:k=>data[k],setProperty:(k,v)=>data[k]=v,deleteProperty:k=>delete data[k],getProperties:()=>({...data})};
+ const c={PropertiesService:{getScriptProperties:()=>properties},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},ScriptApp:{getProjectTriggers:()=>[]},
+  Gmail:{Users:{Messages:{list:(user,options)=>{assert.equal(user,'me');assert(options.q.includes('deliveredto:gremiercoffee+expenses@gmail.com'));return {messages:[{id:'m1'}],nextPageToken:'next'};},get:()=>({payload:{headers:[{name:'Delivered-To',value:recipient}],parts:[{filename:'fixture.pdf',mimeType:mime,body:{attachmentId:'a1'},headers:[]}]}}),Attachments:{get:()=>({data:'JVBERi1maXh0dXJl'})}}}},
+  Utilities:{base64DecodeWebSafe:x=>[...Buffer.from(x,'base64url')],newBlob:(bytes,type,name)=>({bytes,type,name})},UrlFetchApp:{fetch:(url,options)=>{if(options.contentType!=='application/json')uploads.push({url,options});return {getResponseCode:()=>failure?500:200,getContentText:()=>JSON.stringify({saved:!failure})};}},console:{error:s=>logs.push(s)},Date};
+ vm.runInNewContext(code,c);return {run:c.importExpenseAttachments,data,uploads,logs};
+}
+test('Gmail intake only imports addressed attachments, saves retry marker and paginates',()=>{const f=fixture();f.run();assert.equal(f.uploads.length,1);assert(f.data.done_m1);assert.equal(f.data.expense_cursor,'next');f.run();assert.equal(f.uploads.length,1);assert.equal(f.uploads[0].options.payload.recipient,'gremiercoffee+expenses@gmail.com');});
+test('unrelated mail is never uploaded',()=>{const f=fixture({recipient:'gremiercoffee@gmail.com'});f.run();assert.equal(f.uploads.length,0);assert.equal(f.data.done_m1,undefined);});
+test('unsupported attachment or failed upload leaves mail eligible for retry',()=>{for(const options of [{mime:'application/zip'},{failure:true}]){const f=fixture(options);assert.throws(f.run);assert.equal(f.data.done_m1,undefined);}});
+test('OAuth manifest is read-only for Gmail and script has no send/delete operation',()=>{const m=JSON.parse(fs.readFileSync('scripts/gmail-expense-appsscript.json','utf8'));assert(m.oauthScopes.includes('https://www.googleapis.com/auth/gmail.readonly'));assert(!m.oauthScopes.some(s=>/gmail\.(modify|send)|mail\.google/.test(s)));assert(!/GmailApp|Messages\.(send|delete|modify|trash)/.test(code));});

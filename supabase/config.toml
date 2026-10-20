@@ -49,3 +49,9 @@ verify_jwt = false
 
 [functions.finbot-receipts]
 verify_jwt = false
+
+[functions.business-receipts]
+verify_jwt = false
+
+[functions.expense-inbox]
+verify_jwt = false

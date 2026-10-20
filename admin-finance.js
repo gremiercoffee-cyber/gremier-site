@@ -1,0 +1,183 @@
+(function(root){
+ 'use strict';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const sbc=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB,get=id=>document.getElementById(id);
+ const money=n=>new Intl.NumberFormat('en-IL',{style:'currency',currency:'ILS'}).format(n/100);
+ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ async function call(name,body){const r=await sbc().functions.invoke(name,{body});if(r.error||r.data?.error){const detail=r.data||await r.error?.context?.json?.().catch(()=>null);throw Error(detail?.error||'Request failed; refresh before retrying.');}return r.data;}
+ async function pages(table,columns,order){const out=[],primary=table==='order_receipts'?'order_id':'id';for(let n=0;n<100000;n+=1000){let query=sbc().from(table).select(columns).order(order);if(order!==primary)query=query.order(primary);const r=await query.range(n,n+999);if(r.error)throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Report is too large');}
+ const status=(id,message)=>{if(get(id))get(id).textContent=message;};
+ let customers=[],allCustomers=[],stores=[],bills=[],preview=null,requestId=crypto.randomUUID(),preparedReceipt=null,expenseFiles=[],expenseSettings=null,batch=null,allReceipts=[];
+ let financeSeq=0,expenseSeq=0;
+ const field=(label,id,type='text',extra='')=>`<label>${label}<input class="form-input" id="${id}" type="${type}" ${extra}></label>`;
+ function setup(){
+  const original=get('tab-reports');if(!original||get('tab-finance'))return;
+  for(const [id,label,icon] of [['finance','Receipts','🧾'],['expenses','Expenses','📥']]){
+   const tab=document.createElement('div');tab.id='tab-'+id;tab.className='tab-content';tab.style.display='none';original.insertAdjacentElement('afterend',tab);
+   const nav=document.createElement('div');nav.id='nav-'+id;nav.className='nav-item';nav.innerHTML=`<span class="icon">${icon}</span><span>${label}</span>`;nav.onclick=()=>root.showTab(id);get('nav-reports')?.insertAdjacentElement('afterend',nav);
+   const drawer=document.querySelector('.nav-drawer-item[onclick*="reports"]');if(drawer){const b=document.createElement('button');b.className='nav-drawer-item';b.textContent=icon+' '+label;b.onclick=()=>{root.showTab(id);root.closeNavDrawer?.();};drawer.insertAdjacentElement('afterend',b);}
+  }
+  get('tab-finance').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Receipts · קבלות</h1><p class="page-sub">Store payments, saved customers and received income</p></div><button class="btn btn-outline" id="financeReload">Refresh</button></div></header><p class="fw-note" id="financeStatus" role="status"></p>
+   <section class="fw-panel"><h2>Issue an official receipt</h2><p class="fw-note">For money already received by cash or bank transfer. Online card payments keep their existing automatic receipt process.</p>
+   <div id="manualReceiptForm"><div class="fw-form"><label>Find customer<input class="form-input" id="receiptCustomerSearch" placeholder="Search name, ח.פ. or store"></label><label>Saved customer<select class="form-input" id="manualCustomer"></select></label></div><div id="manualBills"></div>
+   <div class="fw-form">${field('Amount actually received · ₪','manualAmount','number','min="0.01" step="0.01"')}${field('Date money was received','manualDate','date')}<label>Payment method<select class="form-input" id="manualMethod"><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option></select></label>${field('Transfer / payment reference · optional','manualReference')}${field('Description','manualDescription','text','maxlength="200"')}${field('Reason if amount differs from selected months','manualAdjustment','text','maxlength="500"')}</div>
+   <label class="fw-check"><input type="checkbox" id="manualEmail"> Email the official PDF to this saved customer</label><button class="btn btn-outline" id="manualPreview">Review receipt · no issuance yet</button></div><div id="manualReceiptReview"></div><p class="fw-note" id="manualReceiptStatus" role="status"></p></section>
+   <section class="fw-panel"><details id="financeCustomerEditor"><summary>Saved customers & store details</summary><p class="fw-note">Name is required. ח.פ./עוסק, email, phone and address are optional. Archive removes a customer from new receipts while keeping issued records.</p><div class="fw-form"><label>Edit customer<select class="form-input" id="customerEdit"></select></label><label>Linked store<select class="form-input" id="customerStore"></select></label>${field('Official customer / business name','customerName','text','maxlength="100"')}${field('ח.פ. / עוסק · 9 digits','customerTax','text','inputmode="numeric" maxlength="9"')}${field('Email for receipts','customerEmail','email','maxlength="50"')}${field('Phone · optional','customerPhone','tel')}${field('Address · optional','customerAddress','text','maxlength="100"')}</div><div class="fw-actions"><button class="btn btn-outline" id="customerSave">Save customer</button><button class="btn btn-outline" id="customerNew">New customer</button><button class="btn btn-outline" id="customerArchive">Archive customer</button></div><p id="customerStatus" class="fw-note" role="status"></p></details></section>
+   <section class="fw-panel"><h2>All received payments with receipts</h2><div class="fw-form">${field('Filter customer / order','financeReceiptSearch')}${field('Payment year','financeReceiptYear','number','min="2020" max="2100"')}</div><p class="fw-note" id="financeReceiptTotal"></p><div class="table-wrap" id="financeReceiptList"></div><p class="fw-note">Official online and manually issued receipts are shown together by payment date. No invoices or delivery estimates are added as income. Older receipts issued directly inside FinBot are represented in Stats via the accounting snapshot; their individual PDFs are not synchronized here.</p></section>`;
+  get('financeReload').onclick=loadFinance;
+  get('manualDate').value=today();get('financeReceiptYear').value=today().slice(0,4);
+  get('receiptCustomerSearch').oninput=customerOptions;
+  get('manualCustomer').onchange=loadCustomerBills;
+  get('manualPreview').onclick=review;
+  get('customerEdit').onchange=editCustomer;
+  get('customerNew').onclick=()=>{get('customerEdit').value='';editCustomer();};
+  get('customerStore').onchange=()=>{const s=stores.find(s=>s.id===get('customerStore').value);if(s&&!get('customerEdit').value){get('customerName').value=s.name;get('customerPhone').value=s.phone||'';}};
+  get('customerSave').onclick=saveCustomer;get('customerArchive').onclick=archiveCustomer;
+  get('financeReceiptSearch').oninput=renderReceipts;get('financeReceiptYear').oninput=renderReceipts;
+  const delivery=get('tab-storedeliveries')?.querySelector('.page-header');if(delivery){const b=document.createElement('button');b.className='btn btn-outline';b.textContent='Issue store receipt';b.onclick=()=>{root.showTab('finance');status('manualReceiptStatus','Choose a saved store, then select the months this payment settles. Store details can be added under Saved customers & store details.');};delivery.append(b);}
+  setupExpenses();
+ }
+ function customerOptions(){
+  const selected=get('manualCustomer').value,q=get('receiptCustomerSearch').value.toLowerCase();
+  get('manualCustomer').innerHTML='<option value="">Choose customer / store</option>'+customers.filter(c=>(c.name+' '+c.tax_id).toLowerCase().includes(q)).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.store_id?' · store':''}</option>`).join('');get('manualCustomer').value=selected;
+ }
+ async function loadFinance(){
+  setup();const token=++financeSeq;status('financeStatus','Loading customers and receipt history…');
+  try{
+   const results=await Promise.all([pages('receipt_customers','*','name'),pages('stores','id,name,phone','name'),
+    pages('business_receipts','id,customer_snapshot,amount_minor,payment_date,payment_method,status,pdf_path,email_requested,email_sent_at,email_error,error_code,issued_at,created_at','created_at'),
+    pages('order_receipts','order_id,status,amount_minor,payment_date,pdf_path,document_reference,issued_at,orders(customer_name,order_number)','order_id')]);
+   if(token!==financeSeq)return;
+   allCustomers=results[0];customers=allCustomers.filter(c=>!c.archived_at);stores=results[1];
+   get('customerEdit').innerHTML='<option value="">New customer</option>'+allCustomers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.archived_at?' · archived':''}</option>`).join('');
+   get('customerStore').innerHTML='<option value="">Independent customer</option>'+stores.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');customerOptions();
+   allReceipts=[...results[2].map(r=>({...r,kind:'business',name:r.customer_snapshot.name,reference:r.id.slice(0,8)})),...results[3].map(r=>({...r,id:r.order_id,kind:'order',name:r.orders?.customer_name||'Online customer',reference:r.orders?.order_number?'Order #'+r.orders.order_number:r.order_id.slice(0,8)}))];renderReceipts();status('financeStatus','Connected to FinBot issuance · receipt history is stored in this admin panel.');
+  }catch(e){status('financeStatus',e.message);}
+ }
+ function editCustomer(){const c=allCustomers.find(c=>c.id===get('customerEdit').value)||{};for(const [id,key] of [['customerName','name'],['customerTax','tax_id'],['customerEmail','email'],['customerPhone','phone'],['customerAddress','address'],['customerStore','store_id']])get(id).value=c[key]||'';get('customerArchive').textContent=c.archived_at?'Restore customer':'Archive customer';status('customerStatus','');}
+ async function saveCustomer(){
+  try{
+   const value={name:get('customerName').value.trim(),tax_id:get('customerTax').value.trim(),email:get('customerEmail').value.trim(),phone:get('customerPhone').value.trim(),address:get('customerAddress').value.trim(),store_id:get('customerStore').value||null,updated_at:new Date().toISOString()};
+   if(!value.name)throw Error('Enter an official customer name.');if(value.tax_id&&!/^\d{9}$/.test(value.tax_id))throw Error('ח.פ./עוסק must contain 9 digits.');
+   const id=get('customerEdit').value,r=id?await sbc().from('receipt_customers').update(value).eq('id',id).select('id').single():await sbc().from('receipt_customers').insert(value).select('id').single();
+   if(r.error)throw Error(r.error.code==='23505'?'This store already has saved receipt details. Edit that customer instead.':'Could not save customer.');
+   await loadFinance();get('customerEdit').value=r.data.id;editCustomer();get('manualCustomer').value=r.data.id;await loadCustomerBills();status('customerStatus','Customer saved.');
+  }catch(e){status('customerStatus',e.message);}
+ }
+ async function archiveCustomer(){const id=get('customerEdit').value;if(!id)return;const restore=!!allCustomers.find(c=>c.id===id)?.archived_at;try{const r=await sbc().from('receipt_customers').update({archived_at:restore?null:new Date().toISOString()}).eq('id',id);if(r.error)throw Error('Could not update customer');await loadFinance();editCustomer();status('customerStatus',restore?'Customer restored.':'Customer archived; issued receipt records are preserved.');}catch(e){status('customerStatus',e.message);}}
+ async function loadCustomerBills(){
+  const c=customers.find(c=>c.id===get('manualCustomer').value);bills=[];preview=null;get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualBills').innerHTML='';get('manualEmail').checked=!!c?.email;get('manualAmount').value='';get('manualDescription').value=c?'Payment from '+c.name:'';
+  if(!c?.store_id)return;
+  status('manualReceiptStatus','Loading outstanding months…');
+  try{
+   const [r,claimed]=await Promise.all([sbc().from('store_billing').select('id,year,month,total').eq('store_id',c.store_id).is('paid_at',null).is('cancelled_at',null).order('year').order('month'),sbc().from('business_receipt_bills').select('billing_id')]);
+   if(c.id!==get('manualCustomer').value)return;if(r.error||claimed.error)throw Error('Could not load outstanding bills.');
+   const ids=new Set(claimed.data.map(x=>x.billing_id));bills=r.data.filter(b=>!ids.has(b.id));
+   get('manualBills').innerHTML='<p class="fw-note">Select the months this payment settles in full. If the payment differs, enter the received amount and an adjustment reason; original statement totals stay in the audit record.</p>'+bills.map(b=>`<label class="fw-check"><input type="checkbox" value="${esc(b.id)}" class="manual-bill"> ${b.year}-${String(b.month).padStart(2,'0')} · ${money(Math.round(Number(b.total)*100))}</label>`).join('');
+   get('manualBills').querySelectorAll('input').forEach(i=>i.onchange=()=>{const selected=selectedBills();get('manualAmount').value=(selected.reduce((s,b)=>s+Math.round(Number(b.total)*100),0)/100).toFixed(2);get('manualDescription').value=('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);});
+   status('manualReceiptStatus',bills.length?'':'No available outstanding months. Paid, cancelled and already-claimed months cannot be receipted again here.');
+  }catch(e){status('manualReceiptStatus',e.message);}
+ }
+ const selectedBills=()=>bills.filter(b=>[...document.querySelectorAll('.manual-bill:checked')].some(i=>i.value===b.id));
+ async function review(){
+  get('manualPreview').disabled=true;status('manualReceiptStatus','Preparing preview; no document is being issued…');
+  try{
+   const selected=selectedBills(),input={id:requestId,customer_id:get('manualCustomer').value,amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,adjustment_reason:get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+Math.round(Number(b.total)*100),0):null,email_requested:get('manualEmail').checked};
+   const r=await call('business-receipts',{action:'preview',...input});if(r.already_claimed)throw Error('This request already has a receipt or needs review. Check the receipt history.');
+   preview=input;get('manualReceiptForm').hidden=true;const p=r.preview;
+   get('manualReceiptReview').innerHTML=`<h3>Review before issuing · official קבלה</h3><div class="fw-note">Customer: ${esc(p.customer.name)}<br>ח.פ./עוסק: ${esc(p.customer.tax_id||'Not supplied')}<br>Received: <strong>${esc(money(p.amount_minor))}</strong> · ${esc(p.payment_method)} · ${esc(p.payment_date)}<br>${esc(p.description)}${p.bills.length?'<br>Statement total: '+esc(money(p.billed_total_minor))+' · Actual settlement: '+esc(money(p.amount_minor)):''}<br>Adjustment: ${esc(p.adjustment_reason||'None')}<br>Email PDF: ${p.email_requested?esc(p.customer.email):'No'}</div><label class="fw-check"><input type="checkbox" id="receiptReceived"> I confirm this money has already been received${p.bills.length?' and fully settles the selected months':''}.</label><label class="fw-check"><input type="checkbox" id="receiptNoPrior"> No official receipt has already been issued for this payment.</label><div class="fw-actions"><button class="btn btn-outline" id="receiptEditPreview">Edit</button><button class="btn btn-green" id="receiptIssueOfficial">Issue official receipt</button></div>`;
+   get('receiptEditPreview').onclick=()=>{get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;preview=null;};get('receiptIssueOfficial').onclick=issue;
+   status('manualReceiptStatus','Preview ready. Issuance creates a real official receipt.');
+  }catch(e){status('manualReceiptStatus',e.message);}finally{get('manualPreview').disabled=false;}
+ }
+ async function issue(){
+  if(!get('receiptReceived').checked||!get('receiptNoPrior').checked){status('manualReceiptStatus','Confirm payment received and no existing receipt first.');return;}
+  get('receiptIssueOfficial').disabled=true;get('receiptEditPreview').disabled=true;status('manualReceiptStatus','Issuing official receipt… Do not submit another request.');
+  try{
+   const r=await call('business-receipts',{action:'issue',...preview,payment_received:true,not_already_receipted:true});
+   if(r.receipt?.status!=='issued')throw Error('Issuance is pending or needs review. Do not issue again; check receipt history.');
+   const receipt=r.receipt,c=receipt.customer_snapshot;requestId=crypto.randomUUID();preview=null;
+   get('manualReceiptReview').innerHTML=`<h3>Receipt issued · ${esc(money(receipt.amount_minor))}</h3><p class="fw-note">Saved in FinBot and this admin panel. ${receipt.email_sent_at?'PDF email accepted for delivery to '+esc(c.email):receipt.email_requested?'Email pending; use Retry email in the receipt history.':'No email requested.'}</p><div class="fw-actions"><button class="btn btn-outline" id="issuedReceiptOpen">Open official PDF</button><button class="btn btn-outline" id="issuedReceiptShare">Prepare WhatsApp PDF</button><button class="btn btn-outline" id="issuedReceiptNew">New receipt</button></div>`;
+   get('issuedReceiptOpen').onclick=()=>openReceipt('business',receipt.id);get('issuedReceiptShare').onclick=()=>prepareReceiptShare(receipt,'issuedReceiptShare');get('issuedReceiptNew').onclick=()=>{get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualAmount').value='';get('manualAdjustment').value='';get('manualReference').value='';loadCustomerBills();};
+   status('manualReceiptStatus','Issued successfully.');await loadFinance();
+  }catch(e){status('manualReceiptStatus',e.message+' Check the receipt history before starting another request.');}
+ }
+ async function openReceipt(kind,id){try{const r=await call(kind==='order'?'finbot-receipts':'business-receipts',{action:'pdf',...(kind==='order'?{order_id:id}:{id})});root.open(r.url,'_blank','noopener');}catch(e){status('financeStatus',e.message);}}
+ async function prepareReceiptShare(receipt,buttonId){
+  const button=get(buttonId);button.disabled=true;
+  try{const r=await call('business-receipts',{action:'pdf',id:receipt.id}),response=await fetch(r.url);if(!response.ok)throw Error('PDF unavailable');const file=new File([await response.blob()],`Gremier-receipt-${receipt.id.slice(0,8)}.pdf`,{type:'application/pdf'});preparedReceipt={file,receipt};button.disabled=false;button.textContent='Share official PDF';button.onclick=async()=>{try{if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:'Gremier receipt'});else{download(file,file.name);root.open('https://wa.me/'+phone(receipt.customer_snapshot.phone)+'?text='+encodeURIComponent('Gremier Coffee · קבלה · '+money(receipt.amount_minor)),'_blank','noopener');status('financeStatus','PDF downloaded. Attach it in the opened WhatsApp chat.');}}catch(e){if(e.name!=='AbortError')status('financeStatus','Could not share. Use Open PDF to download it.');}};}catch(e){button.disabled=false;status('financeStatus',e.message);}
+ }
+ function phone(raw){let n=String(raw||'').replace(/\D/g,'');if(n.startsWith('0'))n='972'+n.slice(1);return n;}
+ function renderReceipts(){
+  const q=get('financeReceiptSearch').value.toLowerCase(),year=get('financeReceiptYear').value;
+  const filtered=allReceipts.filter(r=>(r.payment_date||'').startsWith(year)&&(r.name+' '+r.reference).toLowerCase().includes(q)).sort((a,b)=>(b.payment_date||'').localeCompare(a.payment_date||''));
+  const issued=filtered.filter(r=>['issued','external'].includes(r.status));status('financeReceiptTotal',`${issued.length} issued / linked receipts · ${money(issued.reduce((s,r)=>s+Number(r.amount_minor),0))} received by payment date. Pending/review items are excluded.`);
+  get('financeReceiptList').innerHTML=`<table><thead><tr><th>Customer / reference</th><th>Payment date</th><th>Received</th><th>Method / status</th><th>Documents</th></tr></thead><tbody>${filtered.map(r=>`<tr><td>${esc(r.name)}<small>${esc(r.reference)}</small></td><td>${esc(r.payment_date)}</td><td>${esc(money(Number(r.amount_minor)))}</td><td>${esc(r.payment_method||'Online card')} · ${esc(r.status)}${r.error_code?'<small>'+esc(r.error_code)+'</small>':''}${r.email_error?'<small>Email pending</small>':''}</td><td>${r.status==='issued'?`<button class="btn btn-outline btn-sm" data-open-receipt="${esc(r.id)}" data-kind="${r.kind}">Open PDF</button>${r.kind==='business'?`<button class="btn btn-outline btn-sm" data-share-receipt="${esc(r.id)}" id="share-${esc(r.id)}">Prepare WhatsApp PDF</button>${r.email_requested&&!r.email_sent_at?`<button class="btn btn-outline btn-sm" data-email-receipt="${esc(r.id)}">Retry email</button>`:''}`:''}`:''}</td></tr>`).join('')||'<tr><td colspan="5">No receipts in this view.</td></tr>'}</tbody></table>`;
+  get('financeReceiptList').querySelectorAll('[data-open-receipt]').forEach(b=>b.onclick=()=>openReceipt(b.dataset.kind,b.dataset.openReceipt));
+  get('financeReceiptList').querySelectorAll('[data-share-receipt]').forEach(b=>b.onclick=()=>prepareReceiptShare(allReceipts.find(r=>r.id===b.dataset.shareReceipt),b.id));
+  get('financeReceiptList').querySelectorAll('[data-email-receipt]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await call('business-receipts',{action:'retry_email',id:b.dataset.emailReceipt});await loadFinance();}catch(e){status('financeStatus',e.message);b.disabled=false;}});
+ }
+ function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ function setupExpenses(){
+  get('tab-expenses').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Expense inbox</h1><p class="page-sub">Collect documents, prepare image batches and file through WhatsApp</p></div><button class="btn btn-outline" id="expenseReload">Refresh</button></div></header><p class="fw-note" role="status" id="expenseStatus"></p>
+   <section class="fw-panel"><h2>Add expenses</h2><p>Forward attachments to <strong>gremiercoffee+expenses@gmail.com</strong></p><p class="fw-note" id="expenseEmailState">Checking email intake…</p><div class="fw-form"><label>Upload photos or PDFs<input type="file" id="expenseUpload" class="form-input" accept="application/pdf,image/jpeg,image/png,image/webp" multiple></label><label>Take a receipt photo<input type="file" id="expenseCamera" class="form-input" accept="image/*" capture="environment"></label><label>Notify / batch size<select class="form-input" id="expenseBatchSize"><option>5</option><option>10</option><option>15</option><option>20</option></select></label></div><p class="fw-note">PDF, JPG, PNG or WebP · up to 20 MB each. Originals stay private. Email intake polls about every five minutes after Google authorization.</p></section>
+   <section class="fw-panel"><div class="flex-between"><h2 id="expenseQueueTitle">Waiting to file</h2><button class="btn btn-outline" id="expensePrepare">Prepare selected batch</button></div><p class="fw-note">Each document counts once toward your batch size. Every PDF page becomes a separate image. Select fewer documents if a batch has many pages.</p><div id="expenseQueue"></div><div id="expensePrepared"></div></section><section class="fw-panel"><details><summary>Filed / archived history</summary><div id="expenseHistory"></div></details></section>`;
+  get('expenseReload').onclick=loadExpenses;get('expensePrepare').onclick=prepareBatch;
+  for(const id of ['expenseUpload','expenseCamera'])get(id).onchange=async()=>{const files=[...get(id).files];get(id).disabled=true;try{for(let i=0;i<files.length;i++){status('expenseStatus',`Uploading ${i+1} of ${files.length}…`);let file=files[i];if(id==='expenseCamera'&&!['image/jpeg','image/png','image/webp'].includes(file.type)){try{const bitmap=await createImageBitmap(file),canvas=document.createElement('canvas'),scale=Math.min(1,2400/bitmap.width,5000/bitmap.height);canvas.width=Math.ceil(bitmap.width*scale);canvas.height=Math.ceil(bitmap.height*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();file=new File([await jpeg(canvas)],'receipt-photo.jpg',{type:'image/jpeg'});canvas.width=canvas.height=1;}catch{throw Error('This camera format could not be converted. Upload a JPG, PNG or PDF instead.');}}const form=new FormData();form.append('file',file);await call('expense-inbox',form);}get(id).value='';await loadExpenses();status('expenseStatus','Documents saved to the private inbox.');}catch(e){status('expenseStatus',e.message);}finally{get(id).disabled=false;}};
+  get('expenseBatchSize').onchange=async()=>{try{await call('expense-inbox',{action:'settings',batch_size:Number(get('expenseBatchSize').value)});await loadExpenses();}catch(e){status('expenseStatus',e.message);}};
+ }
+ async function loadExpenses(){
+  setup();const token=++expenseSeq;status('expenseStatus','Loading expense inbox…');
+  try{
+   const [files,settings]=await Promise.all([pages('expense_inbox_files','id,original_name,mime_type,size_bytes,source,status,created_at,filed_at,batch_id','created_at'),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
+   if(token!==expenseSeq)return;if(settings.error)throw Error('Expense settings unavailable');expenseFiles=files;expenseSettings=settings.data;get('expenseBatchSize').value=expenseSettings.batch_size;
+   const pending=files.filter(f=>f.status==='pending');get('expenseQueueTitle').textContent=`Waiting to file · ${pending.length} documents`;
+   get('expenseQueue').innerHTML=pending.map((f,i)=>`<div class="fw-expense-row"><label class="fw-check"><input type="checkbox" class="expense-select" value="${esc(f.id)}" ${i<expenseSettings.batch_size?'checked':''}> ${esc(f.original_name)}<small>${esc(f.source)} · ${esc(f.created_at.slice(0,10))} · ${(f.size_bytes/1024).toFixed(0)} KB</small></label><div><button class="btn btn-outline btn-sm" data-expense-open="${esc(f.id)}">Original</button><button class="btn btn-outline btn-sm" data-expense-archive="${esc(f.id)}">Archive</button></div></div>`).join('')||'<p class="fw-note">No documents waiting to file.</p>';
+   get('expenseHistory').innerHTML=files.filter(f=>f.status!=='pending').reverse().map(f=>`<p class="fw-note">${esc(f.original_name)} · ${esc(f.status)} · ${esc((f.filed_at||f.created_at).slice(0,10))}</p>`).join('')||'<p class="fw-note">Nothing filed yet.</p>';
+   get('expenseQueue').querySelectorAll('[data-expense-open]').forEach(b=>b.onclick=async()=>{try{const r=await call('expense-inbox',{action:'original',id:b.dataset.expenseOpen});root.open(r.url,'_blank','noopener');}catch(e){status('expenseStatus',e.message);}});
+   get('expenseQueue').querySelectorAll('[data-expense-archive]').forEach(b=>b.onclick=async()=>{try{await call('expense-inbox',{action:'archive',ids:[b.dataset.expenseArchive]});await loadExpenses();}catch(e){status('expenseStatus',e.message);}});
+   status('expenseEmailState',expenseSettings.email_last_checked_at?'Email last checked: '+new Date(expenseSettings.email_last_checked_at).toLocaleString()+(expenseSettings.email_error_count?' · '+expenseSettings.email_error_count+' messages need review in Gmail / script execution logs.':' · Connected')+(Date.now()-new Date(expenseSettings.email_last_checked_at).getTime()>20*60*1000?' · Check is overdue; review the Google trigger.':''):expenseSettings.email_last_received_at?'Last email attachment received: '+new Date(expenseSettings.email_last_received_at).toLocaleString():'Email connection is awaiting verification. Complete the one-time Google authorization if you have not done so.');
+   status('expenseStatus',pending.length>=expenseSettings.batch_size?`You have ${pending.length} expenses to file. Prepare a batch when ready.`:`${pending.length} waiting · notification threshold ${expenseSettings.batch_size}`);
+  }catch(e){status('expenseStatus',e.message);}
+ }
+ let pdfLibrary=null,zipPromise=null;
+ async function pdfjs(){if(!pdfLibrary){pdfLibrary=await import('/vendor/pdfjs-6.4.299/build/pdf.mjs');pdfLibrary.GlobalWorkerOptions.workerSrc='/vendor/pdfjs-6.4.299/build/pdf.worker.mjs';}return pdfLibrary;}
+ function zipjs(){if(root.JSZip)return Promise.resolve(root.JSZip);if(!zipPromise)zipPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/vendor/jszip-3.10.2/dist/jszip.min.js';s.onload=()=>resolve(root.JSZip);s.onerror=()=>{zipPromise=null;reject(Error('ZIP export unavailable'));};document.head.append(s);});return zipPromise;}
+ const jpeg=canvas=>new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Image conversion failed')),'image/jpeg',0.9));
+ async function prepareBatch(){
+  const ids=[...document.querySelectorAll('.expense-select:checked')].map(i=>i.value),selected=expenseFiles.filter(f=>ids.includes(f.id));
+  if(!selected.length||selected.length>20){status('expenseStatus','Select 1–20 documents.');return;}
+  batch=null;get('expensePrepared').innerHTML='';get('expensePrepare').disabled=true;
+  try{
+   const files=[];
+   for(let i=0;i<selected.length;i++){
+    status('expenseStatus',`Preparing document ${i+1} of ${selected.length}…`);
+    const item=selected[i],r=await call('expense-inbox',{action:'original',id:item.id}),response=await fetch(r.url);if(!response.ok)throw Error('Original unavailable');const blob=await response.blob();
+    if(item.mime_type==='application/pdf'){
+     const lib=await pdfjs(),task=lib.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false,cMapUrl:'/vendor/pdfjs-6.4.299/cmaps/',cMapPacked:true,standardFontDataUrl:'/vendor/pdfjs-6.4.299/standard_fonts/',wasmUrl:'/vendor/pdfjs-6.4.299/wasm/'}),doc=await task.promise;
+     try{if(doc.numPages+files.length>60)throw Error('This batch exceeds 60 pages. Select fewer documents.');for(let page=1;page<=doc.numPages;page++){
+      const p=await doc.getPage(page),base=p.getViewport({scale:1}),viewport=p.getViewport({scale:Math.min(2,1800/base.width,5000/base.height)}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      await p.render({canvasContext:canvas.getContext('2d'),canvas,viewport,background:'white'}).promise;files.push(new File([await jpeg(canvas)],`expense-${String(i+1).padStart(2,'0')}-page-${String(page).padStart(2,'0')}.jpg`,{type:'image/jpeg'}));canvas.width=canvas.height=1;p.cleanup();
+     }}finally{await task.destroy();}
+    }else{
+     const image=await createImageBitmap(blob),scale=Math.min(1,2000/image.width,5000/image.height),canvas=document.createElement('canvas');canvas.width=Math.ceil(image.width*scale);canvas.height=Math.ceil(image.height*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);image.close();files.push(new File([await jpeg(canvas)],`expense-${String(i+1).padStart(2,'0')}.jpg`,{type:'image/jpeg'}));canvas.width=canvas.height=1;
+    }
+   }
+   batch={ids,files};get('expensePrepared').innerHTML=`<h3>Ready · ${selected.length} documents / ${files.length} images</h3><p class="fw-note">Review the images before filing. Sharing opens your device’s share panel; WhatsApp chat opens ${esc(expenseSettings.whatsapp_number)}. Desktop browsers may require attaching the downloaded images manually.</p><div class="fw-actions"><button class="btn btn-green" id="expenseShare">Send now · share images</button><button class="btn btn-outline" id="expenseZip">Download one batch ZIP</button><button class="btn btn-outline" id="expenseWhatsApp">Open filing WhatsApp</button><button class="btn btn-outline" id="expenseFiled">I filed this batch</button></div><div id="expenseImageReview" class="fw-image-review"></div>`;
+   files.forEach(f=>{const button=document.createElement('button'),img=document.createElement('img'),url=URL.createObjectURL(f);button.type='button';button.className='fw-preview-image';button.title='Open full-size page';img.src=url;img.alt=f.name;img.loading='lazy';img.decoding='async';img.onload=()=>URL.revokeObjectURL(url);button.append(img);button.onclick=()=>{const full=URL.createObjectURL(f);root.open(full,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(full),60000);};get('expenseImageReview').append(button);});
+   get('expenseShare').onclick=async()=>{try{if(navigator.canShare?.({files}))await navigator.share({files,title:'Gremier expense documents'});else{status('expenseStatus','File sharing is unavailable here. Download the ZIP, extract the images and attach them in WhatsApp.');get('expenseZip').click();}}catch(e){if(e.name!=='AbortError')status('expenseStatus','Sharing failed. Download the ZIP and attach its images manually.');}};
+   get('expenseZip').onclick=async()=>{try{const Zip=await zipjs(),z=new Zip();files.forEach(f=>z.file(f.name,f));download(await z.generateAsync({type:'blob',compression:'STORE'}),'Gremier-expenses-'+today()+'.zip');}catch(e){status('expenseStatus',e.message);}};
+   get('expenseWhatsApp').onclick=()=>root.open('https://wa.me/'+phone(expenseSettings.whatsapp_number),'_blank','noopener');
+   get('expenseFiled').onclick=async()=>{get('expenseFiled').disabled=true;try{await call('expense-inbox',{action:'filed',ids});get('expensePrepared').innerHTML='';batch=null;await loadExpenses();status('expenseStatus','Batch marked filed. Original documents are retained.');}catch(e){get('expenseFiled').disabled=false;status('expenseStatus',e.message);}};
+   status('expenseStatus','Batch ready. Sending or downloading does not mark it filed.');
+  }catch(e){status('expenseStatus',e.message+' No documents were marked filed.');}finally{get('expensePrepare').disabled=false;}
+ }
+ const originalShow=root.showTab;
+ if(originalShow)root.showTab=function(tab,...args){const result=originalShow.call(this,tab,...args);if(tab==='finance')loadFinance();if(tab==='expenses')loadExpenses();return result;};
+ setup();
+ if(new URLSearchParams(location.search).get('finance')==='expenses'){
+  sbc()?.auth.getSession().then(({data})=>{if(data.session)root.showTab('expenses');});
+  sbc()?.auth.onAuthStateChange((event,session)=>{if(session&&event==='SIGNED_IN')setTimeout(()=>root.showTab('expenses'),0);});
+ }
+ root.GremierFinance={load:loadFinance,loadExpenses};
+})(window);
