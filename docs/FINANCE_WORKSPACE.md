@@ -56,6 +56,24 @@ Changed/repeated requests and conflicting months cannot create another document.
 Timeouts, ambiguous responses and failures stay blocked for review; no automatic
 reissuance is performed. Existing automatic PayMe issuance is unchanged.
 
+The store form uses compact month checkboxes and an editable amount received.
+An adjustment reason appears only when the selected statement total differs.
+Review, an in-progress claim, and unsuccessful issuance never mark months paid.
+Successful issuance marks every selected month paid in full at the agreed amount;
+unselected months and original billed totals remain unchanged. The separate
+Monthly Billing **Mark Paid** action remains available without creating a receipt.
+
+The receipt screen reveals payment fields after selecting a customer. Reference,
+description, customer details and history remain expandable. The final review
+retains the complete supplied information and both issuance confirmations. Expense
+help and accounting methodology are also expandable; reporting dates, source
+status and actual errors remain visible. Preset sales periods need only a selector;
+custom periods reveal their label and date inputs.
+
+`scripts/test-store-receipt-settlement.sql` verifies selected-month settlement,
+amount overrides, failure isolation, original totals and manual marking in a
+transaction that must roll back. It never calls FinBot or sends email.
+
 Receipt history combines online receipts and these manual receipts, by actual
 payment date. Accounting Stats retains the FinBot snapshot, with a separate live
 card for receipts issued after its capture time; it never adds those receipts

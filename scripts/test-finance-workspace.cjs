@@ -62,6 +62,16 @@ test('receipt review shows all customer and payment details and escapes untruste
  const text=ctx.receiptReviewDetails({...base(),amount_minor:12345,payment_method:'check',payment_details:checkDetails(),customer:{name:'<Fixture>',tax_id:'123456789',phone:'0501234567',address:'Example street 1',email:'example@example.test'},bills:[],email_requested:true});
  for(const value of ['&lt;Fixture>','123456789','0501234567','Example street 1','example@example.test','12345678','123456','2026-11-15'])assert.ok(text.includes(value));assert.ok(!text.includes('<Fixture>'));
 });
+test('store amount overrides reveal the adjustment reason only when needed',()=>{
+ const source=fs.readFileSync('admin-finance.js','utf8'),nodes={manualAmount:{value:''},manualAdjustmentGroup:{hidden:true},manualAdjustment:{required:false},manualSettlement:{hidden:true,textContent:''}};
+ let selection=[];const ctx={selectedBills:()=>selection,money:n=>'ILS '+n/100,get:id=>nodes[id]};
+ vm.runInNewContext(source.slice(source.indexOf('function updateSettlement('),source.indexOf('function receiptReviewDetails(')),ctx);
+ ctx.updateSettlement();assert.equal(nodes.manualSettlement.hidden,true);assert.equal(nodes.manualAdjustmentGroup.hidden,true);
+ selection=[{total:100},{total:150}];nodes.manualAmount.value='250';ctx.updateSettlement();assert.equal(nodes.manualAdjustmentGroup.hidden,true);assert.match(nodes.manualSettlement.textContent,/2 months.*250/);
+ nodes.manualAmount.value='230';ctx.updateSettlement();assert.equal(nodes.manualAdjustmentGroup.hidden,false);assert.equal(nodes.manualAdjustment.required,true);assert.match(nodes.manualSettlement.textContent,/Difference ILS -20/);
+ nodes.manualAmount.value='250';ctx.updateSettlement();assert.equal(nodes.manualAdjustmentGroup.hidden,true);assert.equal(nodes.manualAdjustment.required,false);
+ selection=[];ctx.updateSettlement();assert.equal(nodes.manualSettlement.hidden,true);
+});
 test('admin-only issuance and explicit payment confirmation',async()=>{assert.equal((await service('denied').request({...base(),action:'issue'})).status,403);const s=service();assert.equal((await s.request({...base(),action:'issue'})).status,400);assert.equal(s.calls.length,0);});
 test('a customer edited after review must be previewed again before any issuance or email',async()=>{const s=service('customer_changed');const r=await s.request({...base(),action:'issue',payment_received:true,not_already_receipted:true});assert.equal(r.body.error,'customer_changed_refresh_preview');assert.equal(s.calls.length,0);assert.equal(s.rows.size,0);});
 test('successful issuance stores original PDF and replays cannot create another receipt',async()=>{const s=service(),body={...base(),action:'issue',payment_received:true,not_already_receipted:true};const first=await s.request(body);assert.equal(first.body.receipt.status,'issued');assert.equal(first.body.receipt.pdf_path,`business/${id}/receipt.pdf`);assert.equal(s.calls.length,1);assert.equal((await s.request(body)).body.already_claimed,true);assert.equal(s.calls.length,1);assert.equal((await s.request({...body,amount:150})).status,400);});

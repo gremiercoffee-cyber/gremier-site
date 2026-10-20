@@ -1,4 +1,5 @@
 .fw-panel{border:1px solid var(--border);border-radius:14px;padding:22px;margin:20px 0;background:var(--bg)}
+#tab-finance [hidden],#tab-expenses [hidden]{display:none!important}
 .fw-panel h2{font-size:1.1rem;margin:0 0 16px}.fw-panel h3{font-size:1rem;margin:16px 0}
 .fw-note{font-size:.8rem;line-height:1.75;color:var(--text2);margin:12px 0;overflow-wrap:anywhere}
 .fw-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}.fw-form label{font-size:.77rem;display:grid;gap:7px;color:var(--text2)}
@@ -7,4 +8,14 @@
 .fw-expense-row{display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid var(--border);padding:10px 0}.fw-expense-row label{overflow-wrap:anywhere;min-width:0}
 .fw-image-review{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:18px;max-height:540px;overflow:auto}.fw-image-review img{width:100%;height:240px;object-fit:contain;border:1px solid var(--border);background:#fff}
 .fw-preview-image{padding:0;border:0;background:transparent;cursor:zoom-in;min-width:0}
+.fw-primary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fw-help{font-size:.78rem;color:var(--text2);margin:12px 0}.fw-help summary{font-weight:400;cursor:pointer;padding:5px 0}.fw-help .fw-form{margin:12px 0}
+.fw-customer-actions{margin:8px 0 12px}.fw-customer-actions .btn{flex:none;min-width:0;padding:8px 10px;font-size:.75rem}
+.fw-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:12px 0}
+.fw-month{display:flex;align-items:center;gap:9px;padding:11px 12px;border:1px solid var(--border);border-radius:9px;font-size:.8rem;cursor:pointer;background:#fafbfc}.fw-month input{accent-color:#34755a}.fw-month strong{margin-left:auto;font-weight:500;font-variant-numeric:tabular-nums}.fw-month:has(input:checked){border-color:#34755a;background:#f1f7f3}
+.fw-settlement{font-size:.78rem;color:var(--text2);margin:12px 0}
+#manualAdjustmentGroup>label{display:grid;gap:7px;font-size:.77rem;color:var(--text2);margin:14px 0}
+.fw-review-amount{font-size:1.6rem;font-weight:600;margin:12px 0 6px}.fw-review-customer{font-size:.95rem;margin:0 0 18px}
+.fw-review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px;margin:14px 0}.fw-review-grid>div{padding:10px 0;border-top:1px solid var(--border);min-width:0}.fw-review-grid dt{font-size:.7rem;color:var(--text2);margin-bottom:5px}.fw-review-grid dd{font-size:.82rem;margin:0;overflow-wrap:anywhere}
+@media(max-width:650px){.fw-primary{grid-template-columns:1fr}.fw-customer-actions .btn{flex:none;min-width:0}.fw-review-grid{gap:0 12px}}
 @media(max-width:650px){.fw-panel{padding:16px}.fw-form{grid-template-columns:1fr}.fw-expense-row{align-items:start;flex-direction:column}.fw-actions .btn{flex:1;min-width:130px}}
