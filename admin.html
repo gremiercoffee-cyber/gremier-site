@@ -761,7 +761,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
-      <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Reports</span></div>
+      <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Stats</span></div>
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
       <div class="nav-item" onclick="showTab('workers')" id="nav-workers"><span class="icon">👷</span><span>Workers</span></div>
@@ -1510,7 +1510,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="nav-drawer-item" onclick="showTab('paylinks');closeNavDrawer()"><span>&#128279;</span>Payment Links</button>
     <button class="nav-drawer-item" onclick="showTab('members');closeNavDrawer()"><span>&#128100;</span>Members</button>
     <button class="nav-drawer-item" onclick="showTab('workers');closeNavDrawer()"><span>&#128119;</span>Workers</button>
-    <button class="nav-drawer-item" onclick="showTab('reports');closeNavDrawer()"><span>&#128200;</span>Reports</button>
+    <button class="nav-drawer-item" onclick="showTab('reports');closeNavDrawer()"><span>&#128200;</span>Stats</button>
     <button class="nav-drawer-item" onclick="showTab('delivery');closeNavDrawer()"><span>&#128666;</span>Delivery</button>
     <button class="nav-drawer-item" onclick="showTab('coupons');closeNavDrawer()"><span>&#127903;&#65039;</span>Coupons</button>
     <button class="nav-drawer-item" onclick="showTab('giftcards');closeNavDrawer()"><span>&#127873;</span>Gift Cards</button>
@@ -9728,6 +9728,8 @@ window.opsFetch = window.opsFetch || (function () {
 })();
 </script>
 <script src="/admin-dashboard.js?v=20261015-1"></script>
+<link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
+<script src="/admin-financials.js?v=20261020-1"></script>
 <script src="/admin-receipts.js?v=20261019-1"></script>
 </body>
 </html>
