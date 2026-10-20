@@ -11,6 +11,7 @@
 .fw-primary{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fw-help{font-size:.78rem;color:var(--text2);margin:12px 0}.fw-help summary{font-weight:400;cursor:pointer;padding:5px 0}.fw-help .fw-form{margin:12px 0}
 .fw-customer-actions{margin:8px 0 12px}.fw-customer-actions .btn{flex:none;min-width:0;padding:8px 10px;font-size:.75rem}
+#tab-finance .fw-customer-actions .btn{flex:none;min-width:0}
 .fw-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:12px 0}
 .fw-month{display:flex;align-items:center;gap:9px;padding:11px 12px;border:1px solid var(--border);border-radius:9px;font-size:.8rem;cursor:pointer;background:#fafbfc}.fw-month input{accent-color:#34755a}.fw-month strong{margin-left:auto;font-weight:500;font-variant-numeric:tabular-nums}.fw-month:has(input:checked){border-color:#34755a;background:#f1f7f3}
 .fw-settlement{font-size:.78rem;color:var(--text2);margin:12px 0}
