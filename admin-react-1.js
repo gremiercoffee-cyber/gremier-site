@@ -1424,14 +1424,7 @@ function CheckoffModal2({
       onClick: e => e.stopPropagation()
     }, /*#__PURE__*/React.createElement("div", {
       style: TS.modalTitle
-    }, "What did you deliver?"), /*#__PURE__*/React.createElement("div", {
-      style: {
-        color: '#6a6a6a',
-        fontSize: 12,
-        marginBottom: 10,
-        lineHeight: 1.5
-      }
-    }, "Adjust anything below \u2014 this isn't limited to what was originally planned."), [['liter', 'Liter Bottles'], ['mini', 'Mini Bottles'], ['jerry', 'Jerry Cans'], ['syrup', 'Syrups']].map(([cat, catLabel]) => {
+    }, "What did you deliver?"), [['liter', 'Liter Bottles'], ['mini', 'Mini Bottles'], ['jerry', 'Jerry Cans'], ['syrup', 'Syrups']].map(([cat, catLabel]) => {
       const items = Object.entries(PRODUCTS).filter(([, p]) => p.category === cat);
       if (!items.length) return null;
       return /*#__PURE__*/React.createElement("div", {
@@ -3156,7 +3149,7 @@ function ScheduleForm({
       marginBottom: 10,
       lineHeight: 1.5
     }
-  }, "Pick finished units. Minis automatically convert to liters for concentrate usage; jerry cans count as 5L each."), /*#__PURE__*/React.createElement(QtyRows, {
+  }, "Finished units \xB7 concentrate use is calculated automatically."), /*#__PURE__*/React.createElement(QtyRows, {
     FP: FP,
     cat: "liter",
     title: "Liter Bottles",
@@ -3174,14 +3167,7 @@ function ScheduleForm({
     title: "Jerry Cans",
     values: bottleQuantities,
     setValues: setBottleQuantities
-  })), prodType === 'label' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      color: '#6a6a6a',
-      fontSize: 12,
-      marginBottom: 10,
-      lineHeight: 1.5
-    }
-  }, "Pick how many labels/bottles to add for each product."), /*#__PURE__*/React.createElement(QtyRows, {
+  })), prodType === 'label' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(QtyRows, {
     FP: FP,
     cat: "liter",
     title: "Liter Bottle Labels",

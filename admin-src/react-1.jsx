@@ -810,7 +810,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal} onClick={onCancel}>
         <div style={{...TS.modalBox,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
           <div style={TS.modalTitle}>What did you deliver?</div>
-          <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Adjust anything below — this isn't limited to what was originally planned.</div>
+
           {[['liter','Liter Bottles'],['mini','Mini Bottles'],['jerry','Jerry Cans'],['syrup','Syrups']].map(([cat,catLabel])=>{
             const items = Object.entries(PRODUCTS).filter(([,p])=>p.category===cat);
             if (!items.length) return null;
@@ -1424,13 +1424,13 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
             </div>
             {prodType==='brew'&&<><div style={{marginBottom:12}}><span style={lbl}>Concentrate</span><select style={TS.inp} value={brewConc} onChange={e=>setBrewConc(e.target.value)}>{Object.entries(CONC).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div><div style={{marginBottom:12}}><span style={lbl}>Kilos</span><select style={TS.inp} value={kg} onChange={e=>setKg(Number(e.target.value))}><option value={3}>3kg → ~19L</option><option value={2}>2kg → ~12.7L</option><option value={1.5}>1.5kg → ~9.5L</option><option value={1}>1kg → ~6.4L</option></select></div></>}
             {prodType==='bottle'&&<>
-              <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick finished units. Minis automatically convert to liters for concentrate usage; jerry cans count as 5L each.</div>
+              <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Finished units · concentrate use is calculated automatically.</div>
               <QtyRows FP={FP} cat="liter" title="Liter Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
               <QtyRows FP={FP} cat="mini" title="Mini Bottles" values={bottleQuantities} setValues={setBottleQuantities}/>
               <QtyRows FP={FP} cat="jerry" title="Jerry Cans" values={bottleQuantities} setValues={setBottleQuantities}/>
             </>}
             {prodType==='label'&&<>
-              <div style={{color:'#6a6a6a',fontSize:12,marginBottom:10,lineHeight:1.5}}>Pick how many labels/bottles to add for each product.</div>
+
               <QtyRows FP={FP} cat="liter" title="Liter Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
               <QtyRows FP={FP} cat="mini" title="Mini Bottle Labels" values={labelQuantities} setValues={setLabelQuantities}/>
             </>}

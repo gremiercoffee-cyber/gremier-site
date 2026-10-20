@@ -796,7 +796,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Orders</h1>
-          <p class="page-sub">Customer orders</p>
+          
         </div>
         <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
           <div class="collapse-head">
@@ -881,7 +881,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-products" class="tab-content" style="display:none">
         <div class="page-header">
           <div class="flex-between">
-            <div><h1 class="page-title">Products</h1><p class="page-sub">Manage your catalog</p></div>
+            <div><h1 class="page-title">Products</h1></div>
             <button class="btn btn-amber" onclick="openProductModal()">+ Add Product</button>
           </div>
         </div>
@@ -902,7 +902,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-paylinks" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Payment Links</h1>
-          <p class="page-sub">Checkout links</p>
+          
         </div>
 
         <div class="paylinks-section">
@@ -950,7 +950,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-reports" class="tab-content" style="display:none">
         <div class="page-header">
           <div class="flex-between">
-            <div><h1 class="page-title">Reports</h1><p class="page-sub">Sales analytics & accounting exports</p></div>
+            <div><h1 class="page-title">Reports</h1></div>
             <span data-action-menu="Report tools"><button class="btn btn-outline btn-sm" onclick="exportReportCSV()">⬇ Export CSV</button></span>
           </div>
         </div>
@@ -991,7 +991,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-members" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Members</h1>
-          <p class="page-sub">Customers, points and order history</p>
+          
         </div>
         <div class="filter-bar">
           <input type="text" class="product-search" placeholder="Search by name, email, or phone..." oninput="filterMembers(this.value)" id="memberSearch"/>
@@ -1023,7 +1023,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-delivery" class="tab-content" style="display:none">
         <div class="page-header">
           <div class="flex-between">
-            <div><h1 class="page-title">Delivery</h1><p class="page-sub">Delivery fees and zones</p></div>
+            <div><h1 class="page-title">Delivery</h1></div>
             <button class="btn btn-amber" onclick="saveDeliverySettings()">Save Settings</button>
           </div>
         </div>
@@ -1055,7 +1055,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-siteimages" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">🖼️ Site Content</h1>
-          <p class="page-sub">Edit text and images — changes go live on the website immediately.</p>
+          
         </div>
         <!-- Sub-tab toggles -->
         <div class="seg-control" style="display:flex;margin-bottom:28px">
@@ -1118,7 +1118,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="flex-between">
       <div>
         <h1 class="page-title">🏪 Store Deliveries</h1>
-        <p class="page-sub">Deliveries and monthly billing</p>
+        
       </div>
       <div class="header-actions">
         <button class="btn btn-amber btn-sm" onclick="openLogDeliveryModal()">+ Log Delivery</button>
@@ -1256,9 +1256,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="page-header">
     <div class="flex-between">
       <div>
-        <p class="dash-eyebrow">GREMIER · BUSINESS OVERVIEW</p>
-        <h1 class="page-title">How’s the business doing?</h1>
-        <p class="page-sub">Your money, your orders, and what needs attention.</p>
+        
+        <h1 class="page-title">Dashboard</h1>
+        
       </div>
       <div class="header-actions">
         <select class="form-input" style="width:auto" id="dashPeriod" aria-label="Dashboard reporting period" onchange="loadDashboard()">
@@ -1274,11 +1274,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <p id="dashUpdated" role="status" aria-live="polite" class="dash-updated">Loading business data…</p>
   <div id="dashKPIs" class="dash-metrics"></div>
   <div class="dash-overview-grid">
-    <section class="dash-panel"><div class="dash-section-head"><div><p class="dash-eyebrow">NEXT UP</p><h2>Needs your attention</h2></div><span class="dash-tag">Across all dates</span></div><div id="dashAttention"></div></section>
-    <section class="dash-panel dash-money-panel"><p class="dash-eyebrow">THE MONEY PICTURE</p><h2>Sales &amp; payments</h2><div id="dashMoney"></div></section>
+    <section class="dash-panel"><div class="dash-section-head"><div><h2>Needs your attention</h2></div></div><div id="dashAttention"></div></section>
+    <section class="dash-panel dash-money-panel"><h2>Sales &amp; payments</h2><div id="dashMoney"></div></section>
   </div>
-  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><p class="dash-eyebrow">SALES ACTIVITY</p><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Paid online orders</span><span><i class="dash-store-dot"></i>Store delivery value</span></div></div><div id="dashTrend"></div><p class="dash-footnote">Online orders use the order date. Store deliveries use delivery dates and current store prices. This is sales activity, not bank cash flow.</p></section>
-  <section class="dash-panel dash-coverage"><div><h2>Accounts &amp; expenses</h2><p>Saved FinBot accounts in Stats. New documents in the expense inbox.</p></div><div class="dash-coverage-status"><button class="btn btn-outline btn-sm" onclick="showTab('reports')">Stats</button><button class="btn btn-outline btn-sm" onclick="showTab('expenses')">Expense inbox</button></div></section>
+  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Paid online orders</span><span><i class="dash-store-dot"></i>Store delivery value</span></div></div><div id="dashTrend"></div></section>
+  <section class="dash-panel dash-coverage"><div><h2>Accounts &amp; expenses</h2></div><div class="dash-coverage-status"><button class="btn btn-outline btn-sm" onclick="showTab('reports')">Stats</button><button class="btn btn-outline btn-sm" onclick="showTab('expenses')">Expense inbox</button></div></section>
 
   <!-- Daily Operations Briefing -->
   <div class="card briefing-card" id="dashBriefingCard">
@@ -1291,7 +1291,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
     <div id="dashBriefingCollapsedSummary" class="briefing-collapsed-summary"></div>
     <div id="dashBriefingBody" class="briefing-body">
-      <div class="briefing-empty">Tap “Build Briefing” to check today’s schedule, store delivery patterns, and production needs.</div>
+      <div class="briefing-empty">No briefing yet.</div>
     </div>
   </div>
 
@@ -1363,7 +1363,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <div id="tab-coupons" class="tab-content" style="display:none">
   <div class="page-header">
     <div class="flex-between">
-      <div><h1 class="page-title">🎟️ Coupons</h1><p class="page-sub">Create and manage discount codes</p></div>
+      <div><h1 class="page-title">🎟️ Coupons</h1></div>
       <button class="btn btn-amber" onclick="openCouponModal()">+ New Coupon</button>
     </div>
   </div>
@@ -1392,7 +1392,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <div id="tab-workers" class="tab-content" style="display:none">
   <div class="page-header">
     <div class="flex-between">
-      <div><h1 class="page-title">👷 Workers</h1><p class="page-sub">Hours, rates and payments</p></div>
+      <div><h1 class="page-title">👷 Workers</h1></div>
       <div class="header-actions">
         <button class="btn btn-amber" onclick="openWorkerModal()">+ Add Worker</button>
       </div>
@@ -1426,7 +1426,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <div id="tab-giftcards" class="tab-content" style="display:none">
   <div class="page-header">
     <div class="flex-between">
-      <div><h1 class="page-title">🎁 Gift Cards</h1><p class="page-sub">Issue and track gift cards</p></div>
+      <div><h1 class="page-title">🎁 Gift Cards</h1></div>
       <button class="btn btn-amber" onclick="openGiftCardModal()">+ Issue Gift Card</button>
     </div>
   </div>
@@ -9259,7 +9259,7 @@ window.opsFetch = window.opsFetch || (function () {
 })();
 </script>
 <script src="/admin-ui.js?v=20261020-1"></script>
-<script src="/admin-react-1.js?v=d138179b28"></script>
+<script src="/admin-react-1.js?v=7c80086ba8"></script>
 <script src="/admin-react-2.js?v=dc3904134d"></script>
 
 <script src="/admin-react-3.js?v=b78f41f11e"></script>
@@ -9332,7 +9332,7 @@ window.opsFetch = window.opsFetch || (function () {
     </div>
     <div id="tab-subscriptions" class="tab-content" style="display:none">
       <div class="page-header"><div class="flex-between">
-        <div><h1 class="page-title">🔁 Subscriptions</h1><p class="page-sub">PayMe subscriptions · older Wix subscriptions stay in Wix.</p></div>
+        <div><h1 class="page-title">🔁 Subscriptions</h1></div>
         <div class="header-actions"><button class="btn btn-outline btn-sm" onclick="hubLoadSubs(true)">↻ Refresh</button></div>
       </div></div>
       <div class="hub-kpis" id="hubSubKpis"></div>
@@ -9631,7 +9631,7 @@ window.opsFetch = window.opsFetch || (function () {
   main.insertAdjacentHTML('beforeend', `
     <div id="tab-activity" class="tab-content" style="display:none">
       <div class="page-header"><div class="flex-between">
-        <div><h1 class="page-title">🕑 Activity</h1><p class="page-sub">Recent changes from you, the website and connected apps.</p></div>
+        <div><h1 class="page-title">🕑 Activity</h1></div>
         <div class="header-actions">
           <select class="form-input" style="width:auto" id="actFilter" onchange="appsLoadActivity()">
             <option value="">Everyone</option><option value="admin:">You (admin app)</option><option value="app:">Connected apps</option><option value="website">Website</option><option value="system">System</option>
@@ -9643,7 +9643,7 @@ window.opsFetch = window.opsFetch || (function () {
     </div>
     <div id="tab-connected" class="tab-content" style="display:none">
       <div class="page-header"><div class="flex-between">
-        <div><h1 class="page-title">🔌 Connected apps</h1><p class="page-sub">Manage app access. Switch off a key to revoke it.</p></div>
+        <div><h1 class="page-title">🔌 Connected apps</h1></div>
       </div></div>
       <div class="hub-card" style="margin-bottom:16px">
         <h3><span>New key</span></h3>
@@ -9723,12 +9723,12 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-dashboard.js?v=20261015-1"></script>
+<script src="/admin-dashboard.js?v=20261020-2"></script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
-<script src="/admin-financials.js?v=20261020-4"></script>
+<script src="/admin-financials.js?v=20261020-5"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
-<script src="/admin-finance.js?v=20261020-7"></script>
-<script src="/admin-sales.js?v=20261020-3"></script>
+<script src="/admin-finance.js?v=20261020-8"></script>
+<script src="/admin-sales.js?v=20261020-4"></script>
 <link rel="stylesheet" href="/admin-surfaces.css?v=20261020-6"/>
 <script src="/admin-receipts.js?v=20261020-2"></script>
 </body>
