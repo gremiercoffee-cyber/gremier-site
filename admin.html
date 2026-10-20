@@ -802,6 +802,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <div class="collapse-head">
             <h3 class="collapse-head-title">Filters</h3>
             <span class="collapse-summary" id="orderFilterSummary"></span>
+            <span data-action-menu="Order export"><button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">Export orders CSV</button></span>
             <span class="collapse-chevron">▾</span>
           </div>
           <div class="collapse-body" style="padding:0 16px 14px">
@@ -837,9 +838,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <button type="button" class="seg-btn kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
           </div>
         </div>
-        <div style="display:flex;justify-content:flex-end;margin-top:10px">
-          <span data-action-menu="Order tools"><button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button></span>
-        </div>
+
           </div>
         </div>
         <div id="recoverOrdersPanel" style="display:none"></div>
@@ -9730,7 +9729,7 @@ window.opsFetch = window.opsFetch || (function () {
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
 <script src="/admin-finance.js?v=20261020-7"></script>
 <script src="/admin-sales.js?v=20261020-3"></script>
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261020-5"/>
-<script src="/admin-receipts.js?v=20261019-1"></script>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261020-6"/>
+<script src="/admin-receipts.js?v=20261020-2"></script>
 </body>
 </html>

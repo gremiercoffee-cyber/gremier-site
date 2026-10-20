@@ -12,16 +12,17 @@
  function setup(){
   const host=byId('tab-orders');if(!host||byId('receiptPanel'))return;
   const box=document.createElement('section');box.id='receiptPanel';box.className='card';box.style.marginBottom='20px';
-  box.innerHTML=`<div class="flex-between"><div><h3 style="margin:0">Official receipts · קבלות</h3><p class="page-sub" id="receiptAutomationState">Loading receipt settings…</p></div><button class="btn btn-outline btn-sm" id="receiptRefresh">Refresh</button></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0"><button class="btn btn-outline btn-sm" id="receipt2026">2026 orders without a linked receipt</button><button class="btn btn-outline btn-sm" id="receiptExport" disabled>Export accountant CSV</button><button class="btn btn-outline btn-sm" id="receiptDisable">Pause automatic receipts</button></div>
-    <p id="receiptReportSummary" role="status" style="font-size:.8rem;line-height:1.6"></p>
-    <label style="font-size:.78rem">Receipt view <select class="form-input" id="receiptView" style="width:auto"><option value="missing">Without a linked receipt</option><option value="all">All paid 2026 orders</option></select></label><div id="receiptReportRows" class="table-wrap"></div>
-    <details style="margin-top:12px"><summary>Test and review a receipt</summary><p style="font-size:.78rem;line-height:1.6">Choose a real paid order that has never received a receipt. A live test creates an official קבלה and sends its PDF only to the business owner for review. Historical orders are never issued receipts automatically. The receipt date is today; verify the actual payment date.</p>
+  box.innerHTML=`<div class="receipt-card-head"><div><h3>Receipts · קבלות</h3><p id="receiptAutomationState">Loading settings…</p></div><span data-action-menu="Order receipt tools"><button class="btn btn-outline btn-sm" id="receiptRefresh">Refresh status</button><button class="btn btn-outline btn-sm" id="receipt2026">Review 2026 receipts</button><button class="btn btn-outline btn-sm" id="receiptExport" disabled>Export accountant CSV</button><button class="btn btn-outline btn-sm" id="receiptTestToggle">Test and review a receipt</button><button class="btn btn-outline btn-sm" id="receiptDisable">Pause automatic receipts</button></span></div>
+    <p id="receiptReportSummary" role="status" class="receipt-status"></p>
+    <details id="receiptReportDetails" class="receipt-details"><summary>2026 receipt review</summary><p class="receipt-help" id="receiptReportNote"></p><label class="receipt-view">Show<select class="form-input" id="receiptView"><option value="missing">Without a linked receipt</option><option value="all">All paid 2026 orders</option></select></label><div id="receiptReportRows" class="table-wrap"></div></details>
+    <details id="receiptTestDetails" class="receipt-details" hidden><summary>Test and review a receipt</summary><p style="font-size:.78rem;line-height:1.6">Choose a real paid order that has never received a receipt. A live test creates an official קבלה and sends its PDF only to the business owner for review. Historical orders are never issued receipts automatically. The receipt date is today; verify the actual payment date.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>Order number <input class="form-input" id="receiptOrderNumber" placeholder="#123"></label><label>Actual payment date <input class="form-input" id="receiptPaymentDate" type="date"></label><button class="btn btn-outline btn-sm" id="receiptPreview">Preview data · no issuance</button><button class="btn btn-outline btn-sm" id="receiptIssueTest">Issue ONE real test receipt</button></div><pre id="receiptPreviewData" style="white-space:pre-wrap;font-size:.74rem;max-height:300px;overflow:auto"></pre>
     <button class="btn btn-outline btn-sm" id="receiptApprove">I reviewed the test PDF and email · enable future receipts</button><p id="receiptTestResult" role="status" style="font-size:.8rem"></p></details>`;
   host.querySelector('.page-header')?.insertAdjacentElement('afterend',box);
   byId('receiptRefresh').onclick=()=>load();
-  byId('receipt2026').onclick=()=>load(true);
+  byId('receipt2026').onclick=()=>{byId('receiptReportDetails').open=true;load(true);};
+  byId('receiptReportDetails').ontoggle=()=>{if(byId('receiptReportDetails').open)load(true);};
+  byId('receiptTestToggle').onclick=()=>{const d=byId('receiptTestDetails');d.hidden=false;d.open=true;d.scrollIntoView({behavior:'smooth',block:'nearest'});};
   byId('receiptExport').onclick=exportMissing;
   byId('receiptView').onchange=()=>load(true);
   byId('receiptDisable').onclick=()=>run(async()=>{await call('disable');await load();});
@@ -47,10 +48,13 @@
    ]);
    if(token!==sequence)return;
    const [settings,orders,receipts]=results;rows=orders.filter(o=>date(o.created_at).startsWith('2026-')&&!o.is_test&&!['cancelled','refunded'].includes(o.status)&&!/^TEST(?:\b|[_-])/i.test(o.customer_name||''));receiptMap=new Map(receipts.map(r=>[r.order_id,r]));
-   byId('receiptAutomationState').textContent=settings.settings.enabled?`Automatic receipts enabled for new eligible PayMe payments after ${settings.settings.starts_at}.`:`Automatic receipts OFF · ${settings.configured?'Finbot key configured':'Finbot key not configured'} · one real receipt and email must be reviewed first.`;
+   byId('receiptAutomationState').textContent=settings.settings.enabled?'Automatic receipts on':`Automatic receipts off · ${settings.configured?'setup review needed':'FinBot key not configured'}`;
+   byId('receiptAutomationState').dataset.enabled=String(!!settings.settings.enabled);
+   byId('receiptDisable').disabled=!settings.settings.enabled;
    const missing=rows.filter(o=>!['issued','external'].includes(receiptMap.get(o.id)?.status));report=missing;
    const total=missing.reduce((s,o)=>s+Math.round(Number(o.total||0)*100),0)/100;
-   byId('receiptReportSummary').textContent=`2026: ${missing.length} paid orders have no linked receipt · ${money(total)}. This uses order creation year; ${missing.filter(o=>!o.payment_confirmed_at).length} have an unknown payment date. Check manual receipts and any “Needs review” rows before giving the total to your accountant. Cancelled/refunded/test orders excluded.`;
+   byId('receiptReportSummary').textContent=missing.length?`${missing.length} paid ${missing.length===1?'order needs':'orders need'} receipt review`:'All paid 2026 orders have linked receipts';
+   byId('receiptReportNote').textContent=`2026 unlinked total: ${money(total)}. Based on order creation year; ${missing.filter(o=>!o.payment_confirmed_at).length} have an unknown payment date. Reconcile manual receipts and “Needs review” rows before using the accountant export. Cancelled, refunded and test orders excluded.`;
    byId('receiptExport').disabled=false;
    if(showReport||byId('receiptReportRows').dataset.open==='true'){
     byId('receiptReportRows').dataset.open='true';
