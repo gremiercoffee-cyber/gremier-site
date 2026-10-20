@@ -32,6 +32,12 @@ test('period presets respect year boundaries and leap days',()=>{
 test('CSV protects user labels and store names from formula execution',()=>{
  assert.equal(m.csvCell('=SUM(1,2)'), '"\'=SUM(1,2)"');assert.equal(m.csvCell('Store "A"'),'"Store ""A"""');assert.equal(m.csvCell(12),'"12"');
 });
+test('store bottle breakdowns separate regular liters, minis and unfiltered without double counting',()=>{
+ const v={large:10,mini:5,unfiltered:2,dairyFree:1};
+ assert.deepEqual(m.bottleBreakdown(v).map(p=>[p.key,p.count]),[['large',10],['mini',5],['unfiltered',2],['dairyFree',1]]);
+ for(const type of ['all','large','mini','unfiltered','dairyFree'])assert.equal(m.bottleBreakdown(v,type).reduce((s,p)=>s+p.count,0),m.selected(v,type));
+ assert.deepEqual(m.bottleBreakdown(v,'large').map(p=>p.key),['large','unfiltered']);
+});
 test('specific months include full month boundaries across years and leap February',()=>{
  assert.deepEqual(m.monthRange('2024-02'),{from:'2024-02-01',to:'2024-02-29'});
  assert.deepEqual(m.monthRange('2026-02'),{from:'2026-02-01',to:'2026-02-28'});
