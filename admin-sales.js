@@ -52,7 +52,25 @@
   if(name==='lastmonth'){const end=shift(to.slice(0,7)+'-01',-1);return {from:end.slice(0,7)+'-01',to:end};}
   return {from:year+'-'+String(month).padStart(2,'0')+'-01',to};
  }
- const api={day,shift,validDate,days,itemUnits,records,selected,summarize,preset,csvCell};
+ function monthRange(value){
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(value||''))throw Error('Choose a month and year.');
+  const from=value+'-01',end=new Date(from+'T12:00:00Z');end.setUTCMonth(end.getUTCMonth()+1,0);
+  return {from,to:end.toISOString().slice(0,10)};
+ }
+ const hebrewFormatter=new Intl.DateTimeFormat('en-u-ca-hebrew',{year:'numeric',month:'long',timeZone:'UTC'}),hebrewCache=new Map();
+ function hebrewMonths(year){
+  if(!Number.isInteger(year)||year<5700||year>5900)throw Error('Enter a Jewish year from 5700 to 5900.');
+  if(hebrewCache.has(year))return hebrewCache.get(year).map(m=>({...m}));
+  const months=[];
+  for(let date=(year-3761)+'-08-01',end=(year-3760)+'-11-01';date<end;date=shift(date,1)){
+   const parts=hebrewFormatter.formatToParts(new Date(date+'T12:00:00Z'));
+   if(Number(parts.find(p=>p.type==='year').value)!==year)continue;
+   const name=parts.find(p=>p.type==='month').value,last=months.at(-1);
+   if(last?.name===name)last.to=date;else months.push({name,from:date,to:date});
+  }
+  hebrewCache.set(year,months);return months.map(m=>({...m}));
+ }
+ const api={day,shift,validDate,days,itemUnits,records,selected,summarize,preset,csvCell,monthRange,hebrewMonths};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
  if(!root.document)return;
  root.GremierSales=api;
@@ -61,24 +79,42 @@
  function setup(){
   const host=get('tab-reports');if(!host||get('salesExplorer'))return;
   const panel=document.createElement('section');panel.id='salesExplorer';panel.className='sales-panel';
-  panel.innerHTML=`<div class="sales-heading"><div><h2>Bottle sales</h2></div><span data-action-menu="Sales tools"><button class="btn btn-outline btn-sm" id="salesRefresh">Refresh sales</button><button class="btn btn-outline" id="salesExport" disabled>Export comparison CSV</button></span></div><div class="sales-controls"><label>Show<select class="form-input" id="salesType"><option value="all">All bottles</option><option value="large">Large bottles · includes unfiltered</option><option value="mini">Mini bottles</option><option value="unfiltered">Unfiltered liters only</option><option value="dairyFree">Dairy free · size unspecified</option></select></label><label>Channel<select class="form-input" id="salesChannel"><option value="all">Online + stores</option><option value="online">Online orders</option><option value="stores">Store deliveries</option></select></label></div><details class="sales-stores"><summary>Filter stores · all stores selected</summary><div id="salesStoreChoices"></div><button class="btn btn-outline btn-sm" id="salesAllStores">Clear store filter</button></details><div id="salesPeriods"></div><div class="fw-actions"><button class="btn btn-outline" id="salesAddPeriod">+ Compare another period</button></div><p id="salesStatus" class="sales-note" role="status"></p><div id="salesResults"></div><details class="sales-help"><summary>How these figures work</summary><p class="sales-note">Packs are counted as individual bottles. Dates use online order dates and store delivery dates in Jerusalem time. Coffee bars, syrups and 5L containers are excluded. Dairy-free bottles without a known size stay separate. Periods can differ in length; compare bottles per day for a fair rate. These are sales quantities, separate from the FinBot accounting totals.</p></details>`;
+  panel.innerHTML=`<div class="sales-heading"><div><h2>Bottle sales</h2></div><span data-action-menu="Sales tools"><button class="btn btn-outline btn-sm" id="salesRefresh">Refresh sales</button><button class="btn btn-outline" id="salesExport" disabled>Export comparison CSV</button></span></div><div class="sales-controls"><label>Show<select class="form-input" id="salesType"><option value="all">All bottles</option><option value="large">Large bottles · includes unfiltered</option><option value="mini">Mini bottles</option><option value="unfiltered">Unfiltered liters only</option><option value="dairyFree">Dairy free · size unspecified</option></select></label><label>Channel<select class="form-input" id="salesChannel"><option value="all">Online + stores</option><option value="online">Online orders</option><option value="stores">Store deliveries</option></select></label></div><details class="sales-stores"><summary>Filter stores · all stores selected</summary><div id="salesStoreChoices"></div><button class="btn btn-outline btn-sm" id="salesAllStores">Clear store filter</button></details><div id="salesPeriods"></div><div class="fw-actions"><button class="btn btn-outline" id="salesAddPeriod">+ Compare another period</button></div><p id="salesStatus" class="sales-note" role="status"></p><div id="salesResults"></div><details class="sales-help"><summary>How these figures work</summary><p class="sales-note">Packs are counted as individual bottles. Dates use online order dates and store delivery dates in Jerusalem time. Coffee bars, syrups and 5L containers are excluded. Dairy-free bottles without a known size stay separate. Periods can differ in length; compare bottles per day for a fair rate. These are sales quantities, separate from the FinBot accounting totals. Jewish months follow the displayed civil date range, using Jerusalem midnights.</p></details>`;
   const toolbar=host.querySelector('.fin-toolbar');if(toolbar)toolbar.before(panel);else host.append(panel);
-  get('salesType').onchange=render;get('salesChannel').onchange=render;get('salesRefresh').onclick=()=>load(true);get('salesAddPeriod').onclick=()=>{addPeriod('custom');render();};get('salesExport').onclick=exportCsv;
+  get('salesType').onchange=render;get('salesChannel').onchange=render;get('salesRefresh').onclick=()=>load(true);get('salesAddPeriod').onclick=()=>{addPeriod('selectedmonth');load();};get('salesExport').onclick=exportCsv;
   get('salesAllStores').onclick=()=>{get('salesStoreChoices').querySelectorAll('input').forEach(i=>i.checked=false);render();};
-  addPeriod('month');addPeriod('lastmonth');
+  addPeriod('lastmonth');addPeriod('month');
  }
  function addPeriod(kind){
   if(get('salesPeriods').children.length>=6)return;
-  const n=++counter,p=preset(kind==='custom'?'month':kind),row=document.createElement('div');row.className='sales-period';
-  row.innerHTML=`<label>Period<select class="form-input sales-preset"><option value="month">This month to date</option><option value="lastmonth">Last full month</option><option value="week">Last 7 days</option><option value="year">This year to date</option><option value="lastyear">Last full year</option><option value="custom">Custom dates</option></select></label><span class="sales-period-range">${p.from} → ${p.to}</span><button class="btn btn-outline btn-sm sales-remove" title="Remove comparison period" aria-label="Remove comparison period">×</button><div class="sales-custom" ${kind==='custom'?'':'hidden'}><label>Label<input class="form-input sales-label" value="${kind==='month'?'This month':kind==='lastmonth'?'Last month':'Period '+n}" maxlength="50"></label><label>From<input class="form-input sales-from" type="date" value="${p.from}"></label><label>Through<input class="form-input sales-to" type="date" value="${p.to}"></label></div>`;
-  row.querySelector('.sales-preset').value=kind;
-  row.querySelector('.sales-preset').onchange=e=>{row.querySelector('.sales-custom').hidden=e.target.value!=='custom';if(e.target.value!=='custom'){const p=preset(e.target.value);row.querySelector('.sales-from').value=p.from;row.querySelector('.sales-to').value=p.to;row.querySelector('.sales-label').value=e.target.selectedOptions[0].textContent;row.querySelector('.sales-period-range').textContent=p.from+' → '+p.to;}load();};
-  row.querySelectorAll('input').forEach(i=>i.onchange=()=>{if(i.type==='date'){row.querySelector('.sales-preset').value='custom';row.querySelector('.sales-custom').hidden=false;row.querySelector('.sales-period-range').textContent=row.querySelector('.sales-from').value+' → '+row.querySelector('.sales-to').value;}load();});
-  row.querySelector('.sales-remove').onclick=()=>{if(get('salesPeriods').children.length<=1)return;row.remove();render();};
+  const n=++counter,p=preset(kind==='custom'||kind==='selectedmonth'?'month':kind),row=document.createElement('div');row.className='sales-period';
+  const jewishYear=Number(hebrewFormatter.formatToParts(new Date()).find(p=>p.type==='year').value);
+  row.innerHTML=`<label><span class="sales-period-role">Period</span><select class="form-input sales-preset"><option value="month">This month to date</option><option value="lastmonth">Last full month</option><option value="selectedmonth">Specific month</option><option value="hebrew">Jewish month</option><option value="week">Last 7 days</option><option value="year">This year to date</option><option value="lastyear">Last full year</option><option value="custom">Custom dates</option></select></label><span class="sales-period-range">${p.from} → ${p.to}</span><button class="btn btn-outline btn-sm sales-remove" title="Remove comparison period" aria-label="Remove comparison period">×</button><div class="sales-calendar sales-month-picker" hidden><label>Month & year<input type="month" class="form-input sales-month" value="${p.from.slice(0,7)}"></label></div><div class="sales-calendar sales-hebrew-picker" hidden><label>Jewish year<input type="number" class="form-input sales-hebrew-year" min="5700" max="5900" step="1" value="${jewishYear}"></label><label>Jewish month<select class="form-input sales-hebrew-month"></select></label></div><div class="sales-custom" ${kind==='custom'?'':'hidden'}><label>Label<input class="form-input sales-label" value="${kind==='month'?'This month':kind==='lastmonth'?'Last month':'Period '+n}" maxlength="50"></label><label>From<input class="form-input sales-from" type="date" value="${p.from}"></label><label>Through<input class="form-input sales-to" type="date" value="${p.to}"></label></div>`;
+  const q=selector=>row.querySelector(selector),mode=q('.sales-preset');mode.value=kind;
+  function jewishOptions(){
+   const choice=q('.sales-hebrew-month'),previous=choice.value,months=hebrewMonths(Number(q('.sales-hebrew-year').value));
+   choice.innerHTML=months.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('');
+   if(months.some(m=>m.name===previous))choice.value=previous;
+  }
+  function sync(){
+   const type=mode.value;q('.sales-custom').hidden=type!=='custom';q('.sales-month-picker').hidden=type!=='selectedmonth';q('.sales-hebrew-picker').hidden=type!=='hebrew';
+   if(type==='custom')return;
+   let range,label;
+   if(type==='selectedmonth'){range=monthRange(q('.sales-month').value);label=new Intl.DateTimeFormat('en',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(range.from+'T12:00:00Z'));}
+   else if(type==='hebrew'){range=hebrewMonths(Number(q('.sales-hebrew-year').value)).find(m=>m.name===q('.sales-hebrew-month').value);if(!range)throw Error('Choose a Jewish month.');label=range.name+' '+q('.sales-hebrew-year').value;}
+   else{range=preset(type);label=mode.selectedOptions[0].textContent;}
+   q('.sales-from').value=range.from;q('.sales-to').value=range.to;q('.sales-label').value=label;q('.sales-period-range').textContent=range.from+' → '+range.to;
+  }
+  function change(){try{sync();load();}catch(e){get('salesStatus').textContent=e.message;get('salesResults').innerHTML='';get('salesExport').disabled=true;}}
+  jewishOptions();mode.onchange=change;q('.sales-month').onchange=change;q('.sales-hebrew-month').onchange=change;
+  q('.sales-hebrew-year').onchange=()=>{try{jewishOptions();change();}catch(e){get('salesStatus').textContent=e.message;get('salesResults').innerHTML='';get('salesExport').disabled=true;}};
+  row.querySelectorAll('.sales-label,.sales-from,.sales-to').forEach(i=>i.onchange=()=>{if(i.type==='date'){mode.value='custom';sync();q('.sales-period-range').textContent=q('.sales-from').value+' → '+q('.sales-to').value;}load();});
+  q('.sales-remove').onclick=()=>{if(get('salesPeriods').children.length<=1)return;row.remove();render();};
+  if(kind==='selectedmonth')sync();
   get('salesPeriods').append(row);updateButtons();
  }
- function updateButtons(){const n=get('salesPeriods').children.length;get('salesAddPeriod').disabled=n>=6;get('salesPeriods').querySelectorAll('.sales-remove').forEach(b=>b.disabled=n<=1);}
- function periods(){return [...get('salesPeriods').children].map((r,i)=>({label:r.querySelector('.sales-label').value.trim()||'Period '+(i+1),from:r.querySelector('.sales-from').value,to:r.querySelector('.sales-to').value}));}
+ function updateButtons(){const rows=[...get('salesPeriods').children],n=rows.length;get('salesAddPeriod').disabled=n>=6;rows.forEach((r,i)=>{r.querySelector('.sales-remove').disabled=n<=1;r.querySelector('.sales-period-role').textContent=i===0?'Baseline':'Compare';});}
+ function periods(){return [...get('salesPeriods').children].map((r,i)=>{const kind=r.querySelector('.sales-preset').value;if(kind==='selectedmonth')monthRange(r.querySelector('.sales-month').value);if(kind==='hebrew'){const months=hebrewMonths(Number(r.querySelector('.sales-hebrew-year').value));if(!months.some(m=>m.name===r.querySelector('.sales-hebrew-month').value))throw Error('Choose a Jewish month.');}return {label:r.querySelector('.sales-label').value.trim()||'Period '+(i+1),from:r.querySelector('.sales-from').value,to:r.querySelector('.sales-to').value};});}
  function filters(){return {type:get('salesType').value,channel:get('salesChannel').value,stores:[...get('salesStoreChoices').querySelectorAll('input:checked')].map(i=>i.value)};}
  async function pages(make){const rows=[];for(let offset=0;offset<100000;offset+=1000){const r=await make().range(offset,offset+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load complete sales data. Try Refresh.');rows.push(...r.data);if(r.data.length<1000)return rows;}throw Error('Select shorter periods.');}
  async function load(force=false){
@@ -110,7 +146,7 @@
   const head='<th scope="col">Measure</th>'+ms.map(m=>`<th scope="col">${esc(m.period.label)}<small>${esc(m.period.from)} → ${esc(m.period.to)}<br>${m.days} days</small></th>`).join('');
   const delta=ms.map((m,i)=>`<td>${i===0?'Baseline':fmt(value(m)-base)+(base?' ('+fmt((value(m)-base)/base*100)+'%)':value(m)?' · new activity':' · no change')}</td>`).join('');
   const groups=new Map();ms.forEach(m=>m.groups.forEach((v,k)=>groups.set(k,v.name)));const ordered=[...groups].sort((a,b)=>ms.reduce((s,m)=>s+selected(m.groups.get(b[0])||blank(),f.type)-selected(m.groups.get(a[0])||blank(),f.type),0));
-  get('salesResults').innerHTML=`<div class="sales-bars" aria-label="Selected bottles by channel and period">${ms.map(m=>`<div class="sales-bar-row"><strong>${esc(m.period.label)}</strong><div class="sales-bar-track"><span style="width:${selected(m.channels.online,f.type)/max*100}%" title="Online: ${fmt(selected(m.channels.online,f.type))}"></span><i style="width:${selected(m.channels.store,f.type)/max*100}%" title="Stores: ${fmt(selected(m.channels.store,f.type))}"></i></div><b>${fmt(value(m))}</b></div>`).join('')}<p class="sales-note">● Online <span style="color:#89909a">● Stores</span></p></div><div class="table-wrap sales-table"><table><thead><tr>${head}</tr></thead><tbody>${metrics.map(([label,fn])=>`<tr><th scope="row">${esc(label)}</th>${ms.map(m=>`<td>${fmt(fn(m))}</td>`).join('')}</tr>`).join('')}<tr><th scope="row">Change in selected count vs first period</th>${delta}</tr></tbody></table></div><h3>By channel & store</h3><div class="table-wrap sales-table"><table><thead><tr>${head.replace('Measure','Channel / store')}</tr></thead><tbody>${ordered.map(([id,name])=>`<tr><th scope="row">${esc(name)}</th>${ms.map(m=>`<td>${fmt(selected(m.groups.get(id)||blank(),f.type))}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${ms.length+1}">No recorded bottles for these filters.</td></tr>`}</tbody></table></div>`;
+  get('salesResults').innerHTML=`<div class="sales-bars" aria-label="Selected bottles by channel and period">${ms.map(m=>`<div class="sales-bar-row"><strong>${esc(m.period.label)}</strong><div class="sales-bar-track"><span style="width:${selected(m.channels.online,f.type)/max*100}%" title="Online: ${fmt(selected(m.channels.online,f.type))}"></span><i style="width:${selected(m.channels.store,f.type)/max*100}%" title="Stores: ${fmt(selected(m.channels.store,f.type))}"></i></div><b>${fmt(value(m))}</b></div>`).join('')}<p class="sales-note">● Online <span style="color:#89909a">● Stores</span></p></div><div class="table-wrap sales-table"><table><thead><tr>${head}</tr></thead><tbody>${metrics.map(([label,fn])=>`<tr><th scope="row">${esc(label)}</th>${ms.map(m=>`<td>${fmt(fn(m))}</td>`).join('')}</tr>`).join('')}<tr><th scope="row">Change vs baseline</th>${delta}</tr></tbody></table></div><h3>By channel & store</h3><div class="table-wrap sales-table"><table><thead><tr>${head.replace('Measure','Channel / store')}</tr></thead><tbody>${ordered.map(([id,name])=>`<tr><th scope="row">${esc(name)}</th>${ms.map(m=>`<td>${fmt(selected(m.groups.get(id)||blank(),f.type))}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${ms.length+1}">No recorded bottles for these filters.</td></tr>`}</tbody></table></div>`;
   const unknown=ms.reduce((s,m)=>s+m.unknown,0);get('salesStatus').textContent=unknown?'Some online items have unknown contents ('+unknown+' across selected periods) and are excluded.':'';
   get('salesExplorer').querySelector('.sales-stores summary').textContent=f.stores.length?'Filter stores · '+f.stores.length+' selected':'Filter stores · all stores selected';get('salesExport').disabled=false;
  }

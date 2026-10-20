@@ -32,3 +32,24 @@ test('period presets respect year boundaries and leap days',()=>{
 test('CSV protects user labels and store names from formula execution',()=>{
  assert.equal(m.csvCell('=SUM(1,2)'), '"\'=SUM(1,2)"');assert.equal(m.csvCell('Store "A"'),'"Store ""A"""');assert.equal(m.csvCell(12),'"12"');
 });
+test('specific months include full month boundaries across years and leap February',()=>{
+ assert.deepEqual(m.monthRange('2024-02'),{from:'2024-02-01',to:'2024-02-29'});
+ assert.deepEqual(m.monthRange('2026-02'),{from:'2026-02-01',to:'2026-02-28'});
+ assert.deepEqual(m.monthRange('2025-12'),{from:'2025-12-01',to:'2025-12-31'});
+ for(const value of ['','2026-13','2026-00','2026-2'])assert.throws(()=>m.monthRange(value));
+});
+test('Jewish months match known new-year dates and distinguish both Adars in leap years',()=>{
+ // Hebcal: 1 Tishrei 5784 = 2023-09-16; 1 Tishrei 5787 = 2026-09-12.
+ const leap=m.hebrewMonths(5784),ordinary=m.hebrewMonths(5786),next=m.hebrewMonths(5787);
+ assert.equal(leap[0].from,'2023-09-16');assert.equal(next[0].from,'2026-09-12');
+ assert.equal(leap.length,13);assert.equal(ordinary.length,12);
+ assert.deepEqual(leap.filter(x=>x.name.startsWith('Adar')).map(x=>x.name),['Adar I','Adar II']);
+ assert.equal(ordinary.filter(x=>x.name.startsWith('Adar')).length,1);
+ for(const months of [leap,ordinary,next])months.forEach((p,i)=>{
+  assert.ok([29,30].includes(m.days(p)));
+  if(i)assert.equal(p.from,m.shift(months[i-1].to,1));
+ });
+ assert.equal(m.shift(ordinary.at(-1).to,1),next[0].from);
+ leap[0].from='bad';assert.equal(m.hebrewMonths(5784)[0].from,'2023-09-16');
+ assert.throws(()=>m.hebrewMonths(5787.5));assert.throws(()=>m.hebrewMonths(0));
+});
