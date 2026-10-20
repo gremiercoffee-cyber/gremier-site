@@ -114,7 +114,8 @@ node --test scripts/test-finance-workspace.cjs scripts/test-expense-inbox.cjs sc
 node scripts/test-admin-financials.cjs
 ```
 
-37 receipt/intake/regression tests passed. Rollback-only database tests verified
+38 receipt/intake/regression tests passed. Customer changes after preview require
+a fresh review before issuing or emailing. Rollback-only database tests verified
 request replay, unique month claims, conflicting transaction rollback, atomic
 receipt settlement and RLS denial for customers/anonymous roles. Browser sample
 tests verified receipt review gates, two-page PDF conversion, ZIP integrity and

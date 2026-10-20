@@ -18,7 +18,7 @@ export function normalizeManualInput(raw:any,now=new Date()) {
  const description=String(raw.description||'').trim();if(!description||description.length>200)throw Error('description_required_max_200');
  const billed=raw.billed_total_minor===null?null:Number(raw.billed_total_minor);
  if(ids.length&&(!Number.isSafeInteger(billed)||billed!<=0))throw Error('billing_preview_required');
- return {id:String(raw.id).toLowerCase(),customer_id,payment_method:raw.payment_method,payment_date,amount_minor:amountMinor(raw.amount),
+ return {id:String(raw.id).toLowerCase(),customer_id,customer_version:String(raw.customer_version||'').slice(0,80),payment_method:raw.payment_method,payment_date,amount_minor:amountMinor(raw.amount),
   payment_reference:String(raw.payment_reference||'').trim().slice(0,40),description,billing_ids:ids,
   adjustment_reason:String(raw.adjustment_reason||'').trim().slice(0,500),billed_total_minor:ids.length?billed:null,email_requested:raw.email_requested===true};
 }
