@@ -15,3 +15,4 @@
 .sales-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.sales-quick>div{border:1px solid var(--border);border-radius:12px;padding:18px;background:#f7f8fa}.sales-quick span{font-size:.72rem;color:var(--text2)}.sales-quick strong{display:block;font-size:1.65rem;margin-top:10px}
 @media(max-width:1050px){.sales-period{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-remove{grid-column:2}.sales-quick{grid-template-columns:1fr}}
 @media(max-width:650px){.sales-panel{padding:16px}.sales-controls{grid-template-columns:1fr}.sales-period{padding:12px;gap:12px}.sales-bar-row{grid-template-columns:1fr 2fr auto}.sales-table th:first-child{min-width:160px}}
+@media(max-width:360px){.tab-bar-btn{font-size:7px;letter-spacing:0;padding-left:2px;padding-right:2px}}
