@@ -188,8 +188,8 @@ function bottleNeeds(jobs, inventory) {
 
 // ── Shared UI components ───────────────────────────────────
 const SS = {
-  screen: { background:'#ffffff', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#121212', paddingBottom:80 },
-  card: { background:'#ffffff', border:'1px solid #cccccc', borderRadius:6, padding:'16px 18px', margin:'12px 0' },
+  screen: { background:'var(--bg, #f3f4f6)', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#121212', paddingBottom:80 },
+  card: { background:'#ffffff', border:'1px solid #d9dde3', borderRadius:14, boxShadow:'var(--surface-shadow)', padding:'16px 18px', margin:'12px 0' },
   hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#121212', background:'#eeeeee', borderRadius:6, padding:'8px 12px', marginBottom:14 },
   row: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'1px solid #e0e0e0' },
   lbl: { fontSize:13, color:'#333333' },

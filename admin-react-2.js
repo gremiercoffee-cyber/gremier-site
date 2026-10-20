@@ -422,7 +422,7 @@ function bottleNeeds(jobs, inventory) {
 // ── Shared UI components ───────────────────────────────────
 const SS = {
   screen: {
-    background: '#ffffff',
+    background: 'var(--bg, #f3f4f6)',
     minHeight: '100%',
     fontFamily: "'DM Sans',sans-serif",
     color: '#121212',
@@ -430,8 +430,9 @@ const SS = {
   },
   card: {
     background: '#ffffff',
-    border: '1px solid #cccccc',
-    borderRadius: 6,
+    border: '1px solid #d9dde3',
+    borderRadius: 14,
+    boxShadow: 'var(--surface-shadow)',
     padding: '16px 18px',
     margin: '12px 0'
   },

@@ -981,7 +981,7 @@ window.getProductImage = getProductImage; // exposed for the plain-JS Log Delive
 // ── styles ─────────────────────────────────────────────────
 const TS = {
   screen: {
-    background: '#ffffff',
+    background: 'var(--bg, #f3f4f6)',
     minHeight: '100%',
     fontFamily: "'DM Sans',sans-serif",
     color: '#121212',
@@ -989,8 +989,9 @@ const TS = {
   },
   card: {
     background: '#ffffff',
-    border: '1px solid #cccccc',
-    borderRadius: 6,
+    border: '1px solid #d9dde3',
+    borderRadius: 14,
+    boxShadow: 'var(--surface-shadow)',
     padding: '14px 16px',
     margin: '10px 12px'
   },

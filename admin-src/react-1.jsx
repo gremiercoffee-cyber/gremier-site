@@ -694,8 +694,8 @@ window.getProductImage = getProductImage; // exposed for the plain-JS Log Delive
 
 // ── styles ─────────────────────────────────────────────────
 const TS = {
-  screen: { background:'#ffffff', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#121212', paddingBottom:120 },
-  card: { background:'#ffffff', border:'1px solid #cccccc', borderRadius:6, padding:'14px 16px', margin:'10px 12px' },
+  screen: { background:'var(--bg, #f3f4f6)', minHeight:'100%', fontFamily:"'DM Sans',sans-serif", color:'#121212', paddingBottom:120 },
+  card: { background:'#ffffff', border:'1px solid #d9dde3', borderRadius:14, boxShadow:'var(--surface-shadow)', padding:'14px 16px', margin:'10px 12px' },
   hdr: { fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', color:'#121212', marginBottom:10 },
   jobRow: { display:'flex', alignItems:'flex-start', gap:8, padding:'8px 0', borderBottom:'1px solid #e0e0e0', cursor:'pointer' },
   checkbox: (color) => ({ width:22, height:22, borderRadius:5, border:`1.5px solid ${color}`, background:'transparent', cursor:'pointer', flexShrink:0, marginTop:2, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color }),
