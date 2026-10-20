@@ -175,9 +175,12 @@
  const originalShow=root.showTab;
  if(originalShow)root.showTab=function(tab,...args){const result=originalShow.call(this,tab,...args);if(tab==='finance')loadFinance();if(tab==='expenses')loadExpenses();return result;};
  setup();
- if(new URLSearchParams(location.search).get('finance')==='expenses'){
-  sbc()?.auth.getSession().then(({data})=>{if(data.session)root.showTab('expenses');});
-  sbc()?.auth.onAuthStateChange((event,session)=>{if(session&&event==='SIGNED_IN')setTimeout(()=>root.showTab('expenses'),0);});
+ const initialTab=new URLSearchParams(location.search).get('finance')==='expenses'?'expenses':localStorage.getItem('gremier_admin_tab');
+ if(['finance','expenses'].includes(initialTab)){
+  let restored=false;
+  const restore=session=>{if(session&&!restored){restored=true;setTimeout(()=>root.showTab(initialTab),0);}};
+  sbc()?.auth.getSession().then(({data})=>restore(data.session));
+  sbc()?.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_IN')restore(session);});
  }
  root.GremierFinance={load:loadFinance,loadExpenses};
 })(window);
