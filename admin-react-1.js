@@ -1907,19 +1907,15 @@ function JobRowComp({
       color: '#3f7fc4'
     }
   }, "\uD83D\uDCCD ", job.privateAddress || job.cbAddress)), showDelete && /*#__PURE__*/React.createElement("button", {
-    style: {
-      background: 'none',
-      border: 'none',
-      color: '#d5544a',
-      fontSize: 16,
-      cursor: 'pointer',
-      padding: '2px 4px'
-    },
-    onClick: e => {
-      e.stopPropagation();
-      onDelete && onDelete(job);
-    }
-  }, "\uD83D\uDDD1"));
+    className: "app-more-button",
+    "aria-label": "Scheduled task actions",
+    "aria-expanded": "false",
+    onClick: e => window.adminShowActions(e, [{
+      label: 'Delete task',
+      danger: true,
+      run: () => onDelete && onDelete(job)
+    }])
+  }, "\u22EF"));
 }
 
 // ── Calendar ───────────────────────────────────────────────

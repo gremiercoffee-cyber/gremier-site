@@ -796,10 +796,15 @@ function StockTab() {
       <div style={{padding:'16px 16px 0'}}>
         <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Stock</div>
         <div style={SS.toggleRow}>
-          {TABS.map(t=>(
+          {TABS.filter(t=>['concentrate','liters','minis'].includes(t.id)).map(t=>(
             <button key={t.id} style={SS.toggleBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>
           ))}
+          <button className="app-more-button" aria-label="More stock sections and settings" aria-expanded="false" onClick={e=>window.adminShowActions(e,[
+            ...TABS.filter(t=>!['concentrate','liters','minis'].includes(t.id)).map(t=>({label:(tab===t.id?'✓ ':'')+t.label,run:()=>setTab(t.id)})),
+            {label:labelsOn?'Turn off label tracking':'Enable label tracking',run:()=>setLabelsOn(!labelsOn)}
+          ])}>⋯</button>
         </div>
+        {!['concentrate','liters','minis'].includes(tab)&&<div style={{fontSize:14,fontWeight:600,color:'#303946',padding:'0 0 12px'}}>{TABS.find(t=>t.id===tab)?.label}</div>}
       </div>
       <div style={{padding:'0 16px'}}>
         {tab==='concentrate'&&<><ConcentrateScreen concentrate={concentrate} setConcentrate={setConcentrate} jobs={jobs} inventory={inventory}/><BeansCollapse beans={beans} setBeans={setBeans}/></>}
@@ -810,14 +815,11 @@ function StockTab() {
         {tab==='labels'&&(labelsOn
           ? <>
               <LabelsScreen labeledStock={labeledStock} setLabeledStock={setLabeledStock}/>
-              <div style={{textAlign:'center',padding:'6px 0 26px'}}>
-                <a href="#" style={{color:'#8a7060',fontSize:12,textDecoration:'underline'}} onClick={e=>{e.preventDefault();setLabelsOn(false);}}>Turn off label tracking</a>
-              </div>
             </>
           : <div style={{...SS.card,textAlign:'center',padding:'36px 20px'}}>
               <div style={{fontSize:30,marginBottom:10}}>🏷️</div>
               <div style={{fontSize:15,fontWeight:600,color:'#121212',marginBottom:6}}>Label tracking is off</div>
-              <div style={{fontSize:12.5,color:'#6a6a6a',lineHeight:1.5,marginBottom:16}}>Label counts, low-label warnings, and labeling jobs are hidden everywhere. Turning it on brings them all back.</div>
+              <div style={{fontSize:13,color:'#58616d',lineHeight:1.5,marginBottom:16}}>Enable counts and low-label alerts.</div>
               <button style={{background:'#1a1a1a',color:'#fff',border:'none',borderRadius:10,padding:'10px 22px',fontSize:13,fontWeight:600,cursor:'pointer'}} onClick={()=>setLabelsOn(true)}>Enable</button>
             </div>)}
       </div>

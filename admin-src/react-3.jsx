@@ -464,14 +464,12 @@ function GlobalPillsFloat() {
   const anyDrawerOpen = waOpen || billingOpen || webQueueOpen;
   return (
     <>
-      {!anyDrawerOpen&&waPending.length>0&&(
-        <button style={{position:'fixed',bottom:170,right:16,background:'#25D366',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWaOpen(true)}>💬 {waPending.length}</button>
-      )}
-      {!anyDrawerOpen&&unbilled.length>0&&(
-        <button style={{position:'fixed',bottom:210,right:16,background:'#b8860b',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setBillingOpen(true)}>💰 {unbilled.length}</button>
-      )}
-      {!anyDrawerOpen&&pendingWeb.length>0&&(
-        <button style={{position:'fixed',bottom:250,right:16,background:'#3f7fc4',color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={()=>setWebQueueOpen(true)}>📦 {pendingWeb.length}</button>
+      {!anyDrawerOpen&&(waPending.length+unbilled.length+pendingWeb.length)>0&&(
+        <button aria-label="Pending tasks" aria-expanded="false" style={{position:'fixed',bottom:170,right:16,background:'#fff',color:'#303946',border:'1px solid #d6dce4',borderRadius:20,padding:'10px 14px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'var(--surface-shadow)'}} onClick={e=>window.adminShowActions(e,[
+          ...(waPending.length?[{label:`WhatsApp to send · ${waPending.length}`,run:()=>setWaOpen(true)}]:[]),
+          ...(unbilled.length?[{label:`Payments to collect · ${unbilled.length}`,run:()=>setBillingOpen(true)}]:[]),
+          ...(pendingWeb.length?[{label:`Orders to schedule · ${pendingWeb.length}`,run:()=>setWebQueueOpen(true)}]:[])
+        ])}>Tasks · {waPending.length+unbilled.length+pendingWeb.length} ⋯</button>
       )}
       {waOpen&&<GlobalWaDrawer jobs={waPending} stores={stores} sentJobs={waRecentlySent} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onUndoSent={undoWaSent} onClose={()=>setWaOpen(false)}/>}
       {billingOpen&&<GlobalBillingDrawer jobs={unbilled} onMarkBilled={markBilled} onMarkPaid={markPaid} onClose={()=>setBillingOpen(false)}/>}

@@ -1002,7 +1002,7 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
         <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
         {(job.privateAddress||job.cbAddress)&&<div style={{...TS.meta,color:'#3f7fc4'}}>📍 {job.privateAddress||job.cbAddress}</div>}
       </div>
-      {showDelete&&<button style={{background:'none',border:'none',color:'#d5544a',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
+      {showDelete&&<button className="app-more-button" aria-label="Scheduled task actions" aria-expanded="false" onClick={e=>window.adminShowActions(e,[{label:'Delete task',danger:true,run:()=>onDelete&&onDelete(job)}])}>⋯</button>}
     </div>
   );
 }

@@ -796,7 +796,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Orders</h1>
-          <p class="page-sub">All customer orders — filter by date, status, or subscriptions</p>
+          <p class="page-sub">Customer orders</p>
         </div>
         <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
           <div class="collapse-head">
@@ -838,7 +838,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           </div>
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:10px">
-          <button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button>
+          <span data-action-menu="Order tools"><button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">⬇ Export CSV</button></span>
         </div>
           </div>
         </div>
@@ -903,14 +903,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-paylinks" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Payment Links</h1>
-          <p class="page-sub">One-time checkout links and recurring customer links — separate sections so nothing gets mixed up</p>
+          <p class="page-sub">Checkout links</p>
         </div>
 
         <div class="paylinks-section">
           <div class="flex-between" style="margin-bottom:12px;align-items:flex-end;gap:12px;flex-wrap:wrap">
             <div>
               <h2 class="paylinks-section-title">One-time links</h2>
-              <p class="paylinks-section-sub">Single use — closes after the customer pays</p>
+              <p class="paylinks-section-sub">Closes after payment</p>
             </div>
             <button class="btn btn-amber btn-sm" onclick="openNewLink('onetime')">+ One-time Link</button>
           </div>
@@ -935,7 +935,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <div class="flex-between" style="margin-bottom:12px;align-items:flex-end;gap:12px;flex-wrap:wrap">
             <div>
               <h2 class="paylinks-section-title">Recurring links</h2>
-              <p class="paylinks-section-sub">Same URL for repeat orders — a new order is created each time they pay</p>
+              <p class="paylinks-section-sub">A reusable link for repeat orders</p>
             </div>
             <button class="btn btn-outline btn-sm" onclick="openNewLink('recurring')">+ Recurring Link</button>
           </div>
@@ -952,7 +952,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <div class="page-header">
           <div class="flex-between">
             <div><h1 class="page-title">Reports</h1><p class="page-sub">Sales analytics & accounting exports</p></div>
-            <button class="btn btn-outline btn-sm" onclick="exportReportCSV()">⬇ Export CSV</button>
+            <span data-action-menu="Report tools"><button class="btn btn-outline btn-sm" onclick="exportReportCSV()">⬇ Export CSV</button></span>
           </div>
         </div>
         <div class="filter-bar">
@@ -992,7 +992,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-members" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Members</h1>
-          <p class="page-sub">All registered website members — profiles, loyalty points, and order history</p>
+          <p class="page-sub">Customers, points and order history</p>
         </div>
         <div class="filter-bar">
           <input type="text" class="product-search" placeholder="Search by name, email, or phone..." oninput="filterMembers(this.value)" id="memberSearch"/>
@@ -1003,7 +1003,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <option value="name">Sort: Name</option>
             <option value="points">Sort: Points</option>
           </select>
-          <button class="btn btn-outline btn-sm" onclick="exportMembersCSV()">⬇ Export CSV</button>
+          <span data-action-menu="Member tools"><button class="btn btn-outline btn-sm" onclick="exportMembersCSV()">⬇ Export CSV</button></span>
         </div>
         <div class="stat-grid" id="memberStats"><div class="loading"><div class="spinner"></div></div></div>
         <div class="card" style="padding:0">
@@ -1024,7 +1024,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-delivery" class="tab-content" style="display:none">
         <div class="page-header">
           <div class="flex-between">
-            <div><h1 class="page-title">Delivery</h1><p class="page-sub">Default fees, city zones — product delivery price overrides zone, zone overrides default</p></div>
+            <div><h1 class="page-title">Delivery</h1><p class="page-sub">Delivery fees and zones</p></div>
             <button class="btn btn-amber" onclick="saveDeliverySettings()">Save Settings</button>
           </div>
         </div>
@@ -1119,7 +1119,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="flex-between">
       <div>
         <h1 class="page-title">🏪 Store Deliveries</h1>
-        <p class="page-sub">Track what you bring to each store — monthly totals + billing</p>
+        <p class="page-sub">Deliveries and monthly billing</p>
       </div>
       <div class="header-actions">
         <button class="btn btn-amber btn-sm" onclick="openLogDeliveryModal()">+ Log Delivery</button>
@@ -1134,7 +1134,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <select class="form-input" style="width:auto" id="sdStoreFilter" onchange="loadStoreDeliveries()">
       <option value="all">All Stores</option>
     </select>
-    <button class="btn btn-outline btn-sm" onclick="exportDeliveriesCSV()">⬇ Export CSV</button>
+    <span data-action-menu="Delivery tools"><button class="btn btn-outline btn-sm" onclick="exportDeliveriesCSV()">⬇ Export CSV</button></span>
   </div>
 
   <!-- Merged billing + monthly summary stats -->
@@ -1221,9 +1221,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="sdBillingView" style="display:none">
     <div class="flex-between" style="margin-bottom:6px">
       <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
-      <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">🔄 Generate / Refresh Images</button>
+      <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">Generate statements</button>
     </div>
-    <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Builds a statement image per store from this month's deliveries. Send it over WhatsApp, then mark it billed and paid as you go — regenerating later won't reset either status.</p>
+    <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Store statements for this month. Regenerating keeps billed and paid status.</p>
     <div id="billStoreChips" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:none"></div>
     <div class="billing-modes" style="display:flex;gap:8px;margin-bottom:14px">
       <button type="button" class="btn btn-sm" id="billModeMonth" onclick="setBillingMode('month')">This month</button>
@@ -1267,7 +1267,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <option value="week">Last 7 Days</option>
           <option value="year">This Year</option>
         </select>
-        <button class="btn btn-outline" id="dashRefresh" onclick="loadDashboard()" type="button">Refresh</button>
+        <span data-action-menu="Dashboard tools"><button class="btn btn-outline" id="dashRefresh" onclick="loadDashboard()" type="button">Refresh</button></span>
       </div>
     </div>
   </div>
@@ -2846,8 +2846,8 @@ function renderWorkers() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 14px">
         ${actBtn('hours', '+ Add hours')}
         ${actBtn('pay', '₪ Log payment')}
-        ${actBtn('owed', '✎ Set amount owed')}
-        <button class="btn btn-outline btn-sm" onclick="openWorkerModal('${w.id}')">Edit</button>
+        <span data-action-menu="Worker actions">${actBtn('owed', 'Set amount owed')}
+        <button class="btn btn-outline btn-sm" onclick="openWorkerModal('${w.id}')">Edit worker</button></span>
       </div>
 
       ${panel ? `<div style="margin:0 16px 14px;padding:14px;border:1px solid var(--border);border-radius:4px;background:var(--bg2)">${renderWorkerPanel(w, t, panel)}</div>` : ''}
@@ -2878,7 +2878,7 @@ function renderWorkers() {
             <div style="font-size:.85rem;font-weight:600;color:${isPay ? 'var(--green)' : 'var(--cream)'}">
               ${sign}${wkMoney(Math.abs(amt))}
             </div>
-            <button class="btn btn-outline btn-sm" style="padding:3px 8px" onclick="deleteWorkerEntry('${e.id}','${w.id}')">✕</button>
+            <span data-action-menu="Entry actions"><button class="btn btn-red btn-sm" onclick="deleteWorkerEntry('${e.id}','${w.id}')">Delete entry</button></span>
           </div>`;
         }).join('') : '<div style="font-size:.82rem;color:var(--text2);padding:8px 0">No entries yet.</div>'}
         </div>` : ''}
@@ -3199,8 +3199,7 @@ function renderProductsList() {
       </div>
       <div class="product-row-actions">
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">Edit</button>
-        <button class="btn btn-outline btn-sm" title="More actions" onclick="const m=this.nextElementSibling;m.style.display=m.style.display==='none'?'inline-flex':'none'">⋯</button>
-        <span style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+        <span data-action-menu="Product actions">
           <button class="btn btn-sm ${p.is_coffee_bar?'btn-amber':'btn-outline'}" onclick="toggleCoffeeBar('${p.id}',${!!p.is_coffee_bar})" title="Show in Coffee Bar section on the website">${p.is_coffee_bar?'☕ Coffee Bar ✓':'☕ Coffee Bar'}</button>
           <button class="btn btn-sm ${p.ops_exclude?'btn-red':'btn-outline'}" onclick="toggleOpsExclude('${p.id}',${!!p.ops_exclude})" title="Exclude from Stock &amp; Ops (e.g. 4-packs, bundles)">${p.ops_exclude?'📦 Bundle ✓':'📦 Bundle'}</button>
           <button class="btn btn-sm ${p.is_active?'btn-red':'btn-green'}" onclick="toggleProductActive('${p.id}',${p.is_active})">${p.is_active?'Hide':'Show'}</button>
@@ -4125,13 +4124,13 @@ return `<tr class="${needsFulfillmentHighlight ? 'order-needs-fulfillment' : ''}
       <td class="cell-actions" onclick="event.stopPropagation()">
         <div class="cell-actions-wrap">
           ${fulfillBtn}
-          <select class="form-input table-select" onchange="updateOrderStatus('${o.id}',this.value)">
+<span data-action-menu="Order actions">          <select class="form-input table-select" aria-label="Order status" onchange="updateOrderStatus('${o.id}',this.value)">
             <option ${o.status==='pending'?'selected':''}>pending</option>
             <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
             <option ${o.status==='fulfilled'?'selected':''}>fulfilled</option>
             <option ${o.status==='cancelled'?'selected':''}>cancelled</option>
           </select>
-          <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" title="Delete order">✕</button>
+          <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" title="Delete order">Delete order</button></span>
         </div>
       </td>
     </tr>`;
@@ -5221,6 +5220,7 @@ function togglePayLinkMenu(e, menuId) {
   closeAllPayLinkMenus();
   if (!wasOpen) {
     menu.classList.add('open');
+    btn.setAttribute('aria-expanded','true');
     // position the dropdown relative to the button, avoiding viewport overflow
     const r = btn.getBoundingClientRect();
     menu.style.top = (r.bottom + 4) + 'px';
@@ -5230,10 +5230,11 @@ function togglePayLinkMenu(e, menuId) {
   }
 }
 function closeAllPayLinkMenus() {
-  document.querySelectorAll('.pl-menu-drop.open').forEach(m => m.classList.remove('open'));
+  document.querySelectorAll('.pl-menu-drop.open').forEach(m => { m.classList.remove('open'); m.previousElementSibling?.setAttribute('aria-expanded','false'); });
 }
 // Close on any outside click
 document.addEventListener('click', closeAllPayLinkMenus);
+document.addEventListener('keydown', e => { if(e.key==='Escape'){const menu=document.querySelector('.pl-menu-drop.open');if(menu){closeAllPayLinkMenus();menu.previousElementSibling?.focus();}} });
 
 function copyLink(url) {
   navigator.clipboard.writeText(url).then(()=>showToast('Link copied! ✓'));
@@ -5442,7 +5443,7 @@ If this looks good, I can send the payment link.`);
     <td class="cell-date hide-mobile">${date}</td>
     <td class="cell-actions" style="overflow:visible">
       <div class="pl-menu-wrap">
-        <button class="pl-menu-btn" onclick="togglePayLinkMenu(event,'plm_${l.id}')">⋯</button>
+        <button class="pl-menu-btn" aria-label="Payment link actions" aria-expanded="false" onclick="togglePayLinkMenu(event,'plm_${l.id}')">⋯</button>
         <div class="pl-menu-drop" id="plm_${l.id}">
           ${opsBtn ? `<button class="pl-menu-item" onclick="closeAllPayLinkMenus();queuePaymentLinkForOps('${l.link_code}')">📦 Send to Ops</button>` : ""}
           ${recreateBtn ? `<button class="pl-menu-item" onclick="closeAllPayLinkMenus();recreateOrderFromPaymentLink('${l.link_code}')">♻ Recreate Order</button>` : ""}
@@ -5668,8 +5669,8 @@ function renderMembersList() {
 <td class="cell-actions">
         <div class="cell-actions-wrap">
           <button class="btn btn-outline btn-sm" onclick="openMemberDetail('${m.id}')">View</button>
-          <button class="btn btn-outline btn-sm" onclick="openEditMemberPoints('${m.id}',${m.points||0},'${(m.name||'').replace(/'/g,String.fromCharCode(92,39))}')">✏️ Pts</button>
-          <button class="btn btn-outline btn-sm" style="border-color:#a3691c;color:#a3691c" onclick="generateCouponForMember('${m.id}','${(m.email||'').replace(/'/g,String.fromCharCode(92,39))}')">🎁</button>
+<span data-action-menu="Member actions">          <button class="btn btn-outline btn-sm" onclick="openEditMemberPoints('${m.id}',${m.points||0},'${(m.name||'').replace(/'/g,String.fromCharCode(92,39))}')">Edit points</button>
+          <button class="btn btn-outline btn-sm" style="border-color:#a3691c;color:#a3691c" onclick="generateCouponForMember('${m.id}','${(m.email||'').replace(/'/g,String.fromCharCode(92,39))}')">🎁</button></span>
         </div>
       </td>    </tr>`;
   }).join('');
@@ -6466,7 +6467,7 @@ function renderDeliveriesTable() {
       <td class="cell-actions">
         <div class="cell-actions-wrap">
           <button class="btn btn-outline btn-sm" onclick="openEditDeliveryModal('${d.id}')">Edit</button>
-          <button class="btn btn-red btn-sm" onclick="deleteDeliveryById('${d.id}')">✕</button>
+<span data-action-menu="Delivery actions">          <button class="btn btn-red btn-sm" onclick="deleteDeliveryById('${d.id}')">Delete delivery</button></span>
         </div>
       </td>
     </tr>`;
@@ -6941,7 +6942,7 @@ async function generateMonthlyBillingImages() {
     showToast('Could not reach billing function');
     console.error(e);
   } finally {
-    if (btn) { btn.textContent = '🔄 Generate / Refresh Images'; btn.disabled = false; }
+    if (btn) { btn.textContent = 'Generate statements'; btn.disabled = false; }
   }
 }
 
@@ -7154,9 +7155,9 @@ function billingCardHtml(r, showMonth) {
       </div>
       ${closed ? '' : `<div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'}>💬 Send via WhatsApp</button>
-        <button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Balance PNG</button>
         <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')">Mark Paid</button>
-        <button class="btn btn-outline btn-sm" onclick="markBillingCancelled('${r.id}')" title="Write this month off for this store">Cancel</button>
+        <span data-action-menu="Bill actions"><button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download balance image</button>
+        <button class="btn btn-red btn-sm" onclick="markBillingCancelled('${r.id}')" title="Write this month off for this store">Write off month</button></span>
       </div>`}
     </div>`;
 }
@@ -8690,9 +8691,9 @@ function renderCouponsTable() {
       <td class="cell-date hide-mobile">${exp}</td>
       <td class="cell-actions"><div class="cell-actions-wrap">
         <button class="btn btn-green btn-sm" onclick="shareCoupon('${escAttr(c.id)}')">Share</button>
-        <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(c.code)}')">Copy</button>
+<span data-action-menu="Coupon actions">        <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(c.code)}')">Copy</button>
         <button class="btn btn-outline btn-sm" onclick="openCouponModal('${c.id}')">Edit</button>
-        <button class="btn btn-sm ${c.is_active?'btn-red':'btn-green'}" onclick="toggleCoupon('${c.id}',${c.is_active})">${c.is_active?'Off':'On'}</button>
+        <button class="btn btn-sm ${c.is_active?'btn-red':'btn-green'}" onclick="toggleCoupon('${c.id}',${c.is_active})">${c.is_active?'Off':'On'}</button></span>
       </div></td>
     </tr>`;
   }).join('');
@@ -8978,9 +8979,9 @@ function renderGiftCardsTable() {
       <td class="cell-date hide-mobile">${created}</td>
       <td class="cell-actions"><div class="cell-actions-wrap">
         <button class="btn btn-outline btn-sm" onclick="copyLink('${escAttr(g.code)}')">Copy</button>
-        <button class="btn btn-outline btn-sm" onclick="openEditGiftCardBalance('${g.id}',${g.balance})">Edit</button>
+<span data-action-menu="Gift card actions">        <button class="btn btn-outline btn-sm" onclick="openEditGiftCardBalance('${g.id}',${g.balance})">Edit</button>
         <button class="btn btn-outline btn-sm" onclick="openGiftCardHistory('${g.id}')">History</button>
-        <button class="btn btn-sm ${g.is_active?'btn-red':'btn-green'}" onclick="toggleGiftCard('${g.id}',${g.is_active})">${g.is_active?'Off':'On'}</button>
+        <button class="btn btn-sm ${g.is_active?'btn-red':'btn-green'}" onclick="toggleGiftCard('${g.id}',${g.is_active})">${g.is_active?'Off':'On'}</button></span>
       </div></td>
     </tr>`;
   }).join('');
@@ -9258,10 +9259,11 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-react-1.js?v=e062a04394"></script>
-<script src="/admin-react-2.js?v=c87b6added"></script>
+<script src="/admin-ui.js?v=20261020-1"></script>
+<script src="/admin-react-1.js?v=d138179b28"></script>
+<script src="/admin-react-2.js?v=dc3904134d"></script>
 
-<script src="/admin-react-3.js?v=dc90928d38"></script>
+<script src="/admin-react-3.js?v=b78f41f11e"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">
@@ -9331,7 +9333,7 @@ window.opsFetch = window.opsFetch || (function () {
     </div>
     <div id="tab-subscriptions" class="tab-content" style="display:none">
       <div class="page-header"><div class="flex-between">
-        <div><h1 class="page-title">🔁 Subscriptions</h1><p class="page-sub">Website subscriptions, live from PayMe. The two older Wix subscriptions are managed in Wix and don't appear here.</p></div>
+        <div><h1 class="page-title">🔁 Subscriptions</h1><p class="page-sub">PayMe subscriptions · older Wix subscriptions stay in Wix.</p></div>
         <div class="header-actions"><button class="btn btn-outline btn-sm" onclick="hubLoadSubs(true)">↻ Refresh</button></div>
       </div></div>
       <div class="hub-kpis" id="hubSubKpis"></div>
@@ -9630,7 +9632,7 @@ window.opsFetch = window.opsFetch || (function () {
   main.insertAdjacentHTML('beforeend', `
     <div id="tab-activity" class="tab-content" style="display:none">
       <div class="page-header"><div class="flex-between">
-        <div><h1 class="page-title">🕑 Activity</h1><p class="page-sub">Everything that happened — from you, the website, the widget and connected apps.</p></div>
+        <div><h1 class="page-title">🕑 Activity</h1><p class="page-sub">Recent changes from you, the website and connected apps.</p></div>
         <div class="header-actions">
           <select class="form-input" style="width:auto" id="actFilter" onchange="appsLoadActivity()">
             <option value="">Everyone</option><option value="admin:">You (admin app)</option><option value="app:">Connected apps</option><option value="website">Website</option><option value="system">System</option>
@@ -9642,7 +9644,7 @@ window.opsFetch = window.opsFetch || (function () {
     </div>
     <div id="tab-connected" class="tab-content" style="display:none">
       <div class="page-header"><div class="flex-between">
-        <div><h1 class="page-title">🔌 Connected apps</h1><p class="page-sub">Keys for the Android widget, your Claude secretary, or any app that reads or logs things here. Each key can be switched off anytime.</p></div>
+        <div><h1 class="page-title">🔌 Connected apps</h1><p class="page-sub">Manage app access. Switch off a key to revoke it.</p></div>
       </div></div>
       <div class="hub-card" style="margin-bottom:16px">
         <h3><span>New key</span></h3>
@@ -9724,11 +9726,11 @@ window.opsFetch = window.opsFetch || (function () {
 </script>
 <script src="/admin-dashboard.js?v=20261015-1"></script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
-<script src="/admin-financials.js?v=20261020-3"></script>
+<script src="/admin-financials.js?v=20261020-4"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
-<script src="/admin-finance.js?v=20261020-6"></script>
-<script src="/admin-sales.js?v=20261020-2"></script>
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261020-3"/>
+<script src="/admin-finance.js?v=20261020-7"></script>
+<script src="/admin-sales.js?v=20261020-3"></script>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261020-4"/>
 <script src="/admin-receipts.js?v=20261019-1"></script>
 </body>
 </html>

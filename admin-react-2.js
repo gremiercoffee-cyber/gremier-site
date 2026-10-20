@@ -1653,11 +1653,29 @@ function StockTab() {
     }
   }, "Stock"), /*#__PURE__*/React.createElement("div", {
     style: SS.toggleRow
-  }, TABS.map(t => /*#__PURE__*/React.createElement("button", {
+  }, TABS.filter(t => ['concentrate', 'liters', 'minis'].includes(t.id)).map(t => /*#__PURE__*/React.createElement("button", {
     key: t.id,
     style: SS.toggleBtn(tab === t.id),
     onClick: () => setTab(t.id)
-  }, t.label)))), /*#__PURE__*/React.createElement("div", {
+  }, t.label)), /*#__PURE__*/React.createElement("button", {
+    className: "app-more-button",
+    "aria-label": "More stock sections and settings",
+    "aria-expanded": "false",
+    onClick: e => window.adminShowActions(e, [...TABS.filter(t => !['concentrate', 'liters', 'minis'].includes(t.id)).map(t => ({
+      label: (tab === t.id ? '✓ ' : '') + t.label,
+      run: () => setTab(t.id)
+    })), {
+      label: labelsOn ? 'Turn off label tracking' : 'Enable label tracking',
+      run: () => setLabelsOn(!labelsOn)
+    }])
+  }, "\u22EF")), !['concentrate', 'liters', 'minis'].includes(tab) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 600,
+      color: '#303946',
+      padding: '0 0 12px'
+    }
+  }, TABS.find(t => t.id === tab)?.label)), /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '0 16px'
     }
@@ -1696,23 +1714,7 @@ function StockTab() {
   }), tab === 'labels' && (labelsOn ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(LabelsScreen, {
     labeledStock: labeledStock,
     setLabeledStock: setLabeledStock
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: 'center',
-      padding: '6px 0 26px'
-    }
-  }, /*#__PURE__*/React.createElement("a", {
-    href: "#",
-    style: {
-      color: '#8a7060',
-      fontSize: 12,
-      textDecoration: 'underline'
-    },
-    onClick: e => {
-      e.preventDefault();
-      setLabelsOn(false);
-    }
-  }, "Turn off label tracking"))) : /*#__PURE__*/React.createElement("div", {
+  })) : /*#__PURE__*/React.createElement("div", {
     style: {
       ...SS.card,
       textAlign: 'center',
@@ -1732,12 +1734,12 @@ function StockTab() {
     }
   }, "Label tracking is off"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 12.5,
-      color: '#6a6a6a',
+      fontSize: 13,
+      color: '#58616d',
       lineHeight: 1.5,
       marginBottom: 16
     }
-  }, "Label counts, low-label warnings, and labeling jobs are hidden everywhere. Turning it on brings them all back."), /*#__PURE__*/React.createElement("button", {
+  }, "Enable counts and low-label alerts."), /*#__PURE__*/React.createElement("button", {
     style: {
       background: '#1a1a1a',
       color: '#fff',

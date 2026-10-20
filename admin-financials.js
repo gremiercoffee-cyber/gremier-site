@@ -99,8 +99,8 @@
   const client=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB;
   function setup() {
     const host=get('tab-reports');if(!host||get('financialResults'))return;
-    host.innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Business stats</h1><p class="page-sub">Revenue, expenses and the year so far</p></div><button class="btn btn-outline btn-sm" id="financialExport" disabled>Export CSV</button></div></header>
-      <div class="fin-toolbar"><label>Year<select class="form-input" id="financialYear" aria-label="Reporting year"></select></label><label>Period<select class="form-input" id="financialMonth" aria-label="Reporting period"></select></label><button class="btn btn-outline btn-sm" id="financialRefresh">Reload saved data</button></div>
+    host.innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Business stats</h1><p class="page-sub">Revenue, expenses and the year so far</p></div><span data-action-menu="Accounting tools"><button class="btn btn-outline btn-sm" id="financialExport" disabled>Export CSV</button><button class="btn btn-outline btn-sm" id="financialRefresh">Reload saved data</button></span></div></header>
+      <div class="fin-toolbar"><label>Year<select class="form-input" id="financialYear" aria-label="Reporting year"></select></label><label>Period<select class="form-input" id="financialMonth" aria-label="Reporting period"></select></label></div>
       <p id="financialStatus" class="fin-note" role="status" aria-live="polite"></p>
       <div class="fin-views" role="group" aria-label="Expense reporting view"><button type="button" class="btn btn-outline" id="financialAccounts" aria-pressed="true">FinBot accounts</button><button type="button" class="btn btn-outline" id="financialUS" aria-pressed="false">U.S. expense view</button></div><div id="financialResults"></div>`;
     get('financialYear').onchange=()=>chooseYear();
