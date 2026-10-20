@@ -1744,6 +1744,27 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div style="font-family:'DM Sans',sans-serif;font-size:1.6rem;color:var(--cream)" id="deliveryPreviewTotal">₪0</div>
       <div style="font-size:.78rem;color:var(--text2);margin-top:4px" id="deliveryPreviewBreakdown"></div>
     </div>
+    <details class="form-group"><summary>Other products (jerry cans, dispensers…)</summary><div id="ldExtraRows"></div></details>
+    <p style="font-size:.78rem;color:var(--text2)">Save the bottle totals here. You can optionally specify flavors after saving.</p>
+    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-amber" id="saveDeliveryBtn" onclick="saveDelivery()">Save Delivery</button>
+      <button class="btn btn-outline" onclick="closeLogDeliveryModal()">Cancel</button>
+      <button class="btn btn-red btn-sm" id="deleteDeliveryBtn" style="margin-left:auto;display:none" onclick="deleteDelivery()">Delete</button>
+    </div>
+  </div>
+</div>
+<!-- Optional stock detail after a delivery has been saved -->
+<div class="modal-backdrop" id="deliveryAllocationModal">
+ <div class="modal-box" style="max-width:480px">
+  <h2 class="modal-title">Delivery saved ✓</h2>
+  <p id="ldAllocationSummary" style="font-size:.85rem;color:var(--text2)"></p>
+  <p style="font-size:.85rem">Want to specify how many of each flavor you delivered?</p>
+  <div id="ldAllocationChoice" style="display:flex;gap:10px;flex-wrap:wrap">
+   <button class="btn btn-amber" onclick="ldShowAllocationPicker()">Choose flavors</button>
+   <button class="btn btn-outline" onclick="ldCloseAllocation()">Keep allocation / Done</button>
+  </div>
+  <div id="ldAllocationPicker" hidden>
+   <p style="font-size:.78rem;color:var(--text2)">Match the saved bottle totals below. This changes inventory detail, not delivery totals or billing.</p>
 <!-- product quantities -->
    <div class="form-group">
       <label class="form-label">Products</label>
@@ -1757,12 +1778,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <div id="ldProductRows"></div>
     </div>
-    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-amber" id="saveDeliveryBtn" onclick="saveDelivery()">Save Delivery</button>
-      <button class="btn btn-outline" onclick="closeLogDeliveryModal()">Cancel</button>
-      <button class="btn btn-red btn-sm" id="deleteDeliveryBtn" style="margin-left:auto;display:none" onclick="deleteDelivery()">Delete</button>
-    </div>
+
+   <div id="ldAllocationStatus" role="status" style="font-size:.82rem;margin:12px 0"></div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button class="btn btn-amber" id="ldSaveAllocationBtn" onclick="ldSaveAllocation()">Save flavor breakdown</button>
+    <button class="btn btn-outline" onclick="ldCloseAllocation()">Keep saved allocation</button>
+   </div>
   </div>
+ </div>
 </div>
 <!-- PAYMENT LINK MODAL -->
 <div class="modal-backdrop" id="payLinkModal">
@@ -1929,6 +1952,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
+<script src="/admin-delivery-model.js?v=20261020-1"></script>
 <script>
   function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -6593,15 +6617,77 @@ const LD_FLAVOR_CASES = {
   decaf_liter:       { label:'Decaf Case',               qty:12 },
 };
 let ldQuantities = {};
+let ldEditingRow = null;
+let ldDraftId = null;
+let ldSavedAllocation = null;
+let ldExtraQuantities = {};
+
+function ldReadCounts() {
+  return Object.fromEntries(GremierDelivery.fields.map((key, i) => [key, GremierDelivery.count(document.getElementById(['ldLarge','ldSmall','ldDairyFree','ldUnfiltered','ldSyrup'][i]).value)]));
+}
+function ldRowCounts(row) {
+  return {large:row.qty_large,small:row.qty_small,dairyFree:row.qty_dairy_free,unfiltered:row.qty_unfiltered,syrup:row.qty_syrup};
+}
+function ldRenderExtras() {
+  const items = Object.entries(LD_PRODUCTS).filter(([id]) => !GremierDelivery.bucket(id, LD_PRODUCTS));
+  for (const id of Object.keys(ldExtraQuantities)) if (!LD_PRODUCTS[id] && !id.startsWith('_agg_')) items.push([id,{label:id}]);
+  document.getElementById('ldExtraRows').innerHTML = items.map(([id,p]) => `<label style="display:flex;justify-content:space-between;gap:8px;margin:8px 0;font-size:.82rem">${escHtml(p.label)}<input class="form-input" style="width:75px" type="number" min="0" step="1" value="${Number(ldExtraQuantities[id])||0}" data-product="${escHtml(id)}" onchange="ldExtraQuantities[this.dataset.product]=this.value"/></label>`).join('') || '<p>No other products.</p>';
+}
+function ldAllocationStatus() {
+  if (!ldSavedAllocation) return;
+  const expected = ldRowCounts(ldSavedAllocation);
+  const actual = GremierDelivery.totals(ldQuantities, LD_PRODUCTS);
+  const names = {large:'large',small:'small',dairyFree:'dairy free',unfiltered:'unfiltered',syrup:'syrups'};
+  document.getElementById('ldAllocationStatus').textContent = GremierDelivery.fields.map(k => `${names[k]}: ${actual[k]}/${expected[k]}`).join(' · ');
+}
+function ldShowAllocationPicker() {
+  document.getElementById('ldAllocationChoice').hidden = true;
+  document.getElementById('ldAllocationChoice').style.display = 'none';
+  document.getElementById('ldAllocationPicker').hidden = false;
+  ldRenderProductRows();
+  ldAllocationStatus();
+}
+function ldCloseAllocation() {
+  if (document.getElementById('ldSaveAllocationBtn').disabled) return;
+  document.getElementById('deliveryAllocationModal').classList.remove('open');
+  ldSavedAllocation = null;
+}
+function ldOfferAllocation(row) {
+  ldSavedAllocation = row;
+  ldQuantities = {...row.quantities};
+  document.getElementById('ldAllocationChoice').hidden = false;
+  document.getElementById('ldAllocationChoice').style.display = 'flex';
+  document.getElementById('ldAllocationPicker').hidden = true;
+  const summary = Object.entries(row.quantities).filter(([,q]) => q>0).map(([id,q]) => `${q} ${LD_PRODUCTS[id]?.label || ({_agg_large:'large',_agg_small:'small',_agg_dairy_free:'dairy free',_agg_unfiltered:'unfiltered',_agg_syrup:'syrups'})[id] || id}`).join(', ');
+  document.getElementById('ldAllocationSummary').textContent = (row.allocation_mode === 'default' ? 'Default inventory allocation: ' : 'Saved inventory allocation: ') + summary + '. Unmapped categories keep their totals without deducting a guessed product.';
+  document.getElementById('deliveryAllocationModal').classList.add('open');
+}
+async function ldSaveAllocation() {
+  const btn = document.getElementById('ldSaveAllocationBtn');
+  if (btn.disabled || !ldSavedAllocation) return;
+  btn.disabled = true;
+  try {
+    if (!GremierDelivery.matches(ldRowCounts(ldSavedAllocation),ldQuantities,LD_PRODUCTS)) throw new Error('Flavor counts must match the saved totals.');
+    // The optional picker must not add/remove other delivered products.
+    for (const id of new Set([...Object.keys(ldQuantities),...Object.keys(ldSavedAllocation.quantities)])) {
+      if (!id.startsWith('_agg_') && !GremierDelivery.bucket(id,LD_PRODUCTS) && Number(ldQuantities[id]||0)!==Number(ldSavedAllocation.quantities[id]||0)) throw new Error('Change other product totals by editing the delivery.');
+    }
+    const {data,error} = await sb.rpc('save_counted_store_delivery',{d:{...ldSavedAllocation,quantities:ldQuantities,allocation_mode:'custom'},expected_updated_at:ldSavedAllocation.updated_at});
+    if (error) throw error;
+    ldSavedAllocation = data;
+    window.notifyGremierStockChanged?.();
+    window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+    document.getElementById('deliveryAllocationModal').classList.remove('open');
+    showToast('Flavor breakdown saved ✓');
+    await loadStoreDeliveries();
+  } catch (err) { showToast(err.message || String(err)); }
+  finally { btn.disabled=false; }
+}
 
 function ldRenderProductRows() {
   const el = document.getElementById('ldProductRows');
   if (!el) return;
-  const groups = [
-    { label:'Liter Bottles', cat:'liter' },
-    { label:'Mini Bottles',  cat:'mini'  },
-    { label:'Syrups',        cat:'syrup' },
-  ];
+  const groups = [...new Set(Object.entries(LD_PRODUCTS).filter(([id]) => GremierDelivery.bucket(id,LD_PRODUCTS)).map(([,p]) => p.category))].map(cat => ({cat,label:({liter:'Liter Bottles',mini:'Mini Bottles',syrup:'Syrups',dairy_free:'Dairy Free'})[cat] || 'Other Products'}));
   const imgFor = (pid) => (window.getProductImage ? window.getProductImage(pid) : '');
   el.innerHTML = groups.map(g => {
     const items = Object.entries(LD_PRODUCTS).filter(([,p])=>p.category===g.cat);
@@ -6630,23 +6716,23 @@ function ldSyncQtyInputs() {
 function ldChangeQty(pid, delta) {
   ldQuantities[pid] = Math.max(0, (ldQuantities[pid]||0) + delta);
   ldSyncQtyInputs();
-  updateDeliveryPreview();
+  ldAllocationStatus();
 }
 function ldSetQty(pid, val) {
   ldQuantities[pid] = Math.max(0, parseInt(val)||0);
-  updateDeliveryPreview();
+  ldAllocationStatus();
 }
 function ldFillDefaultCase() {
   ldQuantities = { ...LD_DEFAULT_CASE };
   ldSyncQtyInputs();
-  updateDeliveryPreview();
+  ldAllocationStatus();
 }
 function ldFillFlavorCase(pid) {
   const c = LD_FLAVOR_CASES[pid];
   if (!c) return;
   ldQuantities[pid] = (ldQuantities[pid]||0) + c.qty;
   ldSyncQtyInputs();
-  updateDeliveryPreview();
+  ldAllocationStatus();
 }
 function ldIsUnfiltered(pid) {
   return pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(LD_PRODUCTS[pid]?.label || '');
@@ -6668,6 +6754,10 @@ function ldGetAggregated() {
 async function openLogDeliveryModal() {
   await ldSyncProductsFromWebsite();
   ldQuantities = {};
+  ldEditingRow = null;
+  ldDraftId = crypto.randomUUID();
+  ldExtraQuantities = {};
+  ldRenderExtras();
   document.getElementById('editDeliveryId').value = '';
   document.getElementById('ldDate').value = localDateStr(new Date());
   document.getElementById('ldLarge').value = '0';
@@ -6685,8 +6775,17 @@ async function openLogDeliveryModal() {
 
 async function openEditDeliveryModal(deliveryId) {
   await ldSyncProductsFromWebsite();
-  const d = allDeliveries.find(x => x.id === deliveryId);
+  let d = allDeliveries.find(x => x.id === deliveryId);
+  if (!d) {
+    const result=await sb.from('store_deliveries').select('*').eq('id',deliveryId).maybeSingle();
+    if (result.error) {showToast(result.error.message);return;}
+    d=result.data;
+  }
   if (!d) return;
+  ldEditingRow = d;
+  ldDraftId = d.id;
+  ldExtraQuantities = Object.fromEntries(Object.entries(d.quantities || {}).filter(([id]) => !id.startsWith('_agg_') && !GremierDelivery.bucket(id,LD_PRODUCTS)));
+  ldRenderExtras();
   document.getElementById('editDeliveryId').value = d.id;
   populateStoreSelects();
   document.getElementById('ldStore').value = d.store_id;
@@ -6736,160 +6835,53 @@ function updateDeliveryPreview() {
 
 async function saveDelivery() {
   const btn = document.getElementById('saveDeliveryBtn');
-  if (btn?.disabled) return; // guard against double-tap while a save is already in flight
-  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = 'Saving…'; }
+  if (btn.disabled) return;
+  btn.disabled=true; btn.textContent='Saving…';
   try {
-    const id = document.getElementById('editDeliveryId').value;
     const storeId = document.getElementById('ldStore').value;
-    const store = allStores.find(s => s.id === storeId);
-    if (!store) { showToast('Please select a store'); return; }
-    // the per-product picker is the source of truth when it's been used — but if it's empty
-    // (e.g. an older record with no saved breakdown), fall back to the plain number boxes
-    // instead of silently zeroing out the bottle counts on save
-    const hasBreakdown = Object.values(ldQuantities).some(q => (q||0) > 0);
-    const aggregated = ldGetAggregated();
-    const large = hasBreakdown ? aggregated.large : (parseInt(document.getElementById('ldLarge').value) || 0);
-    const small = hasBreakdown ? aggregated.small : (parseInt(document.getElementById('ldSmall').value) || 0);
-    const dairyFree = hasBreakdown ? (aggregated.dairyFree || 0) : (parseInt(document.getElementById('ldDairyFree').value) || 0);
-    const unfiltered = hasBreakdown ? (aggregated.unfiltered || 0) : (parseInt(document.getElementById('ldUnfiltered').value) || 0);
-    const syrup = hasBreakdown ? aggregated.syrup : (parseInt(document.getElementById('ldSyrup').value) || 0);
-    const deliveryDate = document.getElementById('ldDate').value;
-    if (!deliveryDate) { showToast('Please pick a date'); return; }
-    const deliveryItemTotal = hasBreakdown
-      ? Object.values(ldQuantities).reduce((sum, qty) => sum + (Number(qty) > 0 ? Number(qty) : 0), 0)
-      : large + small + dairyFree + unfiltered + syrup;
-    const hasAnyQty = deliveryItemTotal > 0;
-
-    const data = {
-      store_id: storeId,
-      store_name: store.name,
-      qty_large: large,
-      qty_small: small,
-      qty_dairy_free: dairyFree,
-      qty_unfiltered: unfiltered,
-      qty_syrup: syrup,
-      // When the simple number boxes were used (no per-product breakdown), still record the
-      // aggregate counts under synthetic keys so the WhatsApp delivery note and Schedule tab
-      // have something to read — these keys are never matched against real product IDs
-      // (LD_PRODUCTS/PRODUCTS lookups simply return undefined for them) so they can never
-      // cause a wrong inventory deduction.
-      quantities: hasBreakdown ? ldQuantities : (hasAnyQty ? {
-        _agg_large: large, _agg_small: small, _agg_dairy_free: dairyFree, _agg_unfiltered: unfiltered, _agg_syrup: syrup,
-      } : null),
-      delivery_date: deliveryDate,
-      notes: document.getElementById('ldNotes').value.trim() || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (id) {
-      // Merge old (to reverse) and new (to apply) per-product quantities into ONE net delta per
-      // product, then write inventory in a single batched call instead of sequential GET+PATCH
-      // round trips per product per direction (previously up to 4 awaited requests per product).
-      const { data: oldRow } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
-      const oldQ = (oldRow?.quantities && typeof oldRow.quantities === 'object') ? oldRow.quantities : {};
-      const newQ = hasBreakdown ? ldQuantities : {};
-      const deltas = {};
-      new Set([...Object.keys(oldQ), ...Object.keys(newQ)]).forEach(pid => {
-        if (pid.startsWith('_agg_')) return; // synthetic aggregate keys never touch real inventory
-        const net = (Number(oldQ[pid]) || 0) - (Number(newQ[pid]) || 0); // add back old, subtract new
-        if (net) deltas[pid] = net;
-      });
-      if (Object.keys(deltas).length) await batchIncrementInventory2(deltas);
-
-      await sb.from('store_deliveries').update(data).eq('id', id);
-      showToast('Delivery updated ✓');
-    } else {
-      await sb.from('store_deliveries').insert(data);
-
-      // Deduct inventory in one batched call (was: sequential GET+PATCH per product).
-      if (hasBreakdown) {
-        const deltas = {};
-        Object.entries(ldQuantities).forEach(([pid, qty]) => { if (qty > 0) deltas[pid] = -qty; });
-        if (Object.keys(deltas).length) await batchIncrementInventory2(deltas);
-      }
-
-      // Create the Schedule job whenever ANY quantity was entered — whether via the per-product
-      // breakdown picker or the simple Large/Small/Dairy Free/Syrup boxes. Previously this only
-      // fired for the breakdown picker, so deliveries logged with the simple boxes never got a
-      // Schedule entry and therefore never got a WhatsApp delivery-note button.
-      if (hasAnyQty) {
-        const jobId = 'admin_del_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-        const itemsLabel = hasBreakdown
-          ? Object.entries(ldQuantities).filter(([,q])=>q>0).map(([pid,qty])=>`${qty} ${LD_PRODUCTS[pid]?.label||pid}`).join(', ')
-          : [large&&`${large} large`, small&&`${small} small`, dairyFree&&`${dairyFree} dairy free`, unfiltered&&`${unfiltered} unfiltered`, syrup&&`${syrup} syrup`].filter(Boolean).join(', ');
-        const schedJob = {
-          id: jobId,
-          type: 'delivery',
-          delivery_type: 'store',
-          store_name: store.name,
-          quantities: data.quantities,
-          planned_total: deliveryItemTotal,
-          date: deliveryDate,
-          time: null,
-          done: true,
-          needs_confirmation: false,
-          wa_needs_send: !!store.phone,
-          wa_sent_at: null,
-          billed: false,
-          paid: false,
-          label: `${store.name} — ${itemsLabel}`,
-          created_at: new Date().toISOString(),
-        };
-        await opsFetch('jobs', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(schedJob) });
-      }
-      showToast('Delivery logged ✓');
-    }
-    window.notifyGremierStockChanged?.();
+    if (!allStores.some(s => s.id===storeId)) throw new Error('Please select a store');
+    const counts = ldReadCounts();
+    const date = document.getElementById('ldDate').value;
+    if (!date) throw new Error('Please pick a date');
+    const extras = Object.fromEntries(Object.entries(ldExtraQuantities).map(([id,q])=>[id,GremierDelivery.count(q)]).filter(([,q])=>q>0));
+    if (!GremierDelivery.fields.some(k=>counts[k]>0) && !Object.keys(extras).length) throw new Error('Enter at least one delivered item');
+    const keepPrevious = ldEditingRow && GremierDelivery.matches(counts,ldEditingRow.quantities,LD_PRODUCTS);
+    const quantities = keepPrevious
+      ? {...Object.fromEntries(Object.entries(ldEditingRow.quantities||{}).filter(([id])=>id.startsWith('_agg_') || GremierDelivery.bucket(id,LD_PRODUCTS))),...extras}
+      : GremierDelivery.defaults(counts,LD_PRODUCTS,extras);
+    const d = {id:ldDraftId || (ldDraftId=crypto.randomUUID()),store_id:storeId,
+      qty_large:counts.large,qty_small:counts.small,qty_dairy_free:counts.dairyFree,qty_unfiltered:counts.unfiltered,qty_syrup:counts.syrup,
+      quantities,allocation_mode:keepPrevious?(ldEditingRow.allocation_mode||'custom'):'default',
+      notification_quantities:{...Object.fromEntries(GremierDelivery.fields.map(k=>['_agg_'+({dairyFree:'dairy_free'}[k]||k),counts[k]])),...extras},
+      delivery_date:date,notes:document.getElementById('ldNotes').value.trim()};
+    const {data,error} = await sb.rpc('save_counted_store_delivery',{d,expected_updated_at:ldEditingRow?.updated_at || null});
+    if (error) throw error;
+    ldEditingRow=data;
     closeLogDeliveryModal();
+    window.notifyGremierStockChanged?.();
+    window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+    showToast('Delivery saved ✓');
+    ldOfferAllocation(data);
     await loadStoreDeliveries();
-  } catch (err) {
-    console.error('saveDelivery failed:', err);
-    showToast('⚠ Could not save delivery: ' + (err.message || err));
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || 'Save Delivery'; }
-  }
+  } catch (err) { console.error('saveDelivery failed:',err); showToast('Could not save delivery: '+(err.message||err)); }
+  finally {btn.disabled=false;btn.textContent='Save Delivery';}
 }
 
 async function deleteDelivery() {
-  const id = document.getElementById('editDeliveryId').value;
-  if (!id || !confirm('Delete this delivery?')) return;
-  // reverse inventory if quantities were recorded
-  const { data: row } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
-  if (row?.quantities) {
-    for (const [pid, qty] of Object.entries(row.quantities)) {
-      if (qty > 0) {
-        const { data: inv } = await sb.from('inventory').select('qty').eq('product', pid).single();
-        if (inv) {
-          await sb.from('inventory').update({ qty: Math.max(0, (inv.qty || 0) + qty) }).eq('product', pid);
-        }
-      }
-    }
-  }
-  await sb.from('store_deliveries').delete().eq('id', id);
-  if (row?.quantities) window.notifyGremierStockChanged?.();
-  showToast('Delivery deleted');
-  closeLogDeliveryModal();
-  await loadStoreDeliveries();
+  const id=document.getElementById('editDeliveryId').value;
+  if (id) await deleteDeliveryById(id);
 }
-
 async function deleteDeliveryById(id) {
   if (!confirm('Delete this delivery?')) return;
-  // reverse inventory if quantities were recorded
-  const { data: row } = await sb.from('store_deliveries').select('quantities').eq('id', id).single();
-  if (row?.quantities) {
-    for (const [pid, qty] of Object.entries(row.quantities)) {
-      if (qty > 0) {
-        const { data: inv } = await sb.from('inventory').select('qty').eq('product', pid).single();
-        if (inv) {
-          await sb.from('inventory').update({ qty: Math.max(0, (inv.qty || 0) + qty) }).eq('product', pid);
-        }
-      }
-    }
-  }
-  await sb.from('store_deliveries').delete().eq('id', id);
-  if (row?.quantities) window.notifyGremierStockChanged?.();
-  showToast('Delivery deleted');
-  await loadStoreDeliveries();
+  try {
+    const {error}=await sb.rpc('delete_counted_store_delivery',{delivery_id:id});
+    if (error) throw error;
+    window.notifyGremierStockChanged?.();
+    window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+    closeLogDeliveryModal();
+    showToast('Delivery deleted');
+    await loadStoreDeliveries();
+  } catch (err) {showToast('Could not delete delivery: '+(err.message||err));}
 }
 
 function exportDeliveriesCSV() {
@@ -9260,7 +9252,7 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-react-1.js?v=9cb01b147a"></script>
+<script src="/admin-react-1.js?v=fee8f500bf"></script>
 <script src="/admin-react-2.js?v=431989f887"></script>
 
 <script src="/admin-react-3.js?v=dc90928d38"></script>

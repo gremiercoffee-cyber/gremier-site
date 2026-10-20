@@ -3443,6 +3443,22 @@ function ScheduleTab() {
   }
   async function handleDelete(job) {
     if (!window.confirm('Delete this job?')) return;
+    // Counted deliveries own their stock adjustment and linked notification as one transaction.
+    if (/^admin_del_[0-9a-f-]{36}$/i.test(job.id)) {
+      const {
+        error
+      } = await window.MAIN_SB.rpc('delete_counted_store_delivery', {
+        delivery_id: job.id.slice('admin_del_'.length)
+      });
+      if (error) {
+        showToast(error.message);
+        return;
+      }
+      window.notifyGremierStockChanged?.();
+      await loadStoreDeliveries();
+      await reload();
+      return;
+    }
     // A pending drain belongs to a brew that is still "brewing". Deleting only the drain left
     // that brew stuck in Brewing Now forever (and its beans used) — offer to cancel it too.
     const brewId = job.type === 'drain' && !job.done ? job.sourceBrewId || job.source_brew_id : null;
@@ -3597,6 +3613,10 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     if (mode === 'lognow' && created.length === 1) await handleCheckoff(created[0]);
   }
   function openEditJob(job) {
+    if (/^admin_del_[0-9a-f-]{36}$/i.test(job.id)) {
+      openEditDeliveryModal(job.id.slice('admin_del_'.length));
+      return;
+    }
     if (job.type !== 'delivery') {
       setRescheduleJob(job);
       return;

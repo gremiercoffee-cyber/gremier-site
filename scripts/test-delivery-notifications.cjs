@@ -49,32 +49,5 @@ for (const file of ['admin-src/react-1.jsx', 'admin-react-1.js']) {
   });
 }
 
-test('deliveries consisting only of products outside the billing categories still create a notification job', async () => {
-  const html = fs.readFileSync('admin.html', 'utf8');
-  const start = html.indexOf('async function saveDelivery()');
-  const end = html.indexOf('async function deleteDelivery()', start);
-  const nodes = {
-    editDeliveryId: { value: '' }, ldStore: { value: 'store-1' },
-    ldDate: { value: '2026-10-19' }, ldNotes: { value: '' },
-  };
-  const calls = [];
-  const ctx = {
-    document: { getElementById: id => nodes[id] },
-    allStores: [{ id: 'store-1', name: 'Test Store', phone: '0501234567' }],
-    ldQuantities: { jerry_can: 2, dispenser: 1 },
-    LD_PRODUCTS: { jerry_can: { label: 'Jerry Can' }, dispenser: { label: 'Dispenser' } },
-    ldGetAggregated: () => ({ large: 0, small: 0, dairyFree: 0, unfiltered: 0, syrup: 0 }),
-    sb: { from: () => ({ insert: async data => { calls.push({ table: 'store_deliveries', data }); return {}; } }) },
-    opsFetch: async (table, options) => { calls.push({ table, data: JSON.parse(options.body) }); },
-    batchIncrementInventory2: async () => {}, window: {},
-    showToast: () => {}, closeLogDeliveryModal: () => {}, loadStoreDeliveries: async () => {}, console,
-  };
-  vm.runInNewContext(html.slice(start, end), ctx);
-  await ctx.saveDelivery();
-  const job = calls.find(c => c.table === 'jobs')?.data;
-  assert.ok(job, 'Expected a schedule job for the WhatsApp notification');
-  assert.equal(job.planned_total, 3);
-  assert.equal(job.quantities.jerry_can, 2);
-  assert.equal(job.quantities.dispenser, 1);
-  assert.equal(job.wa_needs_send, true);
-});
+// Save flow and other-product-only deliveries: test-delivery-counts.cjs.
+// Atomic notification creation: test-delivery-transactions.sql (rollback-only).
