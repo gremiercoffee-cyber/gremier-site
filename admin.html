@@ -2423,8 +2423,12 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-  // Reopen the screen you were last on (phones reload backgrounded apps); Schedule on first use.
-  showTab(localStorage.getItem('gremier_admin_tab') || 'schedule');
+  // Open on Dashboard once per page load; later auth refreshes preserve the current screen.
+  if (!window.__gremierAdminStartupComplete) {
+    window.__gremierAdminStartupComplete=true;
+    const target=new URLSearchParams(location.search).get('finance');
+    showTab(target==='expenses'?'expenses':target==='receipts'?'finance':'dashboard');
+  }
   loadOrders();
   loadAllProducts();
   loadStores();
@@ -2497,7 +2501,7 @@ document.addEventListener('visibilitychange', () => {
 });
 async function signInAdmin() {
   localStorage.setItem('gremier_hub_mode', 'website');
-  localStorage.setItem('gremier_admin_tab', 'schedule');
+  localStorage.setItem('gremier_admin_tab', 'dashboard');
 
   await sb.auth.signInWithOAuth({
     provider: 'google',
@@ -6046,7 +6050,8 @@ async function confirmSchedule() {
   closeSchedModal();
 }
 function showTab(tab) {
-  if (!document.getElementById('tab-' + tab)) tab = localStorage.getItem('gremier_admin_tab') || 'schedule';
+  if (tab==='today') tab='dashboard';
+  if (!document.getElementById('tab-' + tab)) tab = 'dashboard';
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
   const activeTab = document.getElementById('tab-'+tab);
   if (activeTab) activeTab.style.display='block';
@@ -8499,6 +8504,7 @@ function renderDashboardRecentDeliveries(deliveries) {
 }
 
 function renderDashboardBottlesSold(orders, deliveries) {
+  if (window.GremierSales) { window.GremierSales.renderQuick(orders,deliveries,allProducts); return; }
   const wrap = document.getElementById('dashBottlesSold');
   if (!wrap) return;
 
@@ -9332,11 +9338,8 @@ window.opsFetch = window.opsFetch || (function () {
       <div id="hubSubs"><div class="hub-empty">Loading…</div></div>
     </div>`);
   const sideNav = document.getElementById('websiteNav');
-  sideNav?.insertAdjacentHTML('afterbegin', `<div class="nav-item" onclick="showTab('today')" id="nav-today"><span class="icon">☀️</span><span>Today</span></div>`);
   document.getElementById('nav-giftcards')?.insertAdjacentHTML('afterend', `<div class="nav-item" onclick="showTab('subscriptions')" id="nav-subscriptions"><span class="icon">🔁</span><span>Subscriptions</span></div>`);
-  // Bottom bar: Today replaces Dashboard (Dashboard moves into More).
-  const dashBtn = document.getElementById('tbar-dashboard');
-  if (dashBtn) { dashBtn.id = 'tbar-today'; dashBtn.setAttribute('onclick', "showTab('today')"); dashBtn.innerHTML = '<span class="tab-icon">☀️</span>Today'; }
+  // Dashboard remains in the bottom bar; Schedule covers today's operational work.
   const drawer = document.getElementById('navDrawer');
   const firstItem = drawer?.querySelector('.nav-drawer-item');
   firstItem?.insertAdjacentHTML('beforebegin', `<button class="nav-drawer-item" onclick="hubOpenSearch();closeNavDrawer()"><span>🔍</span>Search</button><button class="nav-drawer-item" onclick="showTab('dashboard');closeNavDrawer()"><span>📊</span>Dashboard</button><button class="nav-drawer-item" onclick="showTab('subscriptions');closeNavDrawer()"><span>🔁</span>Subscriptions</button>`);
@@ -9723,7 +9726,9 @@ window.opsFetch = window.opsFetch || (function () {
 <link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
 <script src="/admin-financials.js?v=20261020-2"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-1"/>
-<script src="/admin-finance.js?v=20261020-3"></script>
+<script src="/admin-finance.js?v=20261020-4"></script>
+<script src="/admin-sales.js?v=20261020-1"></script>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261020-1"/>
 <script src="/admin-receipts.js?v=20261019-1"></script>
 </body>
 </html>

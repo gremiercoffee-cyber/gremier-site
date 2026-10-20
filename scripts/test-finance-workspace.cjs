@@ -4,6 +4,7 @@ const {customerFields,normalizeManualInput,manualPayload}=require('../supabase/f
 const {resultDocument}=require('../supabase/functions/_shared/finbot-receipt-model.ts');
 const id='12345678-1234-1234-1234-123456789abc',cid='22345678-1234-1234-1234-123456789abc',bid='32345678-1234-1234-1234-123456789abc',sid='42345678-1234-1234-1234-123456789abc';
 const base=()=>({id,customer_id:cid,amount:'123.45',payment_date:'2026-10-20',payment_method:'bank_transfer',description:'Fixture payment',email_requested:false,billing_ids:[],billed_total_minor:null});
+const checkDetails=()=>({bank_code:'12',branch:'345',account:'12345678',check_number:'123456',check_date:'2026-11-15'});
 test('manual receipts preserve exact cash/bank payments; optional contact data; tax ID',()=>{
  const input=normalizeManualInput(base(),new Date('2026-10-20T10:00Z')),customer=customerFields({name:'Fixture synagogue',tax_id:'123456789'}),p=manualPayload(input,customer,new Date('2026-10-20T10:00Z'));
  assert.equal(p.type,'1');assert.equal(p.vatType,false);assert.equal(p.payments[0].type,'1');assert.equal(p.payments[0].sum,123.45);assert.equal(p.items[0].price,123.45);
@@ -12,6 +13,23 @@ test('manual receipts preserve exact cash/bank payments; optional contact data; 
  assert.throws(()=>manualPayload({...input,email_requested:true},customer));
  for(const change of [{amount:'0'},{amount:'12.345'},{payment_method:'payme'},{payment_date:'2026-02-30'},{payment_date:'2099-01-01'},{billing_ids:[bid,bid],billed_total_minor:100},{billing_ids:[bid],billed_total_minor:null}])assert.throws(()=>normalizeManualInput({...base(),...change},new Date('2026-10-20T10:00Z')));
  assert.throws(()=>customerFields({name:'Fixture',tax_id:'123'}));assert.throws(()=>customerFields({name:'Fixture',phone:'bad'}));
+});
+test('check and Bit use FinBot types 3 and 8, with complete check data and separate dates',()=>{
+ const input=normalizeManualInput({...base(),payment_method:'check',payment_details:checkDetails(),payment_reference:'customer ref'},new Date('2026-10-20T10:00Z'));
+ const p=manualPayload(input,{name:'Fixture business',address:'Example street 1',phone:'050-1234567',tax_id:'123456789'},new Date('2026-10-20T10:00Z'));
+ assert.deepEqual(p.payments[0],{type:'3',date:'15/11/2026',sum:123.45,bankName:12,bankBranch:345,bankAccount:12345678,checkNumber:123456,transactionNumber:'customer ref'});
+ assert.equal(p.date,'20/10/2026');assert.equal(input.payment_date,'2026-10-20');assert.equal(p.customer.address,'Example street 1');assert.equal(p.customer.phone,'0501234567');
+ const bit=normalizeManualInput({...base(),payment_method:'bit',payment_details:checkDetails(),payment_reference:'BIT-123'},new Date('2026-10-20T10:00Z'));
+ const payment=manualPayload(bit,{name:'Fixture'}).payments[0];assert.equal(payment.type,'8');assert.equal(payment.transactionNumber,'BIT-123');assert.equal(payment.checkNumber,undefined);assert.deepEqual(bit.payment_details,{});
+});
+test('missing or invalid check information, oversize amounts and silent truncation are rejected',()=>{
+ for(const key of Object.keys(checkDetails())){
+  const details=checkDetails();delete details[key];assert.throws(()=>normalizeManualInput({...base(),payment_method:'check',payment_details:details},new Date('2026-10-20T10:00Z')));
+ }
+ for(const change of [{account:'12345678901234567890'},{bank_code:'bank'},{check_date:'2026-02-30'}])assert.throws(()=>normalizeManualInput({...base(),payment_method:'check',payment_details:{...checkDetails(),...change}},new Date('2026-10-20T10:00Z')));
+ assert.throws(()=>normalizeManualInput({...base(),payment_reference:'a'.repeat(41)},new Date('2026-10-20T10:00Z')));
+ assert.throws(()=>normalizeManualInput({...base(),amount:'10000000'},new Date('2026-10-20T10:00Z')));
+ assert.throws(()=>customerFields({name:'Fixture',address:'a'.repeat(101)}));
 });
 function service(mode='ok',store=false){
  const rows=new Map(),calls=[],customer={id:cid,name:'Fixture customer',email:'',phone:'',tax_id:'',store_id:store?sid:null,updated_at:mode==='customer_changed'?'2026-10-20T12:00:00Z':''};let handler;
@@ -31,6 +49,19 @@ function service(mode='ok',store=false){
  return {rows,calls,request:async body=>{const response=await handler(new Request('https://fixture.test',{method:'POST',body:JSON.stringify(body)}));return {status:response.status,body:await response.json()};}};
 }
 test('preview never calls FinBot and requires existing customer data',async()=>{const s=service();const r=await s.request({...base(),action:'preview'});assert.equal(r.body.creates_document,false);assert.equal(s.calls.length,0);assert.equal(s.rows.size,0);});
+test('check validation fails before claiming or contacting FinBot; issued check details are retained',async()=>{
+ const s=service();assert.equal((await s.request({...base(),action:'issue',payment_method:'check',payment_received:true,not_already_receipted:true})).status,400);assert.equal(s.calls.length,0);assert.equal(s.rows.size,0);
+ const body={...base(),action:'issue',payment_method:'check',payment_details:checkDetails(),payment_received:true,not_already_receipted:true};
+ const result=await s.request(body);assert.equal(result.body.receipt.status,'issued');assert.equal(s.rows.get(id).payment_details.check_number,'123456');
+ assert.equal(JSON.parse(s.calls[0].options.body).payments[0].type,'3');
+ assert.equal((await s.request({...body,payment_details:{...checkDetails(),check_number:'999'}})).status,400);assert.equal(s.calls.length,1);
+});
+test('receipt review shows all customer and payment details and escapes untrusted names',()=>{
+ const code=fs.readFileSync('admin-finance.js','utf8'),ctx={esc:s=>String(s??'').replaceAll('<','&lt;'),money:n=>'ILS '+n/100,today:()=> '2026-10-20'};
+ vm.runInNewContext(code.slice(code.indexOf('function receiptReviewDetails('),code.indexOf('async function review()',code.indexOf('function receiptReviewDetails('))),ctx);
+ const text=ctx.receiptReviewDetails({...base(),amount_minor:12345,payment_method:'check',payment_details:checkDetails(),customer:{name:'<Fixture>',tax_id:'123456789',phone:'0501234567',address:'Example street 1',email:'example@example.test'},bills:[],email_requested:true});
+ for(const value of ['&lt;Fixture>','123456789','0501234567','Example street 1','example@example.test','12345678','123456','2026-11-15'])assert.ok(text.includes(value));assert.ok(!text.includes('<Fixture>'));
+});
 test('admin-only issuance and explicit payment confirmation',async()=>{assert.equal((await service('denied').request({...base(),action:'issue'})).status,403);const s=service();assert.equal((await s.request({...base(),action:'issue'})).status,400);assert.equal(s.calls.length,0);});
 test('a customer edited after review must be previewed again before any issuance or email',async()=>{const s=service('customer_changed');const r=await s.request({...base(),action:'issue',payment_received:true,not_already_receipted:true});assert.equal(r.body.error,'customer_changed_refresh_preview');assert.equal(s.calls.length,0);assert.equal(s.rows.size,0);});
 test('successful issuance stores original PDF and replays cannot create another receipt',async()=>{const s=service(),body={...base(),action:'issue',payment_received:true,not_already_receipted:true};const first=await s.request(body);assert.equal(first.body.receipt.status,'issued');assert.equal(first.body.receipt.pdf_path,`business/${id}/receipt.pdf`);assert.equal(s.calls.length,1);assert.equal((await s.request(body)).body.already_claimed,true);assert.equal(s.calls.length,1);assert.equal((await s.request({...body,amount:150})).status,400);});

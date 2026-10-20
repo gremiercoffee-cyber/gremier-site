@@ -206,7 +206,7 @@ export function buildCustomerReceiptText(order: {
 
     "— Gremier Coffee Co.",
 
-    "https://gremier-site.vercel.app",
+    "https://gremiercoffee.co.il",
 
   ].filter((line) => line !== null).join("\n");
 
@@ -233,7 +233,7 @@ export function buildFulfillmentEmailText(order: {
     "Thank you for choosing Gremier Coffee. Enjoy!",
     "",
     "— Gremier Coffee Co.",
-    "https://gremier-site.vercel.app",
+    "https://gremiercoffee.co.il",
   ].filter((line) => line !== null).join("\n");
   return { subject, text };
 }

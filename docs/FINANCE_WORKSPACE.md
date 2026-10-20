@@ -10,7 +10,7 @@ issued document's saved customer snapshot.
 
 The Store Deliveries view links to receipt issuance. For a store payment, select
 outstanding months, enter the amount actually received, actual payment date and
-cash/bank-transfer method. A differing amount requires an adjustment reason.
+cash/bank-transfer/check/Bit method. A differing amount requires an adjustment reason.
 This flow settles the selected statements **in full** at the agreed actual amount;
 it does not implement partial-balance allocations. Original statement values and
 the actual amount/reason are preserved in the receipt audit record.
@@ -26,6 +26,28 @@ documented API names. Customer email is deliberately omitted from the provider
 payload; the existing Resend service sends the downloaded original PDF once with
 a receipt-specific idempotency key. History shows delivery errors separately from
 issuance. PDF recovery/email retry never calls the document-creation endpoint.
+
+Check uses FinBot payment type `3`, with required payer bank number, branch,
+account number, check number and check date. The date the check was received is
+stored separately from the date printed on it. Bit uses payment type `8` and an
+optional transaction reference. Payment details are included in the immutable
+request hash and stored alongside the receipt; changing them after a claim cannot
+issue a second document. Unsupported numeric lengths and overlong references are
+rejected before claiming, rather than silently truncated.
+
+The receipt form has a prominent **Add new customer** button and **Edit selected
+customer** action. Saving a customer selects it for the receipt. Phone remains
+optional. Selected customer information and the final review display the official
+name, tax ID, address, phone, amount, payment dates, method, reference and any check
+details. Issuing-business details and official numbering remain managed by FinBot.
+
+Paid-order confirmation and fulfillment templates link to
+`https://gremiercoffee.co.il`. The current confirmation remains plain text with
+the original official PDF attachment when available; no new receipt is created
+just to preview the template. Automation remains enabled for eligible new paid
+online orders, excluding previously agreed gift-card redemptions. Receipt/provider
+failures can leave a confirmation without the PDF and require admin review; an
+email notification timestamp alone does not prove inbox delivery.
 
 `business_receipts` is immutable from the browser. Server-only RPCs commit a unique
 request claim and uniquely claim each store billing ID **before** contacting
