@@ -92,7 +92,7 @@
     else set('dashBottlesSold',empty('Product totals unavailable until both sales sources load.'));
     el('dashUpdated').textContent=errors.length ? `Some data couldn’t load (${errors.join(', ')}). Affected values show Unavailable. Try Refresh.` : `Updated ${new Date().toLocaleTimeString('en-IL',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})}`;
     el('dashUpdated').classList.toggle('dash-error',errors.length>0);
-    if(data.orders!==null)root.GremierRevenue?.dashboardOnline(data.orders,m.range);
+    if(data.orders!==null)root.GremierRevenue?.dashboardOnline(data.orders,m.range,data.purposes||[],m.store);
   }
   api.render=render;
   let request=0;
@@ -136,7 +136,8 @@
         deliveries:()=>client.from('store_deliveries').select('*').gte('delivery_date',r.start).lt('delivery_date',r.end).order('delivery_date',{ascending:false}).order('id'),
         stores:()=>client.from('stores').select('id,name,price_large,price_small,price_dairy_free,price_unfiltered,price_syrup').order('id'),
         bills:()=>client.from('store_billing').select('id,total,billed_at,paid_at,cancelled_at').is('paid_at',null).is('cancelled_at',null).order('id'),
-        jobs:()=>client.from('jobs').select('id,date,done').eq('done',false).lte('date',r.today).order('id')
+        jobs:()=>client.from('jobs').select('id,date,done').eq('done',false).lte('date',r.today).order('id'),
+        purposes:()=>client.from('revenue_classification_overrides').select('source_key,category').order('source_key')
       };
       const keys=Object.keys(sources), results=await Promise.allSettled(keys.map(key=>pages(sources[key])));
       if (token!==request) return;

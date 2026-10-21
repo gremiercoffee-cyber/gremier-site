@@ -82,7 +82,7 @@ test('a new dashboard instance paints its scoped cache synchronously and retains
 });
 test('cache never crosses a period or signed-in user, and overlapping refreshes share one fetch',async()=>{
  const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
- const next=loaderHarness({});next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-b';const pending=next.root.loadDashboard();assert.doesNotMatch(next.nodes.get('dashKPIs').innerHTML,/100|Unavailable/);assert.strictEqual(next.root.loadDashboard(),pending);await pending;assert.equal(next.calls.length,6);
+ const next=loaderHarness({});next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-b';const pending=next.root.loadDashboard();assert.doesNotMatch(next.nodes.get('dashKPIs').innerHTML,/100|Unavailable/);assert.strictEqual(next.root.loadDashboard(),pending);await pending;assert.equal(next.calls.length,7);
  next.nodes.get('dashPeriod').value='year';const changed=next.root.loadDashboard();assert.match(next.nodes.get('dashKPIs').innerHTML,/dash-skeleton/);await changed;
  next.root.GremierDashboard.clearCache();assert.equal(Object.keys(cache).filter(k=>k.startsWith('gremier_dash_v2:')).length,0);
 });

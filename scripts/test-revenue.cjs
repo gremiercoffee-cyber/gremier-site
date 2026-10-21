@@ -31,3 +31,15 @@ test('draft and failed manual receipts are excluded; a linked store stays a stor
  const d=base();d.businessReceipts=['issued','issuing','needs_review'].map((status,i)=>({id:String(i),status,store_id:'s',amount_minor:90000,payment_date:'2026-10-01',customer_snapshot:{name:'Unrelated name'}}));
  const rows=m.receipts(d);assert.equal(rows.length,1);assert.equal(rows[0].parts.stores,90000);
 });
+test('online personal orders never use the amount rule; group bulk orders and ambiguous bulk differ',()=>{
+ const bulk=[{id:'jerry',category:'bulk'}],items=[{product_id:'jerry',price:400,qty:2}];
+ assert.equal(m.splitOrder({...order,total:800,items:[{product_id:'coffee',price:400,qty:2}]},products).coffee,80000);
+ assert.equal(m.splitOrder({...order,total:800,customer_name:'Example Shul',items},bulk).coffee_bar,80000);
+ assert.equal(m.splitOrder({...order,total:800,customer_name:'Individual customer',items},bulk).unclassified,80000);
+ assert.equal(m.splitOrder({...order,total:800,items},bulk,'coffee').coffee,80000);
+ assert.equal(m.splitOrder({...order,total:800,items},bulk,'coffee_bar').coffee_bar,80000);
+});
+test('reviewed order purpose carries into linked receipts without using their price',()=>{
+ const d=base();d.overrides=[{source_key:'order-purpose:o',category:'coffee'}];d.orderReceipts=[{order_id:'o',document_reference:'3',status:'issued',payment_date:'2026-10-02',amount_minor:45000}];
+ const row=m.receipts(d)[0];assert.equal(row.parts.coffee,45000);assert.equal(row.parts.coffee_bar,0);assert.equal(row.basis,'Reviewed order purpose');assert.equal(row.estimated,false);
+});
