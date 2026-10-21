@@ -66,3 +66,21 @@ test('verified first payment and renewal each fulfill once; duplicate callbacks 
  context.verified={subscriptionId:'parent',paid:false,status:1,paymentDate:'2026-12-21'};r=await notice();assert.equal(r.status,403);assert.equal(children.length,1);
  context.verified=null;r=await notice();assert.equal(r.status,503);assert.equal(fulfilled.length,2);
 });
+const html=fs.readFileSync('index.html','utf8');
+function drawerFunctions(){const scripts=[...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)].filter(x=>!x[1].includes('application/json')).map(x=>x[2]).join('\n');const ast=ts.createSourceFile('storefront.js',scripts,ts.ScriptTarget.Latest,true);const names=new Set(['isSubscriptionProduct','getSubscriptionBundleConfig','getSubscriptionBundleProducts','getSubscriptionSelection','pdGetSubscriptionTotal','pdSetSubscriptionInterval','pdToggleSubscriptionItem','pdChangeSubscriptionItemQty','escHtml','escAttr','pdIsSubscription','pdSubscriptionQuote','pdSetSubscribe','pdSubscriptionMessage','renderPdSubscriptionItem','renderPdSubscriptionSection','pdAddToCart']);return ast.statements.filter(n=>ts.isFunctionDeclaration(n)&&names.has(n.name?.text)).map(n=>n.getText(ast)).join('\n');}
+test('subscription drawer shows main product first with thumbnails and preserves quantities in the cart',()=>{
+ const section={innerHTML:'',style:{},querySelector:()=>({scrollTop:0})};const qtyLabel={textContent:''},qtyControl={style:{}};
+ const context=vm.createContext({products:products.map(p=>({...p,images:['https://example.test/'+p.id+'.jpg']})),pdCurrentProduct:{...products[0],images:['https://example.test/coffee.jpg']},pdSubscriptionItems:{coffee:{selected:true,qty:1}},pdSubscriptionInterval:'monthly',pdSubscribe:false,pdQty:3,pdSubArea:'',pdSelectedVariations:{},pdSelectedPrice:null,cart:[],appPage:'shop',lang:'en',deliveryZones:[],deliveryDefaults:{default_regular_price:29},GremierSubscriptionModel:m,document:{getElementById:id=>id==='pdQty'?qtyLabel:section,querySelector:()=>qtyControl,querySelectorAll:()=>[]},cloudinaryOptimize:url=>url,pdUpdateDrawerPrice(){},pdGetVariationSuffix:()=>'',pdGetAddonSuffix:()=>'',pdGetSelectedAddons:()=>[],updateCartCount(){},showToast(){},closeProductDrawer(){},openCartUI(){},navReplace(){},alert:msg=>{throw Error(msg);}});
+ vm.runInContext(drawerFunctions(),context);vm.runInContext('pdSetSubscribe(true)',context);
+ assert.equal(context.pdSubscriptionItems.coffee.qty,3);
+ assert.match(section.innerHTML,/sub-main-product/);assert.match(section.innerHTML,/sub-choice-image/);
+ assert.equal((section.innerHTML.match(/data-sub-product="coffee"/g)||[]).length,1);
+ assert.ok(section.innerHTML.indexOf('data-sub-product="coffee"')<section.innerHTML.indexOf('What else'));
+ vm.runInContext("pdChangeSubscriptionItemQty('coffee',1);pdChangeSubscriptionItemQty('syrup',1)",context);
+ assert.equal(context.pdSubscriptionItems.coffee.qty,4);assert.equal(context.pdSubscriptionItems.syrup.qty,2);
+ vm.runInContext('pdAddToCart()',context);
+ assert.equal(context.cart.length,1);assert.equal(context.cart[0].qty,1);assert.equal(context.cart[0].price,294.4);
+ assert.deepEqual(JSON.parse(JSON.stringify(context.cart[0].subscription_items.map(i=>({id:i.product_id,qty:i.qty})))),[{id:'coffee',qty:4},{id:'syrup',qty:2}]);
+ vm.runInContext("pdChangeSubscriptionItemQty('coffee',100)",context);assert.equal(context.pdSubscriptionItems.coffee.qty,20);
+ vm.runInContext("pdChangeSubscriptionItemQty('coffee',-100)",context);assert.equal(context.pdSubscriptionItems.coffee.qty,1);
+});

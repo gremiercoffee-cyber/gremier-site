@@ -733,7 +733,7 @@
   /* Preview badge */
 </style>
 
-<link rel="stylesheet" href="/subscriptions.css?v=20261021-1"/>
+<link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 </head>
 <body>
@@ -2098,7 +2098,10 @@ function escHtml(s) {
 function pdIsSubscription() { return pdSubscribe || isSubscriptionProduct(pdCurrentProduct); }
 function pdSubscriptionQuote() { return GremierSubscriptionModel.quote(getSubscriptionSelection(), products); }
 function pdSetSubscribe(on) {
-  pdSubscribe=on;pdQty=1;
+  if(on&&!pdSubscribe&&!isSubscriptionProduct(pdCurrentProduct))pdSubscriptionItems[pdCurrentProduct.id]={selected:true,qty:Math.min(20,pdQty)};
+  if(!on)pdQty=pdSubscriptionItems[pdCurrentProduct.id]?.qty||1;
+  pdSubscribe=on;
+  document.getElementById('pdQty').textContent=pdQty;
   document.querySelector('.pd-qty').style.display=on?'none':'flex';
   renderPdSubscriptionSection(pdCurrentProduct,true);pdUpdateDrawerPrice();
 }
@@ -2111,8 +2114,15 @@ function pdSubscriptionMessage(quote) {
   const remaining=threshold?Math.max(0,threshold-quote.regular):0;
   return lang==='he'?`משלוח רגיל ₪${fee} בכל חיוב.${remaining?` הוסיפו ₪${remaining.toFixed(2)} לפני ההנחה למשלוח חינם.`:''}`:`Regular delivery ₪${fee} each cycle.${remaining?` Add ₪${remaining.toFixed(2)} before discount for free delivery.`:''}`;
 }
+function renderPdSubscriptionItem(item,main=false) {
+ const state=pdSubscriptionItems[item.id]||{selected:false,qty:1};
+ const name=lang==='he'?(item.name_he||item.name_en):item.name_en;
+ const price=GremierSubscriptionModel.syrup(item)?Number(item.price):Math.round(Number(item.price)*90)/100;
+ const image=item.images?.[0];
+ return `<div class="sub-choice ${main?'sub-choice-main':''}" data-sub-product="${escAttr(item.id)}"><label>${main?'':`<input type="checkbox" aria-label="${escAttr(name)}" ${state.selected?'checked':''} onchange="pdToggleSubscriptionItem('${escAttr(item.id)}')">`}${image?`<img class="sub-choice-image" src="${escAttr(cloudinaryOptimize(image,100))}" alt="" loading="lazy">`:'<span class="sub-choice-image sub-choice-placeholder" aria-hidden="true">☕</span>'}<span class="sub-choice-copy"><span>${escHtml(name)}</span><small>₪${price.toFixed(2)}</small></span></label><div class="sub-item-qty" role="group" aria-label="${escAttr(name)} quantity"><button type="button" aria-label="Less ${escAttr(item.name_en)}" ${state.qty<=1?'disabled':''} onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',-1)">−</button><span aria-live="polite">${state.qty}</span><button type="button" aria-label="More ${escAttr(item.name_en)}" ${state.qty>=20?'disabled':''} onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',1)">+</button></div></div>`;
+}
 function renderPdSubscriptionSection(p,keepState) {
- const section=document.getElementById('pdSubscriptionSection'),eligible=GremierSubscriptionModel.eligible(p)||isSubscriptionProduct(p);
+ const section=document.getElementById('pdSubscriptionSection'),listScroll=keepState?(section.querySelector('.sub-choices')?.scrollTop||0):0,eligible=GremierSubscriptionModel.eligible(p)||isSubscriptionProduct(p);
  if(!eligible){section.innerHTML='';section.style.display='none';return;}
  if(!keepState){pdSubscribe=isSubscriptionProduct(p);pdSubscriptionInterval='monthly';pdSubscriptionItems={};pdSubArea='';if(!isSubscriptionProduct(p))pdSubscriptionItems[p.id]={selected:true,qty:1};}
  const syrup=GremierSubscriptionModel.syrup(p),label=lang==='he'?(syrup?'מנוי':'מנוי וחיסכון של 10%'):(syrup?'Subscribe':'Subscribe & save 10%');
@@ -2120,8 +2130,12 @@ function renderPdSubscriptionSection(p,keepState) {
  const mode=`<div class="subscription-modes"><label><input type="radio" name="pdPurchaseMode" ${!pdIsSubscription()?'checked':''} onchange="pdSetSubscribe(false)">${lang==='he'?'רכישה חד פעמית':'One-time purchase'}</label><label><input type="radio" name="pdPurchaseMode" ${pdIsSubscription()?'checked':''} onchange="pdSetSubscribe(true)">${label}</label></div>`;
  if(!pdIsSubscription()){section.innerHTML=mode;return;}
  let quote,error;try{quote=pdSubscriptionQuote();}catch(e){error=lang==='he'?'יש להוסיף קפה למנוי.':'Add coffee to your subscription.';}
- const rows=getSubscriptionBundleProducts(p).map(item=>{const state=pdSubscriptionItems[item.id]||{selected:false,qty:1};return `<div class="sub-choice"><label><input type="checkbox" ${state.selected?'checked':''} onchange="pdToggleSubscriptionItem('${escAttr(item.id)}')">${escHtml(lang==='he'?(item.name_he||item.name_en):item.name_en)}<small>₪${GremierSubscriptionModel.syrup(item)?Number(item.price):Math.round(Number(item.price)*90)/100}</small></label><div class="sub-item-qty"><button type="button" aria-label="Less ${escAttr(item.name_en)}" onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',-1)">−</button><span>${state.qty}</span><button type="button" aria-label="More ${escAttr(item.name_en)}" onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',1)">+</button></div></div>`;}).join('');
- section.innerHTML=mode+`<label class="sub-frequency-label">${lang==='he'?'תדירות':'Frequency'}<select aria-label="${lang==='he'?'תדירות':'Subscription frequency'}" onchange="pdSetSubscriptionInterval(this.value);pdUpdateDrawerPrice()"><option value="monthly" ${pdSubscriptionInterval==='monthly'?'selected':''}>${lang==='he'?'כל חודש':'Monthly'}</option><option value="weekly" ${pdSubscriptionInterval==='weekly'?'selected':''}>${lang==='he'?'כל שבוע':'Weekly'}</option></select></label><h4>${lang==='he'?'מה עוד להוסיף למנוי?':'What else would you like to add?'}</h4><div class="sub-choices">${rows}</div><label class="sub-frequency-label">${lang==='he'?'אזור משלוח':'Delivery area'}<select aria-label="${lang==='he'?'אזור משלוח':'Subscription delivery area'}" onchange="pdSubArea=this.value;renderPdSubscriptionSection(pdCurrentProduct,true)"><option value="">${lang==='he'?'בחירת אזור':'Choose area'}</option>${deliveryZones.map(z=>`<option value="${escAttr(z.id)}" ${pdSubArea===z.id?'selected':''}>${escHtml(lang==='he'?z.name_he||z.name_en:z.name_en)}</option>`).join('')}<option value="other" ${pdSubArea==='other'?'selected':''}>${lang==='he'?'אזור אחר':'Other area'}</option></select></label><p class="sub-readiness ${quote?.deliveryEligible?'ready':'pickup'}" role="status">${error||pdSubscriptionMessage(quote)}</p><small>${lang==='he'?'10% הנחה על הקפה. סירופים במחיר רגיל ועם קפה בלבד. חיוב מתחדש עד לביטול; משלוח בכל חיוב.':'10% off coffee. Syrups stay full price and require coffee. Recurring billing until cancelled; delivery is charged each cycle.'}</small>`;
+ const bundleProducts=getSubscriptionBundleProducts(p);
+ const mainProduct=!isSubscriptionProduct(p)?bundleProducts.find(item=>String(item.id)===String(p.id)):null;
+ const mainRow=mainProduct?`<div class="sub-main-product" aria-label="${lang==='he'?'המוצר שלכם':'Your product'}">${renderPdSubscriptionItem(mainProduct,true)}</div>`:'';
+ const rows=bundleProducts.filter(item=>!mainProduct||String(item.id)!==String(mainProduct.id)).map(item=>renderPdSubscriptionItem(item)).join('');
+ section.innerHTML=mode+mainRow+`<label class="sub-frequency-label">${lang==='he'?'תדירות':'Frequency'}<select aria-label="${lang==='he'?'תדירות':'Subscription frequency'}" onchange="pdSetSubscriptionInterval(this.value);pdUpdateDrawerPrice()"><option value="monthly" ${pdSubscriptionInterval==='monthly'?'selected':''}>${lang==='he'?'כל חודש':'Monthly'}</option><option value="weekly" ${pdSubscriptionInterval==='weekly'?'selected':''}>${lang==='he'?'כל שבוע':'Weekly'}</option></select></label><h4>${lang==='he'?'מה עוד להוסיף למנוי?':'What else would you like to add?'}</h4><div class="sub-choices">${rows}</div><label class="sub-frequency-label">${lang==='he'?'אזור משלוח':'Delivery area'}<select aria-label="${lang==='he'?'אזור משלוח':'Subscription delivery area'}" onchange="pdSubArea=this.value;renderPdSubscriptionSection(pdCurrentProduct,true)"><option value="">${lang==='he'?'בחירת אזור':'Choose area'}</option>${deliveryZones.map(z=>`<option value="${escAttr(z.id)}" ${pdSubArea===z.id?'selected':''}>${escHtml(lang==='he'?z.name_he||z.name_en:z.name_en)}</option>`).join('')}<option value="other" ${pdSubArea==='other'?'selected':''}>${lang==='he'?'אזור אחר':'Other area'}</option></select></label><p class="sub-readiness ${quote?.deliveryEligible?'ready':'pickup'}" role="status">${error||pdSubscriptionMessage(quote)}</p><small>${lang==='he'?'10% הנחה על הקפה. סירופים במחיר רגיל ועם קפה בלבד. חיוב מתחדש עד לביטול; משלוח בכל חיוב.':'10% off coffee. Syrups stay full price and require coffee. Recurring billing until cancelled; delivery is charged each cycle.'}</small>`;
+ section.querySelector('.sub-choices').scrollTop=listScroll;
 }
 
 function escAttr(s) {
