@@ -31,7 +31,10 @@
   const filters=document.createElement('div');filters.id='billingDocumentFilters';filters.hidden=true;
   filters.innerHTML='<div class="sales-controls"><label>Search all time<input id="billingDocumentSearch" class="form-input" type="search" placeholder="Store, month, receipt number…"></label><label>Store<select class="form-input" id="billingDocumentStore"><option value="">All stores</option></select></label><label>Documents<select class="form-input" id="billingDocumentType"><option value="">All documents</option><option value="statement">חשבונות עסקה</option><option value="receipt">Receipts · קבלות</option></select></label></div><p id="billingDocumentStatus" class="sales-note" role="status"></p>';
   get('sdBillingBody').before(filters);
-  ['billingDocumentSearch','billingDocumentStore','billingDocumentType'].forEach(id=>get(id).addEventListener(id.endsWith('Search')?'input':'change',render));
+  ['billingDocumentSearch','billingDocumentStore','billingDocumentType'].forEach(id=>get(id).addEventListener(id.endsWith('Search')?'input':'change',()=>{
+   if(id==='billingDocumentStore'&&typeof billFocusStore!=='undefined'){billFocusStore=get(id).value;root.renderBillStoreChips?.();}
+   render();
+  }));
  }
  async function pages(table,columns){
   const out=[];for(let start=0;start<100000;start+=1000){const r=await client().from(table).select(columns).order('id').range(start,start+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load store documents. Try again.');out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Document limit reached.');
@@ -48,7 +51,7 @@
  };
  function render(){
   const shown=search(rows,{store:get('billingDocumentStore').value,query:get('billingDocumentSearch').value,type:get('billingDocumentType').value});
-  get('billingDocumentStatus').textContent=`${shown.length} documents · all time`;
+  get('billingDocumentStatus').textContent=`${shown.length} document${shown.length===1?'':'s'} · all time`;
   get('sdBillingBody').innerHTML=shown.map(r=>`<article class="card billing-document"><div><h4>${esc(r.name)}</h4><p>${esc(r.date)} · ${money(r.amount_minor)}</p></div><div class="fw-actions"><button class="btn btn-outline btn-sm" data-document-open="${esc(r.kind+':'+r.id)}">Open</button><button class="btn btn-outline btn-sm" data-document-download="${esc(r.kind+':'+r.id)}">Download</button></div></article>`).join('')||'<div class="empty-state">No saved documents match this search.</div>';
   get('sdBillingBody').querySelectorAll('[data-document-open],[data-document-download]').forEach(button=>button.onclick=()=>open(button,!!button.dataset.documentDownload));
  }
