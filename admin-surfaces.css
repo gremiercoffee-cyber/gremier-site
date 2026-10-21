@@ -44,6 +44,34 @@
 @media(max-width:1050px){.sales-period{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-remove{grid-column:2}.sales-quick{grid-template-columns:1fr}}
 @media(max-width:650px){.sales-panel{padding:16px}.sales-controls{grid-template-columns:1fr}.sales-period{padding:12px;gap:12px}.sales-bar-row{grid-template-columns:1fr 2fr auto}.sales-table th:first-child{min-width:160px}}
 @media(max-width:360px){.tab-bar-btn{font-size:7px;letter-spacing:0;padding-left:2px;padding-right:2px}}
+/* Review controls must fit the phone; comparison periods become labelled tiles. */
+#tab-reports .table-wrap{overflow-x:auto;overscroll-behavior-x:contain}
+.review-mobile-label{display:none}
+@media(max-width:650px){
+ #tab-reports .sales-panel,#tab-reports .sales-help,#revenueResults{min-width:0;max-width:100%;box-sizing:border-box}
+ #tab-reports :is(.revenue-review,.sales-comparison){overflow:visible}
+ #tab-reports :is(.revenue-review,.sales-comparison) table{display:block;min-width:0;width:100%}
+ #tab-reports :is(.revenue-review,.sales-comparison) thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ #tab-reports :is(.revenue-review,.sales-comparison) tbody{display:grid;gap:12px;width:100%}
+ #tab-reports :is(.revenue-review,.sales-comparison) tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:14px;background:#fff;border:1px solid #d9dde3;border-radius:12px;font-weight:400;box-shadow:0 3px 10px rgba(28,38,52,.04)}
+ #tab-reports :is(.revenue-review,.sales-comparison) :is(td,th){display:block;min-width:0;max-width:100%;padding:0;border:0;overflow:visible;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;background:transparent}
+ #tab-reports .revenue-review .review-customer{grid-column:1;grid-row:1;font-weight:600;line-height:1.5}
+ #tab-reports .revenue-review .review-amount{grid-column:2;grid-row:1;white-space:nowrap;font-weight:600}
+ #tab-reports .revenue-review .review-date{grid-column:1/-1;font-size:.72rem;color:#515b68}
+ #tab-reports .revenue-review .review-purpose{grid-column:1/-1}
+ #tab-reports .revenue-review select{width:100%;min-width:0;max-width:100%;box-sizing:border-box;margin:5px 0 0;background:#f8f9fb}
+ #tab-reports .revenue-review .review-basis{grid-column:1/-1;font-size:.72rem;color:#515b68}
+ .review-mobile-label{display:block;font-size:.7rem;color:#515b68}
+ #tab-reports .sales-comparison tbody tr{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #tab-reports .sales-comparison tbody th{grid-column:1/-1;font-weight:600;padding-bottom:6px}
+ #tab-reports .sales-comparison td{padding:10px;background:#f5f7f8;border-radius:8px}
+ #tab-reports .sales-comparison td:before{content:attr(data-period);display:block;font-size:.68rem;color:#515b68;margin-bottom:10px;line-height:1.5}
+ #tab-reports .sales-comparison td[colspan]{grid-column:1/-1}
+ #tab-reports .sales-comparison td[colspan]:before{display:none}
+ #tab-reports .sales-group-total{min-width:0;flex-wrap:wrap;gap:6px}
+ #tab-reports .sales-bottle-mix>div{gap:6px;flex-wrap:wrap}
+}
+@media(max-width:360px){#tab-reports .sales-comparison tbody tr{grid-template-columns:minmax(0,1fr)}}
 /* Short summaries first; extra reporting controls open only when needed. */
 .sales-period{grid-template-columns:minmax(180px,1fr) 1fr auto;gap:12px}
 .sales-period-range{font-size:.75rem;color:var(--text2);align-self:center;padding-top:18px}
