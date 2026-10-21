@@ -3,6 +3,13 @@ const m=require('../admin-revenue.js');
 const products=[{id:'bar',is_coffee_bar:true},{id:'coffee',category:'bottles'},{id:'gift',category:'giftcards'}];
 const order={id:'o',order_number:42,total:450,created_at:'2026-10-02',payment_status:'paid',items:[{product_id:'bar',price:400,qty:1},{product_id:'coffee',price:100,qty:1}]};
 const base=()=>({orders:[order],products,stores:[{id:'s',name:'Good Store'}],customers:[{name:'Store legal name',store_id:'s'}],imported:[],orderReceipts:[],businessReceipts:[],overrides:[]});
+test('store versus everything else is exhaustive and online store purchases stay in stores',()=>{
+ const d=base();d.imported=[{document_reference:'store',customer_name:'Good Store',amount_minor:50000,document_date:'2026-10-01'},{document_reference:'event',customer_name:'Merkez Dafayomi',amount_minor:70000,document_date:'2026-10-01'}];
+ let report=m.income(d,'2026-01-01','2026-12-31',s=>s.slice(0,10)),c=m.channels(report);
+ assert.deepEqual(c,{stores:50000,rest:115000,online:45000,other:70000});assert.equal(c.stores+c.rest,report.total_minor);assert.equal(c.online+c.other,c.rest);
+ d.overrides=[{source_key:'order-purpose:o',category:'stores'}];report=m.income(d,'2026-01-01','2026-12-31',s=>s.slice(0,10));c=m.channels(report);
+ assert.deepEqual(c,{stores:95000,rest:70000,online:0,other:70000});assert.equal(c.stores+c.rest,report.total_minor);
+});
 test('one income breakdown separates stores, personal orders and events, keeping online origin',()=>{
  const d=base();d.orders=[{...order,total:100,items:[{product_id:'coffee',price:100,qty:1}]}];
  d.orderReceipts=[{order_id:'o',status:'issued',document_reference:'1',amount_minor:10000,payment_date:'2026-10-02'}];
