@@ -22,6 +22,7 @@ test('store matches always beat the threshold; only strictly over 300 is estimat
 test('imported and live references count once, with actual online items and known payment dates',()=>{
  const d=base();d.imported=[{document_reference:'001',document_date:'2026-10-20',amount_minor:45000,customer_name:'Online customer',website_order_number:42}];d.orderReceipts=[{order_id:'o',document_reference:'1',payment_date:'2026-10-02',amount_minor:45000,status:'issued'}];
  const rows=m.receipts(d);assert.equal(rows.length,1);assert.equal(rows[0].date,'2026-10-02');assert.equal(rows[0].parts.coffee_bar,36000);assert.equal(rows[0].estimated,false);
+ d.orderReceipts[0].document_reference='different-provider-format';assert.equal(m.receipts(d).length,1);
 });
 test('unknown online orders are not guessed as coffee bars, and receipt corrections override estimates',()=>{
  const d=base();d.imported=[{document_reference:'1',document_date:'2026-10-20',amount_minor:40000,customer_name:'Online',website_order_number:999},{document_reference:'2',document_date:'2026-10-20',amount_minor:40000,customer_name:'Unknown'}];d.overrides=[{source_key:'finbot:2',category:'stores'}];
