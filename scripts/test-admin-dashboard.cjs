@@ -73,3 +73,16 @@ test('loader renders unavailable for a failed source while preserving successful
   assert.match(h.nodes.get('dashUpdated').textContent,/bills/);
   assert.equal(h.nodes.get('dashRefresh').disabled,false);
 });
+function storage(){return {getItem(k){return this[k]??null},setItem(k,v){this[k]=v},removeItem(k){delete this[k]}};}
+test('a new dashboard instance paints its scoped cache synchronously and retains it on source failure',async()=>{
+ const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
+ const next=loaderHarness({},'orders');next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-a';const pending=next.root.loadDashboard();
+ assert.match(next.nodes.get('dashKPIs').innerHTML,/100/);assert.doesNotMatch(next.nodes.get('dashKPIs').innerHTML,/Unavailable/);assert.match(next.nodes.get('dashUpdated').textContent,/Saved/);
+ await pending;assert.match(next.nodes.get('dashKPIs').innerHTML,/100/);assert.match(next.nodes.get('dashUpdated').textContent,/saved figures for orders/);
+});
+test('cache never crosses a period or signed-in user, and overlapping refreshes share one fetch',async()=>{
+ const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
+ const next=loaderHarness({});next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-b';const pending=next.root.loadDashboard();assert.doesNotMatch(next.nodes.get('dashKPIs').innerHTML,/100|Unavailable/);assert.strictEqual(next.root.loadDashboard(),pending);await pending;assert.equal(next.calls.length,6);
+ next.nodes.get('dashPeriod').value='year';const changed=next.root.loadDashboard();assert.match(next.nodes.get('dashKPIs').innerHTML,/dash-skeleton/);await changed;
+ next.root.GremierDashboard.clearCache();assert.equal(Object.keys(cache).filter(k=>k.startsWith('gremier_dash_v2:')).length,0);
+});

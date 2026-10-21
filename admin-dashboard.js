@@ -92,9 +92,22 @@
     else set('dashBottlesSold',empty('Product totals unavailable until both sales sources load.'));
     el('dashUpdated').textContent=errors.length ? `Some data couldn’t load (${errors.join(', ')}). Affected values show Unavailable. Try Refresh.` : `Updated ${new Date().toLocaleTimeString('en-IL',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})}`;
     el('dashUpdated').classList.toggle('dash-error',errors.length>0);
+    if(data.orders!==null)root.GremierRevenue?.dashboardOnline(data.orders,m.range);
   }
   api.render=render;
   let request=0;
+  const cachePrefix='gremier_dash_v2:', flights=new Map();let requestedKey='';
+  const owner=()=>root.__gremierAdminUserId||'';
+  const cacheKey=r=>owner()?cachePrefix+owner()+':'+r.period:null;
+  function readCache(r){try{const key=cacheKey(r),c=key&&JSON.parse(root.localStorage.getItem(key));return c&&c.version===2&&c.range.start===r.start&&c.range.end<=r.end&&Date.now()-c.savedAt<7*86400000&&['orders','deliveries','stores','bills','backlog','jobs'].every(k=>Array.isArray(c.data[k]))?c:null;}catch{return null;}}
+  function saveCache(r,data){try{const key=cacheKey(r);if(key)root.localStorage.setItem(key,JSON.stringify({version:2,range:r,savedAt:Date.now(),data}));}catch{}}
+  api.clearCache=()=>{try{Object.keys(root.localStorage).filter(k=>k.startsWith(cachePrefix)).forEach(k=>root.localStorage.removeItem(k));}catch{}};
+  function loadingState(){
+    set('dashKPIs',['Paid online sales','Store delivery value','Unpaid store bills','Paid orders to fulfil'].map(label=>`<div class="dash-metric"><div class="dash-metric-label">${label}</div><div class="dash-metric-value dash-skeleton" aria-label="Loading">&nbsp;</div></div>`).join(''));
+    set('dashAttention',empty('Loading…'));
+    ['dashMoney','dashTrend','dashChart','dashStoreBreakdown','dashBottlesSold','dashOnlineRevenue'].forEach(id=>set(id,''));
+    ['dashRecentOrders','dashRecentDeliveries'].forEach(id=>set(id,'<tr><td colspan="4">Loading…</td></tr>'));
+  }
   // Fetch every page: PostgREST's default 1,000-row limit must never silently lower totals.
   async function pages(makeQuery) {
     const rows=[];
@@ -107,20 +120,18 @@
     }
     throw new Error('Reporting row limit reached');
   }
-  root.loadDashboard=async function () {
-    const token=++request, r=range(el('dashPeriod')?.value || 'month');
+  async function refreshDashboard(r) {
+    const token=++request, cached=readCache(r);
     el('dashUpdated').textContent='Refreshing business data…';
     el('dashRefresh').disabled=true;
     if (typeof ensureDailyBriefing === 'function') ensureDailyBriefing();
-    // Clear the previous period immediately so old figures cannot appear under a new period.
-    render(model({orders:null,deliveries:null,stores:null,bills:null,backlog:null,jobs:null},r),{orders:null,stores:null});
-    el('dashUpdated').textContent='Refreshing business data…';
-    set('dashAttention',empty('Checking orders, store bills, and today’s schedule…'));
+    if(cached){render(model(cached.data,r),cached.data);el('dashUpdated').textContent='Saved '+new Date(cached.savedAt).toLocaleString('en-IL',{timeZone:'Asia/Jerusalem'})+' · refreshing…';}
+    else loadingState();
     try {
       const client=typeof sb !== 'undefined' ? sb : root.MAIN_SB || root.ADMIN_SB;
       if (!client) throw new Error('Admin session unavailable');
       const sources={
-        orders:()=>client.from('orders').select('*').gte('created_at',addDays(r.start,-1)+'T00:00:00Z').lt('created_at',r.end+'T00:00:00Z').order('created_at',{ascending:false}).order('id'),
+        orders:()=>client.from('orders').select('id,order_number,created_at,total,customer_name,status,payment_status,items,delivery_info').gte('created_at',addDays(r.start,-1)+'T00:00:00Z').lt('created_at',r.end+'T00:00:00Z').order('created_at',{ascending:false}).order('id'),
         backlog:()=>client.from('orders').select('id,customer_name,status,payment_status,total').eq('payment_status','paid').not('status','in','(fulfilled,completed,cancelled,refunded)').order('id'),
         deliveries:()=>client.from('store_deliveries').select('*').gte('delivery_date',r.start).lt('delivery_date',r.end).order('delivery_date',{ascending:false}).order('id'),
         stores:()=>client.from('stores').select('id,name,price_large,price_small,price_dairy_free,price_unfiltered,price_syrup').order('id'),
@@ -130,12 +141,15 @@
       const keys=Object.keys(sources), results=await Promise.allSettled(keys.map(key=>pages(sources[key])));
       if (token!==request) return;
       const data={}, errors=[];
-      results.forEach((result,i)=> { data[keys[i]]=result.status==='fulfilled' ? result.value : null; if(result.status==='rejected') errors.push(keys[i]); });
+      results.forEach((result,i)=> { data[keys[i]]=result.status==='fulfilled' ? result.value : cached?.data[keys[i]]??null; if(result.status==='rejected') errors.push(keys[i]); });
       render(model(data,r),data,errors);
+      if(!errors.length)saveCache(r,data);
+      else if(cached)el('dashUpdated').textContent='Refresh incomplete · saved figures for '+errors.join(', ');
     } catch (error) {
       if (token===request) el('dashUpdated').textContent='Could not load the dashboard. Check your connection and try Refresh.';
     } finally { if (token===request) el('dashRefresh').disabled=false; }
   };
+  root.loadDashboard=function(){const r=range(el('dashPeriod')?.value||'month'),key=owner()+'/'+r.start+'/'+r.end+'/'+r.period;if(requestedKey===key&&flights.has(key))return flights.get(key);requestedKey=key;const task=refreshDashboard(r).finally(()=>{if(flights.get(key)===task)flights.delete(key);});flights.set(key,task);return task;};
   el('tab-dashboard')?.addEventListener('click',event=> {
     const button=event.target.closest('[data-dash-target]');
     if (!button) return;
