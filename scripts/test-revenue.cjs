@@ -3,6 +3,26 @@ const m=require('../admin-revenue.js');
 const products=[{id:'bar',is_coffee_bar:true},{id:'coffee',category:'bottles'},{id:'gift',category:'giftcards'}];
 const order={id:'o',order_number:42,total:450,created_at:'2026-10-02',payment_status:'paid',items:[{product_id:'bar',price:400,qty:1},{product_id:'coffee',price:100,qty:1}]};
 const base=()=>({orders:[order],products,stores:[{id:'s',name:'Good Store'}],customers:[{name:'Store legal name',store_id:'s'}],imported:[],orderReceipts:[],businessReceipts:[],overrides:[]});
+test('clear organizations and explicit coffee bars skip review; personal names stay pending',()=>{
+ const d=base();
+ const names=['מרכז דף יומי','Merkez Dafayomi','תורה לכל יהודי בית שמש','Example Foundation','Daniel Cohen','Daniel Cohen - Coffee Bar','מינימרקט הגבעה','סופר ציפר 2020 בע"מ'];
+ d.imported=names.map((customer_name,i)=>({document_reference:String(i),document_date:'2026-10-01',amount_minor:700000,customer_name}));
+ const rows=m.receipts(d);
+ for(const i of [0,1,2,3,5]){assert.equal(rows[i].parts.coffee_bar,700000);assert.equal(m.needsReview(rows[i]),false,names[i]);}
+ assert.equal(m.needsReview(rows[4]),true);
+ for(const i of [6,7]){assert.equal(rows[i].parts.stores,700000);assert.equal(m.needsReview(rows[i]),false);}
+ d.overrides=[{source_key:'finbot:0',category:'coffee'}];assert.equal(m.receipts(d)[0].parts.coffee,700000);
+ d.imported=[{...d.imported[0],customer_name:'Merkez Dafayomi',website_order_number:42}];
+ d.overrides=[];d.orders=[{...order,total:7000,items:[{product_id:'coffee',qty:1,price:7000}]}];
+ assert.equal(m.receipts(d)[0].parts.coffee,700000,'Actual private online items beat receipt name guesses');
+});
+test('manual receipt descriptions identify coffee bars, including matching imported receipts',()=>{
+ const d=base();d.businessReceipts=[{id:'b',status:'issued',customer_snapshot:{name:'Daniel Cohen'},description:'בר קפה לאירוע',document_reference:'42',amount_minor:90000,payment_date:'2026-10-01'}];
+ assert.equal(m.receipts(d)[0].basis,'Coffee bar');assert.equal(m.needsReview(m.receipts(d)[0]),false);
+ d.imported=[{document_reference:'42',customer_name:'Daniel Cohen',amount_minor:90000,document_date:'2026-10-01'}];
+ assert.equal(m.receipts(d).length,1);assert.equal(m.receipts(d)[0].basis,'Coffee bar');
+ d.businessReceipts[0].store_id='s';assert.equal(m.receipts(d)[0].parts.stores,90000);
+});
 test('review queue excludes confident matches and clears linked receipts after reviewing an order',()=>{
  const data=base();data.orders=[{...order,items:[{name_en:'Jerry can',price:450,qty:1}]}];
  data.imported=[{document_reference:'pending',document_date:'2026-10-02',amount_minor:45000,customer_name:'Private customer',website_order_number:42}];

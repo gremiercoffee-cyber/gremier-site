@@ -7,11 +7,13 @@
  const ref=v=>String(v??'').trim().replace(/^0+(?=\d)/,'');
  const normalize=v=>String(v??'').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]/gu,'');
  const eligible=o=>o.payment_status==='paid'&&!o.is_test&&!o.delivery_info?.is_test&&!/^TEST(?:\b|[_-])/i.test(o.customer_name||'')&&!['cancelled','refunded'].includes(o.status);
+ const groupName=v=>/\b(?:synagogue|shul|yeshiva|kollel|organization|organisation|foundation|association|school|community|cent(?:er|re)|merk[ae]z|daf\s*(?:ha\s*)?yomi|ltd|inc)\b|בית\s*כנסת|ישיב[הת]|כולל|מרכז|דף\s*יומי|תורה\s*לכל\s*יהודי|עמות[הת]|מוסדות|קהיל[הת]|בית\s*ספר|תלמוד\s*תורה|בע["'׳״]{0,2}מ/i.test(String(v||''));
+ const coffeeBarText=v=>/coffee[\s-]*bar|בר\s*קפה/i.test(String(v||''));
  function splitOrder(order,products=[],purpose){
   const total=minor(order.total);if(!Number.isSafeInteger(total)||total<0)throw Error('Invalid order amount');
   const out=empty(),weights=empty();let invalid=false;
   if(['coffee_bar','coffee'].includes(purpose)){out[purpose]=total;return out;}
-  const groupCustomer=/synagogue|\bshul\b|yeshiva|kollel|בית\s*כנסת|ישיב[הת]|כולל/.test(String(order.customer_name||'').toLowerCase());
+  const groupCustomer=groupName(order.customer_name);
   const event=order.delivery_info?.delivery_type==='event'||order.delivery_info?.is_coffee_bar;
   for(const item of order.items||[]){
    const p=products.find(p=>String(p.id)===String(item.product_id||item.id))||{};
@@ -47,20 +49,21 @@
    let parts=empty(),basis='',estimated=false;
    if(overrides.has(r.key)){parts[overrides.get(r.key)]=r.amount_minor;basis='Reviewed';}
    else if(r.store_id||aliases.has(normalize(r.name))){parts.stores=r.amount_minor;basis='Store match';}
-   else if(/מינימרקט|סופר\s*ציפר|פרי\s*וירק/.test(r.name)){parts.stores=r.amount_minor;basis='Retail customer · review';}
+   else if(/מינימרקט|סופר\s*ציפר|פרי\s*וירק/.test(r.name)){parts.stores=r.amount_minor;basis='Retail customer';}
    else if(r.order){const purpose=overrides.get('order-purpose:'+r.order.id);parts=splitOrder({...r.order,total:Math.abs(r.amount_minor)/100},data.products,purpose);if(r.amount_minor<0)categories.forEach(k=>parts[k]*=-1);basis=purpose?'Reviewed order purpose':'Online order details';}
    else if(r.website_order_number!=null){parts.unclassified=r.amount_minor;basis='Online order unavailable';}
-   else if(/synagogue|\bshul\b|yeshiva|kollel|בית\s*כנסת|ישיב[הת]|כולל/i.test(r.name)){parts.coffee_bar=r.amount_minor;basis='Group customer';}
+   else if(coffeeBarText(r.name)||coffeeBarText(r.description)){parts.coffee_bar=r.amount_minor;basis='Coffee bar';}
+   else if(groupName(r.name)){parts.coffee_bar=r.amount_minor;basis='Organization / group';}
    else if(r.amount_minor>30000){parts.coffee_bar=r.amount_minor;basis='Over ₪300 rule';estimated=true;}
    else {parts.coffee=r.amount_minor;basis='Up to ₪300 rule · review';}
    rows.push({...r,parts,basis,estimated});
   }
   data.imported.forEach(r=>{
    const id=ref(r.document_reference),w=webByRef.get(id),b=manualByRef.get(id);
-   add({key:'finbot:'+id,reference:r.document_reference,name:r.customer_name,date:w?.payment_date||b?.payment_date||r.document_date,amount_minor:w?.amount_minor??b?.amount_minor??Number(r.amount_minor),store_id:b?.store_id,order:w?byId.get(String(w.order_id)):byNumber.get(String(r.website_order_number)),website_order_number:r.website_order_number??(w?'missing':null),imported:true});
+   add({key:'finbot:'+id,reference:r.document_reference,name:r.customer_name,description:b?.description||r.description||'',date:w?.payment_date||b?.payment_date||r.document_date,amount_minor:w?.amount_minor??b?.amount_minor??Number(r.amount_minor),store_id:b?.store_id,order:w?byId.get(String(w.order_id)):byNumber.get(String(r.website_order_number)),website_order_number:r.website_order_number??(w?'missing':null),imported:true});
   });
   data.orderReceipts.filter(r=>['issued','external'].includes(r.status)&&!r.is_test).forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'order:'+r.order_id,reference:r.document_reference||'',name:byId.get(String(r.order_id))?.customer_name||'Online order',date:r.payment_date,amount_minor:Number(r.amount_minor),order:byId.get(String(r.order_id)),website_order_number:byId.get(String(r.order_id))?.order_number??'missing'}));
-  data.businessReceipts.filter(r=>r.status==='issued').forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'business:'+r.id,reference:r.document_reference||'',name:r.customer_snapshot?.name||'',date:r.payment_date,amount_minor:Number(r.amount_minor),store_id:r.store_id}));
+  data.businessReceipts.filter(r=>r.status==='issued').forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'business:'+r.id,reference:r.document_reference||'',name:r.customer_snapshot?.name||'',description:r.description||'',date:r.payment_date,amount_minor:Number(r.amount_minor),store_id:r.store_id}));
   return rows;
  }
  const needsReview=row=>Boolean(row.parts?.unclassified||row.estimated||/review/i.test(row.basis||'')&&!/^Reviewed/.test(row.basis));
@@ -79,7 +82,7 @@
   const host=get('tab-reports');if(!host||get('revenueExplorer'))return;
   const section=document.createElement('section');section.id='revenueExplorer';section.className='sales-panel';
   const now=date(new Date()),year=now.slice(0,4);
-  section.innerHTML=`<div class="sales-heading"><h2>Revenue by purpose</h2><span data-action-menu="Revenue tools"><button class="btn btn-outline" id="revenueRefresh">Refresh</button></span></div><div class="sales-controls"><label>Period<select class="form-input" id="revenueScope"><option value="year">Whole year</option><option value="month">Specific month</option></select></label><label id="revenueYearLabel">Year<input class="form-input" type="number" id="revenueYear" min="2020" max="2100" value="${year}"></label><label id="revenueMonthLabel" hidden>Month<input class="form-input" type="month" id="revenueMonth" value="${now.slice(0,7)}"></label></div><p id="revenueStatus" class="sales-note" role="status"></p><div id="revenueResults"></div><details class="sales-help"><summary>Classification details</summary><p>Stores and personal online orders count as retail. Coffee bars and known group orders count as events/groups. Online orders use their items and customer context, never the ₪300 rule. Bulk orders without clear context need review. Only non-online, non-store receipts use the amount rule: over ₪300 defaults to groups; smaller receipts default to retail. Both can be corrected. Online totals allocate discounts and delivery proportionally. Receipt totals use payment dates when available, otherwise imported document dates. The two views overlap and must not be added together. FinBot imports remain dated snapshots.</p></details>`;
+  section.innerHTML=`<div class="sales-heading"><h2>Revenue by purpose</h2><span data-action-menu="Revenue tools"><button class="btn btn-outline" id="revenueRefresh">Refresh</button></span></div><div class="sales-controls"><label>Period<select class="form-input" id="revenueScope"><option value="year">Whole year</option><option value="month">Specific month</option></select></label><label id="revenueYearLabel">Year<input class="form-input" type="number" id="revenueYear" min="2020" max="2100" value="${year}"></label><label id="revenueMonthLabel" hidden>Month<input class="form-input" type="month" id="revenueMonth" value="${now.slice(0,7)}"></label></div><p id="revenueStatus" class="sales-note" role="status"></p><div id="revenueResults"></div><details class="sales-help"><summary>Classification details</summary><p>Stores and personal online orders count as retail. Coffee bars and clear organization/group names count as events/groups without review. Online orders use their items and customer context, never the ₪300 rule. Bulk orders without clear context need review. Only non-online, non-store receipts use the amount rule: over ₪300 defaults to groups; smaller receipts default to retail. Personal or unclear names without coffee-bar details remain for review. Known stores stay retail. All classifications can be corrected under All entries. Online totals allocate discounts and delivery proportionally. Receipt totals use payment dates when available, otherwise imported document dates. The two views overlap and must not be added together. FinBot imports remain dated snapshots.</p></details>`;
   host.querySelector('#salesExplorer')?.after(section);if(!section.parentNode)host.append(section);
   get('revenueScope').onchange=()=>{const month=get('revenueScope').value==='month';get('revenueMonthLabel').hidden=!month;get('revenueYearLabel').hidden=month;load();};
   get('revenueYear').onchange=load;get('revenueMonth').onchange=load;get('revenueRefresh').onclick=load;
@@ -87,7 +90,7 @@
  function scope(){const y=get('revenueScope').value==='month'?get('revenueMonth').value.slice(0,4):get('revenueYear').value;if(!/^20\d{2}$/.test(y))throw Error('Choose a valid year.');const m=get('revenueScope').value==='month'?get('revenueMonth').value:null;return {year:y,...(m?root.GremierSales.monthRange(m):{from:y+'-01-01',to:y+'-12-31'})};}
  async function pages(table,columns){const out=[];for(let n=0;n<100000;n+=1000){const r=await client().from(table).select(columns).order(table==='order_receipts'?'order_id':table==='finbot_income_sources'?'document_reference':table==='revenue_classification_overrides'?'source_key':'id').range(n,n+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Reporting limit reached');}
  async function load(){setup();const seq=++serial;get('revenueStatus').textContent='Loading revenue…';try{
-  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,amount_minor,payment_date,document_reference'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number'],['revenue_classification_overrides','source_key,category']];
+  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number'],['revenue_classification_overrides','source_key,category']];
   const results=await Promise.all(tables.map(([t,c])=>pages(t,c)));if(seq!==serial)return;
   loaded=Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides'].map((k,i)=>[k,results[i]]));render();
  }catch(e){if(seq!==serial)return;get('revenueStatus').textContent=e.message;get('revenueResults').innerHTML='';}}
