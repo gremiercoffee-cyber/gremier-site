@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261015-2">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261021-4"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261021-5"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -753,7 +753,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="sidebar">
       <div class="sidebar-logo"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></div>
       <div class="sidebar-nav" id="websiteNav">
-      <div class="nav-item" onclick="showTab('dashboard')" id="nav-dashboard"><span class="icon">📊</span><span>Dashboard</span></div>
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
         <div class="nav-item" onclick="showTab('schedule')" id="nav-schedule"><span class="icon">📅</span><span>Schedule</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
@@ -761,12 +760,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
-      <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Stats</span></div>
+      <details class="settings-nav" id="websiteSettingsNav"><summary><span class="icon">⚙️</span><span>Website settings</span><span class="settings-chevron" aria-hidden="true">›</span></summary><div class="settings-items">
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
+      <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
       <div class="nav-item" onclick="showTab('workers')" id="nav-workers"><span class="icon">👷</span><span>Workers</span></div>
       <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
+      </div></details>
       </div>
       <div class="sidebar-bottom">
         <button class="view-site-btn" id="pushToggleBtn" onclick="togglePushNotifications()" style="width:100%;margin-bottom:6px;cursor:pointer">🔔 Enable Notifications</button>
@@ -1510,12 +1511,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="nav-drawer-item" onclick="showTab('products');closeNavDrawer()"><span>&#128230;</span>Products</button>
     <button class="nav-drawer-item" onclick="showTab('paylinks');closeNavDrawer()"><span>&#128279;</span>Payment Links</button>
     <button class="nav-drawer-item" onclick="showTab('members');closeNavDrawer()"><span>&#128100;</span>Members</button>
-    <button class="nav-drawer-item" onclick="showTab('workers');closeNavDrawer()"><span>&#128119;</span>Workers</button>
     <button class="nav-drawer-item" onclick="showTab('reports');closeNavDrawer()"><span>&#128200;</span>Stats</button>
+    <details class="settings-nav" id="drawerWebsiteSettings"><summary><span>⚙️</span><span>Website settings</span><span class="settings-chevron" aria-hidden="true">›</span></summary><div class="settings-items">
     <button class="nav-drawer-item" onclick="showTab('delivery');closeNavDrawer()"><span>&#128666;</span>Delivery</button>
+    <button class="nav-drawer-item" onclick="showTab('workers');closeNavDrawer()"><span>&#128119;</span>Workers</button>
     <button class="nav-drawer-item" onclick="showTab('coupons');closeNavDrawer()"><span>&#127903;&#65039;</span>Coupons</button>
     <button class="nav-drawer-item" onclick="showTab('giftcards');closeNavDrawer()"><span>&#127873;</span>Gift Cards</button>
     <button class="nav-drawer-item" onclick="showTab('siteimages');closeNavDrawer()"><span>&#128444;&#65039;</span>Site Images</button>
+    </div></details>
     <div class="nav-drawer-sep"></div>
     <button class="nav-drawer-item" onclick="openNotificationsPanel();closeNavDrawer()"><span>&#128276;</span>Notifications</button>
     <a class="nav-drawer-item" href="index.html" target="_blank"><span>&#8599;</span>View Site</a>
@@ -6061,6 +6064,8 @@ function showTab(tab) {
   if (activeTab) activeTab.style.display='block';
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('nav-'+tab)?.classList.add('active');
+  const settingsSection = document.getElementById('nav-'+tab)?.closest('details.settings-nav');
+  if (settingsSection) settingsSection.open = true;
   // Update mobile bottom bar
   document.querySelectorAll('.tab-bar-btn').forEach(b=>b.classList.remove('active'));
   const tbarBtn = document.getElementById('tbar-'+tab);
@@ -9306,7 +9311,8 @@ window.opsFetch = window.opsFetch || (function () {
   // Dashboard remains in the bottom bar; Schedule covers today's operational work.
   const drawer = document.getElementById('navDrawer');
   const firstItem = drawer?.querySelector('.nav-drawer-item');
-  firstItem?.insertAdjacentHTML('beforebegin', `<button class="nav-drawer-item" onclick="hubOpenSearch();closeNavDrawer()"><span>🔍</span>Search</button><button class="nav-drawer-item" onclick="showTab('dashboard');closeNavDrawer()"><span>📊</span>Dashboard</button><button class="nav-drawer-item" onclick="showTab('subscriptions');closeNavDrawer()"><span>🔁</span>Subscriptions</button>`);
+  firstItem?.insertAdjacentHTML('beforebegin', `<button class="nav-drawer-item" onclick="hubOpenSearch();closeNavDrawer()"><span>🔍</span>Search</button>`);
+  document.querySelector('#drawerWebsiteSettings .settings-items')?.insertAdjacentHTML('beforeend', `<button class="nav-drawer-item" onclick="showTab('subscriptions');closeNavDrawer()"><span>🔁</span>Subscriptions</button>`);
   document.getElementById('pushBellBtn')?.insertAdjacentHTML('beforebegin', `<button class="hub-search-btn" onclick="hubOpenSearch()" title="Search" style="margin-left:auto">🔍</button>`);
   const bell = document.getElementById('pushBellBtn'); if (bell) bell.style.marginLeft = '0';
   document.querySelector('.sidebar-bottom')?.insertAdjacentHTML('afterbegin', `<button class="view-site-btn" onclick="hubOpenSearch()" style="width:100%;margin-bottom:6px;cursor:pointer">🔍 Search</button>`);
@@ -9624,7 +9630,7 @@ window.opsFetch = window.opsFetch || (function () {
   document.getElementById('nav-subscriptions')?.insertAdjacentHTML('afterend',
     `<div class="nav-item" onclick="showTab('activity')" id="nav-activity"><span class="icon">🕑</span><span>Activity</span></div>
      <div class="nav-item" onclick="showTab('connected')" id="nav-connected"><span class="icon">🔌</span><span>Connected apps</span></div>`);
-  document.querySelector('#navDrawer .nav-drawer-sep')?.insertAdjacentHTML('beforebegin',
+  document.querySelector('#drawerWebsiteSettings .settings-items')?.insertAdjacentHTML('beforeend',
     `<button class="nav-drawer-item" onclick="showTab('activity');closeNavDrawer()"><span>🕑</span>Activity</button>
      <button class="nav-drawer-item" onclick="showTab('connected');closeNavDrawer()"><span>🔌</span>Connected apps</button>`);
 
