@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261015-2">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261021-3"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261021-4"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -1223,11 +1223,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
       <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">Generate statements</button>
     </div>
-    <p style="color:var(--text2);font-size:.82rem;margin-bottom:18px;line-height:1.5">Store statements for this month. Regenerating keeps billed and paid status.</p>
     <div id="billStoreChips" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:none"></div>
     <div class="billing-modes" style="display:flex;gap:8px;margin-bottom:14px">
       <button type="button" class="btn btn-sm" id="billModeMonth" onclick="setBillingMode('month')">This month</button>
       <button type="button" class="btn btn-sm" id="billModeAll" onclick="setBillingMode('all')">All months</button>
+      <button type="button" class="btn btn-sm" id="billModeDocuments" onclick="setBillingMode('documents')">Documents · all time</button>
     </div>
     <div id="billAllFilters" class="filter-bar" style="display:none;flex-wrap:wrap;gap:8px">
       <select class="form-input" style="width:auto" id="billGroup" onchange="renderBillingAll()">
@@ -6961,6 +6961,7 @@ function toggleBillingBoard() {
 }
 
 async function loadBillingBoard() {
+  if (billingMode === 'documents') { syncBillingModeUI(); return window.GremierBillingDocuments.load(billFocusStore); }
   if (billingMode === 'all') return loadBillingAll();
   syncBillingModeUI();
   const monthVal = getSDMonth();
@@ -7156,6 +7157,7 @@ function billingCardHtml(r, showMonth) {
         <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone ? ` · ${escHtml(phone)}` : ''}</div>
         <div style="font-size:.74rem;margin-top:4px">${billedTxt} &nbsp;·&nbsp; ${endTxt}</div>
       </div>
+      <button class="btn btn-outline btn-sm" onclick="openBillingDocuments('${r.store_id}')">Documents</button>
       ${closed ? '' : `<div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'}>💬 Send via WhatsApp</button>
         <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')">Mark Paid</button>
@@ -7178,7 +7180,7 @@ function renderBillStoreChips() {
 function focusBillStore(id) {
   billFocusStore = id;
   if (id) {
-    billingMode = 'all';
+    if (billingMode !== 'documents') billingMode = 'all';
     const g = document.getElementById('billGroup'); if (g) g.value = 'month';
     const st = document.getElementById('billStatus'); if (st) st.value = 'all';
   } else {
@@ -7188,14 +7190,17 @@ function focusBillStore(id) {
 }
 function syncBillingModeUI() {
   renderBillStoreChips();
-  const all = billingMode === 'all';
+  const all = billingMode === 'all', documents = billingMode === 'documents';
+  const archive = document.getElementById('billingDocumentFilters'); if (archive) archive.hidden = !documents;
+  const docButton = document.getElementById('billModeDocuments'); if (docButton) docButton.className = 'btn btn-sm ' + (documents ? 'btn-amber' : 'btn-outline');
   const m = document.getElementById('billModeMonth'), a = document.getElementById('billModeAll');
-  if (m) m.className = 'btn btn-sm ' + (all ? 'btn-outline' : 'btn-amber');
+  if (m) m.className = 'btn btn-sm ' + (all || documents ? 'btn-outline' : 'btn-amber');
   if (a) a.className = 'btn btn-sm ' + (all ? 'btn-amber' : 'btn-outline');
   const f = document.getElementById('billAllFilters'); if (f) f.style.display = all ? 'flex' : 'none';
   const sm = document.getElementById('billAllSummary'); if (sm) sm.style.display = all ? '' : 'none';
-  const gen = document.getElementById('billingGenBtn'); if (gen) gen.style.display = all ? 'none' : '';
+  const gen = document.getElementById('billingGenBtn'); if (gen) gen.style.display = all || documents ? 'none' : '';
 }
+function openBillingDocuments(storeId) { billFocusStore=storeId; setBillingMode('documents'); }
 function setBillingMode(mode) {
   billingMode = mode;
   try { localStorage.setItem('gremier_billing_mode', mode); } catch {}
@@ -9685,6 +9690,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-financials.js?v=20261020-5"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
 <script src="/admin-finance.js?v=20261020-8"></script>
+<script src="/admin-billing-documents.js?v=20261021-1"></script>
 <script src="/admin-sales.js?v=20261021-1"></script>
 <script src="/admin-revenue.js?v=20261021-10"></script>
 <script src="/admin-receipts.js?v=20261020-2"></script>

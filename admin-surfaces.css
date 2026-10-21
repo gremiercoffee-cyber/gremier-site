@@ -47,6 +47,7 @@
 /* Review controls must fit the phone; comparison periods become labelled tiles. */
 #tab-reports .table-wrap{overflow-x:auto;overscroll-behavior-x:contain}
 .review-mobile-label{display:none}
+.billing-modes{flex-wrap:wrap}.billing-document{padding:18px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.billing-document>div{min-width:0;max-width:100%}.billing-document h4{margin:0;font-size:.9rem;line-height:1.6;overflow-wrap:anywhere}.billing-document p{margin:6px 0 0;color:#515b68;font-size:.78rem}.billing-document .fw-actions{margin:0}#billingDocumentFilters .form-input{width:100%;min-width:0;box-sizing:border-box}
 @media(max-width:650px){
  #tab-reports .sales-panel,#tab-reports .sales-help,#revenueResults{min-width:0;max-width:100%;box-sizing:border-box}
  #tab-reports :is(.revenue-review,.sales-comparison){overflow:visible}
