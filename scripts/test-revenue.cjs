@@ -3,6 +3,30 @@ const m=require('../admin-revenue.js');
 const products=[{id:'bar',is_coffee_bar:true},{id:'coffee',category:'bottles'},{id:'gift',category:'giftcards'}];
 const order={id:'o',order_number:42,total:450,created_at:'2026-10-02',payment_status:'paid',items:[{product_id:'bar',price:400,qty:1},{product_id:'coffee',price:100,qty:1}]};
 const base=()=>({orders:[order],products,stores:[{id:'s',name:'Good Store'}],customers:[{name:'Store legal name',store_id:'s'}],imported:[],orderReceipts:[],businessReceipts:[],overrides:[]});
+test('one income breakdown separates stores, personal orders and events, keeping online origin',()=>{
+ const d=base();d.orders=[{...order,total:100,items:[{product_id:'coffee',price:100,qty:1}]}];
+ d.orderReceipts=[{order_id:'o',status:'issued',document_reference:'1',amount_minor:10000,payment_date:'2026-10-02'}];
+ d.imported=[{document_reference:'001',website_order_number:42,customer_name:'Online customer',amount_minor:10000,document_date:'2026-10-20'},
+ {document_reference:'2',customer_name:'Good Store',amount_minor:50000,document_date:'2026-10-01'},
+ {document_reference:'3',customer_name:'Merkez Dafayomi',amount_minor:700000,document_date:'2026-10-01'}];
+ const result=m.income(d,'2026-01-01','2026-12-31',s=>s.slice(0,10));
+ assert.equal(result.rows.length,3);assert.equal(result.total_minor,760000);
+ assert.equal(result.totals.stores,50000);assert.equal(result.totals.coffee,10000);assert.equal(result.totals.coffee_bar,700000);
+ assert.equal(result.origins.online.coffee,10000);assert.equal(result.origins.direct.coffee,0);
+ assert.equal(Object.values(result.origins.online).reduce((a,b)=>a+b,0)+Object.values(result.origins.direct).reduce((a,b)=>a+b,0),result.total_minor);
+});
+test('paid orders without receipts are included once, excluding unpaid/refunded orders',()=>{
+ const d=base();d.orders=[order,{...order,id:'unpaid',order_number:43,payment_status:'pending'},{...order,id:'refunded',order_number:44,status:'refunded'},{...order,id:'redeemed',order_number:45,payment_method:'gift_card'}];
+ const result=m.income(d,'2026-10-01','2026-10-31',s=>s.slice(0,10));
+ assert.equal(result.rows.length,1);assert.equal(result.total_minor,45000);assert.equal(result.origins.online.coffee_bar,36000);
+ d.overrides=[{source_key:'order-purpose:o',category:'stores'}];assert.equal(m.income(d,'2026-10-01','2026-10-31',s=>s.slice(0,10)).totals.stores,45000);
+});
+test('receipt date and amount prevail without re-adding a linked order in another period',()=>{
+ const d=base();d.orderReceipts=[{order_id:'o',status:'issued',amount_minor:40000,document_reference:'1',payment_date:'2026-11-01'}];
+ assert.equal(m.income(d,'2026-10-01','2026-10-31',s=>s.slice(0,10)).total_minor,0);
+ const november=m.income(d,'2026-11-01','2026-11-30',s=>s.slice(0,10));assert.equal(november.total_minor,40000);assert.equal(november.rows.length,1);
+ d.overrides=[{source_key:'finbot:1',category:'coffee'}];assert.equal(m.income(d,'2026-01-01','2026-12-31',s=>s.slice(0,10)).totals.coffee,40000);
+});
 test('clear organizations and explicit coffee bars skip review; personal names stay pending',()=>{
  const d=base();
  const names=['מרכז דף יומי','Merkez Dafayomi','תורה לכל יהודי בית שמש','Example Foundation','Daniel Cohen','Daniel Cohen - Coffee Bar','מינימרקט הגבעה','סופר ציפר 2020 בע"מ'];
