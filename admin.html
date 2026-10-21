@@ -1952,6 +1952,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
+<script src="/admin-dashboard.js?v=20261021-3"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
 <script>
   function escHtml(s) {
@@ -8351,55 +8352,9 @@ Return JSON:
   }
 }
 async function loadDashboard() {
-  const period = document.getElementById('dashPeriod')?.value || 'month';
-  const DASH_IDS = ['dashKPIs', 'dashChart', 'dashRecentOrders', 'dashRecentDeliveries', 'dashStoreBreakdown', 'dashBottlesSold'];
-  const DASH_CACHE_KEY = 'gremier_dashboard_cache_v1_' + period;
-  window.gremierUiCacheRestore(DASH_CACHE_KEY, DASH_IDS);
-  const now = new Date();
-  let since;
-  if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
-  else if (period === 'month') { since = new Date(now.getFullYear(), now.getMonth(), 1).toISOString(); }
-  else if (period === 'year') { since = new Date(now.getFullYear(), 0, 1).toISOString(); }
-
-  const ordersQ = sb.from('orders').select('*').order('created_at', { ascending: false });
-  const { data: orders } = since ? await ordersQ.gte('created_at', since) : await ordersQ;
-
-  // Store deliveries match the same period
-  let dStart, dEnd;
-  if (period === 'week') {
-    const d = new Date(now); d.setDate(d.getDate()-7);
-    dStart = localDateStr(d);
-  } else if (period === 'month') {
-    dStart = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
-  } else if (period === 'year') {
-    dStart = localDateStr(new Date(now.getFullYear(), 0, 1));
-  }
-  dEnd = localDateStr(new Date(now.getFullYear(), now.getMonth()+1, 1));
-
-  let delivQ = sb.from('store_deliveries')
-    .select('*, stores(price_large, price_small, price_dairy_free, price_unfiltered, price_syrup)')
-    .order('delivery_date', { ascending: false });
-  if (dStart) delivQ = delivQ.gte('delivery_date', dStart);
-  delivQ = delivQ.lt('delivery_date', dEnd);
-
-  const { data: deliveries } = await delivQ;
-
-if (!allStores.length) await loadStores();
-
-  const ordersFinal = orders || [];
-  const deliveriesFinal = deliveries || [];
-  renderDashboardKPIs(ordersFinal, deliveriesFinal);
-  renderDashboardChart(ordersFinal, deliveriesFinal);
-renderDashboardRecentOrders(ordersFinal);
-  renderDashboardRecentDeliveries(deliveriesFinal);
-  renderDashboardStoreBreakdown(deliveriesFinal);
-  renderDashboardBottlesSold(ordersFinal, deliveriesFinal);
-
-  window.gremierUiCacheSave(DASH_CACHE_KEY, DASH_IDS);
-
-  ensureDailyBriefing();
+  if (window.GremierDashboard?.load) return window.GremierDashboard.load();
+  document.getElementById('dashUpdated').textContent='Dashboard unavailable. Refresh to retry.';
 }
-
 function renderDashboardKPIs(orders, deliveries) {
   const el = document.getElementById('dashKPIs');
   if (!el) return;
@@ -9725,14 +9680,13 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-dashboard.js?v=20261021-2"></script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
 <script src="/admin-financials.js?v=20261020-5"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
 <script src="/admin-finance.js?v=20261020-8"></script>
 <script src="/admin-sales.js?v=20261020-7"></script>
 <link rel="stylesheet" href="/admin-surfaces.css?v=20261021-1"/>
-<script src="/admin-revenue.js?v=20261021-3"></script>
+<script src="/admin-revenue.js?v=20261021-4"></script>
 <script src="/admin-receipts.js?v=20261020-2"></script>
 </body>
 </html>

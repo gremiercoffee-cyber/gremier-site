@@ -99,5 +99,6 @@
   get('revenueResults').querySelectorAll('[data-revenue-row]').forEach(select=>select.onchange=async()=>{select.disabled=true;try{const key=rows[Number(select.dataset.revenueRow)].key;const result=select.value==='auto'?await client().from('revenue_classification_overrides').delete().eq('source_key',key):await client().from('revenue_classification_overrides').upsert({source_key:key,category:select.value,updated_at:new Date().toISOString()});if(result.error)throw result.error;await load();}catch{get('revenueStatus').textContent='Category was not saved. Refresh and try again.';select.disabled=false;}});
  }
  async function savePurpose(select,key){select.disabled=true;try{const result=select.value==='auto'?await client().from('revenue_classification_overrides').delete().eq('source_key',key):await client().from('revenue_classification_overrides').upsert({source_key:key,category:select.value,updated_at:new Date().toISOString()});if(result.error)throw result.error;await load();}catch{get('revenueStatus').textContent='Purpose was not saved. Refresh and try again.';select.disabled=false;}}
+ root.GremierDashboard?.refreshPurpose?.();
  const original=root.loadReports;root.loadReports=function(...args){const result=original?.apply(this,args);setup();load();return result;};
 })(typeof window==='undefined'?globalThis:window);

@@ -92,7 +92,8 @@
     else set('dashBottlesSold',empty('Product totals unavailable until both sales sources load.'));
     el('dashUpdated').textContent=errors.length ? `Some data couldn’t load (${errors.join(', ')}). Affected values show Unavailable. Try Refresh.` : `Updated ${new Date().toLocaleTimeString('en-IL',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})}`;
     el('dashUpdated').classList.toggle('dash-error',errors.length>0);
-    if(data.orders!==null)root.GremierRevenue?.dashboardOnline(data.orders,m.range,data.purposes||[],m.store);
+    api.refreshPurpose=data.orders!==null?()=>root.GremierRevenue?.dashboardOnline(data.orders,m.range,data.purposes||[],m.store):null;
+    api.refreshPurpose?.();
   }
   api.render=render;
   let request=0;
@@ -103,6 +104,7 @@
   function saveCache(r,data){try{const key=cacheKey(r);if(key)root.localStorage.setItem(key,JSON.stringify({version:2,range:r,savedAt:Date.now(),data}));}catch{}}
   api.clearCache=()=>{try{Object.keys(root.localStorage).filter(k=>k.startsWith(cachePrefix)).forEach(k=>root.localStorage.removeItem(k));}catch{}};
   function loadingState(){
+    api.refreshPurpose=null;
     set('dashKPIs',['Paid online sales','Store delivery value','Unpaid store bills','Paid orders to fulfil'].map(label=>`<div class="dash-metric"><div class="dash-metric-label">${label}</div><div class="dash-metric-value dash-skeleton" aria-label="Loading">&nbsp;</div></div>`).join(''));
     set('dashAttention',empty('Loading…'));
     ['dashMoney','dashTrend','dashChart','dashStoreBreakdown','dashBottlesSold','dashOnlineRevenue'].forEach(id=>set(id,''));
@@ -151,6 +153,7 @@
     } finally { if (token===request) el('dashRefresh').disabled=false; }
   };
   root.loadDashboard=function(){const r=range(el('dashPeriod')?.value||'month'),key=owner()+'/'+r.start+'/'+r.end+'/'+r.period;if(requestedKey===key&&flights.has(key))return flights.get(key);requestedKey=key;const task=refreshDashboard(r).finally(()=>{if(flights.get(key)===task)flights.delete(key);});flights.set(key,task);return task;};
+  api.load=root.loadDashboard;
   el('tab-dashboard')?.addEventListener('click',event=> {
     const button=event.target.closest('[data-dash-target]');
     if (!button) return;
