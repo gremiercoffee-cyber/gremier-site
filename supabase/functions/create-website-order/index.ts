@@ -1,3 +1,5 @@
+import "../_shared/subscription-model.js";
+const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
@@ -79,59 +81,16 @@ function selectedValues(value: unknown): Record<string, unknown>[] {
     .filter((v) => v && typeof v === "object") as Record<string, unknown>[];
 }
 
-// Must match SUBSCRIPTION_DISCOUNT_RATE in index.html.
-const SUBSCRIPTION_DISCOUNT_RATE = 0.10;
-
 function isSubscriptionProductRow(product: Record<string, unknown>): boolean {
   return product.is_subscription === true || product.category === "subscriptions";
 }
-
-/** Product ids the admin allowed inside a build-your-own subscription box. */
-function subscriptionBundleIds(product: Record<string, unknown>): string[] {
-  const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
-  const bundle = variations.find((v) => v.type === "subscription_bundle");
-  const rows = Array.isArray(bundle?.items) ? bundle.items : (Array.isArray(bundle?.product_ids) ? bundle.product_ids : []);
-  return [...new Set((rows as unknown[]).map((r) => {
-    const row = r && typeof r === "object" ? r as Record<string, unknown> : null;
-    return String(row ? (row.product_id || row.id || "") : r).trim();
-  }).filter(Boolean))];
-}
-
-/**
- * Price a subscription the same way the storefront does: the chosen box items
- * (catalog prices × qty) — or the product price when it has no box — minus the
- * subscription discount. Returns the validated box contents so the order records
- * what to deliver each cycle.
- */
-function priceSubscription(
-  product: Record<string, unknown>,
-  item: Record<string, unknown>,
-  productsById: Map<string, Record<string, unknown>>,
-): { unitPrice: number; contents: Array<Record<string, unknown>> | null } {
-  const bundleIds = subscriptionBundleIds(product);
-  let raw: number;
-  let contents: Array<Record<string, unknown>> | null = null;
-  if (bundleIds.length) {
-    const chosen = Array.isArray(item.subscription_items) ? item.subscription_items as Record<string, unknown>[] : [];
-    contents = [];
-    for (const c of chosen) {
-      const id = String(c?.product_id || "").trim();
-      const bp = productsById.get(id);
-      if (!bundleIds.includes(id) || !bp || bp.is_active === false) throw new Error("Invalid subscription item");
-      contents.push({
-        product_id: id,
-        name_en: bp.name_en || null,
-        name_he: bp.name_he || null,
-        price: Number(bp.price) || 0,
-        qty: Math.max(1, Math.min(20, Math.floor(Number(c.qty) || 1))),
-      });
-    }
-    if (!contents.length) throw new Error("Choose at least one item for the subscription");
-    raw = contents.reduce((s, c) => s + (Number(c.price) || 0) * (Number(c.qty) || 1), 0);
-  } else {
-    raw = Number(product.price) || 0;
-  }
-  return { unitPrice: Math.round(raw * (1 - SUBSCRIPTION_DISCOUNT_RATE) * 100) / 100, contents };
+function priceSubscription(product: Record<string, unknown>, item: Record<string, unknown>, productsById: Map<string, Record<string, unknown>>): {unitPrice:number;contents:Array<Record<string,unknown>>} {
+  const config=(Array.isArray(product.variations)?product.variations:[]).find((v:any)=>v.type==="subscription_bundle");
+  const ids=(config?.items||config?.product_ids||[]).map((c:any)=>String(c.product_id||c.id||c));
+  const chosen=Array.isArray(item.subscription_items)?item.subscription_items as any[]:[];
+  if(ids.length&&chosen.some(c=>!ids.includes(String(c.product_id))))throw new Error("Invalid subscription item");
+  const q=subscriptionModel.quote(chosen,[...productsById.values()]);
+  return {unitPrice:q.total,contents:q.contents};
 }
 
 /** Resolve the chosen guest-count tier (label + guests) from the validated guest price. */
@@ -276,7 +235,7 @@ Deno.serve(async (req) => {
     ).filter(Boolean);
     const { data: fetchedRows, error: productErr } = await admin
       .from("products")
-      .select("id,name_en,name_he,price,is_active,variations,delivery_price,is_subscription,category")
+      .select("id,name_en,name_he,price,is_active,variations,delivery_price,is_subscription,is_coffee_bar,category")
       .in("id", [...new Set([...productIds, ...boxIds])]);
     if (productErr) throw productErr;
 
@@ -288,7 +247,7 @@ Deno.serve(async (req) => {
     // ordered on its own — anything else in the cart would be billed every month.
     const subscriptionLines = items.filter((item: Record<string, unknown>) => {
       const p = productsById.get(String(item.product_id || "").trim());
-      return p && isSubscriptionProductRow(p);
+      return p && (isSubscriptionProductRow(p) || item.is_subscription === true);
     });
     const isSubscriptionOrder = subscriptionLines.length > 0;
     if (isSubscriptionOrder && items.length > 1) {
@@ -299,8 +258,12 @@ Deno.serve(async (req) => {
       const productId = String(item.product_id || "").trim();
       const product = productsById.get(productId);
       if (!product || product.is_active === false) throw new Error("Invalid order item");
-      const isSub = isSubscriptionProductRow(product);
-      const sub = isSub ? priceSubscription(product, item, productsById) : null;
+      const isSub = isSubscriptionProductRow(product) || item.is_subscription === true;
+      const modern = isSub && !isSubscriptionProductRow(product);
+      const subscriptionQuote = modern ? subscriptionModel.quote(item.subscription_items, [...productsById.values()]) : null;
+      if (modern && !subscriptionModel.eligible(product)) throw new Error("Invalid subscription product");
+      const sub = subscriptionQuote ? {unitPrice:subscriptionQuote.total,contents:subscriptionQuote.contents} : isSub ? priceSubscription(product, item, productsById) : null;
+      if(isSub && sub?.contents){const q=subscriptionModel.quote(sub.contents,[...productsById.values()]);if(!q.deliveryEligible && deliveryInfo.delivery_type!=="pickup")throw new Error("Subscription delivery requires two coffee items or one 5L container; otherwise choose pickup");}
       const qty = isSub ? 1 : Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 1)));
       const unitPrice = sub ? sub.unitPrice : computeUnitPrice(product, item);
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
@@ -308,13 +271,13 @@ Deno.serve(async (req) => {
       const interval = String(item.subscription_interval || "monthly").toLowerCase() === "weekly" ? "weekly" : "monthly";
       return {
         product_id: productId,
-        name_en: product.name_en || null,
-        name_he: product.name_he || null,
+        name_en: isSub ? "Coffee subscription" : product.name_en || null,
+        name_he: isSub ? "מנוי קפה" : product.name_he || null,
         price: unitPrice,
         qty,
-        selected_variations: item.selected_variations || null,
-        selected_addons: item.selected_addons || null,
-        selected_guest_price: item.selected_guest_price || null,
+        selected_variations: isSub ? null : item.selected_variations || null,
+        selected_addons: isSub ? null : item.selected_addons || null,
+        selected_guest_price: isSub ? null : item.selected_guest_price || null,
         // Guest tier for display ("for N people") — validated against the catalog.
         selected_guests: guest?.guests ?? null,
         guest_label: guest?.label || null,
@@ -336,9 +299,12 @@ Deno.serve(async (req) => {
     if (zonesResult.error) throw zonesResult.error;
     if (settingsResult.error) throw settingsResult.error;
 
+    const modernSubscription = isSubscriptionOrder && !!allowedItems[0].subscription_items?.length;
+    const deliveryProducts = modernSubscription ? (allowedItems[0].subscription_items || []).map((c:any)=>productsById.get(String(c.product_id))) : productRows;
+    const deliverySubtotal = modernSubscription ? subscriptionModel.quote(items[0].subscription_items,[...productsById.values()]).regular : subtotal;
     const delivery = computeDeliveryFee(
-      productRows || [],
-      subtotal,
+      deliveryProducts || [],
+      deliverySubtotal,
       deliveryInfo,
       zonesResult.data || [],
       settingsResult.data || null,
