@@ -40,9 +40,9 @@
   // These transliterations appear in the imported ledger; retain the store exclusion.
   const translated={'goodstore':['גוד סטור'],'birkatsanhedriya':['ברכת סנהדרייה','חסן מאיר ברכת סנהדרייה'],'minimachaneyehudarbs':['מיני מחניודה']};
   data.stores.forEach(s=>(translated[normalize(s.name)]||[]).forEach(name=>aliases.set(normalize(name),s.id)));
-  const overrides=new Map(data.overrides.map(o=>[o.source_key,o.category])),seen=new Set(),rows=[];
+  const overrides=new Map(data.overrides.map(o=>[o.source_key,o.category])),seen=new Set(),seenOrders=new Set(),rows=[];
   function add(r){
-   if(seen.has(r.key))return;seen.add(r.key);
+   if(seen.has(r.key)||(r.order?.id&&seenOrders.has(String(r.order.id))))return;seen.add(r.key);if(r.order?.id)seenOrders.add(String(r.order.id));
    if(!Number.isSafeInteger(r.amount_minor))throw Error('Invalid receipt amount');
    let parts=empty(),basis='',estimated=false;
    if(overrides.has(r.key)){parts[overrides.get(r.key)]=r.amount_minor;basis='Reviewed';}
