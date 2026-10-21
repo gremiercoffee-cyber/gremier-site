@@ -17,7 +17,7 @@ test('online channel excludes unpaid, cancelled, refunded, test, and outside-per
 });
 test('store matches always beat the threshold; only strictly over 300 is estimated',()=>{
  const d=base();d.imported=[{document_reference:'1',document_date:'2026-10-01',amount_minor:100000,customer_name:'Good Store'},{document_reference:'2',document_date:'2026-10-01',amount_minor:40000,customer_name:'Store legal name'},{document_reference:'3',document_date:'2026-10-01',amount_minor:30000,customer_name:'Other'},{document_reference:'4',document_date:'2026-10-01',amount_minor:30001,customer_name:'Other'}];
- const rows=m.receipts(d);assert.equal(rows[0].parts.stores,100000);assert.equal(rows[1].parts.stores,40000);assert.equal(rows[2].parts.other,30000);assert.equal(rows[3].parts.coffee_bar,30001);assert.equal(rows[3].estimated,true);
+ const rows=m.receipts(d);assert.equal(rows[0].parts.stores,100000);assert.equal(rows[1].parts.stores,40000);assert.equal(rows[2].parts.coffee,30000);assert.equal(rows[3].parts.coffee_bar,30001);assert.equal(rows[3].estimated,true);
 });
 test('imported and live references count once, with actual online items and known payment dates',()=>{
  const d=base();d.imported=[{document_reference:'001',document_date:'2026-10-20',amount_minor:45000,customer_name:'Online customer',website_order_number:42}];d.orderReceipts=[{order_id:'o',document_reference:'1',payment_date:'2026-10-02',amount_minor:45000,status:'issued'}];
