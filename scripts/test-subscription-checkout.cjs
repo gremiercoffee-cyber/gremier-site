@@ -3,6 +3,14 @@ const ts=require('../ops-app/node_modules/typescript'),m=require('../subscriptio
 const products=[{id:'coffee',name_en:'Classic',category:'bottles',price:49},{id:'syrup',name_en:'Vanilla Syrup',category:'bottles',price:59},{id:'bulk',name_en:'5L Classic',category:'bulk',price:169},{id:'mini',name_en:'Mini 4-Pack',category:'minis',price:59},{id:'bar',name_en:'Coffee Bar',category:'coffeebars',price:249}];
 const choose=(id,qty=1)=>({product_id:id,qty});
 test('storefront inline scripts parse after subscription UI changes',()=>{const html=fs.readFileSync('index.html','utf8');for(const match of html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)){if(match[2].trim()&&!match[1].includes('application/json'))new vm.Script(match[2]);}});
+test('subscriptions bypass saved-card charging and cart quick-pay controls',async()=>{
+ const html=fs.readFileSync('index.html','utf8');
+ const start=html.indexOf('  window.callCreatePayment = async function (orderId) {'),end=html.indexOf('  try { callCreatePayment =',start);
+ let forwarded;const context=vm.createContext({window:{},cart:[{is_subscription:true}],signedIn(){throw Error('Saved-card flow must not run');},_createPayment:async id=>{forwarded=id;return {sale_url:'https://example.test/recurring-card-setup'};}});
+ vm.runInContext(html.slice(start,end),context);assert.equal((await context.window.callCreatePayment('fixture')).sale_url,'https://example.test/recurring-card-setup');assert.equal(forwarded,'fixture');
+ const expressStart=html.indexOf('  function expressEligible() {'),expressEnd=html.indexOf('  const _renderCart',expressStart);
+ vm.runInContext(html.slice(expressStart,expressEnd),context);assert.equal(vm.runInContext('expressEligible()',context),null);
+});
 function run(file,context){const source=fs.readFileSync(file,'utf8').replace(/^import[\s\S]*?;\r?\n/gm,'');vm.runInContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);}
 test('browser and server use identical validated subscription pricing and minimums',()=>{
  assert.equal(fs.readFileSync('subscription-model.js','utf8'),fs.readFileSync('supabase/functions/_shared/subscription-model.js','utf8'));

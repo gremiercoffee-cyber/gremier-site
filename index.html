@@ -2120,7 +2120,7 @@ function renderPdSubscriptionSection(p,keepState) {
  if(!pdIsSubscription()){section.innerHTML=mode;return;}
  let quote,error;try{quote=pdSubscriptionQuote();}catch(e){error=lang==='he'?'יש להוסיף קפה למנוי.':'Add coffee to your subscription.';}
  const rows=getSubscriptionBundleProducts(p).map(item=>{const state=pdSubscriptionItems[item.id]||{selected:false,qty:1};return `<div class="sub-choice"><label><input type="checkbox" ${state.selected?'checked':''} onchange="pdToggleSubscriptionItem('${escAttr(item.id)}')">${escHtml(lang==='he'?(item.name_he||item.name_en):item.name_en)}<small>₪${GremierSubscriptionModel.syrup(item)?Number(item.price):Math.round(Number(item.price)*90)/100}</small></label><div class="sub-item-qty"><button type="button" aria-label="Less ${escAttr(item.name_en)}" onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',-1)">−</button><span>${state.qty}</span><button type="button" aria-label="More ${escAttr(item.name_en)}" onclick="pdChangeSubscriptionItemQty('${escAttr(item.id)}',1)">+</button></div></div>`;}).join('');
- section.innerHTML=mode+`<label class="sub-frequency-label">${lang==='he'?'תדירות':'Frequency'}<select onchange="pdSetSubscriptionInterval(this.value);pdUpdateDrawerPrice()"><option value="monthly" ${pdSubscriptionInterval==='monthly'?'selected':''}>${lang==='he'?'כל חודש':'Monthly'}</option><option value="weekly" ${pdSubscriptionInterval==='weekly'?'selected':''}>${lang==='he'?'כל שבוע':'Weekly'}</option></select></label><h4>${lang==='he'?'מה עוד להוסיף למנוי?':'What else would you like to add?'}</h4><div class="sub-choices">${rows}</div><label class="sub-frequency-label">${lang==='he'?'אזור משלוח':'Delivery area'}<select onchange="pdSubArea=this.value;renderPdSubscriptionSection(pdCurrentProduct,true)"><option value="">${lang==='he'?'בחירת אזור':'Choose area'}</option>${deliveryZones.map(z=>`<option value="${escAttr(z.id)}" ${pdSubArea===z.id?'selected':''}>${escHtml(lang==='he'?z.name_he||z.name_en:z.name_en)}</option>`).join('')}<option value="other" ${pdSubArea==='other'?'selected':''}>${lang==='he'?'אזור אחר':'Other area'}</option></select></label><p class="sub-readiness ${quote?.deliveryEligible?'ready':'pickup'}" role="status">${error||pdSubscriptionMessage(quote)}</p><small>${lang==='he'?'10% הנחה על הקפה. סירופים במחיר רגיל ועם קפה בלבד. חיוב מתחדש עד לביטול; משלוח בכל חיוב.':'10% off coffee. Syrups stay full price and require coffee. Recurring billing until cancelled; delivery is charged each cycle.'}</small>`;
+ section.innerHTML=mode+`<label class="sub-frequency-label">${lang==='he'?'תדירות':'Frequency'}<select aria-label="${lang==='he'?'תדירות':'Subscription frequency'}" onchange="pdSetSubscriptionInterval(this.value);pdUpdateDrawerPrice()"><option value="monthly" ${pdSubscriptionInterval==='monthly'?'selected':''}>${lang==='he'?'כל חודש':'Monthly'}</option><option value="weekly" ${pdSubscriptionInterval==='weekly'?'selected':''}>${lang==='he'?'כל שבוע':'Weekly'}</option></select></label><h4>${lang==='he'?'מה עוד להוסיף למנוי?':'What else would you like to add?'}</h4><div class="sub-choices">${rows}</div><label class="sub-frequency-label">${lang==='he'?'אזור משלוח':'Delivery area'}<select aria-label="${lang==='he'?'אזור משלוח':'Subscription delivery area'}" onchange="pdSubArea=this.value;renderPdSubscriptionSection(pdCurrentProduct,true)"><option value="">${lang==='he'?'בחירת אזור':'Choose area'}</option>${deliveryZones.map(z=>`<option value="${escAttr(z.id)}" ${pdSubArea===z.id?'selected':''}>${escHtml(lang==='he'?z.name_he||z.name_en:z.name_en)}</option>`).join('')}<option value="other" ${pdSubArea==='other'?'selected':''}>${lang==='he'?'אזור אחר':'Other area'}</option></select></label><p class="sub-readiness ${quote?.deliveryEligible?'ready':'pickup'}" role="status">${error||pdSubscriptionMessage(quote)}</p><small>${lang==='he'?'10% הנחה על הקפה. סירופים במחיר רגיל ועם קפה בלבד. חיוב מתחדש עד לביטול; משלוח בכל חיוב.':'10% off coffee. Syrups stay full price and require coffee. Recurring billing until cancelled; delivery is charged each cycle.'}</small>`;
 }
 
 function escAttr(s) {
@@ -4321,7 +4321,7 @@ async function sendChatMessageText(text) {
   window.renderCartDrawer = function () {
     const r = _renderCart.apply(this, arguments);
     const body = document.getElementById('cartBody');
-    if (!body || typeof cart === 'undefined' || !Array.isArray(cart) || !cart.length) return r;
+    if (!body || typeof cart === 'undefined' || !Array.isArray(cart) || !cart.length || cart.some(i=>i.is_subscription)) return r;
     const inCart = new Set(cart.map(i => String(i.base_product_id || String(i.id).split('_')[0])));
     const hasSyrup = cart.some(i => /syrup|סירופ/i.test((i.name_en || '') + (i.name_he || '')));
     const syrups = ((typeof products!=='undefined'?products:[]) || []).filter(p => typeof isSyrupProduct === 'function' && isSyrupProduct(p) && !inCart.has(String(p.id)));
@@ -4372,6 +4372,7 @@ async function sendChatMessageText(text) {
     let hint = document.getElementById('pvFreeHint');
     if (!hint) { hint = document.createElement('div'); hint.id = 'pvFreeHint'; hint.className = 'pv-free-hint'; note.insertAdjacentElement('afterend', hint); }
     hint.style.display = 'none';
+    if(cart.some(i=>i.is_subscription))return fee; // The subscription notice uses its pre-discount shipping threshold.
     try {
       const city = (typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null);
       const regular = document.getElementById('shipRegular')?.checked;
@@ -4885,6 +4886,7 @@ async function sendChatMessageText(text) {
     } catch (_) { return null; }
   }
   function expressEligible() {
+    if(cart.some(i=>i.is_subscription))return null;
     const d = get(CK);
     if (!detailsComplete(d) || !cart.length) return null;
     // Event / coffee-bar items need a date & time — those go through the full form.
@@ -5062,7 +5064,7 @@ async function sendChatMessageText(text) {
     const submit = document.getElementById('t-co-submit');
     if (!submit) return;
     let box = document.getElementById('scCheckout');
-    if (!signedIn()) { box?.remove(); return; }
+    if (!signedIn() || cart.some(i=>i.is_subscription)) { box?.remove(); return; }
     if (!box) { box = document.createElement('label'); box.id = 'scCheckout'; box.className = 'sc-box'; submit.insertAdjacentElement('beforebegin', box); }
     box.innerHTML = card
       ? `<input type="checkbox" id="scUseSaved" checked><span><b>${T('Pay with my saved card', 'תשלום בכרטיס השמור שלי')} ${cardLabel()}</b><small>${T('Untick to pay with a different card on PayMe.', 'בטלו את הסימון כדי לשלם בכרטיס אחר ב-PayMe.')}</small></span>`
@@ -5124,7 +5126,7 @@ async function sendChatMessageText(text) {
   // marks the order, then create-payment asks PayMe to keep the card.
   const _createOrder = window.createWebsiteOrder;
   window.createWebsiteOrder = function (orderData) {
-    if (signedIn() && !card && document.getElementById('scSave')?.checked && orderData) orderData.save_card = true;
+    if (!cart.some(i=>i.is_subscription) && signedIn() && !card && document.getElementById('scSave')?.checked && orderData) orderData.save_card = true;
     return _createOrder.apply(this, arguments);
   };
   try { createWebsiteOrder = window.createWebsiteOrder; } catch (_) {}
@@ -5143,6 +5145,7 @@ async function sendChatMessageText(text) {
     return { ...payData, sale_url: saleUrl };
   }
   window.callCreatePayment = async function (orderId) {
+    if(cart.some(i=>i.is_subscription))return _createPayment(orderId);
     const useCard = signedIn() && card && document.getElementById('scUseSaved')?.checked;
     const saveCard = signedIn() && !card && document.getElementById('scSave')?.checked;
     if (useCard) {
