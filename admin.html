@@ -751,7 +751,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="admin-layout">
     <!-- SIDEBAR -->
     <div class="sidebar">
-      <div class="sidebar-logo"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></div>
+      <a class="sidebar-logo" href="#dashboard" onclick="event.preventDefault();showTab('dashboard')" aria-label="Open dashboard"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></a>
       <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
         <div class="nav-item" onclick="showTab('schedule')" id="nav-schedule"><span class="icon">📅</span><span>Schedule</span></div>
