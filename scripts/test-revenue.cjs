@@ -3,6 +3,17 @@ const m=require('../admin-revenue.js');
 const products=[{id:'bar',is_coffee_bar:true},{id:'coffee',category:'bottles'},{id:'gift',category:'giftcards'}];
 const order={id:'o',order_number:42,total:450,created_at:'2026-10-02',payment_status:'paid',items:[{product_id:'bar',price:400,qty:1},{product_id:'coffee',price:100,qty:1}]};
 const base=()=>({orders:[order],products,stores:[{id:'s',name:'Good Store'}],customers:[{name:'Store legal name',store_id:'s'}],imported:[],orderReceipts:[],businessReceipts:[],overrides:[]});
+test('review queue excludes confident matches and clears linked receipts after reviewing an order',()=>{
+ const data=base();data.orders=[{...order,items:[{name_en:'Jerry can',price:450,qty:1}]}];
+ data.imported=[{document_reference:'pending',document_date:'2026-10-02',amount_minor:45000,customer_name:'Private customer',website_order_number:42}];
+ assert.equal(m.needsReview(m.receipts(data)[0]),true);
+ data.overrides=[{source_key:'order-purpose:o',category:'coffee_bar'}];
+ assert.equal(m.needsReview(m.receipts(data)[0]),false);
+ for(const basis of ['Online order details','Store match','Group customer','Reviewed','Reviewed order purpose'])assert.equal(m.needsReview({parts:{coffee:100},basis}),false,basis);
+ assert.equal(m.needsReview({parts:{coffee_bar:45000},estimated:true}),true);
+ assert.equal(m.needsReview({parts:{coffee:100},basis:'Up to ₪300 rule · review'}),true);
+ assert.equal(m.needsReview({parts:{stores:100},basis:'Retail customer · review'}),true);
+});
 test('mixed online paid totals allocate discounts and delivery exactly without losing cents',()=>{
  const p=m.splitOrder(order,products);assert.equal(p.coffee_bar,36000);assert.equal(p.coffee,9000);
  const cents=m.splitOrder({...order,total:0.01,items:[{price:1,qty:1,name_en:'Coffee bar'},{price:1,qty:1,name_en:'Mini bottle'}]},products);
