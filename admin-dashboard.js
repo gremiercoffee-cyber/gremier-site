@@ -109,6 +109,7 @@
     set('dashAttention',empty('Loading…'));
     ['dashMoney','dashTrend','dashChart','dashStoreBreakdown','dashBottlesSold','dashOnlineRevenue'].forEach(id=>set(id,''));
     ['dashRecentOrders','dashRecentDeliveries'].forEach(id=>set(id,'<tr><td colspan="4">Loading…</td></tr>'));
+    set('dashOnlineRevenue','<h2>Sales by purpose</h2>'+['Events / groups','Personal / retail','Needs review'].map(label=>`<div class="fin-row"><span>${label}</span><span class="dash-skeleton">&nbsp;</span></div>`).join(''));
   }
   // Fetch every page: PostgREST's default 1,000-row limit must never silently lower totals.
   async function pages(makeQuery) {
