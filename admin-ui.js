@@ -44,6 +44,8 @@
   function enhance() {
     document.querySelectorAll('[data-action-menu]:not([data-menu-ready])').forEach(group => {
       group.dataset.menuReady = 'true';
+      // A menu with a single action only adds a tap: leave that control in place.
+      if (group.children.length <= 1) return;
       const trigger = document.createElement('button');
       trigger.type = 'button'; trigger.className = 'app-more-button'; trigger.textContent = '⋯';
       trigger.setAttribute('aria-label', group.dataset.actionMenu || 'More actions');

@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261015-2">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261022-3"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261023-1"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -804,7 +804,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <div class="collapse-head">
             <h3 class="collapse-head-title">Filters</h3>
             <span class="collapse-summary" id="orderFilterSummary"></span>
-            <span data-action-menu="Order export"><button class="btn btn-outline btn-sm" onclick="exportOrdersCSV()">Export orders CSV</button></span>
+            <button type="button" class="app-icon-button" title="Export orders CSV" aria-label="Export orders CSV" onclick="event.stopPropagation();exportOrdersCSV()">⬇</button>
             <span class="collapse-chevron">▾</span>
           </div>
           <div class="collapse-body" style="padding:0 16px 14px">
@@ -953,7 +953,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <div class="page-header">
           <div class="flex-between">
             <div><h1 class="page-title">Reports</h1></div>
-            <span data-action-menu="Report tools"><button class="btn btn-outline btn-sm" onclick="exportReportCSV()">⬇ Export CSV</button></span>
+            <button type="button" class="app-icon-button" title="Export CSV" aria-label="Export CSV" onclick="event.stopPropagation();exportReportCSV()">⬇</button>
           </div>
         </div>
         <div class="filter-bar">
@@ -1004,7 +1004,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <option value="name">Sort: Name</option>
             <option value="points">Sort: Points</option>
           </select>
-          <span data-action-menu="Member tools"><button class="btn btn-outline btn-sm" onclick="exportMembersCSV()">⬇ Export CSV</button></span>
+          <button type="button" class="app-icon-button" title="Export CSV" aria-label="Export CSV" onclick="event.stopPropagation();exportMembersCSV()">⬇</button>
         </div>
         <div class="stat-grid" id="memberStats"><div class="loading"><div class="spinner"></div></div></div>
         <div class="card" style="padding:0">
@@ -1135,7 +1135,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <select class="form-input" style="width:auto" id="sdStoreFilter" onchange="loadStoreDeliveries()">
       <option value="all">All Stores</option>
     </select>
-    <span data-action-menu="Delivery tools"><button class="btn btn-outline btn-sm" onclick="exportDeliveriesCSV()">⬇ Export CSV</button></span>
+    <button type="button" class="app-icon-button" title="Export CSV" aria-label="Export CSV" onclick="event.stopPropagation();exportDeliveriesCSV()">⬇</button>
   </div>
 
   <!-- Merged billing + monthly summary stats -->
@@ -1261,7 +1261,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <option value="week">Last 7 Days</option>
           <option value="year">This Year</option>
         </select>
-        <span data-action-menu="Dashboard tools"><button class="btn btn-outline" id="dashRefresh" onclick="loadDashboard()" type="button">Refresh</button></span>
+        <button type="button" class="app-icon-button" id="dashRefresh" title="Refresh" aria-label="Refresh dashboard" onclick="loadDashboard()">↻</button>
       </div>
     </div>
   </div>
@@ -2878,7 +2878,7 @@ function renderWorkers() {
             <div style="font-size:.85rem;font-weight:600;color:${isPay ? 'var(--green)' : 'var(--cream)'}">
               ${sign}${wkMoney(Math.abs(amt))}
             </div>
-            <span data-action-menu="Entry actions"><button class="btn btn-red btn-sm" onclick="deleteWorkerEntry('${e.id}','${w.id}')">Delete entry</button></span>
+            <button type="button" class="app-icon-button danger" title="Delete entry" aria-label="Delete entry" onclick="event.stopPropagation();deleteWorkerEntry('${e.id}','${w.id}')">🗑</button>
           </div>`;
         }).join('') : '<div style="font-size:.82rem;color:var(--text2);padding:8px 0">No entries yet.</div>'}
         </div>` : ''}
@@ -6469,7 +6469,7 @@ function renderDeliveriesTable() {
       <td class="cell-actions">
         <div class="cell-actions-wrap">
           <button class="btn btn-outline btn-sm" onclick="openEditDeliveryModal('${d.id}')">Edit</button>
-<span data-action-menu="Delivery actions">          <button class="btn btn-red btn-sm" onclick="deleteDeliveryById('${d.id}')">Delete delivery</button></span>
+<button type="button" class="app-icon-button danger" title="Delete delivery" aria-label="Delete delivery" onclick="event.stopPropagation();deleteDeliveryById('${d.id}')">🗑</button>
         </div>
       </td>
     </tr>`;
@@ -9214,7 +9214,7 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<script src="/admin-ui.js?v=20261020-1"></script>
+<script src="/admin-ui.js?v=20261023-2"></script>
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
 <script src="/admin-react-1.js?v=367256c067"></script>
