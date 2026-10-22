@@ -30,7 +30,8 @@ Deno.serve(async req=>{
     }
     const id=String(body.order_id||'');
     if(body.action==='disable') {
-      const {error}=await db.from('finbot_receipt_settings').update({enabled:false,starts_at:null,updated_at:new Date().toISOString()}).eq('id',1);
+      // Keep the original cutoff: payments during a pause must remain catch-up eligible.
+      const {error}=await db.from('finbot_receipt_settings').update({enabled:false,updated_at:new Date().toISOString()}).eq('id',1);
       if(error)throw Error('settings_save_failed');return json({enabled:false});
     }
     if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))return json({error:'invalid_order_id'},400);
@@ -82,8 +83,9 @@ Deno.serve(async req=>{
       if(body.reviewed_pdf_and_email!==true||row?.status!=='issued'||!row.is_test||!row.pdf_path||!row.test_email_sent_at)return json({error:'review_a_successful_test_first'},409);
       if(!Deno.env.get('FINBOT_API_KEY'))return json({error:'finbot_not_configured'},409);
       const now=new Date().toISOString();
-      const {error}=await db.from('finbot_receipt_settings').update({enabled:true,starts_at:now,reviewed_test_order_id:id,updated_at:now}).eq('id',1);
-      if(error)throw Error('settings_save_failed');return json({enabled:true,starts_at:now});
+      const settings=await receiptSettings(db),startsAt=settings.starts_at||now;
+      const {error}=await db.from('finbot_receipt_settings').update({enabled:true,starts_at:startsAt,reviewed_test_order_id:id,updated_at:now}).eq('id',1);
+      if(error)throw Error('settings_save_failed');return json({enabled:true,starts_at:startsAt,catch_up:true});
     }
     if(body.action==='link_manual') {
       const order=await receiptOrder(db,id),existing=await receiptRow(db,id);

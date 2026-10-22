@@ -208,7 +208,7 @@ export async function issueFinbotReceipt(db:any,orderId:string,options:{test?:bo
     const {data:issued,error}=await db.from('order_receipts').update({status:'issued',document_url:document.url,
       document_reference:document.reference,issued_at:new Date().toISOString(),error_code:null}).eq('order_id',orderId).eq('status','issuing').select('*').single();
     if(error)throw Error('receipt_save_needs_review');
-    return {receipt:await savePdf(db,issued)};
+    return {receipt:await savePdf(db,issued),created:true};
   } catch(e) {
     const code=e instanceof Error&&/^[a-z0-9_]+$/.test(e.message)?e.message:'provider_result_unknown';
     await db.from('order_receipts').update({status:'needs_review',error_code:code}).eq('order_id',claim.order_id).eq('status','issuing');

@@ -6,12 +6,12 @@ global.Deno={env:{get:key=>env[key]}};
 const {issueFinbotReceipt,repairReceiptPdf,originalPdf,sendReceiptTest}=require('../supabase/functions/_shared/finbot-receipts.ts');
 const order=(patch={})=>({id:'a',order_number:123,customer_name:'Example buyer',customer_email:'buyer@example.test',source:'website',payment_status:'paid',status:'confirmed',payment_method:'payme',total:125.25,created_at:'2026-10-10T10:00:00Z',payment_confirmed_at:'2026-10-19T08:00:00Z',delivery_info:{payme_sale_id:'SALE-fixture',receipt_card_last4:'1234',receipt_installments:1},...patch});
 function database(orders=[order()]){
- const receipts=new Map(),files=new Map();
+ const receipts=new Map(),files=new Map(),queue=new Map();
  const settings={id:1,enabled:true,starts_at:'2026-10-19T07:00:00Z'};
- return {receipts,files,settings,from(table){
+ return {receipts,files,settings,queue,async rpc(name){assert.equal(name,'claim_receipt_catchup');const job=[...queue.values()].find(j=>j.status==='pending');if(job)job.status='processing';return {data:job?[{...job}]:[],error:null}},from(table){
   let operation='read',patch,filters=[];
   const execute=()=>{
-   let items=table==='orders'?orders:table==='order_receipts'?[...receipts.values()]:[settings];
+   let items=table==='orders'?orders:table==='order_receipts'?[...receipts.values()]:table==='receipt_catchup_queue'?[...queue.values()]:[settings];
    const matched=items.filter(r=>filters.every(([key,value])=>r[key]===value));
    if(operation==='insert'){
     if(receipts.has(patch.order_id)||[...receipts.values()].some(r=>r.payment_reference===patch.payment_reference))return {data:null,error:{code:'23505'}};
@@ -203,4 +203,44 @@ test('2026 reconciliation separates linked, unknown payment dates, reviews and J
  const orders=[order({id:'a'}),order({id:'b',payment_confirmed_at:null}),order({id:'c'}),order({id:'d'}),order({id:'e',created_at:'2026-12-31T23:00:00Z'}),order({id:'f',payment_status:'unpaid'}),order({id:'g',status:'cancelled'})];
  const report=missingReceiptReport(orders,[{order_id:'a',status:'issued'},{order_id:'c',status:'external'},{order_id:'d',status:'needs_review'}],2026);
  assert.equal(report.count,2);assert.equal(report.total_minor,25050);assert.equal(report.unknown_payment_date_count,1);assert.equal(report.needs_review_count,1);
+});
+
+const {runReceiptCatchup}=require('../supabase/functions/_shared/receipt-catchup.ts');
+test('paused catch-up cannot claim, issue or email; original activation survives a pause',async()=>{
+ const calls=provider(),db=database();db.settings.enabled=false;db.queue.set('a',{order_id:'a',status:'pending'});
+ assert.deepEqual(await runReceiptCatchup(db),{paused:true,processed:0});assert.equal(calls.length,0);
+ assert.equal(db.queue.get('a').status,'pending');assert.equal(db.settings.starts_at,'2026-10-19T07:00:00Z');
+ db.settings.enabled=true;await runReceiptCatchup(db);assert.equal(db.receipts.get('a').status,'issued');
+});
+test('catch-up issues and emails the original PDF exactly once without replaying confirmation',async()=>{
+ const calls=provider(),db=database();db.queue.set('a',{order_id:'a',status:'pending'});
+ await runReceiptCatchup(db);await runReceiptCatchup(db);
+ assert.equal(db.queue.get('a').status,'done');assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+ const mails=calls.filter(c=>c.url==='https://api.resend.com/emails').map(c=>JSON.parse(c.init.body));
+ assert.equal(mails.length,1);assert.deepEqual(mails[0].to,['buyer@example.test']);assert.equal(mails[0].attachments.length,1);
+ assert.match(atob(mails[0].attachments[0].content),/^%PDF/);assert.match(mails[0].subject,/Receipt/);
+});
+test('existing receipts and uncertain receipt claims never trigger catch-up issuance or email',async()=>{
+ for(const status of ['issued','external','issuing','needs_review']) {
+  const calls=provider(),db=database();db.receipts.set('a',{order_id:'a',status});db.queue.set('a',{order_id:'a',status:'pending'});
+  await runReceiptCatchup(db);assert.equal(calls.length,0);assert.equal(db.queue.get('a').status,'done');
+ }
+});
+test('unknown provider outcome is held for review and never automatically retried',async()=>{
+ const calls=provider('timeout'),db=database();db.queue.set('a',{order_id:'a',status:'pending'});
+ await runReceiptCatchup(db);await runReceiptCatchup(db);
+ assert.equal(db.queue.get('a').status,'needs_review');assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+ assert.equal(calls.filter(c=>c.url==='https://api.resend.com/emails').length,0);
+});
+test('customer email failure stays reviewable without issuing or sending again',async()=>{
+ const calls=provider(),fetcher=global.fetch,db=database();db.queue.set('a',{order_id:'a',status:'pending'});
+ global.fetch=(url,options)=>url==='https://api.resend.com/emails'?Promise.resolve(new Response('failed',{status:500})):fetcher(url,options);
+ await runReceiptCatchup(db);await runReceiptCatchup(db);
+ assert.equal(db.queue.get('a').status,'needs_review');assert.equal(db.queue.get('a').error_code,'receipt_email_requires_review');
+ assert.equal(calls.filter(c=>c.url.endsWith('/income')).length,1);
+});
+test('pause after queue claim restores pending work without sending anything',async()=>{
+ const calls=provider(),db=database(),claim=db.rpc;db.queue.set('a',{order_id:'a',status:'pending'});
+ db.rpc=async name=>{const result=await claim(name);db.settings.enabled=false;return result;};
+ await runReceiptCatchup(db);assert.equal(calls.length,0);assert.equal(db.queue.get('a').status,'pending');
 });
