@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261015-2">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261021-6"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261022-1"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -1130,7 +1130,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 
   <!-- Month picker -->
-  <div class="filter-bar" style="margin-bottom:20px">
+  <div id="sdDeliveryFilters" class="filter-bar" style="margin-bottom:20px">
     <input type="month" class="form-input" style="width:auto" id="sdMonth" onchange="loadStoreDeliveries()"/>
     <select class="form-input" style="width:auto" id="sdStoreFilter" onchange="loadStoreDeliveries()">
       <option value="all">All Stores</option>
@@ -1139,7 +1139,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 
   <!-- Merged billing + monthly summary stats -->
-  <div class="card collapse-card" data-collapse-key="sd_stats" style="margin-bottom:20px">
+  <div id="sdMonthStats" class="card collapse-card" data-collapse-key="sd_stats" style="margin-bottom:20px">
     <div class="collapse-head">
       <h3 class="collapse-head-title">Month stats</h3>
       <span class="collapse-chevron">▾</span>
@@ -1224,30 +1224,23 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
       <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">Generate statements</button>
     </div>
-    <div id="billStoreChips" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:none"></div>
-    <div class="billing-modes" style="display:flex;gap:8px;margin-bottom:14px">
-      <button type="button" class="btn btn-sm" id="billModeMonth" onclick="setBillingMode('month')">This month</button>
-      <button type="button" class="btn btn-sm" id="billModeAll" onclick="setBillingMode('all')">All months</button>
-      <button type="button" class="btn btn-sm" id="billModeDocuments" onclick="setBillingMode('documents')">Documents · all time</button>
+    <div class="billing-modes" style="display:flex;gap:8px;margin:14px 0">
+      <button type="button" class="btn btn-sm" id="billModeAll" onclick="setBillingMode('all')">Bills</button>
+      <button type="button" class="btn btn-sm" id="billModeDocuments" onclick="setBillingMode('documents')">Documents</button>
     </div>
-    <div id="billAllFilters" class="filter-bar" style="display:none;flex-wrap:wrap;gap:8px">
-      <select class="form-input" style="width:auto" id="billGroup" onchange="renderBillingAll()">
-        <option value="store" selected>Group by store</option>
-        <option value="status">Group by status</option>
-        <option value="month">Group by month</option>
-        <option value="none">No grouping (biggest first)</option>
-      </select>
-      <select class="form-input" style="width:auto" id="billStatus" onchange="renderBillingAll()">
+    <div id="billAllFilters" class="filter-bar billing-filters" style="flex-wrap:wrap;gap:12px">
+      <label>Period<select class="form-input" id="billMonth" onchange="renderBillingAll()"><option value="">All time</option></select></label>
+      <label>Store<select class="form-input" id="billStore" onchange="billFocusStore=this.value;renderBillingAll()"><option value="">All stores</option></select></label>
+      <label>Status<select class="form-input" id="billStatus" onchange="renderBillingAll()">
         <option value="all">All statuses</option>
-        <option value="owed">Billed, not paid</option>
-        <option value="unbilled">Not billed yet</option>
-        <option value="open">Everything unpaid</option>
+        <option value="owed">Billed and unpaid</option>
         <option value="paid">Paid</option>
+        <option value="unbilled">Not billed yet</option>
+        <option value="open">All unpaid</option>
         <option value="cancelled">Cancelled</option>
-      </select>
-      <select class="form-input" style="width:auto" id="billStore" onchange="billFocusStore=this.value;renderBillStoreChips();renderBillingAll()"><option value="">All stores</option></select>
-      <select class="form-input" style="width:auto" id="billMonth" onchange="renderBillingAll()"><option value="">All months</option></select>
+      </select></label>
     </div>
+    <div id="billStoreShare" style="margin:10px 0"></div>
     <div id="billAllSummary" class="stat-grid" style="display:none"></div>
     <div id="sdBillingBody"><div class="loading"><div class="spinner"></div></div></div>
   </div>
@@ -6917,7 +6910,8 @@ function exportDeliveriesCSV() {
 }
 
 async function generateMonthlyBillingImages() {
-  const monthVal = getSDMonth();
+  const monthVal = document.getElementById('billMonth')?.value;
+  if (!monthVal) { showToast('Choose a month to generate statements'); return; }
   const [y, m] = monthVal.split('-').map(Number);
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const label = `${monthNames[m-1]} ${String(y).slice(-2)}`;
@@ -6961,32 +6955,16 @@ function toggleBillingBoard() {
   const showingBilling = billing.style.display === 'none';
   normal.style.display = showingBilling ? 'none' : '';
   billing.style.display = showingBilling ? '' : 'none';
+  document.getElementById('sdDeliveryFilters').style.display = showingBilling ? 'none' : '';
+  document.getElementById('sdMonthStats').style.display = showingBilling ? 'none' : '';
   btn.textContent = showingBilling ? '🏪 Store Deliveries' : '🧾 Monthly Billing';
   if (showingBilling) loadBillingBoard();
 }
 
 async function loadBillingBoard() {
-  if (billingMode === 'documents') { syncBillingModeUI(); return window.GremierBillingDocuments.load(billFocusStore); }
-  if (billingMode === 'all') return loadBillingAll();
   syncBillingModeUI();
-  const monthVal = getSDMonth();
-  if (!monthVal) return;
-  const [y, m] = monthVal.split('-').map(Number);
-  const body = document.getElementById('sdBillingBody');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const { data: rows, error } = await sb
-    .from('store_billing')
-    .select('*, stores(name, phone)')
-    .eq('year', y).eq('month', m)
-    .order('total', { ascending: false });
-  if (error) { body.innerHTML = `<div class="empty-state">Couldn't load billing data: ${escHtml(error.message)}</div>`; return; }
-  renderBillingMiniStats(rows || []);
-  if (!rows || !rows.length) {
-    body.innerHTML = `<div class="empty-state">No statements generated for this month yet. Tap "Generate / Refresh Images" above.</div>`;
-    return;
-  }
-  const shown = billFocusStore ? rows.filter(r => r.store_id === billFocusStore) : rows;
-  body.innerHTML = shown.length ? shown.map(r => billingCardHtml(r, false)).join('') : '<div class="empty-state">No bill for this store this month.</div>';
+  if (billingMode === 'documents') { ++billingLoadSequence; return window.GremierBillingDocuments.load(billFocusStore); }
+  return loadBillingAll();
 }
 
 async function downloadOutstandingBalancePNG(storeId) {
@@ -7119,6 +7097,7 @@ async function undoBillingCancelled(billingId) {
 // ── Billing: shared card, status, and the All-months view ──
 let billingMode = (() => { try { return localStorage.getItem('gremier_billing_mode') || 'month'; } catch { return 'month'; } })();
 let billingAllRows = [];
+let billingLoadSequence = 0, billingPeriodInitialized = false;
 const BILL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function billingStatus(r) {
   if (r.cancelled_at) return 'cancelled';
@@ -7155,9 +7134,9 @@ function billingCardHtml(r, showMonth) {
       : '<span style="color:var(--text2)">Not paid</span>';
   const closed = st === 'paid' || st === 'cancelled';
   return `
-    <div class="card" style="padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;${bg}">
-      ${r.image_url ? `<img src="${escAttr(r.image_url)}" style="width:54px;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="window.open(this.src,'_blank')"/>` : ''}
-      <div style="flex:1;min-width:160px">
+    <div class="card billing-card" style="padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;${bg}">
+      ${r.image_url ? `<img class="billing-card-image" src="${escAttr(r.image_url)}" style="width:54px;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;flex-shrink:0" onclick="window.open(this.src,'_blank')"/>` : ''}
+      <div class="billing-card-info" style="flex:1;min-width:160px">
         <div style="font-weight:600;color:var(--cream)">${escHtml(storeName)}${showMonth ? ` <span style="color:var(--text2);font-weight:500">· ${billMonthLabel(r)}</span>` : ''}</div>
         <div style="color:var(--text2);font-size:.85rem">₪${Number(r.total||0).toFixed(2)}${phone ? ` · ${escHtml(phone)}` : ''}</div>
         <div style="font-size:.74rem;margin-top:4px">${billedTxt} &nbsp;·&nbsp; ${endTxt}</div>
@@ -7184,30 +7163,22 @@ function renderBillStoreChips() {
 }
 function focusBillStore(id) {
   billFocusStore = id;
-  if (id) {
-    if (billingMode !== 'documents') billingMode = 'all';
-    const g = document.getElementById('billGroup'); if (g) g.value = 'month';
-    const st = document.getElementById('billStatus'); if (st) st.value = 'all';
-  } else {
-    const g = document.getElementById('billGroup'); if (g) g.value = 'store';
-  }
+  const select = document.getElementById('billStore'); if (select) select.value = id;
   loadBillingBoard();
 }
 function syncBillingModeUI() {
-  renderBillStoreChips();
-  const all = billingMode === 'all', documents = billingMode === 'documents';
+  const documents = billingMode === 'documents';
   const archive = document.getElementById('billingDocumentFilters'); if (archive) archive.hidden = !documents;
   const docButton = document.getElementById('billModeDocuments'); if (docButton) docButton.className = 'btn btn-sm ' + (documents ? 'btn-amber' : 'btn-outline');
-  const m = document.getElementById('billModeMonth'), a = document.getElementById('billModeAll');
-  if (m) m.className = 'btn btn-sm ' + (all || documents ? 'btn-outline' : 'btn-amber');
-  if (a) a.className = 'btn btn-sm ' + (all ? 'btn-amber' : 'btn-outline');
-  const f = document.getElementById('billAllFilters'); if (f) f.style.display = all ? 'flex' : 'none';
-  const sm = document.getElementById('billAllSummary'); if (sm) sm.style.display = all ? '' : 'none';
-  const gen = document.getElementById('billingGenBtn'); if (gen) gen.style.display = all || documents ? 'none' : '';
+  const bills = document.getElementById('billModeAll'); if (bills) bills.className = 'btn btn-sm ' + (documents ? 'btn-outline' : 'btn-amber');
+  document.getElementById('billAllFilters').style.display = documents ? 'none' : 'flex';
+  document.getElementById('billAllSummary').style.display = documents ? 'none' : '';
+  document.getElementById('billStoreShare').style.display = documents ? 'none' : '';
+  document.getElementById('billingGenBtn').style.display = documents || !document.getElementById('billMonth').value ? 'none' : '';
 }
 function openBillingDocuments(storeId) { billFocusStore=storeId; setBillingMode('documents'); }
 function setBillingMode(mode) {
-  billingMode = mode;
+  billingMode = mode === 'documents' ? 'documents' : 'all';
   try { localStorage.setItem('gremier_billing_mode', mode); } catch {}
   loadBillingBoard();
 }
@@ -7215,10 +7186,23 @@ async function loadBillingAll() {
   syncBillingModeUI();
   const body = document.getElementById('sdBillingBody');
   body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const { data: rows, error } = await sb.from('store_billing').select('*, stores(name, phone)')
-    .order('year', { ascending: false }).order('month', { ascending: false });
-  if (error) { body.innerHTML = `<div class="empty-state">Couldn't load billing data: ${escHtml(error.message)}</div>`; return; }
-  billingAllRows = rows || [];
+  const sequence = ++billingLoadSequence, rows = [];
+  try {
+    for (let start = 0; ; start += 1000) {
+      const result = await sb.from('store_billing').select('*, stores(name, phone)').order('year', { ascending: false }).order('month', { ascending: false }).order('id').range(start, start + 999);
+      if (sequence !== billingLoadSequence || billingMode === 'documents') return;
+      if (result.error) throw result.error;
+      rows.push(...(result.data || []));
+      if (!result.data || result.data.length < 1000) break;
+    }
+  } catch (error) {
+    if (sequence === billingLoadSequence && billingMode !== 'documents') {
+      body.innerHTML = `<div class="empty-state">Couldn't load billing data: ${escHtml(error.message)}</div>`;
+      document.getElementById('billAllSummary').innerHTML = '';
+    }
+    return;
+  }
+  billingAllRows = rows;
   // Fill the store / month filters, keeping the current choice.
   const fill = (id, opts, first) => {
     const el = document.getElementById(id); if (!el) return;
@@ -7226,21 +7210,27 @@ async function loadBillingAll() {
     el.innerHTML = `<option value="">${first}</option>` + opts.map(([v, t]) => `<option value="${escAttr(v)}">${escHtml(t)}</option>`).join('');
     el.value = opts.some(([v]) => v === cur) ? cur : '';
   };
-  const stores = [...new Map(billingAllRows.map(r => [r.store_id, r.stores?.name || 'Unknown store'])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  const months = [...new Map(billingAllRows.map(r => [billKey(r), billMonthLabel(r)])).entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  const stores = [...new Map([...allStores.map(s => [s.id, s.name]), ...billingAllRows.map(r => [r.store_id, r.stores?.name || 'Unknown store'])]).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const currentMonth = getSDMonth();
+  const [currentYear, currentNumber] = currentMonth.split('-').map(Number);
+  const months = [...new Map([[currentMonth, billMonthLabel({year:currentYear,month:currentNumber})], ...billingAllRows.map(r => [billKey(r), billMonthLabel(r)])]).entries()].sort((a, b) => b[0].localeCompare(a[0]));
   fill('billStore', stores, 'All stores');
-  fill('billMonth', months, 'All months');
+  fill('billMonth', months, 'All time');
+  if (!billingPeriodInitialized) { document.getElementById('billMonth').value = currentMonth; billingPeriodInitialized = true; }
   const storeSel = document.getElementById('billStore');
-  if (storeSel) storeSel.value = billFocusStore && stores.some(([v]) => v === billFocusStore) ? billFocusStore : (billFocusStore ? '' : storeSel.value);
+  if (storeSel) storeSel.value = stores.some(([v]) => v === billFocusStore) ? billFocusStore : '';
   renderBillingAll();
 }
 function billKey(r) { return `${r.year}-${String(r.month).padStart(2, '0')}`; }
 function renderBillingAll() {
   const body = document.getElementById('sdBillingBody');
-  const group = document.getElementById('billGroup')?.value || 'status';
+  const group = document.getElementById('billStore')?.value ? 'month' : 'store';
+  syncBillingModeUI();
   const status = document.getElementById('billStatus')?.value || 'all';
   const store = document.getElementById('billStore')?.value || '';
   const month = document.getElementById('billMonth')?.value || '';
+  const share = document.getElementById('billStoreShare');
+  if (share) share.innerHTML = store ? `<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid bills</button>` : '';
   const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
   const rows = billingAllRows.filter(r => {
     if (!inScope(r)) return false;
@@ -7249,12 +7239,8 @@ function renderBillingAll() {
     return status === 'all' || st === status;
   });
   const sum = list => list.reduce((t, r) => t + Number(r.total || 0), 0);
-  // Totals per status (for the chosen store/month); tap one to filter to it.
-  document.getElementById('billAllSummary').innerHTML = ['owed', 'unbilled', 'paid', 'cancelled'].map(st => {
-    const l = billingAllRows.filter(r => inScope(r) && billingStatus(r) === st);
-    const border = st === 'owed' && l.length ? 'border-color:rgba(224,160,48,.55);' : st === 'paid' ? 'border-color:rgba(76,175,114,.4);' : '';
-    return `<div class="stat-card" style="cursor:pointer;${border}" onclick="document.getElementById('billStatus').value='${st}';renderBillingAll()"><div class="stat-label">${BILL_STATUS_META[st].label}</div><div class="stat-value">₪${sum(l).toFixed(0)}</div><div class="stat-sub">${l.length} store-month${l.length === 1 ? '' : 's'}</div></div>`;
-  }).join('');
+  const owed = billingAllRows.filter(r => inScope(r) && billingStatus(r) === 'owed');
+  document.getElementById('billAllSummary').innerHTML = `<div class="stat-card"><div class="stat-label">Billed and unpaid</div><div class="stat-value">₪${sum(owed).toFixed(2)}</div></div>`;
   if (!rows.length) { body.innerHTML = '<div class="empty-state">Nothing matches these filters.</div>'; return; }
 
   const statusOrder = r => BILL_STATUS_META[billingStatus(r)].order;
@@ -7277,7 +7263,7 @@ function renderBillingAll() {
     const title = group === 'status' ? BILL_STATUS_META[k].label
       : group === 'month' ? billMonthLabel(list[0])
       : group === 'store' ? escHtml(k) : '';
-    const head = title ? `<div class="flex-between" style="margin:18px 0 8px;gap:10px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4><span style="font-size:.8rem;color:var(--text2);text-align:right">₪${sum(group === 'status' ? list : list.filter(r => billingStatus(r) !== 'cancelled')).toFixed(0)}${group !== 'status' && open.length ? ` · <b style="color:#b8860b">₪${sum(open).toFixed(0)} unpaid</b>` : ''}</span></div>` : '';
+    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share unpaid bills</button>`:''}</div>` : '';
     return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
   }).join('');
 }
@@ -9227,6 +9213,8 @@ window.opsFetch = window.opsFetch || (function () {
 })();
 </script>
 <script src="/admin-ui.js?v=20261020-1"></script>
+<script src="/admin-zoom.js?v=20261022-1"></script>
+<script src="/admin-billing-share.js?v=20261022-1"></script>
 <script src="/admin-react-1.js?v=7c80086ba8"></script>
 <script src="/admin-react-2.js?v=dc3904134d"></script>
 
