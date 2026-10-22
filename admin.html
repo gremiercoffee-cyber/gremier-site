@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261015-2">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261022-1"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261022-2"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -1240,7 +1240,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <option value="cancelled">Cancelled</option>
       </select></label>
     </div>
-    <div id="billStoreShare" style="margin:10px 0"></div>
+    <div id="billStoreShare" class="fw-actions" style="margin:10px 0"></div>
     <div id="billAllSummary" class="stat-grid" style="display:none"></div>
     <div id="sdBillingBody"><div class="loading"><div class="spinner"></div></div></div>
   </div>
@@ -7216,7 +7216,7 @@ async function loadBillingAll() {
   const months = [...new Map([[currentMonth, billMonthLabel({year:currentYear,month:currentNumber})], ...billingAllRows.map(r => [billKey(r), billMonthLabel(r)])]).entries()].sort((a, b) => b[0].localeCompare(a[0]));
   fill('billStore', stores, 'All stores');
   fill('billMonth', months, 'All time');
-  if (!billingPeriodInitialized) { document.getElementById('billMonth').value = currentMonth; billingPeriodInitialized = true; }
+  if (!billingPeriodInitialized) { document.getElementById('billMonth').value = ''; billingPeriodInitialized = true; }
   const storeSel = document.getElementById('billStore');
   if (storeSel) storeSel.value = stores.some(([v]) => v === billFocusStore) ? billFocusStore : '';
   renderBillingAll();
@@ -7230,7 +7230,7 @@ function renderBillingAll() {
   const store = document.getElementById('billStore')?.value || '';
   const month = document.getElementById('billMonth')?.value || '';
   const share = document.getElementById('billStoreShare');
-  if (share) share.innerHTML = store ? `<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid bills</button>` : '';
+  if (share) share.innerHTML = store ? `<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(store)}">Share multiple statements</button>` : '';
   const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
   const rows = billingAllRows.filter(r => {
     if (!inScope(r)) return false;
@@ -7263,7 +7263,7 @@ function renderBillingAll() {
     const title = group === 'status' ? BILL_STATUS_META[k].label
       : group === 'month' ? billMonthLabel(list[0])
       : group === 'store' ? escHtml(k) : '';
-    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share unpaid bills</button>`:''}</div>` : '';
+    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(list[0].store_id)}">Share multiple statements</button>`:''}</div>` : '';
     return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
   }).join('');
 }
@@ -9214,7 +9214,7 @@ window.opsFetch = window.opsFetch || (function () {
 </script>
 <script src="/admin-ui.js?v=20261020-1"></script>
 <script src="/admin-zoom.js?v=20261022-1"></script>
-<script src="/admin-billing-share.js?v=20261022-1"></script>
+<script src="/admin-billing-share.js?v=20261022-2"></script>
 <script src="/admin-react-1.js?v=7c80086ba8"></script>
 <script src="/admin-react-2.js?v=dc3904134d"></script>
 
