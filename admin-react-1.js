@@ -481,7 +481,7 @@ async function createDrain2(brewJob) {
   // not against other concurrent brews of the same product
   const existing = await opsFetch(`jobs?type=eq.drain&source_brew_id=eq.${brewJob.id}&select=id`);
   if (existing?.length) return;
-  const drainHours = brewJob.product === 'classic' ? 22 : 18;
+  const drainHours = brewJob.product === 'classic' || brewJob.product === 'unfiltered' ? 22 : 18;
   const drainTime = new Date(Date.now() + drainHours * 60 * 60 * 1000);
   const drainDate = `${drainTime.getFullYear()}-${String(drainTime.getMonth() + 1).padStart(2, '0')}-${String(drainTime.getDate()).padStart(2, '0')}`;
   const drainTimeStr = `${String(drainTime.getHours()).padStart(2, '0')}:${String(drainTime.getMinutes()).padStart(2, '0')}`;
@@ -650,13 +650,16 @@ function isSuspiciousDrainJob2(job) {
 function isRealDrainJob2(job) {
   if (!job || job.type !== 'drain') return false;
   if (isSuspiciousDrainJob2(job)) return false;
-  const productOk = ['classic', 'houseBlend', 'colombia', 'decaf'].includes(job.product);
+  const productOk = ['classic', 'unfiltered', 'houseBlend', 'colombia', 'decaf'].includes(job.product);
   const kgOk = [1, 1.5, 2, 3].includes(Number(job.kg));
   const label = String(job.label || '').toLowerCase().trim();
   const labelLooksLikeDrain = /^drain\b/.test(label);
   // Auto drains created from brews carry source_brew_id. Manually scheduled drains are allowed
   // only when they are explicitly labeled as Drain, never as a stock removal/correction.
   return productOk && kgOk && (!!job.sourceBrewId || !!job.source_brew_id || labelLooksLikeDrain);
+}
+function brewBeanType2(product) {
+  return product === 'unfiltered' ? 'classic' : product;
 }
 async function applyJobSideEffects2(job, confirmedQtys, stores) {
   const kgToL = {
@@ -674,6 +677,9 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     decaf: 'jerry_can_decaf'
   };
   const CONC_TYPES = {
+    unfiltered: {
+      ratio: 0.40
+    },
     classic: {
       ratio: 0.43
     },
@@ -689,10 +695,10 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
   };
   const PRODS = window.__OPS_PRODUCTS__;
   if (job.type === 'brew') {
-    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const beanRows = await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}&select=kg`);
     const currentKg = beanRows?.[0]?.kg || 0;
     const newKg = parseFloat(Math.max(0, currentKg - (job.kg || 3)).toFixed(1));
-    await opsFetch(`beans?type=eq.${job.product}`, {
+    await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}`, {
       method: 'PATCH',
       prefer: 'return=minimal',
       body: JSON.stringify({
@@ -785,6 +791,9 @@ async function reverseJobSideEffects2(job, stores) {
     decaf: 'jerry_can_decaf'
   };
   const CONC_TYPES = {
+    unfiltered: {
+      ratio: 0.40
+    },
     classic: {
       ratio: 0.43
     },
@@ -801,9 +810,9 @@ async function reverseJobSideEffects2(job, stores) {
 
   // BREW — beans were deducted at brew-start, restore them
   if (job.type === 'brew' && job.brewStarted) {
-    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const beanRows = await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}&select=kg`);
     const newKg = parseFloat(((beanRows?.[0]?.kg || 0) + (job.kg || 3)).toFixed(1));
-    await opsFetch(`beans?type=eq.${job.product}`, {
+    await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}`, {
       method: 'PATCH',
       prefer: 'return=minimal',
       body: JSON.stringify({
@@ -1546,6 +1555,7 @@ function CheckoffModal2({
     }[Number(job.kg)] || 19;
     const concLabels = {
       classic: 'Classic',
+      unfiltered: 'Unfiltered',
       houseBlend: 'House Blend',
       colombia: 'Colombia',
       decaf: 'Decaf'
@@ -1900,15 +1910,21 @@ function JobRowComp({
       color: '#3f7fc4'
     }
   }, "\uD83D\uDCCD ", job.privateAddress || job.cbAddress)), showDelete && /*#__PURE__*/React.createElement("button", {
-    className: "app-more-button",
-    "aria-label": "Scheduled task actions",
-    "aria-expanded": "false",
-    onClick: e => window.adminShowActions(e, [{
-      label: 'Delete task',
-      danger: true,
-      run: () => onDelete && onDelete(job)
-    }])
-  }, "\u22EF"));
+    "aria-label": "Delete task",
+    title: "Delete task",
+    style: {
+      background: 'none',
+      border: 'none',
+      color: '#d5544a',
+      fontSize: 16,
+      cursor: 'pointer',
+      padding: '2px 4px'
+    },
+    onClick: e => {
+      e.stopPropagation();
+      onDelete && onDelete(job);
+    }
+  }, "\uD83D\uDDD1"));
 }
 
 // ── Calendar ───────────────────────────────────────────────
@@ -2605,6 +2621,7 @@ function ScheduleForm({
   Object.assign(FP, window.__OPS_DYNAMIC_PRODUCTS__ || {});
   const CONC = {
     classic: 'Classic (Dark Roast)',
+    unfiltered: 'Unfiltered (Classic beans)',
     houseBlend: 'House Blend',
     colombia: 'Colombia (Light Roast)',
     decaf: 'Decaf'

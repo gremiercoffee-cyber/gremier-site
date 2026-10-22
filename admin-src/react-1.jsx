@@ -377,7 +377,7 @@ async function createDrain2(brewJob) {
   // not against other concurrent brews of the same product
   const existing = await opsFetch(`jobs?type=eq.drain&source_brew_id=eq.${brewJob.id}&select=id`);
   if (existing?.length) return;
-  const drainHours = brewJob.product==='classic'?22:18;
+  const drainHours = (brewJob.product==='classic'||brewJob.product==='unfiltered')?22:18;
   const drainTime = new Date(Date.now()+drainHours*60*60*1000);
   const drainDate = `${drainTime.getFullYear()}-${String(drainTime.getMonth()+1).padStart(2,'0')}-${String(drainTime.getDate()).padStart(2,'0')}`;
   const drainTimeStr = `${String(drainTime.getHours()).padStart(2,'0')}:${String(drainTime.getMinutes()).padStart(2,'0')}`;
@@ -482,7 +482,7 @@ function isSuspiciousDrainJob2(job) {
 function isRealDrainJob2(job) {
   if (!job || job.type !== 'drain') return false;
   if (isSuspiciousDrainJob2(job)) return false;
-  const productOk = ['classic','houseBlend','colombia','decaf'].includes(job.product);
+  const productOk = ['classic','unfiltered','houseBlend','colombia','decaf'].includes(job.product);
   const kgOk = [1, 1.5, 2, 3].includes(Number(job.kg));
   const label = String(job.label || '').toLowerCase().trim();
   const labelLooksLikeDrain = /^drain\b/.test(label);
@@ -491,19 +491,21 @@ function isRealDrainJob2(job) {
   return productOk && kgOk && (!!job.sourceBrewId || !!job.source_brew_id || labelLooksLikeDrain);
 }
 
+function brewBeanType2(product) { return product === 'unfiltered' ? 'classic' : product; }
+
 async function applyJobSideEffects2(job, confirmedQtys, stores) {
   const kgToL = {3:19,2:12.7,1.5:9.5,1:6.4};
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
   const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const CONC_TYPES = {unfiltered:{ratio:0.40},classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
   const PRODS = window.__OPS_PRODUCTS__;
 
   if (job.type==='brew') {
-    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const beanRows = await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}&select=kg`);
     const currentKg = beanRows?.[0]?.kg||0;
     const newKg = parseFloat(Math.max(0,currentKg-(job.kg||3)).toFixed(1));
-    await opsFetch(`beans?type=eq.${job.product}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg})});
+    await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg})});
     window.notifyGremierStockChanged?.();
     await createDrain2(job);
   }
@@ -568,13 +570,13 @@ async function reverseJobSideEffects2(job, stores) {
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf'];
   const JERRY_MAP = {classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const CONC_TYPES = {unfiltered:{ratio:0.40},classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
 
   // BREW — beans were deducted at brew-start, restore them
   if (job.type === 'brew' && job.brewStarted) {
-    const beanRows = await opsFetch(`beans?type=eq.${job.product}&select=kg`);
+    const beanRows = await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}&select=kg`);
     const newKg = parseFloat(((beanRows?.[0]?.kg || 0) + (job.kg || 3)).toFixed(1));
-    await opsFetch(`beans?type=eq.${job.product}`, {
+    await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}`, {
       method: 'PATCH', prefer: 'return=minimal',
       body: JSON.stringify({ kg: newKg }),
     });
@@ -861,7 +863,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       );
     }
     const drainLiters = ({3:19,2:12.7,1.5:9.5,1:6.4}[Number(job.kg)] || 19);
-    const concLabels = { classic:'Classic', houseBlend:'House Blend', colombia:'Colombia', decaf:'Decaf' };
+    const concLabels = { classic:'Classic', unfiltered:'Unfiltered', houseBlend:'House Blend', colombia:'Colombia', decaf:'Decaf' };
     return (
       <div style={TS.modal} onClick={onCancel}>
         <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
@@ -1002,7 +1004,7 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
         <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
         {(job.privateAddress||job.cbAddress)&&<div style={{...TS.meta,color:'#3f7fc4'}}>📍 {job.privateAddress||job.cbAddress}</div>}
       </div>
-      {showDelete&&<button className="app-more-button" aria-label="Scheduled task actions" aria-expanded="false" onClick={e=>window.adminShowActions(e,[{label:'Delete task',danger:true,run:()=>onDelete&&onDelete(job)}])}>⋯</button>}
+      {showDelete&&<button aria-label="Delete task" title="Delete task" style={{background:'none',border:'none',color:'#d5544a',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
     </div>
   );
 }
@@ -1232,7 +1234,7 @@ function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
     vanilla_syrup:{label:'Vanilla Syrup',category:'syrup'}, caramel_syrup:{label:'Caramel Syrup',category:'syrup'}, sugar_syrup:{label:'Sugar Syrup',category:'syrup'},
   };
   Object.assign(FP, window.__OPS_DYNAMIC_PRODUCTS__ || {});
-  const CONC = { classic:'Classic (Dark Roast)', houseBlend:'House Blend', colombia:'Colombia (Light Roast)', decaf:'Decaf' };
+  const CONC = { classic:'Classic (Dark Roast)', unfiltered:'Unfiltered (Classic beans)', houseBlend:'House Blend', colombia:'Colombia (Light Roast)', decaf:'Decaf' };
   const DEFAULT_CASE = { classic_liter:6, sweetened_classic:2, house_blend:2, colombia_liter:2 };
   // same flavor-specific quick-fill shortcuts as the Store Deliveries tab's Log Delivery form
   const FLAVOR_CASES = {

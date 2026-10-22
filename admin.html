@@ -2153,6 +2153,7 @@ function gremierOpsPhysicalCategory(product) {
 function gremierOpsConcentrateForProduct(product, category) {
   if (!['liter','mini','jerry'].includes(category)) return null;
   const text = gremierOpsNormText([product?.name_en, product?.name_he, product?.description_en, product?.description_he].filter(Boolean).join(' '));
+  if (/unfilter|אנפילטר/.test(text) || product?.stock_key === 'unfiltered_liter') return 'unfiltered';
   if (/house|blend|האוס|בלנד/.test(text)) return 'houseBlend';
   if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(text)) return 'colombia';
   if (/decaf|נטול/.test(text)) return 'decaf';
@@ -2162,7 +2163,7 @@ function gremierOpsConcentrateForProduct(product, category) {
 // default (Classic 43%, House Blend/Colombia/Decaf 50%, flavored minis 29%). Used by bottling, undo and stock planning.
 window.gremierConcentrateRatio = function gremierConcentrateRatio(pid, base) {
   const label = window.__OPS_PRODUCTS_FULL__?.[pid]?.label || window.__OPS_PRODUCTS__?.[pid]?.label || '';
-  if (pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(label)) return 0.40;   // Unfiltered: 40% Classic concentrate
+  if (pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(label)) return 0.40;   // Unfiltered: 40% of its own concentrate
   return base;
 };
 function gremierOpsLitersPerUnit(category) {
@@ -7278,6 +7279,7 @@ async function unmarkBillingBilled(billingId) {
 // ══ DASHBOARD BRIEFING HELPERS ══
 const BRIEFING_CONCENTRATES = {
   classic:    { label: 'Classic Dark Roast', ratio: 0.43 },
+  unfiltered: { label: 'Unfiltered',         ratio: 0.40 },
   houseBlend: { label: 'House Blend',        ratio: 0.50 },
   colombia:   { label: 'Colombia',           ratio: 0.50 },
   decaf:      { label: 'Decaf',              ratio: 0.50 },
@@ -7570,7 +7572,7 @@ function briefingBottleTimeline(jobs, inventory) {
   })).sort((a,b) => b.gap - a.gap);
 }
 function briefingInProgressBrews(jobs) {
-  const map = { classic:0, houseBlend:0, colombia:0, decaf:0 };
+  const map = { classic:0, unfiltered:0, houseBlend:0, colombia:0, decaf:0 };
   (jobs || []).filter(j => !j.done && (j.brew_started || j.type === 'drain')).forEach(j => {
     const ct = BRIEFING_CONCENTRATES[j.product] ? j.product : 'classic';
     const liters = BRIEFING_KG_TO_L[briefingNum(j.kg)] || briefingNum(j.liters) || 0;
@@ -7584,7 +7586,7 @@ function briefingRatio(pid, meta) {
   return window.gremierConcentrateRatio?.(pid, base) ?? base;
 }
 function briefingConcentrateDemand(jobs, bottleShortfalls) {
-  const demand = { classic:0, houseBlend:0, colombia:0, decaf:0 };
+  const demand = { classic:0, unfiltered:0, houseBlend:0, colombia:0, decaf:0 };
   (jobs || []).forEach(job => {
     if (job.type !== 'bottling') return;
     const resolved = briefingResolveProduct(job.product);
@@ -9215,10 +9217,10 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-ui.js?v=20261020-1"></script>
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
-<script src="/admin-react-1.js?v=7c80086ba8"></script>
-<script src="/admin-react-2.js?v=dc3904134d"></script>
+<script src="/admin-react-1.js?v=367256c067"></script>
+<script src="/admin-react-2.js?v=0ff5f54a7f"></script>
 
-<script src="/admin-react-3.js?v=b78f41f11e"></script>
+<script src="/admin-react-3.js?v=f0f93d646b"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">

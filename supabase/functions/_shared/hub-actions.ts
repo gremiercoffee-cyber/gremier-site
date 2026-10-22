@@ -23,7 +23,7 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   marketing_sales: { properties: { from: str("YYYY-MM-DD"), to: str("YYYY-MM-DD (max 120 days)") }, required: ["from", "to"] },
   marketing_inventory: { properties: {} },
   log_bottling: { properties: { product: { type: "string", enum: ["classic_liter", "sweetened_classic", "house_blend", "colombia_liter", "decaf_liter", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini", "house_blend_mini", "jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"] }, units: { type: "integer", description: "Bottles / minis / jerry cans made" } }, required: ["product", "units"] },
-  start_brew: { properties: { product: { type: "string", enum: ["classic", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
+  start_brew: { properties: { product: { type: "string", enum: ["classic", "unfiltered", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
   complete_drain: { properties: { job_id: str("Drain job id (from schedule)"), product: str("Or: complete the earliest pending drain of this coffee") } },
   log_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles, e.g. {\"classic_liter\": 6, \"vanilla_mini\": 4}" }, date: str("YYYY-MM-DD, default today") }, required: ["store", "quantities"] },
   complete_delivery: { properties: { job_id: str("Delivery job id; default = next one due today/overdue"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "Actual amounts if different from planned" } } },
@@ -52,7 +52,7 @@ export const ACTIONS: Record<string, Handler> = {
   marketing_sales: { scope: "read", describe: "Paid website sales per product per day (units, revenue, orders). No customer data. Args: from, to.", run: ({ sb }, a) => marketingSales(sb, a as any) },
   marketing_inventory: { scope: "read", describe: "Bottled stock per website product.", run: ({ sb }) => marketingInventory(sb) },
   // ── write ──
-  start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|houseBlend|colombia|decaf), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },
+  start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|unfiltered|houseBlend|colombia|decaf; unfiltered uses Classic beans), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },
   complete_drain: { scope: "write", describe: "Mark a drain done (adds concentrate). Args: job_id or product; default = earliest pending drain.", run: ({ sb }, a) => completeDrain(sb, a as any) },
   log_store_delivery: { scope: "write", describe: "Log a store delivery that happened. Args: store (name, fuzzy), quantities {product_key: qty}, date (default today). Deducts stock, adds the store billing row.", run: ({ sb }, a) => logStoreDelivery(sb, a as any) },
   complete_delivery: { scope: "write", describe: "Mark a scheduled delivery done. Args: job_id (default = next one today/overdue), quantities (optional actual amounts).", run: ({ sb }, a) => completeDelivery(sb, a as any) },
@@ -120,7 +120,7 @@ const DELIVERY_PRODUCTS: [string, string][] = [
   ["vanilla_mini", "Vanilla mini"], ["original_mini", "Original mini"], ["caramel_mini", "Caramel mini"],
   ["vanilla_syrup", "Vanilla syrup"], ["caramel_syrup", "Caramel syrup"],
 ];
-const COFFEES = [["classic", "Classic"], ["houseBlend", "House Blend"], ["colombia", "Colombia"], ["decaf", "Decaf"]];
+const COFFEES = [["classic", "Classic"], ["unfiltered", "Unfiltered"], ["houseBlend", "House Blend"], ["colombia", "Colombia"], ["decaf", "Decaf"]];
 async function widgetConfig(sb: Sb) {
   const [summary, stores, drains] = await Promise.all([
     readSummary(sb),
@@ -202,7 +202,7 @@ async function voiceParse(sb: Sb, text: string) {
   }));
   const system = [
     "You turn one short spoken note (English or Hebrew) from the owner of Gremier Coffee, a cold brew business, into exactly ONE tool call.",
-    "Coffees: classic (קלאסי), houseBlend (האוס בלנד), colombia (קולומביה), decaf. Brews default to 3 kg.",
+    "Coffees: classic (קלאסי), unfiltered (אנפילטרד — brewed from Classic beans), houseBlend (האוס בלנד), colombia (קולומביה), decaf. Brews default to 3 kg.",
     "Bottle product keys: " + DELIVERY_PRODUCTS.map(([k, l]) => `${k}=${l}`).join(", ") + ". 'Liter'/'big' bottle of classic = classic_liter.",
     "Stores: " + (stores as any[]).map((x) => x.name).join(", ") + ".",
     "Open jobs (for complete_delivery / complete_drain ids): " + JSON.stringify((schedule as any[]).slice(0, 15).map((j) => ({ id: j.id, type: j.type, date: j.date, who: j.store_name || j.cb_name || j.private_name || j.label, product: j.product }))),

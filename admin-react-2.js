@@ -42,6 +42,10 @@ const CONCENTRATE_TYPES = {
     label: 'Classic (Dark Roast)',
     ratio: 0.43
   },
+  unfiltered: {
+    label: 'Unfiltered',
+    ratio: 0.40
+  },
   houseBlend: {
     label: 'House Blend',
     ratio: 0.50
@@ -325,6 +329,7 @@ async function patchLabeledStock(product, qty) {
 function concentrateNeeded(jobs, inventory, concentrate) {
   const n = {
     classic: 0,
+    unfiltered: 0,
     houseBlend: 0,
     colombia: 0,
     decaf: 0
@@ -1469,6 +1474,7 @@ function StockTab() {
   const [inventory, setInventory] = useState(() => cachedInit?.inventory || {});
   const [concentrate, setConcentrate] = useState(() => cachedInit?.concentrate || {
     classic: 0,
+    unfiltered: 0,
     houseBlend: 0,
     colombia: 0,
     decaf: 0

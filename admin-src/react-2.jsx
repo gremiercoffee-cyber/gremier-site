@@ -31,6 +31,7 @@ const OPS_SB = window.MAIN_SB || window.supabase.createClient(
 // ── constants ──────────────────────────────────────────────
 const CONCENTRATE_TYPES = {
   classic:    { label: 'Classic (Dark Roast)',   ratio: 0.43 },
+  unfiltered: { label: 'Unfiltered',              ratio: 0.40 },
   houseBlend: { label: 'House Blend',             ratio: 0.50 },
   colombia:   { label: 'Colombia (Light Roast)',  ratio: 0.50 },
   decaf:      { label: 'Decaf',                   ratio: 0.50 },
@@ -125,7 +126,7 @@ async function patchLabeledStock(product, qty) {
 
 // ── Need-to-make calculation ───────────────────────────────
 function concentrateNeeded(jobs, inventory, concentrate) {
-  const n = { classic:0, houseBlend:0, colombia:0, decaf:0 };
+  const n = { classic:0, unfiltered:0, houseBlend:0, colombia:0, decaf:0 };
   const remStock = { ...inventory };
   const remConc  = { ...concentrate };
   const JERRY_MAP = { classic:'jerry_can', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
@@ -687,7 +688,7 @@ function StockTab() {
   const [tab, setTab] = useState('concentrate');
   const [loading, setLoading] = useState(!cachedInit);
   const [inventory, setInventory] = useState(() => cachedInit?.inventory || {});
-  const [concentrate, setConcentrate] = useState(() => cachedInit?.concentrate || {classic:0,houseBlend:0,colombia:0,decaf:0});
+  const [concentrate, setConcentrate] = useState(() => cachedInit?.concentrate || {classic:0,unfiltered:0,houseBlend:0,colombia:0,decaf:0});
   const [beans, setBeans] = useState(() => cachedInit?.beans || {classic:{kg:0,ordered:false,orderedKg:0},houseBlend:{kg:0,ordered:false,orderedKg:0},colombia:{kg:0,ordered:false,orderedKg:0},decaf:{kg:0,ordered:false,orderedKg:0}});
   const [labeledStock, setLabeledStock] = useState(() => cachedInit?.labeledStock || {});
   const [jobs, setJobs] = useState(() => cachedInit?.jobs || []);

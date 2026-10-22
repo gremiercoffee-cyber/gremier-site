@@ -81,10 +81,11 @@ function voiceProductCategory3(pid) {
 }
 function resolveVoiceConcentrate3(value) {
   const raw = String(value || '').trim();
-  if (['classic','houseBlend','colombia','decaf'].includes(raw)) return raw;
+  if (['classic','unfiltered','houseBlend','colombia','decaf'].includes(raw)) return raw;
   const t = normVoiceCompact3(raw);
   if (!t) return 'classic';
   const aliases = {
+    unfiltered:['unfiltered','unfilter','אנפילטרד'],
     classic:['classic','darkroast','dark','regular'],
     houseBlend:['houseblend','house','mediumroast','medium'],
     colombia:['colombia','lightroast','light'],
@@ -464,13 +465,13 @@ function GlobalPillsFloat() {
   const anyDrawerOpen = waOpen || billingOpen || webQueueOpen;
   return (
     <>
-      {!anyDrawerOpen&&(waPending.length+unbilled.length+pendingWeb.length)>0&&(
-        <button aria-label="Pending tasks" aria-expanded="false" style={{position:'fixed',bottom:170,right:16,background:'#fff',color:'#303946',border:'1px solid #d6dce4',borderRadius:20,padding:'10px 14px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'var(--surface-shadow)'}} onClick={e=>window.adminShowActions(e,[
-          ...(waPending.length?[{label:`WhatsApp to send · ${waPending.length}`,run:()=>setWaOpen(true)}]:[]),
-          ...(unbilled.length?[{label:`Payments to collect · ${unbilled.length}`,run:()=>setBillingOpen(true)}]:[]),
-          ...(pendingWeb.length?[{label:`Orders to schedule · ${pendingWeb.length}`,run:()=>setWebQueueOpen(true)}]:[])
-        ])}>Tasks · {waPending.length+unbilled.length+pendingWeb.length} ⋯</button>
-      )}
+      {!anyDrawerOpen&&[
+        waPending.length&&{key:'wa',icon:'💬',n:waPending.length,bg:'#25D366',title:'WhatsApp to send',open:()=>setWaOpen(true)},
+        unbilled.length&&{key:'bill',icon:'💰',n:unbilled.length,bg:'#b8860b',title:'Payments to collect',open:()=>setBillingOpen(true)},
+        pendingWeb.length&&{key:'web',icon:'📦',n:pendingWeb.length,bg:'#3f7fc4',title:'Orders to schedule',open:()=>setWebQueueOpen(true)},
+      ].filter(Boolean).map((p,i)=>(
+        <button key={p.key} aria-label={`${p.title} · ${p.n}`} title={p.title} style={{position:'fixed',bottom:170+i*40,right:16,background:p.bg,color:'#fff',border:'none',borderRadius:20,padding:'8px 13px',fontSize:12,fontWeight:600,cursor:'pointer',zIndex:60,boxShadow:'0 2px 12px rgba(0,0,0,.4)'}} onClick={p.open}>{p.icon} {p.n}</button>
+      ))}
       {waOpen&&<GlobalWaDrawer jobs={waPending} stores={stores} sentJobs={waRecentlySent} onMarkSent={async(id)=>{await markWaSent(id);setWaOpen(false);}} onUndoSent={undoWaSent} onClose={()=>setWaOpen(false)}/>}
       {billingOpen&&<GlobalBillingDrawer jobs={unbilled} onMarkBilled={markBilled} onMarkPaid={markPaid} onClose={()=>setBillingOpen(false)}/>}
       {webQueueOpen&&<GlobalWebQueueDrawer orders={pendingWeb} onClose={()=>setWebQueueOpen(false)} onSchedule={scheduleWebOrder} onDismiss={dismissWebOrder}/>}
@@ -603,11 +604,11 @@ If what the user reports matches an open job, PREFER complete/reschedule over lo
 JOB SHAPES:
 - delivery store: { type:"delivery", deliveryType:"store", storeName, quantities:{product_key:qty}, done, date, time }
 - delivery private: { type:"delivery", deliveryType:"private", privateName, privateAddress, quantities, done, date }
-- brew: { type:"brew", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:1|1.5|2|3, done, date }
+- brew: { type:"brew", product:"classic"|"unfiltered"|"houseBlend"|"colombia"|"decaf", kg:1|1.5|2|3, done, date }
 - bottling: { type:"bottling", product:product_key, qty:number, liters:number, done, date }
   For bottling, if the user says a number of bottles/minis/jerry cans, put that number in qty. Also compute liters: liter qty = qty liters; mini qty = qty/4 liters; jerry qty = qty*5 liters.
 ${window.gremierLabelsEnabled()?'- labeling: { type:"labeling", product:product_key, qty:number, done, date }':'Labeling is currently disabled — do not create labeling jobs; use clarify if the user asks about labeling.'}
-- drain: { type:"drain", product:"classic"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
+- drain: { type:"drain", product:"classic"|"unfiltered"|"houseBlend"|"colombia"|"decaf", kg:number, done, date }
 
 IMPORTANT SAFETY RULES:
 - "Drain" means finished brewing concentrate and will add a full brew amount of concentrate.

@@ -6,7 +6,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 type Sb = ReturnType<typeof createClient>;
 const TZ = "Asia/Jerusalem";
 
-export const CONCENTRATES = ["classic", "houseBlend", "colombia", "decaf"] as const;
+export const CONCENTRATES = ["classic", "unfiltered", "houseBlend", "colombia", "decaf"] as const;
+/** Unfiltered is its own concentrate but is brewed from Classic Dark Roast beans. */
+const beanTypeFor = (product: string) => (product === "unfiltered" ? "classic" : product);
 export const KG_TO_LITERS: Record<string, number> = { "3": 19, "2": 12.7, "1.5": 9.5, "1": 6.4 };
 const JERRY_MAP: Record<string, string> = { classic: "jerry_can", houseBlend: "jerry_can_houseblend", colombia: "jerry_can_colombia", decaf: "jerry_can_decaf" };
 
@@ -117,8 +119,8 @@ export async function startBrew(sb: Sb, args: { product: string; kg?: number }) 
   const now = jerusalemParts(new Date());
   const brewId = newId("hub_");
   await sb.from("jobs").insert({ id: brewId, type: "brew", product, kg, date: now.date, time: now.time, done: false, brew_started: true, label: `Brew ${product} ${kg}kg`, created_at: new Date().toISOString() });
-  const beansLeft = await incBeans(sb, product, -kg);
-  const hours = product === "classic" ? 22 : 18;
+  const beansLeft = await incBeans(sb, beanTypeFor(product), -kg);
+  const hours = product === "classic" || product === "unfiltered" ? 22 : 18;
   const drainAt = jerusalemParts(new Date(Date.now() + hours * 3600e3));
   const drainId = newId("drain_");
   await sb.from("jobs").insert({ id: drainId, type: "drain", product, kg, date: drainAt.date, time: drainAt.time, done: false, needs_confirmation: false, source_brew_id: brewId, label: `Drain ${product} (${hours}h brew)`, created_at: new Date().toISOString() });
@@ -241,7 +243,7 @@ export const BOTTLES: Record<string, { label: string; category: "liter" | "mini"
   jerry_can_colombia: { label: "Colombia jerry can", category: "jerry", concentrate: "colombia" },
   jerry_can_decaf: { label: "Decaf jerry can", category: "jerry", concentrate: "decaf" },
 };
-const CONC_RATIO: Record<string, number> = { classic: 0.43, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
+const CONC_RATIO: Record<string, number> = { classic: 0.43, unfiltered: 0.4, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
 // Products that use a different share of concentrate than their coffee type (keep in sync with
 // window.gremierConcentrateRatio in admin.html).
 const PRODUCT_RATIO: Record<string, number> = { unfiltered_liter: 0.40 };
@@ -280,7 +282,7 @@ export async function adjustStock(sb: Sb, args: { kind: string; product: string;
   let now: number | null = null;
   if (args.kind === "inventory") { await incInventoryBatch(sb, { [product]: Math.round(delta) }); const { data } = await sb.from("inventory").select("qty").eq("product", product).maybeSingle(); now = Number((data as any)?.qty ?? 0); }
   else if (args.kind === "concentrate") { if (!CONCENTRATES.includes(product as any)) throw new HubError("bad_product", "Unknown concentrate"); now = await incConcentrate(sb, product, delta); }
-  else if (args.kind === "beans") { if (!CONCENTRATES.includes(product as any)) throw new HubError("bad_product", "Unknown bean type"); now = await incBeans(sb, product, delta); }
+  else if (args.kind === "beans") { if (!CONCENTRATES.includes(product as any) || product === "unfiltered") throw new HubError("bad_product", "Unknown bean type"); now = await incBeans(sb, product, delta); }
   else if (args.kind === "labeled") now = await incLabeled(sb, product, Math.round(delta));
   else throw new HubError("bad_kind", "kind must be inventory, concentrate, beans or labeled");
   return { refs: [], kind: args.kind, product, delta, now };
