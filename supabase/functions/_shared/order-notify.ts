@@ -1,3 +1,4 @@
+import { subscriptionDeliveryTarget, SUBSCRIPTION_DELIVERY_NOTE } from "./subscription-delivery.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
 import { sendWebPushToAdmins } from "./web-push.ts";
@@ -58,6 +59,8 @@ export function describeDelivery(info: Record<string, unknown> | null | undefine
   };
   const requested = hasDate ? formatDate(date) + (time ? ` at ${time}` : "") : "";
   const requestedShort = hasDate ? formatShort(date) + (time ? ` ${time}` : "") : "";
+  const subscriptionTarget=subscriptionDeliveryTarget(row,new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date()));
+  if(subscriptionTarget)return {typeLabel:'Subscription delivery · '+SUBSCRIPTION_DELIVERY_NOTE,requested:formatDate(subscriptionTarget)+' (target; a few days before or after)',requestedShort:formatShort(subscriptionTarget)+' target'};
   return { typeLabel, requested, requestedShort };
 }
 
@@ -285,6 +288,7 @@ export async function sendOrderPaidNotification(
     discount: Number(order.discount) || 0,
     total: Number(order.total) || 0,
     delivery_address: order.delivery_address,
+    subscription_delivery_note: subscriptionDeliveryTarget(order.delivery_info || {},new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date())) ? 'Subscription delivery target: '+describeDelivery(order.delivery_info).requested+'. '+SUBSCRIPTION_DELIVERY_NOTE+'\nמועד המשלוח הוא יעד בלבד: ייתכן שהמשלוח יגיע כמה ימים לפניו או אחריו. מועד החיוב נשאר ללא שינוי.' : null,
     notes: order.notes,
   });
 

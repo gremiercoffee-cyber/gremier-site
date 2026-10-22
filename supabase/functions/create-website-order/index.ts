@@ -1,3 +1,4 @@
+import { subscriptionDeliveryRule } from "../_shared/subscription-delivery.ts";
 import "../_shared/subscription-model.js";
 const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -290,6 +291,7 @@ Deno.serve(async (req) => {
       };
     });
     const subscriptionInterval = isSubscriptionOrder ? allowedItems[0].subscription_interval : null;
+    const subscriptionSchedule = isSubscriptionOrder ? subscriptionDeliveryRule(subscriptionInterval, deliveryInfo.delivery_type === "pickup" ? null : deliveryInfo.delivery_date, new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date())) : null;
 
     const subtotal = allowedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
     const [zonesResult, settingsResult] = await Promise.all([
@@ -406,7 +408,7 @@ Deno.serve(async (req) => {
       delivery_info: {
         ...deliveryInfo,
         // Decided server-side, never trusted from the client.
-        subscription: isSubscriptionOrder ? { interval: subscriptionInterval } : null,
+        subscription: isSubscriptionOrder ? { interval: subscriptionInterval, delivery_schedule: subscriptionSchedule } : null,
         delivery_fee: delivery.fee,
         zone_id: delivery.zone?.id || null,
         zone_name: delivery.zone?.name_en || "",

@@ -42,7 +42,7 @@
   get('customerStore').onchange=()=>{const s=stores.find(s=>s.id===get('customerStore').value);if(s&&!get('customerEdit').value){get('customerName').value=s.name;get('customerPhone').value=s.phone||'';}};
   get('customerSave').onclick=saveCustomer;get('customerArchive').onclick=archiveCustomer;
   get('financeReceiptSearch').oninput=renderReceipts;get('financeReceiptYear').oninput=renderReceipts;
-  const delivery=get('tab-storedeliveries')?.querySelector('.page-header');if(delivery){const b=document.createElement('button');b.className='btn btn-outline';b.textContent='Issue store receipt';b.onclick=()=>{root.showTab('finance');status('manualReceiptStatus','Select a store and the months paid.');};const actions=delivery.querySelector('.header-actions');if(actions)actions.append(b);else delivery.append(b);}
+  const delivery=get('tab-storedeliveries')?.querySelector('.page-header');if(delivery){const b=document.createElement('button');b.id='storeReceiptButton';b.className='btn btn-outline btn-sm';b.textContent='Issue store receipt';b.onclick=()=>{root.showTab('finance');status('manualReceiptStatus','Select a store and the months paid.');};const actions=delivery.querySelector('.header-actions');if(actions)actions.append(b);else delivery.append(b);}
   setupExpenses();
  }
  function customerOptions(){

@@ -1234,7 +1234,7 @@
         <!-- Regular delivery: optional requested date -->
         <div id="regularOptions" style="margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
           <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px" id="t-co-regular-date">Requested delivery date (optional)</label>
-          <input type="date" id="coRegularDate" class="form-input" style="max-width:220px"/>
+          <input type="date" id="coRegularDate" aria-label="Requested delivery date" class="form-input" style="max-width:220px"/>
           <div style="font-size:.72rem;color:var(--text2);margin-top:6px;line-height:1.5" id="t-co-regular-date-hint">Leave blank and we'll deliver as soon as possible (2–5 days). Pick a date only if you need it delivered on a specific day.</div>
         </div>
         <!-- Priority sub-options -->
@@ -2134,7 +2134,7 @@ function renderPdSubscriptionSection(p,keepState) {
  const mainProduct=!isSubscriptionProduct(p)?bundleProducts.find(item=>String(item.id)===String(p.id)):null;
  const mainRow=mainProduct?`<div class="sub-main-product" aria-label="${lang==='he'?'המוצר שלכם':'Your product'}">${renderPdSubscriptionItem(mainProduct,true)}</div>`:'';
  const rows=bundleProducts.filter(item=>!mainProduct||String(item.id)!==String(mainProduct.id)).map(item=>renderPdSubscriptionItem(item)).join('');
- section.innerHTML=mode+mainRow+`<label class="sub-frequency-label">${lang==='he'?'תדירות':'Frequency'}<select aria-label="${lang==='he'?'תדירות':'Subscription frequency'}" onchange="pdSetSubscriptionInterval(this.value);pdUpdateDrawerPrice()"><option value="monthly" ${pdSubscriptionInterval==='monthly'?'selected':''}>${lang==='he'?'כל חודש':'Monthly'}</option><option value="weekly" ${pdSubscriptionInterval==='weekly'?'selected':''}>${lang==='he'?'כל שבוע':'Weekly'}</option></select></label><h4>${lang==='he'?'מה עוד להוסיף למנוי?':'What else would you like to add?'}</h4><div class="sub-choices">${rows}</div><label class="sub-frequency-label">${lang==='he'?'אזור משלוח':'Delivery area'}<select aria-label="${lang==='he'?'אזור משלוח':'Subscription delivery area'}" onchange="pdSubArea=this.value;renderPdSubscriptionSection(pdCurrentProduct,true)"><option value="">${lang==='he'?'בחירת אזור':'Choose area'}</option>${deliveryZones.map(z=>`<option value="${escAttr(z.id)}" ${pdSubArea===z.id?'selected':''}>${escHtml(lang==='he'?z.name_he||z.name_en:z.name_en)}</option>`).join('')}<option value="other" ${pdSubArea==='other'?'selected':''}>${lang==='he'?'אזור אחר':'Other area'}</option></select></label><p class="sub-readiness ${quote?.deliveryEligible?'ready':'pickup'}" role="status">${error||pdSubscriptionMessage(quote)}</p><small>${lang==='he'?'10% הנחה על הקפה. סירופים במחיר רגיל ועם קפה בלבד. חיוב מתחדש עד לביטול; משלוח בכל חיוב.':'10% off coffee. Syrups stay full price and require coffee. Recurring billing until cancelled; delivery is charged each cycle.'}</small>`;
+ section.innerHTML=mode+mainRow+`<label class="sub-frequency-label">${lang==='he'?'תדירות':'Frequency'}<select aria-label="${lang==='he'?'תדירות':'Subscription frequency'}" onchange="pdSetSubscriptionInterval(this.value);pdUpdateDrawerPrice()"><option value="monthly" ${pdSubscriptionInterval==='monthly'?'selected':''}>${lang==='he'?'כל חודש':'Monthly'}</option><option value="weekly" ${pdSubscriptionInterval==='weekly'?'selected':''}>${lang==='he'?'כל שבוע':'Weekly'}</option></select></label><h4>${lang==='he'?'מה עוד להוסיף למנוי?':'What else would you like to add?'}</h4><div class="sub-choices">${rows}</div><label class="sub-frequency-label">${lang==='he'?'אזור משלוח':'Delivery area'}<select aria-label="${lang==='he'?'אזור משלוח':'Subscription delivery area'}" onchange="pdSubArea=this.value;renderPdSubscriptionSection(pdCurrentProduct,true)"><option value="">${lang==='he'?'בחירת אזור':'Choose area'}</option>${deliveryZones.map(z=>`<option value="${escAttr(z.id)}" ${pdSubArea===z.id?'selected':''}>${escHtml(lang==='he'?z.name_he||z.name_en:z.name_en)}</option>`).join('')}<option value="other" ${pdSubArea==='other'?'selected':''}>${lang==='he'?'אזור אחר':'Other area'}</option></select></label><p class="sub-readiness ${quote?.deliveryEligible?'ready':'pickup'}" role="status">${error||pdSubscriptionMessage(quote)}</p><small>${lang==='he'?'10% הנחה על הקפה. סירופים במחיר רגיל ועם קפה בלבד. חיוב מתחדש עד לביטול; משלוח בכל חיוב. תאריך המשלוח הוא יעד ועשוי להשתנות בכמה ימים לפני או אחרי.':'10% off coffee. Syrups stay full price and require coffee. Recurring billing until cancelled; delivery is charged each cycle. Delivery dates are targets and may vary by a few days before or after.'}</small>`;
  section.querySelector('.sub-choices').scrollTop=listScroll;
 }
 
@@ -3148,8 +3148,11 @@ function closeAllLayersUI() {
   document.getElementById('gcPurchaseOverlay')?.classList.remove('open');
   document.getElementById('mobileMenu')?.classList.remove('open');
 }
+let checkoutSubscriptionDeliveryKey=null;
 function prepareCheckoutContent() {
   const subscription=cart.find(i=>i.is_subscription);let pickupOnly=false;
+  const deliveryKey=subscription?String(subscription.id)+':'+String(subscription.subscription_interval):null;
+  if(deliveryKey!==checkoutSubscriptionDeliveryKey){const date=document.getElementById('coRegularDate');if(date)date.value='';checkoutSubscriptionDeliveryKey=deliveryKey;}
   if(subscription?.subscription_items?.length){try{pickupOnly=!GremierSubscriptionModel.quote(subscription.subscription_items,products).deliveryEligible;}catch{pickupOnly=true;}}
   ['shipRegular','shipExpedited','shipEvent'].forEach(id=>document.getElementById(id).disabled=pickupOnly);
   if(pickupOnly)document.getElementById('shipPickup').checked=true;
@@ -3937,6 +3940,12 @@ async function purchaseGiftCardFromPage() {
   if (opts) opts.style.display = isExpedited ? 'block' : 'none';
   if (eventOpts) eventOpts.style.display = isEvent ? 'block' : 'none';
   if (regOpts) regOpts.style.display = isRegular ? 'block' : 'none';
+  const subscription=cart.find(item=>item.is_subscription);
+  const dateLabel=document.getElementById('t-co-regular-date'),dateHint=document.getElementById('t-co-regular-date-hint');
+  if(dateLabel)dateLabel.textContent=subscription?(lang==='he'?'תאריך יעד למשלוח חוזר (אופציונלי)':'Recurring delivery target (optional)'):(lang==='he'?'תאריך משלוח מבוקש (אופציונלי)':'Requested delivery date (optional)');
+  if(dateHint)dateHint.style.fontSize=subscription?'.8rem':'.72rem';
+  if(dateHint)dateHint.textContent=subscription?(lang==='he'?'ברירת המחדל היא לפי מועד החיוב. בחרו תאריך יעד ראשון: המשלוחים הבאים יחזרו באותו יום בחודש או בשבוע. המשלוח עשוי להגיע כמה ימים לפני או אחרי תאריך היעד. מועד החיוב לא משתנה.':'Leave blank to follow billing. A chosen date repeats monthly or weekly. Delivery may arrive a few days before or after; billing dates stay unchanged.'):(lang==='he'?'השאירו ריק למשלוח בהקדם (2–5 ימים).':'Leave blank for delivery as soon as possible (2–5 days).');
+
   // Don't let the customer pick a date in the past.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
   ['coRegularDate', 'coDeliveryDate', 'coEventDate'].forEach(id => {

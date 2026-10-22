@@ -1,3 +1,4 @@
+import { subscriptionDeliveryTarget } from "./subscription-delivery.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { describeItemExtras } from "./order-notify.ts";
 
@@ -27,6 +28,8 @@ function computeAutoSchedule(
   info: Record<string, unknown>,
 ): { date: string; time: string } | null {
   if (info.is_gift_card) return null;
+  const subscriptionTarget = subscriptionDeliveryTarget(info, todayInIsrael());
+  if (subscriptionTarget) return {date:subscriptionTarget,time:DEFAULT_DELIVERY_TIME};
 
   const type = String(info.delivery_type || "regular");
   const priority = String(info.priority_type || "");

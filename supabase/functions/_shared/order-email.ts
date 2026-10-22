@@ -158,6 +158,8 @@ export function buildCustomerReceiptText(order: {
 
   notes?: string | null;
 
+  subscription_delivery_note?: string | null;
+
 }): { subject: string; text: string } {
 
   const label = order.order_number ? `#${order.order_number}` : "your order";
@@ -193,6 +195,8 @@ export function buildCustomerReceiptText(order: {
     `Total: ₪${order.total}`,
 
     order.delivery_address ? `Delivery: ${order.delivery_address}` : null,
+
+    order.subscription_delivery_note || null,
 
     order.notes ? `Notes: ${order.notes}` : null,
 
