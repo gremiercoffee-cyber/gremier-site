@@ -127,12 +127,18 @@ OAuth and runs `installExpenseIntake` once; it installs one five-minute trigger
 and performs an initial scan. No web-app deployment or public Apps Script endpoint
 is needed.
 
-Only attachment-bearing messages from the most recent 30 days are scanned, with
+Alias-addressed messages from the most recent 30 days are scanned, with
 paged catch-up/retry markers. Unsupported attachments stay in Gmail and are
 reported in execution logs/connection health. Retry markers are recorded only
 after all attachments in a message have uploaded successfully. Originals stay in
-Gmail. Mail without attachments is not converted from HTML into a receipt image;
-upload a photo/PDF for such expenses.
+Gmail. Mail without attachments is not converted from HTML into a receipt image.
+PDF links in the message body are supported for iCount receipts hosted under
+`https://s3.amazonaws.com/icount-pdfs/`. The importer downloads the original PDF,
+checks its magic bytes and 20 MB limit, and rejects redirects or other hosts.
+Duplicate links are imported once; failed downloads stay eligible for retry.
+Gmail bodies and attachments accept both the advanced service’s decoded Byte[]
+representation and base64 strings (normalized and padded before decoding).
+The alias query checks both To and Delivered-To; the per-message alias check remains.
 
 The private `EXPENSE_INGRESS_SECRET` is in Google Script Properties and Supabase
 secrets, never source control or browser application assets. It permits uploading
