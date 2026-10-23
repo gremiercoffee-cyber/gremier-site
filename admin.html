@@ -3298,6 +3298,7 @@ function renderAddonsEditor(items) {
   el.innerHTML = rows.map((a, i) => `<div class="variation-option-row">
     <input class="form-input addon-name" value="${escAttr(a.name || '')}" placeholder="Add-on name (e.g. Oat milk)"/>
     <input class="form-input addon-price" type="number" min="0" step="1" value="${a.price !== '' && a.price != null ? a.price : ''}" placeholder="Price ₪"/>
+    <label title="Customers pick how many liters (up to 1 per 10 guests); the price is per liter" style="display:flex;align-items:center;gap:4px;font-size:.72rem;white-space:nowrap;color:var(--text2)"><input type="checkbox" class="addon-per-liter" ${a.per_liter ? 'checked' : ''}/> per liter</label>
     <button type="button" class="variation-opt-remove" onclick="removeAddonRow(${i})" title="Remove">×</button>
   </div>`).join('');
 }
@@ -3306,6 +3307,7 @@ function collectAddonsFromEditor() {
   return Array.from(rows).map(row => ({
     name: row.querySelector('.addon-name')?.value || '',
     price: row.querySelector('.addon-price')?.value ?? '',
+    per_liter: !!row.querySelector('.addon-per-liter')?.checked,
   }));
 }
 function addAddonRow() {
@@ -3320,7 +3322,7 @@ function removeAddonRow(idx) {
 }
 function loadAddonsFromProduct(variations) {
   const block = (variations || []).find(v => v.type === 'addons');
-  return (block?.items || []).map(a => ({ name: a.name || '', price: a.price ?? '' }));
+  return (block?.items || []).map(a => ({ name: a.name || '', price: a.price ?? '', per_liter: !!a.per_liter }));
 }
 function collectAddonsForSave() {
   const items = collectAddonsFromEditor()
@@ -3329,6 +3331,7 @@ function collectAddonsForSave() {
       const item = { name: a.name.trim() };
       const price = parseFloat(a.price);
       if (!isNaN(price) && price >= 0) item.price = price;
+      if (a.per_liter) item.per_liter = true;
       return item;
     });
   return items.length ? { type: 'addons', items } : null;

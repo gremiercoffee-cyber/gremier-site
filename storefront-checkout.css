@@ -137,3 +137,14 @@
 .acc-addresses .addr-actions { display:flex; gap:8px; }
 @media (max-width: 520px) { .acc-addresses .addr-card { flex-direction:column; align-items:stretch; } .acc-addresses .addr-card-actions { justify-content:flex-end; } }
 #expressBox:has(.ex-addr-select) .ex-addr-text > span { display:none; }
+
+/* Coffee bar: parve milk by the liter (product drawer) */
+.pd-liters { padding:12px 0; border-bottom:1px solid var(--border); }
+.pd-l-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.pd-l-name { font-size:.9rem; color:#1a1a1a; font-weight:500; }
+.pd-l-total { font-size:.87rem; color:#8a5a1c; font-weight:600; }
+.pd-l-help { margin:4px 0 10px; font-size:.76rem; line-height:1.5; color:#6b7178; }
+.pd-l-step { display:inline-flex; align-items:center; border:1px solid #dcdfe3; border-radius:999px; overflow:hidden; }
+.pd-l-step button { width:40px; height:36px; border:none; background:#fff; font-size:1.1rem; color:#1a1a1a; cursor:pointer; }
+.pd-l-step button:disabled { color:#c4c8cd; cursor:default; }
+.pd-l-n { min-width:52px; text-align:center; font-weight:600; font-size:.9rem; }

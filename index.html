@@ -744,7 +744,7 @@
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261023-4"/>
-<link rel="stylesheet" href="/storefront-checkout.css?v=20261023-3"/>
+<link rel="stylesheet" href="/storefront-checkout.css?v=20261023-4"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 </head>
@@ -2013,6 +2013,17 @@ function pdGetVariationSuffix() {
   Object.values(pdSelectedVariations).forEach(v => { if (v.label) parts.push(v.label); });
   return parts.length ? ' · ' + parts.join(' · ') : '';
 }
+// Per-liter add-ons (parve milk on a coffee bar): about 1 liter of milk per 10 guests,
+// so up to 1 liter per 10 guests can be swapped. The server applies the same limit.
+let pdLiters = {};   // add-on index → liters chosen
+function pdGuestCount() {
+  const fromChoice = Object.values(pdSelectedVariations).map(v => parseInt(v.label, 10)).find(n => n > 0);
+  if (fromChoice) return fromChoice;
+  const sel = document.querySelector('#pdVariationsSection select');
+  const n = sel ? parseInt(sel.options[sel.selectedIndex]?.text, 10) : NaN;
+  return n > 0 ? n : 0;
+}
+const pdMaxLiters = () => Math.floor(pdGuestCount() / 10);
 function pdGetSelectedAddons() {
   if (!pdCurrentProduct) return [];
   const addons = getProductAddons(pdCurrentProduct);
@@ -2021,15 +2032,40 @@ function pdGetSelectedAddons() {
     const a = addons[parseInt(cb.dataset.addonIdx, 10)];
     if (a) selected.push(a);
   });
+  addons.forEach((a, i) => {
+    const liters = Math.min(pdLiters[i] || 0, pdMaxLiters());
+    if (a.per_liter && liters > 0) selected.push({ ...a, liters });
+  });
   return selected;
 }
 function pdGetAddonsTotal() {
-  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0), 0);
+  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0) * (a.per_liter ? a.liters : 1), 0);
 }
 function pdGetAddonSuffix() {
   const selected = pdGetSelectedAddons();
   if (!selected.length) return '';
-  return ' · +' + selected.map(a => a.name).join(', ');
+  return ' · +' + selected.map(a => a.per_liter ? (lang === 'he' ? `${a.liters} ל׳ חלב פרווה` : `${a.liters}L parve milk`) : a.name).join(', ');
+}
+function pdSetLiters(i, delta) {
+  pdLiters[i] = Math.max(0, Math.min(pdMaxLiters(), (pdLiters[i] || 0) + delta));
+  pdRenderLiterRows();
+  pdUpdateDrawerPrice();
+}
+function pdRenderLiterRows() {
+  const addons = getProductAddons(pdCurrentProduct);
+  const max = pdMaxLiters();
+  document.querySelectorAll('#pdAddonsSection [data-liter-idx]').forEach(row => {
+    const i = Number(row.dataset.literIdx), a = addons[i];
+    pdLiters[i] = Math.min(pdLiters[i] || 0, max);
+    const price = parseFloat(a.price) || 0;
+    row.querySelector('.pd-l-n').textContent = `${pdLiters[i]} ${lang === 'he' ? 'ל׳' : 'L'}`;
+    row.querySelector('.pd-l-minus').disabled = pdLiters[i] <= 0;
+    row.querySelector('.pd-l-plus').disabled = pdLiters[i] >= max;
+    row.querySelector('.pd-l-help').textContent = lang === 'he'
+      ? `בערך ליטר חלב לכל 10 אורחים. ל-${pdGuestCount() || '…'} אורחים אפשר להחליף עד ${max} ליטר לחלב פרווה · ₪${price} לליטר`
+      : `About 1 liter of milk per 10 guests. For ${pdGuestCount() || '…'} guests you can swap up to ${max} liters to parve · ₪${price} per liter`;
+    row.querySelector('.pd-l-total').textContent = pdLiters[i] ? `+₪${price * pdLiters[i]}` : '';
+  });
 }
 function pdUpdateDrawerPrice() {
   if (!pdCurrentProduct) return;
@@ -2069,13 +2105,20 @@ function renderPdAddons(p) {
   const title = lang === 'he' ? 'תוספות (אופציונלי)' : 'Add-ons (optional)';
   section.style.display = 'block';
   section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${title}</div>` +
-    addons.map((a, i) => `<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+    addons.map((a, i) => a.per_liter ? `<div class="pd-liters" data-liter-idx="${i}">
+      <div class="pd-l-top"><span class="pd-l-name">${lang === 'he' ? 'החלפה לחלב פרווה' : 'Swap milk to parve'}</span><span class="pd-l-total"></span></div>
+      <div class="pd-l-help"></div>
+      <div class="pd-l-step"><button type="button" class="pd-l-minus" onclick="pdSetLiters(${i},-1)" aria-label="${lang === 'he' ? 'פחות' : 'Less'}">−</button><span class="pd-l-n"></span><button type="button" class="pd-l-plus" onclick="pdSetLiters(${i},1)" aria-label="${lang === 'he' ? 'עוד' : 'More'}">+</button></div>
+    </div>` : `<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
       <input type="checkbox" data-addon-idx="${i}" onchange="pdOnAddonChange()"/>
       <span style="flex:1;font-size:.87rem;color:#1a1a1a">${escHtml(a.name)}</span>
       <span style="font-size:.87rem;color:var(--text2)">+₪${parseFloat(a.price) || 0}</span>
     </label>`).join('');
+  pdLiters = {};
+  pdRenderLiterRows();
 }
 function pdOnVariationChange() {
+  setTimeout(() => { pdRenderLiterRows(); pdUpdateDrawerPrice(); }, 0);
   pdSelectedVariations = {};
   document.querySelectorAll('#pdVariationsSection select[data-variation]').forEach(sel => {
     const opt = sel.options[sel.selectedIndex];
@@ -2299,7 +2342,7 @@ function pdAddToCart() {
     return;
   }
   const price = pdIsSubscription() ? pdGetSubscriptionTotal() : pdGetVariationPrice(p) + pdGetAddonsTotal();
-  const addonKey = pdGetSelectedAddons().map(a => a.name).join('_');
+  const addonKey = pdGetSelectedAddons().map(a => a.per_liter ? `${a.name}x${a.liters}` : a.name).join('_');
   const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
   const guestKey = pdSelectedPrice != null ? String(pdSelectedPrice) : '';
   const subKey = pdIsSubscription()

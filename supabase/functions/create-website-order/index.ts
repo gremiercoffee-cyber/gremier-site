@@ -113,6 +113,7 @@ function resolveGuestSelection(
 function computeUnitPrice(product: Record<string, unknown>, item: Record<string, unknown>): number {
   const variations = Array.isArray(product.variations) ? product.variations as Record<string, unknown>[] : [];
   let unitPrice = Number(product.price) || 0;
+  let guests = 0;   // from the chosen guest option ("50" → 50), for per-liter add-ons
 
   const selectedGuestPrice = item.selected_guest_price != null && item.selected_guest_price !== ""
     ? Number(item.selected_guest_price)
@@ -120,10 +121,10 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
   if (selectedGuestPrice != null && !Number.isNaN(selectedGuestPrice)) {
     const guestVariation = variations.find((v) => v.type === "guest_count");
     const guestOptions = Array.isArray(guestVariation?.options) ? guestVariation.options : [];
-    const validGuest = guestOptions
+    const guestOption = guestOptions
       .map(normalizeVariationOption)
-      .some((option) => option.price === selectedGuestPrice);
-    if (validGuest) unitPrice = selectedGuestPrice;
+      .find((option) => option.price === selectedGuestPrice);
+    if (guestOption) { unitPrice = selectedGuestPrice; guests = guestOption.guests || parseInt(String(guestOption.label || ""), 10) || 0; }
   } else {
     const selected = selectedValues(item.selected_variations);
     for (const group of variations.filter(isChoiceVariation)) {
@@ -134,6 +135,7 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
         const option = options.find((o) => o.label === String(picked.label || "").trim());
         if (option?.price != null) {
           unitPrice = option.price;
+          guests = guests || parseInt(String(option.label || ""), 10) || 0;
           break;
         }
       }
@@ -146,7 +148,13 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
   const addonTotal = selectedAddons.reduce((sum, selected) => {
     const name = String(selected?.name || "").trim();
     const match = allowedAddons.find((addon) => String(addon.name || "").trim() === name);
-    return sum + (match ? Number(match.price) || 0 : 0);
+    if (!match) return sum;
+    // Parve milk etc.: priced per liter, at most 1 liter per 10 guests.
+    if (match.per_liter) {
+      const liters = Math.max(0, Math.min(Math.floor(guests / 10), Math.round(Number(selected?.liters) || 0)));
+      return sum + (Number(match.price) || 0) * liters;
+    }
+    return sum + (Number(match.price) || 0);
   }, 0);
 
   return unitPrice + addonTotal;
