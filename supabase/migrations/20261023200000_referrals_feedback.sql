@@ -59,3 +59,7 @@ as $$
 $$;
 revoke all on function public.claim_order_step(uuid, text) from public, anon, authenticated;
 grant execute on function public.claim_order_step(uuid, text) to service_role;
+
+-- Hourly "How was it?" emails (created in SQL, not here, because the job carries the service key):
+--   select cron.schedule('gremier-feedback-requests', '40 * * * *',
+--     (select replace(command, '"unpaid_alerts"', '"feedback_requests"') from cron.job where jobname = 'gremier-unpaid-alerts'));
