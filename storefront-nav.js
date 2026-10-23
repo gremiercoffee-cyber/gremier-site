@@ -141,6 +141,33 @@
       return r;
     };
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  // "Complete your order" link from a cart reminder email: /?cart=<productId>.<qty>~… refills
+  // the cart (keeping what's already there) and opens it.
+  function restoreCartFromLink() {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get('cart');
+    if (!raw) return;
+    const wanted = raw.split('~').map((p) => p.split('.')).filter(([id, q]) => id && Number(q) > 0).slice(0, 20);
+    let tries = 0;
+    const timer = setInterval(() => {
+      const list = typeof products !== 'undefined' ? products : [];
+      if (!list.length && ++tries < 40) return;
+      clearInterval(timer);
+      for (const [id, q] of wanted) {
+        const p = list.find((x) => String(x.id) === id);
+        if (!p) continue;
+        const qty = Math.min(50, Math.round(Number(q)));
+        const existing = cart.find((x) => String(x.id) === id);
+        if (existing) existing.qty = Math.max(existing.qty, qty);
+        else cart.push({ id: p.id, base_product_id: p.id, name_en: p.name_en, name_he: p.name_he, price: p.price, images: p.images, category: p.category, delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null, qty });
+      }
+      params.delete('cart'); params.delete('utm_source');
+      history.replaceState(history.state, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
+      if (typeof updateCartCount === 'function') updateCartCount();
+      if (cart.length && typeof openCart === 'function') openCart();
+    }, 250);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { start(); restoreCartFromLink(); });
   else start();
 })();

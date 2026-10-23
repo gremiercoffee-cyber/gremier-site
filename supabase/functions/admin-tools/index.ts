@@ -4,6 +4,7 @@
 //   { action: "cancel_subscription", sub_payme_id }
 //   { action: "unpaid_alerts" }            → cron (every 15 min): push once per order unpaid > 1h
 //   { action: "weekly_summary" }           → cron (Sunday morning): last 7 days in one push
+//   { action: "cart_reminders", dry_run } → cron (hourly): abandoned-checkout reminder emails
 //   { action: "site_analytics", days }     → website visitors from Cloudflare Web Analytics
 //   { action: "payme_preview_sale", method } → a ₪1 PayMe page (no order) to check payment methods
 // Every call must pass isServiceOrAdmin (crons use the service key).
@@ -203,6 +204,90 @@ async function weeklySummary(sb: Sb) {
   return { body };
 }
 
+// ── Abandoned-checkout reminders ──
+// Someone reached payment (an order exists) but never paid. One friendly email, no discount,
+// and only when it's likely to help: never at night, never twice for an order, not after they
+// bought or tried again, at most once per 14 days per person, and not for people who already
+// ignored two reminders.
+const REMIND = { afterHours: 2, maxAgeHours: 48, minTotal: 40, coolDownDays: 14, ignoredLimit: 2, ignoredWindowDays: 120 };
+const SITE = "https://gremiercoffee.co.il";
+
+async function optoutToken(email: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(getServiceRoleKey() + ":cart-optout"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(email.toLowerCase()));
+  return [...new Uint8Array(sig)].slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function reminderEmail(o: Record<string, any>, he: boolean, optoutUrl: string) {
+  const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
+  const items = (Array.isArray(o.items) ? o.items : []) as Record<string, any>[];
+  const lines = items.map((i) => `• ${he ? (i.name_he || i.name_en) : i.name_en} ×${i.qty}`).join("\n");
+  // Plain items refill the cart on the site; anything with options goes through the shop.
+  const simple = items.filter((i) => i.product_id && !i.is_subscription && !(i.selected_variations && Object.keys(i.selected_variations).length) && !i.selected_guest_price && !(i.selected_addons && i.selected_addons.length));
+  const cart = simple.map((i) => `${String(i.product_id).split("_")[0]}.${Math.max(1, Math.min(50, Number(i.qty) || 1))}`).join("~");
+  const link = simple.length === items.length && cart ? `${SITE}/?cart=${cart}&utm_source=cart_reminder` : `${SITE}/#shop`;
+  const subject = he ? "ההזמנה שלך מחכה ☕" : "Your cold brew is waiting ☕";
+  const text = he
+    ? `היי${first ? " " + first : ""},\n\nראינו שהתחלת הזמנה באתר ולא סיימת את התשלום:\n\n${lines}\n\nאפשר להשלים אותה כאן:\n${link}\n\nאם משהו לא עבד בתשלום, פשוט עונים למייל הזה ונשמח לעזור.\n\nגרמייר קופי\n\n—\nלא רוצים תזכורות כאלה? ${optoutUrl}`
+    : `Hi${first ? " " + first : ""},\n\nWe noticed you started an order on our site but didn't finish paying:\n\n${lines}\n\nYou can complete it here:\n${link}\n\nIf something went wrong at payment, just reply to this email and we'll help.\n\nGremier Coffee\n\n—\nDon't want reminders like this? ${optoutUrl}`;
+  return { subject, text };
+}
+
+/** Case-insensitive exact match: "_" and "%" in an email are not wildcards. */
+const likeExact = (v: string) => v.replace(/[\\%_]/g, (c) => "\\" + c);
+
+async function cartReminders(sb: Sb, dryRun: boolean) {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).format(new Date()));
+  if (!dryRun && (hour < 9 || hour >= 21)) return { skipped_run: "quiet_hours" };
+  const now = Date.now();
+  const { data: candidates } = await sb.from("orders")
+    .select("id, created_at, customer_email, customer_name, delivery_address, items, total, delivery_info, source")
+    .neq("payment_status", "paid").eq("status", "awaiting_payment").eq("source", "website")
+    .gte("created_at", new Date(now - REMIND.maxAgeHours * 36e5).toISOString())
+    .lte("created_at", new Date(now - REMIND.afterHours * 36e5).toISOString())
+    .not("customer_email", "is", null);
+  const sent: string[] = [];
+  const skipped: Record<string, number> = {};
+  const skip = (why: string) => { skipped[why] = (skipped[why] || 0) + 1; };
+  const done = new Set<string>();
+  let preview: Record<string, string> | null = null;
+  for (const o of candidates || []) {
+    const email = String(o.customer_email || "").trim().toLowerCase();
+    if (!email || done.has(email)) { skip("same_person_this_run"); continue; }
+    if (email === (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase()) { skip("own_address"); continue; }
+    if ((o.delivery_info as any)?.cart_reminder_at) { skip("already_reminded"); continue; }
+    if (Number(o.total) < REMIND.minTotal || /^test\b/i.test(o.customer_name || "") || (o.items || []).some((i: any) => /^test$/i.test(i.name_en || ""))) { skip("small_or_test"); continue; }
+    // Their latest order isn't this one: they bought or tried again since.
+    const { data: later } = await sb.from("orders").select("id").ilike("customer_email", likeExact(email)).gt("created_at", o.created_at).limit(1);
+    if (later?.length) { skip("ordered_again"); continue; }
+    const { data: optout } = await sb.from("cart_reminder_optouts").select("email").eq("email", email).maybeSingle();
+    if (optout) { skip("opted_out"); continue; }
+    const { data: past } = await sb.from("cart_reminders").select("sent_at").ilike("email", likeExact(email))
+      .gte("sent_at", new Date(now - REMIND.ignoredWindowDays * 864e5).toISOString()).order("sent_at", { ascending: false });
+    if (past?.length && now - new Date(past[0].sent_at).getTime() < REMIND.coolDownDays * 864e5) { skip("reminded_recently"); continue; }
+    // Reminders that weren't followed by a purchase: after two, stop — they've tuned out.
+    let ignored = 0;
+    for (const r of past || []) {
+      const { data: bought } = await sb.from("orders").select("id").ilike("customer_email", likeExact(email)).eq("payment_status", "paid").gt("created_at", r.sent_at).limit(1);
+      if (!bought?.length) ignored++;
+    }
+    if (ignored >= REMIND.ignoredLimit) { skip("ignores_reminders"); continue; }
+
+    done.add(email);
+    const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+    const optoutUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-tools?optout=${encodeURIComponent(email)}&t=${await optoutToken(email)}`;
+    const { subject, text } = reminderEmail(o, he, optoutUrl);
+    if (dryRun) { sent.push(`(dry run) ${o.id}`); preview = preview || { to: email, subject, text }; continue; }
+    const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: subject, customerText: text });
+    if (!res.ok) { skip("email_failed"); continue; }
+    await sb.from("cart_reminders").insert({ email, order_id: o.id });
+    await sb.from("orders").update({ delivery_info: { ...(o.delivery_info || {}), cart_reminder_at: new Date().toISOString() } }).eq("id", o.id);
+    sent.push(o.id);
+  }
+  if (sent.length && !dryRun) await alertAdmins(sb, "🛒 Cart reminder sent", `${sent.length} abandoned-checkout reminder${sent.length > 1 ? "s" : ""} emailed.`, "cart-reminders");
+  return { sent, skipped, ...(dryRun ? { preview } : {}) };
+}
+
 // ── Website visitors (Cloudflare Web Analytics) ──
 // Needs CF_ANALYTICS_TOKEN: a Cloudflare API token with Account → Account Analytics → Read.
 const CF_ACCOUNT = Deno.env.get("CF_ACCOUNT_ID") || "dc73ca97eef41fb2bd0a80c0835bee95";
@@ -250,6 +335,16 @@ async function siteAnalytics(daysIn: unknown) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  // "Stop these reminders" link from a cart reminder email (signed, no login).
+  const url = new URL(req.url);
+  if (req.method === "GET" && url.searchParams.has("optout")) {
+    const email = String(url.searchParams.get("optout") || "").trim().toLowerCase();
+    const page = (msg: string) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gremier Coffee</title><body style="font-family:sans-serif;max-width:460px;margin:60px auto;padding:0 20px;text-align:center;color:#1a1a1a"><h2>Gremier Coffee</h2><p>${msg}</p></body>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    if (!email || url.searchParams.get("t") !== await optoutToken(email)) return page("This link isn't valid.");
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, getServiceRoleKey());
+    await admin.from("cart_reminder_optouts").upsert({ email });
+    return page("Done — you won't get order reminders from us anymore.<br><br>סיימנו — לא נשלח לך יותר תזכורות על הזמנות.");
+  }
   if (!(await isServiceOrAdmin(req))) return forbidden(cors);
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, getServiceRoleKey());
   try {
@@ -279,6 +374,17 @@ Deno.serve(async (req) => {
         return json({ ok: !!data });
       }
       case "weekly_summary": return json(await weeklySummary(sb));
+      case "cart_reminders": {
+        if (body.preview_order_id) {
+          // Just the email a given order would get (nothing is sent).
+          const { data: o } = await sb.from("orders").select("customer_email, customer_name, delivery_address, items").eq("id", String(body.preview_order_id)).maybeSingle();
+          if (!o) return json({ error: "order_not_found" }, 404);
+          const he = body.lang ? body.lang === "he" : /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+          const to = String(body.preview_email || o.customer_email || "").trim().toLowerCase();
+          return json(reminderEmail(o, he, `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-tools?optout=${encodeURIComponent(to)}&t=${await optoutToken(to)}`));
+        }
+        return json(await cartReminders(sb, body.dry_run === true));
+      }
       case "site_analytics": return json(await siteAnalytics(body.days));
       case "message_customer": {
         // Admin → customer update for an order (template text edited in the admin app).
