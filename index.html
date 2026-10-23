@@ -743,7 +743,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261023-3"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261023-4"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-1"/>
 <script src="/storefront-nav.js?v=20261023-1"></script>
 <script src="/storefront-pay.js?v=20261023-1"></script>
@@ -4902,9 +4902,24 @@ async function sendChatMessageText(text) {
       <div class="reorder-info"><b>${esc(names)}</b><small>${fmtDate(o.date)} · ₪${Math.round(total * 100) / 100}</small></div>
       <button type="button" class="reorder-btn" onclick="reorder('${esc(o.id)}')">${T('Reorder', 'להזמין שוב')}</button></div>`;
   }
+  // Small "Order again" pill (thumbnail of the last order); tap / hover opens the cards.
+  function reorderPillHtml() {
+    const first = reorderableItems(history[0])[0];
+    const img = first && first.p.images && first.p.images[0] ? `<img src="${esc(cloudinaryOptimize(first.p.images[0], 80))}" alt="">` : '';
+    return `<button type="button" class="ro-pill" aria-expanded="false" onclick="toggleReorderPill(this)">${img}<span>${T('Order again', 'להזמין שוב')}</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`;
+  }
+  window.toggleReorderPill = function (btn) {
+    const strip = btn.closest('.reorder-strip');
+    const open = !strip.classList.contains('open');
+    document.querySelectorAll('.reorder-strip.open').forEach((x) => { x.classList.remove('open'); x.querySelector('.ro-pill')?.setAttribute('aria-expanded', 'false'); });
+    if (open) { strip.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); }
+  };
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.reorder-strip')) document.querySelectorAll('.reorder-strip.open').forEach((x) => { x.classList.remove('open'); x.querySelector('.ro-pill')?.setAttribute('aria-expanded', 'false'); });
+  });
   function renderStrips() {
     const html = history.length
-      ? `<h3>${T('Order again', 'להזמין שוב')}</h3><div class="reorder-row">${history.map(orderCardHtml).join('')}</div>` : '';
+      ? reorderPillHtml() + `<div class="reorder-row">${history.map(orderCardHtml).join('')}</div>` : '';
     for (const [id, anchorId, where] of [['reorderShop', 'catFilter', 'beforebegin'], ['reorderHome', 'featuredGrid', 'beforebegin']]) {
       let el = document.getElementById(id);
       if (!el) {

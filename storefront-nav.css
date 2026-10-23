@@ -98,3 +98,21 @@ html.pf-lock, html.pf-lock body { overflow:hidden; }
 #coffeebarsPage .section { padding-top:20px; }
 #coffeebarsPage .section-header { margin-bottom:16px; }
 #coffeebarsPage #t-cbp-title { font-size:clamp(1.25rem, 4.5vw, 1.6rem); }
+
+/* ── "Order again": a small pill on the right that opens the reorder cards ── */
+.reorder-strip:not(.cart-reorder) { position:relative; display:flex; justify-content:flex-end; max-width:1100px; margin:0 auto 12px !important; z-index:20; }
+.reorder-strip:not(.cart-reorder) > h3 { display:none; }
+.ro-pill { display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 12px 0 4px; border:1px solid #e3e5e8; border-radius:999px; background:#fff; color:#1a1a1a; font:500 .78rem 'DM Sans', sans-serif; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.05), 0 3px 8px rgba(0,0,0,.05); -webkit-tap-highlight-color:transparent; }
+.ro-pill img { width:28px; height:28px; border-radius:50%; object-fit:cover; background:#f5f6f7; }
+.ro-pill svg { color:#8a8f96; transition:transform .15s; }
+.reorder-strip.open .ro-pill svg { transform:rotate(180deg); }
+.reorder-strip:not(.cart-reorder) > .reorder-row { display:none; position:absolute; top:calc(100% + 6px); inset-inline-end:0; flex-direction:column; gap:8px; width:min(340px, calc(100vw - 32px)); padding:8px; background:#fff; border:1px solid #e3e5e8; border-radius:16px; box-shadow:0 12px 36px rgba(28,38,52,.18); overflow:visible; }
+.reorder-strip.open > .reorder-row { display:flex; }
+@media (hover:hover) and (pointer:fine) { .reorder-strip:not(.cart-reorder):hover > .reorder-row { display:flex; } }
+.reorder-strip:not(.cart-reorder) .reorder-card { width:auto; box-shadow:none; border-color:#eceef0; }
+
+/* ── Shop: a short header so the categories and products start sooner ── */
+#shopPage > .section { padding-top:20px; }
+#shopPage .section-header > .eyebrow, #shopPage .section-header > .divider { display:none; }
+#shopPage .section-header { margin-bottom:14px; }
+#shopPage #t-shop-title { font-size:clamp(1.4rem, 5vw, 2rem); }
