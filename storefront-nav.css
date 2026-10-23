@@ -1,0 +1,71 @@
+/* Storefront navigation: phone tab bar, category tiles, desktop shop sidebar */
+
+/* ── Category tiles: every category visible at once (no sideways scrolling) ── */
+.category-filter .filter-btn { display:inline-flex; align-items:center; gap:7px; }
+.filter-btn .fb-ico { font-size:1rem; line-height:1; letter-spacing:0; }
+.filter-btn .fb-n { font-size:.68rem; color:var(--text2); letter-spacing:0; font-weight:400; }
+@media (max-width: 640px) {
+  .category-filter { display:grid !important; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; overflow:visible !important; padding:0 !important; margin:0 0 22px !important; }
+  .category-filter .filter-btn { flex-direction:column; justify-content:center; gap:4px; min-width:0; padding:10px 4px; border-radius:12px; background:#fff; font-size:.7rem; letter-spacing:.02em; text-transform:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .category-filter .filter-btn .fb-ico { font-size:1.25rem; }
+  .category-filter .filter-btn .fb-n { display:none; }
+  .category-filter .filter-btn.active { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
+}
+
+/* ── Desktop: categories become a sticky sidebar beside the products ── */
+@media (min-width: 1024px) {
+  #shopPage > .section { display:grid; grid-template-columns:200px minmax(0, 1fr); column-gap:40px; align-items:start; max-width:1320px; margin:0 auto; }
+  #shopPage > .section > * { grid-column:2; }
+  #shopPage > .section > .section-header { grid-column:1 / -1; }
+  #shopPage > .section > .category-filter { grid-column:1; grid-row:2 / span 20; position:sticky; top:96px; flex-direction:column; flex-wrap:nowrap; justify-content:flex-start; gap:2px; margin:0; padding-inline-end:20px; border-inline-end:1px solid var(--border); }
+  #shopPage .category-filter .filter-btn { width:100%; justify-content:flex-start; border:none; border-radius:8px; padding:11px 12px; font-size:.8rem; letter-spacing:.04em; text-transform:none; text-align:start; }
+  #shopPage .category-filter .filter-btn .fb-n { margin-inline-start:auto; }
+  #shopPage .category-filter .filter-btn.active { background:#1a1a1a; color:#fff; }
+  #shopPage .category-filter .filter-btn.active .fb-n { color:rgba(255,255,255,.65); }
+  body.has-banner #shopPage > .section > .category-filter { top:136px; }
+  #shopPage .product-grid { max-width:none; }
+}
+
+/* ── Phone tab bar ── */
+#tabBar { display:none; }
+@media (max-width: 640px) {
+  #tabBar { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:96; background:rgba(255,255,255,.97); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid var(--border); padding:4px 4px calc(4px + env(safe-area-inset-bottom)); font-family:'DM Sans', sans-serif; }
+  body.rtl #tabBar { direction:rtl; }
+  #tabBar button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0; padding:6px 2px 4px; background:none; border:none; color:#8a8f96; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  #tabBar button.active { color:#1a1a1a; }
+  #tabBar .tb-ico { position:relative; width:24px; height:24px; }
+  #tabBar svg { width:24px; height:24px; }
+  #tabBar button.active svg { stroke-width:2; }
+  #tabBar .tb-label { font-size:.64rem; letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #tabBar .tb-badge { position:absolute; top:-4px; inset-inline-end:-9px; min-width:17px; height:17px; padding:0 4px; border-radius:999px; background:#c8873a; color:#fff; font:600 .62rem/17px 'DM Sans', sans-serif; font-style:normal; text-align:center; }
+
+  /* Make room for the bar; the cart tab replaces the separate "View cart" strip */
+  body.has-tab-bar { padding-bottom:calc(62px + env(safe-area-inset-bottom)); }
+  body.has-tab-bar #cartBar { display:none !important; }
+  body.has-tab-bar #fabStack { bottom:calc(74px + env(safe-area-inset-bottom)) !important; }
+  /* Sections are in the tab bar now; the menu button stays for About and Gift Cards */
+}
+
+/* No slide animation while the page settles or switches language (see storefront-nav.js) */
+body:not(.sf-settled) .drawer { transition:none !important; }
+
+/* ── Payment sheet: PayMe's secure page inside the site (storefront-pay.js) ── */
+#payFrame { position:fixed; inset:0; z-index:1000; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); padding:24px; }
+#payFrame.open { display:flex; }
+html.pf-lock, html.pf-lock body { overflow:hidden; }
+#payFrame .pf-box { position:relative; display:flex; flex-direction:column; width:100%; max-width:480px; height:min(720px, 100%); background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.3); font-family:'DM Sans', sans-serif; }
+#payFrame.rtl .pf-box { direction:rtl; }
+#payFrame .pf-head { display:flex; align-items:center; justify-content:space-between; padding:10px 10px 10px 16px; border-bottom:1px solid var(--border); }
+#payFrame.rtl .pf-head { padding:10px 16px 10px 10px; }
+#payFrame .pf-title { display:inline-flex; align-items:center; gap:7px; font-size:.82rem; font-weight:600; color:#2c6e49; }
+#payFrame .pf-close { width:34px; height:34px; border:none; border-radius:50%; background:#f2f2f2; color:#444; font-size:1.25rem; line-height:1; cursor:pointer; }
+#payFrame .pf-body { position:relative; flex:1; min-height:0; }
+#payFrame iframe { position:absolute; inset:0; width:100%; height:100%; border:0; background:#fff; opacity:0; transition:opacity .2s; }
+#payFrame.loaded iframe { opacity:1; }
+#payFrame .pf-spin { position:absolute; top:40%; left:50%; margin-left:-16px; }
+#payFrame.loaded .pf-spin { display:none; }
+#payFrame .pf-out { display:block; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--border); font-size:.74rem; color:var(--text2); text-align:center; text-decoration:underline; }
+@media (max-width: 640px) {
+  #payFrame { padding:0; align-items:flex-end; }
+  #payFrame .pf-box { max-width:none; height:94%; height:94dvh; border-radius:16px 16px 0 0; }
+}

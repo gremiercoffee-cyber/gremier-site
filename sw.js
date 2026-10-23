@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v28';
+const CACHE = 'gremier-v29';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -136,7 +136,7 @@ self.addEventListener('fetch', e => {
   }
 
   // HTML: network first
-  if (e.request.destination === 'document') {
+  if (e.request.mode === 'navigate' || e.request.destination === 'document' || e.request.destination === 'iframe') {
     e.respondWith(
       fetch(e.request)
         .then(res => { caches.open(CACHE).then(c => c.put(e.request, res.clone())); return res; })

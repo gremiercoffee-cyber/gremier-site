@@ -1,9 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+  // PayMe sends the buyer back to /?payment=return… inside the payment sheet (storefront-pay.js):
+  // tell the page that opened the sheet, which finishes the payment in the main window,
+  // and don't start the whole site inside the frame.
+  if (window.parent !== window && /[?&]payment=return/.test(location.search)) {
+    try { window.parent.postMessage({ type: 'gremier-payme-return', url: location.href }, location.origin); window.stop(); } catch (_) {}
+  }
+</script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com; form-action 'self'; upgrade-insecure-requests"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com; frame-src 'self' https://*.payme.io https://*.paymeservice.com; form-action 'self'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -735,6 +743,9 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261023-1"/>
+<script src="/storefront-nav.js?v=20261023-1"></script>
+<script src="/storefront-pay.js?v=20261023-1"></script>
 </head>
 <body>
 <!-- ══ MEMBERSHIP BANNER (non-members only) ══ -->
@@ -1475,7 +1486,7 @@ const T = {
     'w2t':'Delivered Fresh','w2d':'From our brewhouse to your door — cold, fresh, ready to drink.',
     'w3t':'Premium Beans','w3d':'Sourced from Colombia, Ethiopia and beyond. Expertly roasted for cold brew.',
     'w4t':'Events & Bars','w4d':'Cold brew for birthdays, parties, and corporate events — sized for your guest count.',
-    'feat-eye':'Our Range','feat-title':'Most Popular','view-all':'View All Products',
+    'feat-eye':'Our Range','feat-title':'Best Sellers','view-all':'View All Products',
     'cb-eye':'Events','cb-title':'Coffee Bars',
     'cb-desc':'Premium Gremier cold brew for your party, corporate event, or special occasion — tailored to your guest count. Based in Jerusalem, serving events across Israel.',
     'cbp-eye':'Events & Occasions','cbp-title':'Coffee Bar Packages',
@@ -1528,7 +1539,7 @@ const T = {
     'w2t':'משלוח טרי','w2d':'ממחסן הבישול עד הדלת — קר, טרי ומוכן לשתייה.',
     'w3t':'פולים פרימיום','w3d':'מקולומביה, אתיופיה ומעבר. קלוי במיוחד לקולד ברו.',
     'w4t':'אירועים ובארים','w4d':'קולד ברו לימי הולדת, מסיבות ואירועים עסקיים — בכמות שמתאימה למספר האורחים.',
-    'feat-eye':'המוצרים שלנו','feat-title':'הפופולריים','view-all':'לכל המוצרים',
+    'feat-eye':'המוצרים שלנו','feat-title':'הנמכרים ביותר','view-all':'לכל המוצרים',
     'cb-eye':'אירועים','cb-title':'בר קפה לאירועים',
     'cb-desc':'קולד ברו פרימיום של גרמייר למסיבה, אירוע עסקי או אירוע מיוחד — מותאם למספר האורחים. מבוססים בירושלים, מגיעים לכל הארץ.',
     'cbp-eye':'אירועים ואירועים מיוחדים','cbp-title':'חבילות בר קפה',
@@ -1678,7 +1689,6 @@ function clearUser() {
 // ══ MEMBERSHIP UI ══
 function showMembershipForGuest() {
   showMemberBanner();
-  checkAndShowMemberPopup();
 }
 function showMemberBanner() {
   const b = document.getElementById('memberBanner');
@@ -1825,6 +1835,16 @@ function findFeaturedProduct(name) {
   });
 }
 function getFeaturedProducts() {
+  const taste = window.GremierTaste;
+  if (taste) {
+    const ranked = products
+      .filter(p => !isSubscriptionProduct(p) && !(typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p)))
+      .map(p => ({ p, r: taste.rank(p.id) }))
+      .filter(x => x.r < 60)               // has personal interest or real recent sales
+      .sort((a, b) => a.r - b.r)
+      .map(x => x.p);
+    if (ranked.length >= 4) return ranked.slice(0, 4);
+  }
   const byId = FEATURED_PRODUCT_IDS.map(id => products.find(p => String(p.id) === id)).filter(Boolean);
   if (byId.length >= 4) return byId.slice(0, 4);
   const byName = featuredOrder.map(n => findFeaturedProduct(n)).filter(Boolean);
@@ -2229,6 +2249,7 @@ function openProductDrawerUI(productId) {
   return true;
 }
 function openProductDrawer(productId) {
+  window.GremierTaste?.bump(productId, 1);
   if (openProductDrawerUI(productId)) {
     navPush({ page: appPage, layer: 'product', productId: String(productId) });
   }
@@ -2385,6 +2406,8 @@ function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
   if (!grid) return;
   const featured = getFeaturedProducts().filter(p=>!isSubscriptionProduct(p));
+  const title = document.getElementById('t-feat-title');
+  if (title) title.textContent = window.GremierTaste?.isPersonal() ? (lang==='he' ? 'נבחר בשבילך' : 'Picked for you') : tr('feat-title');
   grid.innerHTML = featured.length ? featured.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center">No products yet.</p>';
 }
 const categories = [
@@ -2407,16 +2430,19 @@ function setCategory(cat) {
 }
 function renderShop() {
   const filter = document.getElementById('catFilter');
+  const available=products.filter(p=>!isSubscriptionProduct(p));
   if (filter) {
-    filter.innerHTML = categories.map(c =>
-      `<button class="filter-btn ${activeCategory===c.key?'active':''}" onclick="setCategory('${c.key}')">${trCat(c.key)}</button>`
-    ).join('');
+    const icons = { all:'☕', bottles:'🫙', minis:'📦', bulk:'🪣', syrups:'🍯', coffeebars:'🎉' };
+    filter.innerHTML = categories.map(c => {
+      const n = c.key === 'all' ? available.length : available.filter(p => shopCategoryOf(p) === c.key).length;
+      return `<button class="filter-btn ${activeCategory===c.key?'active':''}" onclick="setCategory('${c.key}')"><span class="fb-ico" aria-hidden="true">${icons[c.key]||'☕'}</span><span>${trCat(c.key)}</span><span class="fb-n">${n}</span></button>`;
+    }).join('');
   }
   const grid = document.getElementById('shopGrid');
   if (!grid) return;
-  const available=products.filter(p=>!isSubscriptionProduct(p));
   const base = activeCategory === 'all' ? available : available.filter(p => shopCategoryOf(p) === activeCategory);
-  const list = base.sort((a, b) => shopRank(a) - shopRank(b));
+  const taste = window.GremierTaste;
+  const list = base.sort((a, b) => (taste ? taste.rank(a.id) - taste.rank(b.id) : 0) || shopRank(a) - shopRank(b));
   grid.innerHTML = list.length ? list.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center;width:100%">No products in this category.</p>';
 }
 function renderCoffeeBars() {
@@ -2440,6 +2466,7 @@ function addToCart(productId) {
   if (existing) existing.qty++;
   else cart.push({   id: p.id,   base_product_id: p.id,   name_en: p.name_en,   name_he: p.name_he,   price: p.price,   images: p.images,   category: p.category,   delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null,   qty: 1, });
   updateCartCount();
+  window.GremierTaste?.bump(productId, 3);
   const btn = document.querySelector(`[data-id="${productId}"]`);
   if (btn) { btn.textContent='✓'; btn.style.background='var(--green)'; setTimeout(()=>{btn.textContent='+';btn.style.background='';},800); }
   showToast(lang==='he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
@@ -2813,7 +2840,7 @@ event_time: isEvent ? eventTime : null,
     if (payData.payme_sale_id) {
       sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
     }
-    window.location.href = payData.sale_url;
+    window.GremierPay ? GremierPay.open(payData.sale_url) : (window.location.href = payData.sale_url);
   } catch (err) {
     console.error('Checkout failed:', err);
     const realMsg = (err && err.message) ? String(err.message) : '';
@@ -3714,6 +3741,7 @@ async function init() {
   await initAuth();
   if (oauthReturn) cleanOAuthHashFromUrl();
   await loadProducts();
+  window.GremierTaste?.loadBestSellers(sb, renderGrids);
   try { await loadDeliveryZones(); } catch(e) { console.warn('Delivery zones unavailable:', e); }
   loadSiteSettings();
   applyTranslations();
@@ -3864,7 +3892,7 @@ items: [{ product_id: null, name_en: `Gift Card ₪${amount}`, name_he: `כרט�
     const payData = await callCreatePayment(orderId);
     sessionStorage.setItem('gremier_pending_order', orderId);
     if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
-    window.location.href = payData.sale_url;
+    window.GremierPay ? GremierPay.open(payData.sale_url) : (window.location.href = payData.sale_url);
   } catch (err) {
     console.error(err);
     alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
@@ -3918,7 +3946,7 @@ async function purchaseGiftCardFromPage() {
     const payData = await callCreatePayment(orderId);
     sessionStorage.setItem('gremier_pending_order', orderId);
     if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
-    window.location.href = payData.sale_url;
+    window.GremierPay ? GremierPay.open(payData.sale_url) : (window.location.href = payData.sale_url);
   } catch (err) {
     console.error(err);
     alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
@@ -4830,6 +4858,7 @@ async function sendChatMessageText(text) {
     // Guests (or members with older device orders): orders paid on this device.
     const local = get(HK) || [];
     for (const o of local) if (!list.some((x) => x.id === o.id)) list.push(o);
+    window.GremierTaste?.setBought(list.flatMap((o) => (o.items || []).map((it) => String(it.product_id || '').split('_')[0])).filter(Boolean));
     list.sort((a, b) => new Date(b.date) - new Date(a.date));
     // Drop repeats of the same basket so the row shows distinct orders.
     const seen = new Set();
