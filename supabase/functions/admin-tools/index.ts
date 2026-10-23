@@ -230,7 +230,7 @@ function reminderEmail(o: Record<string, any>, he: boolean, optoutUrl: string) {
   const link = simple.length === items.length && cart ? `${SITE}/?cart=${cart}&utm_source=cart_reminder` : `${SITE}/#shop`;
   const subject = he ? "ההזמנה שלך מחכה ☕" : "Your cold brew is waiting ☕";
   const text = he
-    ? `היי${first ? " " + first : ""},\n\nראינו שהתחלת הזמנה באתר ולא סיימת את התשלום:\n\n${lines}\n\nאפשר להשלים אותה כאן:\n${link}\n\nאם משהו לא עבד בתשלום, פשוט עונים למייל הזה ונשמח לעזור.\n\nגרמייר קופי\n\n—\nלא רוצים תזכורות כאלה? ${optoutUrl}`
+    ? `היי${first ? " " + first : ""},\n\nראינו שהתחלת הזמנה באתר ולא סיימת את התשלום:\n\n${lines}\n\nאפשר להשלים אותה כאן:\n${link}\n\nאם משהו לא עבד בתשלום, פשוט עונים למייל הזה ונשמח לעזור.\n\nגרמיר קופי\n\n—\nלא רוצים תזכורות כאלה? ${optoutUrl}`
     : `Hi${first ? " " + first : ""},\n\nWe noticed you started an order on our site but didn't finish paying:\n\n${lines}\n\nYou can complete it here:\n${link}\n\nIf something went wrong at payment, just reply to this email and we'll help.\n\nGremier Coffee\n\n—\nDon't want reminders like this? ${optoutUrl}`;
   return { subject, text };
 }
@@ -310,16 +310,16 @@ function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], opt
   // links[] is ordered by rating 1..5; show the best first.
   const rows = faces.map(([f, en, hb], i) => ({ f, label: he ? hb : en, url: links[4 - i] }));
   const subject = he ? "איך היה הקולד ברו? ☕" : "How was your cold brew? ☕";
-  const intro = he ? `היי${first ? " " + first : ""}, תודה רבה שבחרת בגרמייר! איך הייתה החוויה?` : `Hi${first ? " " + first : ""}, thank you so much for choosing Gremier! How was your experience?`;
+  const intro = he ? `היי${first ? " " + first : ""}, תודה רבה שבחרת בגרמיר! איך הייתה החוויה?` : `Hi${first ? " " + first : ""}, thank you so much for choosing Gremier! How was your experience?`;
   const recap = opts.recap ? `${opts.recap}\n\n` : "";
   const stop = opts.optoutUrl ? `\n\n—\n${he ? "לא רוצים מיילים כאלה?" : "Don't want emails like this?"} ${opts.optoutUrl}` : "";
-  const text = `${intro}\n\n${recap}${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${he ? "גרמייר קופי" : "Gremier Coffee"}${stop}`;
+  const text = `${intro}\n\n${recap}${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${he ? "גרמיר קופי" : "Gremier Coffee"}${stop}`;
   const dir = he ? "rtl" : "ltr";
   const html = `<div dir="${dir}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
     <p style="font-size:17px;line-height:1.5;margin:0 0 ${opts.recap ? 8 : 20}px">${intro}</p>
     ${opts.recap ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:0 0 18px">${opts.recap}</p>` : ""}
     <div>${rows.map((r) => `<a href="${r.url}" style="display:inline-block;margin:4px;padding:10px 12px;border:1px solid #e3e5e8;border-radius:14px;text-decoration:none;color:#1a1a1a;min-width:64px"><div style="font-size:30px;line-height:1">${r.f}</div><div style="font-size:12px;margin-top:6px;color:#5f656d">${r.label}</div></a>`).join("")}</div>
-    <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמייר קופי" : "Gremier Coffee"}</p>
+    <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמיר קופי" : "Gremier Coffee"}</p>
     ${opts.optoutUrl ? `<p style="font-size:11px;color:#a0a5ab;margin-top:18px"><a href="${opts.optoutUrl}" style="color:#a0a5ab">${he ? "להסרה מרשימת הדיוור" : "Unsubscribe"}</a></p>` : ""}</div>`;
   return { subject, text, html };
 }
@@ -368,7 +368,7 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
     const mail = feedbackEmail(o, he, links, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) });
     // About the brand more broadly than one delivery.
-    mail.subject = he ? "מה דעתך על גרמייר? ☕" : "What do you think of Gremier? ☕";
+    mail.subject = he ? "מה דעתך על גרמיר? ☕" : "What do you think of Gremier? ☕";
     return mail;
   };
   if (dryRun) {

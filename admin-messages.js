@@ -10,12 +10,12 @@
     {
       key: 'on_the_way', label: '🚚 On the way',
       en: "Hi {name}, your Gremier Coffee order #{n} is on the way! Please be ready to receive it from the driver, who will be in touch with you.\n\nGremier Coffee",
-      he: 'היי {name}, ההזמנה שלך מגרמייר קופי (#{n}) בדרך אליך! נא להיות זמינים לקבל אותה מהשליח, שייצור איתך קשר.\n\nגרמייר קופי',
+      he: 'היי {name}, ההזמנה שלך מגרמיר קופי (#{n}) בדרך אליך! נא להיות זמינים לקבל אותה מהשליח, שייצור איתך קשר.\n\nגרמיר קופי',
     },
     {
       key: 'today', label: '📅 Arriving today',
       en: 'Hi {name}, your Gremier Coffee delivery (order #{n}) is expected today. Please be ready to answer the driver if he calls and to receive the delivery from him.\n\nGremier Coffee',
-      he: 'היי {name}, המשלוח שלך מגרמייר קופי (הזמנה #{n}) צפוי להגיע היום. נא להיות זמינים לענות לשליח אם יתקשר ולקבל ממנו את המשלוח.\n\nגרמייר קופי',
+      he: 'היי {name}, המשלוח שלך מגרמיר קופי (הזמנה #{n}) צפוי להגיע היום. נא להיות זמינים לענות לשליח אם יתקשר ולקבל ממנו את המשלוח.\n\nגרמיר קופי',
     },
   ];
 
@@ -96,7 +96,7 @@
     const status = $('msgStatus');
     status.textContent = 'Sending email…';
     try {
-      const subject = lang === 'he' ? `ההזמנה שלך מגרמייר קופי #${o.order_number}` : `Your Gremier Coffee order #${o.order_number}`;
+      const subject = lang === 'he' ? `ההזמנה שלך מגרמיר קופי #${o.order_number}` : `Your Gremier Coffee order #${o.order_number}`;
       const { res, data } = await callAdminFunction('admin-tools', { action: 'message_customer', order_id: o.id, text, subject });
       if (!res.ok || !data.ok) throw new Error(data.error || data.detail || res.status);
       status.textContent = `✓ Emailed to ${o.customer_email}`;

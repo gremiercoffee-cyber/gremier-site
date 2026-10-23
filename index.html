@@ -1535,16 +1535,16 @@ const T = {
     'hero-eyebrow':'קולד ברו ישראלי מוביל','hero-em':'עד הבית','hero-sub':'ישירות לדלת שלך.',
     'hero-desc':'מהפולים הטובים ביותר, מבושל לאט וקר לחלקות מקסימלית. הקולד ברו הטוב ביותר בישראל.',
     'hero-shop':'לחנות','hero-bars':'בר קפה',
-    'why-eye':'למה גרמייר','why-title':'קולד ברו, כמו שצריך',
+    'why-eye':'למה גרמיר','why-title':'קולד ברו, כמו שצריך',
     'w1t':'חליטה איטית','w1d':'חליטה איטית בטמפרטורה קרה לחלקות מקסימלית וללא מרירות.',
     'w2t':'משלוח טרי','w2d':'ממחסן הבישול עד הדלת — קר, טרי ומוכן לשתייה.',
     'w3t':'פולים פרימיום','w3d':'מקולומביה, אתיופיה ומעבר. קלוי במיוחד לקולד ברו.',
     'w4t':'אירועים ובארים','w4d':'קולד ברו לימי הולדת, מסיבות ואירועים עסקיים — בכמות שמתאימה למספר האורחים.',
     'feat-eye':'המוצרים שלנו','feat-title':'הנמכרים ביותר','view-all':'לכל המוצרים',
     'cb-eye':'אירועים','cb-title':'בר קפה לאירועים',
-    'cb-desc':'קולד ברו פרימיום של גרמייר למסיבה, אירוע עסקי או אירוע מיוחד — מותאם למספר האורחים. מבוססים בירושלים, מגיעים לכל הארץ.',
+    'cb-desc':'קולד ברו פרימיום של גרמיר למסיבה, אירוע עסקי או אירוע מיוחד — מותאם למספר האורחים. מבוססים בירושלים, מגיעים לכל הארץ.',
     'cbp-eye':'אירועים ואירועים מיוחדים','cbp-title':'חבילות בר קפה',
-    'cbp-intro':'קולד ברו פרימיום של גרמייר למסיבה, אירוע עסקי או אירוע מיוחד — מותאם למספר האורחים. מבוססים בירושלים, מגיעים לכל הארץ.',
+    'cbp-intro':'קולד ברו פרימיום של גרמיר למסיבה, אירוע עסקי או אירוע מיוחד — מותאם למספר האורחים. מבוססים בירושלים, מגיעים לכל הארץ.',
     'cbp-hero-sub':'קולד ברו פרימיום ליום הולדת, אירוע עסקי או כל אירוע — נעזור לכם לבחור את הכמות הנכונה למספר האורחים.',
     'cbp-s1t':'יצירת קשר','cbp-s1d':'שלחו לנו הודעה בוואטסאפ עם תאריך האירוע, מספר האורחים הצפוי ומה שאתם מחפשים.',
     'cbp-s2t':'תכנון משותף','cbp-s2d':'נעזור לכם לבחור את הכמויות והטעמים המתאימים למספר האורחים ולסוג האירוע.',
@@ -1572,7 +1572,7 @@ const T = {
     'google-btn':'המשך עם Google','auth-cancel':'ביטול',
     'ft-desc':'הקולד ברו המוביל בישראל, מגיע טרי עד הבית.',
     'ft-shop':'חנות','ft-info':'מידע','ft-contact':'צור קשר','ft-contact-desc':'שאלות על הזמנה, משלוח, בר קפה או כל דבר אחר? וואטסאפ הוא הדרך המהירה ביותר ליצור איתנו קשר.','ft-whatsapp':'💬 שלחו הודעה בוואטסאפ','ft-contact-note':'להזמנות קיימות, מומלץ לשלוח וואטסאפ כדי שנוכל לעזור מהר.',
-    'ft-copy':'© 2025 גרמייר קפה. כל הזכויות שמורות.',
+    'ft-copy':'© 2025 גרמיר קפה. כל הזכויות שמורות.',
     'ft-made':'עם ☕ בישראל',
     'cartLabel':'עגלה',
     't-chat-fab':'בנה הזמנה',
@@ -4211,7 +4211,7 @@ async function openChatbot() {
   navPush({ page: appPage, layer: 'chat' });
   if (chatHistory.length === 0) {
     const greeting = lang==='he'
-      ? 'היי! 👋 אני עוזר ההזמנות של גרמייר. איך אפשר לעזור?'
+      ? 'היי! 👋 אני עוזר ההזמנות של גרמיר. איך אפשר לעזור?'
       : 'Hey! 👋 I\'m the Gremier order assistant. What can I help you with?';
     appendBotMessage(greeting, [], CHAT_QUICK_REPLIES.welcome);
     setTimeout(() => appendProductSuggestions(), 400);
@@ -4620,7 +4620,7 @@ async function sendChatMessageText(text) {
 
   // P10. Membership popup + top banner in Hebrew (they stayed English, laid out right-to-left).
   const MEMBER = {
-    "popup-title": ["Join Gremier Members", "הצטרפו למועדון גרמייר"],
+    "popup-title": ["Join Gremier Members", "הצטרפו למועדון גרמיר"],
     "popup-sub": ["Sign in with Google and start earning points on every order. Free to join, always.", "התחברו עם גוגל וצברו נקודות על כל הזמנה. ההצטרפות תמיד בחינם."],
     "perk1": ["Earn 1 point for every ₪10 you spend", "נקודה אחת על כל ₪10 שאתם מוציאים"],
     "perk2": ["200 points = 10% off your next order", "200 נקודות = 10% הנחה על ההזמנה הבאה"],
@@ -4628,7 +4628,7 @@ async function sendChatMessageText(text) {
     "perk4": ["Track your orders easily", "מעקב קל אחרי ההזמנות שלכם"],
     "popup-join-btn": ["Join Now — It's Free", "הצטרפו עכשיו — בחינם"],
     "popup-skip": ["Maybe later", "אולי אחר כך"],
-    "bannerText": ["Become a Gremier Member — earn points on every order.", "הצטרפו למועדון גרמייר — צברו נקודות על כל הזמנה."],
+    "bannerText": ["Become a Gremier Member — earn points on every order.", "הצטרפו למועדון גרמיר — צברו נקודות על כל הזמנה."],
   };
   function localizeMemberBits() {
     for (const [id, [en, heText]] of Object.entries(MEMBER)) {
@@ -4761,7 +4761,7 @@ async function sendChatMessageText(text) {
     ['Wholesale', 'סיטונאי'],
     ['Subscribe & Save', 'מנוי וחיסכון'],
     ["Welcome to Gremier Coffee, where passion meets perfection! Founded in Israel in 2024, we are dedicated to bringing you the finest cold brew coffee, crafted with care and served in premium glass bottles. Our mission is to elevate your coffee experience, whether you're enjoying a refreshing drink at home, at an event, or having it delivered straight to your door.",
-     'ברוכים הבאים לגרמייר קופי, המקום שבו תשוקה פוגשת שלמות! נוסדנו בישראל ב־2024 ואנחנו מביאים לכם את הקולד ברו הטוב ביותר, מוכן בקפידה ומוגש בבקבוקי זכוכית איכותיים. המטרה שלנו היא לשדרג את חוויית הקפה שלכם — בבית, באירוע או במשלוח עד הדלת.'],
+     'ברוכים הבאים לגרמיר קופי, המקום שבו תשוקה פוגשת שלמות! נוסדנו בישראל ב־2024 ואנחנו מביאים לכם את הקולד ברו הטוב ביותר, מוכן בקפידה ומוגש בבקבוקי זכוכית איכותיים. המטרה שלנו היא לשדרג את חוויית הקפה שלכם — בבית, באירוע או במשלוח עד הדלת.'],
     ['We take pride in our unique self-serve coffee bars, designed to turn any event into an unforgettable experience. Each coffee bar includes everything needed for a stunning setup, including premium syrups, milk, coffee cups, and straws. Your guests will be wowed by both the quality and presentation.',
      'אנחנו גאים בעמדות הקפה בשירות עצמי שלנו, שהופכות כל אירוע לחוויה בלתי נשכחת. כל עמדה כוללת את כל מה שצריך לעמדה מרשימה — סירופים איכותיים, חלב, כוסות וקשים. האורחים שלכם יתרשמו גם מהאיכות וגם מהמראה.'],
     ["At our core, we specialize in super-premium cold brew coffee that you simply won't find anywhere else. Join us on this delicious journey and discover the true taste of exceptional coffee.",
@@ -4775,7 +4775,7 @@ async function sendChatMessageText(text) {
     ['Flexibility', 'גמישות'],
     ['Pause or cancel anytime', 'הקפאה או ביטול בכל עת'],
     ['Gift the Perfect Brew', 'המתנה המושלמת'],
-    ['Send a Gremier gift card — they pick what they love, you make their day. Delivered instantly by email.', 'שלחו כרטיס מתנה של גרמייר — הם בוחרים מה שהם אוהבים, ואתם משמחים. נשלח מיד במייל.'],
+    ['Send a Gremier gift card — they pick what they love, you make their day. Delivered instantly by email.', 'שלחו כרטיס מתנה של גרמיר — הם בוחרים מה שהם אוהבים, ואתם משמחים. נשלח מיד במייל.'],
     ['Buy a Gift Card →', 'לרכישת כרטיס מתנה ←'],
     ['Send a Gift', 'שלחו מתנה'],
     ['Give the gift of great cold brew. They choose what they love, delivered fresh to their door.', 'תנו מתנה של קולד ברו מעולה. הם בוחרים מה שהם אוהבים, וזה מגיע טרי עד הדלת.'],
@@ -4846,7 +4846,7 @@ async function sendChatMessageText(text) {
     ['Shipping Policy', 'מדיניות משלוחים'],
     ['Refund Policy', 'מדיניות החזרים'],
     ['Privacy Policy', 'מדיניות פרטיות'],
-    ['Gremier Assistant', 'העוזר של גרמייר'],
+    ['Gremier Assistant', 'העוזר של גרמיר'],
     ['● Online', '● מחובר'],
   ];
   const toHe = new Map(DICT), toEn = new Map(DICT.map(([e, h]) => [h, e]));
@@ -5370,6 +5370,6 @@ async function sendChatMessageText(text) {
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261023-2"></script>
-<script src="/storefront-engage.js?v=20261023-1"></script>
+<script src="/storefront-engage.js?v=20261023-2"></script>
 </body>
 </html>

@@ -9390,13 +9390,13 @@ window.opsFetch = window.opsFetch || (function () {
     const paid = String(o.payment_status) === 'paid';
     const st = String(o.status || '').toLowerCase();
     if (!paid) return he
-      ? `היי ${first}, כאן גרמייר קופי ☕ ראינו שההזמנה שלך (#${o.order_number}, ₪${o.total}) לא הושלמה בתשלום. רוצה שנשלח לך קישור לתשלום?`
+      ? `היי ${first}, כאן גרמיר קופי ☕ ראינו שההזמנה שלך (#${o.order_number}, ₪${o.total}) לא הושלמה בתשלום. רוצה שנשלח לך קישור לתשלום?`
       : `Hi ${first}, it's Gremier Coffee ☕ Looks like your order #${o.order_number} (₪${o.total}) didn't finish payment. Want me to send you a payment link?`;
     if (st === 'fulfilled') return he
       ? `היי ${first}! מקווים שאתם נהנים מהקולד ברו ☕ נשמח לשמוע מה חשבתם!`
       : `Hi ${first}! Hope you're enjoying your cold brew ☕ We'd love to hear what you think!`;
     return he
-      ? `היי ${first}! ההזמנה שלך מגרמייר קופי (#${o.order_number}) בדרך אליך ☕`
+      ? `היי ${first}! ההזמנה שלך מגרמיר קופי (#${o.order_number}) בדרך אליך ☕`
       : `Hi ${first}! Your Gremier Coffee order #${o.order_number} is on its way ☕`;
   }
   window.hubWaOrder = function (id) {
@@ -9697,7 +9697,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-sales-breakdown.js?v=20261023-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261023-1"/>
 <script src="/admin-visitors.js?v=20261023-1"></script>
-<script src="/admin-messages.js?v=20261023-1"></script>
+<script src="/admin-messages.js?v=20261023-2"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
 </body>
 </html>

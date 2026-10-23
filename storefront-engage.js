@@ -73,7 +73,7 @@
     if (!b) return;
     const card = b.closest('.ref-card');
     const link = card.dataset.link, code = card.dataset.code;
-    const text = T(`I love Gremier cold brew ☕ Here's ₪20 off your first order: ${link}`, `אני מת/ה על הקולד ברו של גרמייר ☕ הנה ₪20 הנחה להזמנה הראשונה שלך: ${link}`);
+    const text = T(`I love Gremier cold brew ☕ Here's ₪20 off your first order: ${link}`, `אני מת/ה על הקולד ברו של גרמיר ☕ הנה ₪20 הנחה להזמנה הראשונה שלך: ${link}`);
     if (b.dataset.ref === 'copy') {
       try { await navigator.clipboard.writeText(link); toast(T('Link copied ✓', 'הקישור הועתק ✓')); } catch (_) { prompt('', link); }
       engage({ action: 'ref_event', code, kind: 'share', via: 'copy' });
