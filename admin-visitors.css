@@ -1,0 +1,18 @@
+/* Website visitors card on the Activity page (admin-visitors.js) */
+.vis-card { margin-bottom:16px; }
+.vis-card h3 { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.vis-card .vis-days { width:auto; padding:5px 10px; font-size:.8rem; }
+.vis-kpis { display:flex; gap:28px; margin:4px 0 12px; }
+.vis-kpis b { display:block; font-size:1.5rem; font-weight:700; line-height:1.1; }
+.vis-kpis span { font-size:.72rem; color:var(--text2); letter-spacing:.04em; }
+.vis-chart { display:flex; align-items:flex-end; gap:3px; height:64px; margin:0 0 14px; padding-bottom:2px; border-bottom:1px solid var(--border); }
+.vis-col { flex:1; height:100%; display:flex; align-items:flex-end; }
+.vis-col i { display:block; width:100%; border-radius:3px 3px 0 0; background:#c8873a; opacity:.85; }
+.vis-col:hover i { opacity:1; }
+.vis-lists { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px 22px; }
+.vis-list-title { font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:6px; }
+.vis-row { display:grid; grid-template-columns:minmax(0, 1.2fr) minmax(0, 1fr) auto; align-items:center; gap:8px; padding:3px 0; font-size:.8rem; }
+.vis-k { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vis-bar { height:6px; background:rgba(0,0,0,.06); border-radius:3px; overflow:hidden; }
+.vis-bar i { display:block; height:100%; background:#c8873a; border-radius:3px; }
+.vis-v { font-variant-numeric:tabular-nums; color:var(--text2); font-size:.76rem; }

@@ -2,14 +2,17 @@
 
 /* ── Category tiles: every category visible at once (no sideways scrolling) ── */
 .category-filter .filter-btn { display:inline-flex; align-items:center; gap:7px; }
-.filter-btn .fb-ico { font-size:1rem; line-height:1; letter-spacing:0; }
+.filter-btn .fb-ico { display:inline-flex; width:16px; height:16px; flex:0 0 16px; }
+.filter-btn .fb-ico svg { width:100%; height:100%; }
 .filter-btn .fb-n { font-size:.68rem; color:var(--text2); letter-spacing:0; font-weight:400; }
 @media (max-width: 640px) {
-  .category-filter { display:grid !important; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; overflow:visible !important; padding:0 !important; margin:0 0 22px !important; }
-  .category-filter .filter-btn { flex-direction:column; justify-content:center; gap:4px; min-width:0; padding:10px 4px; border-radius:12px; background:#fff; font-size:.7rem; letter-spacing:.02em; text-transform:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .category-filter .filter-btn .fb-ico { font-size:1.25rem; }
+  .category-filter { display:grid !important; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; overflow:visible !important; padding:0 !important; margin:0 0 20px !important; }
+  /* Compact raised buttons: white, rounded, soft shadow, press-in on tap */
+  .category-filter .filter-btn { justify-content:center; gap:5px; min-width:0; height:38px; padding:0 6px; border:1px solid #e7e3dd; border-radius:999px; background:#fff; color:#3a3a3a; font-size:.72rem; font-weight:500; letter-spacing:0; text-transform:none; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,.06), 0 3px 8px rgba(0,0,0,.05); transition:transform .12s, box-shadow .12s, background .15s; -webkit-tap-highlight-color:transparent; }
+  .category-filter .filter-btn > span:nth-child(2) { overflow:hidden; text-overflow:ellipsis; }
+  .category-filter .filter-btn:active { transform:scale(.96); box-shadow:0 1px 2px rgba(0,0,0,.08); }
   .category-filter .filter-btn .fb-n { display:none; }
-  .category-filter .filter-btn.active { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
+  .category-filter .filter-btn.active { background:#1a1a1a; border-color:#1a1a1a; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.18); }
 }
 
 /* ── Desktop: categories become a sticky sidebar beside the products ── */

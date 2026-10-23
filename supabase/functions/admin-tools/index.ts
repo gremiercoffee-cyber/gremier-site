@@ -4,6 +4,7 @@
 //   { action: "cancel_subscription", sub_payme_id }
 //   { action: "unpaid_alerts" }            → cron (every 15 min): push once per order unpaid > 1h
 //   { action: "weekly_summary" }           → cron (Sunday morning): last 7 days in one push
+//   { action: "site_analytics", days }     → website visitors from Cloudflare Web Analytics
 // Every call must pass isServiceOrAdmin (crons use the service key).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -200,6 +201,51 @@ async function weeklySummary(sb: Sb) {
   return { body };
 }
 
+// ── Website visitors (Cloudflare Web Analytics) ──
+// Needs CF_ANALYTICS_TOKEN: a Cloudflare API token with Account → Account Analytics → Read.
+const CF_ACCOUNT = Deno.env.get("CF_ACCOUNT_ID") || "dc73ca97eef41fb2bd0a80c0835bee95";
+const CF_SITE_TAG = Deno.env.get("CF_SITE_TAG") || "70d0660355624e9c82205264385af935"; // gremiercoffee.co.il
+
+async function siteAnalytics(daysIn: unknown) {
+  const token = Deno.env.get("CF_ANALYTICS_TOKEN");
+  if (!token) return { configured: false };
+  const days = [1, 7, 30].includes(Number(daysIn)) ? Number(daysIn) : 7;
+  const since = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
+  const group = (alias: string, dims: string, limit: number, order = "count_DESC") =>
+    `${alias}: rumPageloadEventsAdaptiveGroups(limit: ${limit}, filter: $f, orderBy: [${order}]) { count sum { visits } ${dims ? `dimensions { ${dims} }` : ""} }`;
+  const query = `query ($account: string!, $f: AccountRumPageloadEventsAdaptiveGroupsFilter_InputObject) {
+    viewer { accounts(filter: { accountTag: $account }) {
+      ${group("total", "", 1, "count_DESC")}
+      ${group("byDay", "date", 31, "date_ASC")}
+      ${group("pages", "requestPath", 8)}
+      ${group("referrers", "refererHost", 8)}
+      ${group("countries", "countryName", 6)}
+      ${group("devices", "deviceType", 4)}
+    } } }`;
+  const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables: { account: CF_ACCOUNT, f: { siteTag: CF_SITE_TAG, date_geq: since, bot: 0 } } }),
+  });
+  const out = await res.json().catch(() => ({})) as Record<string, any>;
+  if (!res.ok || out.errors?.length) {
+    console.error("Cloudflare analytics:", res.status, JSON.stringify(out.errors || out).slice(0, 500));
+    return { configured: true, error: out.errors?.[0]?.message || `Cloudflare ${res.status}` };
+  }
+  const a = out.data?.viewer?.accounts?.[0] || {};
+  const rows = (list: any[], key: string) => (list || []).map((g) => ({ key: g.dimensions?.[key] ?? "", views: g.count, visits: g.sum?.visits ?? 0 }));
+  return {
+    configured: true, days, since,
+    views: a.total?.[0]?.count ?? 0,
+    visits: a.total?.[0]?.sum?.visits ?? 0,
+    byDay: rows(a.byDay, "date"),
+    pages: rows(a.pages, "requestPath"),
+    referrers: rows(a.referrers, "refererHost"),
+    countries: rows(a.countries, "countryName"),
+    devices: rows(a.devices, "deviceType"),
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (!(await isServiceOrAdmin(req))) return forbidden(cors);
@@ -231,6 +277,7 @@ Deno.serve(async (req) => {
         return json({ ok: !!data });
       }
       case "weekly_summary": return json(await weeklySummary(sb));
+      case "site_analytics": return json(await siteAnalytics(body.days));
       default: return json({ error: "unknown_action" }, 400);
     }
   } catch (e) {
