@@ -2550,10 +2550,13 @@ function removeFromCart(id) {
 }
 // ══ CHECKOUT ══
 function openCheckout() {
+  // Coming from the cart, the checkout takes the cart's place in the history; otherwise
+  // Cancel (= back) lands on the cart, which reopens, and needs a second press.
+  const fromCart = history.state?.__app === 'gremier' && history.state.layer === 'cart';
   document.getElementById('cartOverlay').classList.remove('open');
   document.getElementById('cartDrawer').classList.remove('open');
   openCheckoutUI('form');
-  navPush({ page: appPage, layer: 'checkout', checkoutView: 'form' });
+  (fromCart ? navReplace : navPush)({ page: appPage, layer: 'checkout', checkoutView: 'form' });
 }
 function closeCheckout(fromNav) {
   if (fromNav) {
