@@ -235,12 +235,22 @@ function reminderEmail(o: Record<string, any>, he: boolean, optoutUrl: string) {
   return { subject, text };
 }
 
+/** Automatic customer emails go out 09:00–21:00 Israel time, and not on Shabbat:
+ *  nothing from Friday noon until Sunday morning (Saturday night is after 21:00 anyway). */
+function quietNow(): boolean {
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "short", hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).formatToParts(new Date());
+  const day = parts.find((p) => p.type === "weekday")?.value;
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  if (day === "Sat") return true;
+  if (day === "Fri" && hour >= 12) return true;
+  return hour < 9 || hour >= 21;
+}
+
 /** Case-insensitive exact match: "_" and "%" in an email are not wildcards. */
 const likeExact = (v: string) => v.replace(/[\\%_]/g, (c) => "\\" + c);
 
 async function cartReminders(sb: Sb, dryRun: boolean) {
-  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).format(new Date()));
-  if (!dryRun && (hour < 9 || hour >= 21)) return { skipped_run: "quiet_hours" };
+  if (!dryRun && quietNow()) return { skipped_run: "quiet_hours" };
   const now = Date.now();
   const { data: candidates } = await sb.from("orders")
     .select("id, created_at, customer_email, customer_name, delivery_address, items, total, delivery_info, source")
@@ -385,12 +395,16 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
     if (res.ok) sent.push(`#${o.order_number}`); else skip("email_failed");
     await new Promise((r) => setTimeout(r, 600));   // stay under the email provider's rate limit
   }
+  // Let the owner know it actually went out (the run is scheduled, so there's no one watching).
+  await sendOrderEmails({
+    ownerSubject: `☕ "What do you think of Gremier?" sent to ${sent.length} customers`,
+    ownerText: `The feedback email for orders since ${since} went out to ${sent.length} customer${sent.length === 1 ? "" : "s"} (orders ${sent.join(", ") || "none"}).${Object.keys(skipped).length ? `\n\nSkipped: ${Object.entries(skipped).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}\n\nAnswers show up in the admin under ⭐ Reviews.`,
+  });
   return { sent: sent.length, orders: sent, skipped };
 }
 
 async function feedbackRequests(sb: Sb, dryRun: boolean) {
-  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).format(new Date()));
-  if (!dryRun && (hour < 9 || hour >= 21)) return { skipped_run: "quiet_hours" };
+  if (!dryRun && quietNow()) return { skipped_run: "quiet_hours" };
   const now = Date.now();
   const { data: orders } = await sb.from("orders")
     .select("id, order_number, customer_email, customer_name, delivery_address, delivery_info, items")
