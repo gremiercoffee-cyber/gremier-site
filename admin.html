@@ -4127,13 +4127,6 @@ return `<tr class="${needsFulfillmentHighlight ? 'order-needs-fulfillment' : ''}
       <td class="cell-actions" onclick="event.stopPropagation()">
         <div class="cell-actions-wrap">
           ${fulfillBtn}
-<span data-action-menu="Order actions">          <select class="form-input table-select" aria-label="Order status" onchange="updateOrderStatus('${o.id}',this.value)">
-            <option ${o.status==='pending'?'selected':''}>pending</option>
-            <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
-            <option ${o.status==='fulfilled'?'selected':''}>fulfilled</option>
-            <option ${o.status==='cancelled'?'selected':''}>cancelled</option>
-          </select>
-          <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" title="Delete order">Delete order</button></span>
         </div>
       </td>
     </tr>`;
@@ -4443,7 +4436,8 @@ function openOrderDetail(id) {
       ${o.payment_method === 'gift_card' && o.gift_card_code ? `<button class="btn btn-sm btn-outline" onclick="refundGiftCardOrder('${o.id}')">↩ Refund to Gift Card</button>` : ''}
     </div>` : ''}
     ${o.customer_email ? `<button class="btn btn-outline btn-sm" onclick="sendCustomerReceipt('${o.id}')" style="margin-top:14px">📄 Send Receipt to Customer</button>` : ''}
-    <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')" style="margin-top:14px">Delete Order</button>`;
+    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px">${o.customer_phone || o.customer_email ? `<button class="btn btn-sm wa-btn" onclick="adminMessageOrder('${o.id}')">💬 Message customer</button>` : ''}
+    <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')">Delete Order</button></div>`;
   document.getElementById('orderModal').classList.add('open');
 }
 async function deleteLinkedWebDelivery(order) {
@@ -9410,7 +9404,7 @@ window.opsFetch = window.opsFetch || (function () {
     window.orderRowHtml = function (o) {
       let html = _row.apply(this, arguments);
       hubOrderIndex.set(o.id, o);
-      const extra = (o.customer_phone ? `<button class="btn btn-sm wa-btn" onclick="hubWaOrder('${o.id}')" title="WhatsApp customer">💬</button>` : '')
+      const extra = (o.customer_phone || o.customer_email ? `<button class="btn btn-sm wa-btn" onclick="adminMessageOrder('${o.id}')" title="Message customer">💬</button>` : '')
         + `<button class="btn btn-outline btn-sm" onclick="hubOpenCustomerFromOrder('${o.id}')" title="Customer page">👤</button>`;
       return html.replace('<div class="cell-actions-wrap">', '<div class="cell-actions-wrap">' + extra);
     };
@@ -9696,5 +9690,6 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-sales-breakdown.js?v=20261023-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261023-1"/>
 <script src="/admin-visitors.js?v=20261023-1"></script>
+<script src="/admin-messages.js?v=20261023-1"></script>
 </body>
 </html>
