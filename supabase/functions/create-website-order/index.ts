@@ -3,7 +3,7 @@ import "../_shared/subscription-model.js";
 const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
-import { logReferralEvent, notifyOwner, referralByCode } from "../_shared/engage.ts";
+import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "../_shared/engage.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 
 const corsHeaders = {
