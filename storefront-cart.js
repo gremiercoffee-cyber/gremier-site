@@ -1,5 +1,5 @@
-/* Cart extras: "add ₪X for free delivery", a one-tap switch to the 5L when it's cheaper,
-   and suggestions that fit the cart (coffee → syrups, syrup only → coffee). */
+/* Cart extras: "add ₪X for free delivery" and suggestions that fit the cart
+   (coffee → syrups, syrup only → coffee). */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -13,12 +13,6 @@
   const isSyrup = (p) => !!p && typeof isSyrupProduct === 'function' && isSyrupProduct(p);
   const isCoffee = (p) => !!p && !isSyrup(p) && ['bottles', 'minis', 'bulk'].includes(p.category);
   const name = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
-  const firstWord = (s) => String(s || '').replace(/^5\s*l\s+/i, '').trim().split(/\s+/)[0].toLowerCase();
-
-  // The 5L of the same coffee ("Classic Dark Roast" ↔ "5L Classic Dark Roast").
-  function bulkFor(p) {
-    return all().find((q) => q.category === 'bulk' && /^5\s*l\b/i.test(q.name_en || '') && firstWord(q.name_en) === firstWord(p.name_en) && q.is_active !== false);
-  }
 
   function knownCity() {
     const c = (typeof selectedCheckoutCity !== 'undefined' && selectedCheckoutCity) || (get('gremier_checkout_details_v1') || {}).city;
@@ -37,32 +31,6 @@
     return `<div class="cx-free"><span>${T(`Add ₪${left} more for free delivery`, `עוד ₪${left} ומשלוח חינם`)}</span>
       <div class="cx-bar"><i style="width:${Math.min(100, Math.round((subtotal / freeAbove) * 100))}%"></i></div></div>`;
   }
-
-  function fiveLitreHtml() {
-    for (const item of cart) {
-      const p = productOf(item);
-      if (!p || item.is_subscription || p.category !== 'bottles' || isSyrup(p) || item.qty < 4 || item.id !== String(p.id)) continue;
-      const bulk = bulkFor(p);
-      if (!bulk) continue;
-      const n = Math.min(item.qty, 5);
-      const now = n * Number(item.price);
-      if (now <= Number(bulk.price)) continue;
-      return `<div class="cx-deal">
-        <div><b>${T(`Save ₪${Math.round(now - bulk.price)} with the 5L`, `חוסכים ₪${Math.round(now - bulk.price)} עם ה-5 ליטר`)}</b>
-        <small>${esc(name(bulk))} · ₪${bulk.price} ${T(`instead of ${n} bottles for ₪${now}`, `במקום ${n} בקבוקים ב-₪${now}`)}</small></div>
-        <button type="button" onclick="cartSwitchTo5L('${esc(item.id)}','${esc(bulk.id)}')">${T('Switch', 'להחליף')}</button>
-      </div>`;
-    }
-    return '';
-  }
-  window.cartSwitchTo5L = function (itemId, bulkId) {
-    const item = cart.find((i) => i.id === itemId);
-    if (!item) return;
-    item.qty -= Math.min(item.qty, 5);
-    if (item.qty <= 0) cart.splice(cart.indexOf(item), 1);
-    if (typeof addToCart === 'function') addToCart(bulkId);
-    if (typeof renderCartDrawer === 'function') renderCartDrawer();
-  };
 
   function suggestionsHtml() {
     const inCart = new Set(cart.map(baseId));
@@ -88,8 +56,8 @@
   function decorate() {
     const body = $('cartBody'), footer = $('cartFooter');
     if (!body || typeof cart === 'undefined' || !cart.length) return;
-    body.querySelectorAll('.pv-suggest, .cx-deal').forEach((el) => el.remove());   // replaces the older syrup-only suggestion
-    if (!cart.some((i) => i.is_subscription)) body.insertAdjacentHTML('beforeend', fiveLitreHtml() + suggestionsHtml());
+    body.querySelectorAll('.pv-suggest').forEach((el) => el.remove());   // replaces the older syrup-only suggestion
+    if (!cart.some((i) => i.is_subscription)) body.insertAdjacentHTML('beforeend', suggestionsHtml());
     footer?.querySelector('.cx-free')?.remove();
     const free = freeDeliveryHtml();
     if (free && footer) footer.insertAdjacentHTML('afterbegin', free);
