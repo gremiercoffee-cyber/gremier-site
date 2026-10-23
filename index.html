@@ -744,9 +744,9 @@
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261023-4"/>
-<link rel="stylesheet" href="/storefront-checkout.css?v=20261023-1"/>
+<link rel="stylesheet" href="/storefront-checkout.css?v=20261023-2"/>
 <script src="/storefront-nav.js?v=20261023-1"></script>
-<script src="/storefront-pay.js?v=20261023-1"></script>
+<script src="/storefront-pay.js?v=20261023-2"></script>
 </head>
 <body>
 <!-- ══ MEMBERSHIP BANNER (non-members only) ══ -->
@@ -4982,11 +4982,14 @@ async function sendChatMessageText(text) {
     const feeTxt = fee === null ? '' : fee === 0 ? T('Free delivery', 'משלוח חינם') : `${T('Delivery', 'משלוח')} ₪${fee}`;
     const total = fee === null ? subtotal : subtotal + fee;
     footer.insertAdjacentHTML('afterbegin', `<div id="expressBox" class="express-box">
-      <div class="ex-head"><b>${T('Deliver to', 'משלוח אל')}</b><a onclick="expressChange()">${T('Change', 'שינוי')}</a></div>
-      <div><b>${esc(d.name)}</b> · ${esc(d.phone)}<br>${esc(d.addr)}${apt}, ${esc(city)}</div>
-      <div style="color:var(--text2)">${T('Regular delivery (2–5 days)', 'משלוח רגיל (2–5 ימים)')}${feeTxt ? ' · ' + feeTxt : ''}</div>
-      <button type="button" class="express-pay" id="expressPayBtn" onclick="expressPay()">${T('Pay', 'לתשלום')} ₪${Math.round(total * 100) / 100} ${T('with PayMe', 'ב-PayMe')}</button>
-      <div style="text-align:center;margin-top:6px;font-size:.72rem;color:var(--text2)">${T('Coupon, gift card or a specific date? Use full checkout below.', 'קופון, כרטיס מתנה או תאריך מסוים? המשיכו לקופה המלאה למטה.')}</div>
+      <button type="button" class="ex-addr" onclick="expressChange()" title="${T('Change delivery details', 'שינוי פרטי המשלוח')}">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+        <span class="ex-addr-text"><b>${esc(d.name)}</b><span>${esc(d.addr)}${apt}, ${esc(city)}</span></span>
+        <span class="ex-change">${T('Change', 'שינוי')}</span>
+      </button>
+      <div class="ex-meta">${T('Regular delivery · 2–5 days', 'משלוח רגיל · 2–5 ימים')}${feeTxt ? ' · ' + feeTxt : ''}</div>
+      <button type="button" class="express-pay" id="expressPayBtn" onclick="expressPay()"><span class="ep-main">${T('Pay', 'לתשלום')} ₪${Math.round(total * 100) / 100}</span><span class="ep-sub">${T('Card · bit · Apple Pay · Google Pay', 'כרטיס · bit · Apple Pay · Google Pay')}</span></button>
+      <div class="ex-foot">${T('Coupon, gift card or a date? Use the full checkout below.', 'קופון, כרטיס מתנה או תאריך? בקופה המלאה למטה.')}</div>
     </div>`);
     return r;
   };
@@ -5022,7 +5025,7 @@ async function sendChatMessageText(text) {
       await submitOrder();                   // same validated path as the full form → PayMe
     } finally {
       // Still here after a moment = something needs the customer; show the form.
-      setTimeout(() => { if (!leaving) payOverlay(false); }, 1500);
+      setTimeout(() => { if (!leaving && !window.__gremierPayHandoff) payOverlay(false); }, 1500);
     }
   };
 

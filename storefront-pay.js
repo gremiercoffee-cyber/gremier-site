@@ -54,6 +54,7 @@
     open(url) {
       let target;
       try { target = new URL(url, location.href); } catch (_) { location.href = url; return; }
+      window.__gremierPayHandoff = true;   // keeps "Taking you to payment" up until the page leaves
       if (!enabled() || target.origin === location.origin || !/(^|\.)payme(service)?\.(io|com)$/i.test(target.hostname)) {
         location.href = url;
         return;
@@ -70,6 +71,8 @@
       el.classList.toggle('rtl', he());
       el.classList.add('open');
       document.documentElement.classList.add('pf-lock');
+      window.__gremierPayHandoff = false;   // the sheet is the payment screen now
+      window.payOverlay?.(false);
     },
     close,
   };
@@ -81,6 +84,41 @@
     if (url.origin !== location.origin || !/[?&]payment=return/.test(url.search)) return;
     location.replace(url.href);
   });
+  // Back from PayMe (page restored from the browser's cache): don't leave the spinner up.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    window.__gremierPayHandoff = false;
+    window.payOverlay?.(false);
+  });
+
+  // The order and payment functions start cold after a quiet spell; wake them when the
+  // cart or checkout opens so the Pay tap doesn't wait for that.
+  let warmedAt = 0;
+  function warm() {
+    if (Date.now() - warmedAt < 120000 || typeof SUPABASE_URL === 'undefined') return;
+    warmedAt = Date.now();
+    for (const fn of ['create-website-order', 'create-payment']) {
+      fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'OPTIONS' }).catch(() => {});
+    }
+  }
+  function hook() {
+    for (const name of ['openCart', 'openCheckout']) {
+      const orig = window[name];
+      if (typeof orig === 'function') window[name] = function () { warm(); return orig.apply(this, arguments); };
+    }
+    // While the one-tap overlay is up, say what's happening.
+    const pay = window.callCreatePayment;
+    if (typeof pay === 'function') window.callCreatePayment = function () {
+      const text = document.getElementById('payOverlayText');
+      if (text && document.getElementById('payOverlay')?.classList.contains('on') && !/••••|saved|השמור/.test(text.textContent)) {
+        text.textContent = T('Opening secure payment…', 'פותחים תשלום מאובטח…');
+      }
+      return pay.apply(this, arguments);
+    };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
+  else hook();
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('payFrame')?.classList.contains('open')) close();
   });
