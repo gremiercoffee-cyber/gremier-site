@@ -2166,6 +2166,9 @@ function pdChoiceChips() {
     });
     sel.style.display = 'none';
     sel.after(chips);
+    // The heading comes from the product's settings ("Guests", "# of guests"): Hebrew on the Hebrew site.
+    const heading = sel.previousElementSibling;
+    if (heading && /guest/i.test(heading.textContent)) heading.textContent = lang === 'he' ? 'מספר אורחים' : 'Number of guests';
   });
 }
 // Pick-one add-ons (same "group"): one row of chips, first chip = what's included.
