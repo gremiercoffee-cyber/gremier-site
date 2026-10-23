@@ -1,0 +1,70 @@
+/* Checkout in the storefront's style: soft cards, rounded fields, pill buttons (storefront-checkout.js) */
+#checkoutOverlay .modal { background:#f5f6f7; border:none; border-radius:20px; max-width:520px; padding:26px 22px 18px; box-shadow:0 24px 70px rgba(0,0,0,.28); }
+#checkoutOverlay .modal-title { font-size:1.55rem; margin-bottom:2px; }
+#checkoutOverlay .modal-sub { font-size:.82rem; margin-bottom:16px; }
+#checkoutOverlay .co-compact .modal-sub { display:none; }
+#checkoutOverlay .co-compact .modal-title { margin-bottom:14px; }
+
+/* Sections */
+#checkoutOverlay .co-sec { background:#fff; border:1px solid #e3e5e8; border-radius:16px; padding:16px; margin-bottom:12px; box-shadow:0 2px 6px rgba(28,38,52,.04); }
+#checkoutOverlay .co-sec-title { display:block; font-family:'DM Sans', sans-serif; font-size:.8rem; font-weight:600; letter-spacing:.02em; color:#1a1a1a; margin:0 0 12px; }
+#checkoutOverlay .co-hide { display:none !important; }
+#checkoutOverlay .co-sec .form-group:last-child, #checkoutOverlay .co-sec .form-row:last-child { margin-bottom:0; }
+#checkoutOverlay .co-sec .form-row { gap:10px; }
+
+/* Saved details: one card instead of seven fields */
+#checkoutOverlay .co-saved { display:none; }
+#checkoutOverlay .co-compact .co-saved { display:block; }
+#checkoutOverlay .co-compact .co-details, #checkoutOverlay .co-compact .co-address { display:none; }
+#checkoutOverlay .co-saved-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+#checkoutOverlay .co-saved-head .co-sec-title { margin:0; }
+#checkoutOverlay .co-saved-body { display:flex; flex-direction:column; gap:2px; font-size:.86rem; line-height:1.45; color:#3a3f45; }
+#checkoutOverlay .co-saved-body b { color:#1a1a1a; font-weight:600; }
+#checkoutOverlay .co-link { background:none; border:none; padding:4px 2px; color:#8a5a1c; font:600 .8rem 'DM Sans', sans-serif; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+
+/* Fields */
+#checkoutOverlay .form-group { margin-bottom:12px; }
+#checkoutOverlay .form-label { font-size:.74rem; letter-spacing:.01em; text-transform:none; color:#5f656d; margin-bottom:5px; }
+#checkoutOverlay .form-input { background:#fff; border:1px solid #dcdfe3; border-radius:12px; padding:12px 14px; font-size:16px; transition:border-color .15s, box-shadow .15s; }
+#checkoutOverlay .form-input:focus { border-color:#1a1a1a; box-shadow:0 0 0 3px rgba(26,26,26,.08); }
+#checkoutOverlay .city-ac-hint { font-size:.7rem; margin-top:4px; }
+#checkoutOverlay #t-co-delivery-note { font-size:.72rem !important; margin-top:10px !important; color:#6b7178 !important; }
+
+/* Delivery choices as tappable cards */
+#checkoutOverlay .co-delivery .form-group > div:first-of-type { display:grid !important; grid-template-columns:1fr 1fr; gap:8px !important; margin-top:0 !important; }
+#checkoutOverlay .co-delivery label[id^="ship"] { background:#fff !important; border:1px solid #dcdfe3 !important; border-radius:12px !important; padding:11px 12px !important; min-width:0; transition:border-color .15s, box-shadow .15s; }
+#checkoutOverlay .co-delivery label[id^="ship"]:has(input:checked) { border-color:#1a1a1a !important; box-shadow:inset 0 0 0 1px #1a1a1a; }
+#checkoutOverlay .co-delivery label[id^="ship"] div div:first-child { font-weight:600; }
+#checkoutOverlay #regularOptions, #checkoutOverlay #expeditedOptions, #checkoutOverlay #eventOptions { background:#f7f7f8 !important; border:none !important; border-radius:12px !important; padding:12px 14px !important; }
+
+/* Coupon / note: one tap to open */
+#checkoutOverlay .co-extras { padding:4px 16px; }
+#checkoutOverlay .co-more > summary { list-style:none; display:flex; align-items:center; justify-content:space-between; padding:12px 0; font-size:.84rem; font-weight:500; color:#1a1a1a; cursor:pointer; }
+#checkoutOverlay .co-more > summary::-webkit-details-marker { display:none; }
+#checkoutOverlay .co-more > summary::after { content:'+'; font-size:1.1rem; color:#8a8f96; }
+#checkoutOverlay .co-more[open] > summary::after { content:'−'; }
+#checkoutOverlay .co-more + .co-more { border-top:1px solid #eceef0; }
+#checkoutOverlay .co-more .form-group { margin-bottom:12px; }
+#checkoutOverlay .co-more .form-label { display:none; }
+
+/* Summary, payment line, buttons */
+#checkoutOverlay .order-summary-box { background:#fff; border:1px solid #e3e5e8; border-radius:16px; padding:16px; margin-bottom:10px; }
+#checkoutOverlay .payment-ph { background:none; border:none; padding:2px 0 10px; margin:0; }
+#checkoutOverlay .payment-ph-icon, #checkoutOverlay .payment-ph-sub { display:none; }
+#checkoutOverlay .payment-ph-title { font-size:.74rem; color:#2c6e49; font-weight:500; }
+#checkoutOverlay .payment-ph-title::before { content:'🔒 '; }
+#checkoutOverlay .sc-box { background:#fff; border-color:#e3e5e8; border-radius:14px; }
+#checkoutOverlay #t-co-submit { position:sticky; bottom:8px; z-index:2; height:54px; border-radius:999px; font-size:.95rem; letter-spacing:.03em; text-transform:none; box-shadow:0 8px 22px rgba(0,0,0,.22); }
+#checkoutOverlay #t-co-cancel { background:none; border:none; color:#6b7178; text-transform:none; letter-spacing:0; font-size:.84rem; margin-top:4px !important; }
+
+/* Phones: a sheet from the bottom */
+@media (max-width: 640px) {
+  #checkoutOverlay.modal-overlay { align-items:flex-end; padding:0; }
+  #checkoutOverlay .modal { max-width:none; max-height:94vh; max-height:94dvh; border-radius:20px 20px 0 0; padding:20px 14px calc(12px + env(safe-area-inset-bottom)); transform:translateY(24px); }
+  #checkoutOverlay.open .modal { transform:none; }
+  #checkoutOverlay .co-sec { padding:14px; }
+}
+
+/* The "applied code" line has both display:none and display:flex inline, so it always showed
+   its "remove" link; show it only when a code is actually applied. */
+#checkoutOverlay #coRedeemApplied:has(#coRedeemAppliedText:empty) { display:none !important; }
