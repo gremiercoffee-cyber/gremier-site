@@ -18,7 +18,7 @@
     <details id="receiptTestDetails" class="receipt-details" hidden><summary>Test and review a receipt</summary><p style="font-size:.78rem;line-height:1.6">Choose a real paid order that has never received a receipt. A live test creates an official קבלה and sends its PDF only to the business owner for review. Historical orders are never issued receipts automatically. The receipt date is today; verify the actual payment date.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label>Order number <input class="form-input" id="receiptOrderNumber" placeholder="#123"></label><label>Actual payment date <input class="form-input" id="receiptPaymentDate" type="date"></label><button class="btn btn-outline btn-sm" id="receiptPreview">Preview data · no issuance</button><button class="btn btn-outline btn-sm" id="receiptIssueTest">Issue ONE real test receipt</button></div><pre id="receiptPreviewData" style="white-space:pre-wrap;font-size:.74rem;max-height:300px;overflow:auto"></pre>
     <button class="btn btn-outline btn-sm" id="receiptApprove">I reviewed the test PDF and email · enable future receipts</button><p id="receiptTestResult" role="status" style="font-size:.8rem"></p></details>`;
-  host.querySelector('.page-header')?.insertAdjacentElement('afterend',box);
+  host.appendChild(box); // below the orders: they're why you open this page
   byId('receiptRefresh').onclick=()=>load();
   byId('receipt2026').onclick=()=>{byId('receiptReportDetails').open=true;load(true);};
   byId('receiptReportDetails').ontoggle=()=>{if(byId('receiptReportDetails').open)load(true);};

@@ -800,6 +800,32 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <h1 class="page-title">Orders</h1>
 
         </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap"><table id="ordersTable">
+            <thead><tr>
+              <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
+              <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
+            </tr></thead>
+            <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+        <div class="card" id="closedOrdersCard" style="padding:0;margin-top:16px;display:none">
+          <div class="collapse-head" style="padding:14px 18px;cursor:pointer" onclick="toggleClosedOrders()">
+            <h3 class="collapse-head-title" id="closedOrdersTitle">✓ Fulfilled &amp; closed</h3>
+            <span class="collapse-chevron" id="closedOrdersChevron" style="transform:rotate(-90deg)">▾</span>
+          </div>
+          <div id="closedOrdersBodyWrap" style="display:none">
+            <div class="table-wrap"><table>
+              <thead><tr>
+                <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
+                <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
+              </tr></thead>
+              <tbody id="closedOrdersBody"></tbody>
+            </table></div>
+          </div>
+        </div>
+        <!-- Orders are why you open this page: lists first, then the tools -->
+        <div style="margin-top:20px">
         <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
           <div class="collapse-head">
             <h3 class="collapse-head-title">Filters</h3>
@@ -854,29 +880,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <div class="stat-grid" id="orderStats" style="margin-bottom:0"></div>
           </div>
         </div>
-        <div class="card" style="padding:0">
-          <div class="table-wrap"><table id="ordersTable">
-            <thead><tr>
-              <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
-              <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
-            </tr></thead>
-            <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
-          </table></div>
-        </div>
-        <div class="card" id="closedOrdersCard" style="padding:0;margin-top:16px;display:none">
-          <div class="collapse-head" style="padding:14px 18px;cursor:pointer" onclick="toggleClosedOrders()">
-            <h3 class="collapse-head-title" id="closedOrdersTitle">✓ Fulfilled &amp; closed</h3>
-            <span class="collapse-chevron" id="closedOrdersChevron" style="transform:rotate(-90deg)">▾</span>
-          </div>
-          <div id="closedOrdersBodyWrap" style="display:none">
-            <div class="table-wrap"><table>
-              <thead><tr>
-                <th class="cell-num">#</th><th>Customer</th><th class="hide-mobile">Items</th><th class="cell-total">Total</th>
-                <th class="cell-status">Status</th><th class="hide-mobile">Payment</th><th class="cell-date hide-mobile">Date</th><th class="cell-actions">Actions</th>
-              </tr></thead>
-              <tbody id="closedOrdersBody"></tbody>
-            </table></div>
-          </div>
         </div>
       </div>
       <!-- PRODUCTS -->
@@ -9689,7 +9692,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
 <script src="/admin-revenue.js?v=20261021-10"></script>
-<script src="/admin-receipts.js?v=20261020-2"></script>
+<script src="/admin-receipts.js?v=20261023-1"></script>
 <script src="/admin-sales-breakdown.js?v=20261023-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261023-1"/>
 <script src="/admin-visitors.js?v=20261023-1"></script>
