@@ -5,6 +5,7 @@ import { notifyPaidOrderOnce } from "./order-notify.ts";
 import { enqueuePendingWebsiteDelivery } from "./pending-delivery.ts";
 import { redeemOrderCodes } from "./redeem-order-codes.ts";
 import { issueFinbotReceipt } from "./finbot-receipts.ts";
+import { settleReferral } from "./engage.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -87,6 +88,12 @@ export async function fulfillPaidOrder(
     await settleLoyalty(supabase, orderId);
   } catch (e) {
     console.error("settleLoyalty failed:", e);
+  }
+  // A friend's first order paid with a referral code: ₪20 gift card for whoever shared it (once).
+  try {
+    await settleReferral(supabase, orderId);
+  } catch (e) {
+    console.error("settleReferral failed:", e);
   }
   // Opt-in "save my card" (signed-in customers): store PayMe's token for one-tap checkout.
   await saveCardIfRequested(supabase, orderId);

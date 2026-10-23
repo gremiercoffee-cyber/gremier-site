@@ -3,6 +3,7 @@ import "../_shared/subscription-model.js";
 const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
+import { logReferralEvent, notifyOwner, referralByCode } from "../_shared/engage.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 
 const corsHeaders = {
@@ -359,6 +360,9 @@ Deno.serve(async (req) => {
     // Check coupon code sent from client
     let appliedCouponCode: string | null = null;
     const couponCode = String(body.coupon_code || "").trim().toUpperCase();
+    // Referral (friend) codes: first paid order only, and not the person who shared it.
+    const refProblem = couponCode ? await referralProblem(admin, couponCode, customerEmail) : null;
+    if (couponCode && refProblem) return json({ error: refProblem }, 400);
     if (couponCode && discount === 0) {
       const { data: coupon } = await admin
         .from("coupons")
@@ -457,6 +461,17 @@ Deno.serve(async (req) => {
 
     if (error || !inserted?.id) {
       throw error || new Error("Could not create order");
+    }
+
+    // A friend's referral code was used: log it and tell the owner (the reward follows on payment).
+    if (appliedCouponCode) {
+      const ref = await referralByCode(admin, appliedCouponCode);
+      if (ref) {
+        await logReferralEvent(admin, ref.code, "order", inserted.id);
+        await notifyOwner(`🛒 Referral used by ${customerName || customerEmail}`,
+          `${customerName || "Someone"} (${customerEmail}) started an order with ${ref.email}'s referral code ${ref.code} (−₪${couponDiscountValue}).
+If they pay, ${ref.email} gets a ₪20 gift card automatically.`);
+      }
     }
 
     // Coupon / gift card are consumed inside fulfillPaidOrder (redeemOrderCodes) for every

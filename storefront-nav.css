@@ -127,3 +127,26 @@ html.pf-lock, html.pf-lock body { overflow:hidden; }
 #myordersPage .account-name, #myordersPage .account-email { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #myordersPage .account-signout-btn { flex:0 0 auto; border-radius:999px; text-transform:none; letter-spacing:.02em; padding:8px 14px; }
 @media (max-width: 400px) { #myordersPage .account-avatar { width:44px; height:44px; flex:0 0 44px; } #myordersPage .account-name { font-size:1.05rem; } }
+
+/* ── Referral card + feedback (storefront-engage.js) ── */
+.ref-card { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0; padding:14px 16px; border-radius:16px; background:#fbf6ee; border:1px solid #f0e2cc; text-align:start; }
+.ref-card .ref-text { flex:1 1 200px; min-width:0; display:flex; flex-direction:column; gap:3px; font-size:.82rem; color:#5f656d; line-height:1.45; }
+.ref-card .ref-text b { color:#1a1a1a; font-size:.95rem; }
+.ref-card .ref-actions { display:flex; gap:6px; }
+.ref-card .ref-actions button { padding:9px 15px; border-radius:999px; border:1px solid #1a1a1a; background:#1a1a1a; color:#fff; font:600 .78rem 'DM Sans', sans-serif; cursor:pointer; }
+.ref-card .ref-actions button + button { background:#fff; color:#1a1a1a; border-color:#d6d9dd; }
+#fbSheet { position:fixed; inset:0; z-index:950; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.45); font-family:'DM Sans', sans-serif; }
+#fbSheet .fb-box { position:relative; width:100%; max-width:420px; padding:24px 20px 20px; border-radius:20px; background:#fff; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+#fbSheet .fb-big { font-size:2.6rem; line-height:1; margin-bottom:8px; }
+#fbSheet h3 { margin:0 0 6px; font-size:1.15rem; color:#1a1a1a; }
+#fbSheet p { margin:0 0 12px; font-size:.86rem; color:#5f656d; }
+#fbSheet textarea { width:100%; border-radius:12px; font-size:16px; resize:vertical; margin-bottom:12px; }
+#fbSheet .fb-send { width:100%; height:48px; border:none; border-radius:999px; background:#1a1a1a; color:#fff; font:600 .92rem 'DM Sans', sans-serif; cursor:pointer; }
+#fbSheet .fb-x, #fbCard .fb-x { position:absolute; top:10px; inset-inline-end:10px; width:32px; height:32px; border:none; border-radius:50%; background:#f1f2f4; font-size:1.1rem; cursor:pointer; }
+#fbCard { position:fixed; left:12px; right:12px; bottom:calc(76px + env(safe-area-inset-bottom)); z-index:94; display:flex; align-items:center; gap:10px; max-width:440px; margin:0 auto; padding:10px 46px 10px 14px; border-radius:16px; background:#fff; border:1px solid #e3e5e8; box-shadow:0 10px 30px rgba(28,38,52,.18); font:500 .84rem 'DM Sans', sans-serif; color:#1a1a1a; }
+body.rtl #fbCard { padding:10px 14px 10px 46px; }
+#fbCard .fb-faces { display:flex; gap:2px; margin-inline-start:auto; }
+#fbCard .fb-faces button { width:36px; height:36px; border:none; background:none; font-size:1.45rem; cursor:pointer; border-radius:50%; }
+#fbCard .fb-faces button:hover { background:#f5f6f7; }
+#fbCard .fb-x { top:50%; transform:translateY(-50%); width:28px; height:28px; font-size:1rem; }
+@media (min-width: 641px) { #fbCard { bottom:20px; } }

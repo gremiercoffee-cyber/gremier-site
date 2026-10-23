@@ -44,6 +44,8 @@ export async function sendOrderEmails(params: {
 
   skipOwner?: boolean;
   customerAttachments?: Array<{ filename: string; content: string }>;
+  /** Optional HTML version of the customer email (the text version is still sent). */
+  customerHtml?: string;
   ownerAttachments?: Array<{ filename: string; content: string }>;
 
 }): Promise<{ ok: boolean; detail?: string }> {
@@ -66,7 +68,7 @@ export async function sendOrderEmails(params: {
 
 
 
-  async function sendOne(to: string, subject: string, text: string, attachments?: Array<{ filename: string; content: string }>): Promise<boolean> {
+  async function sendOne(to: string, subject: string, text: string, attachments?: Array<{ filename: string; content: string }>, html?: string): Promise<boolean> {
 
     try {
 
@@ -93,6 +95,7 @@ export async function sendOrderEmails(params: {
           subject,
 
           text,
+          ...(html ? { html } : {}),
           ...(attachments?.length ? { attachments } : {}),
 
         }),
@@ -130,7 +133,7 @@ export async function sendOrderEmails(params: {
   const customer = String(params.customerEmail || "").trim();
   if (customer && customer.toLowerCase() !== owner.toLowerCase()) {
     if (params.customerSubject && params.customerText) {
-      await sendOne(customer, params.customerSubject, params.customerText, params.customerAttachments);
+      await sendOne(customer, params.customerSubject, params.customerText, params.customerAttachments, params.customerHtml);
     }
   }
 

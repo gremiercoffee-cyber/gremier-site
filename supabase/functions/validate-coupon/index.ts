@@ -2,6 +2,7 @@
 // Validates a coupon code against a cart. Returns the discount it would apply.
 // Public-callable (anon key) — never trusts the client for the discount math.
 
+import { referralProblem } from "../_shared/engage.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 /** Case-insensitive EXACT match: escape LIKE wildcards so "%" / "_" can't enumerate codes. */
 function likeLiteral(v: string): string { return v.replace(/[\\%_]/g, (m) => "\\" + m); }
@@ -77,6 +78,10 @@ Deno.serve(async (req) => {
         return json({ valid: false, error: 'sign_in_required', message: 'Sign in to use this coupon' });
       }
     }
+
+    // Referral (friend) codes: first paid order only, and not the person who shared it.
+    const refProblem = await referralProblem(sb, cleanCode, email || null);
+    if (refProblem) return json({ valid: false, error: 'referral', message: refProblem });
 
     // One-time-per-user check
     if (coupon.one_time_per_user) {

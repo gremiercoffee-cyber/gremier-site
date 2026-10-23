@@ -4,6 +4,7 @@
 //   { action: "cancel_subscription", sub_payme_id }
 //   { action: "unpaid_alerts" }            → cron (every 15 min): push once per order unpaid > 1h
 //   { action: "weekly_summary" }           → cron (Sunday morning): last 7 days in one push
+//   { action: "feedback_requests", dry_run } → cron (hourly): "How was it?" emails after delivery
 //   { action: "cart_reminders", dry_run } → cron (hourly): abandoned-checkout reminder emails
 //   { action: "site_analytics", days }     → website visitors from Cloudflare Web Analytics
 //   { action: "payme_preview_sale", method } → a ₪1 PayMe page (no order) to check payment methods
@@ -14,6 +15,7 @@ import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 import { sha256 } from "../_shared/hub-actions.ts";
 import { sendOrderEmails } from "../_shared/order-email.ts";
+import { ensureReferralCode, settleReferral, signToken } from "../_shared/engage.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -288,6 +290,69 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
   return { sent, skipped, ...(dryRun ? { preview } : {}) };
 }
 
+// ── "How was it?" emails ──
+// 2–7 days after delivery (enough time to taste it), once per order, at most once a month per
+// person (subscribers aren't asked every delivery), daytime only. Five faces: one click answers.
+function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], refLink: string | null) {
+  const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
+  const faces = [["😍", "Loved it", "אהבתי"], ["🙂", "Good", "טוב"], ["😐", "Okay", "בסדר"], ["😕", "Not great", "לא משהו"], ["😞", "Bad", "רע"]];
+  // links[] is ordered by rating 1..5; show the best first.
+  const rows = faces.map(([f, en, hb], i) => ({ f, label: he ? hb : en, url: links[4 - i] }));
+  const subject = he ? "איך היה הקולד ברו? ☕" : "How was your cold brew? ☕";
+  const intro = he ? `היי${first ? " " + first : ""}, תודה רבה שבחרת בגרמייר! איך הייתה החוויה?` : `Hi${first ? " " + first : ""}, thank you so much for choosing Gremier! How was your experience?`;
+  const refLine = refLink ? (he ? `מכירים מישהו שיאהב? תנו לו ₪20 הנחה, ותקבלו ₪20 כשהוא מזמין:\n${refLink}` : `Know someone who'd love it? Give them ₪20 off, and get ₪20 when they order:\n${refLink}`) : "";
+  const text = `${intro}\n\n${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${refLine}\n\n${he ? "גרמייר קופי" : "Gremier Coffee"}`;
+  const dir = he ? "rtl" : "ltr";
+  const html = `<div dir="${dir}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
+    <p style="font-size:17px;line-height:1.5;margin:0 0 20px">${intro}</p>
+    <div>${rows.map((r) => `<a href="${r.url}" style="display:inline-block;margin:4px;padding:10px 12px;border:1px solid #e3e5e8;border-radius:14px;text-decoration:none;color:#1a1a1a;min-width:64px"><div style="font-size:30px;line-height:1">${r.f}</div><div style="font-size:12px;margin-top:6px;color:#5f656d">${r.label}</div></a>`).join("")}</div>
+    ${refLink ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:26px 0 8px">${he ? "מכירים מישהו שיאהב? תנו לו ₪20 הנחה, ותקבלו ₪20 כשהוא מזמין." : "Know someone who'd love it? Give them ₪20 off, and get ₪20 when they order."}</p><a href="${refLink}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:14px">${he ? "לשיתוף הקישור שלי" : "Share my link"}</a>` : ""}
+    <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמייר קופי" : "Gremier Coffee"}</p></div>`;
+  return { subject, text, html };
+}
+
+async function feedbackRequests(sb: Sb, dryRun: boolean) {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).format(new Date()));
+  if (!dryRun && (hour < 9 || hour >= 21)) return { skipped_run: "quiet_hours" };
+  const now = Date.now();
+  const { data: orders } = await sb.from("orders")
+    .select("id, order_number, customer_email, customer_name, delivery_address, delivery_info, items")
+    .eq("status", "fulfilled").eq("payment_status", "paid").eq("source", "website").not("customer_email", "is", null)
+    .gte("created_at", new Date(now - 45 * 864e5).toISOString());
+  const own = (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase();
+  const sent: string[] = [];
+  const skipped: Record<string, number> = {};
+  const skip = (why: string) => { skipped[why] = (skipped[why] || 0) + 1; };
+  let preview: Record<string, string> | null = null;
+  const done = new Set<string>();
+  for (const o of orders || []) {
+    const info = (o.delivery_info || {}) as Record<string, any>;
+    const delivered = Date.parse(String(info.fulfilled_at || info.ops_delivered_at || ""));
+    const email = String(o.customer_email || "").trim().toLowerCase();
+    if (!(delivered <= now - 2 * 864e5) || delivered < now - 7 * 864e5) { skip("not_2_to_7_days_after_delivery"); continue; }
+    if (info.feedback_asked_at) { skip("already_asked"); continue; }
+    if (!email || email === own || done.has(email) || /^test\b/i.test(o.customer_name || "")) { skip("own_or_test_or_same_run"); continue; }
+    const { data: answered } = await sb.from("feedback").select("id").eq("order_id", o.id).maybeSingle();
+    if (answered) { skip("already_answered"); continue; }
+    const { data: recent } = await sb.from("orders").select("id").ilike("customer_email", likeExact(email))
+      .gte("delivery_info->>feedback_asked_at", new Date(now - 30 * 864e5).toISOString()).limit(1);
+    if (recent?.length) { skip("asked_this_month"); continue; }
+    done.add(email);
+    const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+    const t = await signToken("feedback", o.id);
+    const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
+    const code = dryRun ? "REF-PREVIEW" : await ensureReferralCode(sb, email);
+    const { subject, text, html } = feedbackEmail(o, he, links, code ? `${SITE}/?ref=${code}` : null);
+    if (dryRun) { sent.push(`(dry run) #${o.order_number}`); preview = preview || { to: email, subject, text }; continue; }
+    const { data: first } = await sb.rpc("claim_order_step", { p_order_id: o.id, p_step: "feedback_asked_at" });
+    if (first !== true) { skip("already_asked"); continue; }
+    const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: subject, customerText: text, customerHtml: html });
+    if (!res.ok) { skip("email_failed"); continue; }
+    sent.push(`#${o.order_number}`);
+  }
+  return { sent, skipped, ...(dryRun ? { preview } : {}) };
+}
+
 // ── Website visitors (Cloudflare Web Analytics) ──
 // Needs CF_ANALYTICS_TOKEN: a Cloudflare API token with Account → Account Analytics → Read.
 const CF_ACCOUNT = Deno.env.get("CF_ACCOUNT_ID") || "dc73ca97eef41fb2bd0a80c0835bee95";
@@ -374,6 +439,22 @@ Deno.serve(async (req) => {
         return json({ ok: !!data });
       }
       case "weekly_summary": return json(await weeklySummary(sb));
+      case "feedback_requests": {
+        if (body.preview_order_id) {
+          // The email a given order would get, optionally sent to a test address (nothing is marked as asked).
+          const { data: o } = await sb.from("orders").select("id, customer_email, customer_name, delivery_address").eq("id", String(body.preview_order_id)).maybeSingle();
+          if (!o) return json({ error: "order_not_found" }, 404);
+          const he = body.lang ? body.lang === "he" : /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+          const t = await signToken("feedback", o.id);
+          const code = o.customer_email ? await ensureReferralCode(sb, o.customer_email) : null;
+          const mail = feedbackEmail(o, he, [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`), code ? `${SITE}/?ref=${code}` : null);
+          if (body.send_to) await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: String(body.send_to), customerSubject: "[Test] " + mail.subject, customerText: mail.text, customerHtml: mail.html });
+          return json({ subject: mail.subject, text: mail.text, sent_to: body.send_to || null });
+        }
+        return json(await feedbackRequests(sb, body.dry_run === true));
+      }
+      // Runs the referral reward for one paid order (testing; it still only pays out once per order).
+      case "referral_settle": await settleReferral(sb, String(body.order_id || "")); return json({ ok: true });
       case "cart_reminders": {
         if (body.preview_order_id) {
           // Just the email a given order would get (nothing is sent).
