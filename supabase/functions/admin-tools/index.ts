@@ -293,7 +293,7 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
 // ── "How was it?" emails ──
 // 2–7 days after delivery (enough time to taste it), once per order, at most once a month per
 // person (subscribers aren't asked every delivery), daytime only. Five faces: one click answers.
-function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], refLink: string | null) {
+function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], refLink: string | null, opts: { recap?: string; optoutUrl?: string } = {}) {
   const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
   const faces = [["😍", "Loved it", "אהבתי"], ["🙂", "Good", "טוב"], ["😐", "Okay", "בסדר"], ["😕", "Not great", "לא משהו"], ["😞", "Bad", "רע"]];
   // links[] is ordered by rating 1..5; show the best first.
@@ -301,14 +301,93 @@ function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], ref
   const subject = he ? "איך היה הקולד ברו? ☕" : "How was your cold brew? ☕";
   const intro = he ? `היי${first ? " " + first : ""}, תודה רבה שבחרת בגרמייר! איך הייתה החוויה?` : `Hi${first ? " " + first : ""}, thank you so much for choosing Gremier! How was your experience?`;
   const refLine = refLink ? (he ? `מכירים מישהו שיאהב? תנו לו ₪20 הנחה, ותקבלו ₪20 כשהוא מזמין:\n${refLink}` : `Know someone who'd love it? Give them ₪20 off, and get ₪20 when they order:\n${refLink}`) : "";
-  const text = `${intro}\n\n${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${refLine}\n\n${he ? "גרמייר קופי" : "Gremier Coffee"}`;
+  const recap = opts.recap ? `${opts.recap}\n\n` : "";
+  const stop = opts.optoutUrl ? `\n\n—\n${he ? "לא רוצים מיילים כאלה?" : "Don't want emails like this?"} ${opts.optoutUrl}` : "";
+  const text = `${intro}\n\n${recap}${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${refLine}\n\n${he ? "גרמייר קופי" : "Gremier Coffee"}${stop}`;
   const dir = he ? "rtl" : "ltr";
   const html = `<div dir="${dir}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
-    <p style="font-size:17px;line-height:1.5;margin:0 0 20px">${intro}</p>
+    <p style="font-size:17px;line-height:1.5;margin:0 0 ${opts.recap ? 8 : 20}px">${intro}</p>
+    ${opts.recap ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:0 0 18px">${opts.recap}</p>` : ""}
     <div>${rows.map((r) => `<a href="${r.url}" style="display:inline-block;margin:4px;padding:10px 12px;border:1px solid #e3e5e8;border-radius:14px;text-decoration:none;color:#1a1a1a;min-width:64px"><div style="font-size:30px;line-height:1">${r.f}</div><div style="font-size:12px;margin-top:6px;color:#5f656d">${r.label}</div></a>`).join("")}</div>
     ${refLink ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:26px 0 8px">${he ? "מכירים מישהו שיאהב? תנו לו ₪20 הנחה, ותקבלו ₪20 כשהוא מזמין." : "Know someone who'd love it? Give them ₪20 off, and get ₪20 when they order."}</p><a href="${refLink}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:14px">${he ? "לשיתוף הקישור שלי" : "Share my link"}</a>` : ""}
-    <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמייר קופי" : "Gremier Coffee"}</p></div>`;
+    <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמייר קופי" : "Gremier Coffee"}</p>
+    ${opts.optoutUrl ? `<p style="font-size:11px;color:#a0a5ab;margin-top:18px"><a href="${opts.optoutUrl}" style="color:#a0a5ab">${he ? "להסרה מרשימת הדיוור" : "Unsubscribe"}</a></p>` : ""}</div>`;
   return { subject, text, html };
+}
+
+async function optoutUrlFor(email: string) {
+  return `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-tools?optout=${encodeURIComponent(email)}&t=${await optoutToken(email)}`;
+}
+function orderRecap(o: Record<string, any>, he: boolean) {
+  const items = (Array.isArray(o.items) ? o.items : []).map((i: any) => `${he ? (i.name_he || i.name_en) : i.name_en} ×${i.qty}`).join(", ");
+  const date = new Date(o.created_at).toLocaleDateString(he ? "he-IL" : "en-GB", { day: "numeric", month: "long", timeZone: "Asia/Jerusalem" });
+  return he ? `על ההזמנה שלך מ-${date}${items ? `: ${items}` : ""}` : `About your order from ${date}${items ? `: ${items}` : ""}`;
+}
+
+// One-off "what do you think of Gremier?" email to everyone whose order was delivered since a date
+// (latest order per person). dry_run lists who'd get it; send_test_to sends samples to a test
+// address. Same skips as the hourly job, and the orders are marked so they aren't asked again.
+async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
+  const since = /^\d{4}-\d{2}-\d{2}$/.test(String(body.since || "")) ? String(body.since) : "2026-09-01";
+  const dryRun = body.dry_run === true || !!body.send_test_to;
+  const { data: orders } = await sb.from("orders")
+    .select("id, order_number, created_at, customer_email, customer_name, delivery_address, delivery_info, items")
+    .eq("status", "fulfilled").eq("payment_status", "paid").eq("source", "website").not("customer_email", "is", null)
+    .gte("created_at", since).order("created_at", { ascending: false });
+  const own = (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase();
+  const seen = new Set<string>();
+  const recipients: Record<string, any>[] = [];
+  const skipped: Record<string, number> = {};
+  const skip = (why: string) => { skipped[why] = (skipped[why] || 0) + 1; };
+  for (const o of orders || []) {
+    const email = String(o.customer_email || "").trim().toLowerCase();
+    if (!email || seen.has(email)) { skip("older_order_same_person"); continue; }
+    seen.add(email);
+    if (email === own || /^test\b/i.test(o.customer_name || "")) { skip("own_or_test"); continue; }
+    const { data: answered } = await sb.from("feedback").select("id").ilike("email", likeExact(email)).limit(1);
+    if (answered?.length) { skip("already_answered"); continue; }
+    const { data: recent } = await sb.from("orders").select("id").ilike("customer_email", likeExact(email))
+      .gte("delivery_info->>feedback_asked_at", new Date(Date.now() - 30 * 864e5).toISOString()).limit(1);
+    if (recent?.length) { skip("asked_this_month"); continue; }
+    const { data: optout } = await sb.from("cart_reminder_optouts").select("email").eq("email", email).maybeSingle();
+    if (optout) { skip("opted_out"); continue; }
+    recipients.push(o);
+  }
+  const build = async (o: Record<string, any>, to: string) => {
+    const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+    const t = await signToken("feedback", o.id);
+    const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
+    const code = await ensureReferralCode(sb, String(o.customer_email).toLowerCase());
+    const mail = feedbackEmail(o, he, links, code ? `${SITE}/?ref=${code}` : null, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) });
+    // About the brand more broadly than one delivery.
+    mail.subject = he ? "מה דעתך על גרמייר? ☕" : "What do you think of Gremier? ☕";
+    return mail;
+  };
+  if (dryRun) {
+    const out: Record<string, unknown> = { would_send: recipients.length, orders: recipients.map((o) => `#${o.order_number}`), skipped };
+    if (body.send_test_to && recipients.length) {
+      // Samples go to the test address only: one Hebrew and one English if both exist.
+      const he = recipients.find((o) => /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`));
+      const en = recipients.find((o) => !/[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`));
+      for (const [i, o] of [he, en].filter(Boolean).entries()) {
+        const mail = await build(o!, String(body.send_test_to));
+        await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: String(body.send_test_to), customerSubject: `[Test ${i + 1}] ${mail.subject}`, customerText: mail.text, customerHtml: mail.html });
+      }
+      out.test_sent_to = body.send_test_to;
+    }
+    return out;
+  }
+  const sent: string[] = [];
+  for (const o of recipients) {
+    const email = String(o.customer_email).toLowerCase();
+    const { data: first } = await sb.rpc("claim_order_step", { p_order_id: o.id, p_step: "feedback_asked_at" });
+    if (first !== true) { skip("already_asked"); continue; }
+    const mail = await build(o, email);
+    const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: mail.subject, customerText: mail.text, customerHtml: mail.html });
+    if (res.ok) sent.push(`#${o.order_number}`); else skip("email_failed");
+    await new Promise((r) => setTimeout(r, 600));   // stay under the email provider's rate limit
+  }
+  return { sent: sent.length, orders: sent, skipped };
 }
 
 async function feedbackRequests(sb: Sb, dryRun: boolean) {
@@ -337,12 +416,14 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
     const { data: recent } = await sb.from("orders").select("id").ilike("customer_email", likeExact(email))
       .gte("delivery_info->>feedback_asked_at", new Date(now - 30 * 864e5).toISOString()).limit(1);
     if (recent?.length) { skip("asked_this_month"); continue; }
+    const { data: optout } = await sb.from("cart_reminder_optouts").select("email").eq("email", email).maybeSingle();
+    if (optout) { skip("opted_out"); continue; }
     done.add(email);
     const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
     const code = dryRun ? "REF-PREVIEW" : await ensureReferralCode(sb, email);
-    const { subject, text, html } = feedbackEmail(o, he, links, code ? `${SITE}/?ref=${code}` : null);
+    const { subject, text, html } = feedbackEmail(o, he, links, code ? `${SITE}/?ref=${code}` : null, { optoutUrl: await optoutUrlFor(email) });
     if (dryRun) { sent.push(`(dry run) #${o.order_number}`); preview = preview || { to: email, subject, text }; continue; }
     const { data: first } = await sb.rpc("claim_order_step", { p_order_id: o.id, p_step: "feedback_asked_at" });
     if (first !== true) { skip("already_asked"); continue; }
@@ -408,7 +489,7 @@ Deno.serve(async (req) => {
     if (!email || url.searchParams.get("t") !== await optoutToken(email)) return page("This link isn't valid.");
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, getServiceRoleKey());
     await admin.from("cart_reminder_optouts").upsert({ email });
-    return page("Done — you won't get order reminders from us anymore.<br><br>סיימנו — לא נשלח לך יותר תזכורות על הזמנות.");
+    return page("Done — you won't get these emails from us anymore.<br><br>סיימנו — לא נשלח לך יותר תזכורות על הזמנות.");
   }
   if (!(await isServiceOrAdmin(req))) return forbidden(cors);
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, getServiceRoleKey());
@@ -439,6 +520,7 @@ Deno.serve(async (req) => {
         return json({ ok: !!data });
       }
       case "weekly_summary": return json(await weeklySummary(sb));
+      case "feedback_campaign": return json(await feedbackCampaign(sb, body));
       case "feedback_requests": {
         if (body.preview_order_id) {
           // The email a given order would get, optionally sent to a test address (nothing is marked as asked).
