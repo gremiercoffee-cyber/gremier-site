@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 import { sha256 } from "../_shared/hub-actions.ts";
+import { sendOrderEmails } from "../_shared/order-email.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -279,6 +280,17 @@ Deno.serve(async (req) => {
       }
       case "weekly_summary": return json(await weeklySummary(sb));
       case "site_analytics": return json(await siteAnalytics(body.days));
+      case "message_customer": {
+        // Admin → customer update for an order (template text edited in the admin app).
+        const { data: order } = await sb.from("orders").select("id, order_number, customer_email, customer_name").eq("id", String(body.order_id || "")).maybeSingle();
+        if (!order) return json({ error: "order_not_found" }, 404);
+        const text = String(body.text || "").trim().slice(0, 2000);
+        if (!text || !order.customer_email) return json({ error: !text ? "empty_message" : "no_customer_email" }, 400);
+        const subject = String(body.subject || "").trim().slice(0, 120) || `Gremier Coffee · Order #${order.order_number ?? ""}`.trim();
+        const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: order.customer_email, customerName: order.customer_name, customerSubject: subject, customerText: text });
+        if (res.ok) await sb.rpc("log_activity", { p_actor: "system", p_action: "order.customer_message", p_summary: `Message emailed to ${order.customer_name || "customer"} (order #${order.order_number ?? ""})`, p_ref: `orders:${order.id}`, p_details: null });
+        return json({ ok: res.ok, detail: res.detail || null });
+      }
       case "payme_preview_sale": {
         // A ₪1 sale page with no order and no callback, to see which payment methods PayMe shows.
         const method = String(body.method || "multi").replace(/[^a-z-]/g, "").slice(0, 20);
