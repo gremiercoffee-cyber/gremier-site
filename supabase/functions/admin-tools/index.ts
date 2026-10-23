@@ -15,7 +15,7 @@ import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 import { sha256 } from "../_shared/hub-actions.ts";
 import { sendOrderEmails } from "../_shared/order-email.ts";
-import { ensureReferralCode, settleReferral, signToken } from "../_shared/engage.ts";
+import { settleReferral, signToken } from "../_shared/engage.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -293,23 +293,22 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
 // ── "How was it?" emails ──
 // 2–7 days after delivery (enough time to taste it), once per order, at most once a month per
 // person (subscribers aren't asked every delivery), daytime only. Five faces: one click answers.
-function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], refLink: string | null, opts: { recap?: string; optoutUrl?: string } = {}) {
+// No referral offer in these emails: customers find "give ₪20, get ₪20" on the website.
+function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], opts: { recap?: string; optoutUrl?: string } = {}) {
   const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
   const faces = [["😍", "Loved it", "אהבתי"], ["🙂", "Good", "טוב"], ["😐", "Okay", "בסדר"], ["😕", "Not great", "לא משהו"], ["😞", "Bad", "רע"]];
   // links[] is ordered by rating 1..5; show the best first.
   const rows = faces.map(([f, en, hb], i) => ({ f, label: he ? hb : en, url: links[4 - i] }));
   const subject = he ? "איך היה הקולד ברו? ☕" : "How was your cold brew? ☕";
   const intro = he ? `היי${first ? " " + first : ""}, תודה רבה שבחרת בגרמייר! איך הייתה החוויה?` : `Hi${first ? " " + first : ""}, thank you so much for choosing Gremier! How was your experience?`;
-  const refLine = refLink ? (he ? `מכירים מישהו שיאהב? תנו לו ₪20 הנחה, ותקבלו ₪20 כשהוא מזמין:\n${refLink}` : `Know someone who'd love it? Give them ₪20 off, and get ₪20 when they order:\n${refLink}`) : "";
   const recap = opts.recap ? `${opts.recap}\n\n` : "";
   const stop = opts.optoutUrl ? `\n\n—\n${he ? "לא רוצים מיילים כאלה?" : "Don't want emails like this?"} ${opts.optoutUrl}` : "";
-  const text = `${intro}\n\n${recap}${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${refLine}\n\n${he ? "גרמייר קופי" : "Gremier Coffee"}${stop}`;
+  const text = `${intro}\n\n${recap}${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${he ? "גרמייר קופי" : "Gremier Coffee"}${stop}`;
   const dir = he ? "rtl" : "ltr";
   const html = `<div dir="${dir}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
     <p style="font-size:17px;line-height:1.5;margin:0 0 ${opts.recap ? 8 : 20}px">${intro}</p>
     ${opts.recap ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:0 0 18px">${opts.recap}</p>` : ""}
     <div>${rows.map((r) => `<a href="${r.url}" style="display:inline-block;margin:4px;padding:10px 12px;border:1px solid #e3e5e8;border-radius:14px;text-decoration:none;color:#1a1a1a;min-width:64px"><div style="font-size:30px;line-height:1">${r.f}</div><div style="font-size:12px;margin-top:6px;color:#5f656d">${r.label}</div></a>`).join("")}</div>
-    ${refLink ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:26px 0 8px">${he ? "מכירים מישהו שיאהב? תנו לו ₪20 הנחה, ותקבלו ₪20 כשהוא מזמין." : "Know someone who'd love it? Give them ₪20 off, and get ₪20 when they order."}</p><a href="${refLink}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:14px">${he ? "לשיתוף הקישור שלי" : "Share my link"}</a>` : ""}
     <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמייר קופי" : "Gremier Coffee"}</p>
     ${opts.optoutUrl ? `<p style="font-size:11px;color:#a0a5ab;margin-top:18px"><a href="${opts.optoutUrl}" style="color:#a0a5ab">${he ? "להסרה מרשימת הדיוור" : "Unsubscribe"}</a></p>` : ""}</div>`;
   return { subject, text, html };
@@ -357,8 +356,7 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
     const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
-    const code = await ensureReferralCode(sb, String(o.customer_email).toLowerCase());
-    const mail = feedbackEmail(o, he, links, code ? `${SITE}/?ref=${code}` : null, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) });
+    const mail = feedbackEmail(o, he, links, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) });
     // About the brand more broadly than one delivery.
     mail.subject = he ? "מה דעתך על גרמייר? ☕" : "What do you think of Gremier? ☕";
     return mail;
@@ -422,8 +420,7 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
     const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
-    const code = dryRun ? "REF-PREVIEW" : await ensureReferralCode(sb, email);
-    const { subject, text, html } = feedbackEmail(o, he, links, code ? `${SITE}/?ref=${code}` : null, { optoutUrl: await optoutUrlFor(email) });
+    const { subject, text, html } = feedbackEmail(o, he, links, { optoutUrl: await optoutUrlFor(email) });
     if (dryRun) { sent.push(`(dry run) #${o.order_number}`); preview = preview || { to: email, subject, text }; continue; }
     const { data: first } = await sb.rpc("claim_order_step", { p_order_id: o.id, p_step: "feedback_asked_at" });
     if (first !== true) { skip("already_asked"); continue; }
@@ -528,8 +525,7 @@ Deno.serve(async (req) => {
           if (!o) return json({ error: "order_not_found" }, 404);
           const he = body.lang ? body.lang === "he" : /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
           const t = await signToken("feedback", o.id);
-          const code = o.customer_email ? await ensureReferralCode(sb, o.customer_email) : null;
-          const mail = feedbackEmail(o, he, [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`), code ? `${SITE}/?ref=${code}` : null);
+          const mail = feedbackEmail(o, he, [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`));
           if (body.send_to) await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: String(body.send_to), customerSubject: "[Test] " + mail.subject, customerText: mail.text, customerHtml: mail.html });
           return json({ subject: mail.subject, text: mail.text, sent_to: body.send_to || null });
         }
