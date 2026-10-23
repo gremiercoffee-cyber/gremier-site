@@ -308,54 +308,6 @@ function isPaidEvent(payload: PaymePayload): boolean {
 
 
 
-async function awardPoints(supabase: ReturnType<typeof createClient>, userId: string, subtotal: number) {
-
-  const earned = Math.floor(subtotal / 10);
-
-  if (earned <= 0) return;
-
-
-
-  const { data: profile } = await supabase.from("profiles").select("points, coupon_available").eq("id", userId).single();
-
-  if (!profile) return;
-
-
-
-  const currentPoints = Number(profile.points) || 0;
-
-  const hadCoupon = !!profile.coupon_available;
-
-  const newPoints = currentPoints + earned;
-
-  const newCoupon = hadCoupon || newPoints >= 200;
-
-  const finalPoints = newCoupon && !hadCoupon ? newPoints - 200 : newPoints;
-
-
-
-  await supabase.from("profiles").update({
-
-    points: finalPoints,
-
-    coupon_available: newCoupon,
-
-  }).eq("id", userId);
-
-}
-
-
-
-async function redeemCouponIfUsed(supabase: ReturnType<typeof createClient>, userId: string, discount: number) {
-
-  if (!userId || !(Number(discount) > 0)) return;
-
-  await supabase.from("profiles").update({ coupon_available: false }).eq("id", userId);
-
-}
-
-
-
 async function findPaymentLink(
 
   supabase: ReturnType<typeof createClient>,
@@ -885,10 +837,7 @@ async function handleSubscriptionCallback(
         .select("id");
       if (!claimed || claimed.length === 0) return json({ ok: true, duplicate_first: true });
 
-      if (parent.user_id) {
-        await awardPoints(supabase, parent.user_id, Number(parent.subtotal) || 0);
-        await redeemCouponIfUsed(supabase, parent.user_id, Number(parent.discount) || 0);
-      }
+      // Loyalty points are settled inside fulfillPaidOrder (once per order).
       await fulfillPaidOrder(supabase, parent.id, { skip_payme_check: true });
       return json({ ok: true, first_charge: true, order_id: parent.id });
     }
@@ -955,7 +904,6 @@ async function handleSubscriptionCallback(
       return json({ ok: false, error: "renewal_clone_failed" }, 500);
     }
 
-    if (parent.user_id) await awardPoints(supabase, parent.user_id, Number(parent.subtotal) || 0);
     await fulfillPaidOrder(supabase, child.id, { skip_payme_check: true });
     return json({ ok: true, renewal: true, order_id: child.id });
   }
@@ -1219,14 +1167,7 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
 
 
 
-    if (order.user_id) {
-
-      await awardPoints(supabase, order.user_id, Number(order.subtotal) || 0);
-
-      await redeemCouponIfUsed(supabase, order.user_id, Number(order.discount) || 0);
-
-    }
-
+    // Loyalty points are settled inside fulfillPaidOrder (once per order).
     await fulfillPaidOrder(supabase, order.id, { skip_payme_check: true });
     await saveCardFromCallback(supabase, order.id, payload);
 

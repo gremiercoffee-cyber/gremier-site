@@ -5,6 +5,7 @@
 //   { action: "unpaid_alerts" }            → cron (every 15 min): push once per order unpaid > 1h
 //   { action: "weekly_summary" }           → cron (Sunday morning): last 7 days in one push
 //   { action: "site_analytics", days }     → website visitors from Cloudflare Web Analytics
+//   { action: "payme_preview_sale", method } → a ₪1 PayMe page (no order) to check payment methods
 // Every call must pass isServiceOrAdmin (crons use the service key).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -278,6 +279,17 @@ Deno.serve(async (req) => {
       }
       case "weekly_summary": return json(await weeklySummary(sb));
       case "site_analytics": return json(await siteAnalytics(body.days));
+      case "payme_preview_sale": {
+        // A ₪1 sale page with no order and no callback, to see which payment methods PayMe shows.
+        const method = String(body.method || "multi").replace(/[^a-z-]/g, "").slice(0, 20);
+        const res = await fetch(`${PAYME_BASE}api/generate-sale`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ seller_payme_id: SELLER, sale_price: 100, currency: "ILS", product_name: "Gremier — payment page preview", installments: 1, sale_payment_method: method, language: body.language === "en" ? "en" : "he" }),
+        });
+        const out = await res.json().catch(() => ({})) as Record<string, unknown>;
+        return json({ status_code: out.status_code, sale_url: out.sale_url || null, error: out.status_error_details || null, method });
+      }
       default: return json({ error: "unknown_action" }, 400);
     }
   } catch (e) {

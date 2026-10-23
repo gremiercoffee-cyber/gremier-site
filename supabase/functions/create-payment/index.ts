@@ -110,6 +110,13 @@ function getServiceRoleKey(): string {
 
 
 
+/** Which payment methods PayMe's page offers for one-time sales. PAYME_SALE_PAYMENT_METHOD="multi"
+    shows card, bit, Google Pay and Apple Pay together; unset keeps PayMe's default (card). */
+function saleMethod(): Record<string, string> {
+  const method = (Deno.env.get("PAYME_SALE_PAYMENT_METHOD") || "").trim();
+  return method ? { sale_payment_method: method } : {};
+}
+
 /** The signed-in user behind this request (null for the anon key / no session). */
 async function generatePayMeSale(
 
@@ -593,6 +600,8 @@ serve(async (req) => {
 
         language: lang,
 
+        ...saleMethod(),
+
         capture_buyer: 0,
 
         buyer_name: row.customer_name || undefined,
@@ -774,6 +783,8 @@ serve(async (req) => {
       sale_send_notification: true,
 
       language: lang,
+
+      ...saleMethod(),
 
       capture_buyer: captureBuyer,
 

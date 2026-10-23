@@ -36,6 +36,20 @@ async function issuePurchasedGiftCard(orderId: string): Promise<void> {
   }
 }
 
+/** Loyalty, once per paid order (whichever of the return page / PayMe callback comes first):
+ *  1 point per ₪10 of the subtotal; 200 points become the 10% coupon; a coupon this order used is used up. */
+async function settleLoyalty(supabase: SupabaseClient, orderId: string): Promise<void> {
+  const { data, error } = await supabase.rpc("claim_order_loyalty", { p_order_id: orderId });
+  if (error) { console.error("claim_order_loyalty:", error.message); return; }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.user_id) return;   // guest order, or already settled
+  const earned = Math.max(0, Math.floor((Number(row.subtotal) || 0) / 10));
+  const usedCoupon = Number(row.loyalty_discount) > 0;
+  if (earned === 0 && !usedCoupon) return;
+  const { error: awardError } = await supabase.rpc("award_loyalty_points", { p_user: row.user_id, p_earned: earned, p_used_coupon: usedCoupon });
+  if (awardError) console.error("award_loyalty_points:", awardError.message);
+}
+
 /** Server-side: verify PayMe if needed → mark paid → sheet + email. Safe to call multiple times. */
 export async function fulfillPaidOrder(
   supabase: SupabaseClient,
@@ -68,6 +82,11 @@ export async function fulfillPaidOrder(
     await redeemOrderCodes(supabase, orderId);
   } catch (e) {
     console.error("redeemOrderCodes failed:", e);
+  }
+  try {
+    await settleLoyalty(supabase, orderId);
+  } catch (e) {
+    console.error("settleLoyalty failed:", e);
   }
   // Opt-in "save my card" (signed-in customers): store PayMe's token for one-tap checkout.
   await saveCardIfRequested(supabase, orderId);

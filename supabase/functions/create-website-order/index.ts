@@ -333,6 +333,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Kept apart from codes and gift cards: only this uses up the member's loyalty coupon.
+    const loyaltyDiscount = discount;
+
     // Check coupon code sent from client
     let appliedCouponCode: string | null = null;
     const couponCode = String(body.coupon_code || "").trim().toUpperCase();
@@ -415,6 +418,7 @@ Deno.serve(async (req) => {
         pricing_source: delivery.source,
         server_priced: true,
         gift_card_id: giftCardId,
+        loyalty_discount: loyaltyDiscount || 0,
         // "Save my card": only for a verified signed-in customer, never on subscriptions.
         ...(body.save_card === true && userId && !isSubscriptionOrder ? { save_card_requested: true } : {}),
         gift_card_amount: gcDiscount || 0,
