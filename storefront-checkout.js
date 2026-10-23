@@ -91,7 +91,7 @@
     const compact = !editing && detailsComplete();
     view.classList.toggle('co-compact', compact);
     const card = $('coSavedCard');
-    if (!compact) { card.innerHTML = ''; return; }
+    if (!compact) { card.innerHTML = ''; window.GremierAddresses?.decorate(); return; }
     const pickup = $('shipPickup')?.checked;
     const apt = $('coAptNA')?.checked ? '' : `, ${T('Apt', 'דירה')} ${esc(val('coApt'))}, ${T('Floor', 'קומה')} ${esc(val('coFloor'))}`;
     card.innerHTML = `
@@ -101,9 +101,11 @@
         <b>${esc(val('coName'))}</b><span>${esc(val('coPhone'))} · ${esc(val('coEmail'))}</span>
         ${pickup ? '' : `<span>${esc(val('coAddr'))}${apt}, ${esc(cityName())}</span>`}
       </div>`;
+    window.GremierAddresses?.decorate();
     const subEl = $('t-co-sub');
     if (subEl) subEl.dataset.compact = '1';
   }
+  window.GremierCheckout = { render, edit };
 
   function edit(focus = true) {
     editing = true;
@@ -122,11 +124,34 @@
     return r;
   };
   const submit = window.submitOrder;
-  if (typeof submit === 'function') window.submitOrder = function () {
+  if (typeof submit === 'function') window.submitOrder = async function () {
     // Never hide a problem: anything missing or invalid opens the full form first.
     if ($('checkoutFormView')?.classList.contains('co-compact') && !detailsComplete()) edit(false);
-    return submit.apply(this, arguments);
+    const btn = $('t-co-submit');
+    if (btn?.classList.contains('is-loading')) return;   // already on its way
+    btn?.classList.add('is-loading');
+    let handedOff = false;
+    try {
+      const r = await submit.apply(this, arguments);
+      handedOff = !!window.__gremierPayHandoff;
+      return r;
+    } finally {
+      if (handedOff && btn) {
+        // PayMe is loading: keep the spinner and stay disabled until the page leaves.
+        btn.disabled = true;
+        btn.textContent = T('Opening secure payment…', 'פותחים תשלום מאובטח…');
+      } else btn?.classList.remove('is-loading');
+    }
   };
+  // Back from PayMe: the button is usable again.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    const btn = $('t-co-submit');
+    if (!btn) return;
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+    btn.textContent = T('Proceed to Payment', 'המשך לתשלום');
+  });
   // Switching to pickup / delivery changes what "complete" means.
   document.addEventListener('change', (e) => { if (e.target?.name === 'shipType' || e.target?.id === 'coAptNA') render(); });
   const apply = window.applyTranslations;
