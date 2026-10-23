@@ -72,3 +72,29 @@ html.pf-lock, html.pf-lock body { overflow:hidden; }
   #payFrame { padding:0; align-items:flex-end; }
   #payFrame .pf-box { max-width:none; height:94%; height:94dvh; border-radius:16px 16px 0 0; }
 }
+
+/* ── Home: products start right under the headline ── */
+/* (the generic .section rule's 80px top padding was overriding the home value) */
+#homePage .section.section-home-products { padding-top:6px; }
+#homePage .section-home-products::before { display:none; }
+#homePage .hero-desc { margin-bottom:6px; }
+/* Phones: Shop and Coffee Bars are in the tab bar, so the hero buttons only repeat them */
+@media (max-width: 640px) { #homePage .hero-btns { display:none; } }
+/* Larger screens: same pill buttons as the rest of the storefront */
+#homePage .hero-btns .btn { border-radius:999px; text-transform:none; letter-spacing:.02em; font-size:.88rem; padding:11px 24px; }
+#homePage .hero-btns .btn-outline { border-color:#d6d9dd; }
+
+/* ── Coffee Bars: a light, compact intro so the packages show on the first screen ── */
+#coffeebarsPage .cbp-hero { background:#f5f6f7; padding:22px 20px 6px; }
+#coffeebarsPage .cbp-hero > .eyebrow, #coffeebarsPage .cbp-see-pkgs { display:none; }
+#coffeebarsPage .cbp-hero-title { color:#1a1a1a; font-size:clamp(1.9rem, 7vw, 2.8rem); margin-bottom:10px; }
+#coffeebarsPage .cbp-hero-title br { display:none; }
+#coffeebarsPage .cbp-hero-title em { margin-inline-start:.25em; }
+#coffeebarsPage .cbp-hero-sub { color:#5f656d; font-size:.86rem; line-height:1.6; margin:0 auto 14px; max-width:520px; }
+#coffeebarsPage .cbp-hero .btn { border-radius:999px; background:#1a1a1a; color:#fff; text-transform:none; letter-spacing:.02em; font-size:.88rem; padding:12px 22px; gap:8px; box-shadow:0 4px 14px rgba(0,0,0,.14); }
+#coffeebarsPage .cbp-hero .btn::before { content:''; width:16px; height:16px; background:#25D366; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3C9.4 3 4 8.4 4 15c0 2.4.7 4.6 1.8 6.5L4 29l7.7-1.8A12 12 0 0016 27c6.6 0 12-5.4 12-12S22.6 3 16 3z'/%3E%3C/svg%3E") center/contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3C9.4 3 4 8.4 4 15c0 2.4.7 4.6 1.8 6.5L4 29l7.7-1.8A12 12 0 0016 27c6.6 0 12-5.4 12-12S22.6 3 16 3z'/%3E%3C/svg%3E") center/contain no-repeat; }
+#coffeebarsPage .cbp-hero .btn:hover { background:#333; }
+#coffeebarsPage .cbp-hero + .cbp-hero-img-wrap, #coffeebarsPage .section { background:#f5f6f7; }
+#coffeebarsPage .section { padding-top:20px; }
+#coffeebarsPage .section-header { margin-bottom:16px; }
+#coffeebarsPage #t-cbp-title { font-size:clamp(1.25rem, 4.5vw, 1.6rem); }
