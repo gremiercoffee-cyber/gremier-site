@@ -145,14 +145,26 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
   const addonBlock = variations.find((v) => v.type === "addons");
   const allowedAddons = Array.isArray(addonBlock?.items) ? addonBlock.items as Record<string, unknown>[] : [];
   const selectedAddons = Array.isArray(item.selected_addons) ? item.selected_addons as Record<string, unknown>[] : [];
+  const groupsUsed = new Set<string>();   // pick-one add-ons (e.g. the coffee for the bar): one per group
   const addonTotal = selectedAddons.reduce((sum, selected) => {
     const name = String(selected?.name || "").trim();
     const match = allowedAddons.find((addon) => String(addon.name || "").trim() === name);
     if (!match) return sum;
+    if (match.group) {
+      const group = String(match.group);
+      if (groupsUsed.has(group)) return sum;
+      groupsUsed.add(group);
+    }
     // Parve milk etc.: priced per liter, at most 1 liter per 10 guests.
     if (match.per_liter) {
       const liters = Math.max(0, Math.min(Math.floor(guests / 10), Math.round(Number(selected?.liters) || 0)));
       return sum + (Number(match.price) || 0) * liters;
+    }
+    // Quantity add-ons (extra dispensers, syrups): price × how many, up to the item's max.
+    const max = Number(match.max) || 0;
+    if (max > 1) {
+      const qty = Math.max(0, Math.min(max, Math.round(Number(selected?.qty) || 0)));
+      return sum + (Number(match.price) || 0) * qty;
     }
     return sum + (Number(match.price) || 0);
   }, 0);

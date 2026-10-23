@@ -148,3 +148,25 @@
 .pd-l-step button { width:40px; height:36px; border:none; background:#fff; font-size:1.1rem; color:#1a1a1a; cursor:pointer; }
 .pd-l-step button:disabled { color:#c4c8cd; cursor:default; }
 .pd-l-n { min-width:52px; text-align:center; font-weight:600; font-size:.9rem; }
+
+/* ── Cart extras (storefront-cart.js) ── */
+#cartDrawer .cx-free { margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fbf6ee; font-size:.78rem; color:#8a5a1c; }
+#cartDrawer .cx-free.done { background:#eef7f1; color:#2c6e49; }
+#cartDrawer .cx-bar { height:4px; margin-top:7px; border-radius:4px; background:rgba(0,0,0,.08); overflow:hidden; }
+#cartDrawer .cx-bar i { display:block; height:100%; background:#c8873a; border-radius:4px; }
+#cartDrawer .cx-deal { display:flex; align-items:center; gap:12px; margin-top:14px; padding:12px; border-radius:14px; background:#fbf6ee; border:1px solid #f0e2cc; }
+#cartDrawer .cx-deal div { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; font-size:.82rem; color:#1a1a1a; }
+#cartDrawer .cx-deal small { font-size:.72rem; color:#6b7178; }
+#cartDrawer .cx-deal button, #cartDrawer .pv-suggest-row button { flex:0 0 auto; border:none; border-radius:999px; background:#1a1a1a; color:#fff; padding:8px 14px; font:600 .76rem 'DM Sans', sans-serif; cursor:pointer; }
+/* Quantity: round buttons like the rest of the storefront */
+#cartDrawer .qty-controls { align-items:center; gap:8px; }
+#cartDrawer .qty-btn { width:30px; height:30px; border-radius:50%; background:#fff; border:1px solid #dcdfe3; color:#1a1a1a; font-size:1rem; }
+#cartDrawer .qty-btn:disabled { color:#c4c8cd; }
+#cartDrawer .qty-val { min-width:18px; text-align:center; font-weight:600; }
+/* Pick-one add-ons (the coffee for the bar) */
+.pd-group { padding:12px 0; border-bottom:1px solid var(--border); }
+.pd-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.pd-chips button { padding:8px 12px; border-radius:999px; border:1px solid #dcdfe3; background:#fff; font:500 .8rem 'DM Sans', sans-serif; color:#1a1a1a; cursor:pointer; }
+.pd-chips button small { color:#8a5a1c; font-size:.72rem; }
+.pd-chips button.on { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
+.pd-chips button.on small { color:#e8c79a; }

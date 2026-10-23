@@ -3295,7 +3295,9 @@ function renderAddonsEditor(items) {
   const el = document.getElementById('addonsEditor');
   if (!el) return;
   const rows = (items && items.length) ? items : [{ name: '', price: '' }];
-  el.innerHTML = rows.map((a, i) => `<div class="variation-option-row">
+  // Settings without an editor field here (Hebrew name, pick-one group, maximum) ride along unchanged.
+  const extra = (a) => { const { name, price, per_liter, extra: kept, ...rest } = a || {}; return escAttr(JSON.stringify(kept || rest)); };
+  el.innerHTML = rows.map((a, i) => `<div class="variation-option-row" data-extra="${extra(a)}">
     <input class="form-input addon-name" value="${escAttr(a.name || '')}" placeholder="Add-on name (e.g. Oat milk)"/>
     <input class="form-input addon-price" type="number" min="0" step="1" value="${a.price !== '' && a.price != null ? a.price : ''}" placeholder="Price ₪"/>
     <label title="Customers pick how many liters (up to 1 per 10 guests); the price is per liter" style="display:flex;align-items:center;gap:4px;font-size:.72rem;white-space:nowrap;color:var(--text2)"><input type="checkbox" class="addon-per-liter" ${a.per_liter ? 'checked' : ''}/> per liter</label>
@@ -3308,6 +3310,7 @@ function collectAddonsFromEditor() {
     name: row.querySelector('.addon-name')?.value || '',
     price: row.querySelector('.addon-price')?.value ?? '',
     per_liter: !!row.querySelector('.addon-per-liter')?.checked,
+    extra: (() => { try { return JSON.parse(row.dataset.extra || '{}'); } catch (_) { return {}; } })(),
   }));
 }
 function addAddonRow() {
@@ -3322,13 +3325,13 @@ function removeAddonRow(idx) {
 }
 function loadAddonsFromProduct(variations) {
   const block = (variations || []).find(v => v.type === 'addons');
-  return (block?.items || []).map(a => ({ name: a.name || '', price: a.price ?? '', per_liter: !!a.per_liter }));
+  return (block?.items || []).map(a => ({ ...a, name: a.name || '', price: a.price ?? '', per_liter: !!a.per_liter }));
 }
 function collectAddonsForSave() {
   const items = collectAddonsFromEditor()
     .filter(a => a.name.trim())
     .map(a => {
-      const item = { name: a.name.trim() };
+      const item = { ...(a.extra || {}), name: a.name.trim() };
       const price = parseFloat(a.price);
       if (!isNaN(price) && price >= 0) item.price = price;
       if (a.per_liter) item.per_liter = true;
@@ -4381,7 +4384,8 @@ function describeItemExtras(i) {
     });
   }
   const addons = Array.isArray(i && i.selected_addons) ? i.selected_addons : [];
-  const addonNames = addons.map(a => String((a && a.name) || '').trim()).filter(Boolean);
+  // Per-liter / quantity add-ons carry how many ("Swap milk to parve (per liter) · 5L").
+  const addonNames = addons.map(a => { const n = String((a && a.name) || '').trim(); if (!n) return ''; return a.liters ? `${n} · ${a.liters}L` : Number(a.qty) > 1 ? `${n} ×${a.qty}` : n; }).filter(Boolean);
   const segs = [];
   if (parts.length) segs.push(parts.join(' · '));
   if (addonNames.length) segs.push('+ ' + addonNames.join(', '));

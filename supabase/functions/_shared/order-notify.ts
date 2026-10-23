@@ -84,8 +84,14 @@ export function describeItemExtras(item: Record<string, unknown>): string {
     }
   }
   const addons = Array.isArray(item.selected_addons) ? item.selected_addons : [];
+  // Per-liter / quantity add-ons carry how many ("Swap milk to parve (per liter) · 5L").
   const addonNames = addons
-    .map((a) => String((a as Record<string, unknown>)?.name || "").trim())
+    .map((a) => {
+      const r = (a || {}) as Record<string, unknown>;
+      const n = String(r.name || "").trim();
+      if (!n) return "";
+      return r.liters ? `${n} · ${r.liters}L` : Number(r.qty) > 1 ? `${n} ×${r.qty}` : n;
+    })
     .filter(Boolean);
   const segs: string[] = [];
   if (parts.length) segs.push(parts.join(" · "));

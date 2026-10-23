@@ -116,3 +116,14 @@ html.pf-lock, html.pf-lock body { overflow:hidden; }
 #shopPage .section-header > .eyebrow, #shopPage .section-header > .divider { display:none; }
 #shopPage .section-header { margin-bottom:14px; }
 #shopPage #t-shop-title { font-size:clamp(1.4rem, 5vw, 2rem); }
+
+/* ── Account: short header; profile card that fits on phones ── */
+#myordersPage > .section { padding-top:20px; }
+#myordersPage .section-header > .eyebrow, #myordersPage .section-header > .divider { display:none; }
+#myordersPage .section-header { margin-bottom:16px; }
+#myordersPage #t-mo-title { font-size:clamp(1.4rem, 5vw, 2rem); }
+#myordersPage .account-profile-card { border-radius:16px; padding:16px; gap:14px; }
+#myordersPage .account-profile-card > div:nth-child(2) { flex:1; min-width:0; }
+#myordersPage .account-name, #myordersPage .account-email { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#myordersPage .account-signout-btn { flex:0 0 auto; border-radius:999px; text-transform:none; letter-spacing:.02em; padding:8px 14px; }
+@media (max-width: 400px) { #myordersPage .account-avatar { width:44px; height:44px; flex:0 0 44px; } #myordersPage .account-name { font-size:1.05rem; } }
