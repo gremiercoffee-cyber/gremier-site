@@ -743,7 +743,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261024-2"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261024-5"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -3650,6 +3650,12 @@ function findZoneForCity(city) {
   return null;
 }
 
+// Tuesday and Wednesday (Israel time): free regular delivery, before Shabbat. Same rule as the
+// server (supabase/functions/_shared/weekly-promo.ts), which decides the real price.
+function shabbatPromoActive(now = new Date()) {
+  const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'Asia/Jerusalem' }).format(now);
+  return day === 'Tue' || day === 'Wed';
+}
 function resolveDeliveryPricing(city) {
   const zone = findZoneForCity(city);
   if (zone) return {
@@ -3825,7 +3831,8 @@ function updateDeliveryPrice() {
   const isFree = !hasProductFee && pricing.freeAbove && qualifyingTotal >= pricing.freeAbove;
   const zoneRegular = isFree ? 0 : pricing.regular;
   const zoneExpedited = pricing.expedited;
-  const regularFee = hasProductFee ? productFee : zoneRegular;
+  const shabbatPromo = !subscriptionCart && shabbatPromoActive();
+  const regularFee = shabbatPromo ? 0 : (hasProductFee ? productFee : zoneRegular);
   const expeditedSurcharge = Math.max(0, zoneExpedited - pricing.regular);
   const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
   const isEvent = document.getElementById('shipEvent')?.checked;
@@ -3841,7 +3848,7 @@ function updateDeliveryPrice() {
   const evtEl = document.getElementById('shipEventPrice');
   if (evtEl) evtEl.textContent = `₪${eventFee}`;
   if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
-  if (freeNote) freeNote.style.display = (!hasProductFee && isFree && !isExpedited && !isEvent) ? 'block' : 'none';
+  if (freeNote) freeNote.style.display = (((!hasProductFee && isFree) || shabbatPromo) && !isExpedited && !isEvent) ? 'block' : 'none';
   refreshGiftCardDiscount(fee);
 const summaryTotal = document.getElementById('coSummaryTotal');
 if (summaryTotal) {
@@ -5062,6 +5069,7 @@ async function sendChatMessageText(text) {
     try {
       const pricing = resolveDeliveryPricing(city);
       const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+      if (shabbatPromoActive() && !cart.some((i) => i.is_subscription)) return 0;   // Tue/Wed promo
       const fees = cart.map((i) => i.delivery_price).filter((v) => v !== null && v !== undefined && !isNaN(v));
       if (fees.length) return Math.max(...fees);
       if (pricing.freeAbove && cartTotal >= pricing.freeAbove) return 0;
@@ -5369,7 +5377,9 @@ async function sendChatMessageText(text) {
 </script>
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
-<script src="/storefront-cart.js?v=20261024-1"></script>
-<script src="/storefront-engage.js?v=20261024-3"></script>
+<script src="/storefront-cart.js?v=20261024-3"></script>
+<script src="/storefront-engage.js?v=20261024-4"></script>
+<script src="/storefront-planner.js?v=20261024-1"></script>
+<script src="/storefront-promo.js?v=20261024-1"></script>
 </body>
 </html>

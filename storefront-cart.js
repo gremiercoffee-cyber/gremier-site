@@ -20,6 +20,9 @@
   }
 
   function freeDeliveryHtml() {
+    if (typeof shabbatPromoActive === 'function' && shabbatPromoActive() && cart.length && !cart.some((i) => i.is_subscription)) {
+      return `<div class="cx-free done">${T('✓ Free delivery today, before Shabbat*', '✓ משלוח חינם היום, לפני שבת*')}</div>`;
+    }
     const city = knownCity();
     if (!city || typeof resolveDeliveryPricing !== 'function') return '';
     if (cart.some((i) => i.is_subscription || (i.delivery_price != null && !isNaN(i.delivery_price)))) return '';
@@ -66,10 +69,32 @@
     footer?.insertAdjacentHTML('beforeend', `<div class="cx-trust">🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</div>`);
   }
 
+  // Signed-in customers' carts are kept on their profile too, so a cart left on the site can get the
+  // Tuesday "free delivery before Shabbat" email (admin-tools shabbat_promo_email). Plain fields only.
+  let saveTimer = null, lastSaved = null;
+  function saveToProfile() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      if (typeof currentUser === 'undefined' || !currentUser || typeof sb === 'undefined') return;
+      const items = cart.map((i) => ({
+        id: i.id, base_product_id: i.base_product_id, name_en: i.name_en, name_he: i.name_he, qty: i.qty, price: i.price,
+        is_subscription: !!i.is_subscription, options: !!((i.selected_variations && Object.keys(i.selected_variations).length) || i.selected_guest_price || (i.selected_addons && i.selected_addons.length)),
+      }));
+      const key = JSON.stringify(items);
+      if (key === lastSaved) return;
+      lastSaved = key;
+      try {
+        await sb.from('profiles').update({ saved_cart: items.length ? items : null, saved_cart_at: new Date().toISOString() }).eq('id', currentUser.id);
+      } catch (_) {}
+    }, 2500);
+  }
+
   function hook() {
     const orig = window.renderCartDrawer;
     if (typeof orig !== 'function') return;
     window.renderCartDrawer = function () { const r = orig.apply(this, arguments); try { decorate(); } catch (_) {} return r; };
+    const save = window.saveCartToStorage;
+    if (typeof save === 'function') window.saveCartToStorage = function () { const r = save.apply(this, arguments); saveToProfile(); return r; };
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();

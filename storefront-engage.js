@@ -120,10 +120,35 @@
     placeShareCard($('acctInvite') || view.querySelector('.confirm-sub'), email, 'refSuccess');
   }
 
-  // ── Trust line under "Add to cart" (kashrut slot shows once the logo is set) ──
+  // ── Kashrut: a small seal under "Add to cart" and in the footer; tap to see the certificate ──
+  const kosherLabel = () => T('Kosher · Rabbi Shmuel Weiner', 'כשר · בהשגחת הרב שמואל ויינער');
+  function kosherChip(cls) {
+    return `<button type="button" class="kosher-chip ${cls || ''}" onclick="showKashrut()"><img src="/kashrut-sm.png" alt="" width="22" height="22">${kosherLabel()}</button>`;
+  }
+  window.showKashrut = function () {
+    let el = $('kashrutView');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'kashrutView'; el.className = 'kashrut-view';
+      el.onclick = () => el.classList.remove('open');
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `<div class="kashrut-card" role="dialog" aria-label="${T('Kashrut', 'כשרות')}"><img src="/kashrut.png" alt="${T('Kashrut certificate: Rabbi Shmuel Weiner, Khal Zichron Nosson Tzvi', 'תעודת כשרות: הרב שמואל ויינער, קהל זכרון נתן צבי')}">
+      <p>${T('Under the supervision of Rabbi Shmuel Weiner, Rav of Khal Zichron Nosson Tzvi.', 'בהשגחת הרב שמואל ויינער, רב דקהל זכרון נתן צבי.')}</p>
+      <button type="button" class="btn btn-outline btn-sm">${T('Close', 'סגירה')}</button></div>`;
+    el.classList.add('open');
+  };
+  function placeFooterKosher() {
+    const desc = $('t-ft-desc');
+    if (!desc) return;
+    $('ftKosher')?.remove();
+    desc.insertAdjacentHTML('afterend', `<div id="ftKosher">${kosherChip('on-dark')}</div>`);
+  }
+
+  // ── Trust line under "Add to cart" ──
   function trustHtml() {
     // (Delivery times are already in the box above the button.)
-    return `<span>🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</span>`;
+    return `<span>🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</span>${kosherChip()}`;
   }
   function placeTrust() {
     const btn = $('pdAddBtn');
@@ -276,7 +301,8 @@
     wrap('openProductDrawerUI', placeTrust);
     wrap('updateAccountPage', accountCard);
     wrap('showCheckoutResultUI', successCard);
-    wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); if ($('pdTrust')) placeTrust(); });
+    wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); if ($('pdTrust')) placeTrust(); placeFooterKosher(); });
+    placeFooterKosher();
     arriveFromReferral();
     arriveFromFeedbackEmail();
     whenLanguageSet(() => setTimeout(feedbackCard, 3000));

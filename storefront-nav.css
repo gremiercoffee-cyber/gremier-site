@@ -170,3 +170,53 @@ body.rtl #fbCard { padding:10px 14px 10px 46px; }
 .acct-invite div { flex:1 1 200px; display:flex; flex-direction:column; gap:3px; font-size:.82rem; color:#5f656d; line-height:1.45; }
 .acct-invite b { color:#1a1a1a; font-size:.95rem; }
 .acct-invite button { padding:10px 16px; border-radius:999px; border:1px solid #dcdfe3; background:#fff; color:#1a1a1a; font:600 .8rem 'DM Sans', sans-serif; cursor:pointer; }
+
+/* ── Coffee Bars: "Help me choose" planner (storefront-planner.js) ── */
+.planner { max-width:720px; margin:0 auto; padding:0 20px 8px; background:#f5f6f7; }
+.planner > * { background:#fff; }
+.planner .pl-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:16px; border:1px solid #e3e5e8; border-radius:16px; box-shadow:0 2px 8px rgba(28,38,52,.05); }
+.planner.open .pl-head { border-radius:16px 16px 0 0; border-bottom:none; box-shadow:none; }
+.planner .pl-head div { flex:1 1 220px; display:flex; flex-direction:column; gap:3px; font-size:.82rem; color:#5f656d; line-height:1.45; }
+.planner .pl-head b { color:#1a1a1a; font-size:1rem; }
+.planner .pl-start { padding:11px 18px; border:none; border-radius:999px; background:#1a1a1a; color:#fff; font:600 .84rem 'DM Sans', sans-serif; cursor:pointer; }
+.planner .pl-q { padding:12px 16px; border-left:1px solid #e3e5e8; border-right:1px solid #e3e5e8; }
+.planner .pl-q label { display:block; margin-bottom:8px; font-size:.82rem; font-weight:600; color:#1a1a1a; }
+.planner .pl-q small { display:block; margin-top:6px; font-size:.72rem; color:#6b7178; }
+.planner .pl-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.planner .pl-chips button { padding:8px 13px; border-radius:999px; border:1px solid #dcdfe3; background:#fff; font:500 .8rem 'DM Sans', sans-serif; color:#1a1a1a; cursor:pointer; text-align:start; }
+.planner .pl-chips button.on { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
+.planner .pl-guests { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.planner .pl-guests input { width:90px; padding:8px 12px; font-size:16px; }
+.planner .pl-result { padding:16px; border:1px solid #e3e5e8; border-top:1px dashed #e3e5e8; border-radius:0 0 16px 16px; background:#fbf6ee; }
+.planner .pl-r-title { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:#8a5a1c; margin-bottom:4px; }
+.planner .pl-r-main { font-size:.9rem; color:#1a1a1a; line-height:1.5; }
+.planner .pl-r-note { margin-top:6px; font-size:.76rem; color:#8a5a1c; }
+.planner .pl-r-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.planner .pl-order { flex:1 1 180px; height:48px; border:none; border-radius:999px; background:#1a1a1a; color:#fff; font:600 .92rem 'DM Sans', sans-serif; cursor:pointer; }
+.planner .pl-wa { height:48px; padding:0 18px; border:1px solid #25D366; border-radius:999px; background:#fff; color:#128c4a; font:600 .86rem 'DM Sans', sans-serif; cursor:pointer; }
+
+/* Weekly delivery banner (storefront-promo.js) */
+#memberBanner.promo { flex-wrap:wrap; row-gap:2px; }
+#memberBanner .promo-note { flex-basis:100%; text-align:center; font-size:.68rem; color:rgba(255,255,255,.62); letter-spacing:.01em; }
+body.promo-banner nav { top:var(--promo-h, 38px) !important; }
+body.promo-banner .mobile-menu { top:calc(var(--promo-h, 38px) + 64px) !important; }
+body.promo-banner .page { padding-top:calc(var(--promo-h, 38px) + 80px) !important; }
+@media(max-width:640px){
+  #memberBanner .promo-note { font-size:.62rem; }
+  #memberBanner .promo-shop { display:none; }   /* the bottom bar has Shop */
+  body.promo-banner .mobile-menu { top:calc(var(--promo-h, 52px) + 56px) !important; }
+  body.promo-banner .page { padding-top:calc(var(--promo-h, 52px) + 66px) !important; }
+}
+
+/* Kashrut seal (storefront-engage.js) */
+.kosher-chip { display:inline-flex; align-items:center; gap:6px; background:none; border:0; padding:0; font:inherit; font-size:.72rem; color:#6b7178; cursor:pointer; }
+.kosher-chip img { width:22px; height:22px; object-fit:contain; }
+.kosher-chip:hover { color:#1a1a1a; }
+.kosher-chip.on-dark { margin-top:14px; color:rgba(255,255,255,.6); }
+.kosher-chip.on-dark img { width:30px; height:30px; filter:invert(1); opacity:.85; }
+.kosher-chip.on-dark:hover { color:#fff; }
+.kashrut-view { position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; padding:16px; }
+.kashrut-view.open { display:flex; }
+.kashrut-card { background:#fff; border-radius:18px; padding:22px 20px 18px; max-width:340px; width:100%; text-align:center; }
+.kashrut-card img { width:100%; max-width:260px; height:auto; }
+.kashrut-card p { font-size:.82rem; color:#5f656d; margin:12px 0 14px; line-height:1.5; }

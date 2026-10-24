@@ -4,6 +4,7 @@ const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "../_shared/engage.ts";
+import { shabbatPromoActive } from "../_shared/weekly-promo.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 
 const corsHeaders = {
@@ -332,6 +333,9 @@ Deno.serve(async (req) => {
       zonesResult.data || [],
       settingsResult.data || null,
     );
+    // Tuesday/Wednesday: free regular delivery, before Shabbat (not for subscriptions, which recur).
+    const shabbatPromo = !isSubscriptionOrder && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular";
+    if (shabbatPromo) { delivery.fee = 0; delivery.source = "shabbat_promo"; }
 
     let discount = 0;
 
@@ -423,7 +427,7 @@ Deno.serve(async (req) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_address: deliveryAddress,
-      notes: cleanText(body.notes, 1000) || null,
+      notes: [shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
       items: allowedItems,
       subtotal,
       discount,
@@ -440,6 +444,7 @@ Deno.serve(async (req) => {
         zone_id: delivery.zone?.id || null,
         zone_name: delivery.zone?.name_en || "",
         pricing_source: delivery.source,
+        ...(shabbatPromo ? { shabbat_promo: true } : {}),
         server_priced: true,
         gift_card_id: giftCardId,
         loyalty_discount: loyaltyDiscount || 0,

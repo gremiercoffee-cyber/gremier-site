@@ -16,6 +16,7 @@ import { sendWebPushToAdmins } from "../_shared/web-push.ts";
 import { sha256 } from "../_shared/hub-actions.ts";
 import { sendOrderEmails } from "../_shared/order-email.ts";
 import { settleReferral, signToken } from "../_shared/engage.ts";
+import { shabbatPromoActive } from "../_shared/weekly-promo.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -298,6 +299,128 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
   }
   if (sent.length && !dryRun) await alertAdmins(sb, "🛒 Cart reminder sent", `${sent.length} abandoned-checkout reminder${sent.length > 1 ? "s" : ""} emailed.`, "cart-reminders");
   return { sent, skipped, ...(dryRun ? { preview } : {}) };
+}
+
+// ── Tuesday "free delivery before Shabbat" email ──
+// Once a week, to people who left something this week (since Sunday, Israel time): a checkout that
+// wasn't paid, or a signed-in cart that never became an order. One email per person per week
+// (promo_sends), same skips as the cart reminders. Runs Tuesday morning; Wednesday is the last day.
+function promoEmail(name: string, items: Record<string, any>[], he: boolean, optoutUrl: string, lastDay: boolean) {
+  const first = String(name || "").trim().split(/\s+/)[0] || "";
+  const lines = items.map((i) => `${he ? (i.name_he || i.name_en) : i.name_en} ×${i.qty}`);
+  // Plain items refill the cart on the site; anything with options goes through the shop.
+  const simple = items.filter((i) => (i.product_id || i.id) && !i.is_subscription && !i.options && !(i.selected_variations && Object.keys(i.selected_variations).length) && !i.selected_guest_price && !(i.selected_addons && i.selected_addons.length));
+  const cart = simple.map((i) => `${String(i.base_product_id || i.product_id || i.id).split("_")[0]}.${Math.max(1, Math.min(50, Number(i.qty) || 1))}`).join("~");
+  const link = simple.length === items.length && cart ? `${SITE}/?cart=${cart}&utm_source=shabbat_promo` : `${SITE}/?utm_source=shabbat_promo#shop`;
+  const subject = he ? "משלוח חינם לפני שבת 🕯️" : "Free delivery before Shabbat 🕯️";
+  const when = he ? (lastDay ? "רק היום" : "היום ומחר") : (lastDay ? "Today only" : "Today and tomorrow");
+  const intro = he
+    ? `היי${first ? " " + first : ""}, ${when}: מזמינים באתר עד יום רביעי, המשלוח חינם ומגיע לפני שבת*.`
+    : `Hi${first ? " " + first : ""}! ${when}: order on our site by Wednesday and delivery is free, arriving before Shabbat*.`;
+  const cartTitle = he ? "מה שהשארת בעגלה:" : "What you left in your cart:";
+  const cta = he ? "להשלמת ההזמנה" : "Complete your order";
+  const note = he ? "*מובטח בירושלים ובבית שמש; בשאר הארץ נעשה כמיטב יכולתנו." : "*Guaranteed in Jerusalem and Beit Shemesh; elsewhere we'll do our best.";
+  const sign = he ? "גרמיר קופי" : "Gremier Coffee";
+  const stop = he ? "להסרה מרשימת הדיוור" : "Unsubscribe";
+  const text = `${intro}\n\n${cartTitle}\n${lines.map((l) => "• " + l).join("\n")}\n\n${cta}: ${link}\n\n${note}\n\n${sign}\n\n—\n${stop}: ${optoutUrl}`;
+  const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as Record<string, string>)[c]);
+  const html = `<div dir="${he ? "rtl" : "ltr"}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
+    <p style="font-size:17px;line-height:1.5;margin:0 0 18px">${esc(intro)}</p>
+    <p style="font-size:13px;color:#5f656d;margin:0 0 6px">${cartTitle}</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${lines.map(esc).join("<br>")}</p>
+    <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:15px">${cta}</a>
+    <p style="font-size:12px;color:#8a8f96;margin:22px 0 0">${note}</p>
+    <p style="font-size:13px;color:#8a8f96;margin-top:24px">${sign}</p>
+    <p style="font-size:11px;color:#a0a5ab;margin-top:18px"><a href="${optoutUrl}" style="color:#a0a5ab">${stop}</a></p></div>`;
+  return { subject, text, html };
+}
+
+async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
+  const testTo = body.send_test_to ? String(body.send_test_to) : "";
+  const dryRun = body.dry_run === true || !!testTo;
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "short", hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).formatToParts(new Date());
+  const day = parts.find((p) => p.type === "weekday")?.value || "";
+  const hour = Number(parts.find((p) => p.type === "hour")?.value) || 0;
+  if (!dryRun && !shabbatPromoActive()) return { skipped_run: "not_tue_wed" };
+  if (!dryRun && quietNow()) return { skipped_run: "quiet_hours" };
+  // Start of this week (Sunday 00:00 Israel time) and the week's key.
+  const dayIdx = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(day);
+  const since = new Date(Date.now() - (dayIdx * 24 + hour) * 36e5).toISOString();
+  const week = new Date(Date.now() - dayIdx * 864e5).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const own = (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase();
+  const isHe = (s: string) => /[֐-׿]/.test(s);
+  type Pick = { email: string; name: string; items: Record<string, any>[]; he: boolean; from: string; after: string };
+  const picks = new Map<string, Pick>();
+  const skipped: Record<string, number> = {};
+  const skip = (why: string) => { skipped[why] = (skipped[why] || 0) + 1; };
+
+  // 1. Checkouts this week that weren't paid (latest per person).
+  const { data: unpaid } = await sb.from("orders")
+    .select("id, created_at, customer_email, customer_name, delivery_address, items, total")
+    .eq("source", "website").eq("status", "awaiting_payment").neq("payment_status", "paid")
+    .gte("created_at", since).not("customer_email", "is", null).order("created_at", { ascending: false });
+  for (const o of unpaid || []) {
+    const email = String(o.customer_email || "").trim().toLowerCase();
+    if (!email || picks.has(email)) continue;
+    if (/^test\b/i.test(o.customer_name || "") || (o.items || []).some((i: any) => /^test$/i.test(i.name_en || ""))) { skip("test"); continue; }
+    picks.set(email, { email, name: o.customer_name || "", items: o.items || [], he: isHe(`${o.customer_name || ""} ${o.delivery_address || ""}`), from: "checkout", after: o.created_at });
+  }
+  // 2. Signed-in carts this week that didn't reach checkout.
+  const { data: carts } = await sb.from("profiles").select("email, full_name, saved_cart, saved_cart_at, checkout_details")
+    .not("saved_cart", "is", null).gte("saved_cart_at", since);
+  for (const p of carts || []) {
+    const email = String(p.email || "").trim().toLowerCase();
+    const items = Array.isArray(p.saved_cart) ? p.saved_cart : [];
+    if (!email || !items.length || picks.has(email)) continue;
+    const cd = (p.checkout_details || {}) as Record<string, any>;
+    const name = cd.name || p.full_name || "";
+    picks.set(email, { email, name, items, he: isHe(`${name} ${cd.address || ""} ${JSON.stringify(cd.city || "")}`), from: "saved_cart", after: p.saved_cart_at });
+  }
+
+  const recipients: Pick[] = [];
+  for (const r of picks.values()) {
+    if (r.email === own) { skip("own_address"); continue; }
+    // Ordered since (a later checkout, paid or not, means the cart moved on).
+    const { data: later } = await sb.from("orders").select("id").ilike("customer_email", likeExact(r.email)).gt("created_at", r.after).limit(1);
+    if (later?.length) { skip("ordered_since"); continue; }
+    const { data: optout } = await sb.from("cart_reminder_optouts").select("email").eq("email", r.email).maybeSingle();
+    if (optout) { skip("opted_out"); continue; }
+    const { data: sentAlready } = await sb.from("promo_sends").select("email").eq("email", r.email).eq("week", week).maybeSingle();
+    if (sentAlready) { skip("sent_this_week"); continue; }
+    recipients.push(r);
+  }
+
+  const lastDay = day === "Wed";
+  if (dryRun) {
+    const out: Record<string, unknown> = { week, since, would_send: recipients.length, recipients: recipients.map((r) => `${r.from}: ${r.email.replace(/^(.).*@/, "$1…@")}`), skipped };
+    if (testTo) {
+      const sample = [{ id: "x", name_en: "Classic Dark Roast", name_he: "קלייה כהה קלאסית", qty: 2 }];
+      const he = recipients.find((r) => r.he) || { name: "", items: sample, he: true };
+      const en = recipients.find((r) => !r.he) || { name: "", items: sample, he: false };
+      for (const [i, r] of [he, en].entries()) {
+        const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(testTo), lastDay);
+        await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: testTo, customerSubject: `[Test ${i + 1}] ${mail.subject}`, customerText: mail.text, customerHtml: mail.html });
+      }
+      out.test_sent_to = testTo;
+    }
+    return out;
+  }
+  const sent: string[] = [];
+  for (const r of recipients) {
+    // Claim first, so a second run can't send twice.
+    const { error } = await sb.from("promo_sends").insert({ email: r.email, week });
+    if (error) { skip("sent_this_week"); continue; }
+    const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(r.email), lastDay);
+    const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: r.email, customerName: r.name, customerSubject: mail.subject, customerText: mail.text, customerHtml: mail.html });
+    if (res.ok) sent.push(r.from);
+    else { skip("email_failed"); await sb.from("promo_sends").delete().eq("email", r.email).eq("week", week); }
+    await new Promise((done) => setTimeout(done, 600));   // stay under the email provider's rate limit
+  }
+  await sendOrderEmails({
+    ownerSubject: `🕯️ Free-delivery-before-Shabbat email sent to ${sent.length}`,
+    ownerText: `This week's promo email went to ${sent.length} ${sent.length === 1 ? "person" : "people"} (${sent.filter((f) => f === "checkout").length} unpaid checkouts, ${sent.filter((f) => f === "saved_cart").length} signed-in carts).${Object.keys(skipped).length ? `\n\nSkipped: ${Object.entries(skipped).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}`,
+  });
+  return { week, sent: sent.length, skipped };
 }
 
 // ── "How was it?" emails ──
@@ -584,6 +707,7 @@ Deno.serve(async (req) => {
         }
         return json(await cartReminders(sb, body.dry_run === true));
       }
+      case "shabbat_promo_email": return json(await shabbatPromoEmail(sb, body));
       case "site_analytics": return json({ ...(await siteAnalytics(body.days)), funnel: await siteFunnel(sb, body.days) });
       case "message_customer": {
         // Admin → customer update for an order (template text edited in the admin app).
