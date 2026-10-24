@@ -106,3 +106,31 @@ test('reviewed order purpose carries into linked receipts without using their pr
  const d=base();d.overrides=[{source_key:'order-purpose:o',category:'coffee'}];d.orderReceipts=[{order_id:'o',document_reference:'3',status:'issued',payment_date:'2026-10-02',amount_minor:45000}];
  const row=m.receipts(d)[0];assert.equal(row.parts.coffee,45000);assert.equal(row.parts.coffee_bar,0);assert.equal(row.basis,'Reviewed order purpose');assert.equal(row.estimated,false);
 });
+
+function dashboardReviewHarness(fail=false){
+ const vm=require('node:vm'),fs=require('node:fs'),saved=[],nodes=new Map();
+ const host={innerHTML:'',querySelectorAll(){return [...this.innerHTML.matchAll(/data-dashboard-purpose="([^"]+)"/g)].map(match=>({dataset:{dashboardPurpose:match[1]},value:'coffee_bar',disabled:false}));}};
+ nodes.set('dashOnlineRevenue',host);nodes.set('dashPurposeStatus',{textContent:''});
+ const document={getElementById:id=>nodes.get(id)||null};
+ const root={document,GremierDashboard:{businessDate:v=>String(v).slice(0,10),clearCache(){}},MAIN_SB:{from(table){assert.equal(table,'revenue_classification_overrides');return {upsert:async row=>{saved.push(row);return {error:fail?Error('offline'):null};}};}}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../admin-revenue.js'),'utf8'),{window:root,document,Intl,Date,console});
+ return {root,host,saved,nodes};
+}
+test('dashboard review opens only unresolved orders and saving immediately updates the breakdown',async()=>{
+ const h=dashboardReviewHarness(),pending={...order,id:'pending',order_number:209,customer_name:'Sample customer',items:[{name_en:'Jerry can',price:450,qty:1}]};
+ const known={...order,id:'known',order_number:210,items:[{name_en:'Coffee bottle',price:450,qty:1}]};
+ h.root.GremierRevenue.dashboardOnline([pending,known],{start:'2026-10-01',today:'2026-10-31'},[],75);
+ assert.match(h.host.innerHTML,/Needs review · 1/);assert.match(h.host.innerHTML,/Orders awaiting a sales category/);
+ assert.match(h.host.innerHTML,/data-dashboard-purpose="pending"/);assert.doesNotMatch(h.host.innerHTML,/data-dashboard-purpose="known"/);
+ // Capture the real handler attached by the production renderer.
+ const selects=[];const original=h.host.querySelectorAll.bind(h.host);h.host.querySelectorAll=()=>{const rows=original();selects.push(...rows);return rows;};
+ h.root.GremierRevenue.dashboardOnline([pending,known],{start:'2026-10-01',today:'2026-10-31'},[],75);
+ await selects[0].onchange();assert.equal(h.saved[0].source_key,'order-purpose:pending');assert.equal(h.saved[0].category,'coffee_bar');
+ assert.doesNotMatch(h.host.innerHTML,/Needs review/);assert.match(h.host.innerHTML,/Events/);
+});
+test('failed dashboard classification preserves the unresolved order and reports that it was not saved',async()=>{
+ const h=dashboardReviewHarness(true),selects=[],original=h.host.querySelectorAll.bind(h.host);
+ h.host.querySelectorAll=()=>{const rows=original();selects.push(...rows);return rows;};
+ h.root.GremierRevenue.dashboardOnline([{...order,items:[{name_en:'Jerry can',qty:1,price:450}]}],{start:'2026-10-01',today:'2026-10-31'},[],0);
+ await selects[0].onchange();assert.equal(selects[0].disabled,false);assert.match(h.host.innerHTML,/Needs review/);assert.match(h.nodes.get('dashPurposeStatus').textContent,/not saved/);
+});

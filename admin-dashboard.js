@@ -51,7 +51,8 @@
     function bucket(date) { return buckets.find(b => b.key === (r.period === 'year' ? date.slice(0,7) : date)); }
     (orders || []).forEach(o => { const b=bucket(businessDate(o.created_at)); if (b) b.online+=num(o.total); });
     (deliveries || []).forEach((d,i) => { const b=bucket(businessDate(d.delivery_date)); if (b) b.store+=num(values?.[i]); });
-    return {orders, deliveries, online, store, owed, unbilled, waiting, jobs, bills, buckets, range:r};
+    const totalSales=online===null||store===null?null:Math.round((online+store)*100)/100;
+    return {orders, deliveries, online, store, totalSales, owed, unbilled, waiting, jobs, bills, buckets, range:r};
   }
   const api = {businessDate, range, deliveryValue, model};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -64,7 +65,8 @@
   const row = (label,value) => `<div class="dash-money-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`;
   function render(m, data, errors=[]) {
     const periodLabel = m.range.period === 'week' ? 'Last 7 days' : m.range.period === 'year' ? 'This year to date' : 'This month to date';
-    set('dashKPIs', metric('Paid online sales',money(m.online),'')+metric('Store delivery value',money(m.store),'')+metric('Unpaid store bills',money(m.owed),'All dates')+metric('Paid orders to fulfil',m.waiting === null ? 'Unavailable' : m.waiting.length,'All dates'));
+    set('dashSalesTotal',`<div class="dash-total-label">Total sales <span>${esc(periodLabel)}</span></div><div class="dash-total-value">${esc(money(m.totalSales))}</div><div class="dash-total-breakdown"><span>Online ${esc(money(m.online))}</span><span>Store deliveries ${esc(money(m.store))}</span></div>`);
+    set('dashKPIs', metric('Unpaid store bills',money(m.owed),'All dates')+metric('Paid orders to fulfil',m.waiting === null ? 'Unavailable' : m.waiting.length,'All dates'));
     const action = (count,title,sub,target,urgent=false) => `<button type="button" class="dash-action" data-dash-target="${target}" data-urgent="${urgent}"><span class="dash-action-count">${esc(count)}</span><span><span class="dash-action-title">${esc(title)}</span>${sub?`<span class="dash-action-sub">${esc(sub)}</span>`:""}</span><span class="dash-action-arrow" aria-hidden="true">↗</span></button>`;
     let actions='';
     if (m.jobs?.length) actions+=action(m.jobs.length,'Due & overdue tasks',`${m.jobs.filter(j=>j.date<m.range.today).length} overdue`,'schedule',true);
@@ -105,7 +107,8 @@
   api.clearCache=()=>{try{Object.keys(root.localStorage).filter(k=>k.startsWith(cachePrefix)).forEach(k=>root.localStorage.removeItem(k));}catch{}};
   function loadingState(){
     api.refreshPurpose=null;
-    set('dashKPIs',['Paid online sales','Store delivery value','Unpaid store bills','Paid orders to fulfil'].map(label=>`<div class="dash-metric"><div class="dash-metric-label">${label}</div><div class="dash-metric-value dash-skeleton" aria-label="Loading">&nbsp;</div></div>`).join(''));
+    set('dashSalesTotal','<div class="dash-total-label">Total sales</div><div class="dash-total-value dash-skeleton" aria-label="Loading">&nbsp;</div>');
+    set('dashKPIs',['Unpaid store bills','Paid orders to fulfil'].map(label=>`<div class="dash-metric"><div class="dash-metric-label">${label}</div><div class="dash-metric-value dash-skeleton" aria-label="Loading">&nbsp;</div></div>`).join(''));
     set('dashAttention',empty('Loading…'));
     ['dashMoney','dashTrend','dashChart','dashStoreBreakdown','dashBottlesSold','dashOnlineRevenue'].forEach(id=>set(id,''));
     ['dashRecentOrders','dashRecentDeliveries'].forEach(id=>set(id,'<tr><td colspan="4">Loading…</td></tr>'));

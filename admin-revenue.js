@@ -96,7 +96,28 @@
  const client=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB;
  let loaded=null,serial=0,reviewMode='pending';
  const totalsHtml=totals=>['stores','coffee','coffee_bar',...['other','unclassified'].filter(k=>totals[k])].map(k=>`<div class="fin-row"><span>${labels[k]}</span><strong>${money(totals[k])}</strong></div>`).join('');
- api.dashboardOnline=(orders,r,purposes=[],storeValue=null)=>{const host=get('dashOnlineRevenue');if(!host)return;try{const totals=online(orders,typeof allProducts!=='undefined'?allProducts:[],r.start,r.today,date,purposes);if(storeValue!==null)totals.stores=minor(storeValue);host.innerHTML='<h2>Sales by purpose</h2>'+totalsHtml(totals)+(storeValue===null?'<p class="sales-note">Store totals unavailable.</p>':'');}catch{host.innerHTML='<h2>Sales by purpose</h2><p>Activity breakdown unavailable.</p>';}};
+ api.dashboardOnline=(orders,r,purposes=[],storeValue=null)=>{
+  const host=get('dashOnlineRevenue');if(!host)return;
+  try {
+   const products=typeof allProducts!=='undefined'?allProducts:[],totals=online(orders,products,r.start,r.today,date,purposes);
+   if(storeValue!==null)totals.stores+=minor(storeValue);
+   const pending=orders.filter(o=>eligible(o)&&date(o.created_at)>=r.start&&date(o.created_at)<=r.today&&needsReview({parts:splitOrder(o,products,purposes.find(p=>p.source_key==='order-purpose:'+o.id)?.category)}));
+   const open=get('dashPurposeReview')?.open;
+   host.innerHTML='<h2>Sales by purpose</h2>'+totalsHtml({...totals,unclassified:0})+(pending.length?`<details id="dashPurposeReview" class="dash-review" ${open?'open':''}><summary><span>Needs review · ${pending.length}</span><strong>${money(totals.unclassified)}</strong></summary><p class="sales-note">Orders awaiting a sales category.</p><div role="status" id="dashPurposeStatus" class="dash-review-error"></div>${pending.map(o=>`<div class="dash-review-order"><div><strong>#${esc(o.order_number)} · ${esc(o.customer_name)}</strong><small>${esc((o.items||[]).map(i=>`${i.qty??1} × ${i.name_en||i.name_he||'Item'}`).join(', '))}</small></div><strong>${money(minor(o.total))}</strong><label>Category<select class="form-input" aria-label="Category for order ${esc(o.order_number)}" data-dashboard-purpose="${esc(o.id)}"><option value="" selected disabled>Choose category</option>${['coffee','coffee_bar','stores','other'].map(k=>`<option value="${k}">${labels[k]}</option>`).join('')}</select></label></div>`).join('')}</details>`:'')+(storeValue===null?'<p class="sales-note">Store totals unavailable.</p>':'');
+   host.querySelectorAll('[data-dashboard-purpose]').forEach(select=>select.onchange=async()=>{
+    select.disabled=true;
+    try {
+     const source_key='order-purpose:'+select.dataset.dashboardPurpose;
+     const result=await client().from('revenue_classification_overrides').upsert({source_key,category:select.value,updated_at:new Date().toISOString()});
+     if(result.error)throw result.error;
+     const previous=purposes.findIndex(p=>p.source_key===source_key);if(previous>=0)purposes.splice(previous,1);
+     purposes.push({source_key,category:select.value});
+     root.GremierDashboard?.clearCache?.();
+     api.dashboardOnline(orders,r,purposes,storeValue);
+    } catch {get('dashPurposeStatus').textContent='Category was not saved. Try again.';select.disabled=false;}
+   });
+  } catch {host.innerHTML='<h2>Sales by purpose</h2><p>Activity breakdown unavailable.</p>';}
+ };
  function setup(){
   const host=get('tab-reports');if(!host||get('revenueExplorer'))return;
   const section=document.createElement('section');section.id='revenueExplorer';section.className='sales-panel';

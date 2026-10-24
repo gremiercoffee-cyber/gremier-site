@@ -15,6 +15,14 @@ test('store valuation includes every supported category and preserves a valid ze
 test('missing store prices make the total unavailable instead of silently zero',()=>{
   const m=model(data({deliveries:[{delivery_date:'2026-10-05',store_id:'missing',qty_large:2}]}),r);
   assert.equal(m.store,null);
+  assert.equal(m.totalSales,null);
+});
+
+test('total sales sums paid online orders and deliveries once, without adding bills or receipts',()=>{
+ const m=model(data({orders:[order({total:2250}),order({total:800,payment_status:'unpaid'})],deliveries:[{store_id:'s',delivery_date:'2026-10-05',qty_large:3}],stores:[{id:'s',price_large:25}],bills:[{total:75,billed_at:'2026-10-01'}],orderReceipts:[{amount_minor:225000,status:'issued'}]}),r);
+ assert.equal(m.totalSales,2325);
+ assert.equal(model(data({orders:null}),r).totalSales,null);
+ assert.equal(model(data(),r).totalSales,0);
 });
 test('an unavailable source is distinct from an empty source',()=>{
   assert.equal(model(data({orders:null,bills:null,backlog:null,jobs:null}),r).online,null);
@@ -61,7 +69,7 @@ function loaderHarness(tables,failTable) {
 test('loader paginates beyond 1,000 orders before displaying totals',async()=>{
   const h=loaderHarness({orders:Array.from({length:1001},(_,i)=>order({id:String(i),total:1}))});
   await h.root.loadDashboard();
-  assert.match(h.nodes.get('dashKPIs').innerHTML,/1,001/);
+  assert.match(h.nodes.get('dashSalesTotal').innerHTML,/1,001/);
   assert.ok(h.calls.some(c=>c.table==='orders' && c.a===1000));
   assert.equal(h.nodes.get('dashRefresh').disabled,false);
 });
@@ -69,7 +77,7 @@ test('loader renders unavailable for a failed source while preserving successful
   const h=loaderHarness({orders:[order()]},'store_billing');
   await h.root.loadDashboard();
   assert.match(h.nodes.get('dashKPIs').innerHTML,/Unavailable/);
-  assert.match(h.nodes.get('dashKPIs').innerHTML,/100/);
+  assert.match(h.nodes.get('dashSalesTotal').innerHTML,/100/);
   assert.match(h.nodes.get('dashUpdated').textContent,/bills/);
   assert.equal(h.nodes.get('dashRefresh').disabled,false);
 });
@@ -77,12 +85,12 @@ function storage(){return {getItem(k){return this[k]??null},setItem(k,v){this[k]
 test('a new dashboard instance paints its scoped cache synchronously and retains it on source failure',async()=>{
  const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
  const next=loaderHarness({},'orders');next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-a';const pending=next.root.loadDashboard();
- assert.match(next.nodes.get('dashKPIs').innerHTML,/100/);assert.doesNotMatch(next.nodes.get('dashKPIs').innerHTML,/Unavailable/);assert.match(next.nodes.get('dashUpdated').textContent,/Saved/);
- await pending;assert.match(next.nodes.get('dashKPIs').innerHTML,/100/);assert.match(next.nodes.get('dashUpdated').textContent,/saved figures for orders/);
+ assert.match(next.nodes.get('dashSalesTotal').innerHTML,/100/);assert.doesNotMatch(next.nodes.get('dashSalesTotal').innerHTML,/Unavailable/);assert.match(next.nodes.get('dashUpdated').textContent,/Saved/);
+ await pending;assert.match(next.nodes.get('dashSalesTotal').innerHTML,/100/);assert.match(next.nodes.get('dashUpdated').textContent,/saved figures for orders/);
 });
 test('cache never crosses a period or signed-in user, and overlapping refreshes share one fetch',async()=>{
  const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
- const next=loaderHarness({});next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-b';const pending=next.root.loadDashboard();assert.doesNotMatch(next.nodes.get('dashKPIs').innerHTML,/100|Unavailable/);assert.strictEqual(next.root.loadDashboard(),pending);await pending;assert.equal(next.calls.length,7);
- next.nodes.get('dashPeriod').value='year';const changed=next.root.loadDashboard();assert.match(next.nodes.get('dashKPIs').innerHTML,/dash-skeleton/);await changed;
+ const next=loaderHarness({});next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-b';const pending=next.root.loadDashboard();assert.doesNotMatch(next.nodes.get('dashSalesTotal').innerHTML,/100|Unavailable/);assert.strictEqual(next.root.loadDashboard(),pending);await pending;assert.equal(next.calls.length,7);
+ next.nodes.get('dashPeriod').value='year';const changed=next.root.loadDashboard();assert.match(next.nodes.get('dashSalesTotal').innerHTML,/dash-skeleton/);await changed;
  next.root.GremierDashboard.clearCache();assert.equal(Object.keys(cache).filter(k=>k.startsWith('gremier_dash_v2:')).length,0);
 });
