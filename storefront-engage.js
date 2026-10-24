@@ -10,6 +10,11 @@
   const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
   const REF = 'gremier_ref_v1';
   const toast = (m) => { if (typeof showToast === 'function') showToast(m); };
+  // The site switches to Hebrew shortly after the page loads; anything we show waits for that.
+  const whenLanguageSet = (fn) => {
+    const go = () => setTimeout(fn, 500);
+    if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
+  };
 
   async function engage(body) {
     try {
@@ -33,7 +38,7 @@
     const before = get(REF);
     put(REF, { code, at: Date.now() });
     if (!before || before.code !== code) engage({ action: 'ref_event', code, kind: 'open' });   // once per browser
-    setTimeout(() => toast(T('🎁 Your friend gave you ₪20 off your first order — added at checkout', '🎁 קיבלת מחבר/ה ₪20 הנחה להזמנה הראשונה — נוסף בקופה')), 1800);
+    whenLanguageSet(() => toast(T('🎁 Your friend gave you ₪20 off your first order — added at checkout', '🎁 קיבלת מחבר/ה ₪20 הנחה להזמנה הראשונה — נוסף בקופה')));
   }
   function storedRef() {
     const r = get(REF);
@@ -140,18 +145,57 @@
       <div class="ref-actions"><button type="button" data-ref="share">${T('Share', 'שיתוף')}</button><button type="button" data-ref="copy">${T('Copy link', 'העתקת קישור')}</button></div></div>`;
   }
   async function rate(orderId, t, rating, source) {
-    const r = await engage({ action: 'feedback', order_id: orderId, t, rating, source });
-    if (r.ok) feedbackSheet(orderId, t, rating, r.ref_link);
-    else toast(T('That link didn’t work — thank you anyway!', 'הקישור לא עבד — תודה בכל זאת!'));
+    const r = await engage({ action: 'feedback', order_id: orderId, t, rating, source });   // saved right away
+    whenLanguageSet(() => {
+      if (r.ok) feedbackSheet(orderId, t, rating, r.ref_link);
+      else toast(T('That link didn’t work — thank you anyway!', 'הקישור לא עבד — תודה בכל זאת!'));
+    });
+  }
+  // "Write us a few words" from the email: pick a face and write, in one window.
+  function writeSheet(orderId, t) {
+    $('fbSheet')?.remove();
+    const el = document.createElement('div');
+    el.id = 'fbSheet';
+    el.innerHTML = `<div class="fb-box" role="dialog" aria-modal="true">
+      <button type="button" class="fb-x" aria-label="${T('Close', 'סגירה')}">×</button>
+      <h3>${T('How was it?', 'איך היה?')}</h3>
+      <div class="fb-pick">${[5, 4, 3, 2, 1].map((n) => `<button type="button" data-r="${n}" aria-label="${n}/5">${['', '😞', '😕', '😐', '🙂', '😍'][n]}</button>`).join('')}</div>
+      <textarea class="form-input" rows="4" maxlength="2000" placeholder="${T('Tell us what you think — what did you like in your coffee?', 'ספרו לנו מה דעתכם — מה אהבתם בקפה?')}"></textarea>
+      <p class="fb-hint" hidden>${T('Pick a face first 🙂', 'בחרו פרצוף קודם 🙂')}</p>
+      <button type="button" class="fb-send">${T('Send', 'שליחה')}</button>
+    </div>`;
+    document.body.appendChild(el);
+    let rating = 0;
+    const close = () => el.remove();
+    el.addEventListener('click', async (e) => {
+      if (e.target === el || e.target.closest('.fb-x')) return close();
+      const face = e.target.closest('.fb-pick [data-r]');
+      if (face) {
+        rating = Number(face.dataset.r);
+        el.querySelectorAll('.fb-pick button').forEach((b) => b.classList.toggle('on', b === face));
+        el.querySelector('.fb-hint').hidden = true;
+        return;
+      }
+      if (!e.target.closest('.fb-send')) return;
+      if (!rating) { el.querySelector('.fb-hint').hidden = false; return; }
+      const comment = el.querySelector('textarea').value.trim();
+      const r = await engage({ action: 'feedback', order_id: orderId, t, rating, source: 'email', ...(comment ? { comment } : {}) });
+      el.querySelector('.fb-box').innerHTML = r.ok
+        ? `<div class="fb-big">💛</div><h3>${T('Thanks — it really helps us', 'תודה — זה באמת עוזר לנו')}</h3><div class="fb-ref"></div><button type="button" class="fb-send fb-done">${T('Close', 'סגירה')}</button>`
+        : `<h3>${T('That link didn’t work — thank you anyway!', 'הקישור לא עבד — תודה בכל זאת!')}</h3><button type="button" class="fb-send fb-done">${T('Close', 'סגירה')}</button>`;
+      el.querySelector('.fb-done').addEventListener('click', close);
+      if (r.ref_link) fillRef(el, r.ref_link);
+    });
   }
   function arriveFromFeedbackEmail() {
     const p = new URLSearchParams(location.search);
     const fb = p.get('fb'), r = Number(p.get('r'));
-    if (!fb || !(r >= 1 && r <= 5)) return;
-    stripParams('fb', 'r');
+    if (!fb || (!(r >= 1 && r <= 5) && p.get('write') !== '1')) return;
+    stripParams('fb', 'r', 'write');
     const [orderId, t] = fb.split('.');
     put('gremier_fb_done:' + orderId, 1);
-    rate(orderId, t, r, 'email');
+    if (r >= 1 && r <= 5) rate(orderId, t, r, 'email');
+    else whenLanguageSet(() => writeSheet(orderId, t));
   }
 
   // Next visit: one small card, once per delivered order, only if the email wasn't answered.
@@ -200,7 +244,7 @@
     wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); });
     arriveFromReferral();
     arriveFromFeedbackEmail();
-    setTimeout(feedbackCard, 4000);
+    whenLanguageSet(() => setTimeout(feedbackCard, 3000));
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();

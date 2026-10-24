@@ -150,3 +150,7 @@ body.rtl #fbCard { padding:10px 14px 10px 46px; }
 #fbCard .fb-faces button:hover { background:#f5f6f7; }
 #fbCard .fb-x { top:50%; transform:translateY(-50%); width:28px; height:28px; font-size:1rem; }
 @media (min-width: 641px) { #fbCard { bottom:20px; } }
+#fbSheet .fb-pick { display:flex; justify-content:center; gap:4px; margin:4px 0 14px; }
+#fbSheet .fb-pick button { width:48px; height:48px; border:1px solid transparent; border-radius:50%; background:none; font-size:1.7rem; cursor:pointer; }
+#fbSheet .fb-pick button.on { border-color:#1a1a1a; background:#f5f6f7; }
+#fbSheet .fb-hint { margin:-4px 0 10px; color:#b3402f; }
