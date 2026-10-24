@@ -220,3 +220,16 @@ body.promo-banner .page { padding-top:calc(var(--promo-h, 38px) + 80px) !importa
 .kashrut-card { background:#fff; border-radius:18px; padding:22px 20px 18px; max-width:340px; width:100%; text-align:center; }
 .kashrut-card img { width:100%; max-width:260px; height:auto; }
 .kashrut-card p { font-size:.82rem; color:#5f656d; margin:12px 0 14px; line-height:1.5; }
+
+/* "By continuing to payment you agree to…" under the pay button (storefront-engage.js) */
+.co-terms { margin:8px 0 0; font-size:.72rem; color:#6b7178; text-align:center; line-height:1.5; }
+.co-terms a { color:inherit; text-decoration:underline; }
+
+/* Short rows (3 coffee bars) sit in the middle instead of leaving an empty 4th column. */
+@media (min-width: 641px) {
+  #featuredGrid, #coffeeBarGrid, #cbpPackages { grid-template-columns:repeat(auto-fit, minmax(250px, 282px)); justify-content:center; }
+}
+/* Shop on desktop: the title sits over the products, not over products + sidebar. */
+@media (min-width: 1024px) {
+  #shopPage > .section > .section-header { grid-column:2; }
+}

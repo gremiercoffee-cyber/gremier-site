@@ -145,6 +145,16 @@
     desc.insertAdjacentHTML('afterend', `<div id="ftKosher">${kosherChip('on-dark')}</div>`);
   }
 
+  // ── Checkout: the terms they agree to by paying (payment providers ask for this) ──
+  function placeTermsNote() {
+    const btn = $('t-co-submit');
+    if (!btn) return;
+    $('coTerms')?.remove();
+    btn.insertAdjacentHTML('afterend', `<p id="coTerms" class="co-terms">${T(
+      'By continuing to payment you agree to our <a href="/terms.html" target="_blank" rel="noopener">Terms</a> and <a href="/terms.html#returns" target="_blank" rel="noopener">cancellation policy</a>.',
+      'במעבר לתשלום אתם מסכימים ל<a href="/terms.html" target="_blank" rel="noopener">תקנון</a> ול<a href="/terms.html#returns" target="_blank" rel="noopener">מדיניות הביטולים</a>.')}</p>`);
+  }
+
   // ── Trust line under "Add to cart" ──
   function trustHtml() {
     // (Delivery times are already in the box above the button.)
@@ -301,8 +311,9 @@
     wrap('openProductDrawerUI', placeTrust);
     wrap('updateAccountPage', accountCard);
     wrap('showCheckoutResultUI', successCard);
-    wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); if ($('pdTrust')) placeTrust(); placeFooterKosher(); });
+    wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); if ($('pdTrust')) placeTrust(); placeFooterKosher(); placeTermsNote(); });
     placeFooterKosher();
+    placeTermsNote();
     arriveFromReferral();
     arriveFromFeedbackEmail();
     whenLanguageSet(() => setTimeout(feedbackCard, 3000));
