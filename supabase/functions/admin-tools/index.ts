@@ -17,6 +17,7 @@ import { sha256 } from "../_shared/hub-actions.ts";
 import { sendOrderEmails } from "../_shared/order-email.ts";
 import { settleReferral, signToken } from "../_shared/engage.ts";
 import { shabbatPromoActive } from "../_shared/weekly-promo.ts";
+import { type CustomerPush, pushToCustomer } from "../_shared/customer-push.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -301,6 +302,11 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
     if (dryRun) { sent.push(`(dry run) ${o.id}`); preview = preview || { to: email, subject, text }; continue; }
     const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: subject, customerText: text });
     if (!res.ok) { skip("email_failed"); continue; }
+    await pushToCustomer(sb, { email }, {
+      he: { title: "ההזמנה שלך מחכה ☕", body: "התחלת הזמנה ולא סיימת את התשלום. אפשר להשלים אותה בלחיצה." },
+      en: { title: "Your cold brew is waiting ☕", body: "You started an order but didn't finish paying. Tap to complete it." },
+      url: (text.match(/https:\/\/gremiercoffee\.co\.il\/\S+/) || [])[0]?.replace("https://gremiercoffee.co.il", "") || "/#shop", tag: "cart-reminder",
+    });
     await sb.from("cart_reminders").insert({ email, order_id: o.id });
     await sb.from("orders").update({ delivery_info: { ...(o.delivery_info || {}), cart_reminder_at: new Date().toISOString() } }).eq("id", o.id);
     sent.push(o.id);
@@ -436,8 +442,14 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
     if (error) { skip("sent_this_week"); continue; }
     const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(r.email), lastDay, images);
     const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: r.email, customerName: r.name, customerSubject: mail.subject, customerText: mail.text, customerHtml: mail.html });
-    if (res.ok) sent.push(r.from);
-    else { skip("email_failed"); await sb.from("promo_sends").delete().eq("email", r.email).eq("week", week); }
+    if (res.ok) {
+      sent.push(r.from);
+      await pushToCustomer(sb, { email: r.email }, {
+        he: { title: "🕯️ משלוח חינם לפני שבת", body: `${lastDay ? "רק היום" : "היום ומחר"}: מזמינים עד רביעי והמשלוח חינם. העגלה שלך מחכה.` },
+        en: { title: "🕯️ Free delivery before Shabbat", body: `${lastDay ? "Today only" : "Today and tomorrow"}: order by Wednesday and delivery is free. Your cart is waiting.` },
+        url: (mail.text.match(/https:\/\/gremiercoffee\.co\.il\/\S+/) || [])[0]?.replace("https://gremiercoffee.co.il", "") || "/#shop", tag: "weekly-promo",
+      });
+    } else { skip("email_failed"); await sb.from("promo_sends").delete().eq("email", r.email).eq("week", week); }
     await new Promise((done) => setTimeout(done, 600));   // stay under the email provider's rate limit
   }
   await sendOrderEmails({
@@ -593,6 +605,12 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
     if (first !== true) { skip("already_asked"); continue; }
     const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: subject, customerText: text, customerHtml: html });
     if (!res.ok) { skip("email_failed"); continue; }
+    // The shop app: a tap opens the five faces on the site.
+    await pushToCustomer(sb, { email }, {
+      he: { title: "איך היה הקולד ברו? ☕", body: "לחיצה אחת ואתם מדרגים. נשמח לשמוע!" },
+      en: { title: "How was your cold brew? ☕", body: "One tap to rate it. We'd love to hear!" },
+      url: `/?fb=${o.id}.${t}&write=1`, tag: `feedback-${o.id}`,
+    });
     sent.push(`#${o.order_number}`);
   }
   return { sent, skipped, ...(dryRun ? { preview } : {}) };
@@ -735,12 +753,20 @@ Deno.serve(async (req) => {
       case "site_analytics": return json({ ...(await siteAnalytics(body.days)), funnel: await siteFunnel(sb, body.days) });
       case "message_customer": {
         // Admin → customer update for an order (template text edited in the admin app).
-        const { data: order } = await sb.from("orders").select("id, order_number, customer_email, customer_name").eq("id", String(body.order_id || "")).maybeSingle();
+        const { data: order } = await sb.from("orders").select("id, order_number, customer_email, customer_name, user_id").eq("id", String(body.order_id || "")).maybeSingle();
         if (!order) return json({ error: "order_not_found" }, 404);
         const text = String(body.text || "").trim().slice(0, 2000);
         if (!text || !order.customer_email) return json({ error: !text ? "empty_message" : "no_customer_email" }, 400);
         const subject = String(body.subject || "").trim().slice(0, 120) || `Gremier Coffee · Order #${order.order_number ?? ""}`.trim();
         const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: order.customer_email, customerName: order.customer_name, customerSubject: subject, customerText: text });
+        // The shop app too: a short notification (the full message is in the email).
+        const n = order.order_number ?? "";
+        const pushes: Record<string, CustomerPush> = {
+          on_the_way: { he: { title: "🚚 ההזמנה בדרך!", body: `הזמנה #${n} בדרך אליכם. השליח ייצור קשר.` }, en: { title: "🚚 Your coffee is on the way!", body: `Order #${n} is on its way. The driver will be in touch.` } },
+          today: { he: { title: "📅 המשלוח מגיע היום", body: `הזמנה #${n} צפויה להגיע היום. נא להיות זמינים לשליח.` }, en: { title: "📅 Arriving today", body: `Order #${n} is expected today. Please be available for the driver.` } },
+        };
+        const push = pushes[String(body.template || "")] || { he: { title: `עדכון על הזמנה #${n}`, body: text.slice(0, 140) }, en: { title: `Update on order #${n}`, body: text.slice(0, 140) } };
+        if (res.ok) await pushToCustomer(sb, { email: order.customer_email, userId: order.user_id }, { ...push, url: "/#myorders", tag: `order-${order.id}` });
         if (res.ok) await sb.rpc("log_activity", { p_actor: "system", p_action: "order.customer_message", p_summary: `Message emailed to ${order.customer_name || "customer"} (order #${order.order_number ?? ""})`, p_ref: `orders:${order.id}`, p_details: null });
         return json({ ok: res.ok, detail: res.detail || null });
       }

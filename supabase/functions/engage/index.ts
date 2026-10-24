@@ -4,6 +4,8 @@
 //   { action: "feedback", order_id, t, rating, comment?, source? } → save / update an answer
 //   { action: "feedback_pending", order_ids }    → which of these delivered orders still have no answer
 //   { action: "track", sid, kind }               → anonymous funnel step (cart_add | checkout_open | pay_click)
+//   { action: "push_subscribe", subscription, lang, order_id? } → shop-app notifications on this device
+//   { action: "push_unsubscribe", endpoint }     → turn them off
 // Deploy with --no-verify-jwt.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensureReferralCode, logReferralEvent, notifyOwner, REFERRAL_AMOUNT, referralByCode, signToken, SITE } from "../_shared/engage.ts";
@@ -111,6 +113,39 @@ Deno.serve(async (req) => {
         const { data: recent } = await sb.from("site_events").select("id").eq("sid", sid).eq("kind", kind)
           .gte("created_at", new Date(Date.now() - 30 * 60000).toISOString()).limit(1);
         if (!recent?.length) await sb.from("site_events").insert({ sid, kind });
+        return json({ ok: true });
+      }
+
+      case "push_subscribe": {
+        // A shop-app device turning on notifications. It's linked to a customer only by proof:
+        // their login, or an order placed on this device (the order id is known only to the buyer).
+        const sub = body.subscription || {};
+        const endpoint = String(sub.endpoint || "").trim();
+        const p256dh = String(sub.keys?.p256dh || "").trim();
+        const auth = String(sub.keys?.auth || "").trim();
+        if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || !p256dh || !auth) return json({ error: "bad_subscription" }, 400);
+        let userId: string | null = null, email: string | null = null;
+        const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        if (jwt && jwt !== Deno.env.get("SUPABASE_ANON_KEY")) {
+          const { data } = await sb.auth.getUser(jwt).catch(() => ({ data: { user: null } }));
+          if (data?.user) { userId = data.user.id; email = data.user.email || null; }
+        }
+        if (!email && isUuid(body.order_id)) {
+          const { data: o } = await sb.from("orders").select("customer_email, created_at").eq("id", body.order_id).maybeSingle();
+          if (o?.customer_email && Date.now() - new Date(o.created_at).getTime() < 60 * 864e5) email = String(o.customer_email).toLowerCase();
+        }
+        const row: Record<string, unknown> = { endpoint, p256dh, auth, lang: body.lang === "en" ? "en" : "he", last_used_at: new Date().toISOString() };
+        // Re-subscribing without proof (e.g. a language change) keeps the link the device already has.
+        if (userId) row.user_id = userId;
+        if (email) row.email = email;
+        const { error } = await sb.from("customer_push_subscriptions").upsert(row, { onConflict: "endpoint" });
+        if (error) { console.error("push_subscribe:", error.message); return json({ error: "save_failed" }, 500); }
+        return json({ ok: true, linked: !!email });
+      }
+
+      case "push_unsubscribe": {
+        const endpoint = String(body.endpoint || "").trim();
+        if (endpoint) await sb.from("customer_push_subscriptions").delete().eq("endpoint", endpoint);
         return json({ ok: true });
       }
 

@@ -17,10 +17,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="preconnect" href="https://res.cloudinary.com" crossorigin/>
+  <link rel="preconnect" href="https://ayuzmwpmhncxrugsyxmw.supabase.co" crossorigin/>
   <link rel="preconnect" href="https://live.payme.io"/>
   <link rel="dns-prefetch" href="https://live.payme.io"/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;700&display=swap" rel="stylesheet"/>
   <link rel="icon" type="image/png" href="/favicon.png"/>
+  <!-- The shop as an app (storefront-app.js): home screen install + notifications -->
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#ffffff"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="Gremier"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
   <script src="/vendor/supabase-js.min.js?v=2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -743,7 +752,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261025-3"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261025-10"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -1039,7 +1048,6 @@
     <div class="eyebrow" style="color:rgba(255,255,255,.4)!important;margin-bottom:16px">Events & Occasions</div>
     <h1 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h1>
     <p class="cbp-hero-sub" id="t-cbp-hero-sub">Premium cold brew for your birthday, corporate event, or any occasion — we'll help you choose the right amount for your guest count.</p>
-    <a href="https://wa.me/972552703413?text=Hi!%20I%27m%20interested%20in%20booking%20a%20Gremier%20Coffee%20Bar%20for%20my%20event%20%E2%98%95%20Can%20you%20tell%20me%20more%3F" target="_blank" rel="noopener" class="btn btn-light" style="text-decoration:none">Book Your Event on WhatsApp ↗</a>
     <div><a href="#cbpPackages" onclick="event.preventDefault();document.getElementById('cbpPackages').scrollIntoView({behavior:'smooth',block:'start'})" class="cbp-see-pkgs">See packages ↓</a></div>
   </div>
   <div id="cbpHeroImgWrap" class="cbp-hero-img-wrap" style="display:none">
@@ -1054,12 +1062,7 @@
       <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.75;" id="t-cbp-intro">Premium Gremier cold brew for your party, corporate event, or special occasion — tailored to your guest count. Based in Jerusalem, serving events across Israel.</p>
     </div>
     <div class="product-grid" id="cbpPackages"><div class="loading"><div class="spinner"></div></div></div>
-    <p style="text-align:center;color:var(--text2);font-size:.82rem;margin-top:28px;line-height:1.7">
-      Prices vary by guest count and event requirements. <a href="https://wa.me/972552703413?text=Hi!%20I%27d%20like%20a%20custom%20quote%20for%20a%20Gremier%20Coffee%20Bar%20%E2%98%95" target="_blank" rel="noopener" style="color:#1a1a1a;text-decoration:none;font-weight:500">Message us for a custom quote →</a>
-    </p>
-    <p style="text-align:center;color:var(--text2);font-size:.8rem;margin-top:10px">
-      Coffee products are also available to order directly online — <button onclick="showPage('shop')" style="background:none;border:none;padding:0;cursor:pointer;color:#1a1a1a;font-weight:600;font-size:.8rem;text-decoration:underline">browse the shop →</button>
-    </p>
+    <div class="cbp-ask"><a class="cbp-wa" id="t-cbp-ask" href="https://wa.me/972552703413?text=Hi!%20I%20have%20a%20question%20about%20a%20Gremier%20Coffee%20Bar%20%E2%98%95" target="_blank" rel="noopener">Questions? Message us on WhatsApp</a></div>
   </div>
   <!-- How it works -->
   <div class="section section-alt">
@@ -2643,6 +2646,8 @@ async function createWebsiteOrder(orderData) {
   const headers = await getCheckoutAuthHeaders();
   if (currentUser?.id && !orderData.user_id) orderData.user_id = currentUser.id;
   orderData.site_lang = lang;   // follow-up emails go out in this language
+  // Notifications are on in the shop app on this device: link them to this customer.
+  try { const ep = localStorage.getItem('gremier_push_endpoint'); if (ep) orderData.push_endpoint = ep; } catch (_) {}
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
     method: 'POST',
@@ -2653,6 +2658,8 @@ async function createWebsiteOrder(orderData) {
   if (!res.ok || !data.id) {
     throw new Error(data.error || data.message || 'Could not create order');
   }
+  // Lets notifications turned on after paying (on the confirmation screen) find this order.
+  try { localStorage.setItem('gremier_last_order_id', data.id); } catch (_) {}
   return data; // { id, paid?: boolean, total?: number }
 }
 async function callCreatePayment(orderId) {
@@ -2987,9 +2994,19 @@ async function refreshUserProfile() {
 // ══ SITE SETTINGS (live images) ══
 let siteSettings = {};
 async function loadSiteSettings() {
+  const KEY = 'gremier_site_settings_v1';
+  try {
+    const cached = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (cached && typeof cached === 'object') { siteSettings = { ...cached }; applySiteImages(); }
+  } catch (_) {}
   const { data } = await sb.from('site_settings').select('key,value');
-  (data||[]).forEach(r => { if(r.value) siteSettings[r.key] = r.value; });
-  applySiteImages();
+  if (!data) return;
+  const fresh = {};
+  data.forEach(r => { if (r.value) fresh[r.key] = r.value; });
+  const changed = JSON.stringify(fresh) !== JSON.stringify(siteSettings);
+  siteSettings = fresh;
+  try { localStorage.setItem(KEY, JSON.stringify(fresh)); } catch (_) {}
+  if (changed) applySiteImages();
 }
 function applySiteImages() {
   // Coffee bars page — hero image
@@ -3519,14 +3536,14 @@ function transformGovCities(records) {
 async function loadIsraelCities() {
   if (israelCities.length) return;
   try {
-    const cached = sessionStorage.getItem(ISRAEL_CITIES_CACHE_KEY);
-    if (cached) { israelCities = JSON.parse(cached); return; }
+    const cached = JSON.parse(localStorage.getItem(ISRAEL_CITIES_CACHE_KEY) || 'null');
+    if (cached && Array.isArray(cached.list) && Date.now() - cached.ts < 7 * 864e5) { israelCities = cached.list; return; }
   } catch (_) {}
   try {
     const res = await fetch(ISRAEL_CITIES_API);
     const raw = await res.json();
     israelCities = transformGovCities(raw?.result?.records);
-    if (israelCities.length) sessionStorage.setItem(ISRAEL_CITIES_CACHE_KEY, JSON.stringify(israelCities));
+    if (israelCities.length) { try { localStorage.setItem(ISRAEL_CITIES_CACHE_KEY, JSON.stringify({ ts: Date.now(), list: israelCities })); } catch (_) {} }
   } catch (e) {
     console.warn('Israel cities API failed, using fallback list', e);
     try {
@@ -3537,11 +3554,8 @@ async function loadIsraelCities() {
 }
 
 async function loadDeliveryZones() {
-  try {
-    const [{ data: zones }, { data: settings }] = await Promise.all([
-      sb.from('delivery_zones').select('*').order('name_en'),
-      sb.from('delivery_settings').select('*').eq('id', 1).maybeSingle(),
-    ]);
+  const KEY = 'gremier_delivery_zones_v1';
+  const apply = (zones, settings) => {
     deliveryZones = (zones || []).filter(z => z.is_active !== false);
     if (settings) {
       deliveryDefaults = {
@@ -3550,10 +3564,24 @@ async function loadDeliveryZones() {
         expedited_surcharge: Number(settings.expedited_surcharge) || 20,
       };
     }
+  };
+  try {
+    const cached = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (cached && Array.isArray(cached.zones)) apply(cached.zones, cached.settings);
+  } catch (_) {}
+  loadIsraelCities().then(initCityAutocomplete);
+  try {
+    const [{ data: zones }, { data: settings }] = await Promise.all([
+      sb.from('delivery_zones').select('*').order('name_en'),
+      sb.from('delivery_settings').select('*').eq('id', 1).maybeSingle(),
+    ]);
+    if (zones) {
+      apply(zones, settings);
+      try { localStorage.setItem(KEY, JSON.stringify({ zones, settings })); } catch (_) {}
+    }
   } catch (e) {
-    deliveryZones = [];
+    if (!deliveryZones.length) deliveryZones = [];
   }
-  await loadIsraelCities();
   initCityAutocomplete();
 }
 
@@ -3781,21 +3809,27 @@ if (summaryTotal) {
 // ══ INIT ══
 async function init() {
   const oauthReturn = isOAuthReturnUrl();
-  await initAuth();
-  if (oauthReturn) cleanOAuthHashFromUrl();
-  await loadProducts();
-  window.GremierTaste?.loadBestSellers(sb, renderGrids);
-  try { await loadDeliveryZones(); } catch(e) { console.warn('Delivery zones unavailable:', e); }
+  // Everything starts at once and the page shows as soon as products are in (instantly from the
+  // browser cache on repeat visits). Sign-in (which also reads the profile), delivery zones and
+  // site images finish in the background; only pages that need them wait.
   loadSiteSettings();
+  const authReady = initAuth().catch((e) => console.warn('Sign-in unavailable:', e));
+  const zonesReady = loadDeliveryZones().catch((e) => console.warn('Delivery zones unavailable:', e));
+  await loadProducts();
+  if (oauthReturn) { await authReady; cleanOAuthHashFromUrl(); }
+  window.GremierTaste?.loadBestSellers(sb, renderGrids);
   applyTranslations();
   updateCartCount();
   if (isPaymentReturnUrl()) {
+    await Promise.all([authReady, zonesReady]);
     await handlePaymentReturn();
   } else if (oauthReturn) {
     appPage = 'home';
     showPage('home', true);
     navReplace({ page: 'home', layer: null }, true);
   } else {
+    // The account page needs to know who's signed in before it shows.
+    if (parsePageFromUrl().page === 'myorders') await authReady;
     restorePageFromUrl();
   }
 }
@@ -4655,6 +4689,7 @@ async function sendChatMessageText(text) {
     ['Refund Policy', 'מדיניות החזרים'],
     ['Privacy Policy', 'מדיניות פרטיות'],
     ['Terms of Service', 'תקנון האתר'],
+    ['Questions? Message us on WhatsApp', 'שאלות? כתבו לנו בוואטסאפ'],
     ['Gremier Assistant', 'העוזר של גרמיר'],
     ['● Online', '● מחובר'],
   ];
@@ -5181,8 +5216,9 @@ async function sendChatMessageText(text) {
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261024-4"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
-<script src="/storefront-planner.js?v=20261025-1"></script>
+<script src="/storefront-planner.js?v=20261025-9"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
+<script src="/storefront-app.js?v=20261025-1"></script>
 </body>
 </html>

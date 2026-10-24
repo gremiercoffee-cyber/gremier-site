@@ -2,6 +2,7 @@
 // validate-coupon, create-website-order and the paid-order step.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendOrderEmails } from "./order-email.ts";
+import { pushToCustomer } from "./customer-push.ts";
 
 type Sb = ReturnType<typeof createClient>;
 
@@ -88,6 +89,12 @@ export async function settleReferral(sb: Sb, orderId: string): Promise<void> {
     customerEmail: ref.email,
     customerSubject: "Your friend ordered — here's ₪20 from Gremier Coffee ☕",
     customerText: `Thank you for sharing Gremier Coffee!\n\nYour friend just placed their first order, so here's a ₪${REFERRAL_AMOUNT} gift card for your next one:\n\n${code}\n\nEnter it at checkout under "Coupon or gift card".\n${SITE}\n\nתודה ששיתפת! החבר/ה שלך הזמינו בפעם הראשונה, אז הנה כרטיס מתנה של ₪${REFERRAL_AMOUNT} להזמנה הבאה שלך:\n${code}\n\nGremier Coffee`,
+  });
+  // The shop app: one tap opens the site with the card saved (it applies at checkout).
+  await pushToCustomer(sb, { email: ref.email }, {
+    he: { title: `🎉 קיבלת ₪${REFERRAL_AMOUNT}!`, body: "חבר/ה שהזמנת הזמינו לראשונה. כרטיס המתנה שלך מחכה בקופה." },
+    en: { title: `🎉 You got ₪${REFERRAL_AMOUNT}!`, body: "Your friend placed their first order. Your gift card is waiting at checkout." },
+    url: `/?gift=${encodeURIComponent(code)}`, tag: "referral-reward",
   });
   await notifyOwner(
     `🎁 Referral paid off: order #${order.order_number}`,

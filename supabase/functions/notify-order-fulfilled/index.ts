@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendFulfillmentEmail } from "../_shared/order-email.ts";
 import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-order.ts";
 import { completeOpsDeliveryFromOrder, recordOpsInventoryFromClient } from "../_shared/sync-ops-delivery.ts";
+import { pushToCustomer } from "../_shared/customer-push.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,6 +139,11 @@ Deno.serve(async (req) => {
 
       emailed = emailResult.emailed;
       emailDetail = emailResult.detail;
+      await pushToCustomer(supabase, { email: order.customer_email, userId: order.user_id }, {
+        he: { title: "☕ ההזמנה נמסרה!", body: `הזמנה #${order.order_number ?? ""} הגיעה. מומלץ להכניס למקרר. בתיאבון!` },
+        en: { title: "☕ Delivered!", body: `Order #${order.order_number ?? ""} has arrived. Pop it in the fridge and enjoy!` },
+        url: "/#myorders", tag: `order-${orderId}`,
+      });
 
       if (emailResult.emailed) {
         await supabase.from("orders").update({

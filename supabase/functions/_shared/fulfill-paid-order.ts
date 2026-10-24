@@ -6,6 +6,7 @@ import { enqueuePendingWebsiteDelivery } from "./pending-delivery.ts";
 import { redeemOrderCodes } from "./redeem-order-codes.ts";
 import { issueFinbotReceipt } from "./finbot-receipts.ts";
 import { settleReferral } from "./engage.ts";
+import { pushToCustomer } from "./customer-push.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -47,8 +48,18 @@ async function settleLoyalty(supabase: SupabaseClient, orderId: string): Promise
   const earned = Math.max(0, Math.floor((Number(row.subtotal) || 0) / 10));
   const usedCoupon = Number(row.loyalty_discount) > 0;
   if (earned === 0 && !usedCoupon) return;
+  const before = await supabase.from("profiles").select("coupon_available").eq("id", row.user_id).maybeSingle();
   const { error: awardError } = await supabase.rpc("award_loyalty_points", { p_user: row.user_id, p_earned: earned, p_used_coupon: usedCoupon });
-  if (awardError) console.error("award_loyalty_points:", awardError.message);
+  if (awardError) { console.error("award_loyalty_points:", awardError.message); return; }
+  // These points unlocked the 10% coupon: tell them in the shop app.
+  const after = await supabase.from("profiles").select("coupon_available").eq("id", row.user_id).maybeSingle();
+  if (!before.data?.coupon_available && after.data?.coupon_available) {
+    await pushToCustomer(supabase, { userId: row.user_id }, {
+      he: { title: "🎁 פתחת 10% הנחה!", body: "צברת 200 נקודות. ההנחה תחכה לך בהזמנה הבאה." },
+      en: { title: "🎁 You unlocked 10% off!", body: "You've earned 200 points. The discount is waiting on your next order." },
+      url: "/#myorders", tag: "loyalty-coupon",
+    });
+  }
 }
 
 /** Server-side: verify PayMe if needed → mark paid → sheet + email. Safe to call multiple times. */
@@ -113,6 +124,17 @@ export async function fulfillPaidOrder(
     console.error("Finbot receipt unavailable; review receipt status for this order", orderId);
   }
   const result = await notifyPaidOrderOnce(supabase, orderId, { force: options?.force });
+  // The shop app: "order confirmed" on the customer's phone, sent once with the confirmation email.
+  if (result.sent && !result.skipped && order.source !== "gift_card") {
+    const { data: o } = await supabase.from("orders").select("order_number, customer_email, user_id").eq("id", orderId).maybeSingle();
+    if (o) {
+      await pushToCustomer(supabase, { email: o.customer_email, userId: o.user_id }, {
+        he: { title: `✅ הזמנה #${o.order_number} התקבלה`, body: "תודה! נעדכן כאן כשהקפה יוצא אליכם." },
+        en: { title: `✅ Order #${o.order_number} confirmed`, body: "Thank you! We'll let you know here when your coffee is on the way." },
+        url: "/#myorders", tag: `order-${orderId}`,
+      });
+    }
+  }
 
   return {
     paid: true,

@@ -1,8 +1,10 @@
 {
+  "id": "/admin.html",
   "name": "Gremier Hub",
   "short_name": "Gremier Hub",
   "description": "Gremier Coffee — website admin and operations.",
   "start_url": "/admin.html",
+  "scope": "/admin",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
@@ -33,6 +35,9 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "lang": "en"
 }

@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v29';
+const CACHE = 'gremier-v30';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -18,7 +18,8 @@ const PRECACHE = [
 // Install: pre-cache shell
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+    // One by one: a single missing file must not stop the worker from installing.
+    caches.open(CACHE).then(c => Promise.allSettled(PRECACHE.map(u => c.add(u)))).then(() => self.skipWaiting())
   );
 });
 
@@ -31,7 +32,8 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Web Push: show native notification (admin PWA)
+// Web Push: native notification. Admin alerts stay on screen until acted on; customer
+// notifications (audience 'customer', from the shop app) behave like normal app notifications.
 self.addEventListener('push', e => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch { data = { title: 'Gremier', body: e.data && e.data.text() }; }
@@ -47,10 +49,12 @@ self.addEventListener('push', e => {
     // Re-alert even when a notification with the same tag is showing, and keep
     // order alerts on screen until acted on so they can't be missed.
     renotify: !!data.tag,
-    requireInteraction: data.important !== false,
-    vibrate: [180, 80, 180],
+    requireInteraction: data.audience !== 'customer' && data.important !== false,
+    vibrate: data.audience === 'customer' ? [120] : [180, 80, 180],
+    image: data.image || undefined,
     data: {
-      url: data.url || '/admin.html',
+      url: data.url || (data.audience === 'customer' ? '/' : '/admin.html'),
+      audience: data.audience || 'admin',
       jobId: data.jobId || null,
       actionToken: data.actionToken || null,
     },
@@ -62,6 +66,19 @@ self.addEventListener('notificationclick', e => {
   const d = e.notification.data || {};
   const url = d.url || '/admin.html';
   e.notification.close();
+
+  // Customer notification: open the shop on the page it points to (reuse an open shop window).
+  if (d.audience === 'customer') {
+    const target = new URL(url, self.location.origin).href;
+    e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        const p = new URL(client.url).pathname;
+        if (!p.startsWith('/admin') && 'navigate' in client) return client.navigate(target).then(c => (c || client).focus());
+      }
+      return self.clients.openWindow(target);
+    }));
+    return;
+  }
 
   // One-tap drain completion — the side effect is a known amount of concentrate,
   // so it can be applied server-side without opening the app.
@@ -129,11 +146,10 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Never cache Supabase or Cloudinary API calls
-  if (url.hostname.includes('supabase.co') || url.hostname.includes('cloudinary.com')) {
-    e.respondWith(fetch(e.request));
-    return;
-  }
+  // Other sites (database, images, payments): straight to the network, untouched — routing them
+  // through here only added a delay. Google Fonts are still cached below.
+  if (e.request.method !== 'GET') return;
+  if (url.origin !== self.location.origin && !/^fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) return;
 
   // HTML: network first
   if (e.request.mode === 'navigate' || e.request.destination === 'document' || e.request.destination === 'iframe') {

@@ -97,7 +97,7 @@
     status.textContent = 'Sending email…';
     try {
       const subject = lang === 'he' ? `ההזמנה שלך מגרמיר קופי #${o.order_number}` : `Your Gremier Coffee order #${o.order_number}`;
-      const { res, data } = await callAdminFunction('admin-tools', { action: 'message_customer', order_id: o.id, text, subject });
+      const { res, data } = await callAdminFunction('admin-tools', { action: 'message_customer', order_id: o.id, text, subject, template: state.tpl?.key || null });
       if (!res.ok || !data.ok) throw new Error(data.error || data.detail || res.status);
       status.textContent = `✓ Emailed to ${o.customer_email}`;
       if (typeof showToast === 'function') showToast('Message emailed ✓');

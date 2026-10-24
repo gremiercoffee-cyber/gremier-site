@@ -480,6 +480,14 @@ If they pay, ${ref.email} gets a ₪20 gift card automatically.`);
       }
     }
 
+    // Notifications turned on in the shop app on this device: they're now this customer's.
+    const pushEndpoint = String(body.push_endpoint || "").trim();
+    if (/^https:\/\//.test(pushEndpoint) && customerEmail) {
+      await admin.from("customer_push_subscriptions")
+        .update({ email: String(customerEmail).toLowerCase(), ...(userId ? { user_id: userId } : {}) })
+        .eq("endpoint", pushEndpoint);
+    }
+
     // Coupon / gift card are consumed inside fulfillPaidOrder (redeemOrderCodes) for every
     // paid order — full coverage included — so there is no separate redeem call here.
 

@@ -6,6 +6,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isServiceOrAdmin } from '../_shared/security.ts';
+import { pushToCustomer } from '../_shared/customer-push.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 
@@ -306,6 +307,20 @@ Deno.serve(async (req) => {
       const mail: GiftEmail = { code, amount, recipientName: card.recipient_name, senderName: card.sender_name, message: card.message, he };
       const emailed = await sendGiftEmail(card.recipient_email, mail);
       if (emailed) await sendBuyerCopy(order.customer_email, card.recipient_email, mail);
+      // The shop app, for whoever has it: the recipient, and the buyer.
+      await pushToCustomer(sb, { email: card.recipient_email }, {
+        he: { title: '🎁 קיבלת כרטיס מתנה של ' + formatAmount(amount), body: (card.sender_name ? 'מאת ' + card.sender_name + '. ' : '') + 'לחיצה, והוא מחכה לך בקופה.' },
+        en: { title: '🎁 You got a ' + formatAmount(amount) + ' gift card', body: (card.sender_name ? 'From ' + card.sender_name + '. ' : '') + 'Tap and it’s waiting for you at checkout.' },
+        url: '/?gift=' + encodeURIComponent(code), tag: 'gift-' + card.id,
+      });
+      if (emailed && order.customer_email && order.customer_email.toLowerCase() !== String(card.recipient_email).toLowerCase()) {
+        const who = card.recipient_name || card.recipient_email;
+        await pushToCustomer(sb, { email: order.customer_email, userId: order.user_id }, {
+          he: { title: '🎁 כרטיס המתנה נשלח', body: 'שלחנו אותו אל ' + who + '.' },
+          en: { title: '🎁 Your gift card was sent', body: 'We emailed it to ' + who + '.' },
+          url: '/#giftcards', tag: 'gift-sent-' + card.id,
+        });
+      }
 
       return json({ ok: true, amount, emailed });
     }

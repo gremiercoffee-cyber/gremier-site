@@ -1,12 +1,14 @@
 {
-  "name": "Gremier Coffee Co.",
+  "id": "/",
+  "name": "Gremier Coffee",
   "short_name": "Gremier",
   "description": "Israel's premier cold brew, delivered to your door.",
-  "start_url": "/index.html",
+  "start_url": "/?source=app",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0d0a07",
-  "theme_color": "#0d0a07",
+  "background_color": "#f5f6f7",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "icon-192.png",
@@ -33,6 +35,34 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["food", "shopping"],
-  "lang": "en"
+  "categories": [
+    "food",
+    "shopping"
+  ],
+  "lang": "he",
+  "dir": "auto",
+  "shortcuts": [
+    {
+      "name": "Shop",
+      "short_name": "Shop",
+      "url": "/?source=app#shop",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "My orders",
+      "short_name": "Orders",
+      "url": "/?source=app#myorders",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
 }
