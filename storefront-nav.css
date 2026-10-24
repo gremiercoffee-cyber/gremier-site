@@ -154,3 +154,19 @@ body.rtl #fbCard { padding:10px 14px 10px 46px; }
 #fbSheet .fb-pick button { width:48px; height:48px; border:1px solid transparent; border-radius:50%; background:none; font-size:1.7rem; cursor:pointer; }
 #fbSheet .fb-pick button.on { border-color:#1a1a1a; background:#f5f6f7; }
 #fbSheet .fb-hint { margin:-4px 0 10px; color:#b3402f; }
+
+/* ── One look across the storefront: pill buttons in normal case, rounded fields and windows ── */
+.btn, .pd-add-btn { border-radius:999px; text-transform:none; letter-spacing:.02em; font-weight:600; }
+.btn-sm { padding-inline:16px; }
+.gc-amt-btn { border-radius:999px; }
+.form-input { border-radius:12px; }
+.modal-overlay .modal, .member-popup-box, #pointsModal > div { border-radius:20px; }
+.section-header .section-title { letter-spacing:-.01em; }
+
+/* Trust line (product drawer) and account invite (after payment) */
+.trust-row { display:flex; flex-wrap:wrap; justify-content:center; gap:4px 14px; margin-top:12px; font-size:.72rem; color:#6b7178; text-align:center; }
+.cx-trust { margin-top:10px; font-size:.7rem; color:#6b7178; text-align:center; }
+.acct-invite { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:16px 0; padding:14px 16px; border-radius:16px; background:#f5f6f7; border:1px solid #e3e5e8; text-align:start; }
+.acct-invite div { flex:1 1 200px; display:flex; flex-direction:column; gap:3px; font-size:.82rem; color:#5f656d; line-height:1.45; }
+.acct-invite b { color:#1a1a1a; font-size:.95rem; }
+.acct-invite button { padding:10px 16px; border-radius:999px; border:1px solid #dcdfe3; background:#fff; color:#1a1a1a; font:600 .8rem 'DM Sans', sans-serif; cursor:pointer; }

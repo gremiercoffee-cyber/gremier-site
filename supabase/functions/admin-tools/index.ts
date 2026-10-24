@@ -456,6 +456,26 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
 const CF_ACCOUNT = Deno.env.get("CF_ACCOUNT_ID") || "dc73ca97eef41fb2bd0a80c0835bee95";
 const CF_SITE_TAG = Deno.env.get("CF_SITE_TAG") || "70d0660355624e9c82205264385af935"; // gremiercoffee.co.il
 
+/** Website funnel for the same period: browsers that added to cart / opened checkout / pressed pay
+ *  (anonymous site_events), then website orders created (reached payment) and paid. */
+async function siteFunnel(sb: Sb, daysIn: unknown) {
+  const days = [1, 7, 30].includes(Number(daysIn)) ? Number(daysIn) : 7;
+  const since = new Date(Date.now() - days * 864e5).toISOString();
+  const browsers = async (kind: string) => {
+    const { data } = await sb.from("site_events").select("sid").eq("kind", kind).gte("created_at", since).limit(20000);
+    return new Set((data || []).map((r) => r.sid)).size;
+  };
+  const { data: orders } = await sb.from("orders").select("payment_status, customer_name").eq("source", "website").gte("created_at", since);
+  const real = (orders || []).filter((o) => !/^test\b/i.test(o.customer_name || ""));
+  return {
+    cart: await browsers("cart_add"),
+    checkout: await browsers("checkout_open"),
+    pay: await browsers("pay_click"),
+    orders: real.length,
+    paid: real.filter((o) => o.payment_status === "paid").length,
+  };
+}
+
 async function siteAnalytics(daysIn: unknown) {
   const token = Deno.env.get("CF_ANALYTICS_TOKEN");
   if (!token) return { configured: false };
@@ -564,7 +584,7 @@ Deno.serve(async (req) => {
         }
         return json(await cartReminders(sb, body.dry_run === true));
       }
-      case "site_analytics": return json(await siteAnalytics(body.days));
+      case "site_analytics": return json({ ...(await siteAnalytics(body.days)), funnel: await siteFunnel(sb, body.days) });
       case "message_customer": {
         // Admin → customer update for an order (template text edited in the admin app).
         const { data: order } = await sb.from("orders").select("id, order_number, customer_email, customer_name").eq("id", String(body.order_id || "")).maybeSingle();

@@ -3,6 +3,7 @@
 //   { action: "ref_event", code, kind }          → "share" | "open"; the owner gets an email
 //   { action: "feedback", order_id, t, rating, comment?, source? } → save / update an answer
 //   { action: "feedback_pending", order_ids }    → which of these delivered orders still have no answer
+//   { action: "track", sid, kind }               → anonymous funnel step (cart_add | checkout_open | pay_click)
 // Deploy with --no-verify-jwt.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensureReferralCode, logReferralEvent, notifyOwner, REFERRAL_AMOUNT, referralByCode, signToken, SITE } from "../_shared/engage.ts";
@@ -100,6 +101,17 @@ Deno.serve(async (req) => {
           pending.push({ order_id: o.id, order_number: o.order_number, t: await signToken("feedback", o.id) });
         }
         return json({ pending: pending.slice(0, 1) });
+      }
+
+      case "track": {
+        // Funnel step from a browser (random id, no personal data); once per id+step per 30 minutes.
+        const sid = String(body.sid || "");
+        const kind = String(body.kind || "");
+        if (!/^[a-z0-9]{8,32}$/.test(sid) || !["cart_add", "checkout_open", "pay_click"].includes(kind)) return json({ ok: false });
+        const { data: recent } = await sb.from("site_events").select("id").eq("sid", sid).eq("kind", kind)
+          .gte("created_at", new Date(Date.now() - 30 * 60000).toISOString()).limit(1);
+        if (!recent?.length) await sb.from("site_events").insert({ sid, kind });
+        return json({ ok: true });
       }
 
       default:

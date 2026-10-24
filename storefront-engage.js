@@ -108,9 +108,38 @@
   function successCard() {
     const view = $('checkoutConfirmView');
     if (!view || view.style.display === 'none') return;
-    const email = (typeof currentUser !== 'undefined' && currentUser?.email) || (get('gremier_checkout_details_v1') || {}).email;
-    placeShareCard(view.querySelector('.confirm-sub'), email, 'refSuccess');
+    const signedIn = typeof currentUser !== 'undefined' && !!currentUser;
+    const email = (signedIn && currentUser.email) || (get('gremier_checkout_details_v1') || {}).email;
+    if (!signedIn && !$('acctInvite')) {
+      // Accounts bring one-tap checkout, saved addresses, points and reorder: invite guests once they've paid.
+      view.querySelector('.confirm-sub')?.insertAdjacentHTML('afterend', `<div id="acctInvite" class="acct-invite">
+        <div><b>${T('Save your details for next time', 'שמרו את הפרטים לפעם הבאה')}</b>
+        <span>${T('One-tap checkout, saved addresses and loyalty points.', 'תשלום בלחיצה, כתובות שמורות ונקודות מועדון.')}</span></div>
+        <button type="button" onclick="handleAuthClick()">${T('Continue with Google', 'המשך עם Google')}</button></div>`);
+    }
+    placeShareCard($('acctInvite') || view.querySelector('.confirm-sub'), email, 'refSuccess');
   }
+
+  // ── Trust line under "Add to cart" (kashrut slot shows once the logo is set) ──
+  function trustHtml() {
+    // (Delivery times are already in the box above the button.)
+    return `<span>🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</span>`;
+  }
+  function placeTrust() {
+    const btn = $('pdAddBtn');
+    if (!btn) return;
+    let row = $('pdTrust');
+    if (!row) { row = document.createElement('div'); row.id = 'pdTrust'; row.className = 'trust-row'; (btn.closest('.pd-actions, .pd-footer') || btn.parentElement).after(row); }
+    row.innerHTML = trustHtml();
+  }
+
+  // ── Funnel steps: anonymous, one random id per browser ──
+  function sid() {
+    let id = get('gremier_sid');
+    if (!/^[a-z0-9]{8,32}$/.test(id || '')) { id = (Math.random().toString(36).slice(2, 12) + Date.now().toString(36)).slice(0, 24); put('gremier_sid', id); }
+    return id;
+  }
+  const track = (kind) => engage({ action: 'track', sid: sid(), kind });
 
   // ── Feedback: one click from the email (/?fb=<order>.<token>&r=1..5), or the card on a later visit ──
   function feedbackSheet(orderId, t, rating, refLink) {
@@ -238,10 +267,16 @@
         return r;
       };
     };
-    wrap('openCheckout', () => setTimeout(applyReferralAtCheckout, 500));
+    wrap('openCheckout', () => { setTimeout(applyReferralAtCheckout, 500); track('checkout_open'); });
+    wrap('addToCart', () => track('cart_add'));
+    wrap('pdAddToCart', () => track('cart_add'));
+    wrap('reorder', () => track('cart_add'));
+    const submit = window.submitOrder;
+    if (typeof submit === 'function') window.submitOrder = function () { track('pay_click'); return submit.apply(this, arguments); };
+    wrap('openProductDrawerUI', placeTrust);
     wrap('updateAccountPage', accountCard);
     wrap('showCheckoutResultUI', successCard);
-    wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); });
+    wrap('applyTranslations', () => { $('refAccount')?.remove(); $('refSuccess')?.remove(); accountCard(); if ($('pdTrust')) placeTrust(); });
     arriveFromReferral();
     arriveFromFeedbackEmail();
     whenLanguageSet(() => setTimeout(feedbackCard, 3000));

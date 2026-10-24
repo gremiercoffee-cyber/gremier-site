@@ -28,6 +28,22 @@
         <span class="vis-v">${num(r.visits || r.views)}</span></div>`).join('')}</div>`;
   }
 
+  // Where people drop off: each step with how many continued from the one before.
+  function funnelHtml(data) {
+    const f = data.funnel;
+    if (!f) return '';
+    const steps = [
+      ['Visitors', data.visits || 0], ['Added to cart', f.cart], ['Opened checkout', f.checkout],
+      ['Reached payment', f.orders], ['Paid', f.paid],
+    ];
+    const top = Math.max(steps[0][1], 1);
+    return `<div class="vis-funnel"><div class="vis-list-title">From visit to order</div>${steps.map(([label, n], i) => {
+      const prev = i ? steps[i - 1][1] : 0;
+      const pct = i && prev ? `${Math.round((100 * n) / prev)}%` : '';
+      return `<div class="vis-f-row"><span class="vis-k">${label}</span><span class="vis-bar"><i style="width:${Math.max(2, Math.round((100 * n) / top))}%"></i></span><span class="vis-v">${num(n)}</span><span class="vis-pct">${pct}</span></div>`;
+    }).join('')}<small class="vis-f-note">% = of the step before. Cart and checkout counts started 24 Oct 2026.</small></div>`;
+  }
+
   window.adminLoadVisitors = async function () {
     if (!mount()) return;
     const body = document.getElementById('visBody');
@@ -60,6 +76,7 @@
         <div><b>${num(data.views)}</b><span>Page views</span></div>
       </div>
       ${chart}
+      ${funnelHtml(data)}
       <div class="vis-lists">
         ${list('Came from', data.referrers || [], (k) => String(k || '').replace(/^(www|l|m|lm)\./, '') || 'Direct / app')}
         ${list('Country', data.countries || [], (k) => k || 'Unknown')}

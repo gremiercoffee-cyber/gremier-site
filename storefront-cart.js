@@ -61,6 +61,9 @@
     footer?.querySelector('.cx-free')?.remove();
     const free = freeDeliveryHtml();
     if (free && footer) footer.insertAdjacentHTML('afterbegin', free);
+    // How they can pay, under the buttons.
+    footer?.querySelector('.cx-trust')?.remove();
+    footer?.insertAdjacentHTML('beforeend', `<div class="cx-trust">🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</div>`);
   }
 
   function hook() {
