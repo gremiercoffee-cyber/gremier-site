@@ -1281,21 +1281,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Paid online orders</span><span><i class="dash-store-dot"></i>Store delivery value</span></div></div><div id="dashTrend"></div></section>
   <section class="dash-panel dash-coverage"><div><h2>Accounts &amp; expenses</h2></div><div class="dash-coverage-status"><button class="btn btn-outline btn-sm" onclick="showTab('reports')">Stats</button><button class="btn btn-outline btn-sm" onclick="showTab('expenses')">Expense inbox</button></div></section>
 
-  <!-- Daily Operations Briefing -->
-  <div class="card briefing-card" id="dashBriefingCard">
-    <div class="briefing-head" onclick="toggleBriefingCard(event)" title="Click to open or collapse the briefing">
-      <h3 class="briefing-title">☕ Today's Briefing</h3>
-      <div class="briefing-actions">
-        <button type="button" class="btn btn-outline btn-sm" onclick="loadBriefing({ force: true }); event.stopPropagation();" id="dashBriefingBtn">Build Briefing</button>
-        <button type="button" class="btn btn-outline btn-sm btn-icon briefing-toggle" onclick="toggleBriefingCard(event)" id="dashBriefingToggle" title="Collapse briefing">▾</button>
-      </div>
-    </div>
-    <div id="dashBriefingCollapsedSummary" class="briefing-collapsed-summary"></div>
-    <div id="dashBriefingBody" class="briefing-body">
-      <div class="briefing-empty">No briefing yet.</div>
-    </div>
-  </div>
-
   <!-- Revenue chart -->
   <div class="card collapse-card" data-collapse-key="dash_chart" data-collapse-default="collapsed" style="margin-bottom:24px">
     <div class="collapse-head">
@@ -1951,7 +1936,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
-<script src="/admin-dashboard.js?v=20261025-1"></script>
+<script src="/admin-dashboard.js?v=20261025-2"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
 <script>
   function escHtml(s) {
@@ -8075,6 +8060,7 @@ function briefingRenderCache(cache) {
   return true;
 }
 function ensureDailyBriefing() {
+  return; // Paused by owner; do not load or render cached briefings.
   if (briefingRenderCache(briefingReadCache())) return;
   if (!window.__dashBriefingLoadedForDate) window.__dashBriefingLoadedForDate = {};
   const today = briefingLocalISO(0);
@@ -8086,6 +8072,7 @@ function ensureDailyBriefing() {
 }
 
 async function loadBriefing(options = {}) {
+  return; // Paused by owner, including manual "Build Briefing" calls.
   const btn = document.getElementById('dashBriefingBtn');
   const body = document.getElementById('dashBriefingBody');
   if (!body || window.__dashBriefingLoading) return;

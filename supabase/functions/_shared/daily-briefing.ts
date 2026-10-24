@@ -171,6 +171,7 @@ function dedupeAgainstHeadline(headline: string, items: BriefingItem[]): Briefin
 
 /** Ask Luna for the prioritized read. Returns null if unavailable - caller falls back. */
 export async function generateAiBriefing(snapshot: unknown): Promise<BriefingResult> {
+  if (Deno.env.get('DAILY_AI_BRIEFING_ENABLED') !== 'true') return null;
   const key = Deno.env.get("OPENAI_API_KEY");
   if (!key) {
     console.warn("daily-briefing: OPENAI_API_KEY not set - skipping AI section");

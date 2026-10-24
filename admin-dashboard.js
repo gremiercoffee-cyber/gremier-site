@@ -130,7 +130,6 @@
     const token=++request, cached=readCache(r);
     el('dashUpdated').textContent='Refreshing business data…';
     el('dashRefresh').disabled=true;
-    if (typeof ensureDailyBriefing === 'function') ensureDailyBriefing();
     if(cached){render(model(cached.data,r),cached.data);el('dashUpdated').textContent='Saved '+new Date(cached.savedAt).toLocaleString('en-IL',{timeZone:'Asia/Jerusalem'})+' · refreshing…';}
     else loadingState();
     try {
