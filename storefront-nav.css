@@ -386,7 +386,7 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .planner .bs-g .bs-it + .bs-it { margin-inline-start:-16px; }
 .planner .bs-it[style*="--row:1"], .planner .bs-it[style*="--row:2"] { filter:brightness(.9) drop-shadow(0 8px 6px rgba(60,35,15,.22)); }
 .planner .bs-disp .bs-it + .bs-it { margin-inline-start:-22px; }
-.planner .bs-milk .bs-it + .bs-it, .planner .bs-parve .bs-it + .bs-it { margin-inline-start:-26px; }
+.planner .bs-milk .bs-it + .bs-it, .planner .bs-parve .bs-it + .bs-it { margin-inline-start:-5px; }
 .planner .bs-coffee .bs-it + .bs-it { margin-inline-start:-40px; }
 .planner .bs-caramel, .planner .bs-vanilla, .planner .bs-sugar { margin-inline-start:-10px; }
 .planner .bs-straws { margin-inline-start:-14px; }
@@ -432,5 +432,18 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 @keyframes bbRow { from { opacity:0; transform:translateY(-6px); background:#fff7ec; } to { opacity:1; transform:none; background:transparent; } }
 @media (max-width: 760px) { .planner .bb-list { grid-template-columns:1fr; } }
 /* The scene's table carries the brand: logo and name on the front panel */
-.planner .bs-counter::after { content:"GREMIER COFFEE CO."; position:absolute; left:50%; bottom:6px; transform:translateX(-50%); z-index:1; display:flex; align-items:center; gap:8px; padding-inline-start:30px; height:24px;
-  background:url('/logo.png') left center / 22px 22px no-repeat; font:600 .62rem/24px 'DM Sans', sans-serif; letter-spacing:.32em; color:rgba(40,28,18,.55); white-space:nowrap; }
+.planner .bs-brand { position:absolute; left:50%; bottom:7px; z-index:1; transform:translateX(-50%); display:flex; align-items:center; gap:9px; white-space:nowrap; font:600 .6rem/1 'DM Sans', sans-serif; letter-spacing:.34em; color:rgba(40,28,18,.55); }
+.planner .bs-brand img { width:22px; height:22px; border-radius:50%; object-fit:cover; opacity:.85; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+@media (max-width: 760px) { .planner .bs-brand { bottom:5px; font-size:.54rem; } .planner .bs-brand img { width:18px; height:18px; } }
+
+/* The Gremier table from the ad: walnut top, black fluted front, the round badge */
+.planner .bs { --tt:22px; --te:11px; --tp:88px; height:340px; }
+.planner .bs-counter { height:calc(var(--tt) + var(--te) + var(--tp)); box-shadow:0 -10px 30px rgba(255,210,150,.12);
+  background:url('/bar/table-top.webp?v=1') 0 0 / 100% var(--tt) no-repeat, url('/bar/table-edge.webp?v=1') 0 var(--tt) / 100% var(--te) no-repeat, url('/bar/table-panel.webp?v=1') 0 calc(var(--tt) + var(--te)) / auto var(--tp) repeat-x, #141414; }
+.planner .bs-counter::before, .planner .bs-counter::after, .planner .bs-brand { display:none; content:none; }
+.planner .bs-logo { position:absolute; left:50%; bottom:calc(var(--tp) * .04); z-index:2; height:calc(var(--tp) * 1.02); width:auto; transform:translateX(-50%); filter:drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+.planner .bs-stage { bottom:calc(var(--te) + var(--tp) + var(--tt) * .45); }
+@media (max-width: 760px) {
+  .planner .bs { --tt:16px; --te:8px; --tp:62px; height:270px; }
+  .planner .bs-stage { bottom:calc(var(--te) + var(--tp) + var(--tt) * .45); }
+}

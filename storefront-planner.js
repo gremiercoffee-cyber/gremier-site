@@ -59,10 +59,10 @@
   // ── The bar, live: the real products (cut out of their photos, in /bar) standing on a counter.
   //    Real-world heights in cm keep them in proportion; the whole bar zooms out as it grows.
   const PIC = { disp: 'dispenser', classic: 'jer_classic', house: 'jer_house', colomb: 'jer_colombia', caramel: 'caramel', vanilla: 'vanilla', sugar: 'sugar', milk: 'milk', cups: 'cups', straws: 'straws' };
-  const src = (k) => `/bar/${PIC[k]}.webp?v=2`;
+  const src = (k) => `/bar/${PIC[k]}.webp?v=5`;
   const CM = { disp: 40, jug: 31, syrup: 23, milk: 24, cups: 30, straws: 27 };
   // Width ÷ height of each cut-out, so the bar can be measured before the photos load.
-  const RATIO = { disp: 201 / 420, classic: 287 / 420, house: 286 / 420, colomb: 287 / 420, caramel: 165 / 420, vanilla: 163 / 420, sugar: 163 / 420, milk: 158 / 420, cups: 121 / 420, straws: 207 / 420 };
+  const RATIO = { disp: 201 / 420, classic: 287 / 420, house: 286 / 420, colomb: 288 / 420, caramel: 166 / 420, vanilla: 163 / 420, sugar: 163 / 420, milk: 143 / 420, cups: 121 / 420, straws: 207 / 420 };
   // One 5-liter jug of cold brew per 25 guests.
   const jugsFor = (guests) => Math.max(1, Math.ceil(guests / 25));
 
@@ -118,7 +118,7 @@
     }).join('');
     shown = new Map(list.map((x) => [x.key, `${x.n || 1}|${x.v || ''}`]));
     const legend = list.map((x) => `<span>${x.n > 1 ? `<b>${x.n}×</b> ` : ''}${esc(x.title)}</span>`).join('');
-    return `<div class="bs" id="bbScene"><div class="bs-wall"></div><div class="bs-stage" id="bbStage">${groups}</div><div class="bs-counter"></div></div>
+    return `<div class="bs" id="bbScene"><div class="bs-wall"></div><div class="bs-stage" id="bbStage">${groups}</div><div class="bs-counter"><img class="bs-logo" src="/bar/table-logo.webp?v=1" alt="Gremier Coffee Co."></div></div>
       <div class="bs-legend">${legend}</div>`;
   }
   // Zoom the bar to fit, and slide things that moved (FLIP) instead of letting them jump.
@@ -137,7 +137,8 @@
     stage.style.setProperty('--z', prevZ);
     void stage.offsetWidth;
     stage.style.transition = '';
-    const fit = Math.min(1.7, (scene.clientWidth - 28) / width, (scene.clientHeight - 60) / stage.scrollHeight);
+    const room = scene.clientHeight - parseFloat(getComputedStyle(stage).bottom) - 22;   // above the table
+    const fit = Math.min(1.7, (scene.clientWidth - 28) / width, room / stage.scrollHeight);
     stage.style.setProperty('--z', fit.toFixed(3));
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const rects = new Map();
@@ -157,7 +158,7 @@
   // Until there are clean product photos for the scene (shot one by one on white), the bar is
   // shown with its real photo and an itemized list that updates as they choose. Set
   // SCENE_READY = true to switch the live scene on.
-  const SCENE_READY = false;
+  const SCENE_READY = true;
   function barPhotoHtml(plan) {
     const list = tiles(plan);
     lastTiles = list.map((x) => ({ ...x, isNew: !shown.has(x.key), changed: shown.has(x.key) && shown.get(x.key) !== `${x.n || 1}|${x.v || ''}` }));
