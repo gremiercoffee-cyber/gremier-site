@@ -2731,6 +2731,7 @@ async function getCheckoutAuthHeaders() {
 async function createWebsiteOrder(orderData) {
   const headers = await getCheckoutAuthHeaders();
   if (currentUser?.id && !orderData.user_id) orderData.user_id = currentUser.id;
+  orderData.site_lang = lang;   // follow-up emails go out in this language
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
     method: 'POST',
@@ -5377,7 +5378,7 @@ async function sendChatMessageText(text) {
 </script>
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
-<script src="/storefront-cart.js?v=20261024-3"></script>
+<script src="/storefront-cart.js?v=20261024-4"></script>
 <script src="/storefront-engage.js?v=20261024-4"></script>
 <script src="/storefront-planner.js?v=20261024-1"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>

@@ -80,11 +80,11 @@
         id: i.id, base_product_id: i.base_product_id, name_en: i.name_en, name_he: i.name_he, qty: i.qty, price: i.price,
         is_subscription: !!i.is_subscription, options: !!((i.selected_variations && Object.keys(i.selected_variations).length) || i.selected_guest_price || (i.selected_addons && i.selected_addons.length)),
       }));
-      const key = JSON.stringify(items);
+      const key = JSON.stringify(items) + lang;
       if (key === lastSaved) return;
       lastSaved = key;
       try {
-        await sb.from('profiles').update({ saved_cart: items.length ? items : null, saved_cart_at: new Date().toISOString() }).eq('id', currentUser.id);
+        await sb.from('profiles').update({ saved_cart: items.length ? items : null, saved_cart_at: new Date().toISOString(), site_lang: lang }).eq('id', currentUser.id);
       } catch (_) {}
     }, 2500);
   }
@@ -95,6 +95,9 @@
     window.renderCartDrawer = function () { const r = orig.apply(this, arguments); try { decorate(); } catch (_) {} return r; };
     const save = window.saveCartToStorage;
     if (typeof save === 'function') window.saveCartToStorage = function () { const r = save.apply(this, arguments); saveToProfile(); return r; };
+    // Switching language updates it on the profile too (emails follow it).
+    const toggle = window.toggleLang;
+    if (typeof toggle === 'function') window.toggleLang = function () { const r = toggle.apply(this, arguments); saveToProfile(); return r; };
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();

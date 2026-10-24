@@ -247,6 +247,14 @@ function quietNow(): boolean {
   return hour < 9 || hour >= 21;
 }
 
+/** Emails go out in the language the customer had the website in (saved with the order since
+ *  Oct 2026). Older orders: Hebrew if their name or address is written in Hebrew. */
+function orderIsHe(o: Record<string, any>): boolean {
+  const l = o?.delivery_info?.site_lang;
+  if (l === "he" || l === "en") return l === "he";
+  return /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+}
+
 /** Case-insensitive exact match: "_" and "%" in an email are not wildcards. */
 const likeExact = (v: string) => v.replace(/[\\%_]/g, (c) => "\\" + c);
 
@@ -287,7 +295,7 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
     if (ignored >= REMIND.ignoredLimit) { skip("ignores_reminders"); continue; }
 
     done.add(email);
-    const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+    const he = orderIsHe(o);
     const optoutUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-tools?optout=${encodeURIComponent(email)}&t=${await optoutToken(email)}`;
     const { subject, text } = reminderEmail(o, he, optoutUrl);
     if (dryRun) { sent.push(`(dry run) ${o.id}`); preview = preview || { to: email, subject, text }; continue; }
@@ -305,7 +313,7 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
 // Once a week, to people who left something this week (since Sunday, Israel time): a checkout that
 // wasn't paid, or a signed-in cart that never became an order. One email per person per week
 // (promo_sends), same skips as the cart reminders. Runs Tuesday morning; Wednesday is the last day.
-function promoEmail(name: string, items: Record<string, any>[], he: boolean, optoutUrl: string, lastDay: boolean) {
+function promoEmail(name: string, items: Record<string, any>[], he: boolean, optoutUrl: string, lastDay: boolean, images: Record<string, string> = {}) {
   const first = String(name || "").trim().split(/\s+/)[0] || "";
   const lines = items.map((i) => `${he ? (i.name_he || i.name_en) : i.name_en} ×${i.qty}`);
   // Plain items refill the cart on the site; anything with options goes through the shop.
@@ -327,7 +335,10 @@ function promoEmail(name: string, items: Record<string, any>[], he: boolean, opt
   const html = `<div dir="${he ? "rtl" : "ltr"}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
     <p style="font-size:17px;line-height:1.5;margin:0 0 18px">${esc(intro)}</p>
     <p style="font-size:13px;color:#5f656d;margin:0 0 6px">${cartTitle}</p>
-    <p style="font-size:15px;line-height:1.6;margin:0 0 20px">${lines.map(esc).join("<br>")}</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px;border-collapse:collapse">${items.map((i, n) => {
+      const img = images[String(i.base_product_id || i.product_id || i.id).split("_")[0]];
+      return `<tr><td style="padding:6px 8px">${img ? `<img src="${img}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid #eee">` : ""}</td><td style="padding:6px 8px;font-size:15px;text-align:${he ? "right" : "left"}">${esc(lines[n])}</td></tr>`;
+    }).join("")}</table>
     <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:15px">${cta}</a>
     <p style="font-size:12px;color:#8a8f96;margin:22px 0 0">${note}</p>
     <p style="font-size:13px;color:#8a8f96;margin-top:24px">${sign}</p>
@@ -356,17 +367,17 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
 
   // 1. Checkouts this week that weren't paid (latest per person).
   const { data: unpaid } = await sb.from("orders")
-    .select("id, created_at, customer_email, customer_name, delivery_address, items, total")
+    .select("id, created_at, customer_email, customer_name, delivery_address, delivery_info, items, total")
     .eq("source", "website").eq("status", "awaiting_payment").neq("payment_status", "paid")
     .gte("created_at", since).not("customer_email", "is", null).order("created_at", { ascending: false });
   for (const o of unpaid || []) {
     const email = String(o.customer_email || "").trim().toLowerCase();
     if (!email || picks.has(email)) continue;
     if (/^test\b/i.test(o.customer_name || "") || (o.items || []).some((i: any) => /^test$/i.test(i.name_en || ""))) { skip("test"); continue; }
-    picks.set(email, { email, name: o.customer_name || "", items: o.items || [], he: isHe(`${o.customer_name || ""} ${o.delivery_address || ""}`), from: "checkout", after: o.created_at });
+    picks.set(email, { email, name: o.customer_name || "", items: o.items || [], he: orderIsHe(o), from: "checkout", after: o.created_at });
   }
   // 2. Signed-in carts this week that didn't reach checkout.
-  const { data: carts } = await sb.from("profiles").select("email, full_name, saved_cart, saved_cart_at, checkout_details")
+  const { data: carts } = await sb.from("profiles").select("email, full_name, saved_cart, saved_cart_at, checkout_details, site_lang")
     .not("saved_cart", "is", null).gte("saved_cart_at", since);
   for (const p of carts || []) {
     const email = String(p.email || "").trim().toLowerCase();
@@ -374,7 +385,7 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
     if (!email || !items.length || picks.has(email)) continue;
     const cd = (p.checkout_details || {}) as Record<string, any>;
     const name = cd.name || p.full_name || "";
-    picks.set(email, { email, name, items, he: isHe(`${name} ${cd.address || ""} ${JSON.stringify(cd.city || "")}`), from: "saved_cart", after: p.saved_cart_at });
+    picks.set(email, { email, name, items, he: p.site_lang === "he" || p.site_lang === "en" ? p.site_lang === "he" : isHe(`${name} ${cd.address || ""} ${JSON.stringify(cd.city || "")}`), from: "saved_cart", after: p.saved_cart_at });
   }
 
   const recipients: Pick[] = [];
@@ -391,14 +402,27 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
   }
 
   const lastDay = day === "Wed";
+  // Product photos for the cart thumbnails (small, cropped by Cloudinary).
+  const ids = [...new Set([...picks.values()].flatMap((r) => r.items.map((i) => String(i.base_product_id || i.product_id || i.id || "").split("_")[0])).filter(Boolean))];
+  const images: Record<string, string> = {};
+  if (ids.length) {
+    const { data: prods } = await sb.from("products").select("id, images").in("id", ids);
+    for (const p of prods || []) {
+      const url = Array.isArray(p.images) ? String(p.images[0] || "") : "";
+      if (url) images[p.id] = url.replace("/image/upload/", "/image/upload/w_112,h_112,c_pad,b_white,f_jpg,q_80/");
+    }
+  }
   if (dryRun) {
     const out: Record<string, unknown> = { week, since, would_send: recipients.length, recipients: recipients.map((r) => `${r.from}: ${r.email.replace(/^(.).*@/, "$1…@")}`), skipped };
     if (testTo) {
-      const sample = [{ id: "x", name_en: "Classic Dark Roast", name_he: "קלייה כהה קלאסית", qty: 2 }];
+      // Nobody this week: a sample cart with a real product, so the thumbnail shows.
+      const { data: p } = await sb.from("products").select("id, name_en, name_he, images").eq("is_active", true).ilike("name_en", "%classic dark%").limit(1).maybeSingle();
+      const sample = [{ id: p?.id || "x", name_en: p?.name_en || "Classic Dark Roast", name_he: p?.name_he || "קלייה כהה קלאסית", qty: 2 }];
+      if (p && Array.isArray(p.images) && p.images[0]) images[p.id] = String(p.images[0]).replace("/image/upload/", "/image/upload/w_112,h_112,c_pad,b_white,f_jpg,q_80/");
       const he = recipients.find((r) => r.he) || { name: "", items: sample, he: true };
       const en = recipients.find((r) => !r.he) || { name: "", items: sample, he: false };
       for (const [i, r] of [he, en].entries()) {
-        const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(testTo), lastDay);
+        const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(testTo), lastDay, images);
         await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: testTo, customerSubject: `[Test ${i + 1}] ${mail.subject}`, customerText: mail.text, customerHtml: mail.html });
       }
       out.test_sent_to = testTo;
@@ -410,7 +434,7 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
     // Claim first, so a second run can't send twice.
     const { error } = await sb.from("promo_sends").insert({ email: r.email, week });
     if (error) { skip("sent_this_week"); continue; }
-    const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(r.email), lastDay);
+    const mail = promoEmail(r.name, r.items, r.he, await optoutUrlFor(r.email), lastDay, images);
     const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: r.email, customerName: r.name, customerSubject: mail.subject, customerText: mail.text, customerHtml: mail.html });
     if (res.ok) sent.push(r.from);
     else { skip("email_failed"); await sb.from("promo_sends").delete().eq("email", r.email).eq("week", week); }
@@ -492,7 +516,7 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
     recipients.push(o);
   }
   const build = async (o: Record<string, any>, to: string) => {
-    const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+    const he = orderIsHe(o);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
     const mail = feedbackEmail(o, he, links, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) });
@@ -504,8 +528,8 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
     const out: Record<string, unknown> = { would_send: recipients.length, orders: recipients.map((o) => `#${o.order_number}`), skipped };
     if (body.send_test_to && recipients.length) {
       // Samples go to the test address only: one Hebrew and one English if both exist.
-      const he = recipients.find((o) => /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`));
-      const en = recipients.find((o) => !/[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`));
+      const he = recipients.find((o) => orderIsHe(o));
+      const en = recipients.find((o) => !orderIsHe(o));
       for (const [i, o] of [he, en].filter(Boolean).entries()) {
         const mail = await build(o!, String(body.send_test_to));
         await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: String(body.send_test_to), customerSubject: `[Test ${i + 1}] ${mail.subject}`, customerText: mail.text, customerHtml: mail.html });
@@ -560,7 +584,7 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
     const { data: optout } = await sb.from("cart_reminder_optouts").select("email").eq("email", email).maybeSingle();
     if (optout) { skip("opted_out"); continue; }
     done.add(email);
-    const he = /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+    const he = orderIsHe(o);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
     const { subject, text, html } = feedbackEmail(o, he, links, { optoutUrl: await optoutUrlFor(email) });
@@ -684,9 +708,9 @@ Deno.serve(async (req) => {
       case "feedback_requests": {
         if (body.preview_order_id) {
           // The email a given order would get, optionally sent to a test address (nothing is marked as asked).
-          const { data: o } = await sb.from("orders").select("id, customer_email, customer_name, delivery_address").eq("id", String(body.preview_order_id)).maybeSingle();
+          const { data: o } = await sb.from("orders").select("id, customer_email, customer_name, delivery_address, delivery_info").eq("id", String(body.preview_order_id)).maybeSingle();
           if (!o) return json({ error: "order_not_found" }, 404);
-          const he = body.lang ? body.lang === "he" : /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+          const he = body.lang ? body.lang === "he" : orderIsHe(o);
           const t = await signToken("feedback", o.id);
           const mail = feedbackEmail(o, he, [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`));
           if (body.send_to) await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: String(body.send_to), customerSubject: "[Test] " + mail.subject, customerText: mail.text, customerHtml: mail.html });
@@ -699,9 +723,9 @@ Deno.serve(async (req) => {
       case "cart_reminders": {
         if (body.preview_order_id) {
           // Just the email a given order would get (nothing is sent).
-          const { data: o } = await sb.from("orders").select("customer_email, customer_name, delivery_address, items").eq("id", String(body.preview_order_id)).maybeSingle();
+          const { data: o } = await sb.from("orders").select("customer_email, customer_name, delivery_address, delivery_info, items").eq("id", String(body.preview_order_id)).maybeSingle();
           if (!o) return json({ error: "order_not_found" }, 404);
-          const he = body.lang ? body.lang === "he" : /[֐-׿]/.test(`${o.customer_name || ""} ${o.delivery_address || ""}`);
+          const he = body.lang ? body.lang === "he" : orderIsHe(o);
           const to = String(body.preview_email || o.customer_email || "").trim().toLowerCase();
           return json(reminderEmail(o, he, `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-tools?optout=${encodeURIComponent(to)}&t=${await optoutToken(to)}`));
         }

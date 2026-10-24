@@ -3,6 +3,7 @@
 -- even if checkout was never opened. The website writes it (users can update their own profile).
 alter table public.profiles add column if not exists saved_cart jsonb;
 alter table public.profiles add column if not exists saved_cart_at timestamptz;
+alter table public.profiles add column if not exists site_lang text;   -- "he" or "en": the language emails go out in
 
 -- One promo email per person per week.
 create table if not exists public.promo_sends (

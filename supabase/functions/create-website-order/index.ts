@@ -444,6 +444,7 @@ Deno.serve(async (req) => {
         zone_id: delivery.zone?.id || null,
         zone_name: delivery.zone?.name_en || "",
         pricing_source: delivery.source,
+        site_lang: body.site_lang === "he" ? "he" : body.site_lang === "en" ? "en" : null,
         ...(shabbatPromo ? { shabbat_promo: true } : {}),
         server_priced: true,
         gift_card_id: giftCardId,
