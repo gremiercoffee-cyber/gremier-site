@@ -3305,6 +3305,7 @@ function ScheduleTab() {
   }
   useEffect2(() => {
     reload();
+    window.__gremierReloadSchedule = reload;
     // listen for a prefill handed off from the global website-queue pill (tapped from another tab),
     // since this component mounts once and stays mounted — a plain mount check would miss later handoffs
     function onPrefillHandoff(e) {
@@ -3322,10 +3323,10 @@ function ScheduleTab() {
     async function onOpenJobCheckoff(e) {
       const jobId = e.detail && e.detail.jobId;
       if (!jobId) {
-        window.showTab && window.showTab('schedule');
+        window.showTab && window.showTab('orders');
         return;
       }
-      window.showTab && window.showTab('schedule');
+      window.showTab && window.showTab('orders');
       try {
         const rows = await window.opsFetch(`jobs?id=eq.${encodeURIComponent(jobId)}&select=*`);
         const row = rows && rows[0];
@@ -3348,6 +3349,7 @@ function ScheduleTab() {
     window.addEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
+      if (window.__gremierReloadSchedule === reload) delete window.__gremierReloadSchedule;
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
       window.removeEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
@@ -3659,6 +3661,8 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
   if (loading) return /*#__PURE__*/React.createElement("div", {
     style: {
       ...TS.screen,
+      minHeight: 0,
+      padding: '24px 12px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -3676,17 +3680,22 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     }
   }), "Loading schedule\u2026");
   return /*#__PURE__*/React.createElement("div", {
-    style: TS.screen
-  }, /*#__PURE__*/React.createElement("div", {
     style: {
-      padding: '16px 12px 0'
+      ...TS.screen,
+      minHeight: 0,
+      paddingBottom: 0
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
+      padding: '0 12px'
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
       fontFamily: "'DM Sans',sans-serif",
-      fontSize: '1.5rem',
+      fontSize: '1.1rem',
+      fontWeight: 600,
       color: '#121212',
-      marginBottom: 14
+      margin: '0 0 14px'
     }
   }, "Schedule"), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3869,14 +3878,20 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       cursor: 'pointer'
     },
     onClick: () => setShowAllDates(true)
-  }, "Show ", Object.keys(grouped).length - 3, " more dates \u25BE"), /*#__PURE__*/React.createElement("div", {
+  }, "Show ", Object.keys(grouped).length - 3, " more dates \u25BE"), ReactDOM.createPortal( /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       ...TS.card,
       margin: '10px 12px'
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    "aria-expanded": calOpen,
     style: {
       display: 'flex',
+      width: '100%',
+      padding: 0,
+      border: 0,
+      background: 'none',
       alignItems: 'center',
       justifyContent: 'space-between',
       cursor: 'pointer',
@@ -3884,7 +3899,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       marginBottom: calOpen ? 10 : 0
     },
     onClick: toggleCal
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       fontWeight: 700,
@@ -3903,6 +3918,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       marginBottom: 10
     }
   }, /*#__PURE__*/React.createElement("button", {
+    "aria-label": "Previous month",
     style: {
       background: 'none',
       border: 'none',
@@ -3927,6 +3943,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     month: 'long',
     year: 'numeric'
   })), /*#__PURE__*/React.createElement("button", {
+    "aria-label": "Next month",
     style: {
       background: 'none',
       border: 'none',
@@ -4012,7 +4029,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       cursor: 'pointer'
     },
     onClick: () => handleDelete(j)
-  }, "\uD83D\uDDD1")))), waOpen && /*#__PURE__*/React.createElement(WaDrawer2, {
+  }, "\uD83D\uDDD1"))))), document.getElementById('ops-schedule-extras-root')), waOpen && /*#__PURE__*/React.createElement(WaDrawer2, {
     jobs: waPending,
     stores: stores,
     onMarkSent: async id => {

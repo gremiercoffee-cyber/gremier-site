@@ -118,7 +118,7 @@ window.loadHtml2Canvas = function () {
             setHubMode('website');
           }
           if (typeof showTab === 'function') {
-            showTab(localStorage.getItem('gremier_admin_tab') || 'schedule');
+            showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
           }
           if (typeof loadOrders === 'function') loadOrders();
           if (typeof loadAllProducts === 'function') loadAllProducts();
@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261025-1">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261023-1"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261025-2"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -754,7 +754,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <a class="sidebar-logo" href="#dashboard" onclick="event.preventDefault();showTab('dashboard')" aria-label="Open dashboard"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></a>
       <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
-        <div class="nav-item" onclick="showTab('schedule')" id="nav-schedule"><span class="icon">📅</span><span>Schedule</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
@@ -790,16 +789,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-stock" class="tab-content" style="display:none">
         <div id="ops-stock-root"></div>
       </div>
-        <!-- SCHEDULE (ops) TAB -->
-      <div id="tab-schedule" class="tab-content" style="display:none">
-        <div id="ops-schedule-root"></div>
-      </div>
       <!-- ORDERS -->
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
           <h1 class="page-title">Orders</h1>
 
         </div>
+        <section id="ordersSchedule" aria-label="Schedule"><div id="ops-schedule-root"></div></section>
+        <h2 class="orders-section-title">Customer orders</h2>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
             <thead><tr>
@@ -824,7 +821,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             </table></div>
           </div>
         </div>
-        <!-- Orders are why you open this page: lists first, then the tools -->
+        <section id="ops-schedule-extras-root" aria-label="Monthly schedule and completed tasks"></section>
+        <!-- Order filters and tools follow the schedule, orders, and calendar. -->
         <div style="margin-top:20px">
         <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
           <div class="collapse-head">
@@ -1478,9 +1476,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
   <!-- MOBILE BOTTOM TAB BAR — 5 most-used tabs; the rest live in the drawer -->
   <div class="bottom-tab-bar" id="bottomTabBar">
-    <button class="tab-bar-btn" id="tbar-schedule" onclick="showTab('schedule')">
-      <span class="tab-icon">&#128197;</span>Schedule
-    </button>
     <button class="tab-bar-btn" id="tbar-orders" onclick="showTab('orders')">
       <span class="tab-icon">&#128722;</span>Orders
     </button>
@@ -2553,6 +2548,7 @@ async function signOut() { window.GremierDashboard?.clearCache(); await sb.auth.
 
   window.__gremierPushAdminTabState = function __gremierPushAdminTabState(tab, replace) {
     try {
+      if (tab==='schedule') tab='orders';
       const state = { __gremierAdmin: true, tab: tab };
       if (replace || !window.__gremierAdminHistoryReady) {
         history.replaceState(state, '', location.href);
@@ -2567,7 +2563,7 @@ async function signOut() { window.GremierDashboard?.clearCache(); await sb.auth.
 
   window.addEventListener('popstate', function onAdminPopState(e) {
     const state = e.state || {};
-    const fallback = localStorage.getItem('gremier_admin_tab') || 'schedule';
+    const fallback = localStorage.getItem('gremier_admin_tab') || 'dashboard';
     const tab = state.__gremierAdmin && state.tab ? state.tab : fallback;
     window.__gremierShowTabFromHistory = true;
     try {
@@ -2579,7 +2575,7 @@ async function signOut() { window.GremierDashboard?.clearCache(); await sb.auth.
   });
 
   window.addEventListener('DOMContentLoaded', function rememberCurrentAdminScreen() {
-    const tab = localStorage.getItem('gremier_admin_tab') || 'schedule';
+    const tab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
     window.__gremierPushAdminTabState(tab, true);
   });
 })();
@@ -3120,6 +3116,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeNavDraw
 
 // ══ TABS ══
 function showTab(tab) {
+  if (tab==='schedule') tab='orders';
   localStorage.setItem('gremier_admin_tab', tab);
 
   document.querySelectorAll('.tab-content').forEach(el => {
@@ -6056,6 +6053,7 @@ async function confirmSchedule() {
   closeSchedModal();
 }
 function showTab(tab) {
+  if (tab==='schedule') tab='orders';
   if (tab==='today') tab='dashboard';
   if (!document.getElementById('tab-' + tab)) tab = 'dashboard';
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
@@ -6090,7 +6088,7 @@ function showTab(tab) {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
   }
-  if (tab==='schedule') {
+  if (tab==='orders') {
     if (typeof window.__gremierReloadSchedule === 'function') window.__gremierReloadSchedule({ silent: true });
   }
   if (tab==='dashboard') loadDashboard();
@@ -9222,10 +9220,10 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-ui.js?v=20261023-2"></script>
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
-<script src="/admin-react-1.js?v=367256c067"></script>
+<script src="/admin-react-1.js?v=d7763c03f4"></script>
 <script src="/admin-react-2.js?v=0ff5f54a7f"></script>
 
-<script src="/admin-react-3.js?v=f0f93d646b"></script>
+<script src="/admin-react-3.js?v=6b308d82aa"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">
@@ -9303,7 +9301,7 @@ window.opsFetch = window.opsFetch || (function () {
     </div>`);
   const sideNav = document.getElementById('websiteNav');
   document.getElementById('nav-giftcards')?.insertAdjacentHTML('afterend', `<div class="nav-item" onclick="showTab('subscriptions')" id="nav-subscriptions"><span class="icon">🔁</span><span>Subscriptions</span></div>`);
-  // Dashboard remains in the bottom bar; Schedule covers today's operational work.
+  // Dashboard stays in the bottom bar; Orders includes the schedule.
   const drawer = document.getElementById('navDrawer');
   const firstItem = drawer?.querySelector('.nav-drawer-item');
   firstItem?.insertAdjacentHTML('beforebegin', `<button class="nav-drawer-item" onclick="hubOpenSearch();closeNavDrawer()"><span>🔍</span>Search</button>`);

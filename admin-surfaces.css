@@ -98,3 +98,4 @@
 
 #tab-storedeliveries .page-header .header-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}#tab-storedeliveries .page-header .header-actions .btn{min-width:0;padding:7px 8px;line-height:1.3}@media(max-width:650px){#tab-storedeliveries .page-header .header-actions .btn{font-size:.7rem}}@media(min-width:769px){#tab-storedeliveries .page-header .header-actions{width:auto;grid-template-columns:repeat(3,max-content)}}
 #dashRefresh:disabled{opacity:1;animation:appIconSpin 1s linear infinite}@keyframes appIconSpin{to{transform:rotate(360deg)}}
+#tab-orders .orders-section-title{font-size:1.1rem;font-weight:600;margin:20px 0 14px;letter-spacing:-.02em}#ordersSchedule{margin-bottom:20px;min-width:0}#ops-schedule-extras-root{margin-top:20px;min-width:0}

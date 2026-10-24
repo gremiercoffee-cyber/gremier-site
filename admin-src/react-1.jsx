@@ -1508,6 +1508,7 @@ const [showForm, setShowForm] = useState2(false);
   }
   useEffect2(()=>{
     reload();
+    window.__gremierReloadSchedule = reload;
     // listen for a prefill handed off from the global website-queue pill (tapped from another tab),
     // since this component mounts once and stays mounted — a plain mount check would miss later handoffs
     function onPrefillHandoff(e) {
@@ -1522,8 +1523,8 @@ const [showForm, setShowForm] = useState2(false);
     // confirm-quantities checkoff for one job, so stock still gets confirmed.
     async function onOpenJobCheckoff(e) {
       const jobId = e.detail && e.detail.jobId;
-      if (!jobId) { window.showTab && window.showTab('schedule'); return; }
-      window.showTab && window.showTab('schedule');
+      if (!jobId) { window.showTab && window.showTab('orders'); return; }
+      window.showTab && window.showTab('orders');
       try {
         const rows = await window.opsFetch(`jobs?id=eq.${encodeURIComponent(jobId)}&select=*`);
         const row = rows && rows[0];
@@ -1538,6 +1539,7 @@ const [showForm, setShowForm] = useState2(false);
     window.addEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
+      if (window.__gremierReloadSchedule === reload) delete window.__gremierReloadSchedule;
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
       window.removeEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
@@ -1775,12 +1777,12 @@ async function addJobFromForm(job, mode) {
     await patchJob2(job.id,{date:newDate,time:newTime||null});
     await reload();
   }
-  if (loading) return <div style={{...TS.screen,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a6a6a'}}><div style={{width:20,height:20,border:'2px solid #cccccc',borderTopColor:'#1a1a1a',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div>;
+  if (loading) return <div style={{...TS.screen,minHeight:0,padding:'24px 12px',display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a6a6a'}}><div style={{width:20,height:20,border:'2px solid #cccccc',borderTopColor:'#1a1a1a',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div>;
 
   return (
-    <div style={TS.screen}>
-      <div style={{padding:'16px 12px 0'}}>
-        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.5rem',color:'#121212',marginBottom:14}}>Schedule</div>
+    <div style={{...TS.screen,minHeight:0,paddingBottom:0}}>
+      <div style={{padding:'0 12px'}}>
+        <h2 style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.1rem',fontWeight:600,color:'#121212',margin:'0 0 14px'}}>Schedule</h2>
         <div style={{display:'flex',gap:10,marginBottom:14}}>
           <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#1a1a1a',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
           <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#ffffff',color:'#333333',border:'1px solid #e0e0e0',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
@@ -1832,17 +1834,18 @@ async function addJobFromForm(job, mode) {
         </button>
       )}
 
-      {/* calendar */}
+      {ReactDOM.createPortal(<>
+      {/* calendar follows the customer orders on the combined page */}
       <div style={{...TS.card,margin:'10px 12px'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none',marginBottom:calOpen?10:0}} onClick={toggleCal}>
-          <div style={{fontSize:13,fontWeight:700,color:'#121212'}}>📅 Month view</div>
+        <button type="button" aria-expanded={calOpen} style={{display:'flex',width:'100%',padding:0,border:0,background:'none',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none',marginBottom:calOpen?10:0}} onClick={toggleCal}>
+          <span style={{fontSize:13,fontWeight:700,color:'#121212'}}>📅 Month view</span>
           <span style={{fontSize:12,color:'#6a6a6a'}}>{calOpen?'▾':'▸'}</span>
-        </div>
+        </button>
         {calOpen&&<>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-          <button style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month-1);return{year:d.getFullYear(),month:d.getMonth()};})}>‹</button>
+          <button aria-label="Previous month" style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month-1);return{year:d.getFullYear(),month:d.getMonth()};})}>‹</button>
           <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1rem',color:'#121212'}}>{new Date(monthView.year,monthView.month).toLocaleDateString('en',{month:'long',year:'numeric'})}</div>
-          <button style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month+1);return{year:d.getFullYear(),month:d.getMonth()};})}>›</button>
+          <button aria-label="Next month" style={{background:'none',border:'none',color:'#121212',fontSize:20,cursor:'pointer'}} onClick={()=>setMonthView(mv=>{const d=new Date(mv.year,mv.month+1);return{year:d.getFullYear(),month:d.getMonth()};})}>›</button>
         </div>
         <MiniCalendar2 year={monthView.year} month={monthView.month} jobs={jobs} today={today} onDayTap={setCalDay}/>
         </>}
@@ -1867,6 +1870,8 @@ async function addJobFromForm(job, mode) {
           ))}
         </div>
       )}
+
+      </>,document.getElementById('ops-schedule-extras-root'))}
 
       {/* floating drawer pills now rendered globally via GlobalPillsFloat — see end of file */}
 

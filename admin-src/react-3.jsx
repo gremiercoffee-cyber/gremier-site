@@ -198,7 +198,7 @@ function validateVoiceJob3(job) {
   if (job.type === 'labeling' && !(Number(job.qty) > 0)) return 'Labeling is missing the quantity.';
   if ((job.type === 'brew' || job.type === 'drain') && !job.product) return 'Production is missing the concentrate type.';
   if (job.type === 'drain' && (job._unsafeDrain || isSuspiciousDrainJob2(job))) return 'That sounds like a bottle stock correction, not a real drain. Use the Stock tab; I will not save it as a drain.';
-  if (job.type === 'drain' && job.done) return 'Drain changes concentrate by a full brew amount. Please check off the Drain task from the Schedule tab so it shows the liters before changing stock.';
+  if (job.type === 'drain' && job.done) return 'Drain changes concentrate by a full brew amount. Please check off the Drain task from the Orders schedule so it shows the liters before changing stock.';
   return null;
 }
 async function saveVoiceJobAndEffects3(job, intent, stores) {
@@ -445,7 +445,7 @@ function GlobalPillsFloat() {
         cbAddress: o.delivery_address || '',
         people,
       };
-      window.showTab('schedule');
+      window.showTab('orders');
       window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
       return;
     }
@@ -454,9 +454,9 @@ function GlobalPillsFloat() {
     if (!Object.keys(prefill.quantities || {}).length && prefill.unresolvedItems?.length) {
       console.warn('Schedule opened without mapped product quantities:', prefill.unresolvedItems);
     }
-    // ScheduleTab only renders its form while mounted on the Schedule tab itself —
-    // switch there and hand off the prefill via an event so it opens pre-populated
-    window.showTab('schedule');
+    // The schedule lives on Orders; open that screen
+    // and hand off the prefill via an event so it opens pre-populated.
+    window.showTab('orders');
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
     }, 0);
