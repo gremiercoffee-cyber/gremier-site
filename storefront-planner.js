@@ -128,7 +128,7 @@
   document.addEventListener('input', (e) => {
     if (e.target.id !== 'plGuests') return;
     const n = parseInt(e.target.value, 10);
-    if (n > 0) { state.guests = n; clearTimeout(render.t); render.t = setTimeout(() => { render(); const i = $('plGuests'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 500); }
+    if (n > 0) { state.guests = n; clearTimeout(render.t); render.t = setTimeout(() => { render(); const i = $('plGuests'); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (_) {} } }, 500); }
   });
 
   function mount() {

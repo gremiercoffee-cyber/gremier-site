@@ -59,10 +59,12 @@ Deno.serve(async (req) => {
     const recipientEmail = String(body.recipient_email || "").trim();
     const recipientName = cleanText(body.recipient_name, 120) || null;
     const message = cleanText(body.message, 500) || null;
+    const senderName = cleanText(body.sender_name, 80) || null;
+    const siteLang = body.site_lang === "he" ? "he" : body.site_lang === "en" ? "en" : null;
 
     // Validate amount (sane range to prevent abuse)
-    if (!amount || amount < 10 || amount > 2000) {
-      return json({ error: "Amount must be between ₪10 and ₪2000" }, 400);
+    if (!amount || amount < 50 || amount > 2000 || !Number.isInteger(amount)) {
+      return json({ error: "Amount must be a whole number between ₪50 and ₪2000" }, 400);
     }
     if (!recipientEmail || !isValidEmail(recipientEmail)) {
       return json({ error: "Valid recipient email required" }, 400);
@@ -99,8 +101,10 @@ Deno.serve(async (req) => {
             amount,
             recipient_email: recipientEmail,
             recipient_name: recipientName,
+            sender_name: senderName,
             message,
           },
+          site_lang: siteLang,
         },
         status: "awaiting_payment",
         payment_status: "unpaid",

@@ -743,7 +743,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261025-2"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261025-3"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -944,78 +944,11 @@
     </div>
     <div class="product-grid" id="shopGrid"><div class="loading"><div class="spinner"></div></div></div>
  
-    <div style="max-width:560px;margin:48px auto 0;background:#1a1a1a;border-radius:8px;padding:32px;text-align:center;color:#fff">
-      <div style="font-size:2rem;margin-bottom:10px">🎁</div>
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:8px" id="t-gc-buy-title">Gift the Perfect Brew</h3>
-      <p style="font-size:.86rem;color:rgba(255,255,255,.6);margin-bottom:20px;line-height:1.6" id="t-gc-buy-sub">Send a Gremier gift card — they pick what they love, you make their day. Delivered instantly by email.</p>
-      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:18px" id="gcAmountBtns">
-        <button class="gc-amt-btn" data-amt="50" onclick="gcSelectAmount(50)">₪50</button>
-        <button class="gc-amt-btn" data-amt="100" onclick="gcSelectAmount(100)">₪100</button>
-        <button class="gc-amt-btn" data-amt="150" onclick="gcSelectAmount(150)">₪150</button>
-        <button class="gc-amt-btn" data-amt="200" onclick="gcSelectAmount(200)">₪200</button>
-      </div>
-      <button class="btn btn-light" onclick="openGiftCardPurchase()" id="t-gc-buy-btn" style="font-size:.84rem">Buy a Gift Card →</button>
-    </div>
   </div>
 </div>
-  <!-- ══ GIFT CARDS PAGE ══ -->
+  <!-- ══ GIFT CARDS PAGE (storefront-gift.js) ══ -->
 <div id="giftcardsPage" class="page" style="padding-top:80px">
-  <div class="section">
-    <div class="section-header">
-      <div class="eyebrow">Send a Gift</div>
-      <div class="divider"></div>
-      <h2 class="section-title">Gift Cards</h2>
-      <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.75">Give the gift of great cold brew. They choose what they love, delivered fresh to their door.</p>
-    </div>
-    <div style="max-width:480px;margin:0 auto">
-      <!-- Amount picker -->
-      <div style="margin-bottom:28px">
-        <div class="form-label" style="text-align:center;margin-bottom:14px">Choose an amount</div>
-        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap" id="gcPageAmtBtns">
-          <button class="gc-page-amt-btn active" data-amt="50" onclick="gcPagePick(50)">₪50</button>
-          <button class="gc-page-amt-btn" data-amt="100" onclick="gcPagePick(100)">₪100</button>
-          <button class="gc-page-amt-btn" data-amt="150" onclick="gcPagePick(150)">₪150</button>
-          <button class="gc-page-amt-btn" data-amt="200" onclick="gcPagePick(200)">₪200</button>
-        </div>
-        <input class="form-input" type="number" id="gcPageCustom" placeholder="Or enter a custom amount (₪)" style="margin-top:12px;text-align:center" oninput="gcPageCustomInput()"/>
-      </div>
-      <!-- Details form -->
-      <div style="background:#f7f5f2;border:1px solid var(--border);border-radius:8px;padding:28px">
-        <div class="form-group"><label class="form-label">Recipient email</label><input class="form-input" type="email" id="gcPageEmail" placeholder="friend@example.com"/></div>
-        <div class="form-group"><label class="form-label">Recipient name (optional)</label><input class="form-input" id="gcPageName" placeholder="Dana"/></div>
-        <div class="form-group"><label class="form-label">Gift message (optional)</label><textarea class="form-input" id="gcPageMessage" rows="3" placeholder="Enjoy a coffee on me!"></textarea></div>
-        <div style="background:#fff;border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:.82rem;color:var(--text2)">Gift card value</span>
-          <span style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#1a1a1a" id="gcPageAmtDisplay">₪50</span>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="purchaseGiftCardFromPage()" id="gcPageBuyBtn">Continue to Payment</button>
-        <p style="font-size:.74rem;color:var(--text2);text-align:center;margin-top:12px;line-height:1.5">The code is emailed to the recipient instantly after payment. Balance never expires and carries over across orders.</p>
-      </div>
-
-      <!-- How it works -->
-      <div style="margin-top:48px">
-        <h3 style="font-family:'Playfair Display',serif;font-size:1.3rem;text-align:center;margin-bottom:24px">How it works</h3>
-        <div style="display:flex;flex-direction:column;gap:16px">
-          <div style="display:flex;gap:14px;align-items:flex-start">
-            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">1</div>
-            <div><div style="font-weight:600;margin-bottom:3px">Choose an amount</div><div style="font-size:.84rem;color:var(--text2)">Pick ₪50, ₪100, ₪150, ₪200 or any custom amount.</div></div>
-          </div>
-          <div style="display:flex;gap:14px;align-items:flex-start">
-            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">2</div>
-            <div><div style="font-weight:600;margin-bottom:3px">Pay securely</div><div style="font-size:.84rem;color:var(--text2)">Checkout with your card via PayMe — takes 30 seconds.</div></div>
-          </div>
-          <div style="display:flex;gap:14px;align-items:flex-start">
-            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">3</div>
-            <div><div style="font-weight:600;margin-bottom:3px">They get the code</div><div style="font-size:.84rem;color:var(--text2)">The recipient gets an email with their unique gift card code immediately.</div></div>
-          </div>
-          <div style="display:flex;gap:14px;align-items:flex-start">
-            <div style="width:36px;height:36px;background:#1a1a1a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;flex-shrink:0">4</div>
-            <div><div style="font-weight:600;margin-bottom:3px">They shop & redeem</div><div style="font-size:.84rem;color:var(--text2)">Enter the code at checkout. Remaining balance stays on the card for next time.</div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <div class="section" id="gcRoot"></div>
 </div>
 <!-- ══ ACCOUNT PAGE ══ -->
 <div id="myordersPage" class="page" style="padding-top:80px">
@@ -1321,29 +1254,6 @@
 </div>
 <!-- ══ AUTH MODAL ══ -->
   
-<!-- ══ GIFT CARD PURCHASE MODAL ══ -->
-<div class="modal-overlay" id="gcPurchaseOverlay">
-  <div class="modal" style="max-width:440px">
-    <h2 class="modal-title" id="t-gcp-title">Buy a Gift Card</h2>
-    <p class="modal-sub" id="t-gcp-sub">Choose an amount and who it's for. The code is emailed instantly after payment.</p>
-    <div class="form-group">
-      <label class="form-label" id="t-gcp-amount">Amount</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="gc-amt-btn" data-amt="50" onclick="gcpPick(50)">₪50</button>
-        <button class="gc-amt-btn" data-amt="100" onclick="gcpPick(100)">₪100</button>
-        <button class="gc-amt-btn" data-amt="150" onclick="gcpPick(150)">₪150</button>
-        <button class="gc-amt-btn" data-amt="200" onclick="gcpPick(200)">₪200</button>
-      </div>
-      <input class="form-input" type="number" id="gcpCustomAmount" placeholder="Or custom amount ₪" style="margin-top:8px" oninput="gcpCustomInput()"/>
-    </div>
-    <div class="form-group"><label class="form-label" id="t-gcp-remail">Recipient email</label><input class="form-input" type="email" id="gcpRecipientEmail" placeholder="friend@example.com"/></div>
-    <div class="form-group"><label class="form-label" id="t-gcp-rname">Recipient name (optional)</label><input class="form-input" id="gcpRecipientName" placeholder="Dana"/></div>
-    <div class="form-group"><label class="form-label" id="t-gcp-msg">Message (optional)</label><input class="form-input" id="gcpMessage" placeholder="Enjoy a coffee on me!"/></div>
-    <button class="btn btn-primary btn-full" onclick="purchaseGiftCard()" id="gcpBuyBtn">Continue to Payment</button>
-    <button class="btn btn-outline btn-full" style="margin-top:10px" onclick="closeGiftCardPurchase()">Cancel</button>
-  </div>
-</div>
- 
 <!-- ══ AUTH MODAL ══ -->
   <div class="modal-overlay" id="authOverlay">
   <div class="modal" style="max-width:420px">
@@ -3042,9 +2952,18 @@ async function handlePaymentReturn() {
   }
 
 const resultKind = paid ? 'paid' : 'failed';
+  let giftBuy = null;
+  try { giftBuy = JSON.parse(sessionStorage.getItem('gremier_pending_gift') || 'null'); } catch (_) {}
+  if (giftBuy && giftBuy.id !== orderId) giftBuy = null;
+  if (resultKind === 'paid' && giftBuy) {
+    sessionStorage.removeItem('gremier_pending_gift');
+    sessionStorage.setItem('gremier_gift_result', JSON.stringify(giftBuy));
+  }
   if (resultKind === 'paid') {
-    cart = [];
-    clearCartFromStorage();
+    if (!giftBuy) {
+      cart = [];
+      clearCartFromStorage();
+    }
     updateCartCount();
     sessionStorage.removeItem('gremier_pending_order');
     if (orderId) {
@@ -3449,7 +3368,7 @@ function applyNavState(state) {
       document.getElementById('mobileMenu').classList.add('open');
       break;
     case 'giftcard':
-      document.getElementById('gcPurchaseOverlay').classList.add('open');
+      showPage('giftcards', true);
       break;
   }
 }
@@ -3514,7 +3433,7 @@ function showPage(page, fromHistory) {
   if (page === 'shop') { activeCategory='all'; renderShop(); }
   if (page === 'myorders') loadMyOrders();
 if (page === 'coffeebars') renderCoffeeBarsPage();
-if (page === 'giftcards') gcPagePick(gcPageAmount);  document.getElementById('mobileMenu')?.classList.remove('open');
+if (page === 'giftcards' && window.renderGiftPage) renderGiftPage();  document.getElementById('mobileMenu')?.classList.remove('open');
   if (!fromHistory) navPush({ page, layer: null });
 }
 function toggleMobileMenu() {
@@ -3957,126 +3876,6 @@ function showRedeemApplied(message, discount) {
   prepareCheckoutContent();
 }
  
-// ══════════════ GIFT CARD PURCHASE ══════════════
-let gcpAmount = 100;
-function gcSelectAmount(amt) { gcpAmount = amt; openGiftCardPurchase(); }
-function gcpPick(amt) {
-  gcpAmount = amt;
-  document.getElementById('gcpCustomAmount').value = '';
-  document.querySelectorAll('#gcPurchaseOverlay .gc-amt-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.amt) === amt));
-}
-function gcpCustomInput() {
-  const v = parseFloat(document.getElementById('gcpCustomAmount').value);
-  if (!isNaN(v) && v > 0) {
-    gcpAmount = v;
-    document.querySelectorAll('#gcPurchaseOverlay .gc-amt-btn').forEach(b => b.classList.remove('active'));
-  }
-}
-function openGiftCardPurchase() {
-  document.getElementById('gcPurchaseOverlay').classList.add('open');
-  gcpPick(gcpAmount);
-  navPush({ page: appPage, layer: 'giftcard' });
-}
-function closeGiftCardPurchase(fromNav) {
-  if (fromNav) { document.getElementById('gcPurchaseOverlay').classList.remove('open'); return; }
-  if (document.getElementById('gcPurchaseOverlay').classList.contains('open')) navBack();
-  else document.getElementById('gcPurchaseOverlay').classList.remove('open');
-}
-async function purchaseGiftCard() {
-  const amount = gcpAmount;
-  const recipientEmail = document.getElementById('gcpRecipientEmail').value.trim();
-  if (!amount || amount <= 0) { alert(lang==='he'?'בחרו סכום':'Choose an amount'); return; }
-  if (!recipientEmail || !isValidEmail(recipientEmail)) { alert(lang==='he'?'הזינו אימייל נמען תקין':'Enter a valid recipient email'); return; }
-  const btn = document.getElementById('gcpBuyBtn');
-  btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting…';
-  try {
-    // Create a gift-card purchase order; the gift card is issued server-side
-    // after payment is confirmed (via issue-gift-card with order_id).
-    const orderData = {
-      user_id: currentUser?.id || null,
-      customer_name: currentUser?.user_metadata?.full_name || 'Gift Card Purchase',
-      customer_email: currentUser?.email || recipientEmail,
-      customer_phone: null,
-      delivery_address: null,
-items: [{ product_id: null, name_en: `Gift Card ₪${amount}`, name_he: `כרטיס מתנה ₪${amount}`, price: amount, qty: 1, category: 'giftcard' }],      subtotal: amount,
-      discount: 0,
-      total: amount,
-      delivery_info: {
-        is_gift_card: true,
-        gift_card: {
-          amount,
-          recipient_email: recipientEmail,
-          recipient_name: document.getElementById('gcpRecipientName').value.trim() || null,
-          message: document.getElementById('gcpMessage').value.trim() || null,
-        },
-      },
-      status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'gift_card',
-    };
-    const orderId = await createWebsiteOrder(orderData);
-    const payData = await callCreatePayment(orderId);
-    sessionStorage.setItem('gremier_pending_order', orderId);
-    if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
-    window.GremierPay ? GremierPay.open(payData.sale_url) : (window.location.href = payData.sale_url);
-  } catch (err) {
-    console.error(err);
-    alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
-    btn.disabled = false; btn.textContent = lang==='he'?'המשך לתשלום':'Continue to Payment';
-  }
-}  
-// ══ GIFT CARDS PAGE ══
-let gcPageAmount = 50;
-function gcPagePick(amt) {
-  gcPageAmount = amt;
-  document.getElementById('gcPageCustom').value = '';
-  document.getElementById('gcPageAmtDisplay').textContent = `₪${amt}`;
-  document.querySelectorAll('.gc-page-amt-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.amt) === amt));
-}
-function gcPageCustomInput() {
-  const v = parseFloat(document.getElementById('gcPageCustom').value);
-  if (!isNaN(v) && v > 0) {
-    gcPageAmount = v;
-    document.getElementById('gcPageAmtDisplay').textContent = `₪${v}`;
-    document.querySelectorAll('.gc-page-amt-btn').forEach(b => b.classList.remove('active'));
-  }
-}
-async function purchaseGiftCardFromPage() {
-  const amount = gcPageAmount;
-  const recipientEmail = document.getElementById('gcPageEmail').value.trim();
-  if (!amount || amount <= 0) { alert(lang==='he'?'בחרו סכום':'Choose an amount'); return; }
-  if (!recipientEmail || !isValidEmail(recipientEmail)) { alert(lang==='he'?'הזינו אימייל נמען תקין':'Enter a valid recipient email'); return; }
-  const btn = document.getElementById('gcPageBuyBtn');
-  btn.disabled = true; btn.textContent = lang==='he'?'מעביר לתשלום…':'Redirecting to payment…';
-  try {
-   const { data: { session } } = await getSessionSafe();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-gift-card-order`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + (session?.access_token || SUPABASE_ANON_KEY),
-      },
-      body: JSON.stringify({
-        amount,
-        recipient_email: recipientEmail,
-        recipient_name: document.getElementById('gcPageName').value.trim() || null,
-        message: document.getElementById('gcPageMessage').value.trim() || null,
-        customer_email: currentUser?.email || recipientEmail,
-        customer_name: currentUser?.user_metadata?.full_name || 'Gift Card Purchase',
-      }),
-    });
-    const orderResult = await res.json().catch(() => ({}));
-    if (!res.ok || !orderResult.id) throw new Error(orderResult.error || 'Could not create gift card order');
-    const orderId = orderResult.id;
-    const payData = await callCreatePayment(orderId);
-    sessionStorage.setItem('gremier_pending_order', orderId);
-    if (payData.payme_sale_id) sessionStorage.setItem('gremier_payme_sale_' + orderId, payData.payme_sale_id);
-    window.GremierPay ? GremierPay.open(payData.sale_url) : (window.location.href = payData.sale_url);
-  } catch (err) {
-    console.error(err);
-    alert(lang==='he'?'משהו השתבש. נסו שוב.':'Something went wrong. Please try again.');
-    btn.disabled = false; btn.textContent = lang==='he'?'המשך לתשלום':'Continue to Payment';
-  }
-}
   function toggleExpeditedOptions() {
   const isPickup = document.getElementById('shipPickup')?.checked;
   const addressFields = document.getElementById('coDeliveryAddressFields');
@@ -5382,7 +5181,8 @@ async function sendChatMessageText(text) {
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261024-4"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
-<script src="/storefront-planner.js?v=20261024-1"></script>
+<script src="/storefront-planner.js?v=20261025-1"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
+<script src="/storefront-gift.js?v=20261025-3"></script>
 </body>
 </html>

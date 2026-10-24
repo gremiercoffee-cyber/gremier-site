@@ -2,9 +2,10 @@
 // Issues a gift card. Two modes:
 //   1. order_id  → called server-side after a gift-card PURCHASE order is paid.
 //   2. admin     → admin manually issues a card (requires admin bearer token).
-// Emails the code to the recipient via Resend.
+// Emails the card to the recipient (in the buyer's site language), and a copy to the buyer.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isServiceOrAdmin } from '../_shared/security.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 
@@ -76,205 +77,162 @@ function makeCode() {
   return `GIFT-${block()}-${block()}`;
 }
 
-function buildGiftCardEmailHtml(opts: {
+type GiftEmail = {
   code: string;
   amount: number;
   recipientName?: string | null;
+  senderName?: string | null;
   message?: string | null;
-}) {
-  const amountText = formatAmount(opts.amount);
-  const code = escapeHtml(opts.code);
-  const name = opts.recipientName ? `Hi ${escapeHtml(opts.recipientName)},` : 'Hi,';
-  const message = opts.message ? escapeHtml(opts.message) : '';
+  he: boolean;
+};
 
-  return `
-<!doctype html>
-<html>
+const redeemUrl = (code: string) => `${SITE_URL}/?gift=${encodeURIComponent(code)}&utm_source=gift_card`;
+
+function words(o: GiftEmail) {
+  const he = o.he;
+  const to = o.recipientName?.trim();
+  const from = o.senderName?.trim();
+  return {
+    subject: he
+      ? `קיבלת כרטיס מתנה של גרמיר${from ? ` מאת ${from}` : ''} 🎁`
+      : `${from ? `${from} sent you` : "You've received"} a Gremier gift card 🎁`,
+    hello: he ? (to ? `${to}, יש לך מתנה!` : 'יש לך מתנה!') : (to ? `${to}, you've got a gift!` : "You've got a gift!"),
+    lead: he
+      ? `קיבלת${from ? ` מאת ${from}` : ''} כרטיס מתנה של ${formatAmount(o.amount)} לקולד ברו של גרמיר.`
+      : `${from ? `${from} sent you` : "You've received"} a ${formatAmount(o.amount)} gift card for Gremier cold brew.`,
+    label: he ? 'כרטיס מתנה' : 'Gift card',
+    toLabel: he ? 'אל' : 'To',
+    fromLabel: he ? 'מאת' : 'From',
+    codeLabel: he ? 'קוד הכרטיס' : 'Your code',
+    cta: he ? 'לבחירת קולד ברו' : 'Choose your cold brew',
+    how: he
+      ? 'הכפתור פותח את האתר עם הכרטיס שמור, והוא מופעל לבד בקופה. אפשר גם להזין את הקוד ידנית בשדה "קופון או כרטיס מתנה".'
+      : 'The button opens the site with your card saved, and it applies by itself at checkout. You can also type the code into "Coupon or gift card".',
+    terms: he
+      ? 'הכרטיס לא פג תוקף. לא חייבים להשתמש בכולו בבת אחת: היתרה נשמרת להזמנה הבאה.'
+      : "Your card never expires. You don't have to use it all at once: the balance stays for next time.",
+    sign: he ? 'גרמיר קופי · קולד ברו טרי עד הבית' : 'Gremier Coffee · Fresh cold brew, delivered',
+  };
+}
+
+function buildGiftCardEmailHtml(o: GiftEmail) {
+  const w = words(o);
+  const dir = o.he ? 'rtl' : 'ltr';
+  const align = o.he ? 'right' : 'left';
+  const message = o.message ? escapeHtml(o.message).replace(/\n/g, '<br>') : '';
+  const url = escapeHtml(redeemUrl(o.code));
+  return `<!doctype html>
+<html dir="${dir}" lang="${o.he ? 'he' : 'en'}">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
   <body style="margin:0;padding:0;background:#f4f1ec;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ec;padding:24px 12px">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #ded6cc">
-            <tr>
-              <td style="padding:26px 22px 18px;text-align:center;background:#141414;color:#efefef">
-                <img src="${escapeHtml(LOGO_URL)}" width="78" height="78" alt="Gremier Coffee Co." style="display:block;margin:0 auto 10px;border-radius:50%;object-fit:contain">
-                <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:1.2;font-weight:bold;letter-spacing:.02em">
-                  Gremier Coffee Co.
-                </div>
-                <div style="margin-top:8px;font-size:11px;letter-spacing:2.6px;text-transform:uppercase;color:#cfcfcf">
-                  Premium Cold Brew Gift Card
-                </div>
-              </td>
-            </tr>
+    <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(w.lead)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ec;padding:28px 12px">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;margin:0 auto" dir="${dir}">
+          <tr><td style="text-align:center;padding:0 0 20px">
+            <img src="${escapeHtml(LOGO_URL)}" width="56" height="56" alt="Gremier Coffee Co." style="display:inline-block;border-radius:50%">
+          </td></tr>
+          <tr><td style="text-align:center;padding:0 8px 6px;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.25;font-weight:bold">${escapeHtml(w.hello)}</td></tr>
+          <tr><td style="text-align:center;padding:0 12px 24px;font-size:15px;line-height:1.6;color:#4a4a4a">${escapeHtml(w.lead)}</td></tr>
 
-            <tr>
-              <td style="padding:28px 22px 10px">
-                <p style="margin:0 0 14px;font-size:16px;line-height:1.55">${name}</p>
-                <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#3a3a3a">
-                  You've received a Gremier Coffee gift card. Use the code below at checkout.
-                </p>
-
-                <!-- Gift card graphic -->
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;margin:0 auto 24px">
-                  <tr>
-                    <td style="
-                      background:#111111;
-                      background-image:linear-gradient(135deg,#202020 0%,#111111 48%,#050505 100%);
-                      border:1px solid #696969;
-                      border-radius:22px;
-                      padding:24px 22px;
-                      box-shadow:0 18px 35px rgba(0,0,0,.22);
-                      color:#efefef;
-                    ">
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                        <tr>
-                          <td width="34%" valign="middle" style="padding-right:18px;text-align:center">
-                            <img src="${escapeHtml(LOGO_URL)}" width="124" height="124" alt="Gremier Coffee Co." style="display:block;margin:0 auto;max-width:124px;width:100%;height:auto;object-fit:contain;filter:grayscale(100%)">
-                          </td>
-
-                          <td width="66%" valign="middle" style="text-align:center">
-                            <div style="font-family:Georgia,'Times New Roman',serif;font-size:40px;line-height:1;color:#f2f2f2;letter-spacing:.02em">
-                              Gift Card
-                            </div>
-
-                            <div style="font-family:Georgia,'Times New Roman',serif;font-size:58px;line-height:1.05;color:#ffffff;margin:18px 0 8px;font-weight:bold">
-                              ${escapeHtml(amountText)}
-                            </div>
-
-                            <div style="font-size:12px;letter-spacing:2.3px;text-transform:uppercase;color:#cfcfcf;margin-bottom:18px">
-                              A gift of premium cold brew
-                            </div>
-
-                            <div style="
-                              border:1px solid rgba(255,255,255,.22);
-                              border-radius:12px;
-                              padding:15px 12px;
-                              background:rgba(255,255,255,.035);
-                            ">
-                              <div style="font-size:11px;letter-spacing:2.2px;text-transform:uppercase;color:#bfbfbf;margin-bottom:8px">
-                                Gift card code
-                              </div>
-                              <div style="font-family:'Courier New',Courier,monospace;font-size:23px;letter-spacing:3px;font-weight:bold;color:#ffffff;word-break:break-word">
-                                ${code}
-                              </div>
-                            </div>
-
-                            <div style="font-size:11px;letter-spacing:2.2px;text-transform:uppercase;color:#a8a8a8;margin-top:18px">
-                              Redeem at gremiercoffee.co.il
-                            </div>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+          <!-- The card -->
+          <tr><td style="padding:0 0 24px">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-radius:20px;background:#15110e;background-image:linear-gradient(135deg,#3a2a1a 0%,#1c1714 50%,#0d0b0a 100%);color:#f4efe8">
+              <tr><td style="padding:22px 24px 6px;text-align:${align}">
+                <table role="presentation" cellspacing="0" cellpadding="0" dir="ltr" style="${o.he ? 'margin-left:auto' : ''}"><tr>
+                  <td style="padding-right:10px"><img src="${escapeHtml(LOGO_URL)}" width="34" height="34" alt="" style="display:block;border-radius:50%;background:#ffffff"></td>
+                  <td style="font-family:Georgia,'Times New Roman',serif;font-size:16px;color:#f4efe8">Gremier Coffee Co.</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:34px 24px 0;text-align:${align};font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#c8873a">${escapeHtml(w.label)}</td></tr>
+              <tr><td style="padding:2px 24px 14px;text-align:${align};font-family:Georgia,'Times New Roman',serif;font-size:52px;line-height:1.05;font-weight:bold;color:#ffffff">${escapeHtml(formatAmount(o.amount))}</td></tr>
+              ${o.recipientName || o.senderName ? `<tr><td style="padding:0 24px 20px;text-align:${align};font-size:13px;color:#cbbfb2">
+                ${o.recipientName ? `${escapeHtml(w.toLabel)}: <b style="color:#f4efe8;font-weight:normal">${escapeHtml(o.recipientName)}</b>` : ''}
+                ${o.recipientName && o.senderName ? '&nbsp;&nbsp;·&nbsp;&nbsp;' : ''}
+                ${o.senderName ? `${escapeHtml(w.fromLabel)}: <b style="color:#f4efe8;font-weight:normal">${escapeHtml(o.senderName)}</b>` : ''}
+              </td></tr>` : '<tr><td style="padding:0 0 8px"></td></tr>'}
+              <tr><td style="padding:0 16px 16px">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4efe8;border-radius:12px">
+                  <tr><td style="padding:12px 14px;text-align:center">
+                    <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8a7c6e;margin-bottom:4px">${escapeHtml(w.codeLabel)}</div>
+                    <div dir="ltr" style="font-family:'Courier New',Courier,monospace;font-size:22px;letter-spacing:3px;font-weight:bold;color:#1a1a1a">${escapeHtml(o.code)}</div>
+                  </td></tr>
                 </table>
+              </td></tr>
+            </table>
+          </td></tr>
 
-                ${
-                  message
-                    ? `<div style="background:#f7f5f2;border-left:4px solid #141414;padding:14px 16px;border-radius:8px;margin:0 0 22px;color:#333;font-size:15px;line-height:1.55;font-style:italic">
-                        “${message}”
-                      </div>`
-                    : ''
-                }
+          ${message ? `<tr><td style="padding:0 0 24px">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:14px;border:1px solid #e7e0d6">
+              <tr><td style="padding:18px 20px;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.55;color:#2a2a2a;font-style:italic">${o.he ? message : `“${message}”`}
+                ${o.senderName ? `<div style="font-family:Arial,Helvetica,sans-serif;font-style:normal;font-size:13px;color:#8a8f96;margin-top:8px">${escapeHtml(o.senderName)}</div>` : ''}
+              </td></tr>
+            </table>
+          </td></tr>` : ''}
 
-                <p style="font-size:14px;color:#555;line-height:1.65;margin:0 0 12px">
-                  Enter this code at checkout on <strong>gremiercoffee.co.il</strong> to redeem.
-                  It does not need to be used all at once — the remaining balance stays on the card.
-                </p>
-
-                <p style="font-size:13px;color:#777;line-height:1.55;margin:0 0 22px">
-                  Gift card amount: <strong>${escapeHtml(amountText)}</strong>
-                </p>
-
-                <div style="text-align:center;margin:26px 0 8px">
-                  <a href="${escapeHtml(SITE_URL)}" style="display:inline-block;background:#141414;color:#ffffff;text-decoration:none;padding:13px 24px;border-radius:6px;font-size:14px;font-weight:bold">
-                    Shop Gremier Coffee
-                  </a>
-                </div>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:18px 22px 24px;text-align:center;color:#888;font-size:12px;line-height:1.5">
-                Gremier Coffee Co. · Premium cold brew delivered fresh
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
+          <tr><td style="text-align:center;padding:0 0 18px">
+            <a href="${url}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 30px;border-radius:999px;font-size:15px;font-weight:bold">${escapeHtml(w.cta)}</a>
+          </td></tr>
+          <tr><td style="text-align:center;padding:0 16px 8px;font-size:13px;line-height:1.6;color:#6b7178">${escapeHtml(w.how)}</td></tr>
+          <tr><td style="text-align:center;padding:0 16px 26px;font-size:13px;line-height:1.6;color:#6b7178">${escapeHtml(w.terms)}</td></tr>
+          <tr><td style="text-align:center;border-top:1px solid #e2dbd1;padding:18px 16px 0;font-size:12px;color:#9a9188">
+            ${escapeHtml(w.sign)}<br><a href="${escapeHtml(SITE_URL)}" style="color:#9a9188">gremiercoffee.co.il</a>
+          </td></tr>
+        </table>
+      </td></tr>
     </table>
   </body>
 </html>`;
 }
 
-function buildGiftCardEmailText(opts: {
-  code: string;
-  amount: number;
-  recipientName?: string | null;
-  message?: string | null;
-}) {
-  const amountText = formatAmount(opts.amount);
-  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : 'Hi,';
-
+function buildGiftCardEmailText(o: GiftEmail) {
+  const w = words(o);
   return [
-    greeting,
+    w.hello,
     '',
-    `You've received a Gremier Coffee gift card worth ${amountText}.`,
+    w.lead,
+    o.message ? `\n“${o.message}”${o.senderName ? ` (${o.senderName})` : ''}\n` : '',
+    `${w.codeLabel}: ${o.code}`,
     '',
-    opts.message ? `Message: "${opts.message}"` : '',
+    `${w.cta}: ${redeemUrl(o.code)}`,
     '',
-    `Gift card code: ${opts.code}`,
+    w.how,
+    w.terms,
     '',
-    `Redeem it at ${SITE_URL}.`,
-    'It does not need to be used all at once — the remaining balance stays on the card.',
-  ]
-    .filter(Boolean)
-    .join('\n');
+    w.sign,
+  ].join('\n');
 }
 
-async function sendGiftEmail(
-  to: string | null | undefined,
-  code: string,
-  amount: number,
-  recipientName?: string | null,
-  message?: string | null,
-) {
-  if (!RESEND_KEY || !to) return false;
-
-  const html = buildGiftCardEmailHtml({
-    code,
-    amount,
-    recipientName,
-    message,
-  });
-
-  const text = buildGiftCardEmailText({
-    code,
-    amount,
-    recipientName,
-    message,
-  });
-
+async function sendEmail(to: string, subject: string, html: string, text: string) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to,
-      subject: `Your Gremier Coffee Gift Card — ${formatAmount(amount)}`,
-      html,
-      text,
-    }),
+    headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: FROM_EMAIL, to, subject, html, text }),
   });
-
-  if (!res.ok) {
-    console.error('Resend gift card email failed:', res.status, await res.text());
-  }
-
+  if (!res.ok) console.error('Resend gift card email failed:', res.status, await res.text());
   return res.ok;
+}
+
+async function sendGiftEmail(to: string | null | undefined, o: GiftEmail) {
+  if (!RESEND_KEY || !to) return false;
+  return await sendEmail(to, words(o).subject, buildGiftCardEmailHtml(o), buildGiftCardEmailText(o));
+}
+
+/** The buyer gets a copy of what was sent (their payment receipt comes separately). */
+async function sendBuyerCopy(buyer: string | null | undefined, recipient: string, o: GiftEmail) {
+  if (!RESEND_KEY || !buyer || buyer.toLowerCase() === recipient.toLowerCase()) return false;
+  const who = o.recipientName?.trim() || recipient;
+  const subject = o.he ? `כרטיס המתנה נשלח אל ${who} 🎁` : `Your gift card was sent to ${who} 🎁`;
+  const note = o.he
+    ? `שלחנו את כרטיס המתנה של ${formatAmount(o.amount)} אל ${escapeHtml(who)} (${escapeHtml(recipient)}). כך זה נראה אצלם:`
+    : `We've emailed your ${formatAmount(o.amount)} gift card to ${escapeHtml(who)} (${escapeHtml(recipient)}). Here's what they got:`;
+  const html = buildGiftCardEmailHtml(o).replace(
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ec;padding:28px 12px">',
+    `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ec;padding:20px 12px 0"><tr><td align="center"><div dir="${o.he ? 'rtl' : 'ltr'}" style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e7e0d6;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.55;color:#3a3a3a;text-align:center">${note}</div></td></tr></table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ec;padding:28px 12px">`,
+  );
+  const text = `${note.replace(/&[^;]+;/g, '')}\n\n${buildGiftCardEmailText(o)}`;
+  return await sendEmail(buyer, subject, html, text);
 }
 
 Deno.serve(async (req) => {
@@ -312,8 +270,10 @@ Deno.serve(async (req) => {
 
       // Gift card details come from order.delivery_info.gift_card
       const gcInfo = order.delivery_info?.gift_card || {};
+      const he = order.delivery_info?.site_lang
+        ? order.delivery_info.site_lang === 'he'
+        : /[֐-׿]/.test(`${gcInfo.recipient_name || ''} ${gcInfo.sender_name || ''} ${gcInfo.message || ''}`);
 
-      // This is the actual gift card value ordered.
       // The card is worth exactly what was paid for it.
       const amount = Number(order.total) || 0;
 
@@ -333,7 +293,9 @@ Deno.serve(async (req) => {
           purchased_by_user: order.user_id || null,
           recipient_email: gcInfo.recipient_email || order.customer_email || null,
           recipient_name: gcInfo.recipient_name || null,
+          sender_name: gcInfo.sender_name || null,
           message: gcInfo.message || null,
+          lang: he ? 'he' : 'en',
           purchase_order_id: order.id,
         })
         .select('*')
@@ -341,20 +303,27 @@ Deno.serve(async (req) => {
 
       if (error) return json({ error: error.message }, 400);
 
-      const emailed = await sendGiftEmail(
-        card.recipient_email,
-        code,
-        amount,
-        card.recipient_name,
-        card.message,
-      );
+      const mail: GiftEmail = { code, amount, recipientName: card.recipient_name, senderName: card.sender_name, message: card.message, he };
+      const emailed = await sendGiftEmail(card.recipient_email, mail);
+      if (emailed) await sendBuyerCopy(order.customer_email, card.recipient_email, mail);
 
-      return json({ ok: true, code, amount, emailed });
+      return json({ ok: true, amount, emailed });
+    }
+
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '');
+
+    // ── Preview (server or admin): sample emails to a test address; no card is created ──
+    if (body.preview_to && await isServiceOrAdmin(req)) {
+      const sample = { code: 'GIFT-SAMP-LE23', amount: Number(body.amount) || 150, recipientName: body.recipient_name ?? 'Dana', senderName: body.sender_name ?? 'Yoni', message: body.message ?? 'Happy birthday! Enjoy a coffee on me ☕' };
+      const to = String(body.preview_to);
+      const he = await sendGiftEmail(to, { ...sample, recipientName: body.recipient_name ?? 'דנה', senderName: body.sender_name ?? 'יוני', message: body.message ?? 'יום הולדת שמח! קפה עליי ☕', he: true });
+      const en = await sendGiftEmail(to, { ...sample, he: false });
+      const copy = await sendBuyerCopy(to, 'friend@example.com', { ...sample, he: false });
+      return json({ ok: true, he, en, buyer_copy: copy });
     }
 
     // ── Mode 2: admin manual issue ──
-    const authHeader = req.headers.get('Authorization') || '';
-    const token = authHeader.replace('Bearer ', '');
 
     const {
       data: { user },
@@ -368,6 +337,7 @@ Deno.serve(async (req) => {
     if (!amount || amount <= 0) return json({ error: 'invalid_amount' }, 400);
 
     const code = body.code || makeCode();
+    const he = body.lang ? body.lang === 'he' : /[֐-׿]/.test(`${body.recipient_name || ''} ${body.message || ''}`);
 
     const { data: card, error } = await sb
       .from('gift_cards')
@@ -378,7 +348,9 @@ Deno.serve(async (req) => {
         purchased_by_email: user.email,
         recipient_email: body.recipient_email || null,
         recipient_name: body.recipient_name || null,
+        sender_name: body.sender_name || null,
         message: body.message || null,
+        lang: he ? 'he' : 'en',
         expires_at: body.expires_at || null,
       })
       .select('*')
@@ -389,13 +361,7 @@ Deno.serve(async (req) => {
     let emailed = false;
 
     if (body.recipient_email) {
-      emailed = await sendGiftEmail(
-        body.recipient_email,
-        code,
-        amount,
-        body.recipient_name,
-        body.message,
-      );
+      emailed = await sendGiftEmail(body.recipient_email, { code, amount, recipientName: body.recipient_name, senderName: body.sender_name, message: body.message, he });
     }
 
     return json({ ok: true, code, amount, emailed });
