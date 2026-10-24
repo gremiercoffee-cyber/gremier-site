@@ -6469,13 +6469,15 @@ function renderSDStats() {
   const el = document.getElementById('sdStats');
   if (!el) return;
   const totalRevenue = allDeliveries.reduce((s, d) => s + deliveryTotal(d), 0);
-  const totalLarge = allDeliveries.reduce((s, d) => s + (d.qty_large || 0), 0);
+  const regularLarge = allDeliveries.reduce((s, d) => s + Number(d.qty_large || 0), 0);
+  const unfilteredLarge = allDeliveries.reduce((s, d) => s + Number(d.qty_unfiltered || 0), 0);
+  const totalLarge = regularLarge + unfilteredLarge;
   const totalSmall = allDeliveries.reduce((s, d) => s + (d.qty_small || 0), 0);
   const totalSyrup = allDeliveries.reduce((s, d) => s + (d.qty_syrup || 0), 0);
   const activeStores = new Set(allDeliveries.map(d => d.store_id)).size;
   el.innerHTML = `
     <div class="stat-card"><div class="stat-label">Store Revenue</div><div class="stat-value">₪${totalRevenue.toFixed(0)}</div></div>
-    <div class="stat-card"><div class="stat-label">Large Bottles</div><div class="stat-value">${totalLarge}</div></div>
+    <div class="stat-card"><div class="stat-label">Large Bottles</div><div class="stat-value">${totalLarge}</div><div class="stat-sub">${regularLarge} regular<br>${unfilteredLarge} unfiltered</div></div>
     <div class="stat-card"><div class="stat-label">Small Bottles</div><div class="stat-value">${totalSmall}</div></div>
     <div class="stat-card"><div class="stat-label">Syrups</div><div class="stat-value">${totalSyrup}</div></div>
     <div class="stat-card"><div class="stat-label">Active Stores</div><div class="stat-value">${activeStores}</div></div>
