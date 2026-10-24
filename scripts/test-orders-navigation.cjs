@@ -8,7 +8,7 @@ function navigation(){
  const nodes=new Map(),calls=[],saved={};
  for(const prefix of ['tab-','nav-','tbar-'])for(const name of ['orders','stock','dashboard'])nodes.set(prefix+name,{style:{display:'none'},classList:{add(){},remove(){}},closest(){return null}});
  const document={getElementById:id=>nodes.get(id),querySelectorAll:selector=>selector==='.tab-content'?[...nodes].filter(([id])=>id.startsWith('tab-')).map(([,node])=>node):[]};
- const window={__gremierReloadSchedule:()=>calls.push('schedule'),__gremierPushAdminTabState:tab=>calls.push('history:'+tab)};
+ const window={GremierAdminNavigation:{remember:tab=>saved.gremier_admin_tab=tab},__gremierReloadSchedule:()=>calls.push('schedule'),__gremierPushAdminTabState:tab=>calls.push('history:'+tab)};
  const context={document,window,localStorage:{setItem:(key,value)=>saved[key]=value},loadOrders:()=>calls.push('orders'),loadDashboard:()=>calls.push('dashboard')};
  vm.createContext(context);vm.runInContext(html.slice(start,end),context);
  return {show:context.showTab,nodes,calls,saved};

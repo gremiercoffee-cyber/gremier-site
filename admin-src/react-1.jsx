@@ -1222,7 +1222,7 @@ function DaySection({ label, dayJobs, overdue, onCheckoff, onTap, onDelete }) {
   );
 }
 
-function ScheduleForm({ mode, stores, onClose, onSubmit, prefill }) {
+function ScheduleForm({ mode, stores, onClose, onSubmit, prefill, onModeChange }) {
   const logNow = mode === 'lognow';
   const FP = {
     classic_liter:{label:'Classic',category:'liter'}, sweetened_classic:{label:'Sweetened Classic',category:'liter'},
@@ -1343,6 +1343,10 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
     <div style={TS.modal} onClick={onClose}>
       <div style={{...TS.modalBox,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <div style={TS.modalTitle}>{logNow?'✓ Log Now':'📅 Schedule'}</div>
+        {onModeChange&&<div style={{...togRow,marginBottom:14}}>
+          <button type="button" style={tog(logNow)} onClick={()=>onModeChange('lognow')}>Log now</button>
+          <button type="button" style={tog(!logNow)} onClick={()=>onModeChange('schedule')}>Schedule</button>
+        </div>}
 
         <div style={{...togRow,marginBottom:14}}>
           <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
@@ -1509,6 +1513,9 @@ const [showForm, setShowForm] = useState2(false);
   useEffect2(()=>{
     reload();
     window.__gremierReloadSchedule = reload;
+    function openLog(){setEditingJobId(null);setFormPrefill(null);setFormMode('lognow');setShowForm(true);}
+    window.__gremierOpenLog=openLog;
+    if(window.__gremierPendingLog){window.__gremierPendingLog=false;openLog();}
     // listen for a prefill handed off from the global website-queue pill (tapped from another tab),
     // since this component mounts once and stays mounted — a plain mount check would miss later handoffs
     function onPrefillHandoff(e) {
@@ -1540,6 +1547,7 @@ const [showForm, setShowForm] = useState2(false);
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
       if (window.__gremierReloadSchedule === reload) delete window.__gremierReloadSchedule;
+      if (window.__gremierOpenLog === openLog) delete window.__gremierOpenLog;
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
       window.removeEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
@@ -1783,10 +1791,6 @@ async function addJobFromForm(job, mode) {
     <div style={{...TS.screen,minHeight:0,paddingBottom:0}}>
       <div style={{padding:'0 12px'}}>
         <h2 style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.1rem',fontWeight:600,color:'#121212',margin:'0 0 14px'}}>Schedule</h2>
-        <div style={{display:'flex',gap:10,marginBottom:14}}>
-          <button onClick={()=>{setFormMode('lognow');setShowForm(true);}} style={{flex:1,background:'#1a1a1a',color:'#fff',border:'none',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>✓ Log Now</button>
-          <button onClick={()=>{setFormMode('schedule');setShowForm(true);}} style={{flex:1,background:'#ffffff',color:'#333333',border:'1px solid #e0e0e0',borderRadius:8,padding:'12px',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Schedule</button>
-        </div>
       </div>
 
       {/* brewing banner */}
@@ -1904,7 +1908,7 @@ async function addJobFromForm(job, mode) {
           </div>
         </div>
       </div>}
-{showForm&&<ScheduleForm mode={formMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
+{showForm&&ReactDOM.createPortal(<ScheduleForm mode={formMode} onModeChange={editingJobId?null:setFormMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>,document.body)}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
       {rescheduleJob&&<RescheduleModal2 job={rescheduleJob} onSave={saveReschedule} onCancel={()=>setRescheduleJob(null)}/>}
     </div>
   );

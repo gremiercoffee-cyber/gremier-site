@@ -2545,7 +2545,8 @@ function ScheduleForm({
   stores,
   onClose,
   onSubmit,
-  prefill
+  prefill,
+  onModeChange
 }) {
   const logNow = mode === 'lognow';
   const FP = {
@@ -2847,7 +2848,20 @@ function ScheduleForm({
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("div", {
     style: TS.modalTitle
-  }, logNow ? '✓ Log Now' : '📅 Schedule'), /*#__PURE__*/React.createElement("div", {
+  }, logNow ? '✓ Log Now' : '📅 Schedule'), onModeChange && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...togRow,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    style: tog(logNow),
+    onClick: () => onModeChange('lognow')
+  }, "Log now"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    style: tog(!logNow),
+    onClick: () => onModeChange('schedule')
+  }, "Schedule")), /*#__PURE__*/React.createElement("div", {
     style: {
       ...togRow,
       marginBottom: 14
@@ -3306,6 +3320,17 @@ function ScheduleTab() {
   useEffect2(() => {
     reload();
     window.__gremierReloadSchedule = reload;
+    function openLog() {
+      setEditingJobId(null);
+      setFormPrefill(null);
+      setFormMode('lognow');
+      setShowForm(true);
+    }
+    window.__gremierOpenLog = openLog;
+    if (window.__gremierPendingLog) {
+      window.__gremierPendingLog = false;
+      openLog();
+    }
     // listen for a prefill handed off from the global website-queue pill (tapped from another tab),
     // since this component mounts once and stays mounted — a plain mount check would miss later handoffs
     function onPrefillHandoff(e) {
@@ -3350,6 +3375,7 @@ function ScheduleTab() {
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
       if (window.__gremierReloadSchedule === reload) delete window.__gremierReloadSchedule;
+      if (window.__gremierOpenLog === openLog) delete window.__gremierOpenLog;
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
       window.removeEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
@@ -3697,45 +3723,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       color: '#121212',
       margin: '0 0 14px'
     }
-  }, "Schedule"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 10,
-      marginBottom: 14
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setFormMode('lognow');
-      setShowForm(true);
-    },
-    style: {
-      flex: 1,
-      background: '#1a1a1a',
-      color: '#fff',
-      border: 'none',
-      borderRadius: 8,
-      padding: '12px',
-      fontSize: 14,
-      fontWeight: 700,
-      cursor: 'pointer'
-    }
-  }, "\u2713 Log Now"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setFormMode('schedule');
-      setShowForm(true);
-    },
-    style: {
-      flex: 1,
-      background: '#ffffff',
-      color: '#333333',
-      border: '1px solid #e0e0e0',
-      borderRadius: 8,
-      padding: '12px',
-      fontSize: 14,
-      fontWeight: 700,
-      cursor: 'pointer'
-    }
-  }, "+ Schedule"))), brewingJobs.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "Schedule")), brewingJobs.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       ...TS.card,
       border: '1px solid #3f7fc4',
@@ -4119,8 +4107,9 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       setFulfillOrderId(null);
       await (window.markOrderFulfilled || markOrderFulfilled)(oid, false, false);
     }
-  }, "Yes, mark fulfilled")))), showForm && /*#__PURE__*/React.createElement(ScheduleForm, {
+  }, "Yes, mark fulfilled")))), showForm && ReactDOM.createPortal( /*#__PURE__*/React.createElement(ScheduleForm, {
     mode: formMode,
+    onModeChange: editingJobId ? null : setFormMode,
     stores: stores,
     prefill: formPrefill,
     onClose: () => {
@@ -4129,7 +4118,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       setEditingJobId(null);
     },
     onSubmit: job => addJobFromForm(job, formMode)
-  }), "      ", calDay && /*#__PURE__*/React.createElement(DayPopup2, {
+  }), document.body), "      ", calDay && /*#__PURE__*/React.createElement(DayPopup2, {
     date: calDay,
     jobs: jobs,
     onClose: () => setCalDay(null),

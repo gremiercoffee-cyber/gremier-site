@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/admin-session.js?v=20261025-1"></script>
 <script>
   // Register the root service worker (needed for Web Push notifications).
   // Skip the /ops/ scope — the ops app manages its own worker.
@@ -118,7 +119,7 @@ window.loadHtml2Canvas = function () {
             setHubMode('website');
           }
           if (typeof showTab === 'function') {
-            showTab(localStorage.getItem('gremier_admin_tab') || 'dashboard');
+            showTab(window.GremierAdminNavigation.startTab());
           }
           if (typeof loadOrders === 'function') loadOrders();
           if (typeof loadAllProducts === 'function') loadAllProducts();
@@ -722,7 +723,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261025-1">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261025-2"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261025-3"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -779,9 +780,11 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     </div>
     <!-- MAIN -->
     <div class="main">
+      <div class="admin-desktop-tools"><button type="button" class="app-icon-button admin-quick-log" onclick="openAdminLog()" aria-label="Add delivery or production log" title="Log or schedule">+</button><button type="button" class="app-icon-button" onclick="openNotificationsPanel()" aria-label="Notifications">🔔</button></div>
       <div class="mobile-header">
         <img src="logo.png" alt="Gremier Coffee Co."/>
         <span>Gremier Hub</span>
+        <button type="button" class="app-icon-button admin-quick-log" onclick="openAdminLog()" aria-label="Add delivery or production log" title="Log or schedule">+</button>
         <button id="pushBellBtn" onclick="openNotificationsPanel()" style="margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;padding:4px 8px;filter:grayscale(1);opacity:.35" title="Notifications off — tap to enable">🔔</button>
       </div>
       <div id="websiteMain">
@@ -2422,11 +2425,10 @@ async function checkAdminAccess(user) {
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
   document.getElementById('adminEmail').textContent = user.email;
-  // Open on Dashboard once per page load; later auth refreshes preserve the current screen.
+  // Restore reloads once; fresh launches start at Dashboard. Auth refreshes keep the current screen.
   if (!window.__gremierAdminStartupComplete) {
     window.__gremierAdminStartupComplete=true;
-    const target=new URLSearchParams(location.search).get('finance');
-    showTab(target==='expenses'?'expenses':target==='receipts'?'finance':'dashboard');
+    showTab(window.GremierAdminNavigation.startTab());
   }
   loadOrders();
   loadAllProducts();
@@ -2575,8 +2577,7 @@ async function signOut() { window.GremierDashboard?.clearCache(); await sb.auth.
   });
 
   window.addEventListener('DOMContentLoaded', function rememberCurrentAdminScreen() {
-    const tab = localStorage.getItem('gremier_admin_tab') || 'dashboard';
-    window.__gremierPushAdminTabState(tab, true);
+    window.__gremierPushAdminTabState(window.GremierAdminNavigation.startTab(), true);
   });
 })();
 
@@ -3117,7 +3118,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeNavDraw
 // ══ TABS ══
 function showTab(tab) {
   if (tab==='schedule') tab='orders';
-  localStorage.setItem('gremier_admin_tab', tab);
+  window.GremierAdminNavigation.remember(tab);
 
   document.querySelectorAll('.tab-content').forEach(el => {
     el.style.display = 'none';
@@ -6069,7 +6070,7 @@ function showTab(tab) {
   if (tbarBtn) tbarBtn.classList.add('active');
   // Secondary tabs live in the drawer, so highlight the "More" button for them.
   else document.getElementById('tbarMoreBtn')?.classList.add('active');
-  localStorage.setItem('gremier_admin_tab', tab);
+  window.GremierAdminNavigation.remember(tab);
   if (typeof window.__gremierPushAdminTabState === 'function') {
     window.__gremierPushAdminTabState(tab, !!window.__gremierShowTabFromHistory);
   }
@@ -9229,7 +9230,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-ui.js?v=20261023-2"></script>
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
-<script src="/admin-react-1.js?v=d7763c03f4"></script>
+<script src="/admin-react-1.js?v=016d3c7ce2"></script>
 <script src="/admin-react-2.js?v=0ff5f54a7f"></script>
 
 <script src="/admin-react-3.js?v=6b308d82aa"></script>
@@ -9282,7 +9283,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script id="hub-script">
 (function () {
   // Deep links (Android widget): admin?tab=stock opens that screen.
-  try { const t = new URLSearchParams(location.search).get('tab'); if (t && /^[a-z]{3,20}$/.test(t)) localStorage.setItem('gremier_admin_tab', t); } catch (_) {}
+  // Initial deep links and reload restoration are handled by admin-session.js.
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = (n) => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IL');
   const dayISO = (off = 0) => { const d = new Date(Date.now() + off * 86400e3); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); };
@@ -9697,7 +9698,7 @@ window.opsFetch = window.opsFetch || (function () {
 <link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
 <script src="/admin-financials.js?v=20261020-5"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
-<script src="/admin-finance.js?v=20261022-1"></script>
+<script src="/admin-finance.js?v=20261025-1"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
 <script src="/admin-revenue.js?v=20261025-1"></script>

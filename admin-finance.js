@@ -223,7 +223,7 @@
  const originalShow=root.showTab;
  if(originalShow)root.showTab=function(tab,...args){const result=originalShow.call(this,tab,...args);if(tab==='finance')loadFinance();if(tab==='expenses')loadExpenses();return result;};
  setup();
- const initialTab=({expenses:'expenses',receipts:'finance'})[new URLSearchParams(location.search).get('finance')];
+ const initialTab=root.GremierAdminNavigation?.startTab()||({expenses:'expenses',receipts:'finance'})[new URLSearchParams(location.search).get('finance')];
  if(['finance','expenses'].includes(initialTab)){
   let restored=false;
   const restore=session=>{if(session&&!restored){restored=true;setTimeout(()=>root.showTab(initialTab),0);}};
