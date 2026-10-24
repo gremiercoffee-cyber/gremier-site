@@ -7219,17 +7219,8 @@ function renderBillingAll() {
   const status = document.getElementById('billStatus')?.value || 'all';
   const store = document.getElementById('billStore')?.value || '';
   const month = document.getElementById('billMonth')?.value || '';
-  const showUnpaid = ['all','open','owed'].includes(status);
-  const unpaidLabel = list => {
-    if (!showUnpaid) return '';
-    const amount = list.filter(r => billingStatus(r) === 'owed').reduce((sum,r) => sum + Math.round(Number(r.total || 0)*100),0)/100;
-    return `<span class="bill-store-unpaid" style="font-size:.85em;font-weight:500;color:var(--text2);white-space:nowrap">₪${amount.toLocaleString('en-IL',{minimumFractionDigits:2,maximumFractionDigits:2})} unpaid</span>`;
-  };
   const share = document.getElementById('billStoreShare');
-  if (share) {
-    const scoped = billingAllRows.filter(r => r.store_id===store && (!month || billKey(r)===month));
-    share.innerHTML = store ? `<h4 style="display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:0">${escHtml(scoped[0]?.stores?.name || allStores.find(s=>s.id===store)?.name || 'Store')} ${unpaidLabel(scoped)}</h4><button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(store)}">Share multiple statements</button>` : '';
-  }
+  if (share) share.innerHTML = store ? `<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(store)}">Share multiple statements</button>` : '';
   const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
   const rows = billingAllRows.filter(r => {
     if (!inScope(r)) return false;
@@ -7262,7 +7253,7 @@ function renderBillingAll() {
     const title = group === 'status' ? BILL_STATUS_META[k].label
       : group === 'month' ? billMonthLabel(list[0])
       : group === 'store' ? escHtml(k) : '';
-    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;font-size:.95rem;color:var(--cream);margin:0">${title} ${group==='store'?unpaidLabel(list):''}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(list[0].store_id)}">Share multiple statements</button>`:''}</div>` : '';
+    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(list[0].store_id)}">Share multiple statements</button>`:''}</div>` : '';
     return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
   }).join('');
 }
