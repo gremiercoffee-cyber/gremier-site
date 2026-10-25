@@ -5,7 +5,7 @@ import { readFileSync,readdirSync } from 'node:fs';
 import { build } from 'esbuild';
 
 async function bundle(entry) {
-  const result=await build({entryPoints:[entry],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'no-paid-model',setup(b){b.onLoad({filter:/[\\/]worker[\\/]ai\.ts$/},()=>({contents:'export class ProviderUnavailable extends Error {} export function getProvider(){ throw new Error("Unexpected AI call"); }',loader:'js'}));}}]});
+  const result=await build({entryPoints:[entry],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'no-paid-model',setup(b){b.onLoad({filter:/[\\/]worker[\\/]ai\.ts$/},()=>({contents:'export class ProviderUnavailable extends Error {} export async function extendedCache(){return false} export function getProvider(){ throw new Error("Unexpected AI call"); }',loader:'js'}));}}]});
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
 const reminders=await bundle('worker/reminders.ts'), calendar=await bundle('shared/reminders.ts'), routines=await bundle('worker/routines.ts'), missions=await bundle('worker/missions.ts'), ideas=await bundle('worker/ideas.ts');

@@ -11,7 +11,7 @@ test('every open item has exactly one inventory location, with orphan projects f
  const grouped=groupHomeWork(tasks,[{id:'project',name:'Related outcome',status:'paused'}]);
  assert.deepEqual(grouped.projects[0].items.map(i=>i.id),['assigned']);assert.deepEqual(grouped.standalone.map(i=>i.id),['orphan','email','muted','later']);
 });
-test('Home shows project steps expanded and all standalone work without alert filters or truncation',()=>{
+test('Home lists every project and all standalone work without alert filters or truncation; projects start folded and remember what you open',()=>{
  const tasks=[task('first',{project_id:'project'}),task('second',{project_id:'project'}),...Array.from({length:15},(_,i)=>task('single'+i)),task('muted',{muted:1}),task('later',{nudge_after:'2099-01-01'})];
- const html=render(tasks,[{id:'project',name:'Related outcome',status:'active'}]);assert.ok(html.includes('<details open=""'));assert.ok(html.includes('Related outcome'));for(const item of tasks)assert.ok(html.includes(item.title),item.id);assert.ok(html.includes('Alerts muted'));assert.ok(html.includes('Scheduled for later'));assert.equal(html.includes('Upcoming events'),false);
+ const html=render(tasks,[{id:'project',name:'Related outcome',status:'active'}]);assert.ok(html.includes('<details'));assert.ok(!html.includes('<details open=""'),'projects start folded; the open/closed choice is remembered on the device');assert.ok(html.includes('Related outcome'));for(const item of tasks)assert.ok(html.includes(item.title),item.id);assert.ok(html.includes('Alerts muted'));assert.ok(html.includes('Scheduled for later'));assert.equal(html.includes('Upcoming events'),false);
 });
