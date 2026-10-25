@@ -93,8 +93,8 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 
 /* Start with the live default bar, then answer one question per card. */
 #coffeebarsPage { background:#f5f6f7; }
-#coffeebarsPage .cbp-hero.bb-intro { display:none; }
-#coffeebarsPage #planner:not(.bb-mini) { padding-top:24px; }
+#coffeebarsPage .cbp-hero.bb-intro { display:block; max-width:792px; margin:0 auto; padding:22px 16px 6px; text-align:start; }
+#coffeebarsPage #planner:not(.bb-mini) { padding-top:12px; }
 .bb-intro-copy h1 { font:700 clamp(28px,4vw,36px)/1.15 'Playfair Display',serif; letter-spacing:-.025em; margin:0 0 7px; color:#1a1a1a; }
 .bb-intro-copy p { color:#62615d; font-size:14px; line-height:1.5; margin:0; }
 .planner .bb-qs { background:none; border:0; border-radius:0; padding:0; box-shadow:none; display:grid; gap:16px; }

@@ -318,7 +318,7 @@
   }
   function renderHero(plan){
     const hero=document.querySelector('#coffeebarsPage .cbp-hero');if(!hero)return;
-    const content='';
+    const content=`<div class="bb-intro-copy"><h1>${T('Build your coffee bar','בנו את בר הקפה שלכם')}</h1><p>${T('Start with your guests. Make the rest yours.','מתחילים באורחים. את השאר בוחרים לפי הטעם שלכם.')}</p></div>`;
     if(hero.dataset.builderIntro!==content){hero.innerHTML=content;hero.dataset.builderIntro=content;}
     hero.classList.add('bb-intro');
   }
@@ -344,7 +344,7 @@
             <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
           </div>` : ''}
         </aside>
-        <h1 class="bb-build-title">${T('Now let’s build your coffee bar','עכשיו בואו נבנה את בר הקפה שלכם')}</h1>
+        <h2 class="bb-build-title">${T('Now let’s build your coffee bar','עכשיו בואו נבנה את בר הקפה שלכם')}</h2>
         <div class="bb-qs">
           <div class="pl-q"><h2>${T('Which coffee would you like?', 'איזה קפה תרצו לבחור?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${coffeeHtml(plan)}</div>
           <div class="pl-q"><h2>${T('Which milk would you like?', 'איזה חלב תרצו לבחור?')}</h2>${milkHtml(plan)}</div>
