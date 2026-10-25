@@ -756,7 +756,7 @@
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-8"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-9"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -2498,6 +2498,7 @@ function shopRank(p) {
   return popular * 10 + (order[shopCategoryOf(p)] || 9);
 }
 function setCategory(cat) {
+  if(cat==='coffeebars'){showPage('coffeebars');return;}
   activeCategory = cat==='subscriptions'?'all':cat;
   const callout = document.getElementById('subCallout');
   if (callout) callout.style.display = 'none';
@@ -5250,7 +5251,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-engage.js?v=20261025-1"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
 <script src="/storefront-bar-layout.js?v=20261025-6"></script>
-<script src="/storefront-planner.js?v=20261025-24"></script>
+<script src="/storefront-planner.js?v=20261025-25"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

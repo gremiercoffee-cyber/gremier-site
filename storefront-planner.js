@@ -158,7 +158,7 @@
     const room=scene.clientHeight-parseFloat(getComputedStyle(stage).bottom)-12;
     stage.style.setProperty('--z',Math.max(.1,Math.min(1.4,(scene.clientWidth-20)/Number(stage.dataset.width),room/352)).toFixed(3));
   }
-  addEventListener('resize', () => requestAnimationFrame(layoutScene));
+  addEventListener('resize', () => requestAnimationFrame(()=>{layoutScene();mini(suggestion());syncMini();}));
 
   // The total counts up or down to the new price.
   let totalFrame;
@@ -192,17 +192,18 @@
     const thumbHeight=700/Number(scene.style.getPropertyValue('--scene-ratio'));
     thumbStage.style.setProperty('--z',Math.min(680/Number(thumbStage.dataset.width),(thumbHeight-97)/352).toFixed(3));
     scene.removeAttribute('id');scene.removeAttribute('role');scene.removeAttribute('aria-label');scene.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
-    const picture=document.createElement('span');picture.className='bb-thumb-picture';const world=document.createElement('span');world.className='bb-thumb-world';world.style.height=thumbHeight+'px';world.style.top=Math.max(0,(85-thumbHeight*.203)/2)+'px';world.append(scene);reconcileScene(previous,scene);picture.append(world);
-    const label=document.createElement('span');label.className='bb-thumb-label';label.textContent=T('Your bar ↗','הבר שלכם ↗');el.replaceChildren(picture,label);
+    const thumbWidth=el.clientWidth-14||142,thumbScale=thumbWidth/700,frameHeight=thumbWidth*.6;
+    const picture=document.createElement('span');picture.className='bb-thumb-picture';picture.style.height=frameHeight+'px';const world=document.createElement('span');world.className='bb-thumb-world';world.style.height=thumbHeight+'px';world.style.transform=`scale(${thumbScale})`;world.style.top=Math.max(0,(frameHeight-thumbHeight*thumbScale)/2)+'px';world.append(scene);reconcileScene(previous,scene);picture.append(world);
+    const label=document.createElement('span');label.className='bb-thumb-label';label.textContent=T('Your bar','הבר שלכם')+' · ₪'+plan.total+' ↗';el.replaceChildren(picture,label);
   }
   function syncMini(){
     const el=$('bbMini'),box=$('planner');if(!el)return;
     const scene=$('bbScene'),qs=box?.querySelector('.bb-qs'),onPage=$('coffeebarsPage')?.classList.contains('active');
     if(!onPage||!scene||!qs){el.classList.remove('on');document.body.classList.remove('bb-mini-on');return;}
-    const q=qs.getBoundingClientRect(),t=scene.getBoundingClientRect(),vh=innerHeight;
-    const choosing=q.bottom>90&&q.top<vh-100,fullVisible=t.top>=80&&t.bottom<=vh-85;
+    const q=qs.getBoundingClientRect(),t=box.querySelector('.bb-tray').getBoundingClientRect(),vh=innerHeight;
+    const choosing=q.bottom>90&&q.top<vh-100,pastPreview=t.bottom<=96;
     const covered=!!document.querySelector('#pdDrawer.open,#cartDrawer.open,.modal-overlay.open');
-    el.classList.toggle('on',choosing&&!fullVisible&&!covered);document.body.classList.toggle('bb-mini-on',el.classList.contains('on'));
+    el.classList.toggle('on',choosing&&pastPreview&&!covered);document.body.classList.toggle('bb-mini-on',el.classList.contains('on'));
   }
   addEventListener('scroll',()=>requestAnimationFrame(syncMini),{passive:true});
   addEventListener('resize',syncMini);
@@ -315,24 +316,22 @@
       return `<div class="bb-jug"><span class="bb-jug-name">${esc(name(x.addon))} <small>+₪${Number(x.addon.price)}</small></span><span class="bb-jug-step"><button type="button" data-syrup="${x.key}" data-syrup-step="-1" aria-label="${esc(T('Less '+name(x.addon),'פחות '+name(x.addon)))}" ${n?'':'disabled'}>−</button><b>${n}</b><button type="button" data-syrup="${x.key}" data-syrup-step="1" aria-label="${esc(T('More '+name(x.addon),'עוד '+name(x.addon)))}" ${n>=Number(x.addon.max)?'disabled':''}>+</button></span></div>`;
     }).join('');
   }
+  function renderHero(plan){
+    const hero=document.querySelector('#coffeebarsPage .cbp-hero');if(!hero)return;
+    const content=`<div class="bb-intro-copy"><h1>${T('Build your coffee bar','בנו את בר הקפה שלכם')}</h1><p>${T('Start with your guests. Make the rest yours.','מתחילים באורחים. את השאר בוחרים לפי הטעם שלכם.')}</p></div>`;
+    if(hero.dataset.builderIntro!==content){hero.innerHTML=content;hero.dataset.builderIntro=content;}
+    hero.classList.add('bb-intro');
+  }
   function render() {
     const box = $('planner');
     if (!box) return;
     const previousScene=$('bbScene');
     const plan = suggestion();
+    renderHero(plan);
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
       ${window.CoffeeBarOffers?.builderBanner()||''}
-      <div class="bb-head"><h2>${T('Build your coffee bar', 'בנו את בר הקפה שלכם')}</h2></div>
       <div class="bb-grid">
-        <div class="bb-qs">
-          <div class="pl-q"><label>${T('Guests', 'אורחים')}</label>
-            <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
-          <div class="pl-q"><label>${T('Coffee', 'קפה')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></label>${coffeeHtml(plan)}</div>
-          <div class="pl-q"><label>${T('Milk', 'חלב')}</label>${milkHtml(plan)}</div>
-          <div class="pl-q"><label>${T('Serving stations', 'עמדות הגשה')}</label>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
-          <div class="pl-q"><label>${T('Extra syrups','סירופים נוספים')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></label>${syrupHtml(plan)}</div>
-        </div>
         <aside class="bb-tray">
           <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}</div>
           ${plan ? sceneHtml(plan) : ''}
@@ -343,6 +342,14 @@
             <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
           </div>` : ''}
         </aside>
+        <div class="bb-qs">
+          <div class="pl-q"><h2>${T('How many guests?', 'כמה אורחים יהיו?')}</h2>
+            <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
+          <div class="pl-q"><h2>${T('Which coffee?', 'איזה קפה תרצו?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${coffeeHtml(plan)}</div>
+          <div class="pl-q"><h2>${T('Which milk?', 'איזה חלב תרצו?')}</h2>${milkHtml(plan)}</div>
+          <div class="pl-q"><h2>${T('How many serving stations?', 'כמה עמדות הגשה?')}</h2>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
+          <div class="pl-q"><h2>${T('Any extra syrups?','להוסיף עוד סירופים?')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></h2>${syrupHtml(plan)}</div>
+        </div>
       </div>
       ${takeHomeHtml()}`;
     reconcileScene(previousScene,$('bbScene'));
