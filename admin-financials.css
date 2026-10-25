@@ -36,4 +36,4 @@
 #statsYearOverview {margin:0 0 24px;}
 #statsYearOverview .fin-year-metrics {grid-template-columns:repeat(2,minmax(0,1fr));margin:18px 0 0;}
 #statsYearOverview .fin-metric {min-width:0;}
-@media(max-width:420px){#statsYearOverview .fin-metric strong {font-size:24px;}}
+@media(max-width:420px){#statsYearOverview .fin-metric strong {font-size:clamp(16px,4.5vw,24px);letter-spacing:-.04em;}}
