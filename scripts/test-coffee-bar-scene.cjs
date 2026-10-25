@@ -44,6 +44,14 @@ test('coffee-only package excludes unselected add-ons', () => {
   assert.equal(of(added, 'vanilla').length, 0);
 });
 
+test('explicit vanilla-only selection shows vanilla without caramel in the scene', () => {
+  const scene = layout({ guests: 50, classic: 2, dispensers: 0, milkLiters: 0, syrupFlavours: ['vanilla'] });
+  assert.equal(of(scene, 'vanilla').length, 1);
+  assert.equal(of(scene, 'caramel').length, 0);
+  assert.equal(of(scene, 'sugar').length, 1);
+  assert.equal(of(scene, 'coffee').length, 2);
+});
+
 test('all supported packages fit their canvas and remain on the table', () => {
   for (const guests of [25, 50, 75, 100, 125]) for (const dispensers of [1, 2, 3, 4]) {
     const scene = layout({ ...full(guests), dispensers });

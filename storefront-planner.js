@@ -19,7 +19,7 @@
   const basic = () => all().find((p) => typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p) && p !== premium() && tiersOf(p).length);
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, full: true, milk: 'dairy', mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, dispenser: false, syrups: 0 };
+  const state = { guests: 50, full: true, milk: 'dairy', mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, dispenser: false, syrups: { caramel: false, vanilla: false } };
   const FLAVOURS = [['house', /house/i, 'House Blend', 'האוס בלנד'], ['colomb', /colomb/i, 'Colombian', 'קולומביה'], ['decaf', /decaf/i, 'Decaf', 'נטול קפאין']];
   const name = (a) => (he() && a.name_he ? a.name_he : a.name);
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
@@ -34,7 +34,7 @@
     const lines = [];
     let total = tier.price;
     const jugs = jugsFor(tier.guests);
-    const plan = { product: p, tier, jugs, mix: {}, classic: jugs, liters: 0, litersIdx: -1, milkLiters: Math.floor(tier.guests / 10), qty: [], checks: [], dispensers: state.full ? 1 : 0, syrups: 0 };
+    const plan = { product: p, tier, jugs, mix: {}, classic: jugs, liters: 0, litersIdx: -1, milkLiters: Math.floor(tier.guests / 10), qty: [], checks: [], dispensers: state.full ? 1 : 0, syrups: 0, syrupFlavours: [] };
     if (state.full) {
       // Coffee: some jugs upgraded (₪ per 5L jug), the rest Classic. Each coffee gets its own dispenser.
       let left = jugs;
@@ -64,8 +64,12 @@
         plan.dispensers = 1;
         total += Number(addons[disp].price) || 0; lines.push(name(addons[disp]));
       }
-      const syr = addons.findIndex((a) => /syrup/i.test(a.name) && Number(a.max) > 1);
-      if (syr >= 0 && state.syrups) { const n = Math.min(state.syrups, Number(addons[syr].max)); plan.qty.push([syr, n]); plan.syrups = n; total += n * (Number(addons[syr].price) || 0); lines.push(T(`${n} syrup${n > 1 ? 's' : ''}`, `${n} סירופים`)); }
+      for(const option of syrupOptions(p)){
+        if(!state.syrups[option.key])continue;
+        plan.checks.push(option.index);plan.syrupFlavours.push(option.key);
+        total+=Number(option.addon.price)||0;lines.push(name(option.addon));
+      }
+      plan.syrups=plan.syrupFlavours.length;
     }
     plan.lines = lines; plan.total = total;
     plan.tooBig = state.guests > tier.guests;
@@ -89,9 +93,8 @@
       t.push({ key: 'vanilla', pic: 'vanilla', title: T('Vanilla syrup', 'סירופ וניל') });
     }
     t.push({ key: 'sugar', pic: 'sugar', title: T('Sugar syrup', 'סירופ סוכר') });
-    if (!state.full && plan.syrups) {
-      t.push({ key: 'caramel', pic: 'caramel', title: T('Caramel syrup', 'סירופ קרמל') });
-      if (plan.syrups > 1) t.push({ key: 'vanilla', pic: 'vanilla', title: T('Vanilla syrup', 'סירופ וניל') });
+    if(!state.full)for(const key of plan.syrupFlavours||[]){
+      t.push({key,pic:key,title:key==='caramel'?T('Caramel syrup','סירופ קרמל'):T('Vanilla syrup','סירופ וניל')});
     }
     if (state.full) {
       // One 1-liter carton per 10 guests.
@@ -116,7 +119,7 @@
   function sceneHtml(plan) {
     const list=tiles(plan);
     const layout=window.CoffeeBarScene.layout({classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
-      milkLiters:state.full?plan.milkLiters:0,parveLiters:plan.liters,syrups:state.full?2:plan.syrups,guests:plan.tier.guests});
+      milkLiters:state.full?plan.milkLiters:0,parveLiters:plan.liters,syrupFlavours:state.full?['caramel','vanilla']:plan.syrupFlavours,guests:plan.tier.guests});
     const ratio=layout.width/(352+layout.width*.135+32);
     const items=layout.items.map((item,index)=>`<div class="bs-object drop" data-instance="${item.id}" data-kind="${item.kind}" data-variant="${item.variant}" data-units="${item.units}" style="left:${item.x}px;bottom:${item.bottom}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};--d:${Math.min(300,index*22)}ms">${itemArt(item)}</div>`).join('');
     const legend=list.map(x=>`<span>${x.n>1?`<b>${x.n}×</b> `:''}${esc(x.title)}</span>`).join('');
@@ -198,7 +201,7 @@
     const scene=$('bbScene'),qs=box?.querySelector('.bb-qs'),onPage=$('coffeebarsPage')?.classList.contains('active');
     if(!onPage||!scene||!qs){el.classList.remove('on');document.body.classList.remove('bb-mini-on');return;}
     const q=qs.getBoundingClientRect(),t=scene.getBoundingClientRect(),vh=innerHeight;
-    const choosing=q.bottom>90&&q.top<vh-100,fullVisible=t.top<vh-120&&t.bottom>120;
+    const choosing=q.bottom>90&&q.top<vh-100,fullVisible=t.top>=80&&t.bottom<=vh-85;
     const covered=!!document.querySelector('#pdDrawer.open,#cartDrawer.open,.modal-overlay.open');
     el.classList.toggle('on',choosing&&!fullVisible&&!covered);document.body.classList.toggle('bb-mini-on',el.classList.contains('on'));
   }
@@ -270,11 +273,24 @@
     const picker=choices.length?`<div class="bb-classic-picker" role="group" aria-label="${T('Swap coffee','החלפת קפה')}"><button type="button" class="bb-swap-close" data-close-swap aria-label="${T('Close coffee choices','סגירת אפשרויות הקפה')}">×</button>${choices.map(x=>`<button type="button" data-classic-swap="${x.key}" data-swap-mode="${classicSwap}">${classicSwap==='restore'?`${x.label} → ${T('Classic','קלאסיק')}`:`${T('Classic','קלאסיק')} → ${x.label} <small>+₪${Number(x.addon.price)||0}</small>`}</button>`).join('')}</div>`:'';
     return `<div class="bb-jugs">${row(T('Classic','קלאסיק'),plan.classic,'classic',0)}${picker}${options.map(x=>row(x.label,plan.mix[x.key]||0,x.key,Number(x.addon.price)||0)).join('')}</div>`;
   }
+  function syrupOptions(p) {
+    return addonsOf(p).map((addon,index)=>({addon,index,key:addon.bar_syrup||(/^Caramel syrup$/i.test(addon.name)?'caramel':/^Vanilla syrup$/i.test(addon.name)?'vanilla':null)})).filter(x=>x.key==='caramel'||x.key==='vanilla');
+  }
+  function syrupHtml(plan) {
+    if(!plan)return '';
+    const options=syrupOptions(plan.product);
+    if(!options.length)return `<small role="status">${T('Loading syrup choices…','טוען אפשרויות סירופ…')}</small>`;
+    return `<div class="bb-syrup-choices">${options.map(x=>`<label><input type="checkbox" data-syrup="${x.key}" ${state.syrups[x.key]?'checked':''}><span>${esc(name(x.addon))}</span><small>+₪${Number(x.addon.price)||0}</small></label>`).join('')}</div>`;
+  }
+  function basicDispenserLabel(plan) {
+    const addon=plan&&addonsOf(plan.product).find(a=>/dispenser/i.test(a.name));
+    return T('Add one','להוסיף')+(addon?' · ₪'+(Number(addon.price)||0):'');
+  }
   function barChoice() {
     const pick = (full, p, title, sub) => `<button type="button" class="bb-bar ${state.full === full ? 'on' : ''}" data-full="${full}">
         ${p && p.images && p.images[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(p.images[0], 200) : p.images[0])}" alt="">` : ''}
         <span><b>${title}</b><small>${sub}</small></span></button>`;
-    return `<div class="bb-bars">${pick(true, premium(), T('Full bar', 'בר מלא'), T('Dispenser, milk, 3 syrups, cups', 'מתקן, חלב, 3 סירופים, כוסות'))}${pick(false, basic(), T('Just the coffee', 'רק הקפה'), T('Coffee, cups, sugar syrup', 'קפה, כוסות, סירופ סוכר'))}</div>`;
+    return `<div class="bb-bars">${pick(true, premium(), T('Full bar', 'בר מלא'), T('Dispenser, milk, 3 syrups, cups', 'מתקן, חלב, 3 סירופים, כוסות'))}${pick(false, basic(), T('Just the coffee', 'רק הקפה'), T('Coffee, cups, straws & sugar syrup', 'קפה, כוסות, קשיות וסירופ סוכר'))}</div>`;
   }
   function render() {
     const box = $('planner');
@@ -294,8 +310,8 @@
           <div class="pl-q"><label>${T('Milk', 'חלב')}</label>${chips('milk', [['dairy', T('Dairy', 'חלב רגיל')], ['parve', T('Parve', 'פרווה')], ['half', T('Half & half', 'חצי-חצי')]])}</div>
           <div class="pl-q"><label>${T('Serving stations', 'עמדות הגשה')}</label>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>`
           : `
-          <div class="pl-q"><label>${T('Dispenser', 'מתקן')}</label>${chips('dispenser', [['false', T('No', 'לא')], ['true', T('Add one', 'להוסיף')]])}</div>
-          <div class="pl-q"><label>${T('Extra syrups', 'סירופים נוספים')}</label>${chips('syrups', [[0, '0'], [1, '1'], [2, '2']])}</div>`}
+          <div class="pl-q"><label>${T('Dispenser', 'מתקן')}</label>${chips('dispenser', [['false', T('No', 'לא')], ['true', basicDispenserLabel(plan)]])}</div>
+          <div class="pl-q"><label>${T('Extra syrups', 'סירופים נוספים')}</label>${syrupHtml(plan)}</div>`}
         </div>
         <aside class="bb-tray">
           <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}</div>
@@ -318,6 +334,8 @@
   document.addEventListener('click', (e) => {
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
+    const syrup=e.target.closest('input[data-syrup]');
+    if(syrup){state.syrups[syrup.dataset.syrup]=syrup.checked;render();return;}
     const swap=e.target.closest('[data-classic-swap]');
     if(swap){swapClassic(swap.dataset.classicSwap,swap.dataset.swapMode);render();return;}
     if(e.target.closest('[data-close-swap]')){classicSwap=null;render();return;}

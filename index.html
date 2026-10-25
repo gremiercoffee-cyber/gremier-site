@@ -753,7 +753,7 @@
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-4"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-5"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -2078,7 +2078,7 @@ function renderPdAddons(p) {
   const title = lang === 'he' ? 'תוספות (אופציונלי)' : 'Add-ons (optional)';
   section.style.display = 'block';
   section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${title}</div>` +
-    addons.map((a, i) => a.group ? pdGroupHtml(addons, a, i) : isQtyAddon(a) ? `<div class="pd-liters" data-qty-idx="${i}">
+    addons.map((a, i) => a.legacy_syrup ? '' : a.group ? pdGroupHtml(addons, a, i) : isQtyAddon(a) ? `<div class="pd-liters" data-qty-idx="${i}">
       <div class="pd-l-top"><span class="pd-l-name">${escHtml(addonName(a))}</span><span class="pd-l-total"></span></div>
       <div class="pd-l-help">${a.per_jug ? (lang === 'he' ? `₪${parseFloat(a.price) || 0} לכל ג'ריקן של 5 ל׳. השאר קלאסיק (כלול).` : `₪${parseFloat(a.price) || 0} per 5L jug. The rest is Classic (included).`) : `₪${parseFloat(a.price) || 0} ${lang === 'he' ? 'ליחידה' : 'each'}`}</div>
       <div class="pd-l-step"><button type="button" class="pd-l-minus" onclick="pdSetQty(${i},-1)" disabled aria-label="${lang === 'he' ? 'פחות' : 'Less'}">−</button><span class="pd-l-n">0</span><button type="button" class="pd-l-plus" onclick="pdSetQty(${i},1)" aria-label="${lang === 'he' ? 'עוד' : 'More'}">+</button></div>
@@ -5249,8 +5249,8 @@ async function sendChatMessageText(text) {
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261024-4"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
-<script src="/storefront-bar-layout.js?v=20261025-1"></script>
-<script src="/storefront-planner.js?v=20261025-19"></script>
+<script src="/storefront-bar-layout.js?v=20261025-2"></script>
+<script src="/storefront-planner.js?v=20261025-20"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

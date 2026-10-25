@@ -11,7 +11,13 @@ function fixture() {
     { name: 'Parve milk', per_liter: true, price: 7 },
     { name: 'Extra dispenser', max: 3, price: 49 }
   ] };
-  const context = { window: {}, document: { readyState: 'loading', addEventListener() {} }, addEventListener() {}, products: [product], getProductAddons: p => p.addons, lang: 'en' };
+  const basic = { name_en: 'Basic Coffee Bar', category: 'coffeebars', variations: [{ type: 'choice', name: 'Guests', options: [{ label: '50', price: 449 }] }], addons: [
+    { name: 'Extra dispenser', price: 49 },
+    { name: 'Syrup (caramel or vanilla)', price: 59, max: 2, legacy_syrup: true },
+    { name: 'Caramel syrup', price: 59, bar_syrup: 'caramel' },
+    { name: 'Vanilla syrup', price: 59, bar_syrup: 'vanilla' }
+  ] };
+  const context = { window: {}, document: { readyState: 'loading', addEventListener() {} }, addEventListener() {}, products: [product, basic], getProductAddons: p => p.addons, isCoffeeBarProduct: p => p.category === 'coffeebars', lang: 'en' };
   const source = fs.readFileSync(require.resolve('../storefront-planner.js'), 'utf8')
     .replace("  if (document.readyState === 'loading')", '  window.testApi={state,suggestion,swapClassic};\n  if (document.readyState === \'loading\')');
   vm.runInNewContext(source, context);
@@ -57,4 +63,35 @@ test('restoring an empty or unavailable flavour changes nothing', () => {
   swapClassic('missing', 'upgrade');
   assert.equal(suggestion().classic, 2);
   assert.equal(suggestion().total, 599);
+});
+
+test('Basic vanilla-only selection charges and hands off the named vanilla add-on', () => {
+  const { state, suggestion } = fixture();
+  state.full = false;
+  state.syrups.vanilla = true;
+  const plan = suggestion();
+  assert.equal(plan.total, 508);
+  assert.equal(plan.syrups, 1);
+  assert.equal(plan.syrupFlavours.join(','), 'vanilla');
+  assert.equal(plan.checks.join(','), '3');
+  assert.equal(plan.qty.length, 0);
+  assert.equal(plan.dispensers, 0);
+  assert.equal(plan.tier.guests, 50);
+});
+
+test('Basic named syrups and optional dispenser retain their individual prices', () => {
+  const { state, suggestion } = fixture();
+  state.full = false;
+  state.syrups.vanilla = true;
+  state.syrups.caramel = true;
+  state.dispenser = true;
+  const plan = suggestion();
+  assert.equal(plan.total, 616);
+  assert.equal(plan.syrupFlavours.join(','), 'caramel,vanilla');
+  assert.equal(plan.checks.join(','), '0,2,3');
+  assert.equal(plan.dispensers, 1);
+  state.syrups.vanilla = false;
+  state.syrups.caramel = false;
+  state.dispenser = false;
+  assert.equal(suggestion().total, 449);
 });
