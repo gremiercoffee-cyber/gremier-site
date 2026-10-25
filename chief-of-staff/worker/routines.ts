@@ -9,6 +9,7 @@
  * Depth sets how many sub-questions and searches: quick 1×4, standard 4×6, deep 8×8.
  */
 import type { Env } from "./env";
+import { requestAiJob } from './ai-jobs';
 import { getProvider } from "./ai";
 import { all, first, getSettings, localParts, now, run, uid } from "./db";
 import { notify } from "./push";
@@ -21,8 +22,8 @@ export interface Routine {
 }
 
 export const DEPTH: Record<string, { subs: number; searches: number; label: string; costPerRun: number }> = {
-  quick: { subs: 1, searches: 8, label: "Quick", costPerRun: 0.1 },
-  standard: { subs: 4, searches: 4, label: "Standard", costPerRun: 0.25 },
+  quick: { subs: 1, searches: 8, label: "Quick", costPerRun: 0.06 },
+  standard: { subs: 4, searches: 4, label: "Standard", costPerRun: 0.3 },
   deep: { subs: 8, searches: 8, label: "Deep", costPerRun: 0.8 },
   // Adaptive: a full Standard report the first time, then Quick checks that go Standard only when they find something important.
   adaptive: { subs: 1, searches: 4, label: "Adaptive", costPerRun: 0.1 },
@@ -147,7 +148,10 @@ interface RunState { eff: string; job: string; today: string; subs: string[]; jo
  * Start a report. Long work (web research, writing the report) runs as OpenAI background jobs, so
  * nothing here takes more than a few seconds; advanceRoutineRuns() checks back and finishes it.
  */
-export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why: string; focus: string } } = {}) {
+export async function runRoutine(env: Env, r: Routine, opts: { escalated?: { why: string; focus: string }; approved?: boolean } = {}) {
+  if (await first(env,'SELECT id FROM recurring_reminders WHERE id=?',r.id)) throw new Error('This has been converted to a fixed reminder. It does not run as an AI job.');
+  if (!opts.approved) return requestAiJob(env, 'ai_run_routine', { id: r.id, instructions: r.instructions, depth: r.depth, schedule: r.schedule, rules: r.rules ?? '', escalated: opts.escalated ?? null },
+    `Start AI ${opts.escalated ? 'deeper research' : 'research task'}: ${r.name}\n${r.instructions}\n${describeSchedule(normalizeSchedule(r.schedule))}; this approval is for one run. Estimated ~$${(DEPTH[opts.escalated ? 'standard' : r.depth] ?? DEPTH.standard).costPerRun.toFixed(2)} per run (estimate, actual usage varies). Fixed reminders do not need an AI job.`);
   const runId = uid();
   await run(env, "INSERT INTO routine_runs (id, routine_id, started_at) VALUES (?, ?, ?)", runId, r.id, now());
   const today = new Date().toISOString().slice(0, 10);
@@ -335,7 +339,7 @@ async function finishRun(env: Env, r: Routine, runId: string, st: RunState, repo
 
 /** One line per task, for the assistant's context and the briefing. */
 export async function routinesSummary(env: Env) {
-  const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY created_at LIMIT 20");
+  const rs = await all<Routine>(env, "SELECT * FROM routines WHERE NOT EXISTS (SELECT 1 FROM recurring_reminders rr WHERE rr.id=routines.id) ORDER BY created_at LIMIT 20");
   return rs.map((r) => `- ${r.name} (id ${r.id}; ${r.active ? describeSchedule(normalizeSchedule(r.schedule)) : "paused"}; ${r.depth}; results → ${r.deliver})`).join("\n");
 }
 

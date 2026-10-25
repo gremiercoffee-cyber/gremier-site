@@ -1,10 +1,17 @@
+import type {HashgachaCampaign} from '../shared/hashgacha';
+import type {MeetingPrepState} from '../shared/meeting-prep';
+import type {
+  ShoppingConfig, ShoppingState,
+} from '../shared/shopping';
+import type { RecurringReminder } from '../shared/reminders';
+import type { PendingAction } from '../shared/types';
 import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
 export interface ReplyCard {
   id: string; person: string | null; channel: "whatsapp" | "email"; said: string; subject?: string;
-  why: string | null; suggested: string | null; waiting_since: string; category: string | null;
+  why: string | null; suggested: string | null; waiting_since: string; category: string | null; phone?:string|null; delivery_status?:string|null;
 }
 
 export interface RoutineSchedule { kind: "hours" | "daily" | "weekly" | "monthly"; every_hours?: number; time?: string; weekdays?: number[]; day?: number }
@@ -16,7 +23,7 @@ export interface RoutineRow {
 
 export interface GroupMember { id: string; name: string; email: string | null; phone: string | null; role: string }
 export interface GroupRow { id: string; name: string; description: string; members: GroupMember[] }
-export interface BroadcastRow { id: string; group_id: string; subject: string; body: string; status: string; results: string; created_at: string; sent_at: string | null }
+export interface BroadcastRow { id: string; group_id: string; subject: string; body: string; status: string; results: string; created_at: string; sent_at: string | null; archived_at?:string|null; group_name?:string;email_count?:number }
 
 export interface IdeaRow {
   id: string; title: string; area: string | null; summary: string; transcript: string; analysis: string; verdict: string | null;
@@ -62,10 +69,28 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     if (res.status === 401) window.dispatchEvent(new Event("cos:unauthorised"));
     throw new ApiError(res.status, (data as { error?: string }).error ?? `Request failed (${res.status})`);
   }
+  if (method !== "GET" && !path.startsWith("/api/push/")) window.dispatchEvent(new Event("cos:notifications-changed"));
   return data as T;
 }
 
 export const api = {
+  refreshHashgacha:()=>request<HashgachaCampaign[]>('POST','/api/hashgacha/refresh'),
+  meetingPrep:()=>request<MeetingPrepState>('GET','/api/meeting-prep'),
+  confirmMeetingNote:(id:string,meeting_id:string)=>request('POST',`/api/meeting-prep/drafts/${id}/confirm`,{meeting_id}),
+  discardMeetingNote:(id:string)=>request('DELETE',`/api/meeting-prep/drafts/${id}`),
+  editMeetingNote:(id:string,text:string)=>request('PUT',`/api/meeting-prep/notes/${id}`,{text}),
+  deleteMeetingNote:(id:string)=>request('DELETE',`/api/meeting-prep/notes/${id}`),
+  notificationState: (ids: string[]) => request<{active_ids:string[];updates:{id:string;title:string;body:string;revision:number}[]}>("POST","/api/push/state",{ids}),
+  aiJobApprovals: () => request<PendingAction[]>('GET', '/api/ai-job-approvals'),
+  recurringReminders: () => request<RecurringReminder[]>('GET', '/api/recurring-reminders'),
+  saveRecurringReminder: (input: Partial<RecurringReminder>) => request<RecurringReminder>('POST', '/api/recurring-reminders', input),
+  shopping: () => request<ShoppingState>('GET', '/api/shopping'),
+  saveShoppingList: (name: string, id?: string) => request('POST', '/api/shopping/lists', { name, id }),
+  deleteShoppingList: (id: string) => request('DELETE', `/api/shopping/lists/${id}`),
+  addShoppingItems: (list: string, items: { name: string; quantity?: string; notes?: string }[]) => request('POST', '/api/shopping/items', { list, items }),
+  updateShoppingItem: (id: string, input: { name?: string; quantity?: string; notes?: string; checked?: boolean }) => request('PATCH', `/api/shopping/items/${id}`, input),
+  deleteShoppingItem: (id: string) => request('DELETE', `/api/shopping/items/${id}`),
+  saveShoppingConfig: (input: ShoppingConfig) => request<ShoppingConfig>('POST', '/api/shopping/config', input),
   health: () => request<{ ok: boolean; configured: boolean; model: boolean; transcription: boolean }>("GET", "/api/health"),
   dashboard: () => request<Dashboard>("GET", "/api/dashboard"),
   messages: () => request<Message[]>("GET", "/api/messages"),
@@ -94,6 +119,7 @@ export const api = {
   createItem: (i: Partial<Item>) => request<Item>("POST", "/api/items", i),
   updateItem: (id: string, i: Partial<Item>) => request<Item>("PATCH", `/api/items/${id}`, i),
   deleteItem: (id: string) => request("DELETE", `/api/items/${id}`),
+  organizeProjects: () => request<{created:number;assigned:number;skipped?:string}>("POST", "/api/projects/organize"),
   projects: () => request<Project[]>("GET", "/api/projects"),
   createProject: (p: Partial<Project>) => request<Project>("POST", "/api/projects", p),
   updateProject: (id: string, p: Partial<Project>) => request<Project>("PATCH", `/api/projects/${id}`, p),
@@ -112,7 +138,9 @@ export const api = {
   deleteGroup: (id: string) => request("DELETE", `/api/groups/${id}`),
   groupMessages: (id: string) => request<BroadcastRow[]>("GET", `/api/groups/${id}/messages`),
   draftGroupMessage: (b: Record<string, unknown>) => request<BroadcastRow>("POST", "/api/broadcasts", b),
-  sendGroupMessage: (id: string) => request<{ sent: number; total: number; skipped: { name: string; error?: string }[] }>("POST", `/api/broadcasts/${id}/send`),
+  groupDrafts:()=>request<BroadcastRow[]>("GET","/api/broadcasts/drafts"),
+  archiveGroupMessage:(id:string)=>request("POST",`/api/broadcasts/${id}/archive`),
+  sendGroupMessage: (id: string,edit?:{subject:string;body:string}) => request<{ sent: number; total: number; skipped: { name: string; error?: string }[] }>("POST", `/api/broadcasts/${id}/send`,edit),
   deleteGroupMessage: (id: string) => request("DELETE", `/api/broadcasts/${id}`),
   learnNow: () => request<{ learned?: number }>("POST", "/api/learn"),
   people: () => request<Person[]>("GET", "/api/people"),
@@ -134,6 +162,10 @@ export const api = {
   deleteRoutine: (id: string) => request("DELETE", `/api/routines/${id}`),
   routineRun: (id: string) => request<{ id: string; name: string; started_at: string; summary: string | null; report: string | null; doc_link: string | null }>("GET", `/api/routine-runs/${id}`),
   runRoutine: (id: string) => request<{ ok: true; message: string }>("POST", `/api/routines/${id}/run`),
+  batchReplies:(text:string,cards:{id:string;number:number}[])=>request<{changed:{id:string;number:number;action:string;text?:string}[];clarification?:string}>('POST','/api/replies/batch',{text,cards}),
+  saveReplyDraft:(id:string,text:string)=>request('PUT',`/api/replies/${id}/draft`,{text}),
+  dismissReply:(id:string)=>request('POST',`/api/replies/${id}/dismiss`),
+  markReplied:(id:string)=>request('POST',`/api/replies/${id}/replied`),
   replies: () => request<ReplyCard[]>("GET", "/api/replies"),
   draftReply: (id: string, guidance: string) => request<{ text: string }>("POST", `/api/replies/${id}/draft`, { guidance }),
   sendReply: (id: string, text: string) => request<{ ok: true; message: string }>("POST", `/api/replies/${id}/send`, { text }),

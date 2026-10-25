@@ -1,3 +1,5 @@
+import {isDrivingBlock,drivingSuitable} from './work-context';
+import {attentionState,actionableItem} from './attention';
 /**
  * Schedule (time blocks): the user's day in blocks — recurring ("In yeshiva", Sun–Thu 09:00–13:00),
  * one-off ("Coffee time", today 14:00–18:00), or calendar-triggered ("At events").
@@ -17,6 +19,7 @@ import { getAreas } from "./areas";
 export interface Situation {
   id: string; name: string; category: string | null; keywords: string; note: string; guidance: string; weekdays: string | null; date: string | null;
   start_time: string | null; end_time: string | null; mode: string; calendar_keywords: string; active: number;
+  activity_mode?: 'auto'|'standard'|'driving';
   last_fired: string | null; last_wrapped?: string | null; skip_dates: string; created_at: string; updated_at: string;
 }
 
@@ -66,6 +69,7 @@ export async function saveSituation(env: Env, input: Record<string, unknown>) {
     end_time: time("end_time", existing?.end_time ?? null),
     mode: input.mode === "random" ? "random" : input.mode === "start" ? "start" : existing?.mode ?? "start",
     calendar_keywords: str("calendar_keywords"),
+    activity_mode: ['auto','standard','driving'].includes(String(input.activity_mode))?String(input.activity_mode):existing?.activity_mode??'auto',
     active: input.active === undefined ? existing?.active ?? 1 : input.active ? 1 : 0,
     skip_dates: existing?.skip_dates ?? "",
   };
@@ -79,12 +83,12 @@ export async function saveSituation(env: Env, input: Record<string, unknown>) {
   if (!s.start_time && !s.calendar_keywords) throw new Error("A time block needs a time (and days or a date) or calendar keywords.");
   if (s.start_time && !s.date && !parse<number[]>(s.weekdays, []).length) throw new Error("Which days (or which date) is this time block?");
   if (existing) {
-    await run(env, `UPDATE situations SET name=?, category=?, keywords=?, note=?, guidance=?, weekdays=?, date=?, start_time=?, end_time=?, mode=?, calendar_keywords=?, active=?, skip_dates=?, updated_at=? WHERE id=?`,
-      s.name, s.category, s.keywords, s.note, s.guidance, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, s.skip_dates, t, s.id);
+    await run(env, `UPDATE situations SET name=?, category=?, keywords=?, note=?, guidance=?, weekdays=?, date=?, start_time=?, end_time=?, mode=?, calendar_keywords=?, active=?, activity_mode=?, skip_dates=?, updated_at=? WHERE id=?`,
+      s.name, s.category, s.keywords, s.note, s.guidance, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, s.activity_mode, s.skip_dates, t, s.id);
   } else {
-    await run(env, `INSERT INTO situations (id, name, category, keywords, note, guidance, weekdays, date, start_time, end_time, mode, calendar_keywords, active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      s.id, s.name, s.category, s.keywords, s.note, s.guidance, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, t, t);
+    await run(env, `INSERT INTO situations (id, name, category, keywords, note, guidance, weekdays, date, start_time, end_time, mode, calendar_keywords, active, activity_mode, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      s.id, s.name, s.category, s.keywords, s.note, s.guidance, s.weekdays, s.date, s.start_time, s.end_time, s.mode, s.calendar_keywords, s.active, s.activity_mode, t, t);
   }
   const saved = await first<Situation>(env, "SELECT * FROM situations WHERE id = ?", s.id);
   return { ...saved!, when: describeSituation(saved!) };
@@ -103,15 +107,19 @@ export async function itemsFor(env: Env, s: Situation, extra: string[] = []) {
   const kw = [...words(s.keywords), ...extra];
   const open = await all<Item & { block_id: string | null }>(env,
     "SELECT * FROM items WHERE status = 'open' AND kind IN ('task','commitment','reminder','waiting') ORDER BY priority, CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at LIMIT 300");
-  const attached = open.filter((i) => i.block_id === s.id);
-  const intuited = open.filter((i) => i.block_id !== s.id && !i.block_id && ((s.category && i.category === s.category)
-    || kw.some((w) => `${i.title} ${i.notes} ${i.person ?? ""}`.toLowerCase().includes(w))));
+  const attention=await attentionState(env,new Date(),false);
+  const eligible=open.filter(i=>actionableItem({...i,block_id:i.block_id===s.id?null:i.block_id},attention.blocks,attention.tz,attention.at));
+  const driving=isDrivingBlock(s);
+  const attached = eligible.filter((i) => i.block_id === s.id);
+  const intuited = eligible.filter((i) => i.block_id !== s.id && !i.block_id && (driving?drivingSuitable(i):((s.category && i.category === s.category)
+    || kw.some((w) => `${i.title} ${i.notes} ${i.person ?? ""}`.toLowerCase().includes(w)))));
   // Each thing once: the same words twice, and "Reply to X" items (those live on the Replies page).
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   const seen = new Set<string>();
   return [...attached, ...intuited].filter((i) => {
     const k = norm(i.title);
-    if (seen.has(k) || (i.source === "whatsapp" || i.source === "gmail") && i.kind === "task") return false;
+    if (driving&&!drivingSuitable(i))return false;
+    if (seen.has(k) || !driving&&(i.source === "whatsapp" || i.source === "gmail") && i.kind === "task") return false;
     seen.add(k);
     return true;
   }).slice(0, 8);
@@ -121,10 +129,26 @@ export async function itemsFor(env: Env, s: Situation, extra: string[] = []) {
 export async function currentBlock(env: Env) {
   const { date, mins, dow } = nowLocal((await getSettings(env)).timezone);
   const list = await all<Situation>(env, "SELECT * FROM situations WHERE active = 1 AND start_time IS NOT NULL");
-  const hit = list.find((s) => onDay(s, date, dow) && mins >= minutes(s.start_time) && mins < (s.end_time ? minutes(s.end_time) : minutes(s.start_time) + 60));
+  const hit = list.sort((a,b)=>Number(isDrivingBlock(b))-Number(isDrivingBlock(a))||Number(!!b.date)-Number(!!a.date)||(b.start_time??'').localeCompare(a.start_time??'')).find((s) => onDay(s, date, dow) && mins >= minutes(s.start_time) && mins < (s.end_time ? minutes(s.end_time) : minutes(s.start_time) + 60));
   if (!hit) return null;
   const items = await itemsFor(env, hit);
-  return { id: hit.id, name: hit.name, category: hit.category, until: hit.end_time, count: items.length, items: items.map((i) => ({ id: i.id, title: i.title })) };
+  const projects = new Map((await all<{id:string;name:string}>(env,'SELECT id,name FROM projects')).map(p=>[p.id,p.name]));
+  return { id: hit.id, name: hit.name, category: hit.category, until: hit.end_time, count: items.length, items: items.map((i) => ({ id: i.id, title: i.title, project_id:i.project_id, project:i.project_id?projects.get(i.project_id)??null:null })) };
+}
+
+/** Home always has a Now checklist, even between scheduled blocks. No model call. */
+export async function nowChecklist(env: Env, provided?: Awaited<ReturnType<typeof attentionState>>) {
+  const state=provided??await attentionState(env);
+  const block = await currentBlock(env);
+  const available = [...state.items.values()].filter(i =>
+    ['task','commitment','reminder'].includes(i.kind) && actionableItem(i,state.blocks,state.tz,state.at)
+    && !( !drivingSuitable(i)&&['whatsapp','gmail'].includes(i.source) && i.kind==='task'));
+  const immediate = available.filter(i => i.due_at ? new Date(i.due_at)<=state.at : !block)
+    .sort((a,b) => (a.due_at?0:1)-(b.due_at?0:1) || a.priority-b.priority || (a.due_at??a.created_at).localeCompare(b.due_at??b.created_at));
+  const ids = [...new Set([...(block?.items.map(i=>i.id)??[]),...immediate.map(i=>i.id)])].slice(0,12);
+  const names = new Map((await all<{id:string;name:string}>(env,'SELECT id,name FROM projects')).map(p=>[p.id,p.name]));
+  const items = ids.flatMap(id => {const i=state.items.get(id);return i?[{id:i.id,title:i.title,category:i.category??null,project_id:i.project_id,project:i.project_id?names.get(i.project_id)??null:null}]:[];});
+  return {id:block?.id??'now',name:block?.name??'Ready to work on',category:block?.category??null,until:block?.until??null,count:items.length,items};
 }
 
 /** A stable "random" minute inside the window for this block and day. */
@@ -136,7 +160,13 @@ function randomMinute(id: string, date: string, from: number, to: number) {
 
 async function fire(env: Env, s: Situation, title: string, extra: string[] = []) {
   const items = await itemsFor(env, s, extra);
-  if (!items.length && !s.note) return false; // nothing to say: stay quiet
+  if (!items.length && (isDrivingBlock(s)||!s.note)) return false; // nothing to say: stay quiet
+  // Equivalent overlapping blocks must not send the same checklist twice.
+  const duplicate=await first(env,`SELECT n.id FROM nudges n JOIN situations prior ON n.topic_key='block:'||prior.id
+    WHERE n.dismissed=0 AND n.type='situation' AND prior.id!=? AND prior.start_time IS ? AND prior.end_time IS ?
+      AND prior.category IS ? AND prior.note=? AND prior.keywords=? AND n.item_ids=? AND n.updated_at>=? LIMIT 1`,
+    s.id,s.start_time,s.end_time,s.category,s.note,s.keywords,JSON.stringify(items.map(i=>i.id)),new Date(Date.now()-3*3600_000).toISOString());
+  if(duplicate)return false;
   // Steps of one project are one line under the project's name, not a list inside the list.
   const names = new Map((await all<{ id: string; name: string }>(env, "SELECT id, name FROM projects")).map((p) => [p.id, p.name]));
   const byProject = new Map<string, string[]>();
@@ -152,11 +182,10 @@ async function fire(env: Env, s: Situation, title: string, extra: string[] = [])
     } else bullets.push(`• ${i.title}${i.person ? ` (${i.person})` : ""}`);
   }
   const lines = [
-    ...(s.note ? [`📝 ${s.note}`] : []),
+    ...(!isDrivingBlock(s)&&s.note ? [`📝 ${s.note}`] : []),
     ...bullets,
   ];
-  const nid = await notify(env, "situation", title, lines.join("\n"), null, "/?tab=lists");
-  await run(env, "UPDATE nudges SET item_ids = ? WHERE id = ?", JSON.stringify(items.map((i) => i.id)), nid);
+  await notify(env, "situation", title, lines.join("\n"), null, "/?tab=lists", {topic:`block:${s.id}`, itemIds:items.map(i=>i.id)});
   return true;
 }
 
@@ -174,6 +203,10 @@ export async function runSituations(env: Env) {
       const from = minutes(s.start_time), to = s.end_time ? minutes(s.end_time) : from + 60;
       const at = s.mode === "random" ? randomMinute(s.id, date, from, to) : from;
       if (mins >= at && mins < to) {
+        if(s.keywords.startsWith('wa-meet:')) {
+          await notify(env,'meeting',`${s.name} · ${s.start_time}`,`With ${s.keywords.slice(8)}${s.note?' · '+s.note:''}`,s.id,'/?tab=schedule');
+          await run(env,'UPDATE situations SET last_fired=? WHERE id=?',date,s.id);n++;continue;
+        }
         const count = (await itemsFor(env, s)).length;
         const icon = s.category ? `${(await getAreas(env)).find((a) => a.key === s.category)?.icon ?? AREA_ICON[s.category] ?? ""} ` : "";
         if (await fire(env, s, `${icon}${s.name}${s.end_time ? ` until ${s.end_time}` : ""}: ${count ? `${count} thing${count > 1 ? "s" : ""} for now` : "a reminder"}`)) n++;
@@ -181,16 +214,15 @@ export async function runSituations(env: Env) {
       }
     }
     // Block just ended: one tap per item to say what got done (what's left rolls on).
-    if (onDay(s, date, dow) && s.end_time && s.last_fired === date && s.last_wrapped !== date) {
+    if (!isDrivingBlock(s) && !s.keywords.startsWith('wa-meet:') && onDay(s, date, dow) && s.end_time && s.last_fired === date && s.last_wrapped !== date) {
       const end = minutes(s.end_time);
       if (mins >= end && mins < end + 90) {
         await run(env, "UPDATE situations SET last_wrapped = ? WHERE id = ?", date, s.id);
         const left = await itemsFor(env, s);
         if (left.length) {
           await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = 'situation' AND title LIKE ?", `%${s.name}%`);
-          const nid = await notify(env, "wrapup", `🏁 ${s.name} is over: did you get to these?`,
-            left.map((i) => `• ${i.title}`).join("\n"), null, "/");
-          await run(env, "UPDATE nudges SET item_ids = ? WHERE id = ?", JSON.stringify(left.map((i) => i.id)), nid);
+          await notify(env, "wrapup", `🏁 ${s.name} is over: did you get to these?`,
+            left.map((i) => `• ${i.title}`).join("\n"), null, "/", {topic:`block:${s.id}`,itemIds:left.map(i=>i.id)});
           n++;
         }
       }
@@ -225,6 +257,7 @@ export async function situationsSummary(env: Env) {
     return `- ${s.name} (id ${s.id}; ${describeSituation(s)}${s.category ? `; area ${s.category}` : ""}${s.note ? `; note shown to user: ${s.note}` : ""}${s.guidance ? `; your guidance: ${s.guidance}` : ""}${mine.length ? `; attached: ${mine.slice(0, 5).join(" | ")}` : ""})`;
   });
   const cur = await currentBlock(env);
+  if (cur && isDrivingBlock(list.find(s=>s.id===cur.id)!)) lines.unshift('DRIVING NOW: only phone calls across all areas or explicitly voice-only work. No destination task overview or desk/physical/in-person work.');
   if (cur) lines.unshift(`RIGHT NOW the user is in "${cur.name}"${cur.until ? ` until ${cur.until}` : ""}${cur.category ? ` (${cur.category} time)` : ""}: prefer these things when they ask what to do.`);
   return lines.join("\n");
 }

@@ -6,6 +6,7 @@
  */
 import type { ActionNote } from "../shared/types";
 import type { Env } from "./env";
+import { requestAiJob } from './ai-jobs';
 import type { ToolDef } from "./ai";
 import { getProvider } from "./ai";
 import { all, first, now, run, uid } from "./db";
@@ -37,10 +38,14 @@ async function addLog(env: Env, id: string, text: string) {
   await run(env, "UPDATE missions SET log = ?, updated_at = ? WHERE id = ?", JSON.stringify(log.slice(-40)), now(), id);
 }
 
-export async function startMission(env: Env, goal: string, steps: string[], category?: string | null, firstRunInHours = 0) {
+export async function startMission(env: Env, goal: string, steps: string[], category?: string | null, firstRunInHours = 0, approved = false) {
+  if (!approved) {
+    const request = await requestAiJob(env, 'ai_start_mission', { goal, steps, category: category ?? null, firstRunInHours }, `Start AI background task: ${goal}\nPlan: ${steps.join('; ')}\nCost varies with AI calls and any research. Approve only if you want AI to work on this goal.`);
+    return { ...request, goal, steps: [] };
+  }
   const id = uid(), t = now();
   const plan: Step[] = steps.slice(0, 15).map((text) => ({ id: uid().slice(0, 8), text, status: "todo" }));
-  await run(env, `INSERT INTO missions (id, goal, category, steps, log, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  await run(env, `INSERT INTO missions (id, goal, category, steps, log, next_run_at, created_at, updated_at, ai_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     id, goal, category ?? null, JSON.stringify(plan), JSON.stringify([{ at: t, text: "Mission started." }]),
     new Date(Date.now() + firstRunInHours * 3600_000).toISOString(), t, t);
   return { id, goal, steps: plan };
@@ -90,6 +95,11 @@ export async function runMissions(env: Env): Promise<number> {
        AND (runs_date IS NULL OR runs_date != ? OR runs_today < ?) ORDER BY next_run_at LIMIT ?`, t, today, RUNS_PER_DAY, MISSIONS_PER_PASS);
   let n = 0;
   for (const m of due) {
+    const consent = await first<{ ai_approved: number }>(env,'SELECT ai_approved FROM missions WHERE id=?',m.id);
+    if (!consent?.ai_approved) {
+      await requestAiJob(env,'ai_resume_mission',{id:m.id,goal:m.goal},`Allow this existing AI background task to continue: ${m.goal}\nCost varies with AI calls and research. It will wait for your confirmation.`);
+      continue;
+    }
     await run(env, "UPDATE missions SET runs_date = ?, runs_today = CASE WHEN runs_date = ? THEN runs_today + 1 ELSE 1 END, next_run_at = ? WHERE id = ?",
       today, today, new Date(Date.now() + 24 * 3600_000).toISOString(), m.id); // default: look again tomorrow
     try {
@@ -128,7 +138,7 @@ async function workOn(env: Env, m: Mission) {
         const q = String(input.question).slice(0, 300);
         await run(env, "UPDATE missions SET waiting_on_user = ?, updated_at = ? WHERE id = ?", q, now(), m.id);
         await addLog(env, m.id, `Asked you: ${q}`);
-        await notify(env, "mission_ask", `Task: ${m.goal.slice(0, 60)}`, q);
+        await notify(env, "mission_ask", `Task: ${m.goal.slice(0, 60)}`, q, null, "/", {topic:`mission-question:${m.id}`});
         return { ok: true, note: "Question sent. Stop now; the mission resumes when the user answers." };
       },
     },
@@ -139,7 +149,7 @@ async function workOn(env: Env, m: Mission) {
       handler: async (input) => {
         await run(env, "UPDATE missions SET status = 'done', updated_at = ? WHERE id = ?", now(), m.id);
         await addLog(env, m.id, `Done: ${input.summary}`);
-        await notify(env, "mission_done", `Task done: ${m.goal.slice(0, 60)}`, String(input.summary).slice(0, 200));
+        await notify(env, "mission_done", `Task done: ${m.goal.slice(0, 60)}`, String(input.summary).slice(0, 200), null, "/", {topic:`mission-done:${m.id}`});
         return { ok: true };
       },
     },
@@ -163,7 +173,7 @@ ${log.map((l) => `- ${l.at.slice(0, 16)} ${l.text}`).join("\n")}`;
   });
   if (notes.length) await addLog(env, m.id, notes.map((x) => x.summary).join(" · "));
   // Progress lands in the next briefing rather than buzzing (policy: mission_progress is "later").
-  if (notes.length) await notify(env, "mission_progress", `Task: ${m.goal.slice(0, 60)}`, notes.map((x) => x.summary).join(" · ").slice(0, 300));
+  if (notes.length) await notify(env, "mission_progress", `Task: ${m.goal.slice(0, 60)}`, notes.map((x) => x.summary).join(" · ").slice(0, 300), null, "/", {topic:`mission-progress:${m.id}`});
   return result.text;
 }
 

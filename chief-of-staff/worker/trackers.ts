@@ -13,7 +13,7 @@ import type { Env } from "./env";
 import { getProvider } from "./ai";
 import { all, first, now, run, uid } from "./db";
 import { appendToDoc, createDoc } from "./gworkspace";
-import { readThread, searchEmail, triageBudget } from "./google";
+import { readThread, searchEmail } from "./google";
 import { findGroup, members } from "./groups";
 import { notify } from "./push";
 
@@ -143,8 +143,6 @@ async function sha(s: string) {
 /** Is this message part of what the tracker is collecting? Lenient: only clear small talk is dropped. */
 async function relevant(env: Env, t: Tracker, sender: string, text: string) {
   if (text.length < 4) return false;
-  const budget = await triageBudget(env);
-  if (budget.used >= budget.cap * 3) return true; // over budget: keep rather than lose answers
   const what = t.expecting || t.topic;
   const ex = await all<{ verdict: string; sender: string; text: string }>(env,
     "SELECT verdict, sender, text FROM tracker_entries WHERE tracker_id = ? AND verdict IS NOT NULL ORDER BY created_at DESC LIMIT 12", t.id);

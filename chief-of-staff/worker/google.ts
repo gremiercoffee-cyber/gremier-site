@@ -18,7 +18,7 @@ const SCOPES = [
   "email",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose", // drafts only; this code never calls send
+  "https://www.googleapis.com/auth/gmail.compose", // draft creation and user-approved sends
   "https://www.googleapis.com/auth/drive",          // find, read, create and (after approval) share files
   "https://www.googleapis.com/auth/documents",
   "https://www.googleapis.com/auth/spreadsheets",
@@ -28,15 +28,14 @@ const CORE_SCOPES = SCOPES.slice(2, 5);
 export const WORKSPACE_SCOPES = SCOPES.slice(5);
 /** Thread fetches + triage calls per run, shared across accounts to stay under 50 subrequests. */
 const THREAD_BUDGET = 12;
-const TRIAGE_PURPOSES = ["email_triage", "whatsapp_triage"];
+const TRIAGE_PURPOSES = ["email_triage", "whatsapp_triage", "shopping_triage"];
 
-/** Background AI calls made today (UTC) and the daily ceiling. Chat with the user never counts. */
-export async function triageBudget(env: Env) {
-  const cap = Number(env.AI_DAILY_CAP) || 40;
+/** Lightweight classification usage is counted for visibility, without a daily call cap. */
+export async function triageUsage(env: Env) {
   const row = await first<{ n: number }>(env,
     `SELECT COUNT(*) AS n FROM usage_log WHERE purpose IN (${TRIAGE_PURPOSES.map(() => "?").join(",")}) AND created_at >= ?`,
     ...TRIAGE_PURPOSES, new Date().toISOString().slice(0, 10));
-  return { used: row?.n ?? 0, cap };
+  return { used: row?.n ?? 0, cap: null };
 }
 
 const BULK_SENDER = /(no-?reply|do-?not-?reply|notifications?|mailer-daemon|newsletter|bounce|alerts?|newsletters?|marketing)@/i;
@@ -90,7 +89,7 @@ const redirectUri = (req: Request) => new URL("/api/google/callback", req.url).t
 
 export async function googleStatus(env: Env): Promise<GoogleStatus> {
   const accounts = await all<Account>(env, "SELECT * FROM google_accounts ORDER BY connected_at");
-  const b = await triageBudget(env);
+  const b = await triageUsage(env);
   return {
     configured: googleConfigured(env),
     connected: accounts.length > 0,
@@ -197,6 +196,7 @@ export async function accessToken(env: Env, email: string): Promise<string> {
 async function accountForThread(env: Env, threadId: string, hint?: string): Promise<{ email: string; token: string }> {
   const emails = await accountEmails(env);
   if (!emails.length) throw new Error("Google isn't connected.");
+  if(hint&&!emails.includes(hint))throw new GoogleAuthError(`${hint} is no longer connected.`);
   const known = hint && emails.includes(hint) ? hint
     : (await first<{ account: string }>(env, "SELECT account FROM gmail_threads WHERE thread_id = ?", threadId))?.account;
   for (const email of known ? [known] : emails) {
@@ -220,11 +220,17 @@ interface GEvent {
   attendees?: { self?: boolean; responseStatus?: string }[];
 }
 
-async function fetchEvents(token: string, timeMin: string, timeMax: string, q?: string): Promise<GEvent[]> {
-  const params = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "100" });
+export async function fetchEvents(token: string, timeMin: string, timeMax: string, q?: string): Promise<GEvent[]> {
+  const params = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "250" });
   if (q) params.set("q", q);
-  const r = await gapi<{ items?: GEvent[] }>(token, `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`);
-  return (r.items ?? []).filter((e) => e.status !== "cancelled" && !e.attendees?.some((a) => a.self && a.responseStatus === "declined"));
+  const events:GEvent[]=[];let next:string|undefined;
+  do {
+    if(next)params.set('pageToken',next);
+    const r=await gapi<{items?:GEvent[];nextPageToken?:string}>(token,`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`);
+    events.push(...(r.items??[]).filter(e=>e.status!=='cancelled'&&!e.attendees?.some(a=>a.self&&a.responseStatus==='declined')));
+    next=r.nextPageToken;
+  }while(next);
+  return events;
 }
 
 const toRow = (e: GEvent) => {
@@ -238,7 +244,7 @@ const toRow = (e: GEvent) => {
 
 async function syncCalendar(env: Env, token: string, alerts: boolean, account: string) {
   const from = new Date(Date.now() - 86400_000).toISOString();
-  const events = (await fetchEvents(token, from, new Date(Date.now() + 14 * 86400_000).toISOString())).map(toRow);
+  const events = (await fetchEvents(token, from, new Date(Date.now() + 90 * 86400_000).toISOString())).map(toRow);
   const t = now();
   const stmts = events.map((e) => env.DB.prepare(
     `INSERT INTO calendar_events (id, account, summary, start_at, end_at, all_day, location, html_link, updated_at)
@@ -263,7 +269,7 @@ async function syncCalendar(env: Env, token: string, alerts: boolean, account: s
     if ((await first(env, "SELECT 1 FROM calendar_events WHERE summary = ? AND start_at = ? AND reminded_at IS NOT NULL", e.summary, e.start_at))) continue;
     const time = new Date(e.start_at).toLocaleTimeString("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit" });
     const mins = Math.max(1, Math.round((new Date(e.start_at).getTime() - Date.now()) / 60_000));
-    await notify(env, "event", `${e.summary} at ${time}`, `In ${mins} min${e.location ? ` · ${e.location}` : ""}`, null);
+    await notify(env, "event", `${e.summary} at ${time}`, `In ${mins} min${e.location ? ` · ${e.location}` : ""}`, null, "/", {topic:`event:${e.summary}:${e.start_at}`});
     for (const tw of twins) await run(env, "UPDATE calendar_events SET reminded_at = ? WHERE id = ?", t, tw.id);
   }
   return events.length;
@@ -302,7 +308,7 @@ function bodyText(m: GMessage): string {
 
 const TRIAGE_SYSTEM = `You triage email for a busy business owner. You see one email thread and the user's open items.
 Reply with JSON only, no prose:
-{"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null,"completes":string[]}
+{"reply_required":true|false,"action":"none"|"task"|"commitment"|"waiting","title":string,"person":string|null,"due_at":string|null,"priority":1|2|3,"category":AREA_KEYS|null,"completes":string[]}
 - task: the latest message is from someone else and the user personally needs to do something (reply, send, pay, decide, book).
 - commitment: the user promised something in this thread that is not yet done.
 - waiting: the latest message is FROM THE USER and asks someone else for something they have not delivered yet.
@@ -312,7 +318,8 @@ Reply with JSON only, no prose:
 - due_at: ISO 8601 only if a date is stated or clearly implied, else null. priority 1 only for urgent or money/customer-critical.
 - completes: ids of the user's open items (listed) that this thread shows are clearly finished, e.g. the user sent what they promised. Only when certain; otherwise [].`;
 
-interface Triage { action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[]; category?: string | null }
+interface Triage {
+  reply_required?:boolean; action: string; title?: string; person?: string | null; due_at?: string | null; priority?: number; completes?: string[]; category?: string | null }
 
 async function syncGmail(env: Env, token: string, alerts: boolean, me: string, maxThreads: number) {
   const queries = [
@@ -349,10 +356,10 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
     if (prev?.analyzed_msg_id === last.id) continue;
 
     // 1. Deterministic completion: items born from this thread.
-    const linked = await all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND ext_source = 'gmail' AND ext_ref = ?", threadId);
+    const linked = await all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND completion_source IS NULL AND ext_source = 'gmail' AND ext_ref = ?", threadId);
     for (const item of linked) {
       if (lastAt <= item.created_at) continue;
-      const replied = fromMe(last) && item.kind !== "waiting";
+      const replied = fromMe(last) && !!item.reply_required;
       const answered = !fromMe(last) && item.kind === "waiting";
       if (!replied && !answered) continue;
       await updateItem(env, item.id, { status: "done" });
@@ -368,15 +375,13 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
       await run(env, "UPDATE gmail_threads SET analyzed_msg_id = ? WHERE thread_id = ?", last.id, threadId);
       continue;
     }
-    const budget = await triageBudget(env);
-    if (budget.used >= budget.cap) break; // left unanalyzed; picked up tomorrow while it's still recent
-    const openItems = await all<Item>(env, "SELECT id, kind, title, person FROM items WHERE status = 'open' AND kind != 'idea' ORDER BY updated_at DESC LIMIT 40");
+    const openItems = await all<Item>(env, "SELECT id, kind, title, person FROM items WHERE status = 'open' AND completion_source IS NULL AND kind != 'idea' ORDER BY updated_at DESC LIMIT 40");
     const transcript = th.messages.slice(-3).map((m) =>
       `--- ${fromMe(m) ? "FROM THE USER" : `From ${header(m, "From")}`} to ${header(m, "To")} on ${new Date(Number(m.internalDate)).toISOString()}\n${bodyText(m)}`).join("\n\n");
     let triage: Triage = { action: "none" };
     try {
       const out = await getProvider(env).complete({
-        tier: "fast", purpose: "email_triage", system: TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env)), maxTokens: 400,
+        tier: "fast", purpose: "email_triage", system: TRIAGE_SYSTEM.replace("AREA_KEYS", await areaKeysJson(env))+"\nInclude reply_required: true ONLY for a task to send an answer; false for paperwork, payments, visits and other actual work.", maxTokens: 400,
         prompt: `Now: ${now()}\nSubject: ${subject}\n\n${transcript}\n\nUser's open items:\n${openItems.map((i) => `- ${i.id}: [${i.kind}] ${i.title}${i.person ? ` (${i.person})` : ""}`).join("\n") || "(none)"}`,
       });
       triage = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));
@@ -406,7 +411,7 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
         priority: triage.priority, source: "gmail", category: triage.category,
         notes: `Email (${me}): "${subject}"\nhttps://mail.google.com/mail/?authuser=${encodeURIComponent(me)}#all/${threadId}`,
       });
-      await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ?, ext_account = ? WHERE id = ?", threadId, me, item.id);
+      await run(env, "UPDATE items SET ext_source = 'gmail', ext_ref = ?, ext_account = ?,reply_required=? WHERE id = ?", threadId, me, triage.reply_required===true||/^(reply|respond|get back)\b/i.test(triage.title??'')?1:0,item.id);
       created++;
     }
     await run(env, "UPDATE gmail_threads SET analyzed_msg_id = ? WHERE thread_id = ?", last.id, threadId);
@@ -493,7 +498,7 @@ export async function sendEmail(env: Env, opts: { to: string; subject: string; b
 }
 
 /** Saves a draft in Gmail. Replies stay in the thread. Never sends. */
-export async function createDraft(env: Env, opts: { threadId?: string; to?: string; subject?: string; body: string; account?: string }) {
+export async function createDraft(env: Env, opts: { threadId?: string; to?: string; subject?: string; body: string; account?: string }, send = false, onSending?:()=>void) {
   let auth: { email: string; token: string };
   if (opts.threadId) auth = await accountForThread(env, opts.threadId, opts.account);
   else {
@@ -518,6 +523,11 @@ export async function createDraft(env: Env, opts: { threadId?: string; to?: stri
   lines.push("MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "",
     btoa(String.fromCharCode(...enc.encode(opts.body))));
   const raw = btoa(String.fromCharCode(...enc.encode(lines.join("\r\n")))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  if(send){
+    onSending?.();
+    const result=await gapi<{id:string}>(auth.token,`${GMAIL}/messages/send`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw,...(opts.threadId?{threadId:opts.threadId}:{})})});
+    return {message_id:result.id,from_account:auth.email,to,subject};
+  }
   const d = await gapi<{ id: string; message: { threadId: string } }>(auth.token, `${GMAIL}/drafts`, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ message: { raw, ...(opts.threadId ? { threadId: opts.threadId } : {}) } }),

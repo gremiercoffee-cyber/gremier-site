@@ -1,3 +1,4 @@
+import {useImmediateCompletions} from '../useImmediateCompletions';
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Item, ItemKind } from "../../shared/types";
 import { api } from "../api";
@@ -73,12 +74,15 @@ export function timeAgo(iso: string) {
 
 export function ItemRow({ item, onChange, onOpen, compact }: { item: Item; onChange: () => void; onOpen?: (i: Item) => void; compact?: boolean }) {
   const areas = useAreas();
+  const completion=useImmediateCompletions(item.status==='open'?[item.id]:[]);
+  const [toggleError,setToggleError]=useState('');
   const due = formatDue(item.due_at);
   const done = item.status === "done";
   const toggle = async () => {
-    await api.updateItem(item.id, { status: done ? "open" : "done" });
-    onChange();
+    if (!done) { await completion.complete(item.id,()=>api.updateItem(item.id,{status:'done'}),onChange); return; }
+    try { await api.updateItem(item.id,{status:'open'}); onChange(); } catch(e) { setToggleError((e as Error).message); }
   };
+  if(completion.hidden.has(item.id))return null;
   return (
     <div className="flex items-start gap-3 py-2.5 group">
       {item.kind === "idea" ? (
@@ -89,6 +93,7 @@ export function ItemRow({ item, onChange, onOpen, compact }: { item: Item; onCha
           {done && <svg viewBox="0 0 16 16" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3.5 8.5l3 3 6-7" /></svg>}
         </button>
       )}
+      {(completion.error||toggleError)&&<p role="alert" className="text-sm text-danger">{completion.error||toggleError}</p>}
       <button className="flex-1 min-w-0 text-left" onClick={() => onOpen?.(item)}>
         <div className={`text-[15px] leading-snug ${done ? "line-through text-muted" : ""}`}>{item.title}</div>
         <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-xs text-muted">

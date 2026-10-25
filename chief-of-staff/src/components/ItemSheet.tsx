@@ -17,6 +17,7 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
     person: item?.person ?? "",
     project_id: item?.project_id ?? "",
     category: item?.category ?? "",
+    execution_mode: item?.execution_mode ?? 'unspecified',
   });
   const areas = useAreas();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -30,6 +31,7 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
       kind: form.kind, title: form.title, notes: form.notes, priority: form.priority,
       due_at: form.due ? new Date(form.due).toISOString() : null,
       person: form.person || null, project_id: form.project_id || null, category: form.category || null,
+      execution_mode: form.execution_mode,
     };
     try {
       if (item) await api.updateItem(item.id, payload);
@@ -41,6 +43,11 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
     if (!item || !confirm("Delete this item?")) return;
     await api.deleteItem(item.id);
     onSaved();
+  };
+  const setStatus = async (status: Item['status']) => {
+    if (!item) return;
+    try { await api.updateItem(item.id, {status}); onSaved(); }
+    catch (e) { setError((e as Error).message); }
   };
 
   const field = "w-full rounded-xl bg-sunken px-3 py-2.5 outline-none text-[15px] focus:ring-2 ring-accent/50";
@@ -64,6 +71,7 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
         </div>
         <input autoFocus className={field} placeholder="What is it?" value={form.title} onChange={(e) => set("title", e.target.value)} />
         <textarea className={field} rows={3} placeholder="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+        {item?.source === 'recurring_reminder' && form.notes.match(/https?:\/\/[^\s<>]+/g)?.map(link => <a key={link} href={link} target="_blank" rel="noreferrer" className="block text-accent underline py-2">Open reminder link ↗</a>)}
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs text-muted space-y-1">
             <span>{form.kind === "reminder" ? "Remind me at" : "Due"}</span>
@@ -76,18 +84,30 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
             </select>
           </label>
           <label className="text-xs text-muted space-y-1">
+            <span>How to do it</span>
+            <select className={field} value={form.execution_mode} onChange={e=>set('execution_mode',e.target.value as typeof form.execution_mode)}>
+              <option value="unspecified">Automatic</option><option value="call">Phone call</option><option value="voice">By voice, hands-free</option><option value="desk">At a desk / on screen</option><option value="physical">In person / physical work</option>
+            </select>
+          </label>
+          <label className="text-xs text-muted space-y-1">
             <span>Person</span>
             <input className={field} value={form.person} placeholder={form.kind === "waiting" ? "Waiting on…" : "Optional"} onChange={(e) => set("person", e.target.value)} />
           </label>
           <label className="text-xs text-muted space-y-1">
             <span>Project</span>
             <select className={field} value={form.project_id} onChange={(e) => set("project_id", e.target.value)}>
-              <option value="">None</option>
+              <option value="">Standalone task</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
         </div>
         {error && <p className="text-danger text-sm">{error}</p>}
+        {item && <div className="space-y-2 border-t border-line pt-3">
+          <p className="text-xs text-muted">{item.status === 'open' ? 'Finish this task or remove it from open work.' : item.status === 'done' ? 'Completed' : 'No longer needed'}</p>
+          <div className="flex gap-2">
+            {item.status === 'open' ? <><Button onClick={()=>setStatus('done')}>✓ Done</Button><Button variant="soft" onClick={()=>setStatus('dropped')}>Not needed</Button></> : <Button variant="soft" onClick={()=>setStatus('open')}>Reopen task</Button>}
+          </div>
+        </div>}
         <div className="flex justify-between pt-1">
           {item ? <Button variant="danger" onClick={remove}>Delete</Button> : <span />}
           <div className="flex gap-2">

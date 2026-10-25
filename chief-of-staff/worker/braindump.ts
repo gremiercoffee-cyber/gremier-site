@@ -1,3 +1,5 @@
+import {PROJECT_POLICY} from '../shared/project-policy';
+import {organizeProjects} from './projectorganization';
 /** Brain Dump: unstructured thoughts in, cleanly separated items out (cheap "fast" tier). */
 import type { ActionNote } from "../shared/types";
 import type { Env } from "./env";
@@ -11,7 +13,7 @@ const BRAIN_DUMP_SYSTEM = `You are the user's Chief of Staff, sorting a brain du
 Read the dump and file every distinct thing with create_item, choosing the right kind:
 task (to do), reminder (at a time — set due_at), commitment (promised to someone — set person),
 waiting (waiting on someone — set person). Ideas go to capture_idea with a summary, an honest analysis and 3-5 suggested next steps.
-Use remember for durable facts or preferences. Use an existing project name when one clearly fits.
+Use remember for durable facts or preferences. ${PROJECT_POLICY}
 Do not create duplicates of open items already listed in the context. Do not invent details.
 When done, reply with a two-sentence summary of what you filed.`;
 
@@ -28,12 +30,13 @@ export async function processBrainDump(env: Env, raw: string) {
       history: [{ role: "user", content: raw }],
       // Brain dumps never queue deletions: only filing tools.
       tools: assistantTools(env, "brain_dump", notes).filter((t) =>
-        ["create_item", "create_project", "remember", "search_items", "capture_idea"].includes(t.name),
+        ["create_item", "update_item", "create_project", "remember", "search_items", "capture_idea"].includes(t.name),
       ),
       maxToolRounds: 4,
     });
     await run(env, "UPDATE brain_dumps SET status = 'processed', summary = ?, result = ? WHERE id = ?",
       result.text, JSON.stringify(notes), id);
+    await organizeProjects(env).catch(e=>console.error('project organization',e));
     return { id, summary: result.text, actions: notes, status: "processed" };
   } catch (e) {
     await run(env, "UPDATE brain_dumps SET status = 'failed', summary = ? WHERE id = ?",

@@ -12,7 +12,7 @@ import { sendEmail } from "./google";
 export interface Group { id: string; name: string; description: string; created_at: string; updated_at: string }
 export interface Broadcast {
   id: string; group_id: string; subject: string; body: string; from_account: string | null; status: string; results: string;
-  created_at: string; sent_at: string | null;
+  created_at: string; sent_at: string | null; archived_at?:string|null;
 }
 type MemberInput = { name?: string; email?: string; phone?: string; id?: string };
 
@@ -61,10 +61,14 @@ export async function draftBroadcast(env: Env, input: { group: string; subject?:
   const g = await findGroup(env, input.group);
   if (!g) throw new Error(`No group called "${input.group}". Create it first.`);
   if (input.id) {
-    await run(env, "UPDATE broadcasts SET subject = ?, body = ?, from_account = COALESCE(?, from_account) WHERE id = ? AND status = 'draft'",
-      (input.subject ?? "").slice(0, 200), input.body.slice(0, 20000), input.from_account ?? null, input.id);
-    return (await first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", input.id))!;
+    const b=await first<Broadcast>(env,'SELECT * FROM broadcasts WHERE id=?',input.id);
+    if(!b||b.group_id!==g.id)throw new Error('This draft does not belong to that group.');
+    if(b.status!=='draft'||b.archived_at)throw new Error('Only unsent drafts can be edited.');
+    if(!input.body.trim())throw new Error('Write a message first.');
+    await run(env,"UPDATE broadcasts SET subject=?,body=?,from_account=COALESCE(?,from_account) WHERE id=? AND status='draft' AND archived_at IS NULL",(input.subject??'').slice(0,200),input.body.slice(0,20000),input.from_account??null,input.id);
+    return (await first<Broadcast>(env,'SELECT * FROM broadcasts WHERE id=?',input.id))!;
   }
+  if(!input.body?.trim())throw new Error('Write a message first.');
   const id = uid();
   await run(env, "INSERT INTO broadcasts (id, group_id, subject, body, from_account, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     id, g.id, (input.subject ?? "").slice(0, 200), input.body.slice(0, 20000), input.from_account ?? null, now());
@@ -78,12 +82,17 @@ export function personalize(text: string, p: { name: string }) {
 }
 
 /** Only called from the user's own tap on "Send email" in the app. */
-export async function sendBroadcast(env: Env, id: string) {
-  const b = await first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", id);
+export async function sendBroadcast(env: Env, id: string, edit?:{subject?:string;body?:string}) {
+  let b = await first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", id);
   if (!b) throw new Error("message not found");
-  if (b.status !== "draft") throw new Error("This message was already sent.");
-  await run(env, "UPDATE broadcasts SET status = 'sending' WHERE id = ?", id);
+  if (b.status !== "draft"||b.archived_at) throw new Error("This message was already handled.");
   const people = await members(env, b.group_id);
+  if(!people.some(p=>p.email))throw new Error('This group has no email recipients. Use WhatsApp.');
+  const body=(edit?.body??b.body).trim(),subject=edit?.subject??b.subject;
+  if(!body||body.length>20000||subject.length>200)throw new Error('Check the subject and message length.');
+  const claim=await run(env,"UPDATE broadcasts SET status='sending',body=?,subject=? WHERE id=? AND status='draft' AND archived_at IS NULL",body,subject,id);
+  if(!claim.meta.changes)throw new Error('This message is already being sent.');
+  b={...b,body,subject};
   const results: { name: string; email: string | null; ok: boolean; error?: string }[] = [];
   for (const p of people) {
     if (!p.email) { results.push({ name: p.name, email: null, ok: false, error: "no email" }); continue; }
@@ -94,7 +103,8 @@ export async function sendBroadcast(env: Env, id: string) {
       results.push({ name: p.name, email: p.email, ok: false, error: (e as Error).message.slice(0, 160) });
     }
   }
-  await run(env, "UPDATE broadcasts SET status = 'sent', results = ?, sent_at = ? WHERE id = ?", JSON.stringify(results), now(), id);
+  const failures=results.some(r=>r.email&&!r.ok),sent=results.some(r=>r.ok),t=now();
+  await run(env,"UPDATE broadcasts SET status=?,results=?,sent_at=?,archived_at=? WHERE id=?",failures?(sent?'partial':'failed'):'sent',JSON.stringify(results),t,failures?null:t,id);
   return { sent: results.filter((r) => r.ok).length, skipped: results.filter((r) => !r.ok), total: people.length };
 }
 
@@ -103,3 +113,5 @@ export async function groupsSummary(env: Env) {
     "SELECT g.*, (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id) AS n FROM contact_groups g ORDER BY g.name");
   return gs.map((g) => `- ${g.name} (id ${g.id}; ${g.n} people${g.description ? `; ${g.description}` : ""})`).join("\n");
 }
+
+export async function archiveBroadcast(env:Env,id:string){await run(env,"UPDATE broadcasts SET archived_at=? WHERE id=? AND status!='sending'",now(),id);return {ok:true};}

@@ -1,16 +1,18 @@
+import {MeetingsPage} from './components/MeetingPrep';
 import { useEffect, useState, type ReactNode } from "react";
 import type { Conversation, Item, ItemKind, Settings as S } from "../shared/types";
 import { api, getToken, setToken } from "./api";
 import { Button, timeAgo } from "./components/ui";
 import ItemSheet from "./components/ItemSheet";
 import Home from "./pages/Home";
+import Shopping from './pages/Shopping';
 import Today from "./pages/Today";
 import BrainDump from "./pages/BrainDump";
 import Lists from "./pages/Lists";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
-import Library, { People, Trackers, type LibraryTab } from "./pages/Library";
+import Library, { Trackers, type LibraryTab } from "./pages/Library";
 import Replies from "./pages/Replies";
 import Schedule from "./pages/Schedule";
 import Groups from "./pages/Groups";
@@ -20,8 +22,8 @@ import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
-type View = "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", today: "Today", dump: "Library", lists: "Lists", projects: "Lists", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Replies", trackers: "Tasks", schedule: "Schedule", groups: "Replies" };
+type View = "meetings" | "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups" | "shopping";
+const VIEW_TITLES: Record<View, string> = { meetings:"Meetings", home: "Chief of Staff", today: "Today", dump: "Library", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Settings", trackers: "Tasks", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -72,6 +74,52 @@ export default function App() {
 
   useEffect(() => { if (authed) { api.settings().then(setSettings).catch(() => {}); loadConversations(); } }, [authed]);
 
+  // Clear phone alerts already completed, dismissed or rescheduled in the app.
+  // Never infer completion from swiping a notification away.
+  useEffect(() => {
+    if (!authed || !("serviceWorker" in navigator)) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false, running = false;
+    const sync = async () => {
+      if (stopped || running || document.visibilityState === "hidden") return;
+      running = true;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const visible = (await reg.getNotifications()).filter(n => typeof n.data?.nudge_id === "string");
+        for (let i=0; i<visible.length && !stopped; i+=100) {
+          const batch = visible.slice(i,i+100);
+          const {active_ids,updates} = await api.notificationState(batch.map(n => n.data.nudge_id));
+          if (stopped) break;
+          const active = new Set(active_ids);
+          batch.filter(n => !active.has(n.data.nudge_id)).forEach(n => n.close());
+          for (const update of updates) {
+            const old=batch.find(n=>n.data.nudge_id===update.id), body=update.body.slice(0,300);
+            if (!old || (old.data.revision || 0)>update.revision || (old.title===update.title && old.body===body)) continue;
+            await reg.showNotification(update.title,{
+              body,tag:old.tag,icon:"/icon-192.png",badge:"/badge.png",silent:true,
+              data:{...old.data,title:update.title,body,revision:update.revision},
+              actions:(old.data.actions || []).slice(0,3).map((a:{action:string;title:string})=>({action:a.action,title:a.title})),
+            } as NotificationOptions);
+          }
+        }
+      } catch { /* Offline or not signed in: keep notifications, never discard them speculatively. */ }
+      finally { running = false; }
+    };
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(sync,400); };
+    schedule();
+    window.addEventListener("cos:notifications-changed",schedule);
+    window.addEventListener("focus",schedule);
+    document.addEventListener("visibilitychange",schedule);
+    navigator.serviceWorker.addEventListener("controllerchange",schedule);
+    return () => {
+      stopped=true; clearTimeout(timer);
+      window.removeEventListener("cos:notifications-changed",schedule);
+      window.removeEventListener("focus",schedule);
+      document.removeEventListener("visibilitychange",schedule);
+      navigator.serviceWorker.removeEventListener("controllerchange",schedule);
+    };
+  }, [authed,refreshKey]);
+
   // Self-heal notifications: whenever the app opens with permission already granted, make sure this
   // device is subscribed and the server knows it (subscriptions can be dropped by the browser or OS).
   useEffect(() => {
@@ -116,8 +164,6 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  if (!authed) return <Login health={health} onDone={() => setAuthed(true)} />;
-
   const go = (v: View) => { setView(v === "missions" ? "tasks" : v); setDrawer(false); };
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
   const goHome = () => openConversation(null);
@@ -131,6 +177,8 @@ export default function App() {
     return () => mq.removeEventListener("change", on);
   }, []);
 
+  if (!authed) return <Login health={health} onDone={() => setAuthed(true)} />;
+
   const navInner = (
     <>
             <button onClick={goHome} className="flex items-center gap-2.5 px-4 h-14 shrink-0 text-left"><Logo /><span className="font-medium">Chief of Staff</span><span className="ml-auto text-xs text-muted">Home</span></button>
@@ -142,11 +190,13 @@ export default function App() {
             <div className="px-2 space-y-0.5">
               <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
+              <DrawerItem active={view === "meetings"} onClick={() => go("meetings")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M7 12h10M7 16h6" /></>} label="Meetings" />
               <DrawerItem active={view === "schedule"} onClick={() => go("schedule")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>} label="Schedule" />
-              <DrawerItem active={view === "replies" || view === "people" || view === "groups"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies & people" />
-              <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("lists")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Lists & projects" />
+              <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
+              <DrawerItem active={view === "groups"} onClick={() => go("groups")} icon={<><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/></>} label="Groups" />
+              <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("projects")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Projects & tasks" />
+              <DrawerItem active={view === 'shopping'} onClick={() => go('shopping')} icon={<><path d="M3 3h2l3 12h10l3-9H6M9 20h.01M18 20h.01" /></>} label="Shopping lists" />
               <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
-              <DrawerItem active={view === "library" || view === "dump"} onClick={() => go("library")} icon={<path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 7h6" />} label="Library" />
             </div>
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
               onOpen={(id) => openConversation(id)}
@@ -155,7 +205,7 @@ export default function App() {
                 if (conversationId && !list.some((c) => c.id === conversationId)) setConversationId(null);
               }).catch(() => {})} />
             <div className="px-2 pt-2 border-t border-line">
-              <DrawerItem active={view === "settings"} onClick={() => go("settings")}
+              <DrawerItem active={view === "settings" || view === "people"} onClick={() => go("settings")}
                 icon={<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>} label="Settings" />
             </div>
     </>
@@ -201,10 +251,11 @@ export default function App() {
         )}
         {view === "today" && <Today name={settings?.name ?? ""} onOpenItem={openItem} goChat={(p) => { openConversation(null); setAsk(p); }} refreshKey={refreshKey} />}
         {(view === "lists" || view === "projects") && (
-          <Switch value={view} onChange={(v) => setView(v as View)} options={[["lists", "Lists"], ["projects", "Projects"]]} />
+          <Switch value={view} onChange={(v) => setView(v as View)} options={[["projects", "Projects"], ["lists", "All tasks"]]} />
         )}
         {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
-        {view === "projects" && <Projects onOpenItem={openItem} refreshKey={refreshKey} />}
+        {view === "projects" && <Projects onOpenItem={openItem} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
+        {view === 'shopping' && <Shopping refreshKey={refreshKey} />}
 
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
@@ -214,11 +265,8 @@ export default function App() {
         )}
         {view === "tasks" && <Tasks refreshKey={refreshKey} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "trackers" && <div className="mt-4"><Trackers refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} /></div>}
-        {(view === "replies" || view === "people" || view === "groups") && (
-          <Switch value={view} onChange={(v) => setView(v as View)} options={[["replies", "Replies"], ["people", "People"], ["groups", "Groups"]]} />
-        )}
         {view === "groups" && <Groups refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
-        {view === "people" && <People refreshKey={refreshKey} />}
+        {view === "meetings" && <MeetingsPage refreshKey={refreshKey} onChanged={refresh} onAsk={p=>{openConversation(null);setAsk(undefined);setTimeout(()=>setTyping(p),0);}} />}
         {view === "schedule" && <Schedule refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
         {(view === "library" || view === "dump") && (
@@ -226,7 +274,7 @@ export default function App() {
             brainDump={<BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />}
             onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />
         )}
-        {view === "settings" && settings && (
+        {(view === "settings" || view === "people") && settings && (
           <Settings settings={settings} onSaved={setSettings}
             installPrompt={install ? () => { install.prompt(); setInstall(null); } : null} />
         )}

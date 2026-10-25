@@ -13,6 +13,8 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "wa_send":     // a message waiting for the user's Send tap
     case "wa_failed":
     case "postponed":   // pushed off 3+ times: worth one direct question
+    case "hashgacha": // once-daily reminder based on missing online reports
+    case "reply_batch": // rate-limited catch-up windows for the Replies sheet
     case "digest":      // the check-ins themselves
     case "briefing":
     case "mission_ask": // a mission is stuck until the user answers

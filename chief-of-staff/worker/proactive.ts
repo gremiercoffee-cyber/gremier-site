@@ -1,13 +1,19 @@
+import {isDrivingBlock} from './work-context';
+import {collectWhatsAppReplies,replyQueue} from './replies';
+import {attentionState,actionableItem,blockWindow} from './attention';
 /**
  * Proactive pass, run by the cron trigger (and on demand from the dashboard).
  * Deterministic checks are free; only the briefing (and missions) call a model.
  * What buzzes now vs. waits for the briefing is decided by policy.ts.
  */
 import type { Item } from "../shared/types";
+import { verifyReplyObligation } from './whatsapp';
+import { syncRecurringReminders } from './reminders';
 import type { Env } from "./env";
 import { getProvider } from "./ai";
 import { all, createItem, first, getSettings, localParts, now, run } from "./db";
 import { notify } from "./push";
+import { mergeCatchupItems, NOT_ALREADY_ALERTED } from "./notifications";
 import { upcomingEventsText } from "./google";
 import { isShabbat, justAfterShabbat } from "./shabbat";
 import { missionsSummary, runMissions } from "./missions";
@@ -27,12 +33,17 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   if (!settings.proactive && !opts.forceBriefing) return { skipped: true };
   const t = now();
   let created = 0;
+  // Fixed calendar reminders never enter the AI routine/report pipeline.
+  await syncRecurringReminders(env);
+
+  const attention=await attentionState(env);
+  const eligible=(i:Item)=>!i.reply_required&&!i.completion_source&&actionableItem(i,attention.blocks,attention.tz,attention.at);
 
   // 1. Things whose time has come. Pushed off 3+ times? Ask directly instead of nagging again.
-  const due = await all<Item & { snooze_count: number }>(env,
-    `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind IN ('reminder','task','commitment')
+  const due = await all<Item & { snooze_count: number; reminder_link: string | null }>(env,
+    `SELECT items.*, (SELECT r.link FROM recurring_reminder_months m JOIN recurring_reminders r ON r.id=m.reminder_id WHERE m.item_id=items.id) AS reminder_link FROM items WHERE status = 'open' AND muted = 0 AND kind IN ('reminder','task','commitment')
        AND due_at IS NOT NULL AND due_at <= ? AND reminded_at IS NULL LIMIT 50`, t);
-  for (const item of due) {
+  for (const item of due.filter(eligible)) {
     if (item.snooze_count >= POSTPONED_AFTER) {
       await notify(env, "postponed", `You've pushed "${item.title}" ${item.snooze_count} times`,
         "Do it now, break it into steps, hand it off, or drop it?", item.id);
@@ -43,7 +54,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
         : item.kind === "commitment" ? item.title
         : `Time for: ${item.title}`;
       await notify(env, checkin ? "checkin" : item.kind === "reminder" ? "reminder" : "overdue", title,
-        item.kind === "commitment" ? `You promised${item.person ? ` ${item.person}` : ""}. Did it happen?` : item.person ? `With ${item.person}` : "", item.id);
+        item.reminder_link || (item.kind === "commitment" ? `You promised${item.person ? ` ${item.person}` : ""}. Did it happen?` : item.person ? `With ${item.person}` : ""), item.id, item.reminder_link || '/');
     }
     await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
     created++;
@@ -53,7 +64,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   const soon = await all<Item>(env,
     `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind IN ('task','commitment') AND heads_up_at IS NULL
        AND due_at > ? AND due_at <= ? LIMIT 30`, new Date(Date.now() + 30 * 60_000).toISOString(), new Date(Date.now() + 24 * 3600_000).toISOString());
-  for (const item of soon) {
+  for (const item of soon.filter(eligible)) {
     // One heads-up per to-do: moving its due time doesn't earn a second one within a day.
     if (await first(env, "SELECT 1 FROM nudges WHERE item_id = ? AND type = 'headsup' AND created_at > ?", item.id, new Date(Date.now() - 24 * 3600_000).toISOString())) continue;
     const hoursLeft = (new Date(item.due_at!).getTime() - Date.now()) / 3600_000;
@@ -70,7 +81,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   const stale = await all<Item>(env,
     `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'waiting'
        AND COALESCE(reminded_at, created_at) <= ? LIMIT 20`, cutoff);
-  for (const item of stale) {
+  for (const item of stale.filter(eligible)) {
     await notify(env, "waiting", `${item.person ?? "They"} still hasn't gotten back to you`,
       `${item.title}. Want me to draft a follow-up?`, item.id);
     await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
@@ -79,30 +90,9 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
 
   // 4. Open loops: emails/WhatsApps that still haven't been answered after 2 hours (or after a snooze).
   if (!isShabbat(settings.timezone)) {
-    // WhatsApp questions are only marked when they arrive; still unanswered after 4h → a "Reply to X" item now.
-    const fourH = new Date(Date.now() - 4 * 3600_000).toISOString(), twoDays = new Date(Date.now() - 2 * 86400_000).toISOString();
-    const waiting = await all<{ chat: string; sender: string; account: string; text: string; received_at: string }>(env,
-      `SELECT chat, sender, account, text, max(received_at) AS received_at FROM whatsapp_inbox
-        WHERE awaiting_reply = 1 AND item_id IS NULL AND received_at <= ? AND received_at > ? GROUP BY chat, account LIMIT 10`, fourH, twoDays);
-    for (const w of waiting) {
-      const item = await createItem(env, { kind: "task", title: `Reply to ${w.sender}: ${w.text.slice(0, 60)}${w.text.length > 60 ? "…" : ""}`, person: w.sender,
-        category: w.account === "business" ? "coffee" : null, source: "whatsapp", notes: `WhatsApp from ${w.sender}${w.chat !== w.sender ? ` in ${w.chat}` : ""}: "${w.text}"` });
-      await run(env, "UPDATE items SET created_at = ? WHERE id = ?", w.received_at, item.id);
-      await run(env, "UPDATE whatsapp_inbox SET item_id = ?, awaiting_reply = 0 WHERE chat = ? AND account = ? AND awaiting_reply = 1", item.id, w.chat, w.account);
-    }
-    const unanswered = await all<Item>(env,
-      `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'task' AND source IN ('gmail', 'whatsapp')
-         AND reminded_at IS NULL AND COALESCE(nudge_after, strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+4 hours')) <= ? LIMIT 20`, t);
-    for (const item of unanswered) {
-      const hours = Math.max(4, Math.round((Date.now() - new Date(item.created_at).getTime()) / 3600_000));
-      const said = item.source === "whatsapp"
-        ? (await first<{ text: string }>(env, "SELECT text FROM whatsapp_inbox WHERE item_id = ? ORDER BY received_at DESC LIMIT 1", item.id))?.text
-        : null;
-      await notify(env, "unanswered", `Get back to ${item.person ?? "them"}`,
-        `${said ? `"${said.slice(0, 140)}"` : item.title} · ${hours}h on ${item.source === "gmail" ? "email" : "WhatsApp"}`, item.id);
-      await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
-      created++;
-    }
+    await collectWhatsAppReplies(env);
+    created+=await replyBatchReminder(env,settings.timezone);
+
   }
 
   // 5. Midday and end-of-day check-ins, and a catch-up after Shabbat.
@@ -177,6 +167,7 @@ async function cracks(env: Env) {
 
 async function createBriefing(env: Env, date: string, tz: string) {
   const events = await upcomingEventsText(env, tz);
+  const meetings=await all<{name:string;start_time:string;note:string}>(env,"SELECT name,start_time,note FROM situations WHERE active=1 AND date=? AND keywords LIKE 'wa-meet:%' ORDER BY start_time",date);
   const items = await all<Item & { snooze_count: number }>(env,
     `SELECT * FROM items WHERE status = 'open' AND kind != 'idea'
      ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT 40`);
@@ -213,7 +204,7 @@ Only include what still needs the user. NEVER mention things already done, handl
 Say each thing ONCE, in one section only. Items tagged <project: X> are steps of project X: mention the project once with its steps together (e.g. "**Bottles** — order cups, confirm sizes"), never the project and its steps as separate points.`,
       prompt: `Today is ${date}. UTC now ${now()}.
 Open items:
-${listing}${events !== null ? `\n\nCalendar (next 48h):\n${events}` : ""}
+${listing}${meetings.length?`\n\nMeetings today (saved schedule, include in Today even before their time):\n${meetings.map(m=>`- ${m.start_time} ${m.name}${m.note?` — ${m.note}`:""}`).join("\n")}`:""}${events !== null ? `\n\nCalendar (next 48h):\n${events}` : ""}
 ${quiet.length ? `\nNoted quietly since yesterday:\n${quiet.map((q) => `- ${q.title}${q.body ? `: ${q.body}` : ""}`).join("\n")}` : ""}
 ${pending.length ? `\nWaiting for the user's approval:\n${pending.map((p) => `- ${p.description}`).join("\n")}` : ""}
 ${sweep.length ? `\nMay have slipped:\n${sweep.join("\n")}` : ""}
@@ -239,14 +230,19 @@ async function checkIns(env: Env, tz: string) {
   const local = localParts(tz);
   let n = 0;
   const waitingOnYou = () => all<Item>(env,
-    "SELECT * FROM items WHERE status = 'open' AND kind = 'task' AND source IN ('gmail', 'whatsapp') ORDER BY created_at LIMIT 8");
+    `SELECT i.* FROM items i WHERE i.status='open' AND i.muted=0 AND i.reply_required=0 AND i.completion_source IS NULL AND i.kind='task' AND i.source IN ('gmail','whatsapp')
+      AND (i.nudge_after IS NULL OR i.nudge_after <= ?) AND ${NOT_ALREADY_ALERTED} ORDER BY i.created_at LIMIT 8`, now());
 
   if (justAfterShabbat(tz) && await once(env, `aftershabbat:${local.date}`)) {
     const w = await waitingOnYou();
-    const due = await all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND due_at IS NOT NULL AND due_at <= ? AND kind != 'idea'", now());
+    const due = await all<Item>(env, `SELECT i.* FROM items i WHERE i.status='open' AND i.muted=0 AND i.reply_required=0 AND i.completion_source IS NULL AND i.due_at IS NOT NULL
+      AND i.due_at <= ? AND i.kind!='idea' AND ${NOT_ALREADY_ALERTED}`, now());
     if (w.length || due.length) {
+      const items=await mergeCatchupItems(env,[...w,...due]);
+      if (!items.length) return n;
       await notify(env, "digest", "Shavua tov. Here's what's waiting",
-        [w.length && `${w.length} waiting for a reply: ${names(w)}`, due.length && `${due.length} due or overdue`].filter(Boolean).join(" · "));
+        items.map(i=>`• ${i.title}`).join("\n"),
+        null, "/", {itemIds:items.map(i=>i.id)});
       n++;
     }
   }
@@ -254,22 +250,24 @@ async function checkIns(env: Env, tz: string) {
 
   if (local.hour >= 13 && local.hour < 19 && await once(env, `midday:${local.date}`)) {
     const w = await waitingOnYou();
-    const quiet = await first<{ n: number }>(env,
-      "SELECT COUNT(*) AS n FROM nudges WHERE dismissed = 0 AND type IN ('overdue','headsup','waiting','email','whatsapp') AND created_at > ?",
-      new Date(Date.now() - 12 * 3600_000).toISOString());
-    if (w.length || (quiet?.n ?? 0) > 0) {
-      const lines = w.map((i) => `• ${i.person ?? "?"}: ${i.title}`);
-      if ((quiet?.n ?? 0) > 0) lines.push(`• ${quiet!.n} more thing${quiet!.n > 1 ? "s" : ""} noted on your home screen`);
-      await notify(env, w.length ? "digest" : "sweep", w.length ? `${w.length} ${w.length === 1 ? "reply" : "replies"} to catch up on` : "Midday check", lines.join("\n"),
-        null, w.length ? "/?tab=replies" : "/");
+    const quiet = await all<Item>(env,
+      `SELECT i.* FROM items i WHERE i.status='open' AND i.muted=0 AND i.reply_required=0 AND i.completion_source IS NULL AND ${NOT_ALREADY_ALERTED}
+        AND EXISTS (SELECT 1 FROM nudges q WHERE q.item_id=i.id AND q.dismissed=0
+          AND q.type IN ('overdue','headsup','waiting','email','whatsapp') AND q.created_at > ?)
+        ORDER BY i.created_at LIMIT 20`, new Date(Date.now() - 12 * 3600_000).toISOString());
+    const extra = quiet.filter(i=>!w.some(reply=>reply.id===i.id));
+    if (w.length || extra.length) {
+      const items=await mergeCatchupItems(env,[...w,...extra]);
+      if (!items.length) return n;
+      await notify(env, "digest", `${items.length} ${items.length===1 ? "thing" : "things"} to catch up on`,
+        items.map(i=>`• ${i.title}`).join("\n"),
+        null, "/", {itemIds:items.map(i=>i.id)});
       n++;
     }
   }
   // (No end-of-day check-in: the user turned it off.)
   return n;
 }
-
-const names = (items: Item[]) => [...new Set(items.map((i) => i.person).filter(Boolean))].slice(0, 4).join(", ");
 
 /** Sunday: what got done, what keeps slipping, stale ideas, and three priorities for the week. */
 async function weeklyReview(env: Env) {
@@ -287,4 +285,23 @@ async function weeklyReview(env: Env) {
   });
   await notify(env, "review", "🗓️ Your weekly review", text.trim(), null, "/");
   return 1;
+}
+
+/** Two catch-up windows; unchanged backlogs remind at most once per day. */
+export async function replyBatchReminder(env:Env,tz:string){
+ const local=localParts(tz);if(local.hour<10||local.hour>=21||isShabbat(tz))return 0;
+ const slot=local.hour>=17?'evening':'morning',key=`reply-batch:${local.date}:${slot}`;
+ if(await first(env,'SELECT 1 FROM settings WHERE key=?',key))return 0;
+ const attention=await attentionState(env);
+ if([...attention.blocks.values()].some(b=>isDrivingBlock(b)&&blockWindow(b,tz,attention.at).current))return 0;
+ const collected=await replyQueue(env);
+ const allowed=await all<{id:string}>(env,"SELECT id FROM items WHERE status='open' AND reply_required=1 AND muted=0 AND (nudge_after IS NULL OR nudge_after<=?) AND (due_at IS NULL OR due_at<=?)",now(),now());
+ const queue=collected.filter(c=>allowed.some(i=>i.id===c.id));if(!queue.length)return 0;
+ const fingerprint=queue.map(c=>c.id).sort().join('|');
+ const previous=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='last-reply-batch'");
+ const last=previous?JSON.parse(previous.value) as {at:string;fingerprint:string}:null;
+ if(last&&last.fingerprint===fingerprint&&Date.now()-Date.parse(last.at)<23*3600000)return 0;
+ await notify(env,'reply_batch',`${queue.length} ${queue.length===1?'reply':'replies'} waiting`,'Work through your numbered reply sheet when you have a moment.',null,'/?tab=replies',{topic:`reply-batch:${local.date}:${slot}`});
+ await run(env,'INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)',key,JSON.stringify(true));
+ await run(env,"INSERT OR REPLACE INTO settings(key,value) VALUES('last-reply-batch',?)",JSON.stringify({at:now(),fingerprint}));return 1;
 }

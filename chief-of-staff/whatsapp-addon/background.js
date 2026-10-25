@@ -6,8 +6,8 @@ async function account() {
   return (await chrome.storage.local.get("account")).account || "personal";
 }
 
-async function call(path, body) {
-  body = { ...body, account: await account() };
+async function call(path, body, fixedAccount) {
+  body = { ...body, account: fixedAccount || await account() };
   const r = await fetch(COS_CONFIG.api_base.replace(/\/$/, "") + path, {
     method: "POST",
     headers: { "content-type": "application/json", "x-bridge-key": COS_CONFIG.bridge_key },
@@ -18,6 +18,35 @@ async function call(path, body) {
 }
 
 let diagTimer = null;
+// Durable retry queue for shopping if the computer briefly loses its connection.
+let queueWork = Promise.resolve();
+function shoppingQueue(change, key = 'shopping_queue') {
+  const next = queueWork.then(async () => {
+    const current = await chrome.storage.local.get(key);
+    const updated = change(current[key] || []);
+    await chrome.storage.local.set({ [key]: updated });
+  });
+  queueWork = next.catch(() => {});
+  return next;
+}
+async function retryShopping() {
+  const { shopping_queue = [] } = await chrome.storage.local.get('shopping_queue');
+  for (const entry of shopping_queue) {
+    try {
+      await call('/api/bridge/shopping', entry.payload, entry.account);
+      await shoppingQueue(rows => rows.filter(r => r.id !== entry.id));
+    } catch { break; }
+  }
+}
+chrome.alarms.create('shopping-retry', { periodInMinutes: 1 });
+async function retryResponses() {
+  const { response_queue = [] } = await chrome.storage.local.get('response_queue');
+  for (const entry of response_queue) {
+    try { await call('/api/bridge/replied',entry.payload,entry.account);await shoppingQueue(rows=>rows.filter(r=>r.id!==entry.id),'response_queue'); }
+    catch { break; }
+  }
+}
+chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'shopping-retry') { void retryShopping();void retryResponses(); } });
 async function remember(patch) {
   const cur = (await chrome.storage.local.get("cos")).cos || {};
   await chrome.storage.local.set({ cos: { ...cur, ...patch } });
@@ -32,6 +61,39 @@ async function remember(patch) {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === 'replied') {
+    (async()=>{
+      const a=await account(),id=JSON.stringify([a,msg.payload]);
+      await shoppingQueue(rows=>rows.some(r=>r.id===id)?rows:[...rows,{id,account:a,payload:msg.payload}],'response_queue');
+      try { await call('/api/bridge/replied',msg.payload,a);await shoppingQueue(rows=>rows.filter(r=>r.id!==id),'response_queue');await remember({last_ok:Date.now(),last_event:msg.payload.kind==='reaction'?`Your reaction in ${msg.payload.chat}`:`You replied to ${msg.payload.chat}`,error:null}); }
+      catch(e) { await remember({error:`Response signal queued: ${e.message}`}); }
+      reply({ok:true});
+    })().catch(()=>reply({ok:false}));
+    return true;
+  }
+  if (msg.type === 'shopping-config') {
+    account().then(a => a !== 'personal' ? { enabled: false, chat: '', chat_id: '' } : fetch(`${COS_CONFIG.api_base.replace(/\/$/, '')}/api/bridge/shopping`, { headers: { 'x-bridge-key': COS_CONFIG.bridge_key } }).then(r => { if (!r.ok) throw new Error('Shopping setup unavailable'); return r.json(); }))
+      .then(async cfg => { await chrome.storage.local.set({ shopping_config: cfg }); reply(cfg); })
+      .catch(async () => { const { shopping_config } = await chrome.storage.local.get('shopping_config'); reply(shopping_config || { enabled: false, chat: '', chat_id: '' }); });
+    return true;
+  }
+  if (msg.type === 'shopping') {
+    (async () => {
+      const a = await account();
+      if (a !== 'personal') return reply({ handled: false });
+      const id = `${a}|${msg.payload.chatId}|${msg.payload.messageId}`;
+      await shoppingQueue(rows => rows.some(r => r.id === id) ? rows : [...rows, { id, account: a, payload: msg.payload }]);
+      try {
+        const res = await call('/api/bridge/shopping', msg.payload, a);
+        await shoppingQueue(rows => rows.filter(r => r.id !== id));
+        reply(res);
+      } catch (e) {
+        remember({ error: `Shopping message queued: ${e.message}` });
+        reply({ handled: true, queued: true });
+      }
+    })().catch(() => reply({ handled: false }));
+    return true;
+  }
   if (msg.type === "config") { reply({ my_names: COS_CONFIG.my_names || [] }); return; }
   if (msg.type === "seen") { remember({ last_seen: `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ${msg.note}` }); reply({ ok: true }); return; }
   if (msg.type === "counts") { remember({ counts: msg.counts }); reply({ ok: true }); return; }

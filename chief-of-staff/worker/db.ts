@@ -1,3 +1,4 @@
+import {EXECUTION_MODES} from './work-context';
 import type { Item, ItemKind, Project, Settings } from "../shared/types";
 import type { Env } from "./env";
 
@@ -35,6 +36,8 @@ export interface ItemInput {
   project_id?: string | null;
   source?: string;
   category?: string | null;
+  keep_standalone?: boolean;
+  execution_mode?: Item["execution_mode"];
 }
 
 export const CATEGORIES = ["coffee", "yeshiva", "personal"];
@@ -61,12 +64,13 @@ export async function createItem(env: Env, input: ItemInput): Promise<Item> {
   // filled in with anything new (a project, a time), instead of a second copy.
   const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   if (norm(title).length >= 4) {
-    const same = (await all<Item>(env, "SELECT * FROM items WHERE status = 'open' AND kind = ? ORDER BY created_at DESC LIMIT 200", kind)).find((o) => norm(o.title) === norm(title));
+    const same = (await all<Item & {project_assignment_locked?:number}>(env, "SELECT * FROM items WHERE status = 'open' AND kind = ? ORDER BY created_at DESC LIMIT 200", kind)).find((o) => norm(o.title) === norm(title));
     if (same) {
       const fill: ItemInput = {};
-      if (!same.project_id && input.project_id) fill.project_id = input.project_id;
+      if (!same.project_id && !same.project_assignment_locked && input.project_id) fill.project_id = input.project_id;
       if (!same.due_at && input.due_at) fill.due_at = input.due_at;
       if (!same.category && validCategory(input.category)) fill.category = input.category;
+      if(input.execution_mode && same.execution_mode==='unspecified')fill.execution_mode=input.execution_mode;
       return Object.keys(fill).length ? updateItem(env, same.id, fill) : same;
     }
   }
@@ -82,6 +86,7 @@ export async function createItem(env: Env, input: ItemInput): Promise<Item> {
     person: input.person || null,
     project_id: input.project_id || null,
     source: input.source ?? "manual",
+    execution_mode: EXECUTION_MODES.includes(input.execution_mode as never)?input.execution_mode:"unspecified",
     category: validCategory(input.category),
     completed_at: null,
     created_at: t,
@@ -89,11 +94,12 @@ export async function createItem(env: Env, input: ItemInput): Promise<Item> {
   };
   await run(
     env,
-    `INSERT INTO items (id, kind, title, notes, status, priority, due_at, person, project_id, source, category, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO items (id, kind, title, notes, status, priority, due_at, person, project_id, source, category, execution_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.id, item.kind, item.title, item.notes, item.status, item.priority, item.due_at,
-    item.person, item.project_id, item.source, item.category, item.created_at, item.updated_at,
+    item.person, item.project_id, item.source, item.category, item.execution_mode, item.created_at, item.updated_at,
   );
+  if(input.keep_standalone===true||input.project_id)await run(env,"UPDATE items SET project_assignment_locked=1 WHERE id=?",item.id);
   await syncProject(env, item.project_id);
   return item;
 }
@@ -146,6 +152,7 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
     next.status = input.status as Item["status"];
     next.completed_at = next.status === "done" ? now() : null;
   }
+  if(input.execution_mode!==undefined&&EXECUTION_MODES.includes(input.execution_mode))next.execution_mode=input.execution_mode;
   next.updated_at = now();
   if (next.status !== "open" && existing.status === "open") {
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", id);
@@ -161,14 +168,15 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
     && new Date(existing.due_at).getTime() <= Date.now() + 3600_000;
   await run(
     env,
-    `UPDATE items SET kind=?, title=?, notes=?, status=?, priority=?, due_at=?, person=?, project_id=?, category=?,
+    `UPDATE items SET kind=?, title=?, notes=?, status=?, priority=?, due_at=?, person=?, project_id=?, category=?, execution_mode=?,
        completed_at=?, updated_at=?, reminded_at = CASE WHEN ? THEN NULL ELSE reminded_at END,
        heads_up_at = CASE WHEN ? THEN NULL ELSE heads_up_at END, nudge_after = CASE WHEN ? THEN ? ELSE nudge_after END,
        snooze_count = snooze_count + ? WHERE id=?`,
     next.kind, next.title, next.notes, next.status, next.priority, next.due_at, next.person,
-    next.project_id, next.category ?? null, next.completed_at, next.updated_at, resetReminder ? 1 : 0, resetReminder ? 1 : 0,
+    next.project_id, next.category ?? null, next.execution_mode??"unspecified", next.completed_at, next.updated_at, resetReminder ? 1 : 0, resetReminder ? 1 : 0,
     resetReminder ? 1 : 0, later ? next.due_at : null, postponed ? 1 : 0, id,
   );
+  if(input.project_id!==undefined||input.keep_standalone===true)await run(env,"UPDATE items SET project_assignment_locked=1 WHERE id=?",id);
   await syncProject(env, next.project_id);
   if (existing.project_id !== next.project_id) await syncProject(env, existing.project_id);
   return next;
@@ -177,6 +185,8 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
 export async function createProject(env: Env, input: Partial<Project>): Promise<Project> {
   const name = (input.name ?? "").trim();
   if (!name) throw new HttpError(400, "name is required");
+  const existing=await first<Project>(env,"SELECT * FROM projects WHERE lower(trim(name))=lower(?) AND status!='done' ORDER BY created_at LIMIT 1",name);
+  if(existing)return existing;
   const t = now();
   const p: Project = {
     id: uid(),
@@ -213,7 +223,7 @@ const DEFAULT_SETTINGS = (env: Env): Settings => ({
 });
 
 export async function getSettings(env: Env): Promise<Settings> {
-  const rows = await all<{ key: string; value: string }>(env, "SELECT key, value FROM settings");
+  const rows = await all<{ key: string; value: string }>(env, "SELECT key, value FROM settings WHERE key IN ('name','timezone','briefing_hour','voice_name','proactive')");
   const s = DEFAULT_SETTINGS(env) as unknown as Record<string, unknown>;
   for (const r of rows) {
     if (!(r.key in s)) continue; // skip internal markers such as "briefing:<date>"

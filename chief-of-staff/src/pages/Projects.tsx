@@ -1,68 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
-import type { Item, Project } from "../../shared/types";
-import { api } from "../api";
-import { Button, Card, Empty, ItemRow } from "../components/ui";
+import {useCallback,useEffect,useRef,useState} from 'react';
+import type {Item,Project} from '../../shared/types';
+import {api} from '../api';
+import {Button,Card,Empty,ItemRow} from '../components/ui';
 
-export default function Projects({ onOpenItem, refreshKey }: { onOpenItem: (i: Item) => void; refreshKey: number }) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [open, setOpen] = useState<string | null>(null);
-  const [items, setItems] = useState<Item[]>([]);
-  const [draft, setDraft] = useState({ name: "", area: "personal" as Project["area"] });
-
-  const load = useCallback(() => { api.projects().then(setProjects).catch(() => {}); }, []);
-  useEffect(load, [load, refreshKey]);
-  const loadItems = useCallback(() => {
-    if (open) api.items({ project_id: open, status: "open" }).then(setItems);
-  }, [open]);
-  useEffect(loadItems, [loadItems, refreshKey]);
-
-  const create = async () => {
-    if (!draft.name.trim()) return;
-    await api.createProject(draft);
-    setDraft({ name: "", area: draft.area });
-    load();
-  };
-
-  return (
-    <div className="space-y-4">
-      <h1 className="font-display text-[32px] leading-tight">Projects</h1>
-      <form onSubmit={(e) => { e.preventDefault(); create(); }} className="flex gap-2">
-        <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="New project"
-          className="flex-1 min-w-0 rounded-xl bg-surface border border-line px-3.5 py-2.5 outline-none text-[15px] focus:border-accent" />
-        <select value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value as Project["area"] })}
-          className="rounded-xl bg-surface border border-line px-2 text-sm">
-          <option value="personal">Personal</option><option value="business">Business</option>
-        </select>
-        <Button type="submit" disabled={!draft.name.trim()}>Add</Button>
-      </form>
-      {projects.length === 0 && <Empty>No projects yet. Create one, or just tell your Chief of Staff about it.</Empty>}
-      {projects.map((p) => (
-        <Card key={p.id} className={p.status !== "active" ? "opacity-60" : ""}>
-          <button className="w-full text-left flex items-center justify-between" onClick={() => setOpen(open === p.id ? null : p.id)}>
-            <div>
-              <p className="font-semibold">{p.name}</p>
-              <p className="text-xs text-muted">{p.area} · {p.status} · {p.open_count ?? 0} open</p>
-              {p.description && <p className="text-sm text-muted mt-1">{p.description}</p>}
-            </div>
-            <span className="text-muted">{open === p.id ? "−" : "+"}</span>
-          </button>
-          {open === p.id && (
-            <div className="mt-3 border-t border-line pt-2">
-              <div className="divide-y divide-line">
-                {items.length ? items.map((i) => <ItemRow key={i.id} item={i} onChange={() => { loadItems(); load(); }} onOpen={onOpenItem} />) : <Empty>No open items.</Empty>}
-              </div>
-              <div className="flex gap-1 mt-2 -ml-3">
-                {(["active", "paused", "done"] as const).filter((s) => s !== p.status).map((s) => (
-                  <Button key={s} variant="ghost" onClick={async () => { await api.updateProject(p.id, { status: s }); load(); }}>
-                    {s === "active" ? "Resume" : s === "paused" ? "Pause" : "Mark done"}
-                  </Button>
-                ))}
-                <Button variant="danger" onClick={async () => { if (confirm(`Delete ${p.name}? Items are kept.`)) { await api.deleteProject(p.id); setOpen(null); load(); } }}>Delete</Button>
-              </div>
-            </div>
-          )}
-        </Card>
-      ))}
-    </div>
-  );
+export default function Projects({onOpenItem,refreshKey,onNew}:{onOpenItem:(i:Item)=>void;refreshKey:number;onNew?:()=>void}){
+ const [projects,setProjects]=useState<Project[]>([]),[standalone,setStandalone]=useState<Item[]>([]),[open,setOpen]=useState<string|null>(null),[items,setItems]=useState<Item[]>([]);
+ const [draft,setDraft]=useState({name:'',description:'',area:'personal' as Project['area']}),[seed,setSeed]=useState<Item|null>(null),[quick,setQuick]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const newProject=useRef<HTMLDetailsElement>(null);
+ useEffect(()=>{if(seed)newProject.current?.scrollIntoView({behavior:"smooth",block:"center"});},[seed]);
+ const selection=useRef<string|null>(null);selection.current=open;
+ const load=useCallback(async()=>{const [ps,rows]=await Promise.all([api.projects(),api.items({project_id:'none',status:'open'})]);setProjects(ps);setStandalone(rows.filter(i=>i.kind!=='idea'));},[]);
+ const loadItems=useCallback(async()=>{if(!open){setItems([]);return;}const id=open;const rows=await api.items({project_id:id,status:'open'});if(selection.current===id)setItems(rows);},[open]);
+ useEffect(()=>{load().catch(e=>setError(e.message));},[load,refreshKey]);useEffect(()=>{setItems([]);setQuick('');loadItems().catch(e=>setError(e.message));},[loadItems,refreshKey]);
+ async function action(work:()=>Promise<void>){if(busy)return;setBusy(true);setError('');try{await work();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ async function create(){if(!draft.name.trim())return;const p=await api.createProject(draft);if(seed)await api.updateItem(seed.id,{project_id:p.id});setDraft({name:'',description:'',area:draft.area});setSeed(null);setOpen(p.id);await load();}
+ const active=projects.filter(p=>p.status==='active'),archived=projects.filter(p=>p.status!=='active');
+ function project(p:Project){return <Card key={p.id} className={p.status==='active'?'':'opacity-70'}><button className="w-full text-left flex items-start justify-between gap-3" aria-expanded={open===p.id} onClick={()=>setOpen(open===p.id?null:p.id)}><span className="min-w-0"><span className="block font-semibold">{p.name}</span>{p.description&&<span className="block text-sm text-muted mt-1">{p.description}</span>}<span className="block text-xs text-muted mt-1">{p.open_count??0} open · {p.status}</span></span><span className="text-muted">{open===p.id?'−':'+'}</span></button>{open===p.id&&<div className="mt-3 border-t border-line pt-2"><div className="divide-y divide-line">{items.length?items.map(i=><ItemRow key={i.id} item={i} onChange={()=>{loadItems();load();}} onOpen={onOpenItem}/>):<Empty>No open steps.</Empty>}</div><form className="flex gap-2 mt-3" onSubmit={e=>{e.preventDefault();action(async()=>{if(!quick.trim())return;await api.createItem({kind:'task',title:quick.trim(),project_id:p.id});setQuick('');await loadItems();await load();});}}><input aria-label={`Add a step to ${p.name}`} className="flex-1 min-w-0 rounded-xl bg-sunken px-3 py-2.5 outline-none" placeholder="Add the next step…" value={quick} onChange={e=>setQuick(e.target.value)}/><Button type="submit" disabled={busy||!quick.trim()}>Add</Button></form><div className="flex flex-wrap gap-1 mt-3 -ml-3">{(['active','paused','done'] as const).filter(s=>s!==p.status).map(s=><Button key={s} disabled={busy} variant="ghost" onClick={()=>action(async()=>{await api.updateProject(p.id,{status:s});await load();})}>{s==='active'?'Resume':s==='paused'?'Pause':'Mark done'}</Button>)}<Button variant="ghost" onClick={()=>{const name=prompt('Project name',p.name);if(name?.trim())action(async()=>{await api.updateProject(p.id,{name:name.trim()});await load();});}}>Rename</Button></div></div>}</Card>;}
+ return <div className="space-y-5"><header><h1 className="font-display text-[32px] leading-tight">Projects</h1><p className="text-sm text-muted mt-1">Work toward a shared outcome, with its steps together. Separate initiatives stay separate; one-off tasks can stand on their own.</p></header>{error&&<p role="alert" className="text-sm text-danger">{error}</p>}{notice&&<p role="status" className="text-sm text-muted">{notice}</p>}<div className="flex flex-wrap gap-2"><Button variant="soft" disabled={busy} onClick={()=>action(async()=>{const r=await api.organizeProjects();setNotice(r.skipped==='busy'?'Organization is already running. Check back shortly.':r.assigned?`Organized ${r.assigned} tasks; ${r.created} new projects. Your tasks and reminder times are unchanged.`:'No further clear project connections found. Standalone tasks were kept separate.');await load();await loadItems();})}>{busy?'Working…':'Organize related tasks'}</Button></div>
+ <section className="space-y-3" aria-label="Active projects"><h2 className="font-display text-xl">Active projects <span className="font-sans text-sm text-muted">{active.length}</span></h2>{active.length?active.map(project):<Empty>No projects yet. Tell Chief of Staff about a goal, or create one below.</Empty>}</section>
+ <details ref={newProject} className="rounded-2xl bg-surface border border-line p-4" open={seed?true:undefined}><summary className="cursor-pointer font-medium">{seed?'Make this task a project':'New project'}</summary><form className="space-y-3 mt-3" onSubmit={e=>{e.preventDefault();action(create);}}>{seed&&<p className="text-sm text-muted">Start with “{seed.title}”. Its original task and reminder are kept.</p>}<input aria-label="Project name" value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="A specific goal or event" className="w-full rounded-xl bg-sunken px-3 py-2.5 outline-none"/><textarea aria-label="Project goal" value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="What are we trying to achieve? What belongs here?" className="w-full rounded-xl bg-sunken px-3 py-2.5 outline-none"/><select aria-label="Project area" value={draft.area} onChange={e=>setDraft({...draft,area:e.target.value as Project['area']})} className="rounded-xl bg-sunken px-3 py-2"><option value="personal">Life & personal</option><option value="business">Business</option></select><div className="flex gap-2"><Button type="submit" disabled={busy||!draft.name.trim()}>Create project</Button>{seed&&<Button variant="ghost" onClick={()=>setSeed(null)}>Cancel</Button>}</div></form></details>
+ <section className="space-y-2" aria-label="Standalone tasks"><div className="flex items-center justify-between"><h2 className="font-display text-xl">Standalone tasks <span className="font-sans text-sm text-muted">{standalone.length}</span></h2>{onNew&&<Button variant="soft" onClick={onNew}>Add task</Button>}</div><p className="text-sm text-muted">Not every task needs a project. Add connected work later and it can become one.</p><div className="rounded-2xl bg-surface border border-line px-4 divide-y divide-line">{standalone.length?standalone.map(i=><div key={i.id}><ItemRow item={i} onChange={load} onOpen={onOpenItem}/><button className="text-xs text-accent pb-3" onClick={()=>{setSeed(i);setDraft({name:i.title,description:'',area:i.category==='coffee'?'business':'personal'});}}>Make a project</button></div>):<Empty>No standalone tasks.</Empty>}</div></section>
+ {!!archived.length&&<details className="space-y-3"><summary className="cursor-pointer text-sm text-muted">Paused & completed projects ({archived.length})</summary>{archived.map(project)}</details>}</div>;
 }

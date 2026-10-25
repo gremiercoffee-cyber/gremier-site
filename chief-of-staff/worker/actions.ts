@@ -18,7 +18,13 @@ import { now, uid } from "./db";
  * The buttons for one nudge. Most are fixed per type (actionsFor); the "which project?" ones depend on
  * the candidates stored for that question, so they're looked up here. The first three show on the lock screen.
  */
-export async function actionsForNudge(env: Env, n: Pick<Nudge, "type" | "item_id">): Promise<NudgeAction[]> {
+export async function actionsForNudge(env: Env, n: Pick<Nudge, "type" | "item_id"> & Partial<Pick<Nudge,'topic_key'|'body'>>): Promise<NudgeAction[]> {
+  if (n.type === 'situation' && n.topic_key?.startsWith('block:')) {
+    const block = await first<{note:string}>(env, 'SELECT note FROM situations WHERE id=?', n.topic_key.slice(6));
+    if (block?.note && n.body?.split('\n').includes(`📝 ${block.note}`)) {
+      return [{id:'clear_note',title:'Remove repeating note'}, {id:'ok',title:'Hide alert'}];
+    }
+  }
   if (n.type === "project_ask" && n.item_id) {
     const row = await first<{ candidates: string }>(env, "SELECT candidates FROM project_asks WHERE id = ?", n.item_id);
     const cands = (row ? JSON.parse(row.candidates) : []) as { id: string; name: string }[];
@@ -36,26 +42,25 @@ export async function actionsForNudge(env: Env, n: Pick<Nudge, "type" | "item_id
 /** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
-  if (n.type === "prep") return [{ id: "prep", title: "📋 Prep", opens: true }, { id: "ok", title: "No thanks" }];
+  if (n.type === "prep") return [];
   if (n.type === "meeting") return [{ id: "ok", title: "Got it" }, { id: "not_meeting", title: "Not a meeting" }];
   if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
-  if (n.type === "postponed") return [{ id: "done", title: "Do it now ✓" }, { id: "breakdown", title: "Break it down", opens: true },
-    { id: "notneeded", title: "Drop it" }, { id: "delegate", title: "Hand it off", opens: true }, { id: "reschedule", title: "⏰ Reschedule", opens: true }];
+  if (n.type === "postponed") return [{ id: "done", title: "Done ✓" }, { id: "reschedule", title: "Later…", opens: true },
+    { id: "notneeded", title: "Not needed" }, { id: "breakdown", title: "Break it down", opens: true }, { id: "delegate", title: "Hand it off", opens: true }];
   if (n.type === "routine" || n.type === "routine_alert") return [
     { id: "report_doc", title: "📄 Open Doc", opens: true }, { id: "report_brief", title: "💬 Tell me about it", opens: true },
     { id: "report_read", title: "🔊 Read it to me", opens: true }];
   if (n.type === "mission_ask") return [{ id: "answer", title: "Answer…", opens: true }, { id: "ok", title: "Later" }];
   if (n.type === "mission_progress" || n.type === "mission_done") return [{ id: "ok", title: "Got it" }];
-  if (!n.item_id) return [{ id: "ok", title: n.type === "digest" || n.type === "event" ? "Got it" : "Dismiss" }];
-  // Every alert about a task: the same four, in this order. Android shows the first three on the
-  // lock screen; the app shows all of them plus the extras for that kind of alert.
+  if (!n.item_id) return [{ id: "ok", title: "Hide alert" }];
+  // Closing a task and hiding its current alert are deliberately distinct.
   const done: NudgeAction = { id: "done", title: n.type === "checkin" ? "Yes, done ✓" : "Done ✓" };
-  const base: NudgeAction[] = [done, { id: "reschedule", title: "⏰ Reschedule", opens: true }, { id: "ok", title: "Dismiss" }, { id: "ignore", title: "Ignore" }];
+  const base: NudgeAction[] = [done, { id: "reschedule", title: "Later…", opens: true }, { id: "notneeded", title: "Not needed" }, { id: "ok", title: "Hide alert" }, { id: "ignore", title: "Mute alerts" }];
   switch (n.type) {
     case "unanswered":
       // The notification shows the first three: draft it, put it off, or nothing needed. The rest are in the app.
-      return [{ id: "reply", title: "✍️ Draft…", opens: true }, { id: "reschedule", title: "⏰ Later", opens: true }, { id: "notneeded", title: "Dismiss" },
+      return [{ id: "reply", title: "✍️ Draft…", opens: true }, { id: "reschedule", title: "Later…", opens: true }, { id: "notneeded", title: "No reply needed" },
         { id: "reply_yes", title: "👍 Yes" }, { id: "reply_no", title: "👎 No" }, done, { id: "hold", title: "Holding reply" }];
     case "whatsapp":
     case "email":
@@ -98,6 +103,18 @@ export function tomorrowMorning(tz: string) {
 export async function applyAction(env: Env, nudgeId: string, action: string): Promise<{ ok: true; message: string; open?: string }> {
   const n = await first<Nudge>(env, "SELECT * FROM nudges WHERE id = ?", nudgeId);
   if (!n) return { ok: true, message: "Already handled." };
+  if (action === 'clear_note') {
+    if (n.type !== 'situation' || !n.topic_key?.startsWith('block:')) throw new Error('This alert has no repeating note.');
+    const blockId=n.topic_key.slice(6);
+    const block=await first<{note:string}>(env,'SELECT note FROM situations WHERE id=?',blockId);
+    // An old phone button must never remove a note edited since that notification.
+    if (!block?.note || !n.body.split('\n').includes(`📝 ${block.note}`)) return {ok:true,message:'The note changed. Refresh to review it.'};
+    await run(env,'UPDATE situations SET note=\'\',updated_at=? WHERE id=? AND note=?',now(),blockId,block.note);
+    const body=n.body.split('\n').filter(line=>line!==`📝 ${block.note}`).join('\n');
+    await run(env,'UPDATE nudges SET body=?,revision=revision+1 WHERE id=?',body,n.id);
+    if (!body.trim()) await run(env,'UPDATE nudges SET dismissed=1 WHERE id=?',n.id);
+    return {ok:true,message:'Repeating note removed. Other tasks are unchanged.'};
+  }
   if ((n.type === "routine" || n.type === "routine_alert") && n.item_id) {
     // For report alerts item_id is the report (routine run) id.
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
@@ -122,8 +139,7 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
   if (n.type === "prep") {
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
     if (action !== "prep") return { ok: true, message: "OK." };
-    const what = n.title.replace(/^📋\s*/, "").replace(/\.\s*Want to prep\?$/, "");
-    return { ok: true, message: "Let's prep.", open: `/?ask=${encodeURIComponent(`Let's prep for ${what}.`)}` };
+    return { ok: true, message: "Meeting prep is now kept in Meetings.", open: "/?tab=meetings" };
   }
   if (n.type === "meeting") {
     // For meetings item_id is the Schedule block.
@@ -225,13 +241,13 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       }
       break;
     case "ok":
-      message = "Dismissed.";
+      message = item ? "Alert hidden. Task is still open." : "Alert hidden. Unfinished tasks and repeating notes stay scheduled.";
       break;
     case "ignore":
       if (item) { await run(env, "UPDATE items SET muted = 1 WHERE id = ?", item.id); message = "OK, no more alerts about this one. It's still on your list."; }
       break;
     case "reschedule":
-      if (item) { open = `/?item=${encodeURIComponent(item.id)}&reschedule=1`; message = "Pick a new time…"; }
+      if (item) return {ok:true,open:`/?item=${encodeURIComponent(item.id)}&reschedule=1`,message:'Pick a new time…'};
       break;
     default:
       return { ok: true, message: "Unknown action." };

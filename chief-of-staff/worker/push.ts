@@ -3,7 +3,10 @@
  * VAPID_PUBLIC_KEY is the raw P-256 public key (base64url); VAPID_PRIVATE_JWK is the private key as a JWK.
  */
 import type { Env } from "./env";
-import { all, first, now, run, uid } from "./db";
+import type {Nudge} from '../shared/types';
+import {attentionState,actionableNotice} from './attention';
+import { all, first, now, run } from "./db";
+import { reconcileNotificationGroups, recordNotification, type NotificationOptions } from "./notifications";
 import { actionsForNudge, signNudge } from "./actions";
 import { isShabbat } from "./shabbat";
 import { urgencyFor } from "./policy";
@@ -12,6 +15,9 @@ import { getSettings } from "./db";
 export interface PushMessage {
   title: string; body?: string; url?: string; tag?: string;
   nudge_id?: string; sig?: string; actions?: { action: string; title: string; opens?: boolean }[];
+  topic_key?: string; legacy_tags?: string[]; revision?: number;
+  close_notifications?: string[];
+  notification_updates?: {id:string; title:string; body:string; revision:number}[];
 }
 
 const enc = new TextEncoder();
@@ -74,7 +80,13 @@ async function encrypt(payload: Uint8Array, p256dh: string, auth: string): Promi
 export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: number; failed: number }> {
   if (!pushConfigured(env)) return { sent: 0, failed: 0 };
   const subs = await all<{ endpoint: string; subscription: string }>(env, "SELECT endpoint, subscription FROM push_subscriptions");
-  const payload = enc.encode(JSON.stringify({ ...msg, body: (msg.body ?? "").slice(0, 300) }));
+  const packed = { ...msg, body: (msg.body ?? "").slice(0, 300),
+    notification_updates:msg.notification_updates?.slice(0,6).map(n=>({...n,title:n.title.slice(0,90),body:n.body.slice(0,180)})),
+    close_notifications:msg.close_notifications?.slice(0,50) };
+  // Keep within the single encrypted Web Push record, including Hebrew/emoji byte sizes.
+  while (enc.encode(JSON.stringify(packed)).length>3800 && packed.notification_updates?.length) packed.notification_updates.pop();
+  while (enc.encode(JSON.stringify(packed)).length>3800 && packed.close_notifications?.length) packed.close_notifications.pop();
+  const payload = enc.encode(JSON.stringify(packed));
   let sent = 0, failed = 0;
   await Promise.all(subs.map(async ({ endpoint, subscription }) => {
     try {
@@ -105,15 +117,13 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
  * Records a nudge (home screen, widget, next briefing) and buzzes the phone only when the
  * interruption rule says it can't wait (policy.ts). Never buzzes on Shabbat.
  */
-export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null, url = "/") {
-  const id = uid();
-  // The same reminder again (same item, or same kind and title) replaces the older one instead of piling up.
-  if (type !== "briefing") {
-    if (itemId) await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND item_id = ? AND type != 'briefing'", itemId);
-    else await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = ? AND title = ?", type, title);
-  }
-  await run(env, "INSERT INTO nudges (id, type, title, body, item_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    id, type, title, body, itemId, now());
+export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null, url = "/", options: NotificationOptions = {}) {
+  const { id, topic } = await recordNotification(env,type,title,body,itemId,url,options);
+  const reconciled = await reconcileNotificationGroups(env);
+  const current=await first<Nudge&{dismissed:number;revision:number}>(env,"SELECT * FROM nudges WHERE id=?",id);
+  if (!current || current.dismissed) return id;
+  if (!actionableNotice(current,await attentionState(env))) return id;
+  title=current.title;body=current.body;
   // Shabbat: keep it on the Today screen, but don't buzz. A summary goes out after Shabbat.
   if (isShabbat((await getSettings(env)).timezone)) return id;
   const prio = itemId ? (await first<{ priority: number }>(env, "SELECT priority FROM items WHERE id = ?", itemId))?.priority : undefined;
@@ -121,9 +131,13 @@ export async function notify(env: Env, type: string, title: string, body = "", i
   // The tag collapses repeats for the same item; buttons act without opening the app.
   // The briefing is written with headings and bold for the app; the phone notification gets it as plain lines.
   const pushBody = type === "briefing" ? body.replace(/^#{1,4}\s+(.*)$/gm, "$1:").replace(/\*\*/g, "").replace(/^\s*[-*]\s+/gm, "• ") : body;
-  await sendPush(env, {
-    title, body: pushBody, url, tag: itemId ?? type, nudge_id: id, sig: await signNudge(env, id),
-    actions: (await actionsForNudge(env, { type, item_id: itemId })).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
+  const delivered = await sendPush(env, {
+    title, body: pushBody, url, tag: `cos:${topic}`, topic_key: topic, revision:current.revision,
+    close_notifications:reconciled.closed, notification_updates:reconciled.updates.filter(n=>n.id!==id),
+    legacy_tags: itemId ? [itemId] : type === "digest" || type === "sweep" ? ["digest","sweep"] : [type],
+    nudge_id: id, sig: await signNudge(env, id),
+    actions: (await actionsForNudge(env, { type, item_id: itemId, topic_key:topic, body })).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
+  if (delivered.sent) await run(env, "UPDATE nudges SET pushed_at = ? WHERE id = ?", now(),id);
   return id;
 }

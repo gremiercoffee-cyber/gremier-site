@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Item, ItemKind } from "../../shared/types";
 import { api } from "../api";
 import { Button, Empty, ItemRow, KIND_META } from "../components/ui";
+import RecurringReminders from '../components/RecurringReminders';
 
 const TAB_KEY = "cos.listTab";
 // Tasks, reminders and promises are all just things to do: one list. A reminder is a to-do with a time.
@@ -13,6 +14,8 @@ export default function Lists({ onOpenItem, onNew, refreshKey }: {
   onOpenItem: (i: Item) => void; onNew: (k: ItemKind) => void; refreshKey: number;
 }) {
   const [kind, setKind] = useState<Tab>(() => {
+    const requested=new URLSearchParams(location.search).get("kind");
+    if(requested==='waiting')return 'waiting';
     try { const v = localStorage.getItem(TAB_KEY) as Tab | null; return !v || TODO.includes(v as ItemKind) ? "todo" : v; } catch { return "todo"; }
   });
   const [showDone, setShowDone] = useState(false);
@@ -39,7 +42,7 @@ export default function Lists({ onOpenItem, onNew, refreshKey }: {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <h1 className="font-display text-[32px] leading-tight">Lists</h1>
+        <h1 className="font-display text-[32px] leading-tight">All tasks</h1>
         <Button variant="soft" onClick={() => onNew(kind === "todo" ? "task" : kind)}>+ New</Button>
       </header>
       <div className="flex gap-1.5 overflow-x-auto -mx-4 px-4 pb-1">
@@ -55,6 +58,7 @@ export default function Lists({ onOpenItem, onNew, refreshKey }: {
           className="flex-1 rounded-xl bg-surface border border-line px-3.5 py-2.5 outline-none text-[15px] focus:border-accent" />
         <Button type="submit" disabled={!quick.trim()}>Add</Button>
       </form>
+      {kind === 'todo' && <RecurringReminders refreshKey={refreshKey} onChanged={load} />}
       <div className="rounded-2xl bg-surface border border-line px-4 py-1 divide-y divide-line">
         {items === null ? <Empty>Loading…</Empty> : items.length === 0 ? <Empty>Nothing here.</Empty> :
           items.map((i) => <ItemRow key={i.id} item={i} onChange={load} onOpen={onOpenItem} />)}

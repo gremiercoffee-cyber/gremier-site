@@ -176,6 +176,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             {pushState === "on" && <Button variant="soft" onClick={testNotification}>Send a test notification</Button>}
           </div>
           {pushMsg && <p className="text-sm">{pushMsg}</p>}
+          <p className="text-xs text-muted">One alert per task. Repeats update quietly while it is on your phone. Clearing an alert keeps the task on your list; use Done or Reschedule to handle it.</p>
           <p className="text-xs text-muted">
             Notifications: {pushState === "on" ? "on for this device" : notif === "denied" ? "blocked in your phone settings" : "off"}.
             On iPhone, add to Home Screen first (Share → Add to Home Screen) and open the app from that icon.
@@ -223,7 +224,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                 {google.connected && <Button variant="soft" onClick={syncGoogle} disabled={syncing}>{syncing ? "Syncing…" : "Sync now"}</Button>}
               </div>
               <p className="text-xs text-muted">
-                {google.connected && <>AI email checks today: {google.ai_used_today} of {google.ai_daily_cap} max. Newsletters, automated mail and CCs are filtered out for free first.<br /></>}
+                {google.connected && <>Lightweight AI checks today: {google.ai_used_today} · no daily call limit. Newsletters, automated mail and CCs are filtered out for free first. Research jobs require your approval.<br /></>}
                 Reads your calendars and email to remind you of meetings, spot emails that need you, and notice when you've replied.
                 It only writes a draft when you ask, and it never sends anything.
               </p>
@@ -245,7 +246,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
         </div>
       </Card>
 
-      <Card title={`People I know (${people.length})`}>
+      <details className="rounded-[20px] bg-surface border border-line p-5"><summary className="cursor-pointer text-sm font-medium">People I know ({people.length})</summary>
         {people.length === 0 ? <Empty>No one yet. Mention someone ("my boss is David, david@…") and I'll remember them.</Empty> : (
           <ul className="divide-y divide-line">
             {people.map((p) => (
@@ -259,7 +260,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             ))}
           </ul>
         )}
-      </Card>
+      </details>
 
       <Card title={`Memory (${memories.length})`}>
         {memories.length === 0 ? <Empty>Nothing remembered yet. Tell me about yourself, your business and the people you work with.</Empty> : (

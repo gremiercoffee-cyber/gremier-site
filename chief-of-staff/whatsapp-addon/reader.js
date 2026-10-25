@@ -7,6 +7,31 @@
   const done = new Set();           // message ids already passed on
   const counts = { add: 0, chat: 0, passed: 0 };
   let attached = false;
+  const reactionsDone = new Set();
+  const modelsOf = c => c && (typeof c.getModelsArray === 'function' ? c.getModelsArray() : c._models || c.models) || [];
+
+  function ownReaction(col, model) {
+    try {
+      const r = model && model.reactionByMe; // explicit ownership; never infer from someone else's emoji
+      if (!r || !r.reactionText) return;
+      let t = Number(r.timestamp || r.reactionTimestamp) || 0;
+      if (t > 1e12) t /= 1000;
+      if (!t || t < started - 60 || t > Date.now()/1000 + 60) return;
+      const parent = r.parentMsgKey || r.reactionParentKey || model.id;
+      const messageId = str(parent && (parent._serialized || parent));
+      if (!messageId) return;
+      const original = col.Msg.get(parent) || col.Msg.get(messageId);
+      if (original && original.id?.fromMe) return; // reacting to your own message answers nobody
+      const remote = str((original?.id?.remote || parent?.remote)?._serialized || original?.id?.remote || parent?.remote) || (messageId.match(/_([^_]+@(?:c\.us|s\.whatsapp\.net|lid|g\.us))_/) || [])[1];
+      if (!remote || remote === 'status@broadcast') return;
+      const chat = col.Chat.get(remote);
+      const key = `${messageId}|${r.reactionText}|${t}`;
+      if (reactionsDone.has(key)) return;
+      reactionsDone.add(key);
+      if (reactionsDone.size > 2000) reactionsDone.delete(reactionsDone.values().next().value);
+      post({ kind: 'reaction', message: { messageId, chatId: remote, chat: str(chat && (chat.formattedTitle || chat.name)) || remote.split('@')[0], fromMe: true, reactionText: str(r.reactionText), t } });
+    } catch { /* version-dependent reaction data must never disturb WhatsApp */ }
+  }
 
   function modules() {
     try {
@@ -38,7 +63,7 @@
     const me = str(msg.from && (msg.from._serialized || msg.from));
     const self = !!id.fromMe && !isGroup && !!me && me === remote;
     return {
-      chatId: remote, chat: chatName, sender, isGroup, fromMe: !!id.fromMe, self, text,
+      messageId: idOf(msg), chatId: remote, chat: chatName, sender, isGroup, fromMe: !!id.fromMe, self, text,
       kind: str(msg.type), muted: !!(chat && chat.mute && chat.mute.isMuted), archived: !!(chat && chat.archive), t: Number(msg.t) || 0,
     };
   }
@@ -47,6 +72,7 @@
   function consider(col, msg) {
     try {
       if (!msg) return;
+      if (msg.type === 'reaction') return; // handled by the reaction collection, never as a chat-wide reply
       const key = idOf(msg);
       if (!key || done.has(key)) return;
       const t = Number(msg.t) || 0;
@@ -71,6 +97,17 @@
   function attach() {
     const col = modules();
     if (!col) return false;
+    if (col.Reactions && typeof col.Reactions.on === 'function') {
+      const changed = model => ownReaction(col, model);
+      col.Reactions.on('add', changed);
+      col.Reactions.on('change:reactionByMe', changed);
+      col.Reactions.on('change', changed);
+      // Nested model changes do not always bubble; read the already-loaded collection too.
+      const scan = () => { for (const model of modelsOf(col.Reactions).slice(-2000)) ownReaction(col, model); };
+      scan();
+      setInterval(scan, 10_000);
+      counts.reaction_support = true;
+    } else counts.reaction_support = false;
     // Signal 1: messages added to the global message collection.
     col.Msg.on("add", (msg) => { counts.add++; consider(col, msg); });
     // Signals 2 and 3: a chat's last-activity time or unread count changes.

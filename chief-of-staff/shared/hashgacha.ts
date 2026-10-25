@@ -1,0 +1,2 @@
+export interface HashgachaTarget {class_id:number;item_status?:string;muted?:number;nudge_after?:string|null;due_at?:string|null;name:string;email:string|null;item_id:string;state:'missing'|'partial'|'received'|'unknown';expected:number|null;submitted:number|null;last_submission:string|null}
+export interface HashgachaCampaign {id:string;week_of:string;label:string;project_id:string|null;status:string;last_checked_at:string|null;last_error:string|null;last_reminded_date?:string|null;targets:HashgachaTarget[]}

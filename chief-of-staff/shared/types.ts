@@ -1,7 +1,10 @@
+import type {HashgachaCampaign} from './hashgacha';
 export type ItemKind = "task" | "reminder" | "idea" | "commitment" | "waiting";
 export type ItemStatus = "open" | "done" | "dropped";
 
 export interface Item {
+  reply_required?:number;
+  completion_source?:string|null;
   id: string;
   kind: ItemKind;
   title: string;
@@ -12,6 +15,7 @@ export interface Item {
   person: string | null;
   project_id: string | null;
   source: string;
+  execution_mode?: "unspecified" | "call" | "voice" | "desk" | "physical";
   ext_source?: string | null;
   ext_ref?: string | null;
   ext_account?: string | null;
@@ -30,6 +34,7 @@ export interface Project {
   status: "active" | "paused" | "done";
   created_at: string;
   updated_at: string;
+  categories?: (string|null)[];
   open_count?: number;
   done_count?: number;
   /** Open items, on the dashboard only. */
@@ -67,6 +72,8 @@ export interface Nudge {
   body: string;
   item_id: string | null;
   created_at: string;
+  updated_at?: string | null;
+  topic_key?: string | null;
   area?: string | null;
   items?: { id: string; title: string; person: string | null; project_id?: string | null; project?: string | null }[];
   actions?: NudgeAction[];
@@ -125,7 +132,14 @@ export interface ChatResponse {
   conversation: Conversation;
 }
 
+export interface HomeAttention { id:string; title:string; body:string; url:string }
+
 export interface Dashboard {
+  hashgacha?:HashgachaCampaign[];
+  attention_cards?: HomeAttention[];
+  home_tasks?: Item[];
+  home_projects?: Project[];
+  timezone?: string;
   today: Item[];
   overdue: Item[];
   waiting: Item[];
@@ -139,11 +153,13 @@ export interface Dashboard {
   /** Projects that just finished: the app throws a little party for each, once. */
   celebrate?: { id: string; name: string; done: number }[];
   events: CalendarEvent[];
-  /** The time block the user is in right now, if any. */
-  now_block?: { id: string; name: string; category: string | null; until: string | null; count: number; items: { id: string; title: string }[] } | null;
+  /** Current checklist; scheduled work when in a block, otherwise actionable suggestions. */
+  now_block?: { id: string; name: string; category: string | null; until: string | null; count: number; items: { id: string; title: string; category?: string | null; project_id?: string | null; project?: string | null }[] } | null;
 }
 
 export interface CalendarEvent {
+  category?: string | null;
+  source?: "schedule" | "calendar";
   id: string;
   summary: string;
   start_at: string;
@@ -168,5 +184,5 @@ export interface GoogleStatus {
   connected: boolean;
   accounts: GoogleAccountStatus[];
   ai_used_today: number;
-  ai_daily_cap: number;
+  ai_daily_cap: number | null;
 }

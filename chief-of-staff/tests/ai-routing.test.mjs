@@ -16,7 +16,7 @@ const call=(name,args={},id='call1')=>({type:'function_call',name,arguments:JSON
 const brainRequest=(overrides={})=>({tier:'main',purpose:'chat:text',system:'Follow the existing approval rules.',context:'Private context only for Sol.',history:[{role:'user',content:'Remind me tomorrow.'}],tools:[],...overrides});
 async function mocked(responses,fn) {
   const original=globalThis.fetch,requests=[],logs=[];
-  const env={...config,OPENAI_API_KEY:'test-key-never-sent',DB:{prepare:()=>({bind(...args){logs.push(args);return this},async run(){return {meta:{changes:1}}}})}};
+  const env={...config,OPENAI_API_KEY:'test-key-never-sent',DB:{prepare:(sql)=>({bind(...args){if(/usage_log/.test(sql))logs.push(args);return this},async run(){return {meta:{changes:1}}}})}};
   globalThis.fetch=async(url,init)=>{
     const body=JSON.parse(init?.body??await url.text());requests.push({url:String(url),body});
     assert.ok(responses.length,'Unexpected API request');
@@ -123,4 +123,77 @@ test('research uses the brain and preserves the paid search limit',async()=>{
     const r=await p.research({purpose:'task_research',system:'Research',prompt:'Approved query',maxSearches:2});
     assert.equal(requests[0].body.model,'gpt-6.1-sol');assert.equal(requests[0].body.max_tool_calls,2);assert.equal(r.searches,1);
   });
+});
+
+// Chat speed: direct Sol answers retain judgment while removing the mandatory rewrite.
+test('direct chat uses one Sol request, low verbosity, and no separate writer even if legacy rendering is enabled',async()=>{
+ await mocked([answer('Yes, tomorrow works.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,renderReply:true}));assert.equal(r.text,'Yes, tomorrow works.');assert.equal(requests.length,1);assert.equal(requests[0].body.model,'gpt-6.1-sol');assert.equal(requests[0].body.text.verbosity,'low');assert.match(requests[0].body.input[0].content,/Hard ceiling: 180 words/);assert.ok(!requests[0].body.input[0].content.includes('compact factual handoff'));assert.equal(r.metrics.rounds,1);});
+});
+test('a simple reminder is confirmed from the successful receipt in a single model round',async()=>{
+ let writes=0;await mocked([answer('',[call('create_item',{kind:'reminder',title:'Call David',due_at:'2026-10-19T07:00:00Z'})])],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,history:[{role:'user',content:'Remind me to call David tomorrow.'}],tools:[{name:'create_item',description:'Save',input_schema:{},handler:async()=>{writes++;return{id:'saved',kind:'reminder',due_at:'2026-10-19T07:00:00Z'}}}]}));assert.equal(writes,1);assert.equal(r.text,'Reminder set.');assert.equal(requests.length,1);});
+});
+test('direct chat never releases a premature success message when a save is awaiting approval',async()=>{
+ await mocked([answer('Done.',[call('save_task'),message('Done.')]),answer('Awaiting your approval.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,noFollowUp:['save_task'],tools:[{name:'save_task',description:'Approval',input_schema:{},handler:async()=>({status:'pending_approval'})}]}));assert.equal(r.text,'Awaiting your approval.');assert.equal(requests.length,2);assert.match(JSON.stringify(requests[1].body.input),/pending_approval/);});
+});
+test('a failed reminder save must return to Sol and cannot receive the short success confirmation',async()=>{
+ await mocked([answer('Reminder set.',[call('create_item',{kind:'reminder'}),message('Reminder set.')]),answer('That time is invalid. When should I remind you?')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,noFollowUp:['create_item'],tools:[{name:'create_item',description:'Save',input_schema:{},handler:async()=>{throw Error('Invalid time')}}]}));assert.match(r.text,/invalid/);assert.equal(requests.length,2);});
+});
+test('independent read-only lookups run concurrently, retain result order, and unchanged duplicate reads are reused',{timeout:2000},async()=>{
+ const started=[],completed=[];let release;const barrier=new Promise(resolve=>{release=resolve});let reads=0;
+ const tool={name:'read',readOnly:true,description:'Read',input_schema:{},handler:async({id})=>{reads++;started.push(id);if(started.length===2)release();await barrier;completed.push(id);return{id};}};
+ await mocked([answer('',[call('read',{id:'a'},'a1'),call('read',{id:'b'},'b'),call('read',{id:'a'},'a2')]),answer('Two records found.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,tools:[tool]}));assert.equal(reads,2);assert.deepEqual(started,['a','b']);assert.equal(completed.length,2);assert.deepEqual(r.toolCalls.map(t=>t.result.id),['a','b','a']);assert.deepEqual(requests[1].body.input.filter(i=>i.type==='function_call_output').map(i=>i.call_id),['a1','b','a2']);});
+});
+test('writes stay ordered between reads and invalidate cached lookups',async()=>{
+ let value=0,reads=0;const tools=[{name:'read',readOnly:true,description:'Read',input_schema:{},handler:async()=>{reads++;return{value}}},{name:'save',description:'Save',input_schema:{},handler:async()=>({value:++value})}];
+ await mocked([answer('',[call('read',{},'before'),call('read',{},'cached'),call('save',{},'write'),call('read',{},'after')]),answer('Updated.')],async(p,requests)=>{await p.runAgent(brainRequest({directReply:true,tools}));assert.equal(value,1);assert.equal(reads,2);const out=requests[1].body.input.filter(i=>i.type==='function_call_output').map(i=>JSON.parse(i.output).value);assert.deepEqual(out,[0,0,1,1]);});
+});
+test('read cache keys retain nested query differences',async()=>{
+ let reads=0;const tool={name:'read',readOnly:true,description:'Read',input_schema:{},handler:async({filter})=>{reads++;return filter;}};
+ await mocked([answer('',[call('read',{filter:{name:'one'}},'one'),call('read',{filter:{name:'two'}},'two')]),answer('Two results.')],async(p)=>{await p.runAgent(brainRequest({directReply:true,tools:[tool]}));assert.equal(reads,2);});
+});
+test('the reply guard bounds accidental essays and preserves explicit approval/failure warnings without more AI calls',async()=>{
+ const essay=Array(400).fill('Extra explanation.').join(' ');await mocked([answer(essay)],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true}));assert.ok(r.text.split(/\s+/).length<=180);assert.ok(r.text.length<=1600);assert.equal(requests.length,1);});
+ await mocked([answer('',[call('save')]),answer(essay)],async(p)=>{const r=await p.runAgent(brainRequest({directReply:true,tools:[{name:'save',description:'Save',input_schema:{},handler:async()=>({status:'pending_approval'})}]}));assert.ok(r.text.endsWith('Approval is still required.'));assert.ok(r.text.split(/\s+/).length<=180);});
+});
+test('reminder shortcut does not swallow a question that needs an actual answer',async()=>{
+ await mocked([answer('',[call('create_item',{kind:'reminder'})]),answer('Reminder set. Daily is sufficient because the deadline is next week.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,history:[{role:'user',content:'Remind me tomorrow. Why should I do this daily?'}],tools:[{name:'create_item',description:'Save',input_schema:{},handler:async()=>({id:'saved',kind:'reminder',due_at:'2026-10-19'})}]}));assert.equal(requests.length,2);assert.match(r.text,/because/);});
+});
+
+test('a result that requires interpretation still returns to Sol rather than taking the fast save-only shortcut',async()=>{
+ await mocked([answer('Idea saved.',[call('capture_idea'),message('Idea saved.')]),answer('Idea saved. Next: compare suppliers, estimate costs, then choose a launch date.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,noFollowUp:['capture_idea'],tools:[{name:'capture_idea',description:'Idea',input_schema:{},handler:async()=>({id:'idea',now_do_this:'Summarize the next steps',steps:['Compare suppliers','Estimate costs']})}]}));assert.equal(requests.length,2);assert.match(r.text,/Next:/);});
+});
+
+test('save and final confirmation are submitted together and released in one AI call',async()=>{
+ let writes=0;
+ await mocked([answer('',[call('remember',{content:'Yeshiva evenings'},'save'),call('finish_reply',{reply:'Remembered.'},'finish')])],async(p,requests)=>{
+  const result=await p.runAgent(brainRequest({batchReply:true,directReply:true,noFollowUp:['remember'],history:[{role:'user',content:'Remember my evenings are for yeshiva.'}],tools:[{name:'remember',description:'Save memory',input_schema:{type:'object',properties:{}},handler:async()=>{writes++;return {id:'memory'};}}]}));
+  assert.equal(writes,1);assert.equal(requests.length,1);assert.equal(result.text,'Remembered.');assert.equal(result.metrics.rounds,1);
+ });
+});
+test('batched confirmation cannot conceal failed writes or a lookup requiring interpretation',async()=>{
+ await mocked([answer('',[call('update_item',{},'save'),call('finish_reply',{reply:'Done.'},'finish')])],async(p,requests)=>{
+  const result=await p.runAgent(brainRequest({batchReply:true,directReply:true,noFollowUp:['update_item'],tools:[{name:'update_item',description:'Save',input_schema:{type:'object',properties:{}},handler:async()=>{throw Error('No such item');}}]}));assert.equal(requests.length,1);assert.match(result.text,/could not be saved/);assert.doesNotMatch(result.text,/^Done/);
+ });
+ await mocked([answer('',[call('search_items',{},'read'),call('finish_reply',{reply:'Nothing pending.'},'finish')]),answer('One task is pending.')],async(p,requests)=>{
+  const result=await p.runAgent(brainRequest({batchReply:true,directReply:true,noFollowUp:['update_item'],tools:[{name:'search_items',readOnly:true,description:'Read',input_schema:{type:'object',properties:{}},handler:async()=>[{id:'task'}]}]}));assert.equal(requests.length,2);assert.equal(result.text,'One task is pending.');
+ });
+});
+
+test('the 24-hour prompt cache is requested once, remembered when refused, and never breaks a call',async()=>{
+  const original=globalThis.fetch,seen=[];
+  const env={...config,OPENAI_API_KEY:'test-key-never-sent',DB:{prepare:()=>({bind(){return this},async run(){return {meta:{changes:1}}}})}};
+  globalThis.fetch=async(url,init)=>{
+    const body=JSON.parse(init?.body??await url.text());seen.push(body);
+    if(body.prompt_cache_retention)return new Response(JSON.stringify({error:{message:"Unsupported parameter: 'prompt_cache_retention' is not supported with this model.",type:'invalid_request_error'}}),{status:400,headers:{'content-type':'application/json'}});
+    return new Response(JSON.stringify(answer('{"ok":true}')),{headers:{'content-type':'application/json'}});
+  };
+  try {
+    const p=getProvider(env);
+    assert.equal(await p.complete({tier:'fast',purpose:'meeting_detect',system:'JSON',prompt:'a'}),'{"ok":true}');
+    assert.equal(seen.length,2,'tried with the extended cache, then without');
+    assert.equal(seen[0].prompt_cache_retention,'24h');assert.equal(seen[1].prompt_cache_retention,undefined);
+    assert.equal(seen[1].prompt_cache_key,'cos:meeting_detect');
+    await p.complete({tier:'fast',purpose:'meeting_detect',system:'JSON',prompt:'b'});
+    assert.equal(seen.length,3,'does not retry the refused option on later calls');assert.equal(seen[2].prompt_cache_retention,undefined);
+  } finally {globalThis.fetch=original;}
 });

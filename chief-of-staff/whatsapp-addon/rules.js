@@ -13,9 +13,11 @@ const COS_ASKS = new RegExp(
 function cosActionable(m, myNames) {
   const text = (m.text || "").trim();
   if (!text || text.length < 2) return false;
+  if (/^(?:thanks?(?: you)?(?: so much)?|thank you(?: very much)?|ok(?:ay)?|got it|sounds good|no problem|all good|you're welcome|see you(?: (?:today|tomorrow|tonight|then))?|fyi|תודה(?: רבה)?|בסדר|סבבה|מעולה|נתראה(?: מחר)?)[\s.!…👍🙏❤️]*$/iu.test(text)) return false;
   const lower = text.toLowerCase();
   const mentioned = text.includes("@") || myNames.some((n) => n && lower.includes(n.toLowerCase()));
   if (m.isGroup && !mentioned) return false;           // groups: only when you're mentioned
   if (m.muted && !mentioned) return false;             // muted chats: same
-  return COS_ASKS.test(text) || mentioned;
+  // A mention is routing information, not proof that an answer is owed.
+  return COS_ASKS.test(text);
 }

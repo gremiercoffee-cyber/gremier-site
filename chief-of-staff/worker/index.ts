@@ -1,5 +1,13 @@
+import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
+import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
+import {homeAttention} from './home-attention';
+import {homeWork} from './home-work';
+import {attentionState,actionableItem,actionableNotice,actionableNoticeItem} from './attention';
+import {organizeProjects} from './projectorganization';
 import type { CalendarEvent, Conversation, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
+import { recurringReminders, saveRecurringReminder, syncRecurringReminders } from './reminders';
+import { addShoppingItems, captureShopping, deleteShoppingItem, deleteShoppingList, processPendingShopping, saveShoppingConfig, saveShoppingList, shoppingConfig, shoppingState, updateShoppingItem } from './shopping';
 import { getProvider } from "./ai";
 import { modelRoute } from "./ai-routing";
 import { ProviderUnavailable } from "./ai";
@@ -11,21 +19,22 @@ import {
 import { runProactive } from "./proactive";
 import { learnPass, reviewMemory } from "./learn";
 import { scanNewWatches } from "./watches";
-import { offerMeetingPrep, processSelfNotes, saveSelfNote } from "./meetingnotes";
+import { processSelfNotes, saveSelfNote } from "./meetingnotes";
 import { tidyConversations } from "./tidy";
 import { detectMeeting } from "./meetings";
 import { getAreas, removeArea, saveArea } from "./areas";
 import { hubConfigured } from "./hub";
-import { draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
+import { archiveBroadcast, draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
 import { actionsForNudge, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
+import { activeNotificationIds, reconcileNotificationGroups } from "./notifications";
 import { findPeople, recallMemories } from "./memory";
 import { updateMission } from "./missions";
-import { replyQueue, sendReply, draftReply } from "./replies";
+import { batchReplyInstructions, dismissReply,saveReplyDraft,markWhatsAppReplied,replyQueue, sendReply, draftReply } from "./replies";
 import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine, tellRoutine, advanceRoutineRuns } from "./routines";
-import { currentBlock, describeSituation, saveSituation, type Situation } from "./situations";
+import { currentBlock, nowChecklist, describeSituation, saveSituation, type Situation } from "./situations";
 import { capture, checkTrackerNow, judgeEntry, knownChats, linkWhatsapp, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
@@ -58,8 +67,23 @@ const routes: [string, RegExp, Handler][] = [];
 const route = (method: string, path: string, h: Handler) =>
   routes.push([method, new RegExp("^" + path.replace(/:\w+/g, "([^/]+)") + "$"), h]);
 
+route('GET','/api/hashgacha',async(_req,env)=>json(await hashgachaCampaigns(env)));
+route('POST','/api/hashgacha/refresh',async(_req,env)=>{await syncHashgacha(env,{remind:false});return json(await hashgachaCampaigns(env));});
+
+// Meeting prep is internal storage only. Selecting a meeting is the explicit confirmation.
+route('GET','/api/meeting-prep',async(_req,env)=>json(await meetingPrepState(env)));
+route('POST','/api/meeting-prep/drafts/:id/confirm',async(req,env,[id])=>{
+ const b=await body<{meeting_id:string}>(req);return json(await confirmPrepNote(env,id,String(b.meeting_id??'')));
+});
+route('DELETE','/api/meeting-prep/drafts/:id',async(_req,env,[id])=>json(await discardPrepDraft(env,id)));
+route('PUT','/api/meeting-prep/notes/:id',async(req,env,[id])=>{
+ const b=await body<{text:string}>(req);return json(await editPrepNote(env,id,String(b.text??'')));
+});
+route('DELETE','/api/meeting-prep/notes/:id',async(_req,env,[id])=>json(await deletePrepNote(env,id)));
+
 // ---- Dashboard -------------------------------------------------------------
 route("GET", "/api/dashboard", async (_req, env) => {
+  await reconcileNotificationGroups(env);
   const settings = await getSettings(env);
   const t = now();
   const endOfDay = endOfLocalDay(settings.timezone);
@@ -73,25 +97,32 @@ route("GET", "/api/dashboard", async (_req, env) => {
     all<Nudge>(env, `SELECT n.*, i.category AS area FROM nudges n LEFT JOIN items i ON i.id = n.item_id
       WHERE n.dismissed = 0 AND n.type NOT IN ('auto_done','wa_sent','mission_progress','mission_done')
         AND (i.id IS NULL OR i.status = 'open')
-      ORDER BY n.created_at DESC LIMIT 20`),
+      ORDER BY COALESCE(n.updated_at,n.created_at) DESC, n.created_at DESC LIMIT 20`),
     all<PendingAction>(env, `SELECT * FROM pending_actions WHERE status='pending' ORDER BY created_at DESC`),
     // Active projects that still have something open, for the home screen (finished ones archive themselves).
     all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count,
                          (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='done') AS done_count
                        FROM projects p WHERE p.status='active'
-                         AND EXISTS (SELECT 1 FROM items i WHERE i.project_id=p.id AND i.status='open')
                        ORDER BY p.updated_at DESC LIMIT 12`),
     all<{ kind: string; n: number }>(env, `SELECT kind, COUNT(*) AS n FROM items WHERE status='open' GROUP BY kind`),
     all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
-       WHERE hidden = 0 AND ((all_day = 0 AND start_at >= ? AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?))
-       GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, startOfDay, endOfDay, localDate, localDate),
+       WHERE hidden = 0 AND ((all_day = 0 AND (end_at > ? OR (end_at IS NULL AND start_at >= ?)) AND start_at < ?) OR (all_day = 1 AND start_at <= ? AND end_at > ?))
+       GROUP BY summary, start_at ORDER BY all_day DESC, start_at`, t, t, endOfDay, localDate, localDate),
   ]);
-  const nowBlock = await currentBlock(env);
+  const attention = await attentionState(env);
+  const eligible=(i:Item)=>actionableItem(i,attention.blocks,attention.tz,attention.at);
+  const nowBlock = await nowChecklist(env,attention);
+  const browseEligible=(i:Item)=>eligible(i.kind==='reminder'?i:{...i,block_id:null} as Item);
+  const work=await homeWork(env);
+
   if (projects.length) {
     const open = await all<{ id: string; title: string; due_at: string | null; category: string | null; project_id: string }>(env,
-      `SELECT id, title, due_at, category, project_id FROM items WHERE status='open' AND project_id IN (${projects.map(() => "?").join(",")})
+      `SELECT * FROM items WHERE status='open' AND project_id IN (${projects.map(() => "?").join(",")})
        ORDER BY due_at IS NULL, due_at, priority, created_at`, ...projects.map((p) => p.id));
-    for (const p of projects) p.items = open.filter((i) => i.project_id === p.id).map(({ project_id: _p, ...i }) => i);
+    for (const p of projects) {
+      p.categories=[...new Set(open.filter(i=>i.project_id===p.id).map(i=>i.category))];
+      p.items = open.filter((i) => i.project_id === p.id && browseEligible(attention.items.get(i.id)!)).map(({ project_id: _p, ...i }) => i);
+    }
   }
   const todo = await all<Item>(env, `SELECT * FROM items WHERE status='open' AND kind IN ('task','commitment','reminder')
       AND (due_at IS NULL OR due_at > ?) ORDER BY due_at IS NULL, due_at, priority, created_at LIMIT 60`, endOfDay);
@@ -100,7 +131,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
     `SELECT id, name FROM projects WHERE id IN (${listIds.map(() => "?").join(",")})`, ...listIds) : [];
   // One row per to-do: the newest reminder about it wins.
   const seenItems = new Set<string>();
-  const liveAll = await liveNudges(env, nudges);
+  const liveAll = await liveNudges(env, nudges.filter(n=>actionableNotice(n,attention)));
   // A to-do already listed in a "Now" card (time block) doesn't also get its own row.
   const inBlocks = new Set(liveAll.flatMap((n) => (n.items ?? []).map((i) => i.id)));
   const live = liveAll.filter((n) => !n.item_id || (!inBlocks.has(n.item_id) && (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true))));
@@ -109,8 +140,8 @@ route("GET", "/api/dashboard", async (_req, env) => {
     `SELECT p.id, p.name, (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done
      FROM projects p WHERE p.celebrate_at IS NOT NULL AND p.celebrate_at > ? ORDER BY p.celebrate_at`, new Date(Date.now() - 3 * 86400_000).toISOString());
   const data: Dashboard = {
-    now_block: nowBlock, celebrate,
-    today, overdue, waiting, pending, projects, events, todo, lists,
+    hashgacha:await hashgachaCampaigns(env),now_block: nowBlock, celebrate, attention_cards:await homeAttention(env,attention,pending),
+    today, overdue:overdue.filter(browseEligible), waiting, pending, projects, events, home_tasks:work.tasks, home_projects:work.projects, timezone:settings.timezone, todo:todo.filter(browseEligible), lists,
     nudges: await Promise.all(live.map(async (n) => ({ ...n, actions: await actionsForNudge(env, n) }))),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
   };
@@ -301,12 +332,15 @@ route("GET", "/api/items", async (req, env) => {
   const binds: unknown[] = [];
   for (const key of ["kind", "status", "project_id"]) {
     const v = q.get(key);
+    if(key==="project_id"&&v==="none"){where.push("project_id IS NULL");continue;}
     if (v && v !== "all") (where.push(`${key} = ?`), binds.push(v));
   }
   const sql = `SELECT * FROM items ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY status = 'open' DESC, CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority, created_at DESC LIMIT 300`;
   return json(await all<Item>(env, sql, ...binds));
 });
+route('GET', '/api/recurring-reminders', async (_req, env) => { await syncRecurringReminders(env); return json(await recurringReminders(env)); });
+route('POST', '/api/recurring-reminders', async (req, env) => json(await saveRecurringReminder(env, await body(req))));
 route("POST", "/api/items", async (req, env) => json(await createItem(env, await body(req)), 201));
 route("PATCH", "/api/items/:id", async (req, env, [id]) => json(await updateItem(env, id, await body(req))));
 // Deleting from the UI is the user's own explicit action, so no approval round-trip.
@@ -321,6 +355,7 @@ route("DELETE", "/api/items/:id", async (_req, env, [id]) => {
 route("GET", "/api/projects", async (_req, env) =>
   json(await all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count
      FROM projects p ORDER BY p.status='active' DESC, p.updated_at DESC`)));
+route("POST", "/api/projects/organize",async (_req,env)=>json(await organizeProjects(env,{force:true})));
 route("POST", "/api/projects", async (req, env) => json(await createProject(env, await body(req)), 201));
 route("PATCH", "/api/projects/:id", async (req, env, [id]) => {
   const p = await first<Project>(env, "SELECT * FROM projects WHERE id = ?", id);
@@ -391,13 +426,16 @@ route("DELETE", "/api/groups/:id", async (_req, env, [id]) => {
   return json({ ok: true });
 });
 route("GET", "/api/groups/:id/messages", async (_req, env, [id]) =>
-  json(await all<Broadcast>(env, "SELECT * FROM broadcasts WHERE group_id = ? ORDER BY created_at DESC LIMIT 30", id)));
+  json(await all<Broadcast>(env, "SELECT * FROM broadcasts WHERE group_id = ? ORDER BY COALESCE(archived_at,sent_at,created_at) DESC", id)));
 route("POST", "/api/broadcasts", async (req, env) => {
   try { return json(await draftBroadcast(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
-route("POST", "/api/broadcasts/:id/send", async (_req, env, [id]) => {
-  try { return json(await sendBroadcast(env, id)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+route("POST", "/api/broadcasts/:id/send", async (req, env, [id]) => {
+  const edit=await req.text();
+  try { return json(await sendBroadcast(env, id,edit?JSON.parse(edit):undefined)); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
+route('GET','/api/broadcasts/drafts',async(_req,env)=>json(await all(env,"SELECT b.*,g.name AS group_name,(SELECT count(*) FROM group_members m JOIN people p ON p.id=m.person_id WHERE m.group_id=g.id AND p.email IS NOT NULL AND p.email!='') AS email_count FROM broadcasts b JOIN contact_groups g ON g.id=b.group_id WHERE b.status='draft' AND b.archived_at IS NULL ORDER BY b.created_at DESC")));
+route('POST','/api/broadcasts/:id/archive',async(_req,env,[id])=>json(await archiveBroadcast(env,id)));
 route("DELETE", "/api/broadcasts/:id", async (_req, env, [id]) => { await run(env, "DELETE FROM broadcasts WHERE id = ? AND status = 'draft'", id); return json({ ok: true }); });
 route("POST", "/api/learn", async (_req, env) => json(await learnPass(env, true)));
 route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
@@ -416,6 +454,15 @@ route("DELETE", "/api/memories/:id", async (_req, env, [id]) => {
 });
 
 // ---- Proactive: nudges and approvals ---------------------------------------
+route("POST", "/api/push/state", async (req, env) => {
+  const body = await req.json().catch(() => ({})) as { ids?: unknown };
+  const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter((id): id is string => typeof id === "string" && id.length <= 100))].slice(0,100) : [];
+  const active_ids=await activeNotificationIds(env,ids);
+  const updates=active_ids.length ? await all<{id:string;title:string;body:string;revision:number}>(env,
+    `SELECT id,title,body,revision FROM nudges WHERE id IN (${active_ids.map(()=>"?").join(",")})
+      AND type IN ('digest','sweep','situation','wrapup')`,...active_ids) : [];
+  return json({active_ids,updates});
+});
 route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
@@ -439,6 +486,16 @@ route("POST", "/api/tracker-entries/:id/verdict", async (req, env, [id]) => {
   const b = await body<{ verdict?: string }>(req);
   return json(await judgeEntry(env, id, b.verdict === "good" ? "good" : "bad"));
 });
+route('GET', '/api/shopping', async (_req, env) => json(await shoppingState(env)));
+route('POST', '/api/shopping/lists', async (req, env) => json(await saveShoppingList(env, await body(req))));
+route('DELETE', '/api/shopping/lists/:id', async (_req, env, [id]) => json(await deleteShoppingList(env, id)));
+route('POST', '/api/shopping/items', async (req, env) => {
+  const b = await body<{ list?: string; items: { name: string; quantity?: string; notes?: string }[] }>(req);
+  return json(await addShoppingItems(env, b.list, b.items));
+});
+route('PATCH', '/api/shopping/items/:id', async (req, env, [id]) => json(await updateShoppingItem(env, id, await body(req))));
+route('DELETE', '/api/shopping/items/:id', async (_req, env, [id]) => json(await deleteShoppingItem(env, id)));
+route('POST', '/api/shopping/config', async (req, env) => json(await saveShoppingConfig(env, await body(req))));
 route("GET", "/api/whatsapp/chats", async (_req, env) => json(await knownChats(env)));
 route("POST", "/api/people/:id/whatsapp", async (req, env, [id]) => {
   const b = await body<{ chat?: string }>(req);
@@ -470,7 +527,7 @@ route("DELETE", "/api/situations/:id", async (_req, env, [id]) => {
 // ---- Tasks (recurring agent jobs) -----------------------------------------------------
 route("GET", "/api/routines", async (_req, env) => {
   await advanceRoutineRuns(env).catch((e) => console.error("advance runs", e));
-  const rs = await all<Routine>(env, "SELECT * FROM routines ORDER BY active DESC, created_at");
+  const rs = await all<Routine>(env, "SELECT * FROM routines WHERE NOT EXISTS (SELECT 1 FROM recurring_reminders rr WHERE rr.id=routines.id) ORDER BY active DESC, created_at");
   const runs = await all<{ routine_id: string; status: string; state: string | null; error: string | null }>(env, `SELECT id, routine_id, started_at, finished_at, status, summary, report, sources, searches, doc_link, error, state
     FROM routine_runs WHERE routine_id IN (SELECT id FROM routines) ORDER BY started_at DESC LIMIT 60`);
   // Progress for runs in flight, in plain words.
@@ -513,13 +570,16 @@ route("POST", "/api/routines/:id/tell", async (req, env, [id]) => {
 route("POST", "/api/routines/:id/run", async (_req, env, [id], ctx) => {
   const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", id);
   if (!r) throw new HttpError(404, "task not found");
-  await run(env, "UPDATE routine_runs SET status = 'failed', finished_at = ?, error = 'Replaced by a new run.' WHERE routine_id = ? AND status = 'running'", now(), id);
-  await runRoutine(env, r); // plans and hands the research to OpenAI; finishes in the background
+  await runRoutine(env, r); // queues confirmation; never starts paid work from this endpoint
   void ctx;
-  return json({ ok: true, message: "Started. Researching now — the report usually lands within 10–20 minutes, and you'll get a notification." });
+  return json({ ok: true, message: 'Not started. Review and approve the AI job below before it runs.' });
 });
 
 // ---- Replies: consolidated catch-up ------------------------------------------------
+route('POST','/api/replies/batch',async(req,env)=>{try{return json(await batchReplyInstructions(env,await body(req)));}catch(e){throw new HttpError(400,(e as Error).message);}});
+route('PUT','/api/replies/:id/draft',async(req,env,[id])=>{const b=await body<{text:string}>(req);return json(await saveReplyDraft(env,id,b.text??''));});
+route('POST','/api/replies/:id/dismiss',async(_req,env,[id])=>json(await dismissReply(env,id)));
+route('POST','/api/replies/:id/replied',async(_req,env,[id])=>json(await markWhatsAppReplied(env,id)));
 route("GET", "/api/replies", async (_req, env) => json(await replyQueue(env)));
 route("POST", "/api/replies/:id/draft", async (req, env, [id]) => {
   const { guidance } = await body<{ guidance?: string }>(req);
@@ -577,14 +637,23 @@ route("POST", "/api/proactive/run", async (req, env) => {
   const b = await body<{ briefing?: boolean }>(req).catch(() => ({ briefing: false }));
   return json(await runProactive(env, { forceBriefing: !!b.briefing }));
 });
+route('GET', '/api/ai-job-approvals', async (_req, env) => json(await all(env,"SELECT * FROM pending_actions WHERE action LIKE 'ai_%' AND status='pending' ORDER BY created_at DESC")));
 route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => {
   const a = await first<PendingAction>(env, "SELECT * FROM pending_actions WHERE id = ? AND status = 'pending'", id);
   if (!a) throw new HttpError(404, "no pending action");
+  if (!['approve','reject'].includes(decision)) throw new HttpError(400,'decision must be approve or reject');
+  const claim = await run(env,"UPDATE pending_actions SET status='executing' WHERE id=? AND status='pending'",id);
+  if (!claim.meta.changes) throw new HttpError(409,'This approval is already being handled.');
   let outcome = "rejected";
+  try {
   if (decision === "approve") outcome = await executeApproved(env, a.action, JSON.parse(a.payload || "{}"));
   else if (decision !== "reject") throw new HttpError(400, "decision must be approve or reject");
   await run(env, "UPDATE pending_actions SET status = ?, resolved_at = ? WHERE id = ?",
     decision === "approve" ? "approved" : "rejected", now(), id);
+  } catch (e) {
+    await run(env,"UPDATE pending_actions SET status='failed',resolved_at=? WHERE id=?",now(),id);
+    throw e;
+  }
   return json({ ok: true, outcome });
 });
 
@@ -654,6 +723,8 @@ export default {
     // Desktop WhatsApp bridge: its own key, its own three routes.
     if (url.pathname.startsWith("/api/bridge/")) {
       if (!bridgeAuthorised(req, env)) return json({ error: "unauthorised" }, 401);
+      if (url.pathname === '/api/bridge/shopping' && req.method === 'GET') return json(await shoppingConfig(env));
+      if (url.pathname === '/api/bridge/shopping' && req.method === 'POST') return json(await captureShopping(env, await req.json()));
       if (url.pathname === "/api/bridge/incoming" && req.method === "POST") return json(await handleIncoming(env, await req.json()));
       if (url.pathname === "/api/bridge/diag" && req.method === "POST") {
         const raw = (await req.json().catch(() => ({}))) as { account?: string };
@@ -713,11 +784,12 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
-    ctx.waitUntil(syncGoogle(env).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+    ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+      .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
+      .then(() => processPendingShopping(env)).catch((e) => console.error('shopping', e))
       .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
       .then(() => processSelfNotes(env)).catch((e) => console.error("self notes", e))
-      .then(() => offerMeetingPrep(env)).catch((e) => console.error("prep", e))
       .then(() => learnPass(env)).catch((e) => console.error("learn", e)).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
@@ -727,6 +799,7 @@ export default {
  * reminder disappears once everything in it is done); briefings lose the lines for things done since.
  */
 async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null })[]) {
+  const attention=await attentionState(env);
   const out: (Nudge & { items?: { id: string; title: string; person: string | null; due_at?: string | null }[] })[] = [];
   for (const n of nudges) {
     if (n.item_ids) {
@@ -737,9 +810,9 @@ async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null 
           WHERE i.status = 'open' AND i.id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
       // On a wrap-up, "not yet" pushes an item to tomorrow: it leaves the card.
       const ordered = ids.map((id) => open.find((o) => o.id === id))
-        .filter((o) => o && !(n.type === "wrapup" && o.due_at && o.due_at > now())) as typeof open;
-      if (!ordered.length) { await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", n.id); continue; }
+        .filter((o) => o && actionableNoticeItem(attention.items.get(o.id)!,n,attention) && !(n.type === "wrapup" && o.due_at && o.due_at > now())) as typeof open;
       const note = n.body.split("\n").filter((l) => l.startsWith("📝"));
+      if (!ordered.length && !note.length) { await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", n.id); continue; }
       out.push({
         ...n, items: ordered,
         title: n.title.replace(/\d+ things?( for now)?/, `${ordered.length} thing${ordered.length > 1 ? "s" : ""}$1`),
@@ -748,7 +821,7 @@ async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null 
       continue;
     }
     if (n.type === "briefing") {
-      const closed = await all<{ title: string }>(env, "SELECT title FROM items WHERE status != 'open' AND updated_at >= ?", n.created_at);
+      const closed = await all<{ title: string }>(env, "SELECT title FROM items WHERE status != 'open' AND updated_at >= ?", n.updated_at ?? n.created_at);
       const keys = closed.map((c) => c.title.toLowerCase().slice(0, 30)).filter((k) => k.length >= 6);
       if (keys.length) {
         const body = n.body.split("\n").filter((l) => !(/^\s*([-*•]|\d+\.)\s/.test(l) && keys.some((k) => l.toLowerCase().includes(k)))).join("\n");

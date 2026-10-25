@@ -1,3 +1,8 @@
+import HashgachaReports from '../components/HashgachaReports';
+import GroupDraftApprovals from '../components/GroupMessage';
+import MeetingPrepConfirmations from '../components/MeetingPrep';
+import HomeWork from '../components/HomeWork';
+import {useImmediateCompletions} from '../useImmediateCompletions';
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import { api } from "../api";
@@ -6,6 +11,9 @@ import { BriefingView, DictateButton, Markdown, MicIcon, timeAgo } from "../comp
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
 import Celebration from "../components/Celebration";
+import Chips from "../components/NudgeActions";
+import TaskActions from "../components/TaskActions";
+import NowChecklist from '../components/NowChecklist';
 import { startRecording } from "../voice";
 
 type LiveState = "off" | LiveStatus;
@@ -32,6 +40,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const [typing, setTyping] = useState(!!startTyping);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const [live, setLive] = useState<LiveState>("off");
   const [dictatingNow, setDictatingNow] = useState(false);
   const [dash, setDash] = useState<Dashboard | null>(null);
@@ -46,6 +55,10 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     api.conversationMessages(conversationId).then(setMessages).catch((e) => setError(e.message));
   }, [conversationId]);
   useEffect(() => { api.dashboard().then(setDash).catch(() => {}); }, [refreshKey]);
+  useEffect(()=>{
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')void api.dashboard().then(setDash).catch(()=>{});},60_000);
+    return ()=>clearInterval(timer);
+  },[]);
   // A project just finished: confetti once, then it's marked as celebrated.
   const [party, setParty] = useState<{ id: string; name: string; done: number } | null>(null);
   useEffect(() => {
@@ -126,6 +139,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
   const act = async (n: Nudge, action: string) => {
     const r = await api.actNudge(n.id, action);
+    setActionMessage(r.message);
     if (r.open?.includes("reschedule=1") && n.item_id) {
       window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: n.item_id }));
     } else if (r.open) {
@@ -154,7 +168,10 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
             {sending && <Thinking />}
           </div>
         )}
+        {inConversation&&<GroupDraftApprovals refreshKey={refreshKey} onChanged={onDataChanged}/>}
+        <MeetingPrepConfirmations refreshKey={refreshKey} onChanged={onDataChanged}/>
         {error && <p className="text-danger text-sm mt-2">{error}</p>}
+        {actionMessage && <p role="status" className="text-accent text-sm mt-2">{actionMessage}</p>}
         <div ref={endRef} />
       </div>
 
@@ -171,7 +188,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
 function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: {
   greeting: string; live: LiveState; dash: Dashboard | null;
-  onAct: (n: Nudge, a: string) => void; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
+  onAct: (n: Nudge, a: string) => Promise<void>; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
 }) {
   const [area, setAreaState] = useState<string>(() => { try { return localStorage.getItem("cos.area") || "all"; } catch { return "all"; } });
   const setArea = (a: string) => { setAreaState(a); try { localStorage.setItem("cos.area", a); } catch { /* fine */ } };
@@ -180,32 +197,21 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   // A nudge's area: its item's area, else the area icon in its title (time-block reminders).
   const nudgeArea = (n: Nudge) => n.area ?? Object.entries(ICON).find(([, i]) => n.title.includes(i))?.[0] ?? null;
   const inArea = (a: string | null | undefined) => area === "all" || a === area;
-  // Dismissed ones vanish right away (before the server round-trip), so you can clear several in a row.
-  const [gone, setGone] = useState<Set<string>>(new Set());
-  const dismissAction = (n: Nudge) => (n.actions ?? []).find((a) => /^(dismiss|got it|no thanks)$/i.test(a.title));
-  const dismiss = (n: Nudge) => { const a = dismissAction(n); if (!a) return; setGone((g) => new Set(g).add(n.id)); void onAct(n, a.id); };
-  const nudges = (dash?.nudges ?? []).filter((n) => !gone.has(n.id) && n.type !== "briefing" && (area === "all" || nudgeArea(n) === area)).slice(0, 5);
-  const briefing = area === "all" ? dash?.nudges.find((n) => n.type === "briefing" && !gone.has(n.id)) : undefined;
-  const nowBlock = dash?.now_block && inArea(dash.now_block.category) ? dash.now_block : null;
-  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  // "Coming up": overdue first (red), then today's meetings and tasks by time, as small swipeable cards.
-  // Items already in the list below aren't repeated in the "Coming up" strip.
-  // Each thing appears once on this screen: reminders and the "Now" card first, then Coming up, then
-  // Projects, then To-do. (Anything already shown higher up is left out of the lower sections.)
-  const shown = new Set([
-    ...(dash?.nudges ?? []).flatMap((n) => [n.item_id, ...(n.items ?? []).map((i) => i.id)]),
-    ...(dash?.now_block?.items ?? []).map((i) => i.id),
-  ].filter(Boolean) as string[]);
-  const upcoming = [
-    ...(dash?.overdue ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: "Overdue", sort: "0", red: true })),
-    ...(area !== "all" ? [] : dash?.events ?? []).filter((e) => e.all_day || new Date(e.end_at ?? e.start_at).getTime() > Date.now())
-      .map((e) => ({ id: e.id, title: e.summary, when: e.all_day ? "All day" : hhmm(e.start_at), sort: e.all_day ? "1" : e.start_at, red: false })),
-    ...(dash?.today ?? []).filter((i) => inArea(i.category)).map((i) => ({ id: i.id, title: i.title, when: i.due_at ? hhmm(i.due_at) : "Today", sort: i.due_at ?? "2", red: false })),
-  ].filter((u) => !shown.has(u.id)).sort((x, y) => x.sort.localeCompare(y.sort)).slice(0, 12);
+  const dismissAction = (n: Nudge) => !n.item_id && !n.items?.length && !n.actions?.some(a=>a.id==='clear_note') ? (n.actions ?? []).find(a=>a.id==='ok') : undefined;
+  const dismiss = (n: Nudge) => { const a = dismissAction(n); if (a) void onAct(n, a.id).catch(()=>{}); };
+  const completion=useImmediateCompletions((dash?.nudges??[]).flatMap(n=>[...(n.item_id?[n.item_id]:[]),...(n.items??[]).map(i=>i.id)]));
+  const performAction=(n:Nudge,action:string)=>n.item_id&&['done','notneeded'].includes(action)?completion.complete(n.item_id,()=>onAct(n,action),()=>{}):onAct(n,action);
+  const [showUpdates,setShowUpdates]=useState(false);
+  const allNudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??'') && n.type !== "briefing" && (area === "all" || nudgeArea(n) === area));
+  const nudges=showUpdates?allNudges:allNudges.slice(0,5);
+  const briefing = dash?.nudges.find((n) => n.type === "briefing");
+  const [nowVisibleCount,setNowVisibleCount]=useState<number|null>(null);
+  const nowBlock = dash?.now_block;
+  const nowItems = (nowBlock?.items??[]).filter(i=>inArea(i.category));
 
   return (
-    <div className="pt-4 space-y-5 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8 lg:items-start">
-      <div className="space-y-5 lg:sticky lg:top-4">
+    <div className="pt-4 space-y-5">
+      <div className="space-y-5">
       <div className="flex flex-col items-center text-center gap-3">
         {live === "off" && <div className="scale-[0.8] -my-3"><Orb state={live} /></div>}
         <div>
@@ -223,43 +229,25 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
         ))}
       </div>
 
-      {nowBlock && dash?.now_block && (
-        <details className="rounded-2xl bg-accent/10 px-4 py-2.5">
-          <summary className="cursor-pointer text-[14px] list-none flex items-center gap-2">
+      <section aria-label="Now" className="rounded-2xl bg-accent/10 px-4 py-3">
+          <div className="text-[14px] flex items-center gap-2">
             <span className="text-accent font-medium">Now:</span>
-            <span className="flex-1 truncate">{ICON[dash.now_block.category ?? ""] ? `${ICON[dash.now_block.category ?? ""]} ` : ""}{dash.now_block.name}
-              {dash.now_block.until && <span className="text-muted"> · until {dash.now_block.until}</span>}</span>
-            {dash.now_block.count > 0 && <span className="text-xs text-muted">{dash.now_block.count} thing{dash.now_block.count > 1 ? "s" : ""}</span>}
-          </summary>
-          {dash.now_block.items.length > 0 && (
-            <ul className="mt-2 space-y-1 text-[14px]">{dash.now_block.items.map((i) => <li key={i.id}>• {i.title}</li>)}</ul>
-          )}
-        </details>
-      )}
-
-      {upcoming.length > 0 && (
-        <div>
-          <p className="px-1 mb-1.5 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Coming up</p>
-          <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 snap-x no-scrollbar">
-            {upcoming.map((u) => (
-              <div key={u.id} className={`snap-start shrink-0 w-36 rounded-2xl px-3 py-2.5 border ${u.red ? "bg-danger/5 border-danger/20" : "bg-surface border-line/70"}`}>
-                <p className={`text-[11px] ${u.red ? "text-danger" : "text-accent"}`}>{u.when}</p>
-                <p className="text-[13px] leading-snug line-clamp-2 mt-0.5">{u.title}</p>
-              </div>
-            ))}
+            <span className="flex-1 truncate">{ICON[nowBlock?.category ?? ""] ? `${ICON[nowBlock?.category ?? ""]} ` : ""}{nowBlock?.name??"Ready to work on"}
+              {nowBlock?.until && <span className="text-muted"> · until {nowBlock?.until}</span>}</span>
+            {(nowVisibleCount??nowItems.length) > 0 && <span className="text-xs text-muted">{nowVisibleCount??nowItems.length} thing{(nowVisibleCount??nowItems.length) > 1 ? "s" : ""}</span>}
           </div>
-        </div>
-      )}
+          <NowChecklist items={nowItems} onChanged={onChanged} onCountChange={setNowVisibleCount}/>
+          {!nowItems.length && <p className="mt-2 text-sm text-muted">{dash?"Nothing needs doing right now.":"Loading your next steps…"}</p>}
+      </section>
 
-      </div>
-      <div className="space-y-5">
+      {completion.error&&<p role="alert" className="text-sm text-danger">{completion.error}</p>}
       {(briefing || nudges.length > 0) && (
         <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
           {briefing && (
             <Row icon="☀️" title="Today's briefing" time={briefing.created_at}
               onDismiss={dismissAction(briefing) ? () => dismiss(briefing) : undefined}>
               <BriefingView text={briefing.body} />
-              <Chips n={briefing} onAct={onAct} />
+              <Chips n={briefing} onAct={performAction} />
             </Row>
           )}
           {nudges.map((n) => (
@@ -267,43 +255,39 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
               onDismiss={dismissAction(n) ? () => dismiss(n) : undefined}>
               {n.type === "review" ? <>
                 <div className="text-[14px]"><Markdown text={n.body} /></div>
-                <Chips n={n} onAct={onAct} />
+                <Chips n={n} onAct={performAction} />
               </> : n.type === "idea" ? <>
                 <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>
                 <a href="/?tab=ideas" className="inline-block text-[14px] font-medium text-accent">Open the idea → pick next steps</a>
-                <Chips n={n} onAct={onAct} />
+                <Chips n={n} onAct={performAction} />
               </> : n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
                 {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
                 <ul className="space-y-1">
-                  {groupItems(n.items).map(({ header, it }) => (
+                  {groupItems(n.items.filter(i=>!completion.hidden.has(i.id))).map(({ header, it }) => (
                     <li key={it.id} className="text-[14px] rounded-xl bg-sunken/60 px-3 py-2">
                       {header && <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">🗂️ {header}</p>}
                       <p>{it.title}{it.person && <span className="text-muted"> ({it.person})</span>}</p>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <button onClick={async () => { await api.updateItem(it.id, { status: "done" }); onChanged(); }}
-                          className="rounded-full bg-ok/15 text-ok px-3 py-1 text-[13px] font-medium">✓ Done</button>
-                        <button onClick={async () => { await api.updateItem(it.id, { due_at: tomorrowNine() }); onChanged(); }}
-                          className="rounded-full bg-surface border border-line px-3 py-1 text-[13px] font-medium">Not yet → tomorrow</button>
-                        <button onClick={() => window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: it.id }))}
-                          className="rounded-full bg-surface border border-line px-3 py-1 text-[13px] font-medium">⏰ Later…</button>
-                        <button onClick={async () => { await api.updateItem(it.id, { status: "dropped" }); onChanged(); }}
-                          className="rounded-full px-3 py-1 text-[13px] text-muted">Not needed</button>
-                      </div>
+                      <TaskActions id={it.id} onChanged={onChanged} onClose={status=>completion.complete(it.id,()=>api.updateItem(it.id,{status}),onChanged)} />
                     </li>
                   ))}
                 </ul>
-                <Chips n={n} onAct={onAct} onReply={n.type === "wrapup" ? undefined : () => onReply(n)} />
+                <Chips n={n} onAct={performAction} onReply={n.type === "wrapup" ? undefined : () => onReply(n)} />
               </> : <>
                 {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
-                <Chips n={n} onAct={onAct} onReply={() => onReply(n)} />
+                <Chips n={n} onAct={performAction} onReply={() => onReply(n)} />
               </>}
             </Row>
           ))}
+          {allNudges.length>5&&<button className="w-full px-4 py-3 text-sm text-accent" onClick={()=>setShowUpdates(!showUpdates)}>{showUpdates?'Show fewer updates':`Show ${allNudges.length-5} more updates`}</button>}
         </div>
       )}
 
-      <ProjectsSection dash={dash} inArea={inArea} hide={new Set([...shown, ...upcoming.map((u) => u.id)])} onChanged={onChanged} />
-      <TodoSection dash={dash} shown={new Set([...shown, ...upcoming.map((u) => u.id)])} inArea={inArea} onChanged={onChanged} />
+      {!!dash?.attention_cards?.length && <section aria-label="Needs your attention" className="space-y-2">
+        <h2 className="px-1 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Needs your attention</h2>
+        <div className="rounded-[20px] bg-surface border border-line divide-y divide-line">{dash.attention_cards.map(card=><a key={card.id} href={card.url} className="block px-4 py-3"><p className="text-[15px] font-medium">{card.title} →</p><p className="text-sm text-muted mt-1">{card.body}</p></a>)}</div>
+      </section>}
+      {!!dash?.hashgacha?.length&&inArea('yeshiva')&&<HashgachaReports campaigns={dash.hashgacha} onChanged={onChanged}/>}
+      {dash && <HomeWork tasks={dash.home_tasks??[]} projects={dash.home_projects??[]} inArea={inArea} onChanged={onChanged}/>}
       </div>
     </div>
   );
@@ -328,6 +312,7 @@ const KIND: Record<string, { emoji: string; label: string; tone: string }> = {
   sweep: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
   learn: { emoji: "✨", label: "To review", tone: "border-l-accent text-accent" },
   wrapup: { emoji: "🏁", label: "Wrap-up", tone: "border-l-amber-500 text-amber-700" },
+  reply_batch: {emoji:"💬",label:"Replies",tone:"border-l-sky-500 text-sky-700"},
   prep: { emoji: "📋", label: "Meeting prep", tone: "border-l-sky-500 text-sky-700" },
   meeting_notes: { emoji: "📝", label: "Meeting notes", tone: "border-l-emerald-500 text-emerald-700" },
   suggest: { emoji: "📲", label: "Add this?", tone: "border-l-sky-500 text-sky-700" },
@@ -363,7 +348,7 @@ function Row({ icon, title, time, children, startOpen, type, onDismiss }: {
         </button>
         {/* One tap to clear it without opening it, so a whole pile can be cleared in one go. */}
         {onDismiss && (
-          <button onClick={onDismiss} aria-label="Dismiss" title="Dismiss"
+          <button onClick={onDismiss} aria-label="Hide alert" title="Hide this alert; scheduled work stays open"
             className="shrink-0 h-9 w-9 mr-2 grid place-items-center rounded-full text-muted hover:bg-sunken hover:text-ink">✕</button>
         )}
       </div>
@@ -372,22 +357,6 @@ function Row({ icon, title, time, children, startOpen, type, onDismiss }: {
   );
 }
 
-function Chips({ n, onAct, onReply }: { n: Nudge; onAct: (n: Nudge, a: string) => void; onReply?: () => void }) {
-  const [busy, setBusy] = useState("");
-  return (
-    <div className="flex flex-wrap gap-1.5 mt-2.5">
-      {(n.actions ?? []).map((a) => (
-        <button key={a.id} disabled={!!busy} onClick={async () => { setBusy(a.id); await onAct(n, a.id); setBusy(""); }}
-          className="rounded-full border border-line bg-bg px-3 py-1.5 text-[13px] font-medium hover:border-accent disabled:opacity-50 transition">
-          {busy === a.id ? "…" : a.title}
-        </button>
-      ))}
-      {onReply && (
-        <button onClick={onReply} className="rounded-full px-3 py-1.5 text-[13px] text-muted hover:text-ink">Reply</button>
-      )}
-    </div>
-  );
-}
 
 function FromCos({ children, time }: { children: ReactNode; time?: string }) {
   return (
@@ -643,51 +612,6 @@ function ReadAloud() {
   );
 }
 
-/** 📝 To do: open to-dos that aren't due today, with lists (shopping etc.) grouped into one row each. */
-function TodoSection({ dash, shown, inArea, onChanged }: {
-  dash: Dashboard | null; shown: Set<string>; inArea: (a: string | null | undefined) => boolean; onChanged: () => void;
-}) {
-  const [all, setAll] = useState(false);
-  // "Reply to…" items from WhatsApp/email live on the Replies page, not here. Items in a project show
-  // under Projects (with their progress) instead of twice.
-  const items = (dash?.todo ?? []).filter((i) => !shown.has(i.id) && inArea(i.category) && !i.project_id && !(i.source === "whatsapp" || i.source === "gmail"));
-  if (!items.length) return null;
-  const loose = items;
-  const done = async (id: string) => { await api.updateItem(id, { status: "done" }); onChanged(); };
-  const when = (iso: string | null) => {
-    if (!iso) return "";
-    const d = new Date(iso), days = Math.round((d.getTime() - Date.now()) / 86400_000);
-    return days <= 1 ? d.toLocaleDateString([], { weekday: "short" }) : days < 7 ? d.toLocaleDateString([], { weekday: "long" }) : d.toLocaleDateString([], { day: "numeric", month: "short" });
-  };
-  const row = (i: (typeof items)[number]) => (
-    <li key={i.id} className="flex items-center gap-3 px-4 py-2.5">
-      <button aria-label="Done" onClick={() => done(i.id)} className="h-5 w-5 shrink-0 rounded-full border-2 border-line hover:border-accent hover:bg-accent/10" />
-      <span className="flex-1 min-w-0 text-[15px] leading-snug">{i.title}</span>
-      {i.due_at && <span className="shrink-0 text-[12px] text-muted">{when(i.due_at)}</span>}
-      <AreaPicker item={i} onChanged={onChanged} />
-    </li>
-  );
-  const shownLoose = all ? loose : loose.slice(0, 6);
-  return (
-    <section>
-      <div className="flex items-baseline justify-between px-1 mb-1.5">
-        <p className="text-[11px] font-medium text-muted uppercase tracking-[0.14em]">📝 To do</p>
-        <a href="/?tab=lists" className="text-[12px] text-accent">All lists →</a>
-      </div>
-      <div className="rounded-[20px] bg-surface border border-line/70 shadow-card overflow-hidden">
-        <ul className="divide-y divide-line/70">
-          {shownLoose.map(row)}
-        </ul>
-        {loose.length > 6 && (
-          <button onClick={() => setAll((v) => !v)} className="w-full py-2.5 text-[13px] text-accent border-t border-line/70">
-            {all ? "Show less" : `Show ${loose.length - 6} more`}
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-
 /** Steps of the same project sit together under the project's name (shown once), not scattered through the list. */
 function groupItems<T extends { id: string; project_id?: string | null; project?: string | null }>(items: T[]) {
   const size = new Map<string, number>();
@@ -702,88 +626,4 @@ function groupItems<T extends { id: string; project_id?: string | null; project?
       it,
       header: it.project_id && (size.get(it.project_id) ?? 0) > 1 && (pos === 0 || arr[pos - 1].it.project_id !== it.project_id) && idx >= 0 ? it.project ?? null : null,
     }));
-}
-
-/** Active projects and lists with what's left and how far along they are. A project that's all done archives itself. */
-function ProjectsSection({ dash, inArea, hide, onChanged }: { dash: Dashboard | null; inArea: (a: string | null | undefined) => boolean; hide: Set<string>; onChanged: () => void }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  // Steps already shown above (a reminder, "Now", Coming up) aren't listed again; the count says how many.
-  const projects = (dash?.projects ?? [])
-    .map((p) => {
-      const mine = (p.items ?? []).filter((i) => inArea(i.category));
-      return { ...p, items: mine.filter((i) => !hide.has(i.id)), above: mine.filter((i) => hide.has(i.id)).length, any: mine.length > 0 };
-    })
-    .filter((p) => p.any);
-  if (!projects.length) return null;
-  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) : "");
-  const done = async (id: string) => { await api.updateItem(id, { status: "done" }); onChanged(); };
-  return (
-    <section>
-      <div className="flex items-baseline justify-between px-1 mb-1.5">
-        <p className="text-[11px] font-medium text-muted uppercase tracking-[0.14em]">🗂️ Projects</p>
-        <a href="/?tab=projects" className="text-[12px] text-accent">All projects →</a>
-      </div>
-      <div className="rounded-[20px] bg-surface border border-line/70 shadow-card overflow-hidden divide-y divide-line/70">
-        {projects.map((p) => {
-          const left = p.open_count ?? p.items.length, finished = p.done_count ?? 0, total = left + finished;
-          const open = openId === p.id;
-          return (
-            <div key={p.id}>
-              <button onClick={() => setOpenId(open ? null : p.id)} className="w-full px-4 py-3 text-left" aria-expanded={open}>
-                <div className="flex items-center gap-3">
-                  <span className="flex-1 min-w-0 text-[15px] font-medium truncate">{p.name}</span>
-                  <span className="text-[12px] text-muted">{finished} of {total} done {open ? "▾" : "▸"}</span>
-                </div>
-                <div className="mt-2 h-1.5 rounded-full bg-sunken overflow-hidden">
-                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${total ? Math.round((100 * finished) / total) : 0}%` }} />
-                </div>
-              </button>
-              {open && (
-                <ul className="divide-y divide-line/50 bg-sunken/40">
-                  {p.items.map((i) => (
-                    <li key={i.id} className="flex items-center gap-3 px-4 py-2.5">
-                      <button aria-label="Done" onClick={() => done(i.id)} className="h-5 w-5 shrink-0 rounded-full border-2 border-line hover:border-accent hover:bg-accent/10" />
-                      <span className="flex-1 min-w-0 text-[15px] leading-snug">{i.title}</span>
-                      {i.due_at && <span className="shrink-0 text-[12px] text-muted">{when(i.due_at)}</span>}
-                    </li>
-                  ))}
-                  {p.above > 0 && <li className="px-4 py-2 text-[12px] text-muted">{p.above} more {p.above > 1 ? "are" : "is"} shown above</li>}
-                </ul>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-/** 9:00 tomorrow, local time: "not yet" on a wrap-up moves it there. */
-function tomorrowNine() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(9, 0, 0, 0);
-  return d.toISOString();
-}
-
-/** The item's area as a small emoji; tap to move it to another area (and the app learns from it). */
-function AreaPicker({ item, onChanged }: { item: { id: string; category?: string | null }; onChanged: () => void }) {
-  const areas = useAreas();
-  const [open, setOpen] = useState(false);
-  const cur = areas.find((a) => a.key === item.category);
-  return (
-    <span className="relative shrink-0">
-      <button onClick={() => setOpen(!open)} aria-label="Change area" title={cur ? `${cur.label}: tap to change` : "Set area"}
-        className="h-7 min-w-7 px-1 rounded-full bg-sunken text-[14px] leading-none">{cur?.icon ?? "＋"}</button>
-      {open && (
-        <span className="absolute right-0 top-8 z-20 flex flex-col gap-1 rounded-2xl bg-surface border border-line shadow-card p-1.5 w-40">
-          <span className="px-2 pt-1 text-[11px] text-muted">Move to…</span>
-          {areas.map((a) => (
-            <button key={a.key} onClick={async () => { setOpen(false); if (a.key !== item.category) { await api.updateItem(item.id, { category: a.key }); onChanged(); } }}
-              className={`text-left rounded-xl px-2.5 py-1.5 text-[14px] ${a.key === item.category ? "bg-sunken font-medium" : "hover:bg-sunken"}`}>{a.icon} {a.label}</button>
-          ))}
-        </span>
-      )}
-    </span>
-  );
 }

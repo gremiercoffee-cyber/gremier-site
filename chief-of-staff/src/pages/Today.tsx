@@ -1,5 +1,8 @@
+import {useImmediateCompletions} from '../useImmediateCompletions';
 import { useCallback, useEffect, useState } from "react";
-import type { CalendarEvent, Dashboard, Item } from "../../shared/types";
+import type { CalendarEvent, Dashboard, Item, Nudge } from "../../shared/types";
+import NudgeActions from '../components/NudgeActions';
+import TaskActions from '../components/TaskActions';
 import { api } from "../api";
 import { BriefingView, Button, Card, Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
 
@@ -7,8 +10,18 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
   name: string; onOpenItem: (i: Item) => void; goChat: (prompt?: string) => void; refreshKey: number;
 }) {
   const [data, setData] = useState<Dashboard | null>(null);
+  const completion=useImmediateCompletions((data?.nudges??[]).flatMap(n=>[...(n.item_id?[n.item_id]:[]),...(n.items??[]).map(i=>i.id)]));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const execute = async (n:Nudge, action:string) => {
+    const r=await api.actNudge(n.id,action);setNotice(r.message);
+    if (r.open?.includes('reschedule=1') && n.item_id) window.dispatchEvent(new CustomEvent('cos:reschedule',{detail:n.item_id}));
+    else if (r.open) window.location.assign(r.open);
+    load();
+  };
+
+  const act=(n:Nudge,action:string)=>n.item_id&&['done','notneeded'].includes(action)?completion.complete(n.item_id,()=>execute(n,action),()=>{}):execute(n,action);
 
   const load = useCallback(() => {
     api.dashboard().then(setData).catch((e) => setError(e.message));
@@ -34,6 +47,8 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         <p className="text-muted text-sm">{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</p>
         <h1 className="font-display text-[32px] leading-tight">{greeting}{name ? `, ${name}` : ""}.</h1>
       </header>
+      {completion.error&&<p role="alert" className="text-sm text-danger">{completion.error}</p>}
+      {notice && <p role="status" className="text-sm text-accent">{notice}</p>}
 
       <button onClick={() => goChat()} className="w-full text-left rounded-2xl bg-surface border border-line px-4 py-3.5 text-muted hover:border-accent transition">
         Ask your Chief of Staff anything…
@@ -53,25 +68,19 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         </Card>
       )}
 
-      {groupNudges(data.nudges).map(([title, list]) => (
+      {groupNudges(data.nudges.filter(n=>!completion.hidden.has(n.item_id??''))).map(([title, list]) => (
         <Section key={title} title={title} count={list.length}>
           {list.map((n) => (
             <div key={n.id} className="flex items-start gap-2 py-2">
               <span className={`mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 ${n.type === "briefing" ? "bg-accent" : "bg-accent/60"}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-[15px] leading-snug">{cleanTitle(n.title)}</p>
-                <p className="text-xs text-muted">{[n.type !== "briefing" && n.body?.split("\n")[0], timeAgo(n.created_at)].filter(Boolean).join(" · ")}</p>
+                <p className="text-xs text-muted">{[n.type !== "briefing" && n.body?.split("\n")[0], timeAgo(n.updated_at ?? n.created_at)].filter(Boolean).join(" · ")}</p>
                 {n.type === "learn" && <a href="/?tab=review" className="text-sm text-accent font-medium">Review now →</a>}
                 {n.type === "briefing" && n.body && <div className="mt-2"><BriefingView text={n.body} /></div>}
-                {(n.type === "waiting" || (n.type === "auto_done" && n.item_id)) && (
-                  <div className="flex gap-1 -ml-3">
-                    {n.type === "waiting" && <Button variant="ghost" onClick={() => goChat(`Help me follow up on: ${cleanTitle(n.title)}`)}>Draft follow-up</Button>}
-                    {n.type === "auto_done" && <Button variant="ghost" onClick={async () => { await api.undoNudge(n.id); load(); }}>Undo</Button>}
-                  </div>
-                )}
+                {n.items?.filter(i=>!completion.hidden.has(i.id)).map(i=><div key={i.id} className="mt-2 rounded-xl bg-sunken p-3"><p>{i.title}</p><TaskActions id={i.id} onChanged={load} onClose={status=>completion.complete(i.id,()=>api.updateItem(i.id,{status}),load)}/></div>)}
+                <NudgeActions n={n} onAct={act}/>
               </div>
-              <button aria-label="Dismiss" onClick={async () => { await api.dismissNudge(n.id); load(); }}
-                className="shrink-0 -mr-1 h-7 w-7 grid place-items-center rounded-full text-muted hover:bg-sunken">✕</button>
             </div>
           ))}
         </Section>

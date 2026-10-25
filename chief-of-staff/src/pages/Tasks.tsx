@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type RoutineRow, type RoutineSchedule, type SituationRow } from "../api";
 import { Button, Card, Empty, Markdown, timeAgo } from "../components/ui";
 import Missions from "./Missions";
+import AiJobApprovals from '../components/AiJobApprovals';
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEPTHS: { id: string; label: string; detail: string; cost: number }[] = [
@@ -38,6 +39,7 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
   if (!list) return <p className="text-sm text-muted">Loading…</p>;
   return (
     <div className="space-y-4">
+      <AiJobApprovals refreshKey={refreshKey} onChanged={load} />
       <p className="text-sm text-muted px-1">
         Things I work on for you. <b>One-time</b>: a goal I work through until it's done ("get every rabbi's list by Monday").
         <b> Repeating</b>: something I do on a schedule ("every Sunday, a report on the coffee market"). Just tell me what you need.
@@ -85,7 +87,7 @@ function TaskCard({ r, onEdit, onChanged, onOpenReport }: {
         <Button disabled={telling || !tell.trim()}>{telling ? "…" : "Update"}</Button>
       </form>
       <div className="flex flex-wrap gap-2 mt-3">
-        <Button onClick={async () => { const res = await api.runRoutine(r.id); setMsg(res.message); setTimeout(onChanged, 60_000); }}>Run now</Button>
+        <Button onClick={async () => { const res = await api.runRoutine(r.id); setMsg(res.message); onChanged(); }}>Request AI run</Button>
         <Button variant="soft" onClick={onEdit}>Adjust</Button>
         <Button variant="soft" onClick={async () => { await api.saveRoutine({ id: r.id, active: !r.active }); onChanged(); }}>{r.active ? "Pause" : "Resume"}</Button>
         <Button variant="danger" onClick={async () => { if (window.confirm(`Delete "${r.name}" and its reports?`)) { await api.deleteRoutine(r.id); onChanged(); } }}>Delete</Button>

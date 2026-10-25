@@ -5,9 +5,7 @@
  * new labels: …"). Once they've stopped for a while, a burst of notes that says it's from a meeting is
  * turned into a Google Doc of meeting notes plus to-dos/reminders, filed under the right area.
  *
- * Before: a few hours ahead of a meeting (Schedule meetings from WhatsApp, or calendar events) the user
- * is asked once whether they want to prep. "Prep" opens the chat; the assistant collects what they need
- * and makes a prep Doc (meeting_prep_doc tool).
+ * Preparation is kept separately as user-confirmed, in-app agenda notes in meeting-prep.ts.
  */
 import type { Env } from "./env";
 import { getProvider } from "./ai";
@@ -87,48 +85,4 @@ Reply ONLY JSON: {"is_meeting": true|false, "title": "Meeting with X: topic", "w
   if (!pm.project_id && pm.maybe.length) await askProject(env, made, pm.maybe, title);
   await notify(env, "meeting_notes", `📝 ${title}`,
     `${link ? "Your notes are in a Google Doc." : "I couldn't make the Doc (Google not connected)."}${added ? ` ${added} to-do${added > 1 ? "s" : ""} added.` : ""}`, null, link ?? "/");
-}
-
-/** Cron: a few hours before a meeting, ask once "want to prep?". */
-export async function offerMeetingPrep(env: Env) {
-  const tz = (await getSettings(env)).timezone || "Asia/Jerusalem";
-  const from = new Date(Date.now() + 60 * 60_000), to = new Date(Date.now() + 4 * 3600_000);
-  const cands: { key: string; title: string; starts: Date }[] = [];
-  // Meetings from WhatsApp (one-off Schedule blocks), in local time.
-  const localDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
-  for (const s of await all<{ id: string; name: string; date: string; start_time: string }>(env,
-    "SELECT id, name, date, start_time FROM situations WHERE active = 1 AND keywords LIKE 'wa-meet:%' AND date IN (?, ?)", localDay(from), localDay(to))) {
-    const starts = localToDate(s.date, s.start_time, tz);
-    if (starts >= from && starts <= to) cands.push({ key: `s:${s.id}:${s.date}`, title: s.name, starts });
-  }
-  for (const e of await all<{ id: string; summary: string; start_at: string }>(env,
-    "SELECT id, summary, start_at FROM calendar_events WHERE all_day = 0 AND start_at >= ? AND start_at <= ?", from.toISOString(), to.toISOString()))
-    cands.push({ key: `c:${e.id}`, title: e.summary || "Meeting", starts: new Date(e.start_at) });
-  for (const c of cands) {
-    if (await first(env, "SELECT 1 FROM meeting_preps WHERE key = ?", c.key)) continue;
-    await run(env, "INSERT INTO meeting_preps (key, title, starts_at, created_at) VALUES (?, ?, ?, ?)", c.key, c.title, c.starts.toISOString(), now());
-    const at = c.starts.toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
-    await notify(env, "prep", `📋 ${c.title} at ${at}. Want to prep?`, "Tell me what you'll need and I'll put it all in one Doc.", null, "/");
-  }
-}
-
-/** "2026-10-08" + "20:15" in the user's time zone → Date. */
-function localToDate(date: string, time: string, tz: string) {
-  const guess = new Date(`${date}T${time}:00Z`);
-  const shown = new Date(guess.toLocaleString("en-US", { timeZone: tz }));
-  const utc = new Date(guess.toLocaleString("en-US", { timeZone: "UTC" }));
-  return new Date(guess.getTime() - (shown.getTime() - utc.getTime()));
-}
-
-/** Assistant tool: the prep Doc. */
-export async function makePrepDoc(env: Env, p: { meeting?: string; when?: string; items?: string[]; context?: string[]; questions?: string[] }) {
-  const meeting = String(p.meeting || "Meeting").slice(0, 100);
-  const list = (xs?: string[]) => (xs ?? []).filter(Boolean).map((x) => `- ${x}`).join("\n");
-  const content = [`# Prep: ${meeting}`, p.when ?? "",
-    p.items?.length ? `## What to bring / have ready\n${list(p.items)}` : "",
-    p.context?.length ? `## Background\n${list(p.context)}` : "",
-    p.questions?.length ? `## To ask / decide\n${list(p.questions)}` : ""].filter(Boolean).join("\n\n");
-  const d = await createDoc(env, `Prep: ${meeting}`, content);
-  await run(env, "UPDATE meeting_preps SET doc_link = ? WHERE title = ? AND doc_link IS NULL", d.link, meeting);
-  return d;
 }

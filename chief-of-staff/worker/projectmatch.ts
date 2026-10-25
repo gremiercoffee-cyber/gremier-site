@@ -32,7 +32,7 @@ export async function matchProject(env: Env, q: { title: string; text?: string; 
     const out = await getProvider(env).complete({
       tier: "fast", purpose: "project_match", maxTokens: 120,
       system: `Decide whether a to-do belongs to one of the user's projects. Projects (id | name | e.g. open items):\n${projectsForPrompt(ps)}
-"project": the id ONLY if it is clearly part of that project: the project is named, or it is obviously a step of it (same goal, product, supplier, person or subject). "maybe": up to 3 ids that it plausibly belongs to when you're not sure (leave "project" null then). Most things belong to none: then both are empty. Reply ONLY JSON: {"project": id|null, "maybe": [ids]}`,
+"project": the id ONLY if it is clearly part of that project: the project is named, or it is obviously a step of it (same specific outcome, event/edition, or explicitly intended work session on the SAME date). A user-selected afternoon batch can span areas; sharing a recurring time block or deadline alone is insufficient. "maybe": up to 3 ids that it plausibly belongs to when you're not sure (leave "project" null then). A shared area, subject, supplier, person or time frame alone is NOT enough. Separate different alumni events even when they involve the same contacts. Unrelated one-off tasks stay standalone. Most things belong to none: then both are empty. Reply ONLY JSON: {"project": id|null, "maybe": [ids]}`,
       prompt: `To-do: ${q.title}${q.person ? `\nPerson: ${q.person}` : ""}${q.text ? `\nContext: ${q.text.slice(0, 400)}` : ""}`,
     });
     v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1));

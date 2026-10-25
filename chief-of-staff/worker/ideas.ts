@@ -5,6 +5,7 @@
  * results to the idea, and brings ideas you've gone quiet on back up now and then.
  */
 import type { Env } from "./env";
+import { requestAiJob } from './ai-jobs';
 import { getProvider } from "./ai";
 import { all, createItem, first, now, run, uid } from "./db";
 import { notify } from "./push";
@@ -62,7 +63,7 @@ async function saveSteps(env: Env, id: string, steps: Step[], notes?: Note[]) {
  * The user picked (or dismissed) a suggested next step. Quick ones happen now; research is queued
  * and done by the background pass (or right away when the caller can wait for it).
  */
-export async function ideaStep(env: Env, ref: string, stepId: string, action: "do" | "dismiss", opts: { when?: string; label?: string } = {}) {
+export async function ideaStep(env: Env, ref: string, stepId: string, action: "do" | "dismiss", opts: { when?: string; label?: string; approved?: boolean } = {}) {
   const i = await findIdea(env, ref);
   if (!i) throw new Error("idea not found");
   const steps = parse<Step[]>(i.steps, []);
@@ -72,7 +73,10 @@ export async function ideaStep(env: Env, ref: string, stepId: string, action: "d
   if (action === "dismiss") { st.status = "dismissed"; await saveSteps(env, i.id, steps); return { ok: true }; }
 
   if (st.kind === "research") {
+    if (opts.approved && opts.label && opts.label !== st.label) throw new Error('The research step changed. Request a new confirmation.');
+    if (!opts.approved) return requestAiJob(env, 'ai_idea_step', { ref: i.id, stepId, label: st.label }, `Start AI research for ${i.title}: ${st.label}\nUses up to 8 web searches plus AI writing. Cost varies with usage. Nothing starts until you approve.`);
     st.status = "queued";
+    st.detail = 'approved';
     await saveSteps(env, i.id, steps);
     return { ok: true, queued: true, note: "Research queued; results get added to the idea and the user is notified." };
   }
@@ -141,7 +145,7 @@ export async function runIdeaResearch(env: Env, onlyId?: string) {
           await saveSteps(env, i.id, steps, notes);
           i.notes = JSON.stringify(notes);
           const gist = c.text.split("What this means for the idea").pop()?.replace(/\[\d+\]|[#*]/g, "").trim().slice(0, 220) ?? "";
-          await notify(env, "idea", `💡 Looked into it: ${i.title}`.slice(0, 80), `${st.label}\n${gist}`.slice(0, 400), null, "/?tab=ideas");
+          await notify(env, "idea", `💡 Looked into it: ${i.title}`.slice(0, 80), `${st.label}\n${gist}`.slice(0, 400), null, "/?tab=ideas", {topic:`idea:${i.id}`});
         } else if (/rate limit|tokens per min/i.test(c.failed)) { st.status = "queued"; st.detail = undefined; await saveSteps(env, i.id, steps); }
         else { st.status = "suggested"; st.detail = `Couldn't finish: ${c.failed.slice(0, 100)}`; await saveSteps(env, i.id, steps); }
       } catch (e) { console.error("idea research check", e); }
@@ -151,6 +155,10 @@ export async function runIdeaResearch(env: Env, onlyId?: string) {
     const anyWorking = (await first(env, `SELECT 1 FROM ideas WHERE steps LIKE '%"working"%'`)) !== null;
     const st = steps.find((x) => x.status === "queued");
     if (!st || anyWorking) continue;
+    if (st.detail !== 'approved') {
+      await requestAiJob(env,'ai_idea_step',{ref:i.id,stepId:st.id,label:st.label},`Start AI research for ${i.title}: ${st.label}\nUses up to 8 web searches plus AI writing. Cost varies with usage. Waiting for your confirmation.`);
+      continue;
+    }
     try {
       const id = await provider.startBackground({ system: IDEA_RESEARCH_SYSTEM, prompt: `Idea: ${i.title}\n${i.summary}\n\nLook into: ${st.label}`, maxSearches: 8, maxTokens: 4000 });
       st.status = "working"; st.detail = `job:${id}`; started = true;
@@ -172,7 +180,7 @@ export async function nudgeStaleIdea(env: Env, today: string) {
   await run(env, "UPDATE ideas SET last_nudged_at = ? WHERE id = ?", now(), i.id);
   const open = parse<Step[]>(i.steps, []).filter((s) => s.status === "suggested").slice(0, 3).map((s) => `• ${s.label}`);
   await notify(env, "idea", `💡 Still thinking about "${i.title}"?`.slice(0, 90),
-    (open.length ? `I could:\n${open.join("\n")}` : "Want me to look into it, sketch a plan, or park it?").slice(0, 400), null, "/?tab=ideas");
+    (open.length ? `I could:\n${open.join("\n")}` : "Want me to look into it, sketch a plan, or park it?").slice(0, 400), null, "/?tab=ideas", {topic:`idea:${i.id}`});
   return 1;
 }
 

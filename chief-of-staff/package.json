@@ -4,6 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test:projects": "node --test tests/projects.test.mjs",
+    "test:notifications": "node --test tests/notifications.test.mjs",
+    "test:whatsapp": "node --test tests/whatsapp.test.mjs",
+    "test:reminders": "node --test tests/reminders.test.mjs",
+    "test:shopping": "node --test tests/shopping*.test.mjs",
     "dev": "vite",
     "dev:worker": "wrangler dev",
     "build": "tsc -b && vite build",

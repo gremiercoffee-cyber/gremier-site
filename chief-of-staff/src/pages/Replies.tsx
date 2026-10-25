@@ -1,139 +1,54 @@
-import { useEffect, useState } from "react";
-import { api, type ReplyCard } from "../api";
-import { iconOf, useAreas } from "../areas";
-import { Button, DictateButton, Empty } from "../components/ui";
+import {useEffect,useRef,useState} from 'react';
+import {api,type ReplyCard} from '../api';
+import {Button,DictateButton} from '../components/ui';
 
-
-const waited = (iso: string) => {
-  const h = (Date.now() - new Date(iso).getTime()) / 3600_000;
-  return h < 1 ? "under an hour" : h < 24 ? `${Math.round(h)}h` : `${Math.round(h / 24)} day${h >= 48 ? "s" : ""}`;
-};
-
-/**
- * Everyone you owe a reply, in one place. Nothing is drafted until you ask: type (or say) what you
- * want to answer, in any form, and tap Draft to have it written in your style; edit, Send, next.
- */
-export default function Replies({ serverTranscription, onDataChanged, refreshKey }: {
-  serverTranscription: boolean; onDataChanged: () => void; refreshKey: number;
-}) {
-  useAreas();
-  const [cards, setCards] = useState<ReplyCard[] | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [session, setSession] = useState(false);
-  const [index, setIndex] = useState(0);
-  const [status, setStatus] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState("");
-  const [drafting, setDrafting] = useState("");
-
-  const load = () => api.replies().then((c) => {
-    setCards(c);
-    setDrafts((d) => Object.fromEntries(c.map((x) => [x.id, d[x.id] ?? ""])));
-  }).catch(() => setCards([]));
-  useEffect(() => { load(); }, [refreshKey]);
-
-  const open = (cards ?? []).filter((c) => !status[c.id]);
-
-  const send = async (c: ReplyCard) => {
-    setBusy(c.id);
-    try {
-      const r = await api.sendReply(c.id, drafts[c.id] ?? "");
-      setStatus((s) => ({ ...s, [c.id]: r.message }));
-      onDataChanged();
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setBusy("");
-    }
-  };
-  const drop = async (c: ReplyCard) => {
-    await api.updateItem(c.id, { status: "dropped" });
-    setStatus((s) => ({ ...s, [c.id]: "No reply needed" }));
-    onDataChanged();
-  };
-
-  const draftIt = async (c: ReplyCard) => {
-    setDrafting(c.id);
-    try { const r = await api.draftReply(c.id, drafts[c.id] ?? ""); setDrafts((d) => ({ ...d, [c.id]: r.text })); }
-    catch (e) { alert((e as Error).message); }
-    setDrafting("");
-  };
-
-  if (!cards) return <p className="text-sm text-muted">Loading…</p>;
-  if (cards.length === 0) return <Empty>No one is waiting for a reply. ✨</Empty>;
-
-  // ---- Session: one person at a time ----
-  if (session) {
-    const c = open[Math.min(index, open.length - 1)];
-    if (!c) {
-      return (
-        <div className="text-center pt-16 space-y-3">
-          <p className="font-display text-[28px]">All caught up.</p>
-          <p className="text-muted text-sm">{Object.keys(status).length} handled this session.</p>
-          <Button onClick={() => { setSession(false); load(); }}>Done</Button>
-        </div>
-      );
-    }
-    return (
-      <div className="space-y-4 pt-1">
-        <div className="flex items-center justify-between text-xs text-muted">
-          <span>{open.length} left</span>
-          <button onClick={() => setSession(false)}>Exit</button>
-        </div>
-        <Card c={c} draft={drafts[c.id] ?? ""} setDraft={(t) => setDrafts((d) => ({ ...d, [c.id]: t }))}
-          serverTranscription={serverTranscription} busy={busy === c.id} big drafting={drafting === c.id} onDraft={() => draftIt(c)}
-          onSend={() => send(c)} onSkip={() => setIndex((i) => i + 1)} onDrop={() => drop(c)} />
-      </div>
-    );
-  }
-
-  // ---- Overview list ----
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted">{open.length} {open.length === 1 ? "person is" : "people are"} waiting for your reply.</p>
-        {open.length > 0 && <Button onClick={() => { setIndex(0); setSession(true); }}>Start replying</Button>}
-      </div>
-      {cards.map((c) => status[c.id] ? (
-        <div key={c.id} className="rounded-2xl border border-line px-4 py-3 text-sm text-muted">✓ {c.person ?? "Reply"}: {status[c.id]}</div>
-      ) : (
-        <Card key={c.id} c={c} draft={drafts[c.id] ?? ""} setDraft={(t) => setDrafts((d) => ({ ...d, [c.id]: t }))}
-          serverTranscription={serverTranscription} busy={busy === c.id} drafting={drafting === c.id} onDraft={() => draftIt(c)}
-          onSend={() => send(c)} onDrop={() => drop(c)} />
-      ))}
-    </div>
-  );
+export function replyWhatsAppLink(card:ReplyCard,text:string){return `https://wa.me/${card.phone??''}?text=${encodeURIComponent(text)}`;}
+export default function Replies({serverTranscription,onDataChanged,refreshKey}:{serverTranscription:boolean;onDataChanged:()=>void;refreshKey:number}){
+ const [cards,setCards]=useState<ReplyCard[]>([]),[drafts,setDrafts]=useState<Record<string,string>>({}),[input,setInput]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[opened,setOpened]=useState<Record<string,boolean>>({});
+ const numbers=useRef(new Map<string,number>()),next=useRef(1),dirty=useRef(new Set<string>());
+ const load=async()=>{try{const rows=await api.replies();for(const c of rows)if(!numbers.current.has(c.id))numbers.current.set(c.id,next.current++);setCards(rows);setDrafts(old=>Object.fromEntries(rows.map(c=>[c.id,dirty.current.has(c.id)?old[c.id]??'':c.suggested??''])));setLoading(false);}catch(e){setError((e as Error).message);setLoading(false);}};
+ useEffect(()=>{void load();},[refreshKey]);
+ const act=async(fn:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await fn();await load();onDataChanged();}catch(e){setError((e as Error).message);await load();}finally{setBusy(false);}};
+ const batch=async(text=input)=>{
+  if(!text.trim()||busy)return;setBusy(true);setError('');setMessage('');
+  try{for(const c of cards)if(dirty.current.has(c.id)){await api.saveReplyDraft(c.id,drafts[c.id]??'');dirty.current.delete(c.id);}
+   const r=await api.batchReplies(text,cards.map(c=>({id:c.id,number:numbers.current.get(c.id)!})));
+   if(r.clarification)setMessage(r.clarification);else{for(const c of r.changed)dirty.current.delete(c.id);setInput('');setMessage(`${r.changed.length} updated. Review the drafts, then send.`);}
+   await load();onDataChanged();
+  }catch(e){setError((e as Error).message);await load();}finally{setBusy(false);}
+ };
+ return <div className="flex flex-col min-h-full">
+  <p className="text-sm text-muted mb-4">{cards.length} waiting. Say “number 1, tell him Tuesday works; number 2, no reply needed.” Numbers stay fixed while you work here.</p>
+  {loading&&<p className="text-sm text-muted">Loading replies…</p>}
+  <div className="space-y-3 flex-1">{cards.map(c=><ReplySheetCard key={c.id} c={c} number={numbers.current.get(c.id)!} draft={drafts[c.id]??''} busy={busy} opened={!!opened[c.id]}
+   onEdit={text=>{dirty.current.add(c.id);setDrafts({...drafts,[c.id]:text});}}
+   onSave={()=>void act(async()=>{await api.saveReplyDraft(c.id,drafts[c.id]??'');dirty.current.delete(c.id);setMessage('Draft saved.');})}
+   onDismiss={()=>{const previous=cards;setCards(rows=>rows.filter(row=>row.id!==c.id));void act(async()=>{try{await api.dismissReply(c.id);}catch(e){setCards(previous);throw e;}});}}
+   onOpen={()=>{setOpened({...opened,[c.id]:true});void api.saveReplyDraft(c.id,drafts[c.id]??'').catch(e=>setError(e.message));}}
+   onSent={()=>void act(async()=>{await api.markReplied(c.id);dirty.current.delete(c.id);})}
+   onSend={()=>void act(async()=>{const r=await api.sendReply(c.id,drafts[c.id]??'');dirty.current.delete(c.id);setMessage(r.message);})}
+  />)}</div>
+  {!loading&&!cards.length&&<p className="text-sm text-muted py-6">No replies waiting.</p>}
+  <div className="sticky bottom-0 bg-bg border-t border-line py-3 mt-4 space-y-2">
+   {error&&<p role="alert" className="text-sm text-danger">{error}</p>}{message&&<p role="status" className="text-sm text-accent">{message}</p>}
+   <textarea aria-label="Instructions for numbered replies" placeholder="Number 1, say… Number 2, don't worry about it…" value={input} onChange={e=>setInput(e.target.value)} disabled={busy} rows={2} className="w-full rounded-2xl bg-sunken p-3 text-sm"/>
+   <div className="flex items-center gap-2"><DictateButton serverTranscription={serverTranscription} onText={text=>{setInput(text);void batch(text);}}/><Button disabled={busy||!input.trim()||!cards.length} onClick={()=>void batch()}>{busy?'Updating…':'Draft / update replies'}</Button></div>
+  </div>
+ </div>;
 }
-
-function Card({ c, draft, setDraft, serverTranscription, busy, big, drafting, onDraft, onSend, onSkip, onDrop }: {
-  c: ReplyCard; draft: string; setDraft: (t: string) => void; serverTranscription: boolean; busy: boolean; big?: boolean;
-  drafting: boolean; onDraft: () => void; onSend: () => void; onSkip?: () => void; onDrop: () => void;
-}) {
-  return (
-    <section className="rounded-[20px] bg-surface border border-line/70 shadow-card p-5 space-y-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className={`${big ? "font-display text-[26px]" : "font-medium text-[16px]"} leading-tight`}>
-          {c.category && <span className="mr-1">{iconOf(c.category)}</span>}{c.person ?? "Someone"}
-        </p>
-        <span className="text-xs text-muted shrink-0">{c.channel === "email" ? "✉️ Email" : "💬 WhatsApp"} · {waited(c.waiting_since)}</span>
-      </div>
-      <blockquote className="border-l-2 border-line pl-3 text-[15px] text-ink/80 whitespace-pre-wrap" dir="auto">
-        {c.subject && <span className="block text-xs text-muted mb-0.5">{c.subject}</span>}
-        {c.said}
-      </blockquote>
-      {c.why && <p className="text-xs text-accent">Why it matters: {c.why}</p>}
-      <textarea value={draft} onChange={(e) => setDraft(e.target.value)} dir="auto"
-        rows={big ? 5 : 3} placeholder="Write your reply, or jot what you want to say (e.g. Tuesday works, keep it short) and tap Draft"
-        className="w-full rounded-2xl bg-sunken px-4 py-3 outline-none text-[15px] resize-none focus:ring-2 focus:ring-accent/30" />
-      <div className="flex flex-wrap items-center gap-2">
-        <DictateButton serverTranscription={serverTranscription} onText={(t) => setDraft(t)} />
-        <Button variant="soft" onClick={onDraft} disabled={drafting}>{drafting ? "Drafting…" : draft.trim() ? "✨ Draft from this" : "✨ Draft"}</Button>
-        <Button onClick={onSend} disabled={busy || !draft.trim()}>
-          {busy ? "Sending…" : c.channel === "email" ? "Save as draft" : "Send"}
-        </Button>
-        {onSkip && <Button variant="soft" onClick={onSkip}>Skip</Button>}
-        <Button variant="soft" onClick={() => window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: c.id }))}>⏰ Later</Button>
-        <Button variant="ghost" onClick={onDrop}>No reply needed</Button>
-      </div>
-    </section>
-  );
+export function ReplySheetCard({c,number,draft,busy,opened,onEdit,onSave,onDismiss,onOpen,onSent,onSend}:{c:ReplyCard;number:number;draft:string;busy:boolean;opened:boolean;onEdit:(text:string)=>void;onSave:()=>void;onDismiss:()=>void;onOpen:()=>void;onSent:()=>void;onSend:()=>void}){
+ return <section className="rounded-[20px] bg-surface border border-line p-4 space-y-3">
+  <div className="flex items-start gap-3"><span className="h-8 min-w-8 rounded-full bg-accent text-accent-ink grid place-items-center font-semibold">{number}</span><div className="flex-1"><h2 className="font-medium">{c.person??'Someone'}</h2><p className="text-xs text-muted">{c.channel==='email'?'Email':'WhatsApp'}{c.subject?` · ${c.subject}`:''}</p></div>
+   <button disabled={busy} onClick={onDismiss} title="No reply needed" aria-label={`No reply needed for number ${number}`} className="rounded-full border-2 border-danger text-danger h-8 w-8 grid place-items-center text-lg shrink-0">×</button>
+  </div>
+  <blockquote className="border-l-2 border-line pl-3 text-sm whitespace-pre-wrap" dir="auto">{c.said}</blockquote>
+  <textarea aria-label={`Draft for number ${number}`} value={draft} onChange={e=>onEdit(e.target.value)} disabled={busy} rows={3} placeholder="Your editable draft appears here" className="w-full rounded-xl bg-sunken p-3 text-sm" dir="auto"/>
+  <div className="flex flex-wrap items-center gap-2"><Button variant="soft" disabled={busy} onClick={onSave}>Save draft</Button>
+   {c.channel==='email'?<Button disabled={busy||!draft.trim()||!!c.delivery_status} onClick={onSend}>Send email</Button>:<>
+    <a href={draft.trim()?replyWhatsAppLink(c,draft):undefined} onClick={e=>{if(busy||!draft.trim()){e.preventDefault();return;}onOpen();}} target="_blank" rel="noreferrer" aria-disabled={busy||!draft.trim()} className="rounded-full bg-accent text-accent-ink px-4 py-2 text-sm">{c.phone?'Open their WhatsApp':'Choose WhatsApp chat'}</a>
+    {opened&&<Button variant="soft" disabled={busy} onClick={onSent}>I sent it — mark replied</Button>}
+   </>}
+  </div>
+  {c.delivery_status&&<p role="status" className="text-sm text-muted">A send was already attempted. Check Gmail before sending again.</p>}
+ </section>;
 }

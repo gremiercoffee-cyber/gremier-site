@@ -4,7 +4,6 @@
 (() => {
   const BUNDLE_MS = 15 * 60_000; // give the user 15 minutes to answer on their own before it becomes a to-do
   const buffers = new Map(); // chatId -> { chat, sender, isGroup, muted, lines: [], actionable, timer }
-  const lastReplied = new Map();
   let myNames = [];
   let mode = "starting";
 
@@ -26,13 +25,30 @@
   const status = (m) => { mode = m; send({ type: "status", mode: m }); };
   status("starting"); // visible in the popup as soon as the add-on is attached to the tab
 
+  // Shopping gets fresh individual messages in BOTH directions, before the request filter,
+  // burst bundling, muted-chat filtering or reply cancellation can discard a plain food list.
+  let shopping = { enabled: false, chat: '', chat_id: '' };
+  async function refreshShopping() {
+    const cfg = await send({ type: 'shopping-config' });
+    if (cfg && typeof cfg.enabled === 'boolean') shopping = cfg;
+  }
+  refreshShopping();
+  setInterval(refreshShopping, 60_000);
+  async function watchShopping(m) {
+    if (!shopping.enabled || m.isGroup || !m.messageId || !m.text || !m.chatId || !/@(c\.us|s\.whatsapp\.net|lid)$/.test(m.chatId)) return false;
+    if (shopping.chat_id ? m.chatId !== shopping.chat_id : m.chat !== shopping.chat) return false;
+    if (!m.t || Date.now() / 1000 - m.t > 2 * 3600) return false;
+    const res = await send({ type: 'shopping', payload: { chat: m.chat, chatId: m.chatId, isGroup: false, fromMe: !!m.fromMe, text: m.text, messageId: m.messageId, t: m.t } });
+    return !!res?.handled;
+  }
+
   function flush(chatId) {
     const b = buffers.get(chatId);
     buffers.delete(chatId);
     if (!b || !b.actionable) return;
     send({
       type: "incoming",
-      payload: { chat: b.chat, sender: b.sender, text: b.lines.join("\n"), at: new Date().toISOString(), sent_at: b.t ? new Date(b.t * 1000).toISOString() : null },
+      payload: { chat: b.chat, chatId, sender: b.sender, text: b.lines.join("\n"), messages: b.entries, isGroup: b.isGroup, at: new Date().toISOString(), sent_at: b.t ? new Date(b.t * 1000).toISOString() : null },
     });
   }
 
@@ -41,7 +57,9 @@
     if (m.archived) { send({ type: "seen", note: `${m.sender}${m.isGroup ? ` in ${m.chat}` : ""} (skipped: archived chat)` }); return; }
     // Only messages sent in the last 2 hours count as new (WhatsApp Web sometimes re-loads old ones).
     if (m.t && Date.now() / 1000 - m.t > 2 * 3600) { send({ type: "seen", note: `${m.sender} (skipped: old message)` }); return; }
-    const b = buffers.get(m.chatId) || { chat: m.chat, sender: m.sender, isGroup: m.isGroup, muted: m.muted, lines: [], actionable: false, t: m.t };
+    const b = buffers.get(m.chatId) || { chat: m.chat, sender: m.sender, isGroup: m.isGroup, muted: m.muted, lines: [], entries: [], actionable: false, t: m.t };
+    b.t = m.t || b.t;
+    b.entries.push({ id: m.messageId || '', text: m.text || '', t: m.t, actionable: cosActionable(m, myNames) });
     if (m.text) b.lines.push(m.isGroup ? `${m.sender}: ${m.text}` : m.text);
     const ok = cosActionable(m, myNames);
     b.actionable = b.actionable || ok;
@@ -55,27 +73,21 @@
   function onMine(m) {
     send({ type: "seen", note: `Your message to ${m.chat} (counts as replying)` });
     buffers.delete(m.chatId); // you answered: nothing pending to forward
-    const prev = lastReplied.get(m.chatId) || 0;
-    if (Date.now() - prev < 30_000) return;
-    lastReplied.set(m.chatId, Date.now());
-    send({ type: "replied", payload: { chat: m.chat } });
+    send({ type: "replied", payload: { chat: m.chat, chatId: m.chatId, text: String(m.text || '').slice(0,1000), responded_at: new Date((m.t || Date.now()/1000)*1000).toISOString() } });
   }
 
-  // ---- Meetings: "let's meet tonight" in a 1-on-1 chat → the Chief of Staff checks if it's agreed ----
-  const MEET_RE = /\b(meet|meeting|come (over|by)|stop by|swing by|see you|catch up|get together|hang out|tonight|tomorrow night|after work|this evening|let'?s do|works for me|sounds good|i'?ll be there|be there|what time|when are you free)\b|ניפגש|נפגש|להיפגש|נתראה|בוא |תבוא|תקפוץ|אקפוץ|הערב|מחר בערב|אחרי העבודה|מתאים לי|סגרנו|בסדר גמור/i;
-  const threads = new Map(); // chatId -> last messages
-  const lastMeetCheck = new Map();
-  function watchMeetings(m) {
-    if (m.isGroup || m.archived || !m.text) return;
-    const list = threads.get(m.chatId) || [];
-    list.push({ fromMe: !!m.fromMe, text: String(m.text).slice(0, 300), t: m.t || Math.floor(Date.now() / 1000) });
-    threads.set(m.chatId, list.slice(-10));
-    if (!MEET_RE.test(m.text)) return;
-    const prev = lastMeetCheck.get(m.chatId) || 0;
-    if (Date.now() - prev < 45_000) return; // a burst of messages → one check
-    lastMeetCheck.set(m.chatId, Date.now());
-    // Wait a moment so the other side's quick "ok" lands in the same check.
-    setTimeout(() => send({ type: "convo", payload: { chat: m.chat, msgs: threads.get(m.chatId) || [] } }), 20_000);
+  function onReaction(m) {
+    if (!m.fromMe || !m.messageId || !m.reactionText || !m.chatId || !m.t) return;
+    const b = buffers.get(m.chatId);
+    if (b) {
+      b.entries = b.entries.filter(e => e.id !== m.messageId);
+      b.lines = b.entries.map(e => e.text);
+      b.actionable = b.entries.some(e => e.actionable);
+      if (!b.entries.length) { clearTimeout(b.timer); buffers.delete(m.chatId); }
+    }
+    // No chat-wide throttle: acknowledging one message does not answer another.
+    send({ type: 'replied', payload: { kind: 'reaction', chat: m.chat, chatId: m.chatId, message_id: m.messageId, responded_at: new Date(m.t*1000).toISOString() } });
+    send({ type: 'seen', note: `Your reaction in ${m.chat} (counts as a response to that message)` });
   }
 
   // ---- Trackers: collect every message on a topic (downloaded from the Chief of Staff) ----
@@ -120,6 +132,7 @@
 
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || e.data.source !== "cos-reader") return;
+    if (e.data.kind === 'reaction') { onReaction(e.data.message); return; }
     if (e.data.kind === "history") { track(e.data.message, backfillPending); return; }
     if (e.data.kind === "chats") { send({ type: "chats", names: e.data.names }); return; }
     if (e.data.kind === "history_done") {
@@ -136,9 +149,9 @@
     } else if (e.data.kind === "message") {
       const m = e.data.message;
       track(m);
-      watchMeetings(m);
       if (m.self && m.text) send({ type: "selfnote", payload: { text: m.text, t: m.t || Math.floor(Date.now() / 1000) } });
-      m.fromMe ? onMine(m) : onIncoming(m);
+      if (m.fromMe) { onMine(m); void watchShopping(m); }
+      else void watchShopping(m).then(handled => { if (!handled) onIncoming(m); });
     }
   });
 
@@ -152,6 +165,7 @@
         const titles = [...row.querySelectorAll("span[title]")].map((s) => s.getAttribute("title")).filter(Boolean);
         if (titles.length < 2) return;
         const chat = titles[0], preview = titles[titles.length - 1];
+        if (/^(?:you reacted|reacted|הגבת)/i.test(preview)) return; // target unknown in preview mode: don't clear a whole chat
         const key = `${chat}|${preview}`;
         if (seen.get(chat) === key) return;
         const first = !seen.has(chat);
