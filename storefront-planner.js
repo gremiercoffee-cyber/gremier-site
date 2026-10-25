@@ -90,7 +90,9 @@
     }
     t.push({ key: 'cups', pic: 'cups', cm: CM.cups, title: T('Cups', 'כוסות') });
     t.push({ key: 'straws', pic: 'straws', cm: CM.straws, title: T('Straws', 'קשיות') });
-    return t.map((x) => ({ ...x, img: src(x.pic) }));
+    // Not on the table until they have their own clean photos (they stay in the list).
+    const NO_PHOTO_YET = ['sugar', 'cups', 'straws'];
+    return t.map((x) => ({ ...x, img: src(x.pic), scene: !NO_PHOTO_YET.includes(x.pic) }));
   }
 
   // What was on the counter last time: new things drop in, everything else slides to its new place.
@@ -101,7 +103,7 @@
   function sceneHtml(plan) {
     const list = tiles(plan);
     lastTiles = list.map((x) => ({ ...x, isNew: !shown.has(x.key), changed: shown.has(x.key) && shown.get(x.key) !== `${x.n || 1}|${x.v || ''}` }));
-    const groups = list.map((x) => {
+    const groups = list.filter((x) => x.scene).map((x) => {
       const n = x.n || 1;
       const before = shown.get(x.key);
       const prevN = before ? Number(before.split('|')[0]) : 0;
@@ -196,7 +198,7 @@
       document.body.appendChild(el);
     }
     if (!plan) { el.classList.remove('on'); return; }
-    el.innerHTML = `<span class="bb-mini-pics">${lastTiles.filter((x) => x.img).slice(0, 7).map((x) => `<span class="${x.isNew ? 'pop' : x.changed ? 'bump' : ''}"><img src="${esc(x.img)}" alt="">${x.n > 1 ? `<i>${x.n}</i>` : ''}</span>`).join('')}</span>
+    el.innerHTML = `<span class="bb-mini-pics">${lastTiles.filter((x) => x.img && x.scene).slice(0, 7).map((x) => `<span class="${x.isNew ? 'pop' : x.changed ? 'bump' : ''}"><img src="${esc(x.img)}" alt="">${x.n > 1 ? `<i>${x.n}</i>` : ''}</span>`).join('')}</span>
       <b>₪${plan.total}</b><span class="bb-mini-go">${T('View', 'לצפייה')}</span>`;
     if (lastTiles.some((x) => x.isNew || x.changed)) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
   }
