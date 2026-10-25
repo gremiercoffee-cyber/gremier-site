@@ -170,3 +170,19 @@
 .pd-chips button small { color:#8a5a1c; font-size:.72rem; }
 .pd-chips button.on { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
 .pd-chips button.on small { color:#e8c79a; }
+
+/* Keep the cart for shopping: payment options expand only when requested. */
+#cartDrawer .drawer-body { min-height:0; overscroll-behavior:contain; }
+#cartDrawer #cartFooter { flex:0 0 auto; padding:12px 20px; max-height:45vh; max-height:45dvh; overflow-y:auto; overscroll-behavior:contain; }
+#cartDrawer #expressBox { border:0; border-radius:0; padding:0; margin:0; box-shadow:none; }
+#expressBox .ex-options { margin-bottom:8px; }
+#expressBox .ex-options summary { display:flex; align-items:center; gap:8px; min-height:30px; font-size:12px; cursor:pointer; list-style:none; color:#41464b; }
+#expressBox .ex-options summary::-webkit-details-marker { display:none; }
+#expressBox .ex-options summary span { margin-inline-start:auto; color:#69716a; font-size:11px; }
+#expressBox .ex-options summary::after { content:'⌄'; font-size:16px; }
+#expressBox .ex-options[open] summary::after { content:'⌃'; }
+#expressOptionsBody { padding:6px 0; }
+#expressBox .express-pay { min-height:48px; padding:7px 12px; border-radius:11px; box-shadow:0 2px 8px #0002; }
+#cartFooter:has(#expressBox) #t-cart-checkout { margin-top:5px; padding:7px; min-height:30px; background:none; border:0; border-radius:6px; font-size:12px; text-decoration:underline; text-underline-offset:3px; }
+#cartFooter:has(#expressBox) .cx-free, #cartFooter:has(#expressBox) .cx-trust { display:none; }
+#cartFooter:not(:has(#expressBox)) .cart-total-row { margin-bottom:9px; }

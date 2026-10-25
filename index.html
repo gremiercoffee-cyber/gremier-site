@@ -757,7 +757,7 @@
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-8"/>
-<link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
+<link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 </head>
@@ -4971,14 +4971,15 @@ async function sendChatMessageText(text) {
     const feeTxt = fee === null ? '' : fee === 0 ? T('Free delivery', 'משלוח חינם') : `${T('Delivery', 'משלוח')} ₪${fee}`;
     const total = fee === null ? subtotal : subtotal + fee;
     footer.insertAdjacentHTML('afterbegin', `<div id="expressBox" class="express-box">
+      <details class="ex-options"><summary>${T('Delivery & payment options','אפשרויות משלוח ותשלום')}<span>${esc(feeTxt)}</span></summary><div id="expressOptionsBody">
       <button type="button" class="ex-addr" onclick="expressChange()" title="${T('Change delivery details', 'שינוי פרטי המשלוח')}">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
         <span class="ex-addr-text"><b>${esc(d.name)}</b><span>${esc(d.addr)}${apt}, ${esc(city)}</span></span>
         <span class="ex-change">${T('Change', 'שינוי')}</span>
       </button>
       <div class="ex-meta">${T('Regular delivery · 2–5 days', 'משלוח רגיל · 2–5 ימים')}${feeTxt ? ' · ' + feeTxt : ''}</div>
+      </div></details>
       <button type="button" class="express-pay" id="expressPayBtn" onclick="expressPay()"><span class="ep-main">${T('Pay', 'לתשלום')} ₪${Math.round(total * 100) / 100}</span><span class="ep-sub">${T('Card · bit · Apple Pay · Google Pay', 'כרטיס · bit · Apple Pay · Google Pay')}</span></button>
-      <div class="ex-foot">${T('Coupon, gift card or a date? Use the full checkout below.', 'קופון, כרטיס מתנה או תאריך? בקופה המלאה למטה.')}</div>
     </div>`);
     return r;
   };
@@ -5141,14 +5142,14 @@ async function sendChatMessageText(text) {
       // Signed in, no saved card yet: offer to save it right here (the express button skips the form).
       if (!signedIn()) return;
       btn.dataset.sc = '1';
-      btn.insertAdjacentHTML('beforebegin', `<label class="sc-box" style="margin:10px 0 0"><input type="checkbox" id="scExpressSave" ${expressSave ? 'checked' : ''} onchange="window.__scExpressSave=this.checked"><span><b>${T('Save my card for one-tap checkout next time', 'לשמור את הכרטיס לתשלום בלחיצה אחת בפעם הבאה')}</b><small>${T('Stored securely by PayMe — we never see your card number.', 'נשמר באופן מאובטח אצל PayMe — אנחנו לא רואים את מספר הכרטיס.')}</small></span></label>`);
+      document.getElementById('expressOptionsBody').insertAdjacentHTML('beforeend', `<label class="sc-box" style="margin:10px 0 0"><input type="checkbox" id="scExpressSave" ${expressSave ? 'checked' : ''} onchange="window.__scExpressSave=this.checked"><span><b>${T('Save my card for one-tap checkout next time', 'לשמור את הכרטיס לתשלום בלחיצה אחת בפעם הבאה')}</b><small>${T('Stored securely by PayMe — we never see your card number.', 'נשמר באופן מאובטח אצל PayMe — אנחנו לא רואים את מספר הכרטיס.')}</small></span></label>`);
       return;
     }
     btn.dataset.sc = '1';
     const amount = (btn.textContent.match(/₪[\d.,]+/) || [''])[0];
     btn.textContent = `${T('Pay', 'לתשלום')} ${amount} · ${cardLabel()}`;
     btn.onclick = () => { useSaved = true; expressPay(); };
-    btn.insertAdjacentHTML('afterend', `<a class="sc-alt" onclick="expressPayOtherCard()">${T('Use a different card', 'תשלום בכרטיס אחר')}</a>`);
+    document.getElementById('expressOptionsBody').insertAdjacentHTML('beforeend', `<a class="sc-alt" onclick="expressPayOtherCard()">${T('Use a different card', 'תשלום בכרטיס אחר')}</a>`);
   }
   window.expressPayOtherCard = function () { useSaved = false; window.__scForceNew = true; expressPay(); };
 
