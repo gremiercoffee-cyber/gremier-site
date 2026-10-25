@@ -56,7 +56,13 @@
     const bundles = Array.from({ length: Math.ceil(guests / 50) }, (_, i) => Math.min(50, guests - i * 50));
     group('cups', bundles.map(units => ({ units, sx: .95 + units / 50 * .1, sy: .55 + units / 50 * .9 })), 48);
     group('straws', bundles.map(units => ({ units, sx: .88 + units / 50 * .24, sy: .84 + units / 50 * .32 })), 65);
-    return { width: Math.max(800, Math.ceil(cursor - 2)), height: BASE, tail: TAIL, items };
+    // Centered on the table: a small bar sits in the middle and new things appear on both sides;
+    // the canvas only widens (and the view zooms out) once the bar needs more than its width.
+    const left = Math.min(...items.map(item => item.x)), right = Math.max(...items.map(item => item.x + item.w));
+    const width = Math.max(800, Math.ceil(right - left + 32));
+    const shift = (width - (right - left)) / 2 - left;
+    items.forEach(item => { item.x += shift; });
+    return { width, height: BASE, tail: TAIL, items };
   }
   return { layout, regions, base: BASE, tail: TAIL };
 });

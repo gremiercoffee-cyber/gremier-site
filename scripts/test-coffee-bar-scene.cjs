@@ -63,3 +63,11 @@ test('all supported packages fit their canvas and remain on the table', () => {
     }
   }
 });
+
+test('the bar is centered on the table at every size, with even space on both sides', () => {
+  for (const plan of [{ guests: 75, classic: 3, mix: {}, dispensers: 0, milkLiters: 0, syrups: 0 }, full(25), full(125)]) {
+    const scene = layout(plan);
+    const left = Math.min(...scene.items.map(item => item.x)), right = Math.max(...scene.items.map(item => item.x + item.w));
+    assert.ok(Math.abs(left - (scene.width - right)) < 1, 'left ' + left + ' right ' + (scene.width - right));
+  }
+});
