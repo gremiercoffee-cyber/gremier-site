@@ -1760,7 +1760,7 @@ function getFeaturedProducts() {
   const taste = window.GremierTaste;
   if (taste) {
     const ranked = products
-      .filter(p => !isSubscriptionProduct(p) && !(typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p)))
+      .filter(p => p.category!=='coffeebars' && !isSubscriptionProduct(p) && !(typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p)))
       .map(p => ({ p, r: taste.rank(p.id) }))
       .filter(x => x.r < 60)               // has personal interest or real recent sales
       .sort((a, b) => a.r - b.r)
@@ -2502,7 +2502,7 @@ function setCategory(cat) {
 }
 function renderShop() {
   const filter = document.getElementById('catFilter');
-  const available=products.filter(p=>!isSubscriptionProduct(p));
+  const available=products.filter(p=>!isSubscriptionProduct(p)&&p.id!=='9e1abc84-b3b8-40e0-a23c-3bfbeb8602f4');
   if (filter) {
     const icons = {all:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"4\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>",bottles:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 3h4v3.5l1.6 2.4c.3.5.4 1 .4 1.6V20a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-9.5c0-.6.1-1.1.4-1.6L10 6.5z\"/><path d=\"M8 13h8\"/></svg>",minis:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"9\" width=\"16\" height=\"11\" rx=\"1.5\"/><path d=\"M8 9V6.5a1.5 1.5 0 0 1 3 0V9M13 9V6.5a1.5 1.5 0 0 1 3 0V9M12 9v11\"/></svg>",bulk:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7h8l3 3v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z\"/><path d=\"M9 7V4h4v3M15 4h3\"/></svg>",syrups:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3.5c3 4 5 6.6 5 9.5a5 5 0 0 1-10 0c0-2.9 2-5.5 5-9.5z\"/></svg>",coffeebars:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z\"/><path d=\"M16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c0 1 1 1.5 1 2.5M12 3.5c0 1 1 1.5 1 2.5\"/></svg>"};
     filter.innerHTML = categories.map(c => {
