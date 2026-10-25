@@ -72,124 +72,92 @@
     return plan;
   }
 
-  // ── The bar, live: the real products (cut out of their photos, in /bar) standing on a counter.
-  //    Real-world heights in cm keep them in proportion; the whole bar zooms out as it grows.
-  const PIC = { disp: 'dispenser', classic: 'jer_classic', house: 'jer_house', colomb: 'jer_colombia', caramel: 'caramel', vanilla: 'vanilla', sugar: 'sugar', milk: 'milk', cups: 'cups', straws: 'straws' };
-  const src = (k) => `/bar/${PIC[k]}.webp?v=5`;
-  const CM = { disp: 40, jug: 31, syrup: 23, milk: 24, cups: 30, straws: 27 };
-  // Width ÷ height of each cut-out, so the bar can be measured before the photos load.
-  const RATIO = { disp: 201 / 420, classic: 287 / 420, house: 286 / 420, colomb: 288 / 420, caramel: 166 / 420, vanilla: 163 / 420, sugar: 163 / 420, milk: 143 / 420, cups: 121 / 420, straws: 207 / 420 };
   // One 5-liter jug of cold brew per 25 guests.
   const jugsFor = (guests) => Math.max(1, Math.ceil(guests / 25));
 
   function tiles(plan) {
     if (!plan) return [];
     const t = [];
-    const jugTile = (k, n, label, labelHe, pic, tag) => t.push({ key: 'coffee-' + k, pic, cm: CM.jug, n, tag, title: T(`${label} cold brew`, `קולד ברו ${labelHe}`), sub: T('5L jugs', "ג'ריקנים של 5 ל׳") });
+    const jugTile = (k, n, label, labelHe, pic, tag) => t.push({ key: 'coffee-' + k, pic, n, tag, title: T(`${label} cold brew`, `קולד ברו ${labelHe}`), sub: T('5L jugs', "ג'ריקנים של 5 ל׳") });
     if (plan.classic) jugTile('classic', plan.classic, 'Classic', 'קלאסיק', 'classic', '');
     if (plan.mix.house) jugTile('house', plan.mix.house, 'House Blend', 'האוס בלנד', 'house', '');
     if (plan.mix.colomb) jugTile('colomb', plan.mix.colomb, 'Colombian', 'קולומביה', 'colomb', '');
     if (plan.mix.decaf) jugTile('decaf', plan.mix.decaf, 'Decaf', 'נטול קפאין', 'classic', T('Decaf', 'נטול'));
-    if (plan.dispensers) t.push({ key: 'disp', pic: 'disp', cm: CM.disp, n: plan.dispensers, title: T('Dispenser', 'מתקן') });
+    if (plan.dispensers) t.push({ key: 'disp', pic: 'disp', n: plan.dispensers, title: T('Dispenser', 'מתקן') });
     if (state.full) {
-      t.push({ key: 'caramel', pic: 'caramel', cm: CM.syrup, title: T('Caramel syrup', 'סירופ קרמל') });
-      t.push({ key: 'vanilla', pic: 'vanilla', cm: CM.syrup, title: T('Vanilla syrup', 'סירופ וניל') });
+      t.push({ key: 'caramel', pic: 'caramel', title: T('Caramel syrup', 'סירופ קרמל') });
+      t.push({ key: 'vanilla', pic: 'vanilla', title: T('Vanilla syrup', 'סירופ וניל') });
     }
-    t.push({ key: 'sugar', pic: 'sugar', cm: CM.syrup, title: T('Sugar syrup', 'סירופ סוכר') });
+    t.push({ key: 'sugar', pic: 'sugar', title: T('Sugar syrup', 'סירופ סוכר') });
     if (!state.full && plan.syrups) {
-      t.push({ key: 'caramel', pic: 'caramel', cm: CM.syrup, title: T('Caramel syrup', 'סירופ קרמל') });
-      if (plan.syrups > 1) t.push({ key: 'vanilla', pic: 'vanilla', cm: CM.syrup, title: T('Vanilla syrup', 'סירופ וניל') });
+      t.push({ key: 'caramel', pic: 'caramel', title: T('Caramel syrup', 'סירופ קרמל') });
+      if (plan.syrups > 1) t.push({ key: 'vanilla', pic: 'vanilla', title: T('Vanilla syrup', 'סירופ וניל') });
     }
     if (state.full) {
       // One 1-liter carton per 10 guests.
       const parve = plan.liters, dairy = Math.max(0, plan.milkLiters - parve);
-      if (dairy) t.push({ key: 'milk', pic: 'milk', cm: CM.milk, n: dairy, title: T('Milk', 'חלב'), sub: T('1L cartons', 'קרטונים של ליטר') });
-      if (parve) t.push({ key: 'parve', pic: 'milk', cm: CM.milk, n: parve, tag: T('Parve', 'פרווה'), title: T('Parve milk', 'חלב פרווה'), sub: T('1L cartons', 'קרטונים של ליטר') });
+      if (dairy) t.push({ key: 'milk', pic: 'milk', n: dairy, title: T('Milk', 'חלב'), sub: T('1L cartons', 'קרטונים של ליטר') });
+      if (parve) t.push({ key: 'parve', pic: 'milk', n: parve, tag: T('Parve', 'פרווה'), title: T('Parve milk', 'חלב פרווה'), sub: T('1L cartons', 'קרטונים של ליטר') });
     }
-    t.push({ key: 'cups', pic: 'cups', cm: CM.cups, title: T('Cups', 'כוסות') });
-    t.push({ key: 'straws', pic: 'straws', cm: CM.straws, title: T('Straws', 'קשיות') });
-    // Not on the table until they have their own clean photos (they stay in the list).
-    const NO_PHOTO_YET = ['sugar', 'cups', 'straws'];
-    return t.map((x) => ({ ...x, img: src(x.pic), scene: !NO_PHOTO_YET.includes(x.pic) }));
+    t.push({ key: 'cups', pic: 'cups', title: T('Cups', 'כוסות') });
+    t.push({ key: 'straws', pic: 'straws', title: T('Straws', 'קשיות') });
+    return t;
   }
 
   // What was on the counter last time: new things drop in, everything else slides to its new place.
   let shown = new Map();
-  let lastTiles = [];
   let lastTotal = null;
-  const PX = 3.4;   // px per cm before the bar is zoomed to fit
+  // Every visual comes from one photograph: same camera, lighting and ground plane.
+  // These non-overlapping windows reveal products without reassembling their perspective.
+  const MASTER = '/bar/studio/bar-master-v3.webp?v=1';
+  const WINDOWS = {coffee:[0,21.65],disp:[21.65,41.5],caramel:[41.5,50.95],vanilla:[50.95,60.38],sugar:[60.38,69.7],milk:[69.7,79.95],cups:[79.95,88.65],straws:[88.65,100]};
   function sceneHtml(plan) {
-    const list = tiles(plan);
-    lastTiles = list.map((x) => ({ ...x, isNew: !shown.has(x.key), changed: shown.has(x.key) && shown.get(x.key) !== `${x.n || 1}|${x.v || ''}` }));
-    const groups = list.filter((x) => x.scene).map((x) => {
-      const n = x.n || 1;
-      const before = shown.get(x.key);
-      const prevN = before ? Number(before.split('|')[0]) : 0;
-      const sameLook = before && before.split('|')[1] === (x.v || '');
-      // Many cartons or jugs: a second row behind the first, like a real table.
-      const perRow = x.key === 'milk' || x.key === 'parve' ? 4 : 3;
-      const items = Array.from({ length: n }, (_, i) => {
-        const row = Math.floor(i / perRow), col = i % perRow;
-        const fresh = !before || !sameLook || i >= prevN;
-        return `<img class="bs-it${fresh ? ' drop' : ''}" data-k="${x.key}-${i}" src="${x.img}" alt="" style="height:${x.cm * PX}px;width:${Math.round(x.cm * PX * RATIO[x.pic])}px;--row:${row};--col:${col};--d:${fresh && before ? (i - prevN) * 70 : 0}ms" draggable="false">`;
-      }).join('');
-      const rows = Math.ceil(n / perRow);
-      return `<div class="bs-g bs-${x.key.split('-')[0]} bs-${x.key}" data-g="${x.key}" style="--rows:${rows};--per:${Math.min(n, perRow)}" title="${esc(x.title)}">${items}${x.tag ? `<em class="bs-tag">${esc(x.tag)}</em>` : ''}</div>`;
+    const list=tiles(plan);
+    const visual=[{key:'coffee',n:plan.jugs,title:T('Cold brew','קולד ברו')}];
+    for(const key of ['disp','caramel','vanilla','sugar']){
+      const item=list.find(x=>x.key===key);if(item)visual.push(item);
+    }
+    const milk=list.filter(x=>x.key==='milk'||x.key==='parve');
+    if(milk.length)visual.push({key:'milk',n:milk.reduce((sum,x)=>sum+(x.n||1),0),title:T('Milk','חלב')});
+    visual.push(...list.filter(x=>x.key==='cups'||x.key==='straws'));
+    const groups=visual.map((x,index)=>{
+      const [left,right]=WINDOWS[x.key];
+      return `<div class="bs-piece${shown.has(x.key)?'':' drop'}" data-g="${x.key}" style="--cut-left:${left}%;--cut-right:${100-right}%;--d:${index*35}ms" title="${esc(x.title)}"><img class="bs-master" src="${MASTER}" alt="" draggable="false">${x.key==='disp'?'<img class="bs-emblem" src="/bar/studio/brand-mark.svg?v=1" alt="">':''}</div>`;
     }).join('');
-    shown = new Map(list.map((x) => [x.key, `${x.n || 1}|${x.v || ''}`]));
-    const legend = list.map((x) => `<span>${x.n > 1 ? `<b>${x.n}×</b> ` : ''}${esc(x.title)}</span>`).join('');
-    return `<div class="bs" id="bbScene"><div class="bs-wall"></div><div class="bs-stage" id="bbStage">${groups}</div><div class="bs-counter"><img class="bs-logo" src="/bar/table-logo.webp?v=1" alt="Gremier Coffee Co."></div></div>
-      <div class="bs-legend">${legend}</div>`;
+    const markers=visual.filter(x=>(x.n||1)>1).map(x=>{
+      const [left,right]=WINDOWS[x.key];
+      return `<span class="bs-quantity" style="left:${(left+right)/2}%">×${x.n}</span>`;
+    }).join('');
+    shown=new Map(visual.map(x=>[x.key,String(x.n||1)]));
+    const legend=list.map(x=>`<span>${x.n>1?`<b>${x.n}×</b> `:''}${esc(x.title)}</span>`).join('');
+    return `<div class="bs bs-live" id="bbScene" role="img" aria-label="${esc(T('Your selected coffee bar','בר הקפה שבחרתם'))}"><div class="bs-wall"></div><div class="bs-stage" id="bbStage">${groups}<div class="bs-quantities">${markers}</div></div><div class="bs-counter"><img class="bs-logo" src="/bar/studio/brand-mark.svg?v=1" alt="Gremier Coffee Co."></div></div><div class="bs-legend">${legend}</div>`;
   }
-  // Zoom the bar to fit, and slide things that moved (FLIP) instead of letting them jump.
-  let prevRects = new Map();
-  function layoutScene() {
-    const scene = $('bbScene'), stage = $('bbStage');
-    if (!scene || !stage) return;
-    // Measure at full size (the products' real positions, back rows included), then zoom from
-    // where it was to the new fit. Few things: close up; as the bar grows it zooms out.
-    const prevZ = stage.style.getPropertyValue('--z') || '1';
-    stage.style.transition = 'none';
-    stage.style.setProperty('--z', 1);
-    let left = Infinity, right = -Infinity;
-    stage.querySelectorAll('.bs-it').forEach((el) => { const r = el.getBoundingClientRect(); left = Math.min(left, r.left); right = Math.max(right, r.right); });
-    const width = Math.max(stage.scrollWidth, right - left);
-    stage.style.setProperty('--z', prevZ);
-    void stage.offsetWidth;
-    stage.style.transition = '';
-    const room = scene.clientHeight - parseFloat(getComputedStyle(stage).bottom) - 22;   // above the table
-    const fit = Math.min(1.7, (scene.clientWidth - 28) / width, room / stage.scrollHeight);
-    stage.style.setProperty('--z', fit.toFixed(3));
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const rects = new Map();
-    stage.querySelectorAll('.bs-it').forEach((el) => {
-      const r = el.getBoundingClientRect();
-      rects.set(el.dataset.k, r);
-      const old = prevRects.get(el.dataset.k);
-      if (!old || reduce || el.classList.contains('drop')) return;
-      const dx = old.left - r.left, dy = old.top - r.top, s = old.height / (r.height || 1);
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(s - 1) < 0.01) return;
-      el.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.2, .9, .3, 1)' });
+  function reconcileScene(previous,next){
+    if(!previous||!next)return;
+    const oldStage=previous.querySelector('.bs-stage'),newStage=next.querySelector('.bs-stage');
+    const pieces=new Map([...oldStage.querySelectorAll('.bs-piece:not(.leaving)')].map(el=>[el.dataset.g,el]));
+    newStage.querySelectorAll('.bs-piece').forEach(el=>{
+      const old=pieces.get(el.dataset.g);if(!old)return;
+      old.classList.remove('drop');old.style.cssText=el.style.cssText;el.replaceWith(old);pieces.delete(el.dataset.g);
     });
-    prevRects = rects;
+    oldStage.replaceChildren(...newStage.childNodes);
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)pieces.forEach(el=>{
+      el.classList.remove('drop');el.classList.add('leaving');oldStage.append(el);
+      const fade=el.animate([{opacity:1},{opacity:0}],{duration:220,fill:'forwards'});fade.onfinish=()=>el.remove();
+    });
+    next.replaceWith(previous);
+  }
+  function layoutScene(){
+    const scene=$('bbScene'),stage=$('bbStage');if(!scene||!stage)return;
+    const room=scene.clientHeight-parseFloat(getComputedStyle(stage).bottom)-12;
+    stage.style.setProperty('--z',Math.max(.1,Math.min(1.4,(scene.clientWidth-20)/800,room/352)).toFixed(3));
   }
   addEventListener('resize', () => requestAnimationFrame(layoutScene));
 
-  // Until there are clean product photos for the scene (shot one by one on white), the bar is
-  // shown with its real photo and an itemized list that updates as they choose. Set
-  // SCENE_READY = true to switch the live scene on.
-  const SCENE_READY = true;
-  function barPhotoHtml(plan) {
-    const list = tiles(plan);
-    lastTiles = list.map((x) => ({ ...x, isNew: !shown.has(x.key), changed: shown.has(x.key) && shown.get(x.key) !== `${x.n || 1}|${x.v || ''}` }));
-    const img = plan.product.images && plan.product.images[0];
-    const rows = lastTiles.map((x) => `<li class="${x.isNew ? 'pop' : x.changed ? 'bump' : ''}"><span>${esc(x.title)}${x.sub ? ` <small>${esc(x.sub)}</small>` : ''}</span><b>${x.n > 1 ? x.n + '×' : '✓'}</b></li>`).join('');
-    shown = new Map(list.map((x) => [x.key, `${x.n || 1}|${x.v || ''}`]));
-    return `${img ? `<div class="bb-photo"><img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(img, 900) : img)}" alt=""></div>` : ''}<ul class="bb-list">${rows}</ul>`;
-  }
-
   // The total counts up or down to the new price.
+  let totalFrame;
   function animateTotal(to) {
+    cancelAnimationFrame(totalFrame);
     const el = $('bbTotal');
     const from = lastTotal;
     lastTotal = to;
@@ -199,42 +167,42 @@
     const step = (t) => {
       const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
       el.textContent = Math.round(from + (to - from) * e);
-      if (k < 1) requestAnimationFrame(step);
+      if (k < 1) totalFrame = requestAnimationFrame(step);
     };
     el.textContent = from;
-    requestAnimationFrame(step);
+    totalFrame = requestAnimationFrame(step);
   }
 
-  // Phones: while the questions are on screen and the tray isn't, a strip above the tab bar
-  // shows what's in the bar and the price; tapping it goes to the tray.
-  function mini(plan) {
-    let el = $('bbMini');
-    if (!el) {
-      el = document.createElement('button');
-      el.type = 'button'; el.id = 'bbMini'; el.className = 'bb-mini';
-      el.onclick = () => document.querySelector('#planner .bb-tray')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      document.body.appendChild(el);
-    }
-    if (!plan) { el.classList.remove('on'); return; }
-    el.innerHTML = `<span class="bb-mini-pics">${lastTiles.filter((x) => x.img && x.scene).slice(0, 7).map((x) => `<span class="${x.isNew ? 'pop' : x.changed ? 'bump' : ''}"><img src="${esc(x.img)}" alt="">${x.n > 1 ? `<i>${x.n}</i>` : ''}</span>`).join('')}</span>
-      <b>₪${plan.total}</b><span class="bb-mini-go">${T('View', 'לצפייה')}</span>`;
-    if (lastTiles.some((x) => x.isNew || x.changed)) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  // A live picture-in-picture, never a second bottom toolbar.
+  function mini(plan){
+    let el=$('bbMini');
+    if(!el){el=document.createElement('button');el.type='button';el.id='bbMini';el.className='bb-mini planner';el.onclick=()=>document.querySelector('#planner .bb-tray')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});document.body.appendChild(el);}
+    if(!plan){el.classList.remove('on');return;}
+    el.setAttribute('aria-label',T('View your coffee bar','צפו בבר הקפה שלכם'));
+    const scene=$('bbScene')?.cloneNode(true);if(!scene)return;
+    scene.removeAttribute('id');scene.removeAttribute('role');scene.removeAttribute('aria-label');scene.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
+    el.replaceChildren();const picture=document.createElement('span');picture.className='bb-thumb-picture';const world=document.createElement('span');world.className='bb-thumb-world';world.append(scene);picture.append(world);el.append(picture);
+    const label=document.createElement('span');label.className='bb-thumb-label';label.textContent=T('Your bar ↗','הבר שלכם ↗');el.append(label);
   }
-  function syncMini() {
-    const el = $('bbMini'), box = $('planner');
-    if (!el) return;
-    const tray = box?.querySelector('.bb-tray'), qs = box?.querySelector('.bb-qs');
-    const onPage = !!document.getElementById('coffeebarsPage')?.classList.contains('active');
-    if (!onPage || !tray || !qs || innerWidth > 760) { el.classList.remove('on'); document.body.classList.remove('bb-mini-on'); return; }
-    const vh = innerHeight, q = qs.getBoundingClientRect(), t = tray.getBoundingClientRect();
-    const qsOn = q.bottom > 80 && q.top < vh - 120;
-    const trayOn = t.top < vh - 140;   // the tray's photos are coming into view
-    el.classList.toggle('on', qsOn && !trayOn);
-    document.body.classList.toggle('bb-mini-on', el.classList.contains('on'));
+  function syncMini(){
+    const el=$('bbMini'),box=$('planner');if(!el)return;
+    const scene=$('bbScene'),qs=box?.querySelector('.bb-qs'),onPage=$('coffeebarsPage')?.classList.contains('active');
+    if(!onPage||!scene||!qs){el.classList.remove('on');document.body.classList.remove('bb-mini-on');return;}
+    const q=qs.getBoundingClientRect(),t=scene.getBoundingClientRect(),vh=innerHeight;
+    const choosing=q.bottom>90&&q.top<vh-100,fullVisible=t.top<vh-120&&t.bottom>120;
+    const covered=!!document.querySelector('#pdDrawer.open,#cartDrawer.open,.modal-overlay.open');
+    el.classList.toggle('on',choosing&&!fullVisible&&!covered);document.body.classList.toggle('bb-mini-on',el.classList.contains('on'));
   }
-  addEventListener('scroll', () => requestAnimationFrame(syncMini), { passive: true });
-  addEventListener('resize', syncMini);
-  function watch() { syncMini(); }
+  addEventListener('scroll',()=>requestAnimationFrame(syncMini),{passive:true});
+  addEventListener('resize',syncMini);
+  const watchedOverlays = new WeakSet();
+  function watch(){
+    document.querySelectorAll('#pdDrawer,#cartDrawer,.modal-overlay').forEach(el=>{
+      if(watchedOverlays.has(el))return;
+      new MutationObserver(syncMini).observe(el,{attributes:true,attributeFilter:['class']});watchedOverlays.add(el);
+    });
+    syncMini();
+  }
 
   // Open the coffee bar with every choice already made, so they only check and book.
   window.plannerOrder = function () {
@@ -287,7 +255,7 @@
   function render() {
     const box = $('planner');
     if (!box) return;
-    $('bbStage')?.querySelectorAll('.bs-it').forEach((el) => prevRects.set(el.dataset.k, el.getBoundingClientRect()));
+    const previousScene=$('bbScene');
     const plan = suggestion();
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
@@ -307,7 +275,7 @@
         </div>
         <aside class="bb-tray">
           <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}${plan ? `<span>${tiles(plan).reduce((n, x) => n + (x.n || 1), 0)} ${T('items', 'פריטים')}</span>` : ''}</div>
-          ${plan ? (SCENE_READY ? sceneHtml(plan) : barPhotoHtml(plan)) : ''}
+          ${plan ? sceneHtml(plan) : ''}
           ${plan ? `<div class="bb-sum">
             <div class="bb-sum-name">${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</div>
             ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
@@ -316,6 +284,7 @@
           </div>` : ''}
         </aside>
       </div>`;
+    reconcileScene(previousScene,$('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
     mini(plan);
