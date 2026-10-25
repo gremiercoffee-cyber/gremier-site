@@ -148,6 +148,9 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
   const allowedAddons = Array.isArray(addonBlock?.items) ? addonBlock.items as Record<string, unknown>[] : [];
   const selectedAddons = Array.isArray(item.selected_addons) ? item.selected_addons as Record<string, unknown>[] : [];
   const groupsUsed = new Set<string>();   // pick-one add-ons (e.g. the coffee for the bar): one per group
+  // Coffee upgrades per 5-liter jug: the bar has one jug per 25 guests, and all the upgraded
+  // jugs together can't be more than that (the rest is the included Classic).
+  let jugsLeft = Math.max(1, Math.ceil(guests / 25));
   const addonTotal = selectedAddons.reduce((sum, selected) => {
     const name = String(selected?.name || "").trim();
     const match = allowedAddons.find((addon) => String(addon.name || "").trim() === name);
@@ -161,6 +164,11 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
     if (match.per_liter) {
       const liters = Math.max(0, Math.min(Math.floor(guests / 10), Math.round(Number(selected?.liters) || 0)));
       return sum + (Number(match.price) || 0) * liters;
+    }
+    if (match.per_jug) {
+      const jugs = Math.max(0, Math.min(jugsLeft, Math.round(Number(selected?.qty) || 0)));
+      jugsLeft -= jugs;
+      return sum + (Number(match.price) || 0) * jugs;
     }
     // Quantity add-ons (extra dispensers, syrups): price × how many, up to the item's max.
     const max = Number(match.max) || 0;

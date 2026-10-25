@@ -752,7 +752,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261025-13"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -1933,7 +1933,43 @@ let pdLiters = {};   // add-on index → liters chosen
 let pdQtyAddons = {};   // add-on index → how many (add-ons with a "max", e.g. extra dispensers)
 let pdGroupPick = {};   // group → chosen add-on index (pick-one add-ons, e.g. the coffee for the bar)
 const addonName = (a) => (lang === 'he' && a.name_he) ? a.name_he : a.name;
-const isQtyAddon = (a) => Number(a.max) > 1 && !a.per_liter;
+const isQtyAddon = (a) => (Number(a.max) > 1 || a.per_jug) && !a.per_liter;
+// Coffee upgrades per 5-liter jug: one jug per 25 guests; the upgraded jugs together can't be
+// more than that (the rest is the included Classic). The server applies the same limit.
+const pdJugs = () => Math.max(1, Math.ceil(pdGuestCount() / 25));
+function pdQtyCap(i) {
+  const addons = getProductAddons(pdCurrentProduct), a = addons[i];
+  if (!a?.per_jug) return Number(a?.max) || 1;
+  const others = addons.reduce((n, x, j) => n + (x.per_jug && j !== i ? (pdQtyAddons[j] || 0) : 0), 0);
+  return Math.max(0, pdJugs() - others);
+}
+// Each coffee in the bar is served from its own dispenser: mixing flavours adds dispensers.
+function pdEnsureDispensers() {
+  const addons = getProductAddons(pdCurrentProduct);
+  const upgraded = addons.map((a, i) => (a.per_jug ? pdQtyAddons[i] || 0 : 0));
+  if (!upgraded.some(Boolean)) return;
+  const classicLeft = pdJugs() - upgraded.reduce((x, y) => x + y, 0);
+  const flavours = upgraded.filter(Boolean).length + (classicLeft > 0 ? 1 : 0);
+  const d = addons.findIndex((a) => /dispenser/i.test(a.name) && Number(a.max) > 1);
+  if (d < 0) return;
+  const need = Math.min(Number(addons[d].max), flavours - 1);
+  if ((pdQtyAddons[d] || 0) < need) {
+    pdSetQty(d, need - (pdQtyAddons[d] || 0));
+    showToast(lang === 'he' ? 'הוספנו מתקן לכל סוג קפה' : 'Added a dispenser for each coffee');
+  }
+}
+function pdRenderQtyRows() {
+  getProductAddons(pdCurrentProduct || {}).forEach((a, i) => {
+    if (!isQtyAddon(a)) return;
+    pdQtyAddons[i] = Math.min(pdQtyAddons[i] || 0, pdQtyCap(i));
+    const row = document.querySelector(`#pdAddonsSection [data-qty-idx="${i}"]`);
+    if (!row) return;
+    row.querySelector('.pd-l-n').textContent = pdQtyAddons[i];
+    row.querySelector('.pd-l-minus').disabled = pdQtyAddons[i] <= 0;
+    row.querySelector('.pd-l-plus').disabled = pdQtyAddons[i] >= pdQtyCap(i);
+    row.querySelector('.pd-l-total').textContent = pdQtyAddons[i] ? `+₪${(parseFloat(a.price) || 0) * pdQtyAddons[i]}` : '';
+  });
+}
 const isPlainAddon = (a) => !a.per_liter && !a.group && !isQtyAddon(a);
 function pdGuestCount() {
   const fromChoice = Object.values(pdSelectedVariations).map(v => parseInt(v.label, 10)).find(n => n > 0);
@@ -1954,7 +1990,7 @@ function pdGetSelectedAddons() {
   addons.forEach((a, i) => {
     const liters = Math.min(pdLiters[i] || 0, pdMaxLiters());
     if (a.per_liter && liters > 0) selected.push({ ...a, liters });
-    if (isQtyAddon(a) && pdQtyAddons[i] > 0) selected.push({ ...a, qty: Math.min(pdQtyAddons[i], Number(a.max)) });
+    if (isQtyAddon(a) && pdQtyAddons[i] > 0) selected.push({ ...a, qty: Math.min(pdQtyAddons[i], a.per_jug ? pdJugs() : Number(a.max)) });
     if (a.group && pdGroupPick[a.group] === i) selected.push(a);
   });
   return selected;
@@ -1969,14 +2005,9 @@ function pdGetAddonSuffix() {
 }
 function pdSetQty(i, delta) {
   const a = getProductAddons(pdCurrentProduct)[i];
-  pdQtyAddons[i] = Math.max(0, Math.min(Number(a.max) || 1, (pdQtyAddons[i] || 0) + delta));
-  const row = document.querySelector(`#pdAddonsSection [data-qty-idx="${i}"]`);
-  if (row) {
-    row.querySelector('.pd-l-n').textContent = pdQtyAddons[i];
-    row.querySelector('.pd-l-minus').disabled = pdQtyAddons[i] <= 0;
-    row.querySelector('.pd-l-plus').disabled = pdQtyAddons[i] >= Number(a.max);
-    row.querySelector('.pd-l-total').textContent = pdQtyAddons[i] ? `+₪${(parseFloat(a.price) || 0) * pdQtyAddons[i]}` : '';
-  }
+  pdQtyAddons[i] = Math.max(0, Math.min(pdQtyCap(i), (pdQtyAddons[i] || 0) + delta));
+  pdRenderQtyRows();
+  if (a.per_jug && delta > 0) pdEnsureDispensers();
   pdUpdateDrawerPrice();
 }
 function pdPickGroup(group, i) {
@@ -1990,6 +2021,7 @@ function pdSetLiters(i, delta) {
   pdUpdateDrawerPrice();
 }
 function pdRenderLiterRows() {
+  pdRenderQtyRows();
   const addons = getProductAddons(pdCurrentProduct);
   const max = pdMaxLiters();
   document.querySelectorAll('#pdAddonsSection [data-liter-idx]').forEach(row => {
@@ -2047,7 +2079,7 @@ function renderPdAddons(p) {
   section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${title}</div>` +
     addons.map((a, i) => a.group ? pdGroupHtml(addons, a, i) : isQtyAddon(a) ? `<div class="pd-liters" data-qty-idx="${i}">
       <div class="pd-l-top"><span class="pd-l-name">${escHtml(addonName(a))}</span><span class="pd-l-total"></span></div>
-      <div class="pd-l-help">₪${parseFloat(a.price) || 0} ${lang === 'he' ? 'ליחידה' : 'each'}</div>
+      <div class="pd-l-help">${a.per_jug ? (lang === 'he' ? `₪${parseFloat(a.price) || 0} לכל ג'ריקן של 5 ל׳. השאר קלאסיק (כלול).` : `₪${parseFloat(a.price) || 0} per 5L jug. The rest is Classic (included).`) : `₪${parseFloat(a.price) || 0} ${lang === 'he' ? 'ליחידה' : 'each'}`}</div>
       <div class="pd-l-step"><button type="button" class="pd-l-minus" onclick="pdSetQty(${i},-1)" disabled aria-label="${lang === 'he' ? 'פחות' : 'Less'}">−</button><span class="pd-l-n">0</span><button type="button" class="pd-l-plus" onclick="pdSetQty(${i},1)" aria-label="${lang === 'he' ? 'עוד' : 'More'}">+</button></div>
     </div>` : a.per_liter ? `<div class="pd-liters" data-liter-idx="${i}">
       <div class="pd-l-top"><span class="pd-l-name">${lang === 'he' ? 'החלפה לחלב פרווה' : 'Swap milk to parve'}</span><span class="pd-l-total"></span></div>
@@ -5216,7 +5248,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261024-4"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
-<script src="/storefront-planner.js?v=20261025-14"></script>
+<script src="/storefront-planner.js?v=20261025-15"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

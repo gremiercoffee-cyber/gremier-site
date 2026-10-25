@@ -388,6 +388,7 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .planner .bs-disp .bs-it + .bs-it { margin-inline-start:-22px; }
 .planner .bs-milk .bs-it + .bs-it, .planner .bs-parve .bs-it + .bs-it { margin-inline-start:-5px; }
 .planner .bs-coffee .bs-it + .bs-it { margin-inline-start:-40px; }
+.planner .bs-coffee + .bs-coffee { margin-inline-start:-18px; }
 .planner .bs-caramel, .planner .bs-vanilla, .planner .bs-sugar { margin-inline-start:-10px; }
 .planner .bs-straws { margin-inline-start:-14px; }
 .planner .bs-tag { position:absolute; left:50%; top:-4px; z-index:40; transform:translateX(-50%); padding:3px 9px; border-radius:999px; background:#2d8a4e; color:#fff; font:600 .7rem 'DM Sans', sans-serif; font-style:normal; letter-spacing:.03em; box-shadow:0 2px 6px rgba(0,0,0,.2); }
@@ -447,3 +448,16 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
   .planner .bs { --tt:16px; --te:8px; --tp:62px; height:270px; }
   .planner .bs-stage { bottom:calc(var(--te) + var(--tp) + var(--tt) * .45); }
 }
+
+/* Coffee: jugs of each kind (storefront-planner.js) */
+.planner .bb-q-note { margin-inline-start:6px; font-size:.7rem; font-weight:500; letter-spacing:0; text-transform:none; color:#8a5a1c; }
+.planner .bb-jugs { display:grid; gap:2px; }
+.planner .bb-jug { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid #f3f4f6; }
+.planner .bb-jug:last-child { border-bottom:none; }
+.planner .bb-jug-name { font-size:.9rem; color:#1a1a1a; font-weight:500; }
+.planner .bb-jug-name small { font-size:.72rem; color:#8a8f96; font-weight:400; }
+.planner .bb-jug-step { display:inline-flex; align-items:center; gap:10px; }
+.planner .bb-jug-step b { min-width:18px; text-align:center; font-variant-numeric:tabular-nums; }
+.planner .bb-jug-step button { width:34px; height:34px; border-radius:50%; border:1px solid #dcdfe3; background:#fff; font:500 1.05rem/1 'DM Sans', sans-serif; color:#1a1a1a; cursor:pointer; }
+.planner .bb-jug-step button:disabled { opacity:.35; cursor:default; }
+.planner .bb-q-hint { display:block; margin-top:8px; font-size:.74rem; color:#8a5a1c; line-height:1.45; }
