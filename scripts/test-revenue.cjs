@@ -134,3 +134,11 @@ test('failed dashboard classification preserves the unresolved order and reports
  h.root.GremierRevenue.dashboardOnline([{...order,items:[{name_en:'Jerry can',qty:1,price:450}]}],{start:'2026-10-01',today:'2026-10-31'},[],0);
  await selects[0].onchange();assert.equal(selects[0].disabled,false);assert.match(h.host.innerHTML,/Needs review/);assert.match(h.nodes.get('dashPurposeStatus').textContent,/not saved/);
 });
+
+{
+ const {reconcile}=require('../admin-revenue.js');
+ const report={total_minor:11240585,rows:[{imported:true,key:'finbot:1',amount_minor:11035665},{key:'order:2',amount_minor:46420},{key:'order-purpose:3',amount_minor:158500}]};
+ const bridge=reconcile(report,11035665);
+ assert.equal(bridge.newReceipts,46420);assert.equal(bridge.unreceipted,158500);
+ assert.equal(bridge.snapshot+bridge.importAdjustments+bridge.newReceipts+bridge.unreceipted,bridge.total);
+}

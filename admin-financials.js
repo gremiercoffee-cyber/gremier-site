@@ -100,7 +100,8 @@
   function setup() {
     const host=get('tab-reports');if(!host||get('financialResults'))return;
     host.innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Business stats</h1></div><span data-action-menu="Accounting tools"><button class="btn btn-outline btn-sm" id="financialExport" disabled>Export CSV</button><button class="btn btn-outline btn-sm" id="financialRefresh">Reload saved data</button></span></div></header>
-      <div class="fin-toolbar"><label>Year<select class="form-input" id="financialYear" aria-label="Reporting year"></select></label><label>Period<select class="form-input" id="financialMonth" aria-label="Reporting period"></select></label></div>
+      <section class="fin-panel" id="statsYearOverview"><div class="flex-between"><h2>Year overview</h2><label>Year<select class="form-input" id="financialYear" aria-label="Reporting year"></select></label></div><div id="statsYearTotals" role="status">Loading annual totals…</div></section>
+      <div class="fin-toolbar"><label>FinBot period<select class="form-input" id="financialMonth" aria-label="Reporting period"></select></label></div>
       <p id="financialStatus" class="fin-note" role="status" aria-live="polite"></p>
       <div class="fin-views" role="group" aria-label="Expense reporting view"><button type="button" class="btn btn-outline" id="financialAccounts" aria-pressed="true">FinBot accounts</button><button type="button" class="btn btn-outline" id="financialUS" aria-pressed="false">U.S. expense view</button></div><div id="financialResults"></div>`;
     get('financialYear').onchange=()=>chooseYear();
@@ -116,6 +117,15 @@
       const a=document.createElement('a');a.href=url;a.download=`gremier-${view}-${snapshot.report_year}-${get('financialMonth').value}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     };
   }
+  function renderOverview(){
+    const host=get('statsYearTotals');if(!host)return;
+    if(!snapshot){host.textContent='Annual totals unavailable.';return;}
+    const annual=summarize(snapshot.payload,'all'),year=snapshot.report_year;
+    const live=root.GremierRevenue?.annualReport?.(year);
+    const today=root.GremierDashboard?.businessDate(new Date())||new Date().toISOString().slice(0,10);
+    host.innerHTML=`<div class="fin-metrics fin-year-metrics">${metric('Income',live?money(live.total_minor):'Unavailable',`Payments · ${year} through ${year===Number(today.slice(0,4))?today:year+'-12-31'}`)}${metric('Recorded expenses',money(annual.totals.expenses),`FinBot through ${snapshot.as_of_date}`)}</div><details class="sales-help"><summary>Why can the totals differ?</summary>${live?(()=>{const r=root.GremierRevenue.reconcile(live,annual.totals.income);return row('Saved FinBot income',money(r.snapshot))+row('Imported receipt adjustments / payment dates',money(r.importAdjustments))+row('Additional app receipts',money(r.newReceipts))+row('Paid online orders without receipts',money(r.unreceipted))+row('Current income · counted once',money(r.total));})():'<p>Live income could not be loaded. Refresh to retry.</p>'}<p class="fin-note">Income includes paid orders without receipts and links each order to its receipt once. FinBot figures below are a saved accounting report by document date. Expenses only include that report; newer expense documents are not included.</p></details>`;
+  }
+  root.addEventListener('gremier-revenue-ready',renderOverview);
   function chooseYear() {
     snapshot=snapshots.find(s=>String(s.report_year)===get('financialYear').value);current=null;
     preferences={};preferenceReady=false;
@@ -129,6 +139,7 @@
   }
   function render() {
     if(!snapshot)return;
+    renderOverview();
     try {
       current=summarize(snapshot.payload,get('financialMonth').value);
       const p=snapshot.payload,m=current,t=m.totals;
@@ -142,7 +153,7 @@
       const source=(label,n)=>`${row(label,money(n))}<div class="fin-track"><i style="width:${Math.max(0,Math.min(100,n/(t.income||1)*100))}%"></i></div>`;
       const max=Math.max(1,...m.months.flatMap(x=>[Math.abs(x.income_minor),Math.abs(x.expenses_minor)]));
       const trends=m.months.map(x=>`<tr><th scope="row">${esc(monthName(x.month))}${x.is_partial_month?'<small>Partial month</small>':''}</th><td>${esc(money(x.income_minor))}<div class="fin-track"><i style="width:${Math.max(0,x.income_minor)/max*100}%"></i></div></td><td>${esc(money(x.expenses_minor))}<div class="fin-track fin-expense"><i style="width:${Math.max(0,x.expenses_minor)/max*100}%"></i></div></td><td class="${x.net_minor<0?'fin-negative':'fin-positive'}">${esc(money(x.net_minor))}</td></tr>`).join('');
-      get('financialResults').innerHTML=`<div class="fin-metrics">${metric('Revenue',money(t.income),'')}${metric('Expenses',money(t.expenses),'')}${metric('Accounting result',money(t.net),'',t.net<0?'fin-negative':'fin-positive')}${metric('Result margin',m.margin===null?'—':m.margin.toFixed(1)+'%','')}</div>
+      get('financialResults').innerHTML=`<div class="fin-metrics">${metric('FinBot income',money(t.income),'Saved report')}${metric('Expenses',money(t.expenses),'')}${metric('Accounting result',money(t.net),'',t.net<0?'fin-negative':'fin-positive')}${metric('Result margin',m.margin===null?'—':m.margin.toFixed(1)+'%','')}</div>
         <div class="fin-grid"><section class="fin-panel"><h2>Revenue sources</h2>${source('Website receipts',m.sources.website)}${source('Other FinBot income',m.sources.other)}<p class="fin-note">Other income is unclassified.</p></section>
         <section class="fin-panel"><h2>Revenue to result</h2>${row('Revenue',money(t.income))}${row('Less cost of sales',money(t.cost_of_sales))}${row('Gross result',money(m.grossProfit))}${row('Less operating expenses',money(t.operating_expenses))}${row('Accounting result',money(t.net))}</section></div>
         <section class="fin-panel"><h2>Monthly revenue vs. expenses</h2><p class="fin-note">By document date · October includes receipts for earlier sales.</p><div class="table-wrap"><table class="fin-table"><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Result</th></tr></thead><tbody>${trends}</tbody></table></div></section>
@@ -200,7 +211,7 @@
   }
   root.loadReports=async function(){
     setup();const token=++sequence;current=null;snapshot=null;
-    get('financialExport').disabled=true;get('financialStatus').textContent='Loading saved FinBot accounts…';get('financialResults').innerHTML='';
+    get('financialExport').disabled=true;get('financialStatus').textContent='Loading saved FinBot accounts…';get('financialResults').innerHTML='';get('statsYearTotals').textContent='Loading annual totals…';
     try{
       const {data,error}=await client().from('finbot_reporting_snapshots').select('report_year,as_of_date,captured_at,payload').order('report_year',{ascending:false});
       if(token!==sequence)return;
@@ -208,7 +219,7 @@
       if(!data?.length){get('financialStatus').textContent='No FinBot snapshot has been imported yet.';return;}
       data.forEach(s=>{if(s.report_year!==s.payload.report_year||s.as_of_date!==s.payload.as_of_date)throw Error('Invalid snapshot');summarize(s.payload);});
       snapshots=data;get('financialYear').innerHTML=data.map(s=>`<option value="${s.report_year}">${s.report_year}</option>`).join('');chooseYear();
-    }catch{if(token===sequence)get('financialStatus').textContent='Financial stats unavailable. Sign in as an admin and reload saved data.';}
+    }catch{if(token===sequence){get('financialStatus').textContent='Financial stats unavailable. Sign in as an admin and reload saved data.';renderOverview();}}
   };
   root.loadReportsByMonth=()=>root.loadReports();
 })(typeof window!=='undefined'?window:globalThis);

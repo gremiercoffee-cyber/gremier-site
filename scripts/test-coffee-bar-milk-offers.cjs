@@ -107,3 +107,19 @@ test('premium extras produce separate physical bottles and exact saved syrup tot
  const scene=layout({classic:2,milkLiters:5,guests:50,syrupCounts:Object.fromEntries(config.syrups.map(s=>[s.key,s.bottles]))});
  for(const syrup of config.syrups)assert.equal(scene.items.filter(i=>i.kind===syrup.key).length,syrup.bottles);
 });
+
+test('fully parve swaps milk types without reintroducing dairy, including guest changes',()=>{
+ const {state,suggestion,adjustMilk,tiles,milkHtml}=planner();state.milk='all_parve';
+ let plan=suggestion();assert.equal(plan.liters,5);assert.equal(plan.total,644);
+ adjustMilk('almond',1);adjustMilk('soy',1);plan=suggestion();
+ assert.deepEqual(Array.from(plan.milk,m=>[m.key,m.liters]),[['oat',3],['almond',1],['soy',1]]);
+ assert.ok(!tiles(plan).some(x=>x.key==='milk'));assert.doesNotMatch(milkHtml(plan),/0L dairy/);
+ const config=model.buildCoffeeBarConfiguration(full,{selected_variations:{Guests:{label:'50'}},selected_addons:Array.from(plan.milk,m=>({name:m.addon.name,liters:m.liters}))});
+ assert.ok(!config.milk.some(m=>m.key==='dairy'));assert.equal(config.milk.reduce((n,m)=>n+m.liters,0),5);
+ const scene=layout({milkLiters:5,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),guests:50});
+ assert.ok(!scene.items.some(m=>m.kind==='milk'&&m.variant==='dairy'));
+ for(let i=0;i<10;i++){adjustMilk('oat',-1);assert.equal(suggestion().liters,5);}
+ state.guests=25;assert.equal(suggestion().liters,2);assert.equal(suggestion().total,367);
+ state.guests=50;assert.equal(suggestion().liters,5);assert.equal(suggestion().total,644);
+ state.milk='dairy';assert.equal(suggestion().total,599);assert.equal(suggestion().liters,0);
+});

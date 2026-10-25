@@ -52,6 +52,12 @@
       plan.stations = Math.max(state.points, plan.flavours);
       const milkChoices = milkOptions(p);
       if (state.milkMix == null && state.milk !== 'dairy' && milkChoices.length) state.milkMix = {[milkChoices[0].key]:Math.round(plan.milkLiters / 2)};
+      if(state.milk==='all_parve' && milkChoices.length){
+        const mix=state.milkMix||{}, normalized={};let remaining=plan.milkLiters;
+        for(const choice of milkChoices){normalized[choice.key]=Math.min(remaining,Math.max(0,Math.floor(Number(mix[choice.key])||0)));remaining-=normalized[choice.key];}
+        const preferred=milkChoices.find(c=>normalized[c.key]>0)||milkChoices[0];
+        normalized[preferred.key]+=remaining;state.milkMix=normalized;
+      }
       let milkLeft=plan.milkLiters;
       for(const choice of milkChoices){
         const liters=state.milk==='dairy'?0:Math.min(milkLeft,Math.max(0,Math.floor(Number(state.milkMix?.[choice.key])||0)));
@@ -285,18 +291,26 @@
   }
   function milkHtml(plan) {
     const options=plan?milkOptions(plan.product):[];
-    const summary=plan?[T(`${plan.milkLiters-plan.liters}L dairy`,`${plan.milkLiters-plan.liters} ל׳ חלב רגיל`),...plan.milk.map(m=>T(`${m.liters}L ${m.label}`,`${m.liters} ל׳ ${m.label}`))].join(' + '):'';
-    return chips('milk',[['dairy',T('Dairy','חלב רגיל')],['parve',T('Some parve','גם פרווה')]])+(state.milk==='dairy'?'':`
+    const summary=plan?[(plan.milkLiters>plan.liters?T(`${plan.milkLiters-plan.liters}L dairy`,`${plan.milkLiters-plan.liters} ל׳ חלב רגיל`):null),...plan.milk.map(m=>T(`${m.liters}L ${m.label}`,`${m.liters} ל׳ ${m.label}`))].filter(Boolean).join(' + '):'';
+    return chips('milk',[['dairy',T('Dairy','חלב רגיל')],['parve',T('Some parve','גם פרווה')],['all_parve',T('Parve','פרווה')]])+(state.milk==='dairy'?'':`
       <div class="bb-milk-options">${options.map(option=>{
         const liters=plan.milk.find(m=>m.key===option.key)?.liters||0;
         return `<div class="bb-milk-amount"><span>${esc(name(option.addon))}<small>+₪${Number(option.addon.price)||0}/${T('litre','ליטר')}</small></span>
-        <div class="pd-l-step"><button type="button" data-milk-kind="${esc(option.key)}" data-milk-step="-1" aria-label="${esc(T('Less '+name(option.addon),'פחות '+name(option.addon)))}" ${!liters?'disabled':''}>−</button><b>${liters}</b><button type="button" data-milk-kind="${esc(option.key)}" data-milk-step="1" aria-label="${esc(T('More '+name(option.addon),'עוד '+name(option.addon)))}" ${plan.liters>=plan.milkLiters?'disabled':''}>+</button></div></div>`;
+        <div class="pd-l-step"><button type="button" data-milk-kind="${esc(option.key)}" data-milk-step="-1" aria-label="${esc(T('Less '+name(option.addon),'פחות '+name(option.addon)))}" ${!liters?'disabled':''}>−</button><b>${liters}</b><button type="button" data-milk-kind="${esc(option.key)}" data-milk-step="1" aria-label="${esc(T('More '+name(option.addon),'עוד '+name(option.addon)))}" ${(state.milk==='all_parve'?liters>=plan.milkLiters:plan.liters>=plan.milkLiters)?'disabled':''}>+</button></div></div>`;
       }).join('')}
-      <small class="bb-q-hint">${esc(summary)}</small></div>`);
+      <small class="bb-q-hint">${esc(summary)}</small>${state.milk==='all_parve'?`<small class="bb-q-hint">${T('All milk is non-dairy. Adjusting a type swaps one litre.','כל החלב צמחי. שינוי סוג מחליף ליטר אחד.')}</small>`:''}</div>`);
   }
   function adjustMilk(kind,delta){
     const plan=suggestion();if(!plan||!milkOptions(plan.product).some(m=>m.key===kind))return;
     const current=plan.milk.find(m=>m.key===kind)?.liters||0;
+    if(state.milk==='all_parve'){
+      const options=milkOptions(plan.product),mix={...state.milkMix};
+      const other=options.filter(x=>x.key!==kind).sort((a,b)=>(mix[b.key]||0)-(mix[a.key]||0))[0];
+      if(!other)return;
+      if(delta>0 && mix[other.key]>0){mix[other.key]--;mix[kind]++;}
+      if(delta<0 && current>0){mix[kind]--;mix[other.key]=(mix[other.key]||0)+1;}
+      state.milkMix=mix;return;
+    }
     const next=Math.max(0,Math.min(current+Number(delta),current+plan.milkLiters-plan.liters));
     state.milkMix={...(state.milkMix||{}),[kind]:next};
   }

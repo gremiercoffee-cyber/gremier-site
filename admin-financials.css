@@ -32,3 +32,8 @@
 #tab-reports button:focus-visible,#tab-reports select:focus-visible{outline:2px solid #34755a;outline-offset:3px}
 @media(max-width:1100px){#tab-reports .fin-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){#tab-reports .fin-grid{grid-template-columns:1fr;gap:14px}#tab-reports .fin-metric,#tab-reports .fin-panel{padding:16px}#tab-reports .fin-metrics{gap:8px}#tab-reports .fin-toolbar label{flex:1;min-width:130px}#tab-reports .fin-row{font-size:.78rem}#tab-reports .fin-table{min-width:510px}}
+
+#statsYearOverview {margin:0 0 24px;}
+#statsYearOverview .fin-year-metrics {grid-template-columns:repeat(2,minmax(0,1fr));margin:18px 0 0;}
+#statsYearOverview .fin-metric {min-width:0;}
+@media(max-width:420px){#statsYearOverview .fin-metric strong {font-size:24px;}}

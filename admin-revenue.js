@@ -86,7 +86,14 @@
   return {stores,rest,online,other:rest-online};
  }
  const needsReview=row=>Boolean(row.parts?.unclassified||row.estimated||/review/i.test(row.basis||'')&&!/^Reviewed/.test(row.basis));
- const api={splitOrder,online,receipts,income,channels,normalize,ref,needsReview};
+ function reconcile(report,snapshotIncome){
+  const sum=rows=>rows.reduce((n,r)=>n+r.amount_minor,0);
+  const imported=sum(report.rows.filter(r=>r.imported));
+  const newReceipts=sum(report.rows.filter(r=>!r.imported&&!r.key.startsWith('order-purpose:')));
+  const unreceipted=sum(report.rows.filter(r=>r.key.startsWith('order-purpose:')));
+  return {snapshot:snapshotIncome,importAdjustments:imported-snapshotIncome,newReceipts,unreceipted,total:report.total_minor};
+ }
+ const api={reconcile,splitOrder,online,receipts,income,channels,normalize,ref,needsReview};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
  if(!root.document)return;root.GremierRevenue=api;
  const get=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -95,6 +102,7 @@
  const labels={coffee_bar:'Events',coffee:'Personal orders',stores:'Store sales',other:'Other',unclassified:'Needs review'};
  const client=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB;
  let loaded=null,serial=0,reviewMode='pending';
+ api.annualReport=year=>loaded?income(loaded,year+'-01-01',[year+'-12-31',date(new Date())].sort()[0],date):null;
  const totalsHtml=totals=>['stores','coffee','coffee_bar',...['other','unclassified'].filter(k=>totals[k])].map(k=>`<div class="fin-row"><span>${labels[k]}</span><strong>${money(totals[k])}</strong></div>`).join('');
  api.dashboardOnline=(orders,r,purposes=[],storeValue=null)=>{
   const host=get('dashOnlineRevenue');if(!host)return;
@@ -132,8 +140,8 @@
  async function load(){setup();const seq=++serial;get('revenueStatus').textContent='Loading revenue…';try{
   const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number'],['revenue_classification_overrides','source_key,category']];
   const results=await Promise.all([...tables.map(([t,c])=>pages(t,c)),pages('store_deliveries','id,delivery_date').catch(()=>null)]);if(seq!==serial)return;
-  loaded=Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides','deliveries'].map((k,i)=>[k,results[i]]));render();
- }catch(e){if(seq!==serial)return;get('revenueStatus').textContent=e.message;get('revenueResults').innerHTML='';}}
+  loaded=Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides','deliveries'].map((k,i)=>[k,results[i]]));render();root.dispatchEvent(new Event('gremier-revenue-ready'));
+ }catch(e){if(seq!==serial)return;get('revenueStatus').textContent=e.message;get('revenueResults').innerHTML='';loaded=null;root.dispatchEvent(new Event('gremier-revenue-ready'));}}
  function render(){
   const r=scope(),combined=income(loaded,r.from,r.to,date),channel=channels(combined),rows=receipts(loaded).filter(x=>x.date>=r.from&&x.date<=r.to);
   const orders=loaded.orders.filter(o=>eligible(o)&&date(o.created_at)>=r.from&&date(o.created_at)<=r.to).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));

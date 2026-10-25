@@ -149,3 +149,16 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 
 .bb-intro-copy .cbp-hero-title { font-size:clamp(32px,4vw,44px); margin:0 0 10px; text-align:center; }
 #coffeebarsPage .bb-intro-copy .cbp-hero-sub { max-width:600px; margin:0 auto; color:#62615d; font-size:14px; line-height:1.65; text-align:center; }
+
+/* Balanced, centered questions and controls at every screen size. */
+.planner .pl-q h2,.planner .bb-tray-title,.planner .bb-build-title,.planner .bb-q-hint,.planner .bb-take-home>h3,.planner .bb-take-home>p {text-align:center;}
+.planner .bb-guest-start {justify-content:center;flex-direction:column;gap:12px;}
+.planner .bb-guest-start h2 {flex:0 0 auto;width:100%;}
+.planner .pl-guests,.planner .pl-chips {justify-content:center;}
+.planner .pl-guests {flex-wrap:wrap;}
+.planner .pl-guests input,.planner .pd-l-step b,.planner .bb-jug-step b {text-align:center;}
+.planner .bb-jugs,.planner .bb-milk-options {max-width:460px;margin-inline:auto;}
+.planner .pl-q>.bb-jug {max-width:460px;margin-inline:auto;}
+.planner .bb-q-note {display:block;margin-top:4px;}
+.planner .bb-booking {justify-content:center;text-align:center;}
+.planner .bb-q-hint {display:block;}
