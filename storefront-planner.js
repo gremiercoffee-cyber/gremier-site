@@ -245,15 +245,30 @@
   };
 
   const chips = (key, options, current = state[key]) => `<div class="pl-chips" data-key="${key}">${options.map(([v, label]) => `<button type="button" data-v="${esc(v)}" class="${String(current) === String(v) ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+  let classicSwap = null;
+  function coffeeOptions(plan) {
+    const addons=addonsOf(plan.product);
+    return FLAVOURS.map(([key,re,en,hb])=>({key,label:T(en,hb),addon:addons.find(a=>(a.per_jug||a.group)&&re.test(a.name))})).filter(x=>x.addon);
+  }
+  function swapClassic(key,mode) {
+    const plan=suggestion();
+    if(!plan||!coffeeOptions(plan).some(x=>x.key===key))return;
+    if(mode==='restore'&&(plan.mix[key]||0)>0)state.mix[key]--;
+    if(mode==='upgrade'&&plan.classic>0)state.mix[key]=(state.mix[key]||0)+1;
+    classicSwap=null;
+  }
   function coffeeHtml(plan) {
     if (!plan) return '';
-    const p = plan.product, addons = addonsOf(p);
-    const priceOf = (re) => Number(addons.find((a) => (a.per_jug || a.group) && re.test(a.name))?.price) || 0;
-    const row = (label, n, k, re) => `<div class="bb-jug">
-        <span class="bb-jug-name">${label}${k ? ` <small>+₪${priceOf(re)} ${T('per jug', "לג'ריקן")}</small>` : ` <small>${T('included', 'כלול')}</small>`}</span>
-        ${k ? `<span class="bb-jug-step"><button type="button" data-jug="${k}" data-d="-1" ${n ? '' : 'disabled'} aria-label="${T('Fewer', 'פחות')}">−</button><b>${n}</b><button type="button" data-jug="${k}" data-d="1" ${plan.classic ? '' : 'disabled'} aria-label="${T('More', 'עוד')}">+</button></span>` : `<span class="bb-jug-step"><b>${n}</b></span>`}
-      </div>`;
-    return `<div class="bb-jugs">${row(T('Classic', 'קלאסיק'), plan.classic, '', null)}${FLAVOURS.map(([k, re, en, hb]) => row(T(en, hb), plan.mix[k] || 0, k, re)).join('')}</div>`;
+    const options=coffeeOptions(plan);
+    const row=(label,n,key,price)=>{
+      const classic=key==='classic';
+      const canAdd=classic?plan.classic<plan.jugs:plan.classic>0;
+      const canRemove=n>0&&(!classic||options.length>0);
+      return `<div class="bb-jug"><span class="bb-jug-name">${label} <small>${classic?T('included','כלול'):`+₪${price} ${T('per jug',"לג'ריקן")}`}</small></span><span class="bb-jug-step"><button type="button" data-jug="${key}" data-d="-1" ${canRemove?'':'disabled'} aria-label="${T('Fewer '+label,'פחות '+label)}">−</button><b>${n}</b><button type="button" data-jug="${key}" data-d="1" ${canAdd?'':'disabled'} aria-label="${T('More '+label,'עוד '+label)}">+</button></span></div>`;
+    };
+    const choices=classicSwap?options.filter(x=>classicSwap==='upgrade'||(plan.mix[x.key]||0)>0):[];
+    const picker=choices.length?`<div class="bb-classic-picker" role="group" aria-label="${T('Swap coffee','החלפת קפה')}"><button type="button" class="bb-swap-close" data-close-swap aria-label="${T('Close coffee choices','סגירת אפשרויות הקפה')}">×</button>${choices.map(x=>`<button type="button" data-classic-swap="${x.key}" data-swap-mode="${classicSwap}">${classicSwap==='restore'?`${x.label} → ${T('Classic','קלאסיק')}`:`${T('Classic','קלאסיק')} → ${x.label} <small>+₪${Number(x.addon.price)||0}</small>`}</button>`).join('')}</div>`:'';
+    return `<div class="bb-jugs">${row(T('Classic','קלאסיק'),plan.classic,'classic',0)}${picker}${options.map(x=>row(x.label,plan.mix[x.key]||0,x.key,Number(x.addon.price)||0)).join('')}</div>`;
   }
   function barChoice() {
     const pick = (full, p, title, sub) => `<button type="button" class="bb-bar ${state.full === full ? 'on' : ''}" data-full="${full}">
@@ -303,8 +318,20 @@
   document.addEventListener('click', (e) => {
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
+    const swap=e.target.closest('[data-classic-swap]');
+    if(swap){swapClassic(swap.dataset.classicSwap,swap.dataset.swapMode);render();return;}
+    if(e.target.closest('[data-close-swap]')){classicSwap=null;render();return;}
     const jug = e.target.closest('[data-jug]');
-    if (jug) { const k = jug.dataset.jug; state.mix[k] = Math.max(0, (state.mix[k] || 0) + Number(jug.dataset.d)); render(); return; }
+    if(jug){
+      const k=jug.dataset.jug,d=Number(jug.dataset.d);classicSwap=null;
+      if(k==='classic'){
+        const plan=suggestion(),mode=d>0?'restore':'upgrade';
+        const choices=coffeeOptions(plan).filter(x=>mode==='upgrade'||(plan.mix[x.key]||0)>0);
+        if(choices.length===1)swapClassic(choices[0].key,mode);else if(choices.length)classicSwap=mode;
+      }else state.mix[k]=Math.max(0,(state.mix[k]||0)+d);
+      render();return;
+    }
+    classicSwap=null;
     const bar = e.target.closest('.bb-bar');
     if (bar) { state.full = bar.dataset.full === 'true'; render(); return; }
     const b = e.target.closest('.pl-chips button');
