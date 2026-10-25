@@ -121,9 +121,13 @@
     const r=item.region;
     const label=item.kind==='coffee'&&item.variant!=='classic'
       ? `<span class="bs-coffee-label bs-label-${item.variant}"><small>${item.variant==='house'?'MEDIUM ROAST':item.variant==='colomb'?'LIGHT ROAST':'CAFFEINE FREE'}</small><b>${item.variant==='house'?'House Blend':item.variant==='colomb'?'Colombia':'Decaf'}</b></span>` : '';
-    const milkNames={oat:T('Oat','שיבולת שועל'),almond:T('Almond','שקדים'),soy:T('Soy','סויה'),parve:T('Parve','פרווה')};
-    const parve=item.kind==='milk'&&item.variant!=='dairy'?`<span class="bs-parve-label">${esc(milkNames[item.variant]||item.variant)}</span>`:'';
-    return `<div class="bs-art" style="width:${r.w}px;height:${352-r.y}px;transform:scale(${item.sx},${item.sy})"><div class="bs-window" style="width:${r.w}px;height:${397-r.y}px"><img class="bs-master" src="${MASTER}" alt="" style="left:${-r.x}px;top:${-r.y}px" draggable="false">${item.kind==='disp'?'<img class="bs-emblem" src="/bar/studio/brand-mark.svg?v=1" alt="">':''}${label}${parve}</div></div>`;
+    const milkFrames={oat:{x:260,y:40,w:324,h:805},almond:{x:732,y:37,w:320,h:809},soy:{x:1197,y:38,w:322,h:808}};
+    const frame=item.kind==='milk'?milkFrames[item.variant]:null;
+    if(frame){
+      const x=r.w/frame.w,y=(352-r.y)/frame.h;
+      return `<div class="bs-art" style="width:${r.w}px;height:${352-r.y}px;transform:scale(${item.sx},${item.sy})"><div class="bs-window" style="width:${r.w}px;height:${352-r.y}px"><img class="bs-milk-sheet" src="/bar/studio/milk-cartons-v1.png" alt="" draggable="false" style="width:${1781*x}px;height:${883*y}px;left:${-frame.x*x}px;top:${-frame.y*y}px"></div></div>`;
+    }
+    return `<div class="bs-art" style="width:${r.w}px;height:${352-r.y}px;transform:scale(${item.sx},${item.sy})"><div class="bs-window" style="width:${r.w}px;height:${397-r.y}px"><img class="bs-master" src="${MASTER}" alt="" style="left:${-r.x}px;top:${-r.y}px" draggable="false">${item.kind==='disp'?'<img class="bs-emblem" src="/bar/studio/brand-mark.svg?v=1" alt="">':''}${label}</div></div>`;
   }
   function sceneHtml(plan) {
     const list=tiles(plan);
