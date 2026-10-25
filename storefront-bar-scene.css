@@ -92,7 +92,9 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 
 
 /* Start with the live default bar, then answer one question per card. */
-#coffeebarsPage .cbp-hero.bb-intro { display:block; max-width:800px; margin:0 auto; padding:22px 20px 18px; text-align:start; }
+#coffeebarsPage { background:#f5f6f7; }
+#coffeebarsPage .cbp-hero.bb-intro { display:none; }
+#coffeebarsPage #planner:not(.bb-mini) { padding-top:24px; }
 .bb-intro-copy h1 { font:700 clamp(28px,4vw,36px)/1.15 'Playfair Display',serif; letter-spacing:-.025em; margin:0 0 7px; color:#1a1a1a; }
 .bb-intro-copy p { color:#62615d; font-size:14px; line-height:1.5; margin:0; }
 .planner .bb-qs { background:none; border:0; border-radius:0; padding:0; box-shadow:none; display:grid; gap:16px; }
@@ -102,8 +104,8 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 .planner .bb-tray { max-width:760px; margin:0 auto; }
 .bb-thumb-picture { width:100%; }
 @media(min-width:761px){
- .planner:not(.bb-mini) .bb-grid { max-width:1120px; }
- .planner .bb-qs { max-width:min(760px,calc(100vw - clamp(240px,27vw,350px) - 76px)); margin-inline-start:0; margin-inline-end:auto; }
+ .planner:not(.bb-mini) .bb-grid { max-width:760px; }
+ .planner .bb-qs { max-width:760px; margin-inline:auto; }
  .planner .bb-tray { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(185px,1fr); gap:8px 22px; padding:16px; }
  .planner .bb-tray-title { grid-column:1/-1; margin-bottom:0; }
  .planner .bb-tray>.bs { grid-column:1; grid-row:2; }
@@ -118,4 +120,21 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
  .planner .pl-q, .planner .pl-q:first-child { padding:16px; }
  .planner .pl-q h2 { font-size:16px; }
  .planner .bb-tray>.bb-sum { margin-top:10px; padding-top:10px; }
+}
+
+/* A single centered column, starting with a slim guest-count card. */
+.planner:not(.bb-mini) .bb-grid { max-width:760px; }
+.planner .bb-guest-start { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 20px; padding:14px 20px; }
+.planner .bb-guest-start h2 { margin:0; font-size:16px; flex:1 1 210px; }
+.planner .bb-guest-start .pl-guests { flex:0 1 auto; }
+.planner .bb-build-title { margin:0; padding:10px 0 0; font:700 clamp(24px,3vw,30px)/1.25 'Playfair Display',serif; color:#1a1a1a; text-align:center; }
+.planner .bb-take-home { max-width:760px; margin:20px auto 0; }
+@media(min-width:761px) and (max-width:1399px){
+ .bb-mini.planner, body:not(.has-tab-bar) .bb-mini.planner { width:240px; right:12px; }
+ body.rtl .bb-mini.planner { right:auto; left:12px; }
+}
+@media(max-width:760px){
+ .planner .bb-guest-start { padding:14px 16px; }
+ .planner .bb-guest-start h2 { flex-basis:100%; }
+ .planner .bb-build-title { text-align:start; padding-inline:4px; }
 }

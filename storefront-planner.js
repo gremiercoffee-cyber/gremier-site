@@ -318,7 +318,7 @@
   }
   function renderHero(plan){
     const hero=document.querySelector('#coffeebarsPage .cbp-hero');if(!hero)return;
-    const content=`<div class="bb-intro-copy"><h1>${T('Build your coffee bar','בנו את בר הקפה שלכם')}</h1><p>${T('Start with your guests. Make the rest yours.','מתחילים באורחים. את השאר בוחרים לפי הטעם שלכם.')}</p></div>`;
+    const content='';
     if(hero.dataset.builderIntro!==content){hero.innerHTML=content;hero.dataset.builderIntro=content;}
     hero.classList.add('bb-intro');
   }
@@ -332,6 +332,8 @@
     box.innerHTML = `
       ${window.CoffeeBarOffers?.builderBanner()||''}
       <div class="bb-grid">
+          <div class="pl-q bb-guest-start"><h2>${T('How many guests are you expecting?', 'כמה אורחים צפויים להגיע?')}</h2>
+            <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
         <aside class="bb-tray">
           <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}</div>
           ${plan ? sceneHtml(plan) : ''}
@@ -342,13 +344,12 @@
             <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
           </div>` : ''}
         </aside>
+        <h1 class="bb-build-title">${T('Now let’s build your coffee bar','עכשיו בואו נבנה את בר הקפה שלכם')}</h1>
         <div class="bb-qs">
-          <div class="pl-q"><h2>${T('How many guests?', 'כמה אורחים יהיו?')}</h2>
-            <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
-          <div class="pl-q"><h2>${T('Which coffee?', 'איזה קפה תרצו?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${coffeeHtml(plan)}</div>
-          <div class="pl-q"><h2>${T('Which milk?', 'איזה חלב תרצו?')}</h2>${milkHtml(plan)}</div>
-          <div class="pl-q"><h2>${T('How many serving stations?', 'כמה עמדות הגשה?')}</h2>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
-          <div class="pl-q"><h2>${T('Any extra syrups?','להוסיף עוד סירופים?')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></h2>${syrupHtml(plan)}</div>
+          <div class="pl-q"><h2>${T('Which coffee would you like?', 'איזה קפה תרצו לבחור?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${coffeeHtml(plan)}</div>
+          <div class="pl-q"><h2>${T('Which milk would you like?', 'איזה חלב תרצו לבחור?')}</h2>${milkHtml(plan)}</div>
+          <div class="pl-q"><h2>${T('How many serving stations would you like?', 'כמה עמדות הגשה תרצו?')}</h2>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
+          <div class="pl-q"><h2>${T('Would you like any extra syrups?','האם תרצו להוסיף עוד סירופים?')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></h2>${syrupHtml(plan)}</div>
         </div>
       </div>
       ${takeHomeHtml()}`;
