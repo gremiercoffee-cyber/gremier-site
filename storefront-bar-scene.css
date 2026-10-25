@@ -79,3 +79,13 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 
 /* Variant names and colours are printed into photographed carton artwork. */
 .planner .bs-milk-sheet { position:absolute; display:block; max-width:none; user-select:none; -webkit-user-drag:none; }
+
+.serving-pack-offer {margin:16px 0;padding:18px;border:1px solid #e0ddd5;border-radius:18px;background:#fff;box-shadow:0 5px 18px #2822180b;color:#24241e;}
+.serving-pack-offer h3 {font-size:18px;margin:0 0 12px;}
+.serving-pack-row {display:flex;align-items:center;gap:12px;padding:12px 0;}
+.serving-pack-row+ .serving-pack-row {border-top:1px solid #eeece6;}
+.serving-pack-row img {width:84px;height:84px;object-fit:contain;border-radius:12px;flex-shrink:0;}
+.serving-pack-row>div {min-width:0;}
+.serving-pack-row strong {font-size:14px;}
+.serving-pack-row p {font-size:12px;line-height:1.5;color:#68645d;margin:5px 0 8px;}
+.serving-pack-row button {background:#1c1c19;color:white;padding:9px 15px;border:0;border-radius:9px;font:inherit;font-size:13px;cursor:pointer;}

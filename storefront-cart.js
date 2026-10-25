@@ -38,6 +38,8 @@
   function suggestionsHtml() {
     const inCart = new Set(cart.map(baseId));
     const items = cart.map(productOf).filter(Boolean);
+    if(items.some(p=>p.is_coffee_bar||(p.variations||[]).some(v=>v.type==='serving_pack'))||window.CoffeeBarOffers?.accessoryOffers(cart,all()).length)return '';
+
     const hasCoffee = items.some(isCoffee), hasSyrup = items.some(isSyrup);
     let picks = [], title = '';
     if (hasCoffee && !hasSyrup) {

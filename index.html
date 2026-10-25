@@ -753,7 +753,7 @@
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-7"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-8"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -1388,6 +1388,12 @@ function clearCartFromStorage() {
   try { localStorage.removeItem(CART_STORAGE_KEY); } catch(_) {}
 }
 let cart = loadCartFromStorage();let products = [];
+const discontinuedBasicBar='c211cedd-ef93-4dba-9a6e-b2edb1add6e0';
+if(cart.some(i=>String(i.base_product_id||i.product_id||i.id).split('_')[0]===discontinuedBasicBar)){
+  cart=cart.filter(i=>String(i.base_product_id||i.product_id||i.id).split('_')[0]!==discontinuedBasicBar);
+  saveCartToStorage();
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>showToast(lang==='he'?'בר הקפה הבסיסי אינו זמין יותר. אפשר לבנות בר פרימיום.':'The basic coffee bar is no longer available. You can build a premium bar instead.'),1500));
+}
 let activeCategory = 'all';
 let currentUser = null;
 let isAdmin = false;
@@ -1718,7 +1724,7 @@ function isCoffeeBarProduct(p) {
 function getCoffeeBarProducts() {
   // Premium package first, the Dispenser (add-on) last.
   const rank = p => /premium/i.test(p.name_en || "") ? 0 : /dispenser/i.test(p.name_en || "") ? 2 : 1;
-  return products.filter(isCoffeeBarProduct).sort((a, b) => rank(a) - rank(b));
+  return products.filter(p=>isCoffeeBarProduct(p)||p.category==='coffeebars').sort((a, b) => rank(a) - rank(b));
 }
 function coffeeBarEmptyHTML() {
   return `<p style="color:var(--text2);text-align:center;width:100%;grid-column:1/-1;padding:28px 16px;font-size:.9rem;line-height:1.6">${tr('cb-empty')}</p>`;
@@ -1777,7 +1783,7 @@ function cloudinaryOptimize(url, width) {
   return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_' + w + '/');
 }
 async function loadProducts() {
-  const CACHE_KEY = 'gremier_products_v1';
+  const CACHE_KEY = 'gremier_products_v2';
   const CACHE_TTL = 5 * 60 * 1000;
   function mapProduct(p) {
     const dv = (p.variations || []).find(v => v.type === 'delivery_price');
@@ -2425,7 +2431,7 @@ function getProductDescription(p, langOverride) {
     ? (p.description_en || '').trim()
     : (p.description_he || '').trim();
   const raw = adminDesc || fallbackAdmin;
-  if (raw) return sanitizeProductDesc(raw);
+  if (raw) return (p.variations||[]).some(v=>v.type==='serving_pack') ? raw : sanitizeProductDesc(raw);
   if (isCoffeeBarProduct(p)) {
     const fb = CARD_DESC_FALLBACK.coffeebars;
     return L === 'he' ? fb.he : fb.en;
@@ -4365,25 +4371,6 @@ async function sendChatMessageText(text) {
     return r;
   };
 
-  // P5. Suggest a syrup when the cart has coffee but no syrup.
-  const _renderCart = window.renderCartDrawer;
-  window.renderCartDrawer = function () {
-    const r = _renderCart.apply(this, arguments);
-    const body = document.getElementById('cartBody');
-    if (!body || typeof cart === 'undefined' || !Array.isArray(cart) || !cart.length || cart.some(i=>i.is_subscription)) return r;
-    const inCart = new Set(cart.map(i => String(i.base_product_id || String(i.id).split('_')[0])));
-    const hasSyrup = cart.some(i => /syrup|סירופ/i.test((i.name_en || '') + (i.name_he || '')));
-    const syrups = ((typeof products!=='undefined'?products:[]) || []).filter(p => typeof isSyrupProduct === 'function' && isSyrupProduct(p) && !inCart.has(String(p.id)));
-    if (hasSyrup || !syrups.length) return r;
-    const rows = syrups.slice(0, 2).map(p => `<div class="pv-suggest-row">
-        ${p.images && p.images[0] ? `<img src="${escAttr(p.images[0])}" alt="">` : ''}
-        <span class="n">${escHtml(he() ? (p.name_he || p.name_en) : p.name_en)} · ₪${p.price}</span>
-        <button type="button" onclick="closeCart();openProductDrawer('${escAttr(p.id)}')">${he() ? '+ הוספה' : '+ Add'}</button>
-      </div>`).join('');
-    body.insertAdjacentHTML('beforeend', `<div class="pv-suggest"><div class="pv-suggest-title">${he() ? 'מתאים לקפה שלכם' : 'Goes great with your coffee'}</div>${rows}</div>`);
-    return r;
-  };
-
   // P6. Remember returning customers' details (this device only) and prefill from Google sign-in.
   const CK = 'gremier_checkout_details_v1';
   const _submit = window.submitOrder;
@@ -5253,13 +5240,13 @@ async function sendChatMessageText(text) {
 })();
 </script>
 <script src="/storefront-checkout.js?v=20261023-2"></script>
-<script src="/storefront-coffee-bar-offers.js?v=20261025-1"></script>
+<script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
-<script src="/storefront-cart.js?v=20261024-4"></script>
+<script src="/storefront-cart.js?v=20261025-5"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
 <script src="/storefront-bar-layout.js?v=20261025-6"></script>
-<script src="/storefront-planner.js?v=20261025-23"></script>
+<script src="/storefront-planner.js?v=20261025-24"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

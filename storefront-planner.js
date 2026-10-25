@@ -14,18 +14,17 @@
     const v = (p.variations || []).find((x) => x.type === 'choice' && /guest/i.test(x.name || '')) || (p.variations || []).find((x) => x.type === 'guest_count');
     return (v?.options || []).map((o) => ({ guests: parseInt(o.label, 10), price: Number(o.price) })).filter((t) => t.guests > 0).sort((a, b) => a.guests - b.guests);
   };
-  // "Everything included" = the bar with a coffee choice / parve milk; "just the coffee" = the other one.
+  // One premium package, with optional upgrades priced from the live catalogue.
   const premium = () => all().find((p) => addonsOf(p).some((a) => a.per_liter || a.group)) || all().find((p) => /premium/i.test(p.name_en || ''));
-  const basic = () => all().find((p) => typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p) && p !== premium() && tiersOf(p).length);
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, full: true, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, dispenser: false, syrups: { caramel: false, vanilla: false } };
+  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, syrups: { caramel: 0, vanilla: 0, sugar: 0 } };
   const FLAVOURS = [['house', /house/i, 'House Blend', 'האוס בלנד'], ['colomb', /colomb/i, 'Colombian', 'קולומביה'], ['decaf', /decaf/i, 'Decaf', 'נטול קפאין']];
   const name = (a) => (he() && a.name_he ? a.name_he : a.name);
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
 
   function suggestion() {
-    const p = state.full ? premium() : basic();
+    const p = premium();
     if (!p) return null;
     const tiers = tiersOf(p);
     const tier = tiers.find((t) => t.guests >= state.guests) || tiers[tiers.length - 1];
@@ -34,8 +33,8 @@
     const lines = [];
     let total = tier.price;
     const jugs = jugsFor(tier.guests);
-    const plan = { product: p, tier, jugs, mix: {}, classic: jugs, liters: 0, milk: [], milkLiters: Math.floor(tier.guests / 10), qty: [], checks: [], dispensers: state.full ? 1 : 0, syrups: 0, syrupFlavours: [] };
-    if (state.full) {
+    const plan = { product: p, tier, jugs, mix: {}, classic: jugs, liters: 0, milk: [], milkLiters: Math.floor(tier.guests / 10), qty: [], checks: [], dispensers: 1, syrupCounts: {caramel:1,vanilla:1,sugar:1} };
+    {
       // Coffee: some jugs upgraded (₪ per 5L jug), the rest Classic. Each coffee gets its own dispenser.
       let left = jugs;
       for (const [k, re] of FLAVOURS) {
@@ -65,19 +64,12 @@
       const disp = addons.findIndex((a) => /dispenser/i.test(a.name) && Number(a.max) > 1);
       const extra = Math.min(Math.max(0, plan.stations - 1), disp >= 0 ? Number(addons[disp].max) : 0);
       if (disp >= 0 && extra) { plan.qty.push([disp, extra]); plan.dispensers += extra; total += extra * (Number(addons[disp].price) || 0); lines.push(T(`${extra} extra dispenser${extra > 1 ? 's' : ''}`, `${extra} מתקנים נוספים`)); }
-    } else {
-      const disp = addons.findIndex((a) => /dispenser/i.test(a.name));
-      if (disp >= 0 && state.dispenser) {
-        if (Number(addons[disp].max) > 1) plan.qty.push([disp, 1]); else plan.checks.push(disp);
-        plan.dispensers = 1;
-        total += Number(addons[disp].price) || 0; lines.push(name(addons[disp]));
-      }
-      for(const option of syrupOptions(p)){
-        if(!state.syrups[option.key])continue;
-        plan.checks.push(option.index);plan.syrupFlavours.push(option.key);
-        total+=Number(option.addon.price)||0;lines.push(name(option.addon));
-      }
-      plan.syrups=plan.syrupFlavours.length;
+    }
+    for(const option of syrupOptions(p)){
+      const n=Math.max(0,Math.min(Number(option.addon.max)||6,Math.floor(Number(state.syrups[option.key])||0)));
+      state.syrups[option.key]=n;
+      plan.syrupCounts[option.key]+=n;
+      if(n){plan.qty.push([option.index,n]);total+=n*Number(option.addon.price);lines.push(`${n}× ${name(option.addon)}`);}
     }
     plan.lines = lines; plan.total = total;
     plan.tooBig = state.guests > tier.guests;
@@ -96,15 +88,9 @@
     if (plan.mix.colomb) jugTile('colomb', plan.mix.colomb, 'Colombian', 'קולומביה', 'colomb', '');
     if (plan.mix.decaf) jugTile('decaf', plan.mix.decaf, 'Decaf', 'נטול קפאין', 'classic', T('Decaf', 'נטול'));
     if (plan.dispensers) t.push({ key: 'disp', pic: 'disp', n: plan.dispensers, title: T('Dispenser', 'מתקן') });
-    if (state.full) {
-      t.push({ key: 'caramel', pic: 'caramel', title: T('Caramel syrup', 'סירופ קרמל') });
-      t.push({ key: 'vanilla', pic: 'vanilla', title: T('Vanilla syrup', 'סירופ וניל') });
-    }
-    t.push({ key: 'sugar', pic: 'sugar', title: T('Sugar syrup', 'סירופ סוכר') });
-    if(!state.full)for(const key of plan.syrupFlavours||[]){
-      t.push({key,pic:key,title:key==='caramel'?T('Caramel syrup','סירופ קרמל'):T('Vanilla syrup','סירופ וניל')});
-    }
-    if (state.full) {
+    for(const [key,en,hb] of [['caramel','Caramel syrup','סירופ קרמל'],['vanilla','Vanilla syrup','סירופ וניל'],['sugar','Sugar syrup','סירופ סוכר']])
+      t.push({key,pic:key,n:plan.syrupCounts[key],title:T(en,hb)});
+    {
       // One 1-liter carton per 10 guests.
       const parve = plan.liters, dairy = Math.max(0, plan.milkLiters - parve);
       if (dairy) t.push({ key: 'milk', pic: 'milk', n: dairy, title: T('Milk', 'חלב'), sub: T('1L cartons', 'קרטונים של ליטר') });
@@ -132,7 +118,7 @@
   function sceneHtml(plan) {
     const list=tiles(plan);
     const layout=window.CoffeeBarScene.layout({classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
-      milkLiters:state.full?plan.milkLiters:0,parveLiters:plan.liters,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),syrupFlavours:state.full?['caramel','vanilla']:plan.syrupFlavours,guests:plan.tier.guests});
+      milkLiters:plan.milkLiters,parveLiters:plan.liters,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),syrupCounts:plan.syrupCounts,guests:plan.tier.guests});
     const ratio=layout.width/(352+layout.width*.135+32);
     const items=layout.items.map((item,index)=>`<div class="bs-object drop" data-instance="${item.id}" data-kind="${item.kind}" data-variant="${item.variant}" data-units="${item.units}" style="left:${item.x}px;bottom:${item.bottom}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};--d:${Math.min(300,index*22)}ms">${itemArt(item)}</div>`).join('');
     const legend=list.map(x=>`<span>${x.n>1?`<b>${x.n}×</b> `:''}${esc(x.title)}</span>`).join('');
@@ -251,9 +237,9 @@
     }, 700);
   };
   window.openCoffeeBarBuilder = function(options={}) {
-    state.guests=options.guests||25;state.full=options.full!==false;
-    state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.dispenser=false;state.milk='dairy';state.milkMix=null;
-    state.syrups={caramel:!!options.caramel,vanilla:!!options.vanilla};
+    state.guests=options.guests||25;
+    state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.milk='dairy';state.milkMix=null;
+    state.syrups={caramel:0,vanilla:0,sugar:0};
     if(typeof showPage==='function')showPage('coffeebars');
     render();$('planner')?.scrollIntoView({behavior:'smooth',block:'start'});
   };
@@ -262,8 +248,8 @@
     const coffee = plan ? [plan.classic ? `${plan.classic}× Classic` : '', ...FLAVOURS.filter(([k]) => plan.mix[k]).map(([k, , en]) => `${plan.mix[k]}× ${en}`)].filter(Boolean).join(' + ') + ' (5L)' : 'Classic';
     const milk = plan ? `${plan.milkLiters-plan.liters}L ${T('dairy','חלב רגיל')}${plan.milk.map(m=>` + ${m.liters}L ${m.label}`).join('')}` : '';
     const text = he()
-      ? `היי! אני מתכנן/ת אירוע ל-${state.guests} אורחים. ${state.full ? `בר מלא, חלב ${milk}, קפה ${coffee}, ${state.points} עמדות הגשה.` : 'רק הקפה.'}${plan ? ` מה שבניתי באתר: ${plan.product.name_he || plan.product.name_en} ל-${plan.tier.guests} אורחים, ₪${plan.total}.` : ''} יש לי כמה שאלות:`
-      : `Hi! I'm planning an event for ${state.guests} guests. ${state.full ? `Full bar, ${milk} milk, ${coffee} coffee, ${state.points} serving point${state.points > 1 ? 's' : ''}.` : 'Just the coffee.'}${plan ? ` What I built on the site: ${plan.product.name_en} for ${plan.tier.guests} guests, ₪${plan.total}.` : ''} I have a few questions:`;
+      ? `היי! אני מתכנן/ת אירוע ל-${state.guests} אורחים. בר פרימיום, חלב ${milk}, קפה ${coffee}, ${state.points} עמדות הגשה.${plan ? ` מה שבניתי באתר: ${plan.product.name_he || plan.product.name_en} ל-${plan.tier.guests} אורחים, ₪${plan.total}. ${plan.lines.join(', ')}.` : ''} יש לי כמה שאלות:`
+      : `Hi! I'm planning an event for ${state.guests} guests. Premium bar, ${milk} milk, ${coffee} coffee, ${state.points} serving point${state.points > 1 ? 's' : ''}.${plan ? ` What I built on the site: ${plan.product.name_en} for ${plan.tier.guests} guests, ₪${plan.total}. ${plan.lines.join(', ')}.` : ''} I have a few questions:`;
     window.open(`https://wa.me/${WA}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
 
@@ -320,23 +306,14 @@
     return `<section class="bb-take-home"><h3>${T('Coffee for home, too?','קפה גם לבית?')}</h3><p>${T('Add a mini four-pack or a litre bottle for later.','הוסיפו מארז רביעיית מיני או בקבוק ליטר לאחר כך.')}</p><div class="bb-home-products">${picks.map(p=>`<button type="button" data-take-home="${esc(p.id)}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span><b>+</b></button>`).join('')}</div></section>`;
   }
   function syrupOptions(p) {
-    return addonsOf(p).map((addon,index)=>({addon,index,key:addon.bar_syrup||(/^Caramel syrup$/i.test(addon.name)?'caramel':/^Vanilla syrup$/i.test(addon.name)?'vanilla':null)})).filter(x=>x.key==='caramel'||x.key==='vanilla');
+    return addonsOf(p).map((addon,index)=>({addon,index,key:addon.bar_syrup})).filter(x=>['caramel','vanilla','sugar'].includes(x.key)&&Number(x.addon.max)>1);
   }
   function syrupHtml(plan) {
     if(!plan)return '';
-    const options=syrupOptions(plan.product);
-    if(!options.length)return `<small role="status">${T('Loading syrup choices…','טוען אפשרויות סירופ…')}</small>`;
-    return `<div class="bb-syrup-choices">${options.map(x=>`<label><input type="checkbox" data-syrup="${x.key}" ${state.syrups[x.key]?'checked':''}><span>${esc(name(x.addon))}</span><small>+₪${Number(x.addon.price)||0}</small></label>`).join('')}</div>`;
-  }
-  function basicDispenserLabel(plan) {
-    const addon=plan&&addonsOf(plan.product).find(a=>/dispenser/i.test(a.name));
-    return T('Add one','להוסיף')+(addon?' · ₪'+(Number(addon.price)||0):'');
-  }
-  function barChoice() {
-    const pick = (full, p, title, sub) => `<button type="button" class="bb-bar ${state.full === full ? 'on' : ''}" data-full="${full}">
-        ${p && p.images && p.images[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(p.images[0], 200) : p.images[0])}" alt="">` : ''}
-        <span><b>${title}</b><small>${sub}</small></span></button>`;
-    return `<div class="bb-bars">${pick(true, premium(), T('Full bar', 'בר מלא'), T('Dispenser, milk, 3 syrups, cups', 'מתקן, חלב, 3 סירופים, כוסות'))}${pick(false, basic(), T('Just the coffee', 'רק הקפה'), T('Coffee, cups, straws & sugar syrup', 'קפה, כוסות, קשיות וסירופ סוכר'))}</div>`;
+    return syrupOptions(plan.product).map(x=>{
+      const n=Number(state.syrups[x.key])||0;
+      return `<div class="bb-jug"><span class="bb-jug-name">${esc(name(x.addon))} <small>+₪${Number(x.addon.price)}</small></span><span class="bb-jug-step"><button type="button" data-syrup="${x.key}" data-syrup-step="-1" aria-label="${esc(T('Less '+name(x.addon),'פחות '+name(x.addon)))}" ${n?'':'disabled'}>−</button><b>${n}</b><button type="button" data-syrup="${x.key}" data-syrup-step="1" aria-label="${esc(T('More '+name(x.addon),'עוד '+name(x.addon)))}" ${n>=Number(x.addon.max)?'disabled':''}>+</button></span></div>`;
+    }).join('');
   }
   function render() {
     const box = $('planner');
@@ -351,14 +328,10 @@
         <div class="bb-qs">
           <div class="pl-q"><label>${T('Guests', 'אורחים')}</label>
             <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
-          <div class="pl-q"><label>${T('Bar', 'בר')}</label>${barChoice()}</div>
-          ${state.full ? `
           <div class="pl-q"><label>${T('Coffee', 'קפה')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></label>${coffeeHtml(plan)}</div>
           <div class="pl-q"><label>${T('Milk', 'חלב')}</label>${milkHtml(plan)}</div>
-          <div class="pl-q"><label>${T('Serving stations', 'עמדות הגשה')}</label>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>`
-          : `
-          <div class="pl-q"><label>${T('Dispenser', 'מתקן')}</label>${chips('dispenser', [['false', T('No', 'לא')], ['true', basicDispenserLabel(plan)]])}</div>
-          <div class="pl-q"><label>${T('Extra syrups', 'סירופים נוספים')}</label>${syrupHtml(plan)}</div>`}
+          <div class="pl-q"><label>${T('Serving stations', 'עמדות הגשה')}</label>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
+          <div class="pl-q"><label>${T('Extra syrups','סירופים נוספים')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></label>${syrupHtml(plan)}</div>
         </div>
         <aside class="bb-tray">
           <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}</div>
@@ -386,8 +359,8 @@
     if(milkStep){adjustMilk(milkStep.dataset.milkKind,Number(milkStep.dataset.milkStep));render();return;}
     const take=e.target.closest('[data-take-home]');
     if(take){openProductDrawer(take.dataset.takeHome);return;}
-    const syrup=e.target.closest('input[data-syrup]');
-    if(syrup){state.syrups[syrup.dataset.syrup]=syrup.checked;render();return;}
+    const syrup=e.target.closest('[data-syrup-step]');
+    if(syrup){state.syrups[syrup.dataset.syrup]=Math.max(0,(Number(state.syrups[syrup.dataset.syrup])||0)+Number(syrup.dataset.syrupStep));render();return;}
     const swap=e.target.closest('[data-classic-swap]');
     if(swap){swapClassic(swap.dataset.classicSwap,swap.dataset.swapMode);render();return;}
     if(e.target.closest('[data-close-swap]')){classicSwap=null;render();return;}
@@ -402,8 +375,6 @@
       render();return;
     }
     classicSwap=null;
-    const bar = e.target.closest('.bb-bar');
-    if (bar) { state.full = bar.dataset.full === 'true'; render(); return; }
     const b = e.target.closest('.pl-chips button');
     if (!b) return;
     const key = b.parentElement.dataset.key, v = b.dataset.v;

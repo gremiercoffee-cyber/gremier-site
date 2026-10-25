@@ -9,7 +9,10 @@ function fixture() {
     { name: 'Colombian', per_jug: true, price: 49 },
     { name: 'Decaf', per_jug: true, price: 49 },
     { name: 'Parve milk', per_liter: true, price: 7 },
-    { name: 'Extra dispenser', max: 3, price: 49 }
+    { name: 'Extra dispenser', max: 3, price: 49 },
+    {name:'Caramel syrup',bar_syrup:'caramel',price:59,max:6},
+    {name:'Vanilla syrup',bar_syrup:'vanilla',price:59,max:6},
+    {name:'Sugar syrup',bar_syrup:'sugar',price:59,max:6}
   ] };
   const basic = { name_en: 'Basic Coffee Bar', category: 'coffeebars', variations: [{ type: 'choice', name: 'Guests', options: [{ label: '50', price: 449 }] }], addons: [
     { name: 'Extra dispenser', price: 49 },
@@ -65,33 +68,13 @@ test('restoring an empty or unavailable flavour changes nothing', () => {
   assert.equal(suggestion().total, 599);
 });
 
-test('Basic vanilla-only selection charges and hands off the named vanilla add-on', () => {
-  const { state, suggestion } = fixture();
-  state.full = false;
-  state.syrups.vanilla = true;
-  const plan = suggestion();
-  assert.equal(plan.total, 508);
-  assert.equal(plan.syrups, 1);
-  assert.equal(plan.syrupFlavours.join(','), 'vanilla');
-  assert.equal(plan.checks.join(','), '3');
-  assert.equal(plan.qty.length, 0);
-  assert.equal(plan.dispensers, 0);
-  assert.equal(plan.tier.guests, 50);
+test('premium extras preserve included syrup, quantities and catalogue pricing',()=>{
+  const {state,suggestion}=fixture();state.syrups.vanilla=2;state.syrups.sugar=1;
+  const plan=suggestion();assert.equal(plan.total,776);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.syrupCounts)),{caramel:1,vanilla:3,sugar:2});
+  assert.deepEqual(Array.from(plan.qty,q=>Array.from(q)),[[6,2],[7,1]]);
 });
-
-test('Basic named syrups and optional dispenser retain their individual prices', () => {
-  const { state, suggestion } = fixture();
-  state.full = false;
-  state.syrups.vanilla = true;
-  state.syrups.caramel = true;
-  state.dispenser = true;
-  const plan = suggestion();
-  assert.equal(plan.total, 616);
-  assert.equal(plan.syrupFlavours.join(','), 'caramel,vanilla');
-  assert.equal(plan.checks.join(','), '0,2,3');
-  assert.equal(plan.dispensers, 1);
-  state.syrups.vanilla = false;
-  state.syrups.caramel = false;
-  state.dispenser = false;
-  assert.equal(suggestion().total, 449);
+test('syrup counts clamp to the limit and switching guest size retains extras',()=>{
+  const {state,suggestion}=fixture();state.syrups.sugar=100;state.syrups.caramel=-1;
+  const plan=suggestion();assert.equal(plan.syrupCounts.sugar,7);assert.equal(plan.syrupCounts.caramel,1);assert.equal(plan.total,953);
 });

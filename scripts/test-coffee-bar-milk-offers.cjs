@@ -58,9 +58,9 @@ test('each milk step respects the shared allowance and never makes counts negati
  assert.equal(allSoy.items.filter(m=>m.kind==='milk'&&m.variant==='soy').length,5);
 });
 test('checkout offers use real catalogue prices and selected syrup',()=>{
- const result=offers.offers(basket(),catalog);assert.equal(result.length,2);
+ const result=offers.offers(basket(),catalog);assert.equal(result.length,1);
  assert.equal(result[0].price,349);assert.equal(result[0].difference,41);
- assert.equal(result[1].price,308);assert.equal(result[1].difference,0);assert.equal(result[1].vanilla,true);
+ assert.equal(result[0].vanilla,true);
  assert.equal(result[0].guests,25);
  assert.deepEqual(offers.offers(basket().filter(x=>x.id!=='syrup'),catalog),[]);
  assert.deepEqual(offers.offers(basket().map(x=>({...x,is_subscription:true})),catalog),[]);
@@ -89,4 +89,21 @@ test('three-jug bundles retain their actual guest capacity in an upgrade',()=>{
  const rows=[{id:'bundle',qty:1,price:489},{id:'syrup',qty:1,price:59}];
  const result=offers.offers(rows,[...catalog.filter(x=>x.id!==FULL),p,bundle]);
  assert.equal(result[0].guests,75);assert.equal(result[0].price,799);assert.equal(result[0].difference,251);
+});
+
+const packs=[{id:'46dc3b6a-37a5-4c49-a12d-566a43fd4c39',name_en:'Sugar syrup + 25 cups & 25 straws',category:'coffeebars',price:59},{id:'9e1abc84-b3b8-40e0-a23c-3bfbeb8602f4',name_en:'25 cups & 25 straws',category:'coffeebars',price:19.99}];
+test('serving packs are offered for a single bottle or jug at actual catalogue prices',()=>{
+  const bottle={id:'bottle',category:'bottles',name_en:'Classic',price:49};
+  for(const id of ['bottle','jug','mini']) assert.deepEqual(offers.accessoryOffers([{id,qty:1}],[...catalog,bottle,...packs]).map(p=>p.price),[59,19.99]);
+});
+test('serving suggestions exclude subscriptions, complete bars, existing packs and syrup alone',()=>{
+  for(const rows of [[{id:'jug',is_subscription:true}],[{id:FULL},{id:'jug'}],[{id:packs[0].id},{id:'jug'}],[{id:packs[1].id},{id:'jug'}],[{id:'syrup'}],[]])assert.deepEqual(offers.accessoryOffers(rows,[...catalog,...packs]),[]);
+  assert.equal(offers.accessoryOffers([{id:'jug'}],[...catalog,...packs.map(p=>({...p,is_active:false}))]).length,0);
+});
+test('premium extras produce separate physical bottles and exact saved syrup totals',()=>{
+ const p=JSON.parse(JSON.stringify(full));p.variations[1].items.push(...['caramel','vanilla','sugar'].map(key=>({name:key[0].toUpperCase()+key.slice(1)+' syrup',bar_syrup:key,price:59,max:6})));
+ const config=model.buildCoffeeBarConfiguration(p,{selected_variations:{Guests:{label:'50'}},selected_addons:[{name:'Caramel syrup',qty:2},{name:'Sugar syrup',qty:1}]});
+ assert.deepEqual(config.syrups.map(s=>[s.key,s.bottles]),[['caramel',3],['vanilla',1],['sugar',2]]);
+ const scene=layout({classic:2,milkLiters:5,guests:50,syrupCounts:Object.fromEntries(config.syrups.map(s=>[s.key,s.bottles]))});
+ for(const syrup of config.syrups)assert.equal(scene.items.filter(i=>i.kind===syrup.key).length,syrup.bottles);
 });

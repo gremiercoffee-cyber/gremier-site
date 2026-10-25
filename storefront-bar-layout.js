@@ -43,6 +43,7 @@
     group('coffee', coffees, 96);
     group('disp', Array.from({ length: count(plan.dispensers) }, () => ({})), 98);
     for (const kind of ['caramel', 'vanilla', 'sugar']) {
+      if(plan.syrupCounts){group(kind,Array.from({length:count(plan.syrupCounts[kind])},()=>({})),55);continue;}
       if (kind === 'sugar' || (Array.isArray(plan.syrupFlavours) ? plan.syrupFlavours.includes(kind) : count(plan.syrups) >= (kind === 'caramel' ? 1 : 2))) group(kind, [{}], 0);
     }
     const milkCount = count(plan.milkLiters), parve = Math.min(milkCount, count(plan.parveLiters));
