@@ -147,5 +147,5 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 .planner .bb-booking>small { flex-basis:100%; color:#6b7178; }
 @media(max-width:520px){ .planner .bb-booking .pl-order { width:100%; min-width:0; } }
 
-.bb-intro-copy .cbp-hero-title { font-size:clamp(32px,4vw,44px); margin:0 0 10px; }
-#coffeebarsPage .bb-intro-copy .cbp-hero-sub { max-width:600px; margin:0 auto; color:#62615d; font-size:14px; line-height:1.65; }
+.bb-intro-copy .cbp-hero-title { font-size:clamp(32px,4vw,44px); margin:0 0 10px; text-align:center; }
+#coffeebarsPage .bb-intro-copy .cbp-hero-sub { max-width:600px; margin:0 auto; color:#62615d; font-size:14px; line-height:1.65; text-align:center; }
