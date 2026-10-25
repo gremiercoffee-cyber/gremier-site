@@ -166,7 +166,9 @@ function computeUnitPrice(product: Record<string, unknown>, item: Record<string,
       return sum + (Number(match.price) || 0) * liters;
     }
     if (match.per_jug) {
-      const jugs = Math.max(0, Math.min(jugsLeft, Math.round(Number(selected?.qty) || 0)));
+      // A cart saved before jugs existed (no qty) was one flat upgrade: count it as one jug.
+      const asked = selected?.qty == null ? 1 : Math.round(Number(selected.qty) || 0);
+      const jugs = Math.max(0, Math.min(jugsLeft, asked));
       jugsLeft -= jugs;
       return sum + (Number(match.price) || 0) * jugs;
     }
