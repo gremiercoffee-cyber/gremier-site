@@ -151,6 +151,9 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   };
 
   const inConversation = messages.length > 0 || sending;
+  // Group drafts show in a chat only if this chat made one (not every pending draft in every chat).
+  const groupDraftSince = messages.some((m) => m.meta && (safeParse(m.meta) as ActionNote[]).some?.((a) => a.tool === "draft_group_message"))
+    ? messages[0]?.created_at ?? null : null;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -168,7 +171,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
             {sending && <Thinking />}
           </div>
         )}
-        {inConversation&&<GroupDraftApprovals refreshKey={refreshKey} onChanged={onDataChanged}/>}
+        {inConversation&&groupDraftSince&&<GroupDraftApprovals refreshKey={refreshKey} onChanged={onDataChanged} since={groupDraftSince}/>}
         <MeetingPrepConfirmations refreshKey={refreshKey} onChanged={onDataChanged}/>
         {error && <p className="text-danger text-sm mt-2">{error}</p>}
         {actionMessage && <p role="status" className="text-accent text-sm mt-2">{actionMessage}</p>}

@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {api,type BroadcastRow,type GroupRow} from '../api';
 import {Button,timeAgo} from './ui';
+import {useOpenSet} from '../remember';
 const field='w-full rounded-xl border border-line bg-bg p-3 text-sm';
 const phone=(value:string)=>{const d=value.replace(/\D/g,'');return d.startsWith('0')?`972${d.slice(1)}`:d;};
 const personal=(text:string,name:string)=>text.replace(/\{name\}/gi,name).replace(/\{first_name\}/gi,/^(rabbi|rav|dr|reb)\.?\s/i.test(name)?name:name.split(/\s+/)[0]);
@@ -29,10 +30,20 @@ export function GroupMessage({b,g,onChanged}:{b:BroadcastRow;g:GroupRow;onChange
   {error&&<p role="alert" className="text-sm text-danger">{error}</p>}{info&&<p role="status" className="text-sm">{info}</p>}
  </section>;
 }
-export default function GroupDraftApprovals({refreshKey,onChanged}:{refreshKey:number;onChanged:()=>void}){
+/**
+ * Group drafts the assistant made in THIS conversation (created since `since`), folded to one line each:
+ * tap to review, edit and send. Older drafts live on the Groups page, not in every chat.
+ */
+export default function GroupDraftApprovals({refreshKey,onChanged,since}:{refreshKey:number;onChanged:()=>void;since:string}){
  const [drafts,setDrafts]=useState<BroadcastRow[]>([]),[groups,setGroups]=useState<GroupRow[]>([]),[error,setError]=useState('');
+ const [opened,setOpened]=useOpenSet('cos.groupDraftsOpen');
  const load=async()=>{try{const [d,g]=await Promise.all([api.groupDrafts(),api.groups()]);setDrafts(d);setGroups(g);setError('');}catch(e){setError((e as Error).message);}};
  useEffect(()=>{void load();},[refreshKey]);
- if(!drafts.length&&!error)return null;
- return <div className="space-y-3 mt-4"><p className="text-xs text-muted">Group drafts — edit below, then Send to the named group.</p>{drafts.map(b=>{const g=groups.find(g=>g.id===b.group_id);return g?<GroupMessage key={b.id} b={b} g={g} onChanged={()=>{void load();onChanged();}}/>:null;})}{error&&<p role="alert" className="text-danger text-sm">{error}</p>}</div>;
+ const mine=drafts.filter(b=>b.created_at>=since);
+ if(!mine.length&&!error)return null;
+ return <div className="space-y-2 mt-4">{mine.map(b=>{const g=groups.find(g=>g.id===b.group_id);return g?
+  <details key={b.id} open={opened.has(b.id)} onToggle={e=>setOpened(b.id,e.currentTarget.open)} className="rounded-2xl bg-sunken px-4 py-3">
+   <summary className="cursor-pointer text-sm font-medium">✉️ Draft to {g.name}<span className="text-muted font-normal"> · {b.subject||'no subject'} · tap to review</span></summary>
+   <div className="mt-3"><GroupMessage b={b} g={g} onChanged={()=>{void load();onChanged();}}/></div>
+  </details>:null;})}{error&&<p role="alert" className="text-danger text-sm">{error}</p>}</div>;
 }
