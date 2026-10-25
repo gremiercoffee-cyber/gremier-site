@@ -2,6 +2,9 @@ import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { applyZoom, getZoom } from "./zoom";
+
+applyZoom(getZoom()); // the page zoom chosen on this device
 
 try {
   const theme = localStorage.getItem("cos.theme");

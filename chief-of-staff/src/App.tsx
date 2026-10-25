@@ -17,6 +17,7 @@ import Replies from "./pages/Replies";
 import Schedule from "./pages/Schedule";
 import Groups from "./pages/Groups";
 import NotifBanner from "./components/NotifBanner";
+import ZoomControl from "./components/ZoomControl";
 import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
@@ -229,7 +230,7 @@ export default function App() {
         <button onClick={goHome} className="flex-1 min-w-0 text-center font-medium truncate">
           {view === "home" ? current?.title || "Chief of Staff" : VIEW_TITLES[view]}
         </button>
-        <span className="w-11" />
+        <ZoomControl />
         <button onClick={() => openConversation(null)} aria-label="New conversation" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z" /></svg>
         </button>
