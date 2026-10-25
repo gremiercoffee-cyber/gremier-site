@@ -99,58 +99,62 @@
       if (dairy) t.push({ key: 'milk', pic: 'milk', n: dairy, title: T('Milk', 'חלב'), sub: T('1L cartons', 'קרטונים של ליטר') });
       if (parve) t.push({ key: 'parve', pic: 'milk', n: parve, tag: T('Parve', 'פרווה'), title: T('Parve milk', 'חלב פרווה'), sub: T('1L cartons', 'קרטונים של ליטר') });
     }
-    t.push({ key: 'cups', pic: 'cups', title: T('Cups', 'כוסות') });
-    t.push({ key: 'straws', pic: 'straws', title: T('Straws', 'קשיות') });
+    t.push({ key: 'cups', pic: 'cups', n: plan.tier.guests, title: T('Cups', 'כוסות') });
+    t.push({ key: 'straws', pic: 'straws', n: plan.tier.guests, title: T('Straws', 'קשיות') });
     return t;
   }
 
-  // What was on the counter last time: new things drop in, everything else slides to its new place.
-  let shown = new Map();
   let lastTotal = null;
-  // Every visual comes from one photograph: same camera, lighting and ground plane.
-  // These non-overlapping windows reveal products without reassembling their perspective.
   const MASTER = '/bar/studio/bar-master-v3.webp?v=1';
-  const WINDOWS = {coffee:[0,21.65],disp:[21.65,41.5],caramel:[41.5,50.95],vanilla:[50.95,60.38],sugar:[60.38,69.7],milk:[69.7,79.95],cups:[79.95,88.65],straws:[88.65,100]};
+  function itemArt(item) {
+    const r=item.region;
+    const label=item.kind==='coffee'&&item.variant!=='classic'
+      ? `<span class="bs-coffee-label bs-label-${item.variant}"><small>${item.variant==='house'?'MEDIUM ROAST':item.variant==='colomb'?'LIGHT ROAST':'CAFFEINE FREE'}</small><b>${item.variant==='house'?'House Blend':item.variant==='colomb'?'Colombia':'Decaf'}</b></span>` : '';
+    const parve=item.kind==='milk'&&item.variant==='parve'?'<span class="bs-parve-label">Parve</span>':'';
+    return `<div class="bs-art" style="width:${r.w}px;height:${352-r.y}px;transform:scale(${item.sx},${item.sy})"><div class="bs-window" style="width:${r.w}px;height:${397-r.y}px"><img class="bs-master" src="${MASTER}" alt="" style="left:${-r.x}px;top:${-r.y}px" draggable="false">${item.kind==='disp'?'<img class="bs-emblem" src="/bar/studio/brand-mark.svg?v=1" alt="">':''}${label}${parve}</div></div>`;
+  }
   function sceneHtml(plan) {
     const list=tiles(plan);
-    const visual=[{key:'coffee',n:plan.jugs,title:T('Cold brew','קולד ברו')}];
-    for(const key of ['disp','caramel','vanilla','sugar']){
-      const item=list.find(x=>x.key===key);if(item)visual.push(item);
-    }
-    const milk=list.filter(x=>x.key==='milk'||x.key==='parve');
-    if(milk.length)visual.push({key:'milk',n:milk.reduce((sum,x)=>sum+(x.n||1),0),title:T('Milk','חלב')});
-    visual.push(...list.filter(x=>x.key==='cups'||x.key==='straws'));
-    const groups=visual.map((x,index)=>{
-      const [left,right]=WINDOWS[x.key];
-      return `<div class="bs-piece${shown.has(x.key)?'':' drop'}" data-g="${x.key}" style="--cut-left:${left}%;--cut-right:${100-right}%;--d:${index*35}ms" title="${esc(x.title)}"><img class="bs-master" src="${MASTER}" alt="" draggable="false">${x.key==='disp'?'<img class="bs-emblem" src="/bar/studio/brand-mark.svg?v=1" alt="">':''}</div>`;
-    }).join('');
-    const markers=visual.filter(x=>(x.n||1)>1).map(x=>{
-      const [left,right]=WINDOWS[x.key];
-      return `<span class="bs-quantity" style="left:${(left+right)/2}%">×${x.n}</span>`;
-    }).join('');
-    shown=new Map(visual.map(x=>[x.key,String(x.n||1)]));
+    const layout=window.CoffeeBarScene.layout({classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
+      milkLiters:state.full?plan.milkLiters:0,parveLiters:plan.liters,syrups:state.full?2:plan.syrups,guests:plan.tier.guests});
+    const ratio=layout.width/(352+layout.width*.135+32);
+    const items=layout.items.map((item,index)=>`<div class="bs-object drop" data-instance="${item.id}" data-kind="${item.kind}" data-variant="${item.variant}" data-units="${item.units}" style="left:${item.x}px;bottom:${item.bottom}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};--d:${Math.min(300,index*22)}ms">${itemArt(item)}</div>`).join('');
     const legend=list.map(x=>`<span>${x.n>1?`<b>${x.n}×</b> `:''}${esc(x.title)}</span>`).join('');
-    return `<div class="bs bs-live" id="bbScene" role="img" aria-label="${esc(T('Your selected coffee bar','בר הקפה שבחרתם'))}"><div class="bs-wall"></div><div class="bs-stage" id="bbStage">${groups}<div class="bs-quantities">${markers}</div></div><div class="bs-counter"><img class="bs-logo" src="/bar/studio/brand-mark.svg?v=1" alt="Gremier Coffee Co."></div></div><div class="bs-legend">${legend}</div>`;
+    return `<div class="bs bs-live" id="bbScene" style="--scene-ratio:${ratio}" role="img" aria-label="${esc(T('Your selected coffee bar','בר הקפה שבחרתם'))}"><div class="bs-wall"></div><div class="bs-stage" id="bbStage" data-width="${layout.width}" style="width:${layout.width}px">${items}</div><div class="bs-counter"><img class="bs-logo" src="/bar/studio/brand-mark.svg?v=1" alt="Gremier Coffee Co."></div></div><div class="bs-legend">${legend}</div>`;
   }
+  // Retain each physical item, slide it into place, and animate only additions/swaps.
   function reconcileScene(previous,next){
     if(!previous||!next)return;
     const oldStage=previous.querySelector('.bs-stage'),newStage=next.querySelector('.bs-stage');
-    const pieces=new Map([...oldStage.querySelectorAll('.bs-piece:not(.leaving)')].map(el=>[el.dataset.g,el]));
-    newStage.querySelectorAll('.bs-piece').forEach(el=>{
-      const old=pieces.get(el.dataset.g);if(!old)return;
-      old.classList.remove('drop');old.style.cssText=el.style.cssText;el.replaceWith(old);pieces.delete(el.dataset.g);
+    const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const pieces=new Map([...oldStage.querySelectorAll('.bs-object:not(.leaving)')].map(el=>[el.dataset.instance,el]));
+    newStage.querySelectorAll('.bs-object').forEach(el=>{
+      const old=pieces.get(el.dataset.instance);if(!old||old.dataset.variant!==el.dataset.variant)return;
+      const before={x:parseFloat(old.style.left),bottom:parseFloat(old.style.bottom),w:parseFloat(old.style.width),h:parseFloat(old.style.height)};
+      old.classList.remove('drop');old.style.cssText=el.style.cssText;old.dataset.units=el.dataset.units;
+      old.querySelector('.bs-art').style.cssText=el.querySelector('.bs-art').style.cssText;
+      const dx=before.x-parseFloat(el.style.left),dy=parseFloat(el.style.bottom)-before.bottom;
+      const sx=before.w/parseFloat(el.style.width),sy=before.h/parseFloat(el.style.height);
+      if(!reduce&&(Math.abs(dx)>.5||Math.abs(dy)>.5||Math.abs(sx-1)>.01||Math.abs(sy-1)>.01)){
+        old.getAnimations().forEach(animation=>animation.cancel());
+        old.animate([{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`},{transform:'none'}],{duration:500,easing:'cubic-bezier(.22,1,.36,1)'});
+      }
+      el.replaceWith(old);pieces.delete(el.dataset.instance);
     });
+    previous.style.setProperty('--scene-ratio',next.style.getPropertyValue('--scene-ratio'));
+    oldStage.style.width=newStage.style.width;oldStage.dataset.width=newStage.dataset.width;
+    if(newStage.style.getPropertyValue('--z'))oldStage.style.setProperty('--z',newStage.style.getPropertyValue('--z'));
     oldStage.replaceChildren(...newStage.childNodes);
-    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)pieces.forEach(el=>{
+    if(!reduce)pieces.forEach(el=>{
       el.classList.remove('drop');el.classList.add('leaving');oldStage.append(el);
-      const fade=el.animate([{opacity:1},{opacity:0}],{duration:220,fill:'forwards'});fade.onfinish=()=>el.remove();
+      const fade=el.animate([{opacity:1,transform:'none'},{opacity:0,transform:'translateY(22px) scale(.96)'}],{duration:220,fill:'forwards'});fade.onfinish=()=>el.remove();
     });
     next.replaceWith(previous);
   }
   function layoutScene(){
     const scene=$('bbScene'),stage=$('bbStage');if(!scene||!stage)return;
     const room=scene.clientHeight-parseFloat(getComputedStyle(stage).bottom)-12;
-    stage.style.setProperty('--z',Math.max(.1,Math.min(1.4,(scene.clientWidth-20)/800,room/352)).toFixed(3));
+    stage.style.setProperty('--z',Math.max(.1,Math.min(1.4,(scene.clientWidth-20)/Number(stage.dataset.width),room/352)).toFixed(3));
   }
   addEventListener('resize', () => requestAnimationFrame(layoutScene));
 
@@ -179,10 +183,15 @@
     if(!el){el=document.createElement('button');el.type='button';el.id='bbMini';el.className='bb-mini planner';el.onclick=()=>document.querySelector('#planner .bb-tray')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});document.body.appendChild(el);}
     if(!plan){el.classList.remove('on');return;}
     el.setAttribute('aria-label',T('View your coffee bar','צפו בבר הקפה שלכם'));
+    const previous=el.querySelector('.bs');
     const scene=$('bbScene')?.cloneNode(true);if(!scene)return;
+    scene.querySelectorAll('.leaving').forEach(node=>node.remove());
+    const thumbStage=scene.querySelector('.bs-stage');
+    const thumbHeight=700/Number(scene.style.getPropertyValue('--scene-ratio'));
+    thumbStage.style.setProperty('--z',Math.min(680/Number(thumbStage.dataset.width),(thumbHeight-97)/352).toFixed(3));
     scene.removeAttribute('id');scene.removeAttribute('role');scene.removeAttribute('aria-label');scene.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
-    el.replaceChildren();const picture=document.createElement('span');picture.className='bb-thumb-picture';const world=document.createElement('span');world.className='bb-thumb-world';world.append(scene);picture.append(world);el.append(picture);
-    const label=document.createElement('span');label.className='bb-thumb-label';label.textContent=T('Your bar ↗','הבר שלכם ↗');el.append(label);
+    const picture=document.createElement('span');picture.className='bb-thumb-picture';const world=document.createElement('span');world.className='bb-thumb-world';world.style.height=thumbHeight+'px';world.style.top=Math.max(0,(85-thumbHeight*.203)/2)+'px';world.append(scene);reconcileScene(previous,scene);picture.append(world);
+    const label=document.createElement('span');label.className='bb-thumb-label';label.textContent=T('Your bar ↗','הבר שלכם ↗');el.replaceChildren(picture,label);
   }
   function syncMini(){
     const el=$('bbMini'),box=$('planner');if(!el)return;
@@ -274,7 +283,7 @@
           <div class="pl-q"><label>${T('Extra syrups', 'סירופים נוספים')}</label>${chips('syrups', [[0, '0'], [1, '1'], [2, '2']])}</div>`}
         </div>
         <aside class="bb-tray">
-          <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}${plan ? `<span>${tiles(plan).reduce((n, x) => n + (x.n || 1), 0)} ${T('items', 'פריטים')}</span>` : ''}</div>
+          <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}</div>
           ${plan ? sceneHtml(plan) : ''}
           ${plan ? `<div class="bb-sum">
             <div class="bb-sum-name">${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</div>
