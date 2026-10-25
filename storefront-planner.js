@@ -318,7 +318,9 @@
   }
   function renderHero(plan){
     const hero=document.querySelector('#coffeebarsPage .cbp-hero');if(!hero)return;
-    const content=`<div class="bb-intro-copy"><h1>${T('Build your coffee bar','בנו את בר הקפה שלכם')}</h1><p>${T('Start with your guests. Make the rest yours.','מתחילים באורחים. את השאר בוחרים לפי הטעם שלכם.')}</p></div>`;
+    const subKey=he()?'cb_hero_sub_he':'cb_hero_sub';
+    const intro=(typeof siteSettings!=='undefined'&&siteSettings[subKey])||T("Premium cold brew for your birthday, corporate event, or any occasion — we'll help you choose the right amount for your guest count.",'קולד ברו פרימיום ליום הולדת, אירוע עסקי או כל אירוע — נעזור לכם לבחור את הכמות הנכונה למספר האורחים.');
+    const content=`<div class="bb-intro-copy"><h1 class="cbp-hero-title">${T('Gremier <em>Coffee Bars</em>','גרמייר <em>ברי קפה</em>')}</h1><p class="cbp-hero-sub" id="t-cbp-hero-sub">${esc(intro)}</p></div>`;
     if(hero.dataset.builderIntro!==content){hero.innerHTML=content;hero.dataset.builderIntro=content;}
     hero.classList.add('bb-intro');
   }
