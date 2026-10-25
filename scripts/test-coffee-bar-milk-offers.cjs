@@ -11,19 +11,19 @@ const catalog=[full,basic,jug,syrup,{id:'mini',category:'minis',name_en:'Mini 4 
 const basket=()=>[{id:'jug',base_product_id:'jug',qty:1,price:249},{id:'syrup',base_product_id:'syrup',qty:1,price:59},{id:'mini',qty:1,price:59}];
 function planner(){
  const context={window:{},document:{readyState:'loading',addEventListener(){}},addEventListener(){},products:catalog,getProductAddons:p=>p.variations?.find(v=>v.type==='addons')?.items||[],isCoffeeBarProduct:p=>p.is_coffee_bar,lang:'en'};
- const source=fs.readFileSync('storefront-planner.js','utf8').replace("  if (document.readyState === 'loading')","  window.testApi={state,suggestion,tiles,milkHtml,takeHomeHtml};\n  if (document.readyState === 'loading')");
+ const source=fs.readFileSync('storefront-planner.js','utf8').replace("  if (document.readyState === 'loading')","  window.testApi={state,suggestion,tiles,milkHtml,takeHomeHtml,adjustMilk};\n  if (document.readyState === 'loading')");
  vm.runInNewContext(source,context);return context.window.testApi;
 }
 test('50 guests defaults to 3L named parve + 2L dairy, charged at nine per litre',()=>{
  const {state,suggestion,milkHtml}=planner();state.milk='parve';
- const plan=suggestion();assert.equal(plan.liters,3);assert.equal(plan.total,626);assert.equal(plan.milkType,'oat');
+ const plan=suggestion();assert.equal(plan.liters,3);assert.equal(plan.total,626);assert.equal(plan.milk[0].key,'oat');
  assert.match(milkHtml(plan),/2L dairy \+ 3L Oat milk/);assert.doesNotMatch(milkHtml(plan),/Old milk/);
 });
 test('one-litre swap and each named milk survive planner, order model and scene',()=>{
  for(const type of ['oat','almond','soy']){
-  const {state,suggestion,tiles}=planner();state.milk='parve';state.milkType=type;state.parveLiters=1;
-  const plan=suggestion();assert.equal(plan.total,608);assert.equal(plan.liters,1);assert.equal(plan.milkType,type);
-  const selected=full.variations[1].items[plan.litersIdx];
+  const {state,suggestion,tiles}=planner();state.milk='parve';state.milkMix={[type]:1};
+  const plan=suggestion();assert.equal(plan.total,608);assert.equal(plan.liters,1);assert.equal(plan.milk[0].key,type);
+  const selected=full.variations[1].items[plan.milk[0].index];
   const config=model.buildCoffeeBarConfiguration(full,{selected_variations:{Guests:{label:'50'}},selected_addons:[{name:selected.name,liters:plan.liters}]});
   assert.deepEqual(config.milk.map(x=>[x.key,x.liters]),[['dairy',4],[type,1]]);
   const scene=layout({classic:2,milkLiters:5,parveLiters:1,milkType:type,guests:50});
@@ -32,9 +32,30 @@ test('one-litre swap and each named milk survive planner, order model and scene'
  }
 });
 test('milk limits clamp to the selected guest tier and dairy costs no swap fee',()=>{
- const {state,suggestion}=planner();state.milk='parve';state.parveLiters=99;
+ const {state,suggestion}=planner();state.milk='parve';state.milkMix={oat:99};
  assert.equal(suggestion().liters,5);state.guests=25;assert.equal(suggestion().liters,2);
  state.milk='dairy';assert.equal(suggestion().liters,0);assert.equal(suggestion().total,349);
+});
+test('one litre of each milk survives controls, pricing, preview and order snapshot',()=>{
+ const {state,suggestion,adjustMilk,milkHtml}=planner();state.milk='parve';
+ suggestion();adjustMilk('oat',-1);adjustMilk('oat',-1);adjustMilk('almond',1);adjustMilk('soy',1);
+ const plan=suggestion();assert.equal(plan.total,626);assert.equal(plan.liters,3);
+ assert.deepEqual(Array.from(plan.milk,m=>[m.key,m.liters]),[['oat',1],['almond',1],['soy',1]]);
+ const selected=Array.from(plan.milk,m=>({name:m.addon.name,liters:m.liters}));
+ const config=model.buildCoffeeBarConfiguration(full,{selected_variations:{Guests:{label:'50'}},selected_addons:selected});
+ assert.deepEqual(config.milk.map(m=>[m.key,m.liters]),[['dairy',2],['oat',1],['almond',1],['soy',1]]);
+ const scene=layout({milkLiters:5,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),guests:50});
+ assert.deepEqual(scene.items.filter(m=>m.kind==='milk').map(m=>m.variant),['dairy','dairy','oat','almond','soy']);
+ assert.match(milkHtml(plan),/2L dairy \+ 1L Oat milk \+ 1L Almond milk \+ 1L Soy milk/);
+});
+test('each milk step respects the shared allowance and never makes counts negative',()=>{
+ const {state,suggestion,adjustMilk}=planner();state.milk='parve';state.milkMix={oat:2,almond:2,soy:1};
+ adjustMilk('soy',1);assert.equal(suggestion().liters,5);assert.equal(suggestion().milk.find(m=>m.key==='soy').liters,1);
+ adjustMilk('oat',-1);adjustMilk('soy',1);assert.equal(suggestion().milk.find(m=>m.key==='soy').liters,2);
+ for(let i=0;i<9;i++)adjustMilk('oat',-1);
+ assert.equal(state.milkMix.oat,0);assert.equal(suggestion().liters,4);
+ const allSoy=layout({milkLiters:5,milkMix:{soy:5},guests:50});
+ assert.equal(allSoy.items.filter(m=>m.kind==='milk'&&m.variant==='soy').length,5);
 });
 test('checkout offers use real catalogue prices and selected syrup',()=>{
  const result=offers.offers(basket(),catalog);assert.equal(result.length,2);

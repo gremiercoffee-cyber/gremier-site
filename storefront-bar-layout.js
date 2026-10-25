@@ -46,7 +46,12 @@
       if (kind === 'sugar' || (Array.isArray(plan.syrupFlavours) ? plan.syrupFlavours.includes(kind) : count(plan.syrups) >= (kind === 'caramel' ? 1 : 2))) group(kind, [{}], 0);
     }
     const milkCount = count(plan.milkLiters), parve = Math.min(milkCount, count(plan.parveLiters));
-    group('milk', Array.from({ length: milkCount }, (_, i) => ({ variant: i < milkCount - parve ? 'dairy' : (plan.milkType || 'parve') })), 48, milkCount > 6 ? Math.ceil(milkCount / 2) : milkCount);
+    let milkSpecs=[];
+    if(plan.milkMix && typeof plan.milkMix==='object'){
+      for(const [variant,n] of Object.entries(plan.milkMix)){const take=Math.min(count(n),milkCount-milkSpecs.length);for(let i=0;i<take;i++)milkSpecs.push({variant});}
+      milkSpecs=[...Array.from({length:milkCount-milkSpecs.length},()=>({variant:'dairy'})),...milkSpecs];
+    }else milkSpecs=Array.from({length:milkCount},(_,i)=>({variant:i<milkCount-parve?'dairy':(plan.milkType||'parve')}));
+    group('milk', milkSpecs, 48, milkCount > 6 ? Math.ceil(milkCount / 2) : milkCount);
     const guests = Math.max(1, count(plan.guests));
     const bundles = Array.from({ length: Math.ceil(guests / 50) }, (_, i) => Math.min(50, guests - i * 50));
     group('cups', bundles.map(units => ({ units, sx: .95 + units / 50 * .1, sy: .55 + units / 50 * .9 })), 48);
