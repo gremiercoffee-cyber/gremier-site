@@ -12,12 +12,16 @@ async function snapshot(env:Env){
  return {timezone:(await getSettings(env)).timezone,items,projects:projects.map(p=>({...p,samples:members.filter(i=>i.project_id===p.id).slice(0,5).map(i=>i.title)}))};
 }
 const fingerprint=async(data:unknown)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(data))))).map(b=>b.toString(16).padStart(2,'0')).join('');
+/** What the grouping depends on, and nothing else: timestamps, reminder counters and due dates change all day without changing the answer. */
+const stateHash=(data:Awaited<ReturnType<typeof snapshot>>)=>fingerprint({policy:PROJECT_POLICY,timezone:data.timezone,
+ items:data.items.map(i=>({id:i.id,kind:i.kind,title:i.title,notes:i.notes,person:i.person,category:i.category,source:i.source,block:i.block_name,context:i.filing_context})),
+ projects:data.projects.map(p=>({id:p.id,name:p.name,description:p.description,area:p.area,samples:p.samples}))});
 export async function organizeProjects(env:Env,options:{force?:boolean;provider?:ModelProvider}={}){
  const stamp=now(),token=new Date(Date.now()+240000).toISOString();
  const claim=await first(env,"INSERT INTO settings(key,value) VALUES ('project_organizer_lease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<? RETURNING key",token,stamp);
  if(!claim)return {created:0,assigned:0,skipped:'busy'};
  try{
-  const data=await snapshot(env),hash=await fingerprint({policy:PROJECT_POLICY,...data}),previous=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='project_organizer_fingerprint'");
+  const data=await snapshot(env),hash=await stateHash(data),previous=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='project_organizer_fingerprint'");
   if(previous?.value===hash&&!options.force)return {created:0,assigned:0,skipped:'unchanged'};
   if(!data.items.length||data.items.length<2&&!data.projects.length)return {created:0,assigned:0,skipped:'nothing to group'};
   const attempt=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='project_organizer_attempt'");
@@ -48,7 +52,7 @@ export async function organizeProjects(env:Env,options:{force?:boolean;provider?
    if(!existing&&results[0].meta.changes)created++;
    if(moved){assigned+=moved;const actual=await all<{id:string}>(env,`SELECT id FROM items WHERE project_id=? AND updated_at=? AND id IN (${candidates.map(()=>'?').join(',')})`,id,stamp,...candidates.map((i:Candidate)=>i.id));await run(env,"INSERT INTO project_organization_log(id,project_id,item_ids,reason,created_at) VALUES(?,?,?,?,?)",uid(),id,JSON.stringify(actual.map(i=>i.id)),g.reason,stamp);}
   }
-  await run(env,"INSERT OR REPLACE INTO settings(key,value) VALUES('project_organizer_fingerprint',?)",await fingerprint({policy:PROJECT_POLICY,...await snapshot(env)}));
+  await run(env,"INSERT OR REPLACE INTO settings(key,value) VALUES('project_organizer_fingerprint',?)",await stateHash(await snapshot(env)));
   return {created,assigned};
  }finally{await run(env,"DELETE FROM settings WHERE key='project_organizer_lease' AND value=?",token);}
 }
