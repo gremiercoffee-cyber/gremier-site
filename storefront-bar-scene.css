@@ -110,6 +110,7 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
  .planner .bb-tray>.bs-legend { grid-column:1; grid-row:3; margin:5px 0 0; gap:3px 9px; font-size:10px; }
  .planner .bb-tray>.bb-sum { grid-column:2; grid-row:2/4; align-self:center; border:0; padding:0; margin:0; }
  .bb-mini.planner, body:not(.has-tab-bar) .bb-mini.planner { width:clamp(240px,27vw,350px); right:22px; bottom:24px; }
+ body.rtl .bb-mini.planner { left:22px; right:auto; }
  .bb-thumb-label { font-size:13px; padding:7px 2px 3px; }
  body.bb-mini-on #fabStack { bottom:calc(clamp(240px,27vw,350px)*.6 + 80px)!important; }
 }
