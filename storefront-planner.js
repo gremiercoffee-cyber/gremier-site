@@ -19,7 +19,7 @@
   const basic = () => all().find((p) => typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p) && p !== premium() && tiersOf(p).length);
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, full: true, milk: 'dairy', mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, dispenser: false, syrups: { caramel: false, vanilla: false } };
+  const state = { guests: 50, full: true, milk: 'dairy', milkType: 'oat', parveLiters: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, dispenser: false, syrups: { caramel: false, vanilla: false } };
   const FLAVOURS = [['house', /house/i, 'House Blend', 'האוס בלנד'], ['colomb', /colomb/i, 'Colombian', 'קולומביה'], ['decaf', /decaf/i, 'Decaf', 'נטול קפאין']];
   const name = (a) => (he() && a.name_he ? a.name_he : a.name);
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
@@ -51,9 +51,11 @@
       plan.classic = left;
       plan.flavours = Object.keys(plan.mix).length + (left > 0 ? 1 : 0);
       plan.stations = Math.max(state.points, plan.flavours);
-      const milk = addons.findIndex((a) => a.per_liter);
-      const liters = state.milk === 'parve' ? plan.milkLiters : state.milk === 'half' ? Math.round(plan.milkLiters / 2) : 0;
-      if (milk >= 0 && liters) { plan.litersIdx = milk; plan.liters = liters; total += liters * (Number(addons[milk].price) || 0); lines.push(T(`${liters}L parve milk`, `${liters} ל׳ חלב פרווה`)); }
+      const milkChoices = milkOptions(p);
+      const milk = milkChoices.find(x=>x.key===state.milkType) || milkChoices[0];
+      const wanted = state.parveLiters == null ? Math.round(plan.milkLiters / 2) : state.parveLiters;
+      const liters = state.milk === 'dairy' ? 0 : Math.max(0,Math.min(plan.milkLiters,wanted));
+      if (milk && liters) { plan.litersIdx = milk.index; plan.liters = liters; plan.milkType = milk.key; plan.milkName = name(milk.addon); total += liters * (Number(milk.addon.price) || 0); lines.push(`${liters}L ${plan.milkName}`); }
       const disp = addons.findIndex((a) => /dispenser/i.test(a.name) && Number(a.max) > 1);
       const extra = Math.min(Math.max(0, plan.stations - 1), disp >= 0 ? Number(addons[disp].max) : 0);
       if (disp >= 0 && extra) { plan.qty.push([disp, extra]); plan.dispensers += extra; total += extra * (Number(addons[disp].price) || 0); lines.push(T(`${extra} extra dispenser${extra > 1 ? 's' : ''}`, `${extra} מתקנים נוספים`)); }
@@ -100,7 +102,7 @@
       // One 1-liter carton per 10 guests.
       const parve = plan.liters, dairy = Math.max(0, plan.milkLiters - parve);
       if (dairy) t.push({ key: 'milk', pic: 'milk', n: dairy, title: T('Milk', 'חלב'), sub: T('1L cartons', 'קרטונים של ליטר') });
-      if (parve) t.push({ key: 'parve', pic: 'milk', n: parve, tag: T('Parve', 'פרווה'), title: T('Parve milk', 'חלב פרווה'), sub: T('1L cartons', 'קרטונים של ליטר') });
+      if (parve) t.push({ key: 'parve', pic: 'milk', n: parve, tag: plan.milkName, title: plan.milkName, sub: T('1L cartons', 'קרטונים של ליטר') });
     }
     t.push({ key: 'cups', pic: 'cups', n: plan.tier.guests, title: T('Cups', 'כוסות') });
     t.push({ key: 'straws', pic: 'straws', n: plan.tier.guests, title: T('Straws', 'קשיות') });
@@ -113,13 +115,14 @@
     const r=item.region;
     const label=item.kind==='coffee'&&item.variant!=='classic'
       ? `<span class="bs-coffee-label bs-label-${item.variant}"><small>${item.variant==='house'?'MEDIUM ROAST':item.variant==='colomb'?'LIGHT ROAST':'CAFFEINE FREE'}</small><b>${item.variant==='house'?'House Blend':item.variant==='colomb'?'Colombia':'Decaf'}</b></span>` : '';
-    const parve=item.kind==='milk'&&item.variant==='parve'?'<span class="bs-parve-label">Parve</span>':'';
+    const milkNames={oat:T('Oat','שיבולת שועל'),almond:T('Almond','שקדים'),soy:T('Soy','סויה'),parve:T('Parve','פרווה')};
+    const parve=item.kind==='milk'&&item.variant!=='dairy'?`<span class="bs-parve-label">${esc(milkNames[item.variant]||item.variant)}</span>`:'';
     return `<div class="bs-art" style="width:${r.w}px;height:${352-r.y}px;transform:scale(${item.sx},${item.sy})"><div class="bs-window" style="width:${r.w}px;height:${397-r.y}px"><img class="bs-master" src="${MASTER}" alt="" style="left:${-r.x}px;top:${-r.y}px" draggable="false">${item.kind==='disp'?'<img class="bs-emblem" src="/bar/studio/brand-mark.svg?v=1" alt="">':''}${label}${parve}</div></div>`;
   }
   function sceneHtml(plan) {
     const list=tiles(plan);
     const layout=window.CoffeeBarScene.layout({classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
-      milkLiters:state.full?plan.milkLiters:0,parveLiters:plan.liters,syrupFlavours:state.full?['caramel','vanilla']:plan.syrupFlavours,guests:plan.tier.guests});
+      milkLiters:state.full?plan.milkLiters:0,parveLiters:plan.liters,milkType:plan.milkType,syrupFlavours:state.full?['caramel','vanilla']:plan.syrupFlavours,guests:plan.tier.guests});
     const ratio=layout.width/(352+layout.width*.135+32);
     const items=layout.items.map((item,index)=>`<div class="bs-object drop" data-instance="${item.id}" data-kind="${item.kind}" data-variant="${item.variant}" data-units="${item.units}" style="left:${item.x}px;bottom:${item.bottom}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};--d:${Math.min(300,index*22)}ms">${itemArt(item)}</div>`).join('');
     const legend=list.map(x=>`<span>${x.n>1?`<b>${x.n}×</b> `:''}${esc(x.title)}</span>`).join('');
@@ -237,10 +240,17 @@
       }, 150);
     }, 700);
   };
+  window.openCoffeeBarBuilder = function(options={}) {
+    state.guests=options.guests||25;state.full=options.full!==false;
+    state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.dispenser=false;state.milk='dairy';state.parveLiters=null;
+    state.syrups={caramel:!!options.caramel,vanilla:!!options.vanilla};
+    if(typeof showPage==='function')showPage('coffeebars');
+    render();$('planner')?.scrollIntoView({behavior:'smooth',block:'start'});
+  };
   window.plannerWhatsApp = function () {
     const plan = suggestion();
     const coffee = plan ? [plan.classic ? `${plan.classic}× Classic` : '', ...FLAVOURS.filter(([k]) => plan.mix[k]).map(([k, , en]) => `${plan.mix[k]}× ${en}`)].filter(Boolean).join(' + ') + ' (5L)' : 'Classic';
-    const milk = { dairy: T('dairy', 'חלב רגיל'), parve: T('parve', 'פרווה'), half: T('half dairy, half parve', 'חצי רגיל, חצי פרווה') }[state.milk];
+    const milk = plan ? `${plan.milkLiters-plan.liters}L ${T('dairy','חלב רגיל')}${plan.liters?` + ${plan.liters}L ${plan.milkName}`:''}` : '';
     const text = he()
       ? `היי! אני מתכנן/ת אירוע ל-${state.guests} אורחים. ${state.full ? `בר מלא, חלב ${milk}, קפה ${coffee}, ${state.points} עמדות הגשה.` : 'רק הקפה.'}${plan ? ` מה שבניתי באתר: ${plan.product.name_he || plan.product.name_en} ל-${plan.tier.guests} אורחים, ₪${plan.total}.` : ''} יש לי כמה שאלות:`
       : `Hi! I'm planning an event for ${state.guests} guests. ${state.full ? `Full bar, ${milk} milk, ${coffee} coffee, ${state.points} serving point${state.points > 1 ? 's' : ''}.` : 'Just the coffee.'}${plan ? ` What I built on the site: ${plan.product.name_en} for ${plan.tier.guests} guests, ₪${plan.total}.` : ''} I have a few questions:`;
@@ -273,6 +283,23 @@
     const picker=choices.length?`<div class="bb-classic-picker" role="group" aria-label="${T('Swap coffee','החלפת קפה')}"><button type="button" class="bb-swap-close" data-close-swap aria-label="${T('Close coffee choices','סגירת אפשרויות הקפה')}">×</button>${choices.map(x=>`<button type="button" data-classic-swap="${x.key}" data-swap-mode="${classicSwap}">${classicSwap==='restore'?`${x.label} → ${T('Classic','קלאסיק')}`:`${T('Classic','קלאסיק')} → ${x.label} <small>+₪${Number(x.addon.price)||0}</small>`}</button>`).join('')}</div>`:'';
     return `<div class="bb-jugs">${row(T('Classic','קלאסיק'),plan.classic,'classic',0)}${picker}${options.map(x=>row(x.label,plan.mix[x.key]||0,x.key,Number(x.addon.price)||0)).join('')}</div>`;
   }
+  function milkOptions(p) {
+    return addonsOf(p).map((addon,index)=>({addon,index,key:addon.milk_type||'parve'})).filter(x=>x.addon.per_liter&&!x.addon.legacy_milk);
+  }
+  function milkHtml(plan) {
+    const options=plan?milkOptions(plan.product):[];
+    return chips('milk',[['dairy',T('Dairy','חלב רגיל')],['parve',T('Some parve','גם פרווה')]])+(state.milk==='dairy'?'':`
+      <div class="bb-milk-options">${chips('milkType',options.map(x=>[x.key,esc(name(x.addon))]))}
+      <div class="bb-milk-amount"><span>${T('Parve litres','ליטרים פרווה')} <small>+₪${Number(options.find(x=>x.key===state.milkType)?.addon.price||options[0]?.addon.price)||0}/${T('litre','ליטר')}</small></span>
+      <div class="pd-l-step"><button type="button" data-milk-step="-1" aria-label="${T('Less parve milk','פחות חלב פרווה')}" ${!plan?.liters?'disabled':''}>−</button><b>${plan?.liters||0}</b><button type="button" data-milk-step="1" aria-label="${T('More parve milk','עוד חלב פרווה')}" ${plan?.liters>=plan?.milkLiters?'disabled':''}>+</button></div></div>
+      <small class="bb-q-hint">${plan?T(`${plan.milkLiters-plan.liters}L dairy + ${plan.liters}L ${plan.milkName||'parve'}`,`${plan.milkLiters-plan.liters} ל׳ חלב רגיל + ${plan.liters} ל׳ ${plan.milkName||'פרווה'}`):''}</small></div>`);
+  }
+  function takeHomeHtml() {
+    const available=all().filter(p=>!p.is_coffee_bar&&p.is_active!==false&&!/syrup|סירופ/i.test(p.name_en||p.name_he||''));
+    const picks=[...available.filter(p=>p.category==='minis').slice(0,3),...available.filter(p=>p.category==='bottles').slice(0,3)];
+    if(!picks.length)return '';
+    return `<section class="bb-take-home"><h3>${T('Coffee for home, too?','קפה גם לבית?')}</h3><p>${T('Add a mini four-pack or a litre bottle for later.','הוסיפו מארז רביעיית מיני או בקבוק ליטר לאחר כך.')}</p><div class="bb-home-products">${picks.map(p=>`<button type="button" data-take-home="${esc(p.id)}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span><b>+</b></button>`).join('')}</div></section>`;
+  }
   function syrupOptions(p) {
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.bar_syrup||(/^Caramel syrup$/i.test(addon.name)?'caramel':/^Vanilla syrup$/i.test(addon.name)?'vanilla':null)})).filter(x=>x.key==='caramel'||x.key==='vanilla');
   }
@@ -299,6 +326,7 @@
     const plan = suggestion();
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
+      ${window.CoffeeBarOffers?.builderBanner()||''}
       <div class="bb-head"><h2>${T('Build your coffee bar', 'בנו את בר הקפה שלכם')}</h2></div>
       <div class="bb-grid">
         <div class="bb-qs">
@@ -307,7 +335,7 @@
           <div class="pl-q"><label>${T('Bar', 'בר')}</label>${barChoice()}</div>
           ${state.full ? `
           <div class="pl-q"><label>${T('Coffee', 'קפה')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></label>${coffeeHtml(plan)}</div>
-          <div class="pl-q"><label>${T('Milk', 'חלב')}</label>${chips('milk', [['dairy', T('Dairy', 'חלב רגיל')], ['parve', T('Parve', 'פרווה')], ['half', T('Half & half', 'חצי-חצי')]])}</div>
+          <div class="pl-q"><label>${T('Milk', 'חלב')}</label>${milkHtml(plan)}</div>
           <div class="pl-q"><label>${T('Serving stations', 'עמדות הגשה')}</label>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>`
           : `
           <div class="pl-q"><label>${T('Dispenser', 'מתקן')}</label>${chips('dispenser', [['false', T('No', 'לא')], ['true', basicDispenserLabel(plan)]])}</div>
@@ -323,7 +351,8 @@
             <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
           </div>` : ''}
         </aside>
-      </div>`;
+      </div>
+      ${takeHomeHtml()}`;
     reconcileScene(previousScene,$('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
@@ -334,6 +363,10 @@
   document.addEventListener('click', (e) => {
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
+    const milkStep=e.target.closest('[data-milk-step]');
+    if(milkStep){const plan=suggestion();state.parveLiters=Math.max(0,Math.min(plan.milkLiters,plan.liters+Number(milkStep.dataset.milkStep)));render();return;}
+    const take=e.target.closest('[data-take-home]');
+    if(take){openProductDrawer(take.dataset.takeHome);return;}
     const syrup=e.target.closest('input[data-syrup]');
     if(syrup){state.syrups[syrup.dataset.syrup]=syrup.checked;render();return;}
     const swap=e.target.closest('[data-classic-swap]');
@@ -355,6 +388,7 @@
     const b = e.target.closest('.pl-chips button');
     if (!b) return;
     const key = b.parentElement.dataset.key, v = b.dataset.v;
+    if(key==='milk'&&v!==state.milk)state.parveLiters=null;
     state[key] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v;
     render();
   });

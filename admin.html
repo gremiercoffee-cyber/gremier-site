@@ -4338,6 +4338,8 @@ async function queuePaymentLinkForOps(linkCode) {
   loadPayLinks();
 }
 function describeItemExtras(i) {
+  const coffeeBar = window.CoffeeBarOrder?.describeCoffeeBar(i?.coffee_bar_configuration);
+  if (coffeeBar) return coffeeBar;
   const parts = [];
   // Guest count (coffee bar): stored on new orders; reconstruct from the catalog for older ones.
   let guestLabel = String((i && i.guest_label) || '').trim();
@@ -4385,7 +4387,8 @@ function openOrderDetail(id) {
   if (!o) return;
   const items = (o.items||[]).map(i=>{
     const extras = describeItemExtras(i);
-    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${escHtml(i.name_en||'')} ×${i.qty}${extras?`<span style="display:block;color:var(--text2);font-size:.78rem;margin-top:2px">${escHtml(extras)}</span>`:''}</span><span style="color:var(--cream)">₪${i.price*i.qty}</span></div>`;
+    const extrasHtml = i.coffee_bar_configuration ? extras.split(' · ').map(escHtml).join('<br>') : escHtml(extras);
+    return `<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="min-width:0">${escHtml(i.name_en||'')} ×${i.qty}${extras?`<span style="display:block;color:var(--text2);font-size:.82rem;line-height:1.65;margin-top:6px">${extrasHtml}</span>`:''}</span><span style="color:var(--cream);white-space:nowrap">₪${i.price*i.qty}</span></div>`;
   }).join('');
   // Surface the delivery type the customer chose at checkout (stored in delivery_info by the storefront)
   const di = (o.delivery_info && typeof o.delivery_info === 'object') ? o.delivery_info : {};
@@ -7221,8 +7224,17 @@ function renderBillingAll() {
   const status = document.getElementById('billStatus')?.value || 'all';
   const store = document.getElementById('billStore')?.value || '';
   const month = document.getElementById('billMonth')?.value || '';
+  const showUnpaid = ['all','open','owed'].includes(status);
+  const unpaidLabel = list => {
+    if (!showUnpaid) return '';
+    const amount = list.filter(r => billingStatus(r) === 'owed').reduce((sum,r) => sum + Math.round(Number(r.total || 0)*100),0)/100;
+    return `<span class="bill-store-unpaid" style="font-size:.85em;font-weight:500;color:var(--text2);white-space:nowrap">₪${amount.toLocaleString('en-IL',{minimumFractionDigits:2,maximumFractionDigits:2})} unpaid</span>`;
+  };
   const share = document.getElementById('billStoreShare');
-  if (share) share.innerHTML = store ? `<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(store)}">Share multiple statements</button>` : '';
+  if (share) {
+    const scoped = billingAllRows.filter(r => r.store_id===store && (!month || billKey(r)===month));
+    share.innerHTML = store ? `<h4 style="display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:0">${escHtml(scoped[0]?.stores?.name || allStores.find(s=>s.id===store)?.name || 'Store')} ${unpaidLabel(scoped)}</h4><button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(store)}">Share multiple statements</button>` : '';
+  }
   const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
   const rows = billingAllRows.filter(r => {
     if (!inScope(r)) return false;
@@ -7255,7 +7267,7 @@ function renderBillingAll() {
     const title = group === 'status' ? BILL_STATUS_META[k].label
       : group === 'month' ? billMonthLabel(list[0])
       : group === 'store' ? escHtml(k) : '';
-    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="font-size:.95rem;color:var(--cream);margin:0">${title}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(list[0].store_id)}">Share multiple statements</button>`:''}</div>` : '';
+    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;font-size:.95rem;color:var(--cream);margin:0">${title} ${group==='store'?unpaidLabel(list):''}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(list[0].store_id)}">Share multiple statements</button>`:''}</div>` : '';
     return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
   }).join('');
 }
@@ -9210,10 +9222,11 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-ui.js?v=20261023-2"></script>
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
-<script src="/admin-react-1.js?v=016d3c7ce2"></script>
+<script src="/coffee-bar-order.js?v=20261025-1"></script>
+<script src="/admin-react-1.js?v=f5717a8c05"></script>
 <script src="/admin-react-2.js?v=0ff5f54a7f"></script>
 
-<script src="/admin-react-3.js?v=6b308d82aa"></script>
+<script src="/admin-react-3.js?v=d0da27494c"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">

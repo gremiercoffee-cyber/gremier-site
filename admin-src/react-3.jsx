@@ -407,44 +407,22 @@ function GlobalPillsFloat() {
     // only populated once the Products tab has been opened. Pull variations too, since that's
     // where each guest tier's price lives.
     const pids = items.map(i => i.product_id).filter(Boolean);
-    let isCoffeeBar = false;
+    let isCoffeeBar = items.some(i=>i.coffee_bar_configuration?.version===1);
     let cbProducts = [];
     if (pids.length) {
-      cbProducts = await window.opsFetch(`products?id=in.(${pids.join(',')})&select=id,is_coffee_bar,variations`) || [];
-      isCoffeeBar = cbProducts.some(p => p.is_coffee_bar === true);
+      cbProducts = await window.opsFetch(`products?id=in.(${pids.join(',')})&select=id,name_en,name_he,is_coffee_bar,variations`) || [];
+      isCoffeeBar = isCoffeeBar || cbProducts.some(p => p.is_coffee_bar === true);
     }
 
     if (isCoffeeBar) {
-      // figure out the guest count from what they actually paid — every guest tier (25/50/75/100/125)
-      // has its own fixed price set in the Products tab, so the price on this order's line item maps
-      // straight back to a tier. Only fall back to scanning the item's name if no price match is found.
-      let people = 25;
-      let matched = false;
-      for (const i of items) {
-        const prod = cbProducts.find(p => p.id === i.product_id);
-        const tiers = (prod?.variations || []).find(v => v.type === 'guest_count')?.options || [];
-        if (!tiers.length) continue;
-        const itemPrice = Number(i.price) || 0;
-        let best = null, bestDiff = Infinity;
-        tiers.forEach(t => {
-          const diff = Math.abs((Number(t.price) || 0) - itemPrice);
-          if (diff < bestDiff) { bestDiff = diff; best = t; }
-        });
-        if (best) { people = best.guests; matched = true; break; }
+      const chosen = window.CoffeeBarOrder?.coffeeBarSchedulePrefill(o, cbProducts);
+      if (!chosen) {
+        alert('This coffee bar has no saved guest selection. Open its order details and confirm the choices before scheduling.');
+        return;
       }
-      if (!matched) {
-        for (const i of items) {
-          const text = `${i.name_en||''} ${i.name_he||''}`;
-          const m = text.match(/(\d+)\s*(guests?|אורחים)/i);
-          if (m) { people = Math.max(25, Math.round(Number(m[1])/25)*25); break; }
-        }
-      }
-      const prefill = {
-        subType: 'coffeebar',
-        cbName: websiteOrderDisplayLabel2(o),
-        cbAddress: o.delivery_address || '',
-        people,
-      };
+      const otherItems=items.filter(i=>!i.coffee_bar_configuration&&!['9361ff6e-4227-44cc-a23a-428a002f1f4c','c211cedd-ef93-4dba-9a6e-b2edb1add6e0'].includes(i.product_id));
+      const other=otherItems.length?await buildWebsiteOrderSchedulePrefill2({...o,items:otherItems}):null;
+      const prefill = { ...chosen, cbExtras:other?.quantities||{}, cbName: websiteOrderDisplayLabel2(o), cbAddress: o.delivery_address || '' };
       window.showTab('orders');
       window.dispatchEvent(new CustomEvent('gremier:schedule-prefill', { detail: prefill }));
       return;

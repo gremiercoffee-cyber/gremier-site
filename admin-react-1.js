@@ -78,6 +78,7 @@ function rowToJob2(r) {
     dispensers: r.dispensers,
     waNeedsSend: r.wa_needs_send,
     cbSyrups: r.cb_syrups || {},
+    coffeeBarConfiguration: r.coffee_bar_configuration || null,
     billed: r.billed,
     paid: r.paid || false,
     websiteOrderId: r.website_order_id || null,
@@ -112,9 +113,10 @@ function jobToRow2(job) {
     qty: job.qty || null,
     cb_name: job.cbName || null,
     cb_address: job.cbAddress || null,
-    dispensers: job.dispensers || null,
+    dispensers: job.dispensers ?? null,
     wa_needs_send: job.waNeedsSend || false,
     cb_syrups: job.cbSyrups || null,
+    coffee_bar_configuration: job.coffeeBarConfiguration || null,
     billed: job.billed || false,
     paid: job.paid || false,
     website_order_id: job.websiteOrderId || null,
@@ -1271,7 +1273,14 @@ function CheckoffModal2({
       onClick: e => e.stopPropagation()
     }, /*#__PURE__*/React.createElement("div", {
       style: TS.modalTitle
-    }, "Confirm Delivery"), /*#__PURE__*/React.createElement("div", {
+    }, "Confirm Delivery"), job.coffeeBarConfiguration && /*#__PURE__*/React.createElement("details", {
+      style: {
+        fontSize: 12,
+        lineHeight: 1.7,
+        marginBottom: 12,
+        whiteSpace: 'pre-line'
+      }
+    }, /*#__PURE__*/React.createElement("summary", null, "Customer selections"), window.CoffeeBarOrder.describeCoffeeBarJob(job.coffeeBarConfiguration)), /*#__PURE__*/React.createElement("div", {
       style: {
         color: '#333333',
         fontSize: 14,
@@ -1417,7 +1426,9 @@ function CheckoffModal2({
           people: cbPeople,
           dispensers: cbDispensers,
           cbSyrups,
-          jerryCans: Array(Math.floor(cbPeople / 25)).fill('classic')
+          jerryCans: Array.from({
+            length: Math.ceil(cbPeople / 25)
+          }, (_, i) => (job.jerryCans || [])[i] || 'classic')
         }, cbPeople, null)
       }, "Confirm \u2713"))));
     }
@@ -2729,8 +2740,8 @@ function ScheduleForm({
     };
     if (jobType === 'delivery') {
       if (subType === 'coffeebar') {
-        const canCount = Math.floor(people / 25);
-        const finalSyrups = {};
+        const canCount = Math.ceil(people / 25);
+        const finalSyrups = Object.fromEntries(Object.entries(prefill?.cbSyrups || {}).filter(([pid]) => !['vanilla_syrup', 'caramel_syrup', 'sugar_syrup'].includes(pid)));
         Object.entries(cbSyrups).forEach(([pid, checked]) => {
           if (checked) finalSyrups[pid] = cbSyrupQty[pid] || 0;
         });
@@ -2740,7 +2751,12 @@ function ScheduleForm({
           type: 'delivery',
           deliveryType: 'coffeebar',
           people,
-          jerryCans: Array(canCount).fill('classic'),
+          jerryCans: Array.from({
+            length: canCount
+          }, (_, i) => prefill?.jerryCans?.[i] || 'classic'),
+          websiteOrderId: prefill?.websiteOrderId || null,
+          customerPhone: prefill?.customerPhone || null,
+          coffeeBarConfiguration: prefill?.coffeeBarConfiguration || null,
           cbName,
           cbAddress,
           dispensers,
@@ -2979,7 +2995,17 @@ function ScheduleForm({
   }, [25, 50, 75, 100, 125, 150].map(n => /*#__PURE__*/React.createElement("option", {
     key: n,
     value: n
-  }, n, " people (", Math.floor(n / 25), " cans)")))), /*#__PURE__*/React.createElement("div", {
+  }, n, " people (", Math.floor(n / 25), " cans)")))), prefill?.coffeeBarConfiguration && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 12,
+      marginBottom: 12,
+      background: '#f5f7f5',
+      borderRadius: 10,
+      fontSize: 12,
+      lineHeight: 1.7,
+      whiteSpace: 'pre-line'
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "Customer selections"), /*#__PURE__*/React.createElement("br", null), window.CoffeeBarOrder.describeCoffeeBarJob(prefill.coffeeBarConfiguration)), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 12
     }
@@ -3664,6 +3690,10 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       cbAddress: job.cbAddress || '',
       dispensers: job.dispensers ?? 1,
       cbSyrups: job.cbSyrups || {},
+      jerryCans: job.jerryCans || [],
+      coffeeBarConfiguration: job.coffeeBarConfiguration || null,
+      websiteOrderId: job.websiteOrderId || null,
+      customerPhone: job.customerPhone || null,
       // extra items added via '+ More Items' on coffeebar jobs
       cbExtras: job.quantities || {}
     });

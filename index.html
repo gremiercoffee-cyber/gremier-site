@@ -753,7 +753,7 @@
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-5"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-6"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261023-6"/>
 <script src="/storefront-nav.js?v=20261023-2"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -2002,7 +2002,7 @@ function pdGetAddonsTotal() {
 function pdGetAddonSuffix() {
   const selected = pdGetSelectedAddons();
   if (!selected.length) return '';
-  return ' · +' + selected.map(a => a.per_liter ? (lang === 'he' ? `${a.liters} ל׳ חלב פרווה` : `${a.liters}L parve milk`) : a.qty > 1 ? `${a.qty}× ${addonName(a)}` : addonName(a)).join(', ');
+  return ' · +' + selected.map(a => a.per_liter ? (lang === 'he' ? `${a.liters} ל׳ ${addonName(a)}` : `${a.liters}L ${addonName(a)}`) : a.qty > 1 ? `${a.qty}× ${addonName(a)}` : addonName(a)).join(', ');
 }
 function pdSetQty(i, delta) {
   const a = getProductAddons(pdCurrentProduct)[i];
@@ -2017,7 +2017,8 @@ function pdPickGroup(group, i) {
   pdUpdateDrawerPrice();
 }
 function pdSetLiters(i, delta) {
-  pdLiters[i] = Math.max(0, Math.min(pdMaxLiters(), (pdLiters[i] || 0) + delta));
+  const other = Object.entries(pdLiters).reduce((n,[key,value])=>n+(Number(key)===i?0:Number(value)||0),0);
+  pdLiters[i] = Math.max(0, Math.min(Math.max(0,pdMaxLiters()-other), (pdLiters[i] || 0) + delta));
   pdRenderLiterRows();
   pdUpdateDrawerPrice();
 }
@@ -2025,16 +2026,19 @@ function pdRenderLiterRows() {
   pdRenderQtyRows();
   const addons = getProductAddons(pdCurrentProduct);
   const max = pdMaxLiters();
+  let remainingMilk=max;
+  Object.keys(pdLiters).forEach(key=>{pdLiters[key]=Math.min(pdLiters[key]||0,remainingMilk);remainingMilk-=pdLiters[key];});
+  const usedMilk=Object.values(pdLiters).reduce((n,v)=>n+v,0);
   document.querySelectorAll('#pdAddonsSection [data-liter-idx]').forEach(row => {
     const i = Number(row.dataset.literIdx), a = addons[i];
     pdLiters[i] = Math.min(pdLiters[i] || 0, max);
     const price = parseFloat(a.price) || 0;
     row.querySelector('.pd-l-n').textContent = `${pdLiters[i]} ${lang === 'he' ? 'ל׳' : 'L'}`;
     row.querySelector('.pd-l-minus').disabled = pdLiters[i] <= 0;
-    row.querySelector('.pd-l-plus').disabled = pdLiters[i] >= max;
+    row.querySelector('.pd-l-plus').disabled = usedMilk >= max;
     row.querySelector('.pd-l-help').textContent = lang === 'he'
-      ? 'רוצים חלב פרווה במקום חלב רגיל לאירוע? בחרו כמה להחליף.'
-      : 'Want parve milk instead of dairy for your event? Choose how much to swap.';
+      ? `₪${price} לליטר · ${max-usedMilk} ל׳ חלב רגיל נשארים`
+      : `₪${price}/litre · ${max-usedMilk}L dairy remaining`;
     row.querySelector('.pd-l-total').textContent = pdLiters[i] ? `+₪${price * pdLiters[i]}` : '';
   });
 }
@@ -2078,12 +2082,12 @@ function renderPdAddons(p) {
   const title = lang === 'he' ? 'תוספות (אופציונלי)' : 'Add-ons (optional)';
   section.style.display = 'block';
   section.innerHTML = `<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">${title}</div>` +
-    addons.map((a, i) => a.legacy_syrup ? '' : a.group ? pdGroupHtml(addons, a, i) : isQtyAddon(a) ? `<div class="pd-liters" data-qty-idx="${i}">
+    addons.map((a, i) => (a.legacy_syrup || a.legacy_milk) ? '' : a.group ? pdGroupHtml(addons, a, i) : isQtyAddon(a) ? `<div class="pd-liters" data-qty-idx="${i}">
       <div class="pd-l-top"><span class="pd-l-name">${escHtml(addonName(a))}</span><span class="pd-l-total"></span></div>
       <div class="pd-l-help">${a.per_jug ? (lang === 'he' ? `₪${parseFloat(a.price) || 0} לכל ג'ריקן של 5 ל׳. השאר קלאסיק (כלול).` : `₪${parseFloat(a.price) || 0} per 5L jug. The rest is Classic (included).`) : `₪${parseFloat(a.price) || 0} ${lang === 'he' ? 'ליחידה' : 'each'}`}</div>
       <div class="pd-l-step"><button type="button" class="pd-l-minus" onclick="pdSetQty(${i},-1)" disabled aria-label="${lang === 'he' ? 'פחות' : 'Less'}">−</button><span class="pd-l-n">0</span><button type="button" class="pd-l-plus" onclick="pdSetQty(${i},1)" aria-label="${lang === 'he' ? 'עוד' : 'More'}">+</button></div>
     </div>` : a.per_liter ? `<div class="pd-liters" data-liter-idx="${i}">
-      <div class="pd-l-top"><span class="pd-l-name">${lang === 'he' ? 'החלפה לחלב פרווה' : 'Swap milk to parve'}</span><span class="pd-l-total"></span></div>
+      <div class="pd-l-top"><span class="pd-l-name">${escHtml(addonName(a))}</span><span class="pd-l-total"></span></div>
       <div class="pd-l-help"></div>
       <div class="pd-l-step"><button type="button" class="pd-l-minus" onclick="pdSetLiters(${i},-1)" aria-label="${lang === 'he' ? 'פחות' : 'Less'}">−</button><span class="pd-l-n"></span><button type="button" class="pd-l-plus" onclick="pdSetLiters(${i},1)" aria-label="${lang === 'he' ? 'עוד' : 'More'}">+</button></div>
     </div>` : `<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
@@ -2364,6 +2368,7 @@ function pdAddToCart() {
     ? [pdSubscriptionInterval, ...subscriptionSelection.map(i => `${i.product_id}x${i.qty}`)].join('_')
     : '';
   const cartId = [p.id, varKey, guestKey, addonKey, subKey].filter(Boolean).join('_');
+  if(window.CoffeeBarOffers?.beforeAdd(p,cart)===false)return;
   const existing = cart.find(x => x.id === cartId);
   if (existing) { if(pdIsSubscription())existing.qty=1;else existing.qty += pdQty; }
   else cart.push({
@@ -2378,11 +2383,13 @@ function pdAddToCart() {
   qty: pdIsSubscription() ? 1 : pdQty,
   selected_variations: pdSelectedVariations,
   selected_addons: pdGetSelectedAddons(),
+  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice}) || null,
   selected_guest_price: pdSelectedPrice,
   is_subscription: pdIsSubscription(),
   subscription_interval: pdIsSubscription() ? pdSubscriptionInterval : null,
   subscription_items: pdIsSubscription() ? subscriptionSelection : null,
 });
+  window.CoffeeBarOffers?.completeUpgrade(p,cart);
   updateCartCount();
   showToast(lang === 'he' ? 'נוסף לעגלה ✓' : 'Added to cart ✓');
   closeProductDrawer(true);
@@ -5246,11 +5253,13 @@ async function sendChatMessageText(text) {
 })();
 </script>
 <script src="/storefront-checkout.js?v=20261023-2"></script>
+<script src="/storefront-coffee-bar-offers.js?v=20261025-1"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261024-4"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
-<script src="/storefront-bar-layout.js?v=20261025-2"></script>
-<script src="/storefront-planner.js?v=20261025-20"></script>
+<script src="/coffee-bar-order.js?v=20261025-1"></script>
+<script src="/storefront-bar-layout.js?v=20261025-3"></script>
+<script src="/storefront-planner.js?v=20261025-21"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

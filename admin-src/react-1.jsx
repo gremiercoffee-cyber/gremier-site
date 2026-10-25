@@ -44,7 +44,7 @@ function rowToJob2(r) {
     people: r.people, plannedTotal: r.planned_total, quantities: r.quantities||{},
     needsConfirmation: r.needs_confirmation, jerryCans: r.jerry_cans||[],
     qty: r.qty, cbName: r.cb_name, cbAddress: r.cb_address, dispensers: r.dispensers,
-    waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups||{}, billed: r.billed,
+    waNeedsSend: r.wa_needs_send, cbSyrups: r.cb_syrups||{}, coffeeBarConfiguration:r.coffee_bar_configuration||null, billed: r.billed,
     paid: r.paid||false, websiteOrderId: r.website_order_id||null,
     customerPhone: r.customer_phone||null, waSentAt: r.wa_sent_at||null,
     sourceBrewId: r.source_brew_id||null,
@@ -62,8 +62,8 @@ function jobToRow2(job) {
     quantities: job.quantities||null, created_at: job.createdAt||new Date().toISOString(),
     needs_confirmation: job.needsConfirmation||false, jerry_cans: job.jerryCans||null,
     qty: job.qty||null, cb_name: job.cbName||null, cb_address: job.cbAddress||null,
-    dispensers: job.dispensers||null, wa_needs_send: job.waNeedsSend||false,
-    cb_syrups: job.cbSyrups||null, billed: job.billed||false, paid: job.paid||false,
+    dispensers: job.dispensers??null, wa_needs_send: job.waNeedsSend||false,
+    cb_syrups: job.cbSyrups||null, coffee_bar_configuration:job.coffeeBarConfiguration||null, billed: job.billed||false, paid: job.paid||false,
     website_order_id: job.websiteOrderId||null, customer_phone: job.customerPhone||null,
     wa_sent_at: job.waSentAt||null, source_brew_id: job.sourceBrewId||job.source_brew_id||null,
   };
@@ -777,6 +777,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
       <div style={TS.modal} onClick={onCancel}>
         <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
           <div style={TS.modalTitle}>Confirm Delivery</div>
+          {job.coffeeBarConfiguration&&<details style={{fontSize:12,lineHeight:1.7,marginBottom:12,whiteSpace:'pre-line'}}><summary>Customer selections</summary>{window.CoffeeBarOrder.describeCoffeeBarJob(job.coffeeBarConfiguration)}</details>}
           <div style={{color:'#333333',fontSize:14,marginBottom:16,lineHeight:1.6}}>Did you deliver exactly:<br/><strong style={{color:'#121212'}}>{itemList||'nothing listed'}</strong>?</div>
           <div style={{display:'flex',gap:10,marginTop:14}}>
             <button style={TS.btn('#eeeeee','#121212')} onClick={()=>setAllCorrect(false)}>No, change it</button>
@@ -802,7 +803,7 @@ function CheckoffModal2({ job, onConfirm, onCancel }) {
             ))}
             <div style={{display:'flex',gap:10,marginTop:14}}>
               <button style={TS.btn('#eeeeee','#121212')} onClick={onCancel}>Cancel</button>
-              <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onConfirm({...job,people:cbPeople,dispensers:cbDispensers,cbSyrups,jerryCans:Array(Math.floor(cbPeople/25)).fill('classic')},cbPeople,null)}>Confirm ✓</button>
+              <button style={TS.btn('#1a1a1a','#ffffff')} onClick={()=>onConfirm({...job,people:cbPeople,dispensers:cbDispensers,cbSyrups,jerryCans:Array.from({length:Math.ceil(cbPeople/25)},(_,i)=>(job.jerryCans||[])[i]||'classic')},cbPeople,null)}>Confirm ✓</button>
             </div>
           </div>
         </div>
@@ -1300,13 +1301,13 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
     const base = { date: logNow?todayISO2():(date||todayISO2()), time: logNow?(time||new Date().toTimeString().slice(0,5)):time };
     if (jobType==='delivery') {
       if (subType==='coffeebar') {
-        const canCount = Math.floor(people/25);
-        const finalSyrups = {};
+        const canCount = Math.ceil(people/25);
+        const finalSyrups = Object.fromEntries(Object.entries(prefill?.cbSyrups||{}).filter(([pid])=>!['vanilla_syrup','caramel_syrup','sugar_syrup'].includes(pid)));
         Object.entries(cbSyrups).forEach(([pid,checked]) => {
           if (checked) finalSyrups[pid] = cbSyrupQty[pid] || 0;
         });
         const cbExtrasClean = Object.fromEntries(Object.entries(cbExtras).filter(([,v])=>Number(v)>0));
-        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array(canCount).fill('classic'), cbName, cbAddress, dispensers, cbSyrups:finalSyrups, quantities:Object.keys(cbExtrasClean).length?cbExtrasClean:undefined, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
+        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array.from({length:canCount},(_,i)=>prefill?.jerryCans?.[i]||'classic'), websiteOrderId:prefill?.websiteOrderId||null, customerPhone:prefill?.customerPhone||null, coffeeBarConfiguration:prefill?.coffeeBarConfiguration||null, cbName, cbAddress, dispensers, cbSyrups:finalSyrups, quantities:Object.keys(cbExtrasClean).length?cbExtrasClean:undefined, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
       }
       const total = Object.values(quantities).reduce((s,v)=>s+(v||0),0);
       return { ...base, type:'delivery', deliveryType:subType,
@@ -1381,6 +1382,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
             {subType==='coffeebar'&&(
               <>
                 <div style={{marginBottom:12}}><span style={lbl}>People</span><select style={TS.inp} value={people} onChange={e=>setPeople(Number(e.target.value))}>{[25,50,75,100,125,150].map(n=><option key={n} value={n}>{n} people ({Math.floor(n/25)} cans)</option>)}</select></div>
+                {prefill?.coffeeBarConfiguration&&<div style={{padding:12,marginBottom:12,background:'#f5f7f5',borderRadius:10,fontSize:12,lineHeight:1.7,whiteSpace:'pre-line'}}><b>Customer selections</b><br/>{window.CoffeeBarOrder.describeCoffeeBarJob(prefill.coffeeBarConfiguration)}</div>}
                 <div style={{marginBottom:12}}><span style={lbl}>Client (optional)</span><input style={TS.inp} value={cbName} onChange={e=>setCbName(e.target.value)} placeholder="Event / who for"/></div>
                 <div style={{marginBottom:12}}><span style={lbl}>Address (optional)</span><input style={TS.inp} value={cbAddress} onChange={e=>setCbAddress(e.target.value)} placeholder="Event address"/></div>
                 <div style={{marginBottom:12}}><span style={lbl}>Dispensers</span><input style={TS.inp} type="number" value={dispensers} onChange={e=>setDispensers(Number(e.target.value)||0)}/></div>
@@ -1772,6 +1774,10 @@ async function addJobFromForm(job, mode) {
       cbAddress: job.cbAddress || '',
       dispensers: job.dispensers ?? 1,
       cbSyrups: job.cbSyrups || {},
+      jerryCans: job.jerryCans || [],
+      coffeeBarConfiguration: job.coffeeBarConfiguration || null,
+      websiteOrderId: job.websiteOrderId || null,
+      customerPhone: job.customerPhone || null,
       // extra items added via '+ More Items' on coffeebar jobs
       cbExtras: job.quantities || {},
     });

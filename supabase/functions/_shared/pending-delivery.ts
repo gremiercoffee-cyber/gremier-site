@@ -1,3 +1,4 @@
+import { coffeeBarSchedulePrefill } from "./coffee-bar-order.ts";
 import { subscriptionDeliveryTarget } from "./subscription-delivery.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { describeItemExtras } from "./order-notify.ts";
@@ -60,7 +61,7 @@ type OrderRow = {
   customer_name?: string | null;
   customer_phone?: string | null;
   delivery_address?: string | null;
-  items?: Array<{ product_id?: string; name_en?: string; qty?: number }> | null;
+  items?: Array<{ product_id?: string; name_en?: string; qty?: number; coffee_bar_configuration?: Record<string, unknown> }> | null;
   total?: number | null;
   delivery_info?: Record<string, unknown> | null;
 };
@@ -256,12 +257,24 @@ async function autoScheduleDelivery(
     const extras = describeItemExtras(i as Record<string, unknown>);
     return `${i.name_en || "Item"} x${i.qty || 1}${extras ? ` (${extras})` : ""}`;
   }).join(", ");
+  let bar = coffeeBarSchedulePrefill(order);
+  if (!bar && items.some(i => ['9361ff6e-4227-44cc-a23a-428a002f1f4c','c211cedd-ef93-4dba-9a6e-b2edb1add6e0'].includes(String(i.product_id)) || /coffee bar/i.test(String(i.name_en || '')))) {
+    const ids = items.map(i => i.product_id).filter(Boolean);
+    const { data: catalog } = await supabase.from('products').select('id,name_en,variations').in('id', ids);
+    bar = coffeeBarSchedulePrefill(order, catalog || []);
+    if (!bar) {
+      await noteAutoScheduleFailure(supabase, pendingId, 'Coffee bar choices need confirmation before scheduling');
+      return false;
+    }
+  }
+  const otherItems = bar ? items.filter(i => !i.coffee_bar_configuration && !['9361ff6e-4227-44cc-a23a-428a002f1f4c','c211cedd-ef93-4dba-9a6e-b2edb1add6e0'].includes(String(i.product_id))) : items;
+  const quantities = await resolveOpsQuantities(supabase, otherItems);
   const jobId = "web_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
   const { error: jobErr } = await supabase.from("jobs").insert({
     id: jobId,
     type: "delivery",
-    delivery_type: "private",
+    delivery_type: bar ? "coffeebar" : "private",
     private_name: order.customer_name || "Website Order",
     private_address: order.delivery_address || "",
     customer_phone: order.customer_phone || null,
@@ -270,10 +283,16 @@ async function autoScheduleDelivery(
     time: slot.time,
     done: false,
     needs_confirmation: false,
-    quantities: await resolveOpsQuantities(supabase, items),
-    planned_total: Number(order.total) || 0,
+    quantities,
+    planned_total: bar ? bar.people : Number(order.total) || 0,
     label: "Website Order — " + (order.customer_name || "") + " — " + itemsLabel,
-    people: null,
+    people: bar?.people ?? null,
+    jerry_cans: bar?.jerryCans ?? null,
+    dispensers: bar?.dispensers ?? null,
+    cb_name: bar ? order.customer_name || "Website Order" : null,
+    cb_address: bar ? order.delivery_address || "" : null,
+    cb_syrups: bar?.cbSyrups ?? null,
+    coffee_bar_configuration: bar?.coffeeBarConfiguration ?? null,
     store_name: null,
     created_at: new Date().toISOString(),
     wa_needs_send: false,

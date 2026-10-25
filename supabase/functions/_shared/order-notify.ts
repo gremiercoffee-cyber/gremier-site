@@ -1,3 +1,4 @@
+import { describeCoffeeBar } from "./coffee-bar-order.ts";
 import { subscriptionDeliveryTarget, SUBSCRIPTION_DELIVERY_NOTE } from "./subscription-delivery.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
@@ -66,6 +67,8 @@ export function describeDelivery(info: Record<string, unknown> | null | undefine
 
 /** Chosen variations + add-ons for one item, e.g. "50 guests · + Extra syrup, Whipped cream". */
 export function describeItemExtras(item: Record<string, unknown>): string {
+  const coffeeBar = describeCoffeeBar(item.coffee_bar_configuration);
+  if (coffeeBar) return coffeeBar;
   const parts: string[] = [];
   // Guest count first ("for N people") — the key detail for coffee bars.
   const guestLabel = String(item.guest_label || "").trim();

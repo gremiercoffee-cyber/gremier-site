@@ -1,3 +1,4 @@
+import { buildCoffeeBarConfiguration, resolveCoffeeBarGuests } from "../_shared/coffee-bar-order.ts";
 import { subscriptionDeliveryRule } from "../_shared/subscription-delivery.ts";
 import "../_shared/subscription-model.js";
 const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
@@ -101,6 +102,8 @@ function resolveGuestSelection(
   product: Record<string, unknown>,
   item: Record<string, unknown>,
 ): { label: string; guests: number | null } | null {
+  const coffeeGuests = resolveCoffeeBarGuests(product, item);
+  if (coffeeGuests) return { label: `${coffeeGuests} guests`, guests: coffeeGuests };
   if (item.selected_guest_price == null || item.selected_guest_price === "") return null;
   const price = Number(item.selected_guest_price);
   if (Number.isNaN(price)) return null;
@@ -301,6 +304,8 @@ Deno.serve(async (req) => {
       const unitPrice = sub ? sub.unitPrice : computeUnitPrice(product, item);
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
       const guest = resolveGuestSelection(product, item);
+      const coffeeBarConfiguration = isSub ? null : buildCoffeeBarConfiguration(product, item);
+      if (["9361ff6e-4227-44cc-a23a-428a002f1f4c", "c211cedd-ef93-4dba-9a6e-b2edb1add6e0"].includes(productId) && !coffeeBarConfiguration) throw new Error("Choose the number of guests for your coffee bar");
       const interval = String(item.subscription_interval || "monthly").toLowerCase() === "weekly" ? "weekly" : "monthly";
       return {
         product_id: productId,
@@ -308,6 +313,7 @@ Deno.serve(async (req) => {
         name_he: isSub ? "מנוי קפה" : product.name_he || null,
         price: unitPrice,
         qty,
+        coffee_bar_configuration: coffeeBarConfiguration,
         selected_variations: isSub ? null : item.selected_variations || null,
         selected_addons: isSub ? null : item.selected_addons || null,
         selected_guest_price: isSub ? null : item.selected_guest_price || null,
