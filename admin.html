@@ -2639,6 +2639,7 @@ function renderNotifications() {
       <div class="notif-item-title">${escHtml(n.title || '')}</div>
       ${n.body ? `<div class="notif-item-body">${escHtml(n.body)}</div>` : ''}
       <div class="notif-item-time">${notifTimeLabel(n.created_at)}</div>
+      ${n.kind === 'expense_batch' ? `<button type="button" class="btn btn-green btn-sm" onclick="event.stopPropagation();openNotification('${n.id}')">Share batch</button>` : ''}
     </div>`).join('');
 }
 
@@ -2690,6 +2691,11 @@ async function openNotification(id) {
     updateNotifBadge();
     try { await sb.from('notification_log').update({ read_at: n.read_at }).eq('id', n.id); }
     catch (e) { console.warn('mark read failed:', e); }
+  }
+  if (n.kind === 'expense_batch') {
+    closeNotificationsPanel();
+    window.GremierFinance?.openExpenseBatch();
+    return;
   }
   if (n.job_id) {
     closeNotificationsPanel();
@@ -9691,14 +9697,15 @@ window.opsFetch = window.opsFetch || (function () {
 <link rel="stylesheet" href="/admin-financials.css?v=20261020-1"/>
 <script src="/admin-financials.js?v=20261020-5"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
-<script src="/admin-finance.js?v=20261025-2"></script>
+<script src="/admin-expense-cache.js?v=20261025-1"></script>
+<script src="/admin-finance.js?v=20261025-3"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
 <script src="/admin-revenue.js?v=20261025-1"></script>
 <script src="/admin-receipts.js?v=20261023-1"></script>
 <script src="/admin-sales-breakdown.js?v=20261023-1"></script>
-<link rel="stylesheet" href="/admin-visitors.css?v=20261024-1"/>
-<script src="/admin-visitors.js?v=20261024-1"></script>
+<link rel="stylesheet" href="/admin-visitors.css?v=20261025-1"/>
+<script src="/admin-visitors.js?v=20261025-1"></script>
 <script src="/admin-messages.js?v=20261023-2"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
 </body>

@@ -106,6 +106,20 @@ service receives the documents. Limit: 20 documents and 60 rendered pages per
 prepared batch. Split larger batches. Encrypted/damaged/unsupported PDFs stay
 pending with a conversion error; no pages are silently omitted.
 
+While the admin app is running, it checks the queue every minute and prepares the
+oldest batch automatically at the selected threshold. Opening Expenses also
+prepares it automatically. Prepared images are cached privately in IndexedDB,
+scoped to the signed-in admin and exact document IDs/dates; cache entries expire
+after 24 hours and are cleared on sign-out or filing. Caching never marks originals
+filed. Failed/blocked device storage falls back to normal preparation.
+
+Push and in-app expense notifications have a **Share batch** action. It opens the
+expense inbox directly (including when the current page is `/admin`). A closed
+web app cannot render PDFs in the background or call the native share API from a
+service worker. On opening it restores the cached batch or prepares it, then the
+owner taps **Share N files** for the native share sheet. Files remain separate;
+each PDF page becomes its own JPG. No automatic WhatsApp transmission occurs.
+
 The browser share panel cannot force a particular WhatsApp recipient or confirm
 delivery. **Open filing WhatsApp** opens the configured number; **Send now** uses
 the native file share panel where supported. Desktop fallback downloads a ZIP of

@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v30';
+const CACHE = 'gremier-v31';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -74,6 +74,23 @@ self.addEventListener('notificationclick', e => {
       for (const client of list) {
         const p = new URL(client.url).pathname;
         if (!p.startsWith('/admin') && 'navigate' in client) return client.navigate(target).then(c => (c || client).focus());
+      }
+      return self.clients.openWindow(target);
+    }));
+    return;
+  }
+
+  // A worker cannot use navigator.share. Open the private, automatically prepared
+  // batch; its Share button keeps the user gesture required by the native panel.
+  if (e.action === 'share_expenses' || new URL(url, self.location.origin).searchParams.get('finance') === 'expenses') {
+    const target='/admin.html?finance=expenses&expense_share=1';
+    e.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{
+      for(const client of list){
+        if(/^\/admin(?:\.html)?\/?$/.test(new URL(client.url).pathname)&&'focus' in client){
+          if('navigate' in client)return client.navigate(target).then(c=>(c||client).focus());
+          client.postMessage({type:'gremier:share-expenses'});
+          return client.focus();
+        }
       }
       return self.clients.openWindow(target);
     }));

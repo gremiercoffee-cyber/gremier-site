@@ -1,6 +1,6 @@
 /* Website visitors card on the Activity page (admin-visitors.js) */
 .vis-card { margin-bottom:16px; }
-.vis-card h3 { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.vis-card h3 { display:flex; align-items:center; justify-content:space-between; gap:10px;font-size:1.05rem;letter-spacing:0;text-transform:none; }
 .vis-card .vis-days { width:auto; padding:5px 10px; font-size:.8rem; }
 .vis-kpis { display:flex; gap:28px; margin:4px 0 12px; }
 .vis-kpis b { display:block; font-size:1.5rem; font-weight:700; line-height:1.1; }
@@ -20,3 +20,11 @@
 .vis-f-row { display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(0, 1fr) 46px 40px; align-items:center; gap:8px; padding:3px 0; font-size:.8rem; }
 .vis-pct { font-size:.72rem; color:#8a5a1c; text-align:end; }
 .vis-f-note { display:block; margin-top:6px; font-size:.68rem; color:var(--text2); }
+.vis-order-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}
+.vis-order-kpis>div{background:var(--bg,#f5f6f7);border:1px solid var(--border);border-radius:12px;padding:16px}
+.vis-order-kpis b{display:block;font-size:1.7rem;line-height:1.2}.vis-order-kpis span{font-size:.8rem;color:var(--text2)}
+.vis-shopping{margin:20px 0}.vis-shopping-row{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.vis-shopping-row strong{font-variant-numeric:tabular-nums}
+.vis-traffic,.vis-count-help{border-top:1px solid var(--border);padding:12px 0 0;margin-top:12px;font-size:.8rem}
+.vis-traffic summary,.vis-count-help summary{cursor:pointer;color:var(--text2)}.vis-traffic .vis-kpis{margin-top:16px}
+.vis-count-help p{line-height:1.6;color:var(--text2);font-size:.76rem}.vis-card h3>span{letter-spacing:0;text-transform:none}

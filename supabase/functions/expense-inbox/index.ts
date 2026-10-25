@@ -6,7 +6,7 @@ const json=(b:unknown,status=200)=>new Response(JSON.stringify(b),{status,header
 function serviceKey(){return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')||'{}').default||'';}
 async function notify(db:any){
  const result=await db.rpc('expense_notification_claim');if(result.error||!result.data)return;
- const count=Number(result.data),payload={title:'Expenses ready to file',body:`You have ${count} expense documents waiting. Open Expenses to prepare your batch.`,url:'/admin.html?finance=expenses',tag:'expense-batch-ready'};
+ const count=Number(result.data),payload={title:'Expense batch available',body:`${count} documents waiting. Open your next batch to share.`,url:'/admin.html?finance=expenses&expense_share=1',tag:'expense-batch-ready',actions:[{action:'share_expenses',title:'Share batch'}]};
  await sendWebPushToAdmins(db,payload);
 }
 function mime(bytes:Uint8Array){

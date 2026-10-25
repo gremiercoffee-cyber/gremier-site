@@ -9,8 +9,8 @@
     if (!list || document.getElementById('visitorsCard')) return !!list;
     list.insertAdjacentHTML('beforebegin', `
       <section class="hub-card vis-card" id="visitorsCard">
-        <h3><span>🌐 Website visitors</span>
-          <select class="form-input vis-days" id="visDays" aria-label="Visitors period" onchange="adminLoadVisitors()">
+        <h3><span>Website activity</span>
+          <select class="form-input vis-days" id="visDays" aria-label="Website activity period" onchange="adminLoadVisitors()">
             <option value="1">Today</option><option value="7" selected>7 days</option><option value="30">30 days</option>
           </select>
         </h3>
@@ -28,41 +28,32 @@
         <span class="vis-v">${num(r.visits || r.views)}</span></div>`).join('')}</div>`;
   }
 
-  // Where people drop off: each step with how many continued from the one before.
-  function funnelHtml(data) {
-    const f = data.funnel;
-    if (!f) return '';
-    const steps = [
-      ['Visitors', data.visits || 0], ['Added to cart', f.cart], ['Opened checkout', f.checkout],
-      ['Reached payment', f.orders], ['Paid', f.paid],
-    ];
-    const top = Math.max(steps[0][1], 1);
-    return `<div class="vis-funnel"><div class="vis-list-title">From visit to order</div>${steps.map(([label, n], i) => {
-      const prev = i ? steps[i - 1][1] : 0;
-      const pct = i && prev ? `${Math.round((100 * n) / prev)}%` : '';
-      return `<div class="vis-f-row"><span class="vis-k">${label}</span><span class="vis-bar"><i style="width:${Math.max(2, Math.round((100 * n) / top))}%"></i></span><span class="vis-v">${num(n)}</span><span class="vis-pct">${pct}</span></div>`;
-    }).join('')}<small class="vis-f-note">% = of the step before. Cart and checkout counts started 24 Oct 2026.</small></div>`;
+  // Shopping browsers and orders are different units, not a linked conversion funnel.
+  function shoppingHtml(data) {
+    const f=data.funnel;
+    if(!f||f.error)return '<p class="vis-f-note">Shopping activity is temporarily unavailable.</p>';
+    return `<div class="vis-order-kpis"><div><b>${num(f.orders)}</b><span>Orders placed</span></div><div><b>${num(f.paid)}</b><span>Paid orders</span></div></div>
+      <div class="vis-shopping"><div class="vis-list-title">Shopping actions · browsers</div>
+        ${[['Added to cart',f.cart],['Opened checkout',f.checkout],['Pressed pay',f.pay]].map(([label,count])=>`<div class="vis-shopping-row"><span>${label}</span><strong>${num(count)}</strong></div>`).join('')}
+      </div>`;
   }
+  let requestId=0;
 
   window.adminLoadVisitors = async function () {
     if (!mount()) return;
     const body = document.getElementById('visBody');
     const days = Number(document.getElementById('visDays').value) || 7;
+    const currentRequest=++requestId;
     let data;
     try {
       const r = await callAdminFunction('admin-tools', { action: 'site_analytics', days });
+      if(currentRequest!==requestId)return;
       data = r.data || {};
       if (!r.res.ok) throw new Error(data.error || r.res.status);
     } catch (e) {
       body.innerHTML = `<div class="hub-empty">Couldn't load visitors (${esc(e.message || e)}).</div>`;
       return;
     }
-    if (!data.configured) {
-      body.innerHTML = '<div class="hub-empty">Not connected yet: Cloudflare needs an analytics token (one-time setup).</div>';
-      return;
-    }
-    if (data.error) { body.innerHTML = `<div class="hub-empty">⚠️ ${esc(data.error)}</div>`; return; }
-
     const daysRows = data.byDay || [];
     const peak = Math.max(...daysRows.map((d) => d.visits), 1);
     const chart = days > 1 && daysRows.length ? `<div class="vis-chart" role="img" aria-label="Visitors per day">${daysRows.map((d) => {
@@ -70,18 +61,14 @@
       return `<div class="vis-col" title="${esc(label)}: ${num(d.visits)} visitors, ${num(d.views)} page views"><i style="height:${Math.max(3, Math.round(100 * d.visits / peak))}%"></i></div>`;
     }).join('')}</div>` : '';
     const device = (k) => ({ desktop: 'Computer', mobile: 'Phone', tablet: 'Tablet' }[String(k).toLowerCase()] || k || 'Other');
-    body.innerHTML = `
-      <div class="vis-kpis">
-        <div><b>${num(data.visits)}</b><span>Visitors</span></div>
-        <div><b>${num(data.views)}</b><span>Page views</span></div>
-      </div>
-      ${chart}
-      ${funnelHtml(data)}
-      <div class="vis-lists">
-        ${list('Came from', data.referrers || [], (k) => String(k || '').replace(/^(www|l|m|lm)\./, '') || 'Direct / app')}
-        ${list('Country', data.countries || [], (k) => k || 'Unknown')}
-        ${list('Device', data.devices || [], device)}
-      </div>`;
+    const trafficOk=data.configured&&!data.error;
+    const trafficTitle=trafficOk?`Visitors & traffic · ${num(data.visits)} recorded visits`:'Visitors & traffic · unavailable';
+    const traffic=trafficOk?`<div class="vis-kpis"><div><b>${num(data.visits)}</b><span>Visits recorded</span></div><div><b>${num(data.views)}</b><span>Page views</span></div></div>
+      ${Number(data.visits)>0?chart:'<p class="vis-f-note">No visits recorded by the traffic tracker for this period.</p>'}
+      <div class="vis-lists">${list('Came from',data.referrers||[],k=>String(k||'').replace(/^(www|l|m|lm)\./,'')||'Direct / app')}${list('Country',data.countries||[],k=>k||'Unknown')}${list('Device',data.devices||[],device)}</div>`
+      :'<p class="vis-f-note">Traffic tracking is unavailable. Shopping and order counts are shown above.</p>';
+    body.innerHTML=`${shoppingHtml(data)}<details class="vis-traffic"><summary>${trafficTitle}</summary>${traffic}</details>
+      <details class="vis-count-help"><summary>How counts work</summary><p>Dates use Jerusalem time. Shopping actions count browsers; orders count purchases. These are separate totals, not conversion percentages. Traffic comes from Cloudflare and may be delayed or blocked. Shopping tracking started 24 Oct 2026.</p></details>`;
   };
 
   // Load with the Activity page.

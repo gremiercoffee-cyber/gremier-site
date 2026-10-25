@@ -7,7 +7,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
  */
 export async function sendWebPushToAdmins(
   supabase: SupabaseClient,
-  payload: { title: string; body: string; url?: string; tag?: string },
+  payload: { title: string; body: string; url?: string; tag?: string; actions?: Array<{action:string;title:string}> },
 ): Promise<{ sent: number; failed: number; detail?: string }> {
   const publicKey = Deno.env.get("PUSH_VAPID_PUBLIC_KEY") || "";
   const privateKey = Deno.env.get("PUSH_VAPID_PRIVATE_KEY") || "";

@@ -10,6 +10,7 @@
 //   { action: "payme_preview_sale", method } → a ₪1 PayMe page (no order) to check payment methods
 // Every call must pass isServiceOrAdmin (crons use the service key).
 
+import { siteAnalyticsPeriod, siteShoppingActivity } from "../_shared/site-analytics.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
@@ -621,31 +622,10 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
 const CF_ACCOUNT = Deno.env.get("CF_ACCOUNT_ID") || "dc73ca97eef41fb2bd0a80c0835bee95";
 const CF_SITE_TAG = Deno.env.get("CF_SITE_TAG") || "70d0660355624e9c82205264385af935"; // gremiercoffee.co.il
 
-/** Website funnel for the same period: browsers that added to cart / opened checkout / pressed pay
- *  (anonymous site_events), then website orders created (reached payment) and paid. */
-async function siteFunnel(sb: Sb, daysIn: unknown) {
-  const days = [1, 7, 30].includes(Number(daysIn)) ? Number(daysIn) : 7;
-  const since = new Date(Date.now() - days * 864e5).toISOString();
-  const browsers = async (kind: string) => {
-    const { data } = await sb.from("site_events").select("sid").eq("kind", kind).gte("created_at", since).limit(20000);
-    return new Set((data || []).map((r) => r.sid)).size;
-  };
-  const { data: orders } = await sb.from("orders").select("payment_status, customer_name").eq("source", "website").gte("created_at", since);
-  const real = (orders || []).filter((o) => !/^test\b/i.test(o.customer_name || ""));
-  return {
-    cart: await browsers("cart_add"),
-    checkout: await browsers("checkout_open"),
-    pay: await browsers("pay_click"),
-    orders: real.length,
-    paid: real.filter((o) => o.payment_status === "paid").length,
-  };
-}
-
-async function siteAnalytics(daysIn: unknown) {
+async function siteAnalytics(period: ReturnType<typeof siteAnalyticsPeriod>) {
   const token = Deno.env.get("CF_ANALYTICS_TOKEN");
   if (!token) return { configured: false };
-  const days = [1, 7, 30].includes(Number(daysIn)) ? Number(daysIn) : 7;
-  const since = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
+  const { days, since, until, time_zone } = period;
   const group = (alias: string, dims: string, limit: number, order = "count_DESC") =>
     `${alias}: rumPageloadEventsAdaptiveGroups(limit: ${limit}, filter: $f, orderBy: [${order}]) { count sum { visits } ${dims ? `dimensions { ${dims} }` : ""} }`;
   const query = `query ($account: string!, $f: AccountRumPageloadEventsAdaptiveGroupsFilter_InputObject) {
@@ -660,7 +640,7 @@ async function siteAnalytics(daysIn: unknown) {
   const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables: { account: CF_ACCOUNT, f: { siteTag: CF_SITE_TAG, date_geq: since, bot: 0 } } }),
+    body: JSON.stringify({ query, variables: { account: CF_ACCOUNT, f: { siteTag: CF_SITE_TAG, datetime_geq: since, datetime_leq: until, bot: 0 } } }),
   });
   const out = await res.json().catch(() => ({})) as Record<string, any>;
   if (!res.ok || out.errors?.length) {
@@ -670,7 +650,7 @@ async function siteAnalytics(daysIn: unknown) {
   const a = out.data?.viewer?.accounts?.[0] || {};
   const rows = (list: any[], key: string) => (list || []).map((g) => ({ key: g.dimensions?.[key] ?? "", views: g.count, visits: g.sum?.visits ?? 0 }));
   return {
-    configured: true, days, since,
+    configured: true, days, since, until, time_zone,
     views: a.total?.[0]?.count ?? 0,
     visits: a.total?.[0]?.sum?.visits ?? 0,
     byDay: rows(a.byDay, "date"),
@@ -750,7 +730,11 @@ Deno.serve(async (req) => {
         return json(await cartReminders(sb, body.dry_run === true));
       }
       case "shabbat_promo_email": return json(await shabbatPromoEmail(sb, body));
-      case "site_analytics": return json({ ...(await siteAnalytics(body.days)), funnel: await siteFunnel(sb, body.days) });
+      case "site_analytics": {
+        const period=siteAnalyticsPeriod(body.days);
+        const [traffic,funnel]=await Promise.all([siteAnalytics(period),siteShoppingActivity(sb,period)]);
+        return json({...traffic,...period,funnel});
+      }
       case "message_customer": {
         // Admin → customer update for an order (template text edited in the admin app).
         const { data: order } = await sb.from("orders").select("id, order_number, customer_email, customer_name, user_id").eq("id", String(body.order_id || "")).maybeSingle();

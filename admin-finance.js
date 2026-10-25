@@ -9,7 +9,28 @@
  async function pages(table,columns,order){const out=[],primary=table==='order_receipts'?'order_id':'id';for(let n=0;n<100000;n+=1000){let query=sbc().from(table).select(columns).order(order);if(order!==primary)query=query.order(primary);const r=await query.range(n,n+999);if(r.error)throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Report is too large');}
  const status=(id,message)=>{if(get(id))get(id).textContent=message;};
  let customers=[],allCustomers=[],stores=[],bills=[],preview=null,requestId=crypto.randomUUID(),preparedReceipt=null,expenseFiles=[],expenseSettings=null,batch=null,allReceipts=[];
- let financeSeq=0,expenseSeq=0;
+ let financeSeq=0,expenseSeq=0,expenseOwner='',expenseShareRequested=false,expensePollBusy=false;
+ const expenseBatchKey=selected=>JSON.stringify(selected.map(f=>[f.id,f.created_at]));
+ function showPreparedExpenseBatch(){get('expensePrepared').scrollIntoView?.({behavior:'smooth',block:'start'});get('expensePrepared').focus?.({preventScroll:true});}
+ function openExpenseBatch(){expenseShareRequested=true;root.closeNotificationsPanel?.();root.showTab('expenses');}
+ async function pollExpenseBatch(){
+  if(!expenseOwner||expensePollBusy||get('expensePrepare')?.disabled)return;
+  expensePollBusy=true;
+  try{
+   const owner=expenseOwner;
+   const [files,settings]=await Promise.all([sbc().from('expense_inbox_files').select('id,original_name,mime_type,created_at').eq('status','pending').order('created_at').order('id').limit(20),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
+   if(files.error||settings.error||owner!==expenseOwner)return;
+   const selected=(files.data||[]).slice(0,settings.data.batch_size);
+   if(batch&&!batch.auto)return;
+   if(batch&&batch.ids.some(id=>!files.data.some(f=>f.id===id))){batch=null;get('expensePrepared').innerHTML='';status('expenseBatchStatus','');}
+   if(selected.length<settings.data.batch_size)return;
+   expenseSettings=settings.data;
+   if(batch?.key===expenseBatchKey(selected))return;
+   await prepareBatch({selected,background:true,auto:true});
+  }catch{/* Opening Expenses or the next check retries without interrupting another screen. */}
+  finally{expensePollBusy=false;}
+ }
+ if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data?.type==='gremier:share-expenses')openExpenseBatch();});
  const field=(label,id,type='text',extra='')=>`<label>${label}<input class="form-input" id="${id}" type="${type}" ${extra}></label>`;
  function setup(){
   const original=get('tab-reports');if(!original||get('tab-finance'))return;
@@ -185,21 +206,30 @@
    get('expenseQueue').querySelectorAll('[data-expense-open]').forEach(b=>b.onclick=async()=>{try{const r=await call('expense-inbox',{action:'original',id:b.dataset.expenseOpen});root.open(r.url,'_blank','noopener');}catch(e){status('expenseStatus',e.message);}});
    get('expenseQueue').querySelectorAll('[data-expense-archive]').forEach(b=>b.onclick=async()=>{try{await call('expense-inbox',{action:'archive',ids:[b.dataset.expenseArchive]});await loadExpenses();}catch(e){status('expenseStatus',e.message);}});
    status('expenseEmailState',expenseSettings.email_last_checked_at?'Email last checked: '+new Date(expenseSettings.email_last_checked_at).toLocaleString()+(expenseSettings.email_error_count?' · '+expenseSettings.email_error_count+' messages need review in Gmail / script execution logs.':' · Connected')+(Date.now()-new Date(expenseSettings.email_last_checked_at).getTime()>20*60*1000?' · Check is overdue; review the Google trigger.':''):expenseSettings.email_last_received_at?'Last email attachment received: '+new Date(expenseSettings.email_last_received_at).toLocaleString():'Email connection is awaiting verification. Complete the one-time Google authorization if you have not done so.');
-   status('expenseStatus',pending.length>=expenseSettings.batch_size?`You have ${pending.length} expenses to file. Prepare a batch when ready.`:`${pending.length} waiting · notification threshold ${expenseSettings.batch_size}`);
+   status('expenseStatus',`${pending.length} waiting · batch size ${expenseSettings.batch_size}`);
+   const selected=pending.slice(0,expenseSettings.batch_size),key=expenseBatchKey(selected);
+   if(batch?.key===key){if(expenseShareRequested)showPreparedExpenseBatch();}
+   else if(selected.length&&(pending.length>=expenseSettings.batch_size||expenseShareRequested))await prepareBatch({selected,auto:true});
+   else if(batch&&batch.ids.some(id=>!pending.some(f=>f.id===id))){batch=null;get('expensePrepared').innerHTML='';status('expenseBatchStatus','');}
+   if(!get('expensePrepare').disabled)expenseShareRequested=false;
   }catch(e){status('expenseStatus',e.message);}
  }
  let pdfLibrary=null,zipPromise=null;
  async function pdfjs(){if(!pdfLibrary){pdfLibrary=await import('/vendor/pdfjs-6.4.299/build/pdf.mjs');pdfLibrary.GlobalWorkerOptions.workerSrc='/vendor/pdfjs-6.4.299/build/pdf.worker.mjs';}return pdfLibrary;}
  function zipjs(){if(root.JSZip)return Promise.resolve(root.JSZip);if(!zipPromise)zipPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/vendor/jszip-3.10.2/dist/jszip.min.js';s.onload=()=>resolve(root.JSZip);s.onerror=()=>{zipPromise=null;reject(Error('ZIP export unavailable'));};document.head.append(s);});return zipPromise;}
  const jpeg=canvas=>new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Image conversion failed')),'image/jpeg',0.9));
- async function prepareBatch(){
-  const ids=[...document.querySelectorAll('.expense-select:checked')].map(i=>i.value),selected=expenseFiles.filter(f=>ids.includes(f.id));
+ async function prepareBatch(options={}){
+  if(get('expensePrepare').disabled)return;
+  const selection=Array.isArray(options.selected)?options.selected:null;
+  const ids=selection?selection.map(f=>f.id):[...document.querySelectorAll('.expense-select:checked')].map(i=>i.value),selected=selection||expenseFiles.filter(f=>ids.includes(f.id));
   if(!selected.length||selected.length>20){status('expenseStatus','Select 1–20 documents.');status('expenseBatchStatus','Select 1–20 documents.');return;}
   batch=null;get('expensePrepared').innerHTML='';get('expensePrepare').disabled=true;get('expensePrepare').setAttribute('aria-busy','true');
   const progress=message=>{status('expenseStatus',message);status('expenseBatchStatus',message);};
   try{
-   const files=[];
-   for(let i=0;i<selected.length;i++){
+   const key=expenseBatchKey(selected),owner=expenseOwner;
+   const cached=owner?await root.GremierExpenseCache?.get(owner,key):null;
+   const files=cached||[];
+   for(let i=0;!cached&&i<selected.length;i++){
     get('expensePrepare').textContent=`Preparing ${i+1} / ${selected.length}…`;progress(`Preparing file ${i+1} of ${selected.length}…`);
     const item=selected[i],r=await call('expense-inbox',{action:'original',id:item.id}),response=await fetch(r.url);if(!response.ok)throw Error('Original unavailable');const blob=await response.blob();
     if(item.mime_type==='application/pdf'){
@@ -212,25 +242,39 @@
      const image=await createImageBitmap(blob),scale=Math.min(1,2000/image.width,5000/image.height),canvas=document.createElement('canvas');canvas.width=Math.ceil(image.width*scale);canvas.height=Math.ceil(image.height*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);image.close();files.push(new File([await jpeg(canvas)],`expense-${String(i+1).padStart(2,'0')}.jpg`,{type:'image/jpeg'}));canvas.width=canvas.height=1;
     }
    }
-   batch={ids,files};get('expensePrepared').innerHTML=`<h3>Ready · ${files.length} separate files</h3><p class="fw-note">${selected.length} documents · each PDF page is a separate JPG. Share all files together.</p><div class="fw-actions"><button class="btn btn-green" id="expenseShare">Share ${files.length} files</button><span data-action-menu="Batch download and WhatsApp"><button class="btn btn-outline" id="expenseZip">Download batch ZIP</button><button class="btn btn-outline" id="expenseWhatsApp">Open filing WhatsApp</button></span><button class="btn btn-outline" id="expenseFiled">I filed this batch</button></div><div id="expenseImageReview" class="fw-image-review"></div>`;
+   if(owner!==expenseOwner)return;
+   if(!cached&&owner)await root.GremierExpenseCache?.put(owner,key,files);
+   if(owner!==expenseOwner)return;
+   batch={ids,files,key,auto:!!options.auto};get('expensePrepared').innerHTML=`<h3>Ready · ${files.length} separate files</h3><p class="fw-note">${selected.length} documents · each PDF page is a separate JPG. Share all files together.</p><div class="fw-actions"><button class="btn btn-green" id="expenseShare">Share ${files.length} files</button><span data-action-menu="Batch download and WhatsApp"><button class="btn btn-outline" id="expenseZip">Download batch ZIP</button><button class="btn btn-outline" id="expenseWhatsApp">Open filing WhatsApp</button></span><button class="btn btn-outline" id="expenseFiled">I filed this batch</button></div><div id="expenseImageReview" class="fw-image-review"></div>`;
    files.forEach(f=>{const button=document.createElement('button'),img=document.createElement('img'),url=URL.createObjectURL(f);button.type='button';button.className='fw-preview-image';button.title='Open full-size page';img.src=url;img.alt=f.name;img.loading='lazy';img.decoding='async';img.onload=()=>URL.revokeObjectURL(url);button.append(img);button.onclick=()=>{const full=URL.createObjectURL(f);root.open(full,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(full),60000);};get('expenseImageReview').append(button);});
    get('expenseShare').onclick=async()=>{try{if(navigator.canShare?.({files}))await navigator.share({files,title:'Gremier expense documents'});else{status('expenseStatus','File sharing is unavailable here. Download the ZIP, extract the images and attach them in WhatsApp.');get('expenseZip').click();}}catch(e){if(e.name!=='AbortError')status('expenseStatus','Sharing failed. Download the ZIP and attach its images manually.');}};
    get('expenseZip').onclick=async()=>{try{const Zip=await zipjs(),z=new Zip();files.forEach(f=>z.file(f.name,f));download(await z.generateAsync({type:'blob',compression:'STORE'}),'Gremier-expenses-'+today()+'.zip');}catch(e){status('expenseStatus',e.message);}};
    get('expenseWhatsApp').onclick=()=>root.open('https://wa.me/'+phone(expenseSettings.whatsapp_number),'_blank','noopener');
-   get('expenseFiled').onclick=async()=>{get('expenseFiled').disabled=true;try{await call('expense-inbox',{action:'filed',ids});get('expensePrepared').innerHTML='';batch=null;await loadExpenses();status('expenseStatus','Batch marked filed. Original documents are retained.');}catch(e){get('expenseFiled').disabled=false;status('expenseStatus',e.message);}};
+   get('expenseFiled').onclick=async()=>{get('expenseFiled').disabled=true;try{await call('expense-inbox',{action:'filed',ids});get('expensePrepared').innerHTML='';batch=null;await root.GremierExpenseCache?.clear();await loadExpenses();status('expenseStatus','Batch marked filed. Original documents are retained.');}catch(e){get('expenseFiled').disabled=false;status('expenseStatus',e.message);}};
    progress(`${files.length} separate JPG files ready to share together.`);
-   get('expensePrepared').scrollIntoView?.({behavior:'smooth',block:'start'});get('expensePrepared').focus?.({preventScroll:true});
+   if(!options.background||expenseShareRequested){showPreparedExpenseBatch();expenseShareRequested=false;}
   }catch(e){progress(e.message+' No documents were marked filed.');}finally{get('expensePrepare').disabled=false;get('expensePrepare').removeAttribute('aria-busy');get('expensePrepare').textContent='Prepare selected batch';}
  }
  const originalShow=root.showTab;
  if(originalShow)root.showTab=function(tab,...args){const result=originalShow.call(this,tab,...args);if(tab==='finance')loadFinance();if(tab==='expenses')loadExpenses();return result;};
  setup();
- const initialTab=root.GremierAdminNavigation?.startTab()||({expenses:'expenses',receipts:'finance'})[new URLSearchParams(location.search).get('finance')];
+ const wantsExpenseShare=new URLSearchParams(location.search).get('expense_share')==='1';
+ expenseShareRequested=wantsExpenseShare;
+ const initialTab=(wantsExpenseShare?'expenses':null)||root.GremierAdminNavigation?.startTab()||({expenses:'expenses',receipts:'finance'})[new URLSearchParams(location.search).get('finance')];
  if(['finance','expenses'].includes(initialTab)){
   let restored=false;
   const restore=session=>{if(session&&!restored){restored=true;setTimeout(()=>root.showTab(initialTab),0);}};
   sbc()?.auth.getSession().then(({data})=>restore(data.session));
   sbc()?.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_IN')restore(session);});
  }
- root.GremierFinance={load:loadFinance,loadExpenses};
+ root.GremierFinance={load:loadFinance,loadExpenses,openExpenseBatch};
+ const expenseSession=session=>{
+  const owner=session?.user?.id||'';
+  if(owner!==expenseOwner){expenseOwner=owner;batch=null;get('expensePrepared').innerHTML='';}
+  if(owner)setTimeout(pollExpenseBatch,0);else root.GremierExpenseCache?.clear();
+ };
+ sbc()?.auth.getSession().then(({data})=>expenseSession(data.session));
+ sbc()?.auth.onAuthStateChange((event,session)=>{if(['SIGNED_IN','SIGNED_OUT'].includes(event))expenseSession(session);});
+ setInterval(pollExpenseBatch,60000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollExpenseBatch();});
 })(window);
