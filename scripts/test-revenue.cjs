@@ -142,3 +142,15 @@ test('failed dashboard classification preserves the unresolved order and reports
  assert.equal(bridge.newReceipts,46420);assert.equal(bridge.unreceipted,158500);
  assert.equal(bridge.snapshot+bridge.importAdjustments+bridge.newReceipts+bridge.unreceipted,bridge.total);
 }
+
+test('old website net summary is online income once, annual only, without inventing orders or receipts',()=>{
+ const d=base();d.orders=[];
+ const summary={document_reference:'legacy-website-2026-ytd-20261022',document_date:'2026-10-22',period_start:'2026-01-01',amount_minor:1414780,customer_name:'Old website net sales',source_kind:'legacy_website_summary'};
+ d.imported=[summary,{...summary}];
+ const report=m.income(d,'2026-01-01','2026-12-31',s=>s.slice(0,10));
+ assert.equal(report.total_minor,1414780);assert.equal(m.channels(report).online,1414780);
+ assert.equal(report.rows.length,1);assert.equal(report.totals.coffee_bar,0);assert.equal(m.receipts(d).length,0);
+ assert.equal(m.income(d,'2026-10-01','2026-10-31',s=>s.slice(0,10)).total_minor,0);
+ assert.equal(m.income(d,'2025-01-01','2025-12-31',s=>s.slice(0,10)).total_minor,0);
+ const bridge=m.reconcile(report,0);assert.equal(bridge.legacyWebsite,1414780);assert.equal(bridge.newReceipts,0);assert.equal(bridge.importAdjustments,0);
+});
