@@ -132,6 +132,9 @@ paged catch-up/retry markers. Unsupported attachments stay in Gmail and are
 reported in execution logs/connection health. Retry markers are recorded only
 after all attachments in a message have uploaded successfully. Originals stay in
 Gmail. Mail without attachments is not converted from HTML into a receipt image.
+JPEG, PNG and WebP photos embedded inline by phone mail apps are imported too,
+including nested MIME parts and photos without a filename (assigned a receipt
+filename). The same alias restriction and backend byte checks apply.
 PDF links in the message body are supported for iCount receipts hosted under
 `https://s3.amazonaws.com/icount-pdfs/`. The importer downloads the original PDF,
 checks its magic bytes and 20 MB limit, and rejects redirects or other hosts.

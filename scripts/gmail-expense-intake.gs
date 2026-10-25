@@ -57,7 +57,11 @@ function importExpenseAttachments(){
     var attachments=[];
     function walk(part){
      var inline=(part.headers||[]).some(function(h){return /^content-disposition$/i.test(h.name)&&/^inline/i.test(h.value);});
-     if(part.filename&&(!inline||part.mimeType==='application/pdf'))attachments.push(part);
+     // Phone mail apps often embed receipt photos inline, sometimes without a filename.
+     // The expense alias is an explicit intake address, so these are documents too.
+     var supported=/^(application\/pdf|image\/(jpeg|png|webp))$/i.test(part.mimeType||'');
+     var content=part.body&&(part.body.data||part.body.attachmentId);
+     if(content&&(supported||(part.filename&&!inline)))attachments.push(part);
      (part.parts||[]).forEach(walk);
     }
     walk(message.payload);
@@ -69,7 +73,8 @@ function importExpenseAttachments(){
      var content=a.body.data||(a.body.attachmentId?Gmail.Users.Messages.Attachments.get('me',item.id,a.body.attachmentId).data:'');
      if(!content)throw Error('Empty attachment');var bytes=expenseDecode(content);
      if(bytes.length>20*1024*1024)throw Error('Attachment exceeds 20 MB; source email retained.');
-     var blob=Utilities.newBlob(bytes,a.mimeType,a.filename);
+     var fallbackName='receipt-'+(index+1)+'.'+(a.mimeType==='application/pdf'?'pdf':a.mimeType.split('/')[1]);
+     var blob=Utilities.newBlob(bytes,a.mimeType,a.filename||fallbackName);
      var response=UrlFetchApp.fetch(EXPENSE_ENDPOINT,{method:'post',headers:{'x-expense-ingress':secret},payload:{file:blob,recipient:EXPENSE_ALIAS,reference:item.id+':'+index},muteHttpExceptions:true});
      var body=JSON.parse(response.getContentText());if(response.getResponseCode()!==200||!body.saved)throw Error('Expense upload failed; source email retained.');
     });
