@@ -24,6 +24,17 @@ test('same-day duplicates, empty deliveries and future deliveries do not distort
  const extra=[...deliveries,{...deliveries[2]},{...deliveries[0],delivery_date:'2026-10-23',qty_large:0},{...deliveries[0],delivery_date:'2026-11-01'}];
  assert.deepEqual(predict(stores,extra,[],'2026-10-28'),predict(stores,deliveries,[],'2026-10-28'));
 });
+test('a recent burst of deliveries does not redefine the usual cycle (Good Store, Jun–Oct 2026)',()=>{
+ const good=['2026-06-15','2026-06-24','2026-06-24','2026-06-30','2026-07-16','2026-07-16','2026-07-20','2026-08-20','2026-09-02','2026-09-15','2026-09-23','2026-09-25','2026-09-28','2026-10-02','2026-10-08','2026-10-12','2026-10-19']
+  .map(delivery_date=>({store_id:'g',delivery_date,qty_large:12}));
+ const g=[{id:'g',name:'Good Store',is_active:true}];
+ assert.equal(predict(g,good,[],'2026-10-23').length,0);   // the old rule said "every 4 days" and fired here
+ assert.deepEqual(predict(g,good,[],'2026-10-25')[0],{store_id:'g',name:'Good Store',last_delivery_date:'2026-10-19',expected_date:'2026-10-26',cycle_days:7});
+});
+test('deliveries within 2 days are one restock',()=>{
+ const topUp=[...deliveries,{...deliveries[0],delivery_date:'2026-10-16'}];
+ assert.equal(predict(stores,topUp,[],'2026-10-28')[0].cycle_days,7);
+});
 test('AI briefing is off by default and cannot contact the AI provider',async()=>{
  global.Deno={env:{get:()=>undefined}};let calls=0;const original=global.fetch;global.fetch=()=>{calls++;throw Error('must not call');};
  try{const {generateAiBriefing}=require('../supabase/functions/_shared/daily-briefing.ts');assert.equal(await generateAiBriefing({}),null);assert.equal(calls,0);}finally{global.fetch=original;}
