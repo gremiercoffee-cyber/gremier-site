@@ -104,7 +104,7 @@ export async function sendBroadcast(env: Env, id: string, edit?:{subject?:string
     }
   }
   const failures=results.some(r=>r.email&&!r.ok),sent=results.some(r=>r.ok),t=now();
-  await run(env,"UPDATE broadcasts SET status=?,results=?,sent_at=?,archived_at=? WHERE id=?",failures?(sent?'partial':'failed'):'sent',JSON.stringify(results),t,failures?null:t,id);
+  await run(env,"UPDATE broadcasts SET status=?,results=?,sent_at=?,archived_at=? WHERE id=?",failures?(sent?'partial':'failed'):'sent',JSON.stringify(results),t,sent?t:null,id);
   return { sent: results.filter((r) => r.ok).length, skipped: results.filter((r) => !r.ok), total: people.length };
 }
 
