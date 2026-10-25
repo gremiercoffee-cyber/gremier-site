@@ -352,7 +352,12 @@
           <div class="pl-q"><h2>${T('Would you like any extra syrups?','האם תרצו להוסיף עוד סירופים?')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></h2>${syrupHtml(plan)}</div>
         </div>
       </div>
-      ${takeHomeHtml()}`;
+      ${takeHomeHtml()}
+      ${plan ? `<section class="bb-booking" aria-label="${T('Order your coffee bar','הזמנת בר הקפה שלכם')}">
+        <div><span>${T(`Coffee bar · ${plan.tier.guests} guests`,`בר קפה · ${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>
+        <button type="button" class="pl-order" onclick="plannerOrder()">${T('Order your coffee bar','להזמנת בר הקפה שלכם')}</button>
+        ${plan.tooBig?`<small>${T('For a bigger event, message us and we’ll plan it together.','לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</small>`:''}
+      </section>` : ''}`;
     reconcileScene(previousScene,$('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
