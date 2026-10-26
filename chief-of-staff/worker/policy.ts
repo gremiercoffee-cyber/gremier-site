@@ -24,6 +24,8 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "watch":       // a WhatsApp watch rule matched
     case "prep":        // "meeting soon: want to prep?"
     case "meeting_notes":
+    case "helper":      // the computer helper needs you, or finished
+    case "helper_approve": // an outside agent asks the helper to do something: Allow / Deny
     case "suggest":     // "saw this on WhatsApp, add it?"
     case "meeting":     // a meeting you just arranged on WhatsApp
     case "review":      // the weekly review

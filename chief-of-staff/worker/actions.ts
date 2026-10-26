@@ -5,6 +5,7 @@
  */
 import { decideSuggestion, suggestionChoices } from "./suggestions";
 import { assignProject } from "./projectmatch";
+import { decideJob } from "./browser";
 import type { Item, Nudge, NudgeAction } from "../shared/types";
 import { draftReply } from "./replies";
 import { queueWhatsApp } from "./whatsapp";
@@ -44,6 +45,8 @@ export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
   if (n.type === "prep") return [];
   if (n.type === "meeting") return [{ id: "ok", title: "Got it" }, { id: "not_meeting", title: "Not a meeting" }];
+  if (n.type === "helper_approve") return [{ id: "helper_allow", title: "✓ Allow" }, { id: "helper_deny", title: "✗ Deny" }];
+  if (n.type === "helper") return [{ id: "helper_open", title: "Open", opens: true }, { id: "ok", title: "Dismiss" }];
   if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
   if (n.type === "postponed") return [{ id: "done", title: "Done ✓" }, { id: "reschedule", title: "Later…", opens: true },
@@ -146,6 +149,14 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
     if (action === "not_meeting" && n.item_id) await run(env, "UPDATE situations SET active = 0 WHERE id = ?", n.item_id);
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
     return { ok: true, message: action === "not_meeting" ? "Removed from your Schedule." : "OK." };
+  }
+  if ((n.type === "helper_approve" || n.type === "helper") && n.item_id) {
+    // For these item_id is the computer-helper job.
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    if (action === "helper_allow") { await decideJob(env, n.item_id, "approve"); return { ok: true, message: "Allowed. Your computer will start on it within a minute." }; }
+    if (action === "helper_deny") { await decideJob(env, n.item_id, "cancel"); return { ok: true, message: "Denied. Nothing was done." }; }
+    if (action === "helper_open") return { ok: true, message: "Opening…", open: "/?tab=tasks" };
+    return { ok: true, message: "OK." };
   }
   if (n.type === "project_ask" && n.item_id) {
     // For these item_id is the question (project_asks row): one tap on a project files the item(s) there.

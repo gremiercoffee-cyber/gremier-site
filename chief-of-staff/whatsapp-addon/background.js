@@ -1,5 +1,6 @@
 // Sends what content.js found to the Chief of Staff, using the bridge key from config.js.
-importScripts("config.js"); // defines COS_CONFIG = { api_base, bridge_key, my_names }
+importScripts("config.js");
+importScripts("helper.js"); // the computer helper (off until switched on in the popup) // defines COS_CONFIG = { api_base, bridge_key, my_names }
 
 /** Which WhatsApp this Chrome profile holds: "personal" or "business" (set in the popup). */
 async function account() {

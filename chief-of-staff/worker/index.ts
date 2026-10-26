@@ -1,5 +1,6 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
+import { createJob, decideJob, expireJobs, finishJob, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { deleteVault, fileBytes, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signedFileBytes } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
@@ -53,6 +54,14 @@ async function body<T = Record<string, unknown>>(req: Request): Promise<T> {
   }
 }
 
+/** Constant-time string comparison (for keys). */
+function safeEqual(got: string, expected: string) {
+  const a = new TextEncoder().encode(got), b = new TextEncoder().encode(expected);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  return diff === 0;
+}
+
 /** Constant-time comparison of the bearer token against the configured passcode. */
 function authorised(req: Request, env: Env): boolean {
   const expected = env.COS_ACCESS_TOKEN;
@@ -73,6 +82,13 @@ const route = (method: string, path: string, h: Handler) =>
 // ---- My details, files found in email, signed copies (nothing here sends anything anywhere) ----
 const fileResponse = (bytes: Uint8Array, filename: string, mime: string) =>
   new Response(bytes, { headers: { "content-type": mime, "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`, "cache-control": "private, no-store" } });
+route("GET", "/api/helper/jobs", async (_req, env) => json(await listJobs(env)));
+route("POST", "/api/helper/jobs", async (req, env) => { try { return json(await createJob(env, { ...(await body<{ instruction: string; start_url?: string }>(req)), source: "you" })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
+route("POST", "/api/helper/jobs/:id/:decision", async (req, env, [id, decision]) => {
+  if (!["approve", "cancel", "answer"].includes(decision)) throw new HttpError(404, "not found");
+  const b = await body<{ answer?: string }>(req).catch(() => ({} as { answer?: string }));
+  try { return json(await decideJob(env, id, decision as "approve", b.answer)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
 route("GET", "/api/vault", async (_req, env) => json(await listVault(env)));
 route("POST", "/api/vault", async (req, env) => { try { return json(await saveVault(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("DELETE", "/api/vault/:id", async (_req, env, [id]) => { await deleteVault(env, id); return json({ ok: true }); });
@@ -758,6 +774,20 @@ export default {
     }
     // Google redirects the browser here without our bearer token; the single-use state is the check.
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
+    // Outside agents (Codex, Claude Code): ask the computer helper for a job and check on it. Every job waits for
+    // the user's Allow on their phone. Their own key, never the app passcode.
+    if (url.pathname.startsWith("/api/agent/")) {
+      const key = req.headers.get("x-agent-key") ?? "";
+      if (!env.AGENT_KEY || !safeEqual(key, env.AGENT_KEY)) return json({ error: "unauthorised" }, 401);
+      if (url.pathname === "/api/agent/helper-jobs" && req.method === "POST") {
+        const b = (await req.json().catch(() => ({}))) as { instruction?: string; start_url?: string; from?: string };
+        try { return json(await createJob(env, { instruction: String(b.instruction ?? ""), start_url: b.start_url, source: String(b.from || "An outside agent").replace(/^you$/i, "An outside agent") })); }
+        catch (e) { return json({ error: (e as Error).message }, 400); }
+      }
+      const am = url.pathname.match(/^\/api\/agent\/helper-jobs\/([^/]+)$/);
+      if (am && req.method === "GET") { const j = (await listJobs(env)).find((x) => x.id === am[1]); return j ? json({ id: j.id, status: j.status, question: j.question, result: j.result }) : json({ error: "not found" }, 404); }
+      return json({ error: "not found" }, 404);
+    }
     // Desktop WhatsApp bridge: its own key, its own three routes.
     if (url.pathname.startsWith("/api/bridge/")) {
       if (!bridgeAuthorised(req, env)) return json({ error: "unauthorised" }, 401);
@@ -784,6 +814,12 @@ export default {
         await markBackfilled(env, bf[1], b.account === "business" ? "business" : "personal");
         return json({ ok: true });
       }
+      // Computer helper (only extensions with the helper switched on ask for jobs).
+      if (url.pathname === "/api/bridge/helper/next" && req.method === "POST") { const b = (await req.json().catch(() => ({}))) as { device?: string }; return json(await nextJob(env, String(b.device ?? "computer").slice(0, 60))); }
+      const hm = url.pathname.match(/^\/api\/bridge\/helper\/([^/]+)\/(step|finish|status)$/);
+      if (hm && hm[2] === "status") return json(await jobStatus(env, hm[1]));
+      if (hm && hm[2] === "step" && req.method === "POST") return json(await nextAction(env, hm[1], await req.json()));
+      if (hm && hm[2] === "finish" && req.method === "POST") return json(await finishJob(env, hm[1], await req.json()));
       if (url.pathname === "/api/bridge/selfnote" && req.method === "POST") return json(await saveSelfNote(env, await req.json()));
       if (url.pathname === "/api/bridge/convo" && req.method === "POST") return json(await detectMeeting(env, await req.json()));
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));
@@ -826,6 +862,7 @@ export default {
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
       .then(() => syncContactsDaily(env)).catch((e) => console.error("contacts", e))
+      .then(() => expireJobs(env)).catch((e) => console.error("helper", e))
       .then(() => processPendingShopping(env)).catch((e) => console.error('shopping', e))
       .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
       .then(() => processSelfNotes(env)).catch((e) => console.error("self notes", e))

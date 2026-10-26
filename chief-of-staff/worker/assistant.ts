@@ -22,6 +22,7 @@ import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
 import { activeProjects } from "./projectmatch";
 import { prepareWhatsApps } from "./contacts";
+import { createJob } from "./browser";
 import { findEmailFiles, prepareSignedFile, saveVault, vaultSummary } from "./documents";
 import {meetingPrepState,proposePrepNote,confirmPrepNote} from './meeting-prep';
 import { hubCall } from "./hub";
@@ -802,6 +803,12 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         note("share_file", `Needs your approval: ${desc}`);
         return { id, status: "pending_approval" };
       },
+    },
+    {
+      name: "computer_helper",
+      description: "Hand a job to the user's computer helper: Chrome on their home computer does it, signed in as them (e.g. 'enable the People API in Google Cloud', 'make a CoSend account', 'fill in this form'). Use only when the user asks for something done on a website. Write the instruction fully (which site, what to do, what counts as done); add start_url when known. It never types passwords or pays; it asks the user on their phone when it needs them, and sends a screenshot when done.",
+      input_schema: { type: "object", properties: { instruction: { type: "string" }, start_url: { type: "string" } }, required: ["instruction"] },
+      handler: async (input) => { const r = await createJob(env, { instruction: String(input.instruction), start_url: input.start_url as string | undefined, source: "you" }); note("computer_helper", "🖥️ Sent to your computer helper — follow it under Tasks"); return { ...r, note: "It starts within about a minute if the computer is on with Chrome open and the helper switched on." }; },
     },
     {
       name: "save_detail",

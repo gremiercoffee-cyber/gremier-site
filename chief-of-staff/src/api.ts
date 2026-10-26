@@ -9,6 +9,7 @@ import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
+export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string }
 export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
 export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string }
 export interface SignedFile { id: string; file_id: string; filename: string; signatures: string; position: string; created_at: string }
@@ -196,6 +197,9 @@ export const api = {
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
   bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
+  helperJobs: () => request<HelperJob[]>("GET", "/api/helper/jobs"),
+  helperCreate: (instruction: string, start_url?: string) => request<{ id: string }>("POST", "/api/helper/jobs", { instruction, start_url }),
+  helperDecide: (id: string, decision: "approve" | "cancel" | "answer", answer?: string) => request("POST", `/api/helper/jobs/${id}/${decision}`, { answer }),
   vault: () => request<VaultItem[]>("GET", "/api/vault"),
   saveVault: (v: { id?: string; kind: "text" | "signature"; label: string; text?: string; image?: string }) => request<{ id: string }>("POST", "/api/vault", v),
   deleteVault: (id: string) => request("DELETE", `/api/vault/${id}`),

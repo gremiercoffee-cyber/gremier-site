@@ -26,6 +26,8 @@ export interface Env {
   BRIDGE_KEY?: string;
   /** Read-only key for the Gremier Coffee admin app (Hub API). */
   HUB_KEY?: string;
+  /** Key outside agents (Codex, Claude Code) use to ask the computer helper for a job; the user still approves each one. */
+  AGENT_KEY?: string;
   HUB_URL?: string;
   /** Narrow Hashgacha metadata RPC; no report contents or write access. */
   HASHGACHA_READ_KEY?:string;

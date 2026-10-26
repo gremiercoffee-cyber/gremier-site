@@ -26,3 +26,15 @@ chrome.storage.local.get("account").then(({ account = "personal" }) => {
     document.getElementById("acct-" + a).onclick = async () => { await chrome.storage.local.set({ account: a }); paint(a); };
   }
 });
+
+// Computer helper on/off for this Chrome profile, and what it last did.
+chrome.storage.local.get(["helper_on", "helper_last"]).then(({ helper_on = false, helper_last = "" }) => {
+  const paint = (on) => {
+    document.getElementById("helper-on").className = "pick" + (on ? " on" : "");
+    document.getElementById("helper-off").className = "pick" + (!on ? " on" : "");
+  };
+  paint(helper_on);
+  document.getElementById("helper-last").textContent = helper_last ? `Last: ${helper_last}` : "";
+  document.getElementById("helper-on").onclick = async () => { await chrome.storage.local.set({ helper_on: true }); paint(true); };
+  document.getElementById("helper-off").onclick = async () => { await chrome.storage.local.set({ helper_on: false }); paint(false); };
+});
