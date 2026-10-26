@@ -145,7 +145,7 @@ class OpenAIProvider implements ModelProvider {
   async runAgent(req: AgentRequest): Promise<AgentResult> {
     // Luna reads pictures but not PDFs: a message with a PDF attached goes to the stronger model.
     const route = modelRoute(this.env, req.attachments?.some((a) => a.kind !== "image") ? "read_file" : req.purpose, "brain");
-    if(req.batchReply)req.tools.push({name:'finish_reply',description:'For save-only work, call alongside ALL requested writes in the SAME batch with the short intended confirmation. The server releases it only after successful writes. For questions needing lookup results, read them first. Never use this instead of the actual save tools.',input_schema:{type:'object',properties:{reply:{type:'string'}},required:['reply']},handler:async input=>({reply:String(input.reply||'')})});
+    if(req.batchReply)req.tools.push({name:'finish_reply',description:'Save-only work: call with the saves, in the same batch, with the short confirmation (shown only if they succeed). Not for answers that need a lookup first.',input_schema:{type:'object',properties:{reply:{type:'string'}},required:['reply']},handler:async input=>({reply:String(input.reply||'')})});
     const input: OpenAI.Responses.ResponseInput = [
       { role: "developer", content: req.system + (req.directReply ? "\n\n"+CHAT_REPLY_POLICY : req.renderReply ? "\n\n" + BRAIN_HANDOFF : "") },
       { role: "developer", content: req.context },

@@ -6,7 +6,7 @@ import type { Env } from "./env";
 import { notify } from "./push";
 import { recurringReminders, saveRecurringReminder } from './reminders';
 import { addShoppingItems, saveShoppingList, shoppingState, updateShoppingItem } from './shopping';
-import { extendedCache, getProvider, type ToolDef, type Turn } from "./ai";
+import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
   all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
@@ -256,7 +256,8 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
   const events = g?.accounts.length && want.has("calendar") ? await upcomingEventsText(env, tz) : null;
   if (events) lines.push("", "## Calendar (next 48 hours)", events);
   // Changes every message: keep at the very end.
-  lines.push("", `Current local time: ${localNow} (timezone ${tz}; UTC now ${now()}).`);
+  const off = zoneOffset(tz, new Date());
+  lines.push("", `Current local time: ${localNow} (timezone ${tz}, UTC${off < 0 ? "-" : "+"}${String(Math.floor(Math.abs(off) / 60)).padStart(2, "0")}:${String(Math.abs(off) % 60).padStart(2, "0")} now; UTC now ${now()}).`);
   if (bridge.configured && !bridge.online) lines.push("(The user's computer is offline right now, so approved WhatsApps wait until it's back.)");
   if (recalled) lines.push("", recalled);
   if (mode === "voice") lines.push(VOICE_ADDENDUM);
@@ -267,15 +268,37 @@ const itemProps = {
   kind: { type: "string", enum: ["task", "reminder", "idea", "commitment", "waiting"] },
   title: { type: "string" },
   notes: { type: "string" },
-  execution_mode: {type:"string",enum:["unspecified","call","voice","desk","physical"],description:"How the task can be done: phone call, explicitly hands-free voice work, desk/screen work, or physical/in-person work. Never infer voice merely from an AI/coding project."},
-  priority: { type: "integer", enum: [1, 2, 3], description: "1 high, 2 normal, 3 low" },
-  due_at: { type: "string", description: "ISO 8601 datetime with offset" },
-  person: { type: "string", description: "Who it involves (waiting on / committed to)" },
-  project: { type: "string", description: "Project name/id; empty string explicitly keeps the task standalone" },
-  keep_standalone: { type: "boolean", description: "True only when the owner explicitly wants this task outside any project" },
-  category: { type: "string", description: "Life area: one of the keys under ## Areas in the context. OMIT when not clearly one of them: the user will be asked." },
-  block: { type: "string", description: 'Time block to remind about this during (name or id, e.g. "In yeshiva"); "none" to detach' },
+  execution_mode: {type:"string",enum:["unspecified","call","voice","desk","physical"],description:"voice only when explicitly hands-free"},
+  priority: { type: "integer", enum: [1, 2, 3], description: "1 high, 3 low" },
+  due_at: { type: "string", description: "ISO 8601, local time" },
+  person: { type: "string" },
+  project: { type: "string", description: 'name/id; "" = standalone' },
+  keep_standalone: { type: "boolean" },
+  category: { type: "string", description: "## Areas key; omit if unclear" },
+  block: { type: "string", description: 'time block name/id; "none" detaches' },
 };
+
+/** How far the zone is ahead of UTC at a moment, in minutes. */
+function zoneOffset(tz: string, at: Date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    .formatToParts(at).map((x) => [x.type, x.value]));
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - at.getTime()) / 60_000);
+}
+
+/** The clock time the model gives ("2026-10-28T10:00") is the user's local time. With no zone, or with a wrong
+ *  offset (a model's guess at summer time after the clocks changed), it is read as local; UTC ("Z") and the
+ *  correct offset are kept. The server runs on UTC, so without this reminders land hours off. */
+async function localTime(env: Env, v: unknown) {
+  const m = typeof v === "string" ? v.match(/^(\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?)([+-]\d\d:?\d\d)?$/) : null;
+  if (!m) return v;
+  const tz = (await getSettings(env)).timezone || "UTC";
+  const wall = new Date(m[1] + "Z");
+  const local = new Date(wall.getTime() - zoneOffset(tz, new Date(wall.getTime() - zoneOffset(tz, wall) * 60_000)) * 60_000);
+  if (!m[2]) return local.toISOString();
+  const [, sign, hh, mm] = m[2].match(/([+-])(\d\d):?(\d\d)/)!;
+  const given = (sign === "-" ? -1 : 1) * (+hh * 60 + +mm);
+  return given === zoneOffset(tz, local) ? new Date(v as string).toISOString() : local.toISOString();
+}
 
 /** Attach an item to a time block (or detach with "none"). */
 async function attachBlock(env: Env, itemId: string, ref: unknown) {
@@ -679,11 +702,11 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "save_person",
-      description: "Add or update someone in the address book: name, role (e.g. boss, accountant, green-bean supplier), contact details, WhatsApp chat name, preferred channel, notes. Matches an existing person by id or name.",
+      description: "Add or update someone in the address book (matched by id or name).",
       input_schema: {
         type: "object",
         properties: {
-          key: { type: "boolean", description: "true only for the few central people in their life (sent with every message); default false" },
+          key: { type: "boolean", description: "only for the few central people in their life" },
           id: { type: "string" }, name: { type: "string" }, role: { type: "string" }, aliases: { type: "string" },
           email: { type: "string" }, phone: { type: "string" }, whatsapp_name: { type: "string" },
           preferred_channel: { type: "string", enum: ["email", "whatsapp", "call"] }, notes: { type: "string" },
@@ -705,7 +728,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     {
       name: "get_context",
       readOnly:true,
-      description: "Load a section of the user's saved information that wasn't included for this message (see 'Not shown for this message'). Use it only for a missing section; do not reload sections already supplied or unchanged results already returned.",
+      description: "Load a section of saved information listed under 'Not shown for this message'.",
       input_schema: { type: "object", properties: { section: { type: "string", enum: ["schedule", "calendar", "groups", "tasks", "trackers", "ideas", "missions", "projects", "items", "people"] } }, required: ["section"] },
       handler: async (input) => {
         const tz = (await getSettings(env)).timezone || "UTC";
@@ -911,6 +934,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
           return { id: i.id, kind: "idea" };
         }
         const project_id = await resolveProjectId(env, input.project as string);
+        if (input.due_at) input.due_at = await localTime(env, input.due_at);
         const item = await createItem(env, { ...(input as object), ...(input.project!==undefined?{project_id}:{}), source } as never);
         const block = await attachBlock(env, item.id, input.block);
         note("create_item", `Added ${item.kind}: ${item.title}${block ? ` (during ${block})` : ""}`);
@@ -927,6 +951,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
       handler: async (input) => {
         const patch: Record<string, unknown> = { ...input };
+        if (input.due_at) patch.due_at = await localTime(env, input.due_at);
         if (input.project !== undefined) patch.project_id = await resolveProjectId(env, input.project as string);
         const item = await updateItem(env, String(input.id), patch);
         await attachBlock(env, item.id, input.block);
@@ -937,7 +962,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     {
       name: "search_items",
       readOnly:true,
-      description: "Search missing items by text, kind or status. Use an already supplied matching item ID directly; do not search again just to verify it.",
+      description: "Search items not already in the context by text, kind or status.",
       input_schema: {
         type: "object",
         properties: {
@@ -963,7 +988,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "create_project",
-      description: "Create a named outcome/event, an intentional dated work session (e.g. today's afternoon tasks across areas), or an explicitly requested project. Reuse only the same goal/event/session date. Shared area, topic or deadlines alone are insufficient.",
+      description: "Create a project (an outcome, event or dated work session).",
       input_schema: {
         type: "object",
         properties: { name: { type: "string" }, description: { type: "string" }, area: { type: "string", enum: ["personal", "business"] } },
@@ -981,8 +1006,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       input_schema: {
         type: "object",
         properties: {
-          project: { type: "string", description: "Project name/id; empty string explicitly keeps the task standalone" },
-  keep_standalone: { type: "boolean", description: "True only when the owner explicitly wants this task outside any project" },
+          project: { type: "string", description: "name/id" },
           name: { type: "string" },
           description: { type: "string" },
           status: { type: "string", enum: ["active", "paused", "done"] },
@@ -1005,17 +1029,17 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "remember",
-      description: "Store a durable fact, preference, or detail about a person or the business for future conversations. To correct an existing memory, pass its id.",
+      description: "Save a lasting fact or preference. Pass id to correct one.",
       input_schema: {
         type: "object",
         properties: {
-          id: { type: "string", description: "id of an existing memory to correct instead of adding a new one" },
+          id: { type: "string" },
           content: { type: "string" },
           category: { type: "string", enum: ["fact", "preference", "person", "business", "personal"] },
           importance: { type: "integer", enum: [1, 2, 3] },
-          area: { type: "string", description: "area key (see ## Areas)" },
-          inferred: { type: "boolean", description: "true when you're guessing/connecting dots rather than told directly; it goes to the user's review list" },
-          question: { type: "string", description: "with inferred: what to ask the user, e.g. 'Is X your bottle supplier?'" },
+          area: { type: "string" },
+          inferred: { type: "boolean", description: "a guess, not told: goes to the user's review list" },
+          question: { type: "string", description: "with inferred: what to ask, e.g. 'Is X your bottle supplier?'" },
         },
         required: ["content"],
       },
@@ -1040,13 +1064,13 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     {
       name: "propose_action",
       description:
-        "Queue a consequential action for the user's approval. Use for deleting items/projects/memories, or anything external. Supported executable actions: delete_item {id}, delete_project {id}, forget_memory {id}. Anything else is recorded as an approved intent only.",
+        "Ask the user's approval to delete something (delete_item {id}, delete_project {id}, forget_memory {id}) or for anything external.",
       input_schema: {
         type: "object",
         properties: {
           action: { type: "string" },
           payload: { type: "object" },
-          description: { type: "string", description: "Plain-language description shown to the user" },
+          description: { type: "string", description: "shown to the user" },
         },
         required: ["action", "description"],
       },
@@ -1163,18 +1187,17 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   // (ai.ts decides and remembers), EVERY message sends the identical tools and general rules, so the first
   // ~10k tokens are cached across messages and days. Without it the cache only lasts minutes, so a smaller
   // per-message set is cheaper.
-  const stablePrefix=(await extendedCache(env))===true;
-  // Everyday tools stay fixed (cached). The free keyword check (no AI) adds a rarely used group, with its
-  // rules, only when this message is clearly about it, so it is there in the first round, not after a load step.
-  const chatFeatures=stablePrefix?stableChatFeatures(features,routeQuery):features;
+  // A small fixed core (cached); the free keyword check (no AI) adds a group, with its rules, when this message
+  // is about it, so it is there in the first round, and load_tools fetches any other one mid-turn.
+  const chatFeatures=new Set(features);
   // A file attached now, or files already in this chat: the file tools (find, fill, sign) are always at hand.
   const filesCtx = await filesContext(env, convo.id);
   if (attached.length || filesCtx) chatFeatures.add("files");
   const tools = toolsFor(assistantTools(env, mode === "text" ? "chat" : "voice", notes), chatFeatures, new Set());
-  if (history.length > 1 || stablePrefix) {
+  {
     tools.push({
       name: "new_topic",
-      description: "Call when the user's latest message starts a clearly unrelated subject from this conversation. Their message moves into a fresh conversation. Do not call for follow-ups on the same subject. Call it in the SAME message as your other tool calls and your reply, never on its own first.",
+      description: "The latest message starts a clearly unrelated subject: move it to a new conversation. Call it alongside your other calls, never alone first.",
       input_schema: { type: "object", properties: { title: { type: "string", description: "2-5 word title" } }, required: ["title"] },
       handler: async (input) => {
         if (switched || history.length <= 1) return { ok: true };
@@ -1254,28 +1277,48 @@ const TOOL_GROUPS: Record<string, string[]> = {
   coffee: ["coffee_app"],
   meetings: ["get_meeting_prep","propose_meeting_prep_note","confirm_meeting_prep_note"],
   hashgacha: ["track_hashgacha_reports","get_hashgacha_reports"],
-  files: ["find_email_files","sign_document","fill_document"],
+  files: ["find_email_files","sign_document","fill_document","save_detail"],
+  recurring: ["get_recurring_reminders","save_recurring_reminder"],
+  areas: ["save_area"],
+  research: ["research_now"],
+  helper: ["computer_helper"],
+  details: ["save_detail"],
+  people: ["save_person"],
+};
+/** What each group is for, so load_tools can say what there is to load. */
+const GROUP_INFO: Record<string, string> = {
+  shopping: "shopping lists", schedule: "the user's time blocks", calendar: "Google Calendar", email: "Gmail search, read, drafts",
+  whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups and group messages", trackers: "trackers that collect answers",
+  ideas: "ideas and brainstorms", tasks: "recurring AI research/report jobs", missions: "missions (multi-step follow-ups)", coffee: "Gremier Coffee business data",
+  meetings: "meeting prep notes", hashgacha: "Hashgacha report tracking", files: "find, fill and sign documents", recurring: "fixed monthly reminders",
+  areas: "add or rename life areas", research: "one-off web research", helper: "do something on a website (computer helper)",
+  details: "save the user's details (My details)", people: "add or update people in the address book",
+};
+/** Rules that only matter with their tools: sent with the group, never otherwise. */
+const GROUP_RULES: Record<string, string> = {
+  shopping: "Shopping goes only to the shopping-list tools (Store is the default list), never to tasks.",
+  hashgacha: "Hashgacha completion comes from online submissions (get_hashgacha_reports/track_hashgacha_reports), never an email reply or a new week. Missing, partial and unavailable are different. No automatic outreach.",
+  meetings: "Meeting prep: hold the note and ask which meeting (name/date/time); attach it only after they choose. No prep documents or automatic offers.",
+  recurring: "Fixed monthly reminders (one or several days a month) use save_recurring_reminder, never save_task; include any link. Marking a month done stops that month's remaining reminders.",
+  research: "Research goes through research_now (or idea_step) approval cards: say it's waiting for approval in Tasks. Never pretend to have browsed.",
+  details: "save_detail: one of the user's details (an existing label is updated). Signatures are added in the app, not here.",
+  helper: "computer_helper: only when they want something done on a website. Write the whole job: the site, what to do, what counts as done; start_url when known.",
 };
 /**
  * The always-on tools in the cached chat prefix: everyday filing, the schedule, recurring tasks, coffee,
  * WhatsApp, shopping and ideas. Everything else (email, calendar, docs, groups, trackers, missions, meeting
  * prep, hashgacha) is one load_tools call away, which keeps the prefix small and identical every message.
  */
-const CORE_FEATURES = ["schedule", "calendar", "tasks", "coffee", "whatsapp", "shopping", "ideas"];
-/** Strict wording for the rare groups: only a message that clearly asks for one adds it (an add changes the cached prefix). */
-const EXTRA_TRIGGERS: Record<string, RegExp> = {
-  email: /\b(e-?mails?|gmail|inbox)\b|מייל/i,
-  docs: /\b(google )?docs?\b|document|spreadsheet|\bsheets?\b|\bdrive\b|\bpdf\b|מסמך/i,
-  meetings: /\bprep(are)?\b|להתכונן/i,
-  hashgacha: /hashgacha|הש?גחה/i,
-  files: /\b(sign|signs|signed|signature|attachment|attached|pdf|document|form|fill|upload|uploaded|screenshot)\b|חתימה|לחתום|מסמך|קובץ|טופס/i,
-};
-/** The tool groups for one chat message: the fixed core, plus a rare group only when the message clearly needs it. */
-export function stableChatFeatures(features: Set<string>, query: string) {
-  const extra = [...["groups", "trackers", "missions"].filter((k) => features.has(k)), ...Object.entries(EXTRA_TRIGGERS).filter(([, re]) => re.test(query)).map(([k]) => k)];
-  return new Set([...CORE_FEATURES, ...extra]);
-}
 const TOOL_TRIGGERS: Record<string, RegExp> = {
+  files: /\b(sign|signs|signed|signature|attachment|attached|pdf|document|form|fill|upload|uploaded|screenshot)\b|חתימה|לחתום|מסמך|קובץ|טופס/i,
+  recurring: /\b(every month|monthly|each month|recurring|every (\d+(st|nd|rd|th)?|first|last)\b)|כל חודש/i,
+  areas: /\b(areas?|categor(y|ies))\b/i,
+  research: /\b(research|look into|find out|look up|compare|options for|suppliers?|prices?)\b|מחקר|תבדוק/i,
+  helper: /\b(web ?sites?|sign ?up|account|log ?in|register|online|computer helper|browser|chrome|portal|console|enable)\b|אתר/i,
+  details: /\b(my details|address|id number|vat|business number|licen[cs]e|osek|teudat)\b|ת"ז|תעודת זהות|כתובת|עוסק/i,
+  people: /\b(is my|is our|works (at|for)|phone number|email address|contact|address book|supplier|accountant|lawyer|boss)\b/i,
+  ideas: /\b(idea|what if|thinking (about|of)|brainstorm|business plan)\b|רעיון|מה אם/i,
+  tasks: /\b(every (day|week|morning|evening|sunday|monday|tuesday|wednesday|thursday|friday)|weekly|daily|report)\b|כל שבוע|כל יום|דוח/i,
   shopping: /\b(shopping|grocer(?:y|ies)|supermarket|list|buy|bought|pick up|milk|eggs|bread)\b|קניות|לקנות|מכולת|סופר/i,
   meetings: /\b(prep|prepare|meeting|agenda)|פגישה|להתכונן/i,
   hashgacha: /hashgacha|הש?גחה|weekly reports?/i,
@@ -1306,27 +1349,25 @@ function splitPrompt() {
 }
 const PROMPT_PARTS = splitPrompt();
 
-const CHAT_CORE=`You are the user's personal Chief of Staff, shared across text and voice. Understand their intent, use the supplied context and actually file or change things with tools. Never claim a save without its tool. Answer questions directly and briefly.
-- Meeting prep is an exception to immediate internal saves: hold the note, then ask which meeting (name/date/time); attach only after a subsequent user choice. No prep documents or automatic prep offers.
-- One decision pass for internal saves: use known IDs/context, batch all independent operations and finish_reply in the SAME response. Do not search for IDs already provided. Only fetch missing information when it can change the decision. External questions may need a lookup before answering. Do not re-read successful saves.
-- Internal tasks, reminders, memories, projects, schedule changes and deletion need no extra permission. Sending messages, contacting people, sharing files and spending money require the existing approval flow. EVERY AI research/background job needs separate explicit approval; creating a pending approval is not starting work. Fixed reminders need no AI job.
-- Hashgacha report collection uses get_hashgacha_reports and track_hashgacha_reports. Online submissions are the source of completion, never an email reply or a new reporting week. Missing/partial/unavailable are distinct; no automatic outreach.
-- Shopping goes ONLY to shopping-list tools, never tasks or unsolicited home briefings. Store is the default list.
-- Resolve relative dates from the supplied local time/timezone; due_at includes the UTC offset. Ordinary reminders use create_item. Monthly fixed reminders (including multiple days in a month) use save_recurring_reminder, never save_task. Include supplied links. Completing the month stops its remaining reminders. A timed reminder should surface at its time; schedule-bound work uses block.
-- Areas: use a known area key when clear; omit if unclear. User-visible text addresses the user as you, not instructions to yourself.
-- Projects: ${PROJECT_POLICY}
-- Save durable facts/preferences with remember; inferred facts require inferred=true and a short confirmation question. Use the address book for known people, ask only for genuinely missing identity/channel. Do not turn passing details into permanent memory.
-- Drafting without an explicit destination: put the draft in your reply as a quote, do not save or send it. Email drafts remain drafts. WhatsApp messages require user Send approval.
-- Research requests use research_now/idea_step approval cards; say awaiting approval in Tasks & trackers or Today. Never pretend to have browsed.
-- Do the whole requested task with the loaded tools. If a needed ability is missing use load_tools. Do not invent facts, IDs, links, success or unavailable data. For errors/clarifications/pending approvals inspect the results before claiming completion.`;
+/** The project rules for the chat, short. The full policy still guides the background project organizer. */
+const PROJECT_RULES = `a project is a named outcome, event or work session with several steps, not an area, person or topic. Create one when asked. A list of things to do now or in one sitting ("this afternoon I need to…") gets a dated session project (create_project, e.g. "Sunday afternoon — 18 October 2026") and each of them goes in it. Tasks that clearly serve the same outcome/event share one project; reuse an existing one only for the same goal and edition, move tasks with update_item, never duplicate them. A lone task stays standalone; if unsure, leave it and ask at most one short question.`;
+const CHAT_CORE=`You are the user's personal Chief of Staff, by text and voice. Work out what they want and do it with tools; never claim a save without its tool. Answer questions directly.
+- Saving tasks, reminders, memories, projects and schedule changes, and deleting, need no permission. Sending messages, contacting people, sharing files, spending money and every AI research/background job go through approval; a pending approval is not done.
+- One pass: use IDs and facts already in the context, batch independent calls (with finish_reply for save-only work), and don't re-read your own saves.
+- Times are the user's local time (from the context). Every separate thing they mention is its own create_item; never drop one. Use block only when they tie it to a time block.
+- category: an ## Areas key only when clear.
+- Projects: ${PROJECT_RULES}
+- Lasting facts/preferences go to remember (a guess: inferred=true with a short question); don't save passing details. Use the address book for people.
+- A draft with no destination goes in your reply as a quote. Email drafts stay drafts; WhatsApps need the user's Send.
+- No tool for it? Call load_tools; never say you can't without trying. Never invent facts, IDs, links or success; check results for errors and pending approvals before saying it's done. Speak to the user as "you".`;
+
+
 
 /** The system prompt for this message: the general part plus the guides for the features in play. */
 export function promptFor(features: Set<string>) {
-  const extra = GUIDE_HEADERS.map(([k]) => k).filter((k) => features.has(k) && PROMPT_PARTS.guides[k]).map((k) => PROMPT_PARTS.guides[k]);
-  const off = GUIDE_HEADERS.map(([k]) => k).filter((k) => !features.has(k));
-  return [CHAT_CORE, ...extra,
-    off.length ? `Some abilities aren't loaded for this message (${off.join(", ")}${Object.keys(TOOL_TRIGGERS).filter((k) => !features.has(k)).map((k) => `, ${k}`).join("")}). If you need one, call load_tools first; never say you can't do something without trying that.` : ""]
-    .filter(Boolean).join("\n\n");
+  const rules = Object.keys(GROUP_RULES).filter((k) => features.has(k)).map((k) => GROUP_RULES[k]);
+  const guides = GUIDE_HEADERS.map(([k]) => k).filter((k) => features.has(k) && PROMPT_PARTS.guides[k]).map((k) => PROMPT_PARTS.guides[k]);
+  return [CHAT_CORE, rules.join("\n"), ...guides].filter(Boolean).join("\n\n");
 }
 
 /** Which features a message needs: the context triage plus tool-only triggers. */
@@ -1341,7 +1382,7 @@ export async function featuresFor(env: Env, query: string,summaries?:ContextSumm
 /** Tools of the occasional groups go to the end, so a message that adds one still shares the cached opening
  *  (everyday tools first, always in the same order). Sorts in place: load_tools keeps adding to the same list. */
 export function cacheOrder(tools: ToolDef[]) {
-  const occasional = new Set(Object.entries(TOOL_GROUPS).filter(([k]) => !CORE_FEATURES.includes(k)).flatMap(([, names]) => names));
+  const occasional = new Set(Object.values(TOOL_GROUPS).flat());
   return tools.sort((a, b) => Number(occasional.has(a.name)) - Number(occasional.has(b.name)));
 }
 
@@ -1352,7 +1393,7 @@ export function toolsFor(all: ToolDef[], features: Set<string>, loaded: Set<stri
   const live = all.filter(allowed);
   live.push({
     name: "load_tools",
-    description: `Load more abilities for this reply when you need one that isn't available: ${Object.keys(TOOL_GROUPS).join(", ")}.`,
+    description: `Load abilities you don't have yet (their rules come with them): ${Object.entries(GROUP_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}.`,
     input_schema: { type: "object", properties: { features: { type: "array", items: { type: "string", enum: Object.keys(TOOL_GROUPS) } } }, required: ["features"] },
     handler: async (input) => {
       const add = ((input.features as string[]) ?? []).filter((f) => TOOL_GROUPS[f]);
@@ -1360,7 +1401,7 @@ export function toolsFor(all: ToolDef[], features: Set<string>, loaded: Set<stri
         loaded.add(f);
         for (const t of all) if (TOOL_GROUPS[f].includes(t.name) && !live.some((x) => x.name === t.name)) live.push(t);
       }
-      const guides = add.map((f) => PROMPT_PARTS.guides[f]).filter(Boolean);
+      const guides = add.flatMap((f) => [GROUP_RULES[f], PROMPT_PARTS.guides[f]]).filter(Boolean);
       return { loaded: add, ...(guides.length ? { instructions: guides.join("\n\n") } : {}), note: "These tools are available now; call them." };
     },
   });
