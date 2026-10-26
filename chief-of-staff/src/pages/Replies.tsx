@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {api,type ReplyCard} from '../api';
 import {Button,DictateButton} from '../components/ui';
+import WhatsAppsToSend from '../components/WhatsAppsToSend';
 
 export function replyWhatsAppLink(card:ReplyCard,text:string){return `https://wa.me/${card.phone??''}?text=${encodeURIComponent(text)}`;}
 export default function Replies({serverTranscription,onDataChanged,refreshKey}:{serverTranscription:boolean;onDataChanged:()=>void;refreshKey:number}){
@@ -18,6 +19,7 @@ export default function Replies({serverTranscription,onDataChanged,refreshKey}:{
   }catch(e){setError((e as Error).message);await load();}finally{setBusy(false);}
  };
  return <div className="flex flex-col min-h-full">
+  <WhatsAppsToSend refreshKey={refreshKey}/>
   <p className="text-sm text-muted mb-4">{cards.length} waiting. Say “number 1, tell him Tuesday works; number 2, no reply needed.” Numbers stay fixed while you work here.</p>
   {loading&&<p className="text-sm text-muted">Loading replies…</p>}
   <div className="space-y-3 flex-1">{cards.map(c=><ReplySheetCard key={c.id} c={c} number={numbers.current.get(c.id)!} draft={drafts[c.id]??''} busy={busy} opened={!!opened[c.id]}

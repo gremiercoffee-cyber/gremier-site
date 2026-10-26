@@ -21,6 +21,7 @@ import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./tr
 import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
 import { activeProjects } from "./projectmatch";
+import { prepareWhatsApps } from "./contacts";
 import {meetingPrepState,proposePrepNote,confirmPrepNote} from './meeting-prep';
 import { hubCall } from "./hub";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
@@ -799,6 +800,18 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
+      name: "prepare_whatsapps",
+      description: "The usual way to WhatsApp people: 'send a WhatsApp to X, Y and Z saying…'. Prepares one message per person (numbers from the user's Contacts/address book) as one-tap WhatsApp links on the Replies page; the user sends each from WhatsApp. Use {first_name} to personalize. If it returns which_one or not_found, ask the user (show the options) and call again for those people only.",
+      input_schema: { type: "object", properties: {
+        recipients: { type: "array", items: { type: "string" }, description: "names as the user said them, or phone numbers" },
+        message: { type: "string" }, title: { type: "string", description: "2-5 words, e.g. 'Chanukah party'" } }, required: ["recipients", "message"] },
+      handler: async (input) => {
+        const r = await prepareWhatsApps(env, input as never);
+        if (r.prepared.length) note("prepare_whatsapps", `📲 ${r.prepared.length} WhatsApp${r.prepared.length > 1 ? "s" : ""} ready to send in Replies`);
+        return r;
+      },
+    },
+    {
       name: "send_whatsapp",
       description: "Prepare a WhatsApp message. It is NOT sent yet: the user gets it with Send / Edit / Cancel buttons, and only after Send does their computer send it through WhatsApp Web. Use the contact's name exactly as they'd appear in WhatsApp. Write in the user's voice and the language they use with that person.",
       input_schema: {
@@ -1170,7 +1183,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   schedule: ["save_time_block"],
   calendar: ["calendar_lookup"],
   email: ["search_email", "read_email_thread", "draft_email"],
-  whatsapp: ["send_whatsapp"],
+  whatsapp: ["prepare_whatsapps", "send_whatsapp"],
   docs: ["create_doc", "create_sheet", "append_rows", "search_drive", "read_file", "share_file"],
   groups: ["save_group", "draft_group_message", "get_group", "check_group_messages"],
   trackers: ["save_tracker", "get_tracker_entries"],

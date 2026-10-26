@@ -37,6 +37,7 @@ import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Rout
 import { currentBlock, nowChecklist, describeSituation, saveSituation, type Situation } from "./situations";
 import { capture, checkTrackerNow, judgeEntry, knownChats, linkWhatsapp, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
+import { contactsStatus, openWhatsApps, syncContacts, syncContactsDaily } from "./contacts";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
 const json = (data: unknown, status = 200) =>
@@ -684,6 +685,21 @@ route("POST", "/api/push/test", async (_req, env) =>
   json(await sendPush(env, { title: "Notifications are on", body: "This is how your reminders will arrive.", url: "/?tab=today", tag: "test" })));
 // ---- Google (Calendar + Gmail) ---------------------------------------------
 route("GET", "/api/google/status", async (_req, env) => json(await googleStatus(env)));
+// ---- Contacts and one-tap WhatsApps (the user sends each one from WhatsApp; the app never sends them) ----
+route("GET", "/api/contacts/status", async (_req, env) => json(await contactsStatus(env)));
+route("POST", "/api/contacts/sync", async (_req, env) => {
+  try { return json(await syncContacts(env)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("GET", "/api/whatsapps", async (_req, env) => json(await openWhatsApps(env)));
+route("POST", "/api/whatsapps/:id/opened", async (_req, env, [id]) => { await run(env, "UPDATE wa_drafts SET opened_at = COALESCE(opened_at, ?) WHERE id = ?", now(), id); return json({ ok: true }); });
+route("PATCH", "/api/whatsapps/:id", async (req, env, [id]) => {
+  const { text } = await body<{ text?: string }>(req);
+  if (!String(text ?? "").trim()) throw new HttpError(400, "The message can't be empty.");
+  await run(env, "UPDATE wa_drafts SET text = ? WHERE id = ? AND done_at IS NULL", String(text).slice(0, 4000), id);
+  return json({ ok: true });
+});
+route("POST", "/api/whatsapps/:id/done", async (_req, env, [id]) => { await run(env, "UPDATE wa_drafts SET done_at = ? WHERE id = ?", now(), id); return json({ ok: true }); });
+route("POST", "/api/whatsapps/batch/:id/done", async (_req, env, [id]) => { await run(env, "UPDATE wa_drafts SET done_at = ? WHERE batch_id = ? AND done_at IS NULL", now(), id); return json({ ok: true }); });
 route("GET", "/api/bridge-status", async (_req, env) => json(await bridgeStatus(env)));
 route("POST", "/api/google/connect", async (req, env) => {
   try { return json({ url: await startGoogleAuth(env, req) }); }
@@ -787,6 +803,7 @@ export default {
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
+      .then(() => syncContactsDaily(env)).catch((e) => console.error("contacts", e))
       .then(() => processPendingShopping(env)).catch((e) => console.error('shopping', e))
       .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
       .then(() => processSelfNotes(env)).catch((e) => console.error("self notes", e))

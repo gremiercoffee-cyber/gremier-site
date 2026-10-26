@@ -207,6 +207,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                       </p>
                     </div>
                     {!a.last_error && !a.workspace && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Add Docs & Drive</Button>}
+                    {!a.last_error && a.workspace && !a.contacts && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Allow contacts</Button>}
                     {a.last_error
                       ? <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Reconnect</Button>
                       : <Button variant="ghost" onClick={async () => {
@@ -217,6 +218,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                 ))}
               </ul>
               {googleMsg && <p className="text-sm">{googleMsg}</p>}
+              {google.accounts.some((a) => a.contacts) && <ContactsLine />}
               <div className="flex flex-wrap gap-2">
                 <Button onClick={async () => { try { location.href = (await api.googleConnect()).url; } catch (e) { setGoogleMsg((e as Error).message); } }}>
                   {google.accounts.length ? "Add another Google account" : "Connect Google"}
@@ -407,5 +409,23 @@ function StatusCard() {
       </ul>
       <p className="text-xs text-muted mt-1">WhatsApp needs WhatsApp Web open in Chrome with the add-on. Exact AI spend: platform.openai.com → Usage.</p>
     </Card>
+  );
+}
+
+/** How many contacts are saved for WhatsApp lookups, and a manual refresh (it also refreshes daily on its own). */
+function ContactsLine() {
+  const [s, setS] = useState<{ count: number; synced_at: string | null } | null>(null);
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  useEffect(() => { api.contactsStatus().then(setS).catch(() => {}); }, []);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted">📇 Contacts: {s ? `${s.count.toLocaleString()} saved${s.synced_at ? ` · updated ${new Date(s.synced_at).toLocaleDateString([], { day: "numeric", month: "short" })}` : " · not loaded yet"}` : "…"}</span>
+      <Button variant="ghost" disabled={busy} onClick={async () => {
+        setBusy(true); setMsg("");
+        try { const r = await api.syncContacts(); setMsg(`Loaded ${r.saved.toLocaleString()} contacts.`); setS(await api.contactsStatus()); }
+        catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+      }}>{busy ? "Loading…" : "Refresh"}</Button>
+      {msg && <span className="text-xs">{msg}</span>}
+    </div>
   );
 }

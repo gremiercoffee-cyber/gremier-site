@@ -173,6 +173,8 @@ export interface GoogleAccountStatus {
   email: string;
   /** Docs, Sheets and Drive access granted. */
   workspace: boolean;
+  /** Read-only Contacts access granted (for finding WhatsApp numbers). */
+  contacts?: boolean;
   /** Area its calendar events belong to. */
   category: string | null;
   last_sync_at: string | null;

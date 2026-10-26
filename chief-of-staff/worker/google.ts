@@ -22,10 +22,12 @@ const SCOPES = [
   "https://www.googleapis.com/auth/drive",          // find, read, create and (after approval) share files
   "https://www.googleapis.com/auth/documents",
   "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/contacts.readonly", // look up people's numbers for one-tap WhatsApps (read only)
 ];
-/** Calendar + Gmail are required; Docs/Sheets/Drive are optional per account (added later). */
+/** Calendar + Gmail are required; Docs/Sheets/Drive and Contacts are optional per account (added later). */
 const CORE_SCOPES = SCOPES.slice(2, 5);
-export const WORKSPACE_SCOPES = SCOPES.slice(5);
+export const WORKSPACE_SCOPES = SCOPES.slice(5, 8);
+export const CONTACTS_SCOPE = SCOPES[8];
 /** Thread fetches + triage calls per run, shared across accounts to stay under 50 subrequests. */
 const THREAD_BUDGET = 12;
 const TRIAGE_PURPOSES = ["email_triage", "whatsapp_triage", "shopping_triage"];
@@ -96,6 +98,7 @@ export async function googleStatus(env: Env): Promise<GoogleStatus> {
     accounts: accounts.map((a) => ({
       email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error, category: (a as Account & { category?: string }).category ?? null,
       workspace: WORKSPACE_SCOPES.every((s) => ((a as Account & { scopes?: string }).scopes ?? "").includes(s)),
+      contacts: ((a as Account & { scopes?: string }).scopes ?? "").includes(CONTACTS_SCOPE),
     })),
     ai_used_today: b.used, ai_daily_cap: b.cap,
   };

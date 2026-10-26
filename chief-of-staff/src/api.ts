@@ -9,6 +9,8 @@ import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
+export interface WaDraft { id: string; batch_id: string; batch_title: string; name: string; phone: string; text: string; opened_at: string | null; created_at: string }
+
 export interface ReplyCard {
   id: string; person: string | null; channel: "whatsapp" | "email"; said: string; subject?: string;
   why: string | null; suggested: string | null; waiting_since: string; category: string | null; phone?:string|null; delivery_status?:string|null;
@@ -188,6 +190,13 @@ export const api = {
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
   bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
+  contactsStatus: () => request<{ count: number; synced_at: string | null }>("GET", "/api/contacts/status"),
+  syncContacts: () => request<{ saved: number; missing_permission: string[] }>("POST", "/api/contacts/sync"),
+  whatsapps: () => request<WaDraft[]>("GET", "/api/whatsapps"),
+  whatsappOpened: (id: string) => request("POST", `/api/whatsapps/${id}/opened`),
+  whatsappEdit: (id: string, text: string) => request("PATCH", `/api/whatsapps/${id}`, { text }),
+  whatsappDone: (id: string) => request("POST", `/api/whatsapps/${id}/done`),
+  whatsappBatchDone: (batch: string) => request("POST", `/api/whatsapps/batch/${batch}/done`),
   googleConnect: () => request<{ url: string }>("POST", "/api/google/connect"),
   googleArea: (email: string, category: string) => request("POST", "/api/google/area", { email, category }),
   googleDisconnect: (email: string) => request("POST", "/api/google/disconnect", { email }),
