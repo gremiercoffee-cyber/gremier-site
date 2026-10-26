@@ -1,0 +1,2 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+test('admin inline scripts parse, including generated-document templates',()=>{const source=fs.readFileSync('admin.html','utf8');for(const match of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)){if(match[1].trim())assert.doesNotThrow(()=>new vm.Script(match[1]));}assert.equal((source.match(/<script src="\/admin-production\.js/g)||[]).length,1);});

@@ -29,6 +29,11 @@ begin
  r:=start_production_brew('test_brew_unfiltered','unfiltered',2);if not (r->>'already')::boolean then raise exception 'Brew deducted twice';end if;
  r:=complete_production_drain('drain_test_brew_unfiltered');if (r->>'liters_added')::numeric<>12.7 then raise exception 'Drain amount incorrect';end if;
  r:=complete_production_drain('drain_test_brew_unfiltered');if not (r->>'already')::boolean then raise exception 'Drain added twice';end if;
+ insert into labeled_stock(product,qty) values('classic_mini',12) on conflict(product) do update set qty=12;
+ r:=complete_bottling('{"id":"test_auto_labels","product":"classic_mini","actual_qty":1}',null);
+ if (select qty from labeled_stock where product='classic_mini')<>8 then raise exception 'Widget did not consume available labels';end if;
+ perform reverse_bottling_stock('test_auto_labels');perform reverse_bottling_stock('test_auto_labels');
+ if (select qty from labeled_stock where product='classic_mini')<>12 then raise exception 'Label reversal was not exact/idempotent';end if;
  r:=complete_labeling('test_labels','classic_mini',10);r:=complete_labeling('test_labels','classic_mini',10);
  if not (r->>'already')::boolean then raise exception 'Label retry duplicated';end if;
 end $$;

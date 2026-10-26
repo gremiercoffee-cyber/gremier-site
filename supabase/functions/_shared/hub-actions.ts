@@ -200,7 +200,7 @@ async function stockView(sb: Sb) {
 }
 
 // ── Voice: sentence → one proposed action (the app confirms, then runs it) ──
-const VOICE_ACTIONS = ["log_bottling", "start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"];
+const VOICE_ACTIONS = ["log_labeling", "log_bottling", "start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"];
 async function voiceParse(sb: Sb, text: string) {
   text = text.trim().slice(0, 500);
   if (!text) throw new HubError("no_text", "Didn't catch that");

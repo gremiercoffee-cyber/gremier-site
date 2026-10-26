@@ -13,7 +13,7 @@ export function productionAlerts(stock:any,jobs:any[],today:string){
    for(const [pid,q] of Object.entries(j.quantities||{}))needed[pid]=(needed[pid]||0)+Number(q);
    for(const type of j.jerry_cans||[]){const pid=({classic:'jerry_can',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'} as any)[type];if(pid)needed[pid]=(needed[pid]||0)+1;}
   }
-  if(j.type==='bottling'){const units=/mini/.test(j.product)?Number(j.liters)*4:/jerry/.test(j.product)?Number(j.liters)/5:Number(j.liters);scheduled[j.product]=(scheduled[j.product]||0)+units;}
+  if(j.type==='bottling'){const units=/mini/.test(textOf(j.product))?Number(j.liters)*4:/jerry/.test(textOf(j.product))?Number(j.liters)/5:Number(j.liters);scheduled[j.product]=(scheduled[j.product]||0)+units;}
  }
  const required:Record<string,number>={},yieldByType:Record<string,number>={};
  const recipe=(key:string)=>{const pid=textOf(key);return ({coffee:/unfilter/.test(pid)?'unfiltered':/house|blend/.test(pid)?'houseBlend':/colombia/.test(pid)?'colombia':/decaf/.test(pid)?'decaf':'classic',liters:/mini/.test(pid)?.25:/jerry/.test(pid)?5:1,ratio:['vanilla_mini','original_mini','caramel_mini'].includes(key)?.29:/unfilter/.test(pid)?.4:/house|blend|colombia|decaf/.test(pid)?.5:.43});};
