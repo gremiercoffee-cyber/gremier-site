@@ -102,7 +102,7 @@ export function describeLayout(l: Layout, max = 700) {
 export type Where = "after" | "left" | "below" | "above" | "on";
 /** Anchored (text pages): anchor + where. Scanned pages: page + the answer's space as a line from (x1,y1) to
  *  (x2,y2), in thousandths of the page as seen, from the top-left. (Older copies used a single x,y.) */
-export interface Placement { value: string; anchor?: number; where?: Where; page?: number; x1?: number; y1?: number; x2?: number; y2?: number; x?: number; y?: number; size?: number; what?: string }
+export interface Placement { value?: string; signature?: string; anchor?: number; where?: Where; page?: number; x1?: number; y1?: number; x2?: number; y2?: number; x?: number; y?: number; size?: number; what?: string }
 
 const HEB = /[֐-׿יִ-ﭏ]/;
 const BLANK = /[_.…‐-]{4,}/;
@@ -232,15 +232,18 @@ export function drawValue(page: PDFPage, text: string, at: { x: number; y: numbe
   }
 }
 
-/** Write every placement onto the PDF. Returns the new file and how many were written. */
-export async function overlay(bytes: Uint8Array, l: Layout | null, placements: Placement[]) {
+/** Write every placement onto the PDF (text, or a saved signature image). Returns the new file and how many. */
+export async function overlay(bytes: Uint8Array, l: Layout | null, placements: Placement[], signatures: Record<string, Uint8Array> = {}) {
   const doc = await PDFDocument.load(bytes);
   const f = await embedFonts(doc);
   const pages = doc.getPages();
+  const images = new Map<string, Awaited<ReturnType<PDFDocument["embedPng"]>>>();
   let written = 0;
   for (const p of placements) {
+    if (p.signature) { if (await drawSignature(doc, pages, l, p, signatures, images)) written++; continue; }
     const value = String(p.value ?? "").trim();
-    if (!value) continue;
+    // An id or code is never an answer (a signature's id once got written as text).
+    if (!value || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) continue;
     const w = (size: number) => textWidth(value, f, size);
     let at: Spot | null = null;
     if (p.anchor != null && l) at = placeText(l, p, w);
@@ -250,4 +253,25 @@ export async function overlay(bytes: Uint8Array, l: Layout | null, placements: P
     written++;
   }
   return { bytes: await doc.save(), written };
+}
+
+/** A saved signature on a signature line: about two lines of text tall, along the line, a little below it. */
+async function drawSignature(doc: PDFDocument, pages: PDFPage[], l: Layout | null, p: Placement, sigs: Record<string, Uint8Array>,
+  images: Map<string, Awaited<ReturnType<PDFDocument["embedPng"]>>>) {
+  const want = String(p.signature).toLowerCase();
+  const key = Object.keys(sigs).find((k) => k === want) ?? Object.keys(sigs).find((k) => k.includes(want) || want.includes(k)) ?? Object.keys(sigs)[0];
+  if (!key) return false;
+  let img = images.get(key);
+  if (!img) { img = await doc.embedPng(sigs[key]); images.set(key, img); }
+  const aspect = img.width / img.height;
+  let h = Math.max(16, Math.min(40, (p.size ?? 10) * 2.6));
+  // Fit the space: the "width" of a signature is its drawn length.
+  const width = (size: number) => (h * (size / (p.size ?? 10))) * aspect;
+  const at = p.anchor != null && l ? placeText(l, { ...p, size: p.size ?? 10 }, width)
+    : p.page != null && pages[p.page] ? placeOnScan(pages[p.page], p.page, p, width, false) : null;
+  if (!at || !pages[at.page]) return false;
+  h = h * (at.size / (p.size ?? 10));
+  const r = (at.angle * Math.PI) / 180, drop = h * 0.2;
+  pages[at.page].drawImage(img, { x: at.x + Math.sin(r) * drop, y: at.y - Math.cos(r) * drop, width: h * aspect, height: h, rotate: degrees(at.angle) });
+  return true;
 }

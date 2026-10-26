@@ -1,7 +1,7 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
-import { chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
+import { checkPlacement, chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
@@ -110,6 +110,7 @@ route("POST", "/api/files/upload", async (req, env) => {
 });
 route("POST", "/api/files/:id/choose", async (_req, env, [id]) => { try { return json(await chooseFile(env, id)); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("POST", "/api/files/:id/sign", async (req, env, [id]) => { try { return json(await signFile(env, { ...(await body<{ signatures?: string[]; position?: string }>(req)), file_id: id })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
+route("POST", "/api/files/:id/check", async (req, env, [id]) => { try { return json(await checkPlacement(env, id, (await body<{ images?: string[] }>(req)).images ?? [])); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("POST", "/api/files/:id/fill", async (req, env, [id]) => { try { return json(await fillForm(env, { ...(await body<{ instructions?: string }>(req)), file_id: id })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("POST", "/api/signed", async (req, env) => { try { return json(await prepareSignedFile(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("GET", "/api/signed/:id", async (_req, env, [id]) => {

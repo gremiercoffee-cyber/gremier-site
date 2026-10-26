@@ -193,7 +193,7 @@ test('a scanned form (no text) is read as a picture and answers go where the mod
  const {id}=await docs.uploadFile(env,{filename:'scan.pdf',mime:'application/pdf',bytes:await pdf(1)});
  globalThis.__fill=JSON.stringify({placements:[{what:'Name',value:'Yoni Grey',page:0,x:200,y:100,size:10}],still_needed:[]});
  const r=await docs.fillForm(env,{file_id:id});
- assert.equal(r.scanned,true);assert.equal(r.written,1);assert.match(r.check,/estimated/);
+ assert.equal(r.scanned,true);assert.equal(r.written,1);assert.match(r.check,/checks the placement/);
  assert.equal(globalThis.__asked.attachments[0].kind,'pdf','the page itself was sent to look at');
  const item=(await textOn((await docs.fileBytes(env,r.file_id)).bytes)).find(i=>i.s==='Yoni Grey');
  assert.ok(Math.abs(item.x-119)<1&&Math.abs(item.y-(842-84.2))<1,'thousandths of the page from the top-left');
@@ -268,4 +268,34 @@ test('scans: a page stored turned, and a page scanned sideways, both get answers
  assert.equal(angleOf(b),90,'runs up the sideways page');
  assert.ok(Math.abs(b.x-0.3*595)<1,'on the line that was marked');
  assert.ok(b.y>842*0.1&&b.y<842*0.5,'Hebrew ends at the far end of the space');
+});
+
+test('a signature line gets the saved signature picture (never its id), and a filled scan can be looked over and fixed',async()=>{
+ const {env}=memoryEnv();
+ const img='data:image/png;base64,'+Buffer.from(png(120,40)).toString('base64');
+ const sig=await docs.saveVault(env,{kind:'signature',label:'My signature',image:img});
+ assert.ok(!(await docs.vaultSummary(env)).includes(sig.id),'the summary never shows the signature id');
+ const {id}=await docs.uploadFile(env,{filename:'scan.pdf',mime:'application/pdf',bytes:await pdf(1)});
+ globalThis.__fill=JSON.stringify({placements:[
+  {what:'Name',value:'Yoni Grey',page:0,x1:100,y1:100,x2:400,y2:100},
+  {what:'Signature',signature:'My signature',page:0,x1:100,y1:900,x2:350,y2:900},
+  {what:'Oops',value:sig.id,page:0,x1:100,y1:500,x2:300,y2:500},
+ ],still_needed:[]});
+ const r=await docs.fillForm(env,{file_id:id});
+ assert.equal(r.written,2,'the name and the signature; the id is dropped');
+ const doc=await PDFDocument.load((await docs.fileBytes(env,r.file_id)).bytes);
+ assert.equal(imagesOn(doc.getPage(0)),1,'the signature is a picture on the page');
+ assert.ok(!(await textOn((await docs.fileBytes(env,r.file_id)).bytes)).some(i=>i.s.includes(sig.id.slice(0,8))));
+ let listed=(await docs.recentFiles(env,'2000-01-01')).find(f=>f.id===r.file_id);
+ assert.equal(listed.scan_check,'due','the app should look it over');
+ // the look-over: the name sat too high, move it
+ globalThis.__fill=JSON.stringify({moves:[{n:0,x1:100,y1:130,x2:400,y2:130}]});
+ const c=await docs.checkPlacement(env,r.file_id,['data:image/jpeg;base64,AAAA']);
+ assert.equal(c.moved,1);
+ assert.equal(globalThis.__asked.attachments[0].kind,'image');assert.match(globalThis.__asked.prompt,/#0 page 0 "Yoni Grey" line \(100,100\)/);
+ const name=(await textOn((await docs.fileBytes(env,r.file_id)).bytes)).find(i=>i.s==='Yoni Grey');
+ assert.ok(Math.abs(name.y-(842-0.13*842))<1,'redrawn at the corrected line, in the same copy');
+ listed=(await docs.recentFiles(env,'2000-01-01')).find(f=>f.id===r.file_id);
+ assert.equal(listed.scan_check,'done');assert.match(listed.note,/placement checked, 1 moved/);
+ assert.equal(imagesOn((await PDFDocument.load((await docs.fileBytes(env,r.file_id)).bytes)).getPage(0)),1,'signature still there, once');
 });

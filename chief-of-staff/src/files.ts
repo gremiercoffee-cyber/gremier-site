@@ -70,3 +70,33 @@ export async function pdfPreview(blob: Blob, pageNo = 1, width = 360): Promise<{
   await page.render({ canvasContext: c.getContext("2d")!, viewport }).promise;
   return { image: c.toDataURL("image/jpeg", 0.85), pages: doc.numPages };
 }
+
+/** Every page of a PDF as a picture with a light measuring grid (every 50 thousandths, numbered every 100), so
+ *  the assistant can see exactly where filled-in answers landed. Pages as they're shown (turned pages turned). */
+export async function pagesWithGrid(blob: Blob, maxPages = 10, longSide = 1400): Promise<string[]> {
+  const pdfjs = await import("pdfjs-dist");
+  const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  pdfjs.GlobalWorkerOptions.workerSrc = worker;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  const out: string[] = [];
+  for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
+    const page = await doc.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: longSide / Math.max(base.width, base.height) });
+    const c = document.createElement("canvas"); c.width = viewport.width; c.height = viewport.height;
+    const g = c.getContext("2d")!;
+    await page.render({ canvasContext: g, viewport }).promise;
+    g.font = `${Math.round(c.width / 90)}px sans-serif`;
+    for (let t = 50; t < 1000; t += 50) {
+      const major = t % 100 === 0;
+      g.strokeStyle = major ? "rgba(220,0,0,0.35)" : "rgba(220,0,0,0.15)"; g.lineWidth = 1;
+      const x = (t / 1000) * c.width, y = (t / 1000) * c.height;
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, c.height); g.moveTo(0, y); g.lineTo(c.width, y); g.stroke();
+      if (major) { g.fillStyle = "rgba(200,0,0,0.9)"; g.fillText(String(t), x + 2, 12 + c.width / 120); g.fillText(String(t), 2, y - 2); }
+    }
+    out.push(c.toDataURL("image/jpeg", 0.72));
+    page.cleanup();
+  }
+  await doc.destroy();
+  return out;
+}

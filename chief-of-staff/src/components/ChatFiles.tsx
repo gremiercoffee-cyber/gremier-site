@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type FoundFile, type VaultItem } from "../api";
-import { download, fetchFile, pdfPreview } from "../files";
+import { download, fetchFile, pagesWithGrid, pdfPreview } from "../files";
 import { Button } from "./ui";
 
 const isPdf = (f: { filename: string; mime?: string | null }) => /pdf/i.test(f.mime ?? "") || /\.pdf$/i.test(f.filename);
@@ -126,18 +126,37 @@ function WorkCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
 }
 
 /** A copy made for you (filled or signed): check it, then download, share, or sign it too. */
+/** A filled scan: draw its pages with a grid and let the assistant move anything that landed off its line. */
+const checking = new Set<string>();
+async function lookOver(f: FoundFile) {
+  if (checking.has(f.id)) return null;
+  checking.add(f.id);
+  try { return await api.checkFile(f.id, await pagesWithGrid(await getBlob(f))); } finally { checking.delete(f.id); }
+}
+
 function ResultCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
   const [signing, setSigning] = useState(false);
+  const [look, setLook] = useState<"" | "busy" | string>("");
+  const check = async () => {
+    setLook("busy");
+    try { const r = await lookOver(f); setLook(r ? (r.moved ? `Moved ${r.moved} answer${r.moved === 1 ? "" : "s"} onto their lines.` : "Everything is on its line.") : ""); if (r?.moved) onChanged(); }
+    catch (e) { setLook((e as Error).message); }
+  };
+  // A filled scan is looked over once by itself, as soon as it's shown.
+  useEffect(() => { if (f.scan_check === "due") void check(); }, [f.id, f.scan_check]);
   const signed = /\(signed\)/i.test(f.filename);
   return (
     <div className="rounded-2xl bg-ok/10 border border-ok/30 p-3 space-y-2">
       <p className="text-[15px] font-medium">{signed ? "✍️ Signed copy" : "📝 Filled copy"} · <span className="break-all">{f.filename}</span></p>
       {f.note && <p className="text-xs text-muted">{f.note}</p>}
-      <Preview id={f.id} f={f} />
+      {look === "busy" ? <div className="h-40 max-w-[340px] rounded-lg bg-sunken grid place-items-center text-xs text-muted">Checking where everything landed…</div>
+        : <Preview key={f.note ?? ""} id={f.id} f={f} />}
+      {look && look !== "busy" && <p className="text-xs text-muted">{look}</p>}
       <div className="flex flex-wrap gap-2">
         <Button onClick={async () => download(await getBlob(f), f.filename)}>Download</Button>
         <Button variant="soft" onClick={() => void share(f)}>Share…</Button>
         {!signed && <Button variant="soft" onClick={() => setSigning((v) => !v)}>✍️ Sign it too</Button>}
+        {f.scan_check && <Button variant="soft" onClick={() => void check()} disabled={look === "busy"}>📐 Check placement</Button>}
       </div>
       {signing && <SignPanel f={f} onDone={() => { setSigning(false); onChanged(); }} />}
       <NeededForm f={f} onChanged={onChanged} />

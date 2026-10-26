@@ -55,7 +55,7 @@ async function whoAmI(env: Env) {
 export async function vaultSummary(env: Env) {
   const items = await listVault(env);
   if (!items.length) return "";
-  return items.map((i) => i.kind === "signature" ? `- ${i.label} (signature image, id ${i.id})` : `- ${i.label}: ${i.text.replace(/\s+/g, " ").slice(0, 300)}`).join("\n");
+  return items.map((i) => i.kind === "signature" ? `- ${i.label} (a saved signature image)` : `- ${i.label}: ${i.text.replace(/\s+/g, " ").slice(0, 300)}`).join("\n");
 }
 
 // ---- Files from email --------------------------------------------------------------------------------
@@ -72,6 +72,7 @@ export interface FoundFile {
   id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
   source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string;
   needed?: { label: string; ask: string }[];
+  fill_values?: string | null; scan_check?: "due" | "done" | null;
 }
 export type Purpose = "sign" | "fill" | "view";
 const purposeOf = (p: unknown): Purpose => (p === "sign" || p === "fill" ? p : "view");
@@ -145,8 +146,14 @@ export async function uploadFile(env: Env, p: { filename: string; mime: string; 
 }
 
 export const recentFiles = (env: Env, since: string) =>
-  all<FoundFile>(env, "SELECT id, account, filename, mime, size, sender, subject, sent_at, source, purpose, batch, chosen, parent_id, note, needed, created_at FROM found_files WHERE created_at >= ? ORDER BY created_at, sent_at DESC LIMIT 40", since)
-    .then((rows) => rows.map((r) => ({ ...r, needed: (() => { try { return r.needed ? JSON.parse(r.needed as unknown as string) : []; } catch { return []; } })() })));
+  all<FoundFile>(env, "SELECT id, account, filename, mime, size, sender, subject, sent_at, source, purpose, batch, chosen, parent_id, note, needed, fill_values, created_at FROM found_files WHERE created_at >= ? ORDER BY created_at, sent_at DESC LIMIT 40", since)
+    .then((rows) => rows.map(({ fill_values, ...r }) => {
+      let fv: { mode?: string; checked?: number } = {};
+      try { fv = fill_values ? JSON.parse(fill_values as unknown as string) : {}; } catch { /* none */ }
+      return { ...r, needed: (() => { try { return r.needed ? JSON.parse(r.needed as unknown as string) : []; } catch { return []; } })(),
+        // A filled scan the app should look over once (it draws the pages and sends them to checkPlacement).
+        scan_check: fv.mode === "scan" ? (fv.checked === 0 ? "due" : "done") : null };
+    }));
 
 export const fileInfo = (env: Env, id: string) => first<FoundFile>(env, "SELECT * FROM found_files WHERE id = ?", id);
 
@@ -292,7 +299,7 @@ async function fillFormNow(env: Env, input: { file_id: string; instructions?: st
   const layout = await readLayout(f.bytes).catch(() => null);
   const scanned = !layout || layout.pieces.length < 6;
   const before = prev && prev.mode !== "fields" ? `\n\nAlready written on this form (keep these unless the user asks to change or move one; return the FULL list):\n${JSON.stringify(prev.placements)}` : "";
-  const rules = `Go through EVERY page and every blank meant for the user (the applicant / business / signer): each one is either filled or listed in still_needed — none silently skipped. Use the user's saved details, what they said, and the user's name and email; work out what follows plainly from them (a short business name from the business name; the contact or manager is the user; the signer's name next to a signature line; a phone or email repeated wherever the form asks again; today's date next to where they sign or for "date"). Never invent ID numbers, account numbers, amounts or facts. Write each value in the form's language when it's a word you'd translate naturally (e.g. city names in Hebrew on a Hebrew form), otherwise as saved. A tick box: value "X". ${NEEDED_RULE}`;
+  const rules = `Go through EVERY page and every blank meant for the user (the applicant / business / signer): each one is either filled or listed in still_needed — none silently skipped. Use the user's saved details, what they said, and the user's name and email; work out what follows plainly from them (a short business name from the business name; the contact or manager is the user; the signer's name next to a signature line; a phone or email repeated wherever the form asks again; today's date next to where they sign or for "date"). An address needs its city: if the city isn't known, put it in still_needed (and the same for anything else the form clearly requires, such as postal code or ID number) rather than leaving the blank. Where the form wants the user's signature (חתימה, "Signature", "חתימת ...") place their saved signature image there: {"signature": "<saved signature name>"} instead of a value; another signer's (e.g. a spouse's) only if the user said so. Never write ids, codes or file names as values. Never invent ID numbers, account numbers, amounts or facts. Write each value in the form's language when it's a word you'd translate naturally (e.g. city names in Hebrew on a Hebrew form), otherwise as saved. A tick box: value "X". ${NEEDED_RULE}`;
   let placements: Placement[] = [], needed: Needed[] = [];
   if (!scanned) {
     const out = await getProvider(env).complete({
@@ -305,11 +312,11 @@ async function fillFormNow(env: Env, input: { file_id: string; instructions?: st
 A tick box: anchor the option's text, "left" for English (box before the text), "after" for Hebrew (box after it).
 Hebrew text may come out with its letters reversed; read it either way. Text marked [runs up the page] / [runs down the page] is a sideways part of the page: anchor to it the same way; the answer is written along that line too.
 ${rules}
-Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor": 12, "where": "after"}], "still_needed": [...]}`,
+Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor": 12, "where": "after"}, {"what": "Signature", "signature": "My signature", "anchor": 30, "where": "on"}], "still_needed": [...]}`,
       prompt: `${common}\n\nPages: ${layout!.pages.map((p, i) => `p${i + 1} ${Math.round(p.w)}x${Math.round(p.h)}`).join(", ")}\n\nText on the pages:\n${describeLayout(layout!)}${before}`,
     });
     const v = parseJson<{ placements?: Placement[]; still_needed?: unknown }>(out);
-    placements = (v.placements ?? []).filter((p) => p && p.value != null && Number.isFinite(Number(p.anchor))).map((p) => ({ ...p, anchor: Number(p.anchor) }));
+    placements = (v.placements ?? []).filter((p) => p && (p.value != null || p.signature) && Number.isFinite(Number(p.anchor))).map((p) => ({ ...p, anchor: Number(p.anchor) }));
     needed = neededList(v.still_needed);
   } else {
     const file = f.bytes.length <= 4 * 1024 * 1024 ? { kind: "pdf" as const, name: f.filename, dataUrl: `data:application/pdf;base64,${toB64(f.bytes)}` } : null;
@@ -319,26 +326,80 @@ Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor":
       system: `You fill in a scanned paper form (a picture, so no text to anchor to) by saying where each answer is written. Look carefully at each page, including pages scanned sideways or upside down and tables whose columns each ask something.
 For each answer mark its empty space as a line on the page: page (0 = first); x1,y1 = where the space starts and x2,y2 = where it ends, along the line the answer is written on. Both points in thousandths of the page width and height AS YOU SEE IT, measured from the TOP-LEFT corner; the bottom of the letters sits on that line. "Starts" = the left end when the form's printed text is read upright — so on a sideways page the line runs up or down the page, like the printed lines there, and the answer will be written that way too. Keep the line inside the blank (a table cell, after a label, on a dotted line), never over printed text. size = points (usually 9-11; smaller for small cells).
 ${rules}
-Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "page": 0, "x1": 420, "y1": 233, "x2": 610, "y2": 233, "size": 10}], "still_needed": [...]}`,
+Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "page": 0, "x1": 420, "y1": 233, "x2": 610, "y2": 233, "size": 10}, {"what": "Signature", "signature": "My signature", "page": 0, "x1": 120, "y1": 880, "x2": 300, "y2": 880}], "still_needed": [...]}`,
       prompt: `${common}${before}`,
     });
     const v = parseJson<{ placements?: Placement[]; still_needed?: unknown }>(out);
     const num = (n: unknown) => n == null || n === "" ? undefined : Number(n);
     placements = (v.placements ?? []).map((p) => ({ ...p, anchor: undefined, page: num(p.page), x1: num(p.x1 ?? p.x), y1: num(p.y1 ?? p.y), x2: num(p.x2), y2: num(p.y2), x: undefined, y: undefined }))
-      .filter((p) => p.value != null && [p.page, p.x1, p.y1].every((n) => Number.isFinite(n)));
+      .filter((p) => (p.value != null || p.signature) && [p.page, p.x1, p.y1].every((n) => Number.isFinite(n)));
     needed = neededList(v.still_needed);
   }
   if (!placements.length) await setNeeded(env, input.file_id, needed);
   if (!placements.length) return { clarification: needed.length ? "I need a few details before I can fill this form." : "I couldn't find anything on this form to fill from your details. Tell me the answers and I'll write them in.", still_needed: needed, next: ASK_NEXT };
-  const out = await overlay(f.bytes, scanned ? null : layout, placements);
+  const out = await overlay(f.bytes, scanned ? null : layout, placements, await signatureImages(env));
   if (!out.written) return { clarification: "I couldn't place the answers on this form. Tell me where they go and I'll try again.", still_needed: needed };
   const note = `Wrote ${out.written} answer${out.written === 1 ? "" : "s"} onto the page${scanned ? " (a scan: positions are estimated, check them)" : ""}${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (answer them in the form below)` : ""}`;
-  const id = await saveMade(env, baseId, out.bytes, name, note, { mode: scanned ? "scan" : "flat", placements }, needed);
+  const id = await saveMade(env, baseId, out.bytes, name, note, { mode: scanned ? "scan" : "flat", placements, checked: 0 }, needed);
   await setNeeded(env, input.file_id, []); // answered by this newer copy
   return { file_id: id, made: "filled copy (written onto the page)", written: out.written, scanned, still_needed: needed,
     where: "It's in the chat with a preview, Download and Share.",
     ...(needed.length ? { next: ASK_NEXT } : {}),
-    ...(scanned ? { check: "Positions on a scan are estimated: ask the user to check, and move any that are off (call again with e.g. 'move the ID number a little right')." } : {}) };
+    ...(scanned ? { check: "On a scan the app now checks the placement itself (it looks at the filled pages and moves anything that's off). If the user still sees one off, call again with e.g. 'move the ID number a little right'." } : {}) };
+}
+
+/** Saved signatures as PNG bytes, by name (lower case), for signature lines on a form. */
+async function signatureImages(env: Env) {
+  const out: Record<string, Uint8Array> = {};
+  for (const v of await listVault(env)) if (v.kind === "signature" && v.image) out[v.label.toLowerCase()] = pngBytes(v.image);
+  return out;
+}
+
+/**
+ * Check a filled scan by looking at it: the app draws each filled page with a grid of thousandths and sends the
+ * pictures; the model sees where every answer actually landed and moves the ones that are off their line or
+ * box. The copy is redrawn from the clean original, in place (same card).
+ */
+export function checkPlacement(env: Env, id: string, images: string[]) {
+  const run2 = fillQueue.then(() => checkNow(env, id, images), () => checkNow(env, id, images));
+  fillQueue = run2.catch(() => {});
+  return run2;
+}
+
+async function checkNow(env: Env, id: string, images: string[]) {
+  const info = await fileInfo(env, id) as (FoundFile & { fill_values?: string | null }) | null;
+  if (!info?.fill_values || !info.parent_id) throw new Error("That copy can't be checked.");
+  const state = JSON.parse(info.fill_values) as { mode: string; placements: Placement[]; checked?: number };
+  if (state.mode !== "scan") return { moved: 0, checked: true };
+  const pics = images.filter((x) => /^data:image\/(jpeg|png|webp);base64,/.test(x)).slice(0, 10);
+  if (!pics.length) throw new Error("No page pictures to check.");
+  const listing = state.placements.map((p, n) => `#${n} page ${p.page} ${p.signature ? `[signature: ${p.signature}]` : JSON.stringify(p.value)} line (${p.x1},${p.y1})→(${p.x2 ?? "?"},${p.y2 ?? "?"}) size ${p.size ?? 10}`).join("\n");
+  const out = await getProvider(env).complete({
+    tier: "main", purpose: "fill_check", maxTokens: 6000, effort: "medium",
+    attachments: pics.map((d, i) => ({ kind: "image" as const, name: `page ${i}`, dataUrl: d })),
+    system: `You check a filled-in scanned form. The pictures are its pages in order (page 0 first), each with a light measuring grid: lines every 50 thousandths of the page, numbered along the top and the left edge (0 at the top-left). The answers are written in dark blue. For each answer you get its number, page, value and the line it's written on: (x1,y1)→(x2,y2) in thousandths; the bottom of the letters sits on that line, starting at (x1,y1) (Hebrew ends at (x2,y2)).
+Look at where each one actually landed. Move any that isn't sitting properly in its blank: above or below its dotted line / cell, overlapping printed text, in the wrong box, spilling out of its cell, or running the wrong way. Give the corrected line (and size if it's too big or small for the space). Leave correct ones out. Read the grid numbers carefully; small moves (5-20) are common.
+Reply ONLY JSON: {"moves": [{"n": 3, "x1": 0, "y1": 0, "x2": 0, "y2": 0, "size": 10}], "all_good": false}`,
+    prompt: `Answers on this form:\n${listing}`,
+  });
+  const v = parseJson<{ moves?: { n: number; x1?: number; y1?: number; x2?: number; y2?: number; size?: number }[] }>(out);
+  let moved = 0;
+  const placements = state.placements.map((p) => ({ ...p }));
+  for (const m of v.moves ?? []) {
+    const p = placements[Number(m.n)];
+    if (!p || ![m.x1, m.y1].every((n) => Number.isFinite(Number(n)))) continue;
+    Object.assign(p, { x1: Number(m.x1), y1: Number(m.y1), x2: m.x2 != null ? Number(m.x2) : p.x2, y2: m.y2 != null ? Number(m.y2) : p.y2, ...(m.size ? { size: Number(m.size) } : {}) });
+    moved++;
+  }
+  const checked = (state.checked ?? 0) + 1;
+  if (moved) {
+    const base = await fileBytes(env, info.parent_id);
+    const redone = await overlay(base.bytes, null, placements, await signatureImages(env));
+    await storeBytes(env, id, redone.bytes);
+  }
+  const note = (info.note ?? "").replace(/ \(a scan: positions are estimated, check them\)| \(a scan; placement checked[^)]*\)/, "") .replace(/^(Wrote \d+ answers? onto the page)/, `$1 (a scan; placement checked${moved ? `, ${moved} moved` : ""})`);
+  await run(env, "UPDATE found_files SET fill_values = ?, note = ? WHERE id = ?", JSON.stringify({ ...state, placements, checked }), note, id);
+  return { moved, checked: true };
 }
 
 async function fillFields(env: Env, p: { fileId: string; baseId: string; doc: PDFDocument; fields: PDFField[]; common: string; prev: { values: Record<string, string | boolean> } | null; name: string }) {
