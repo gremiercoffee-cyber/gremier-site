@@ -107,3 +107,6 @@ body.production-kiosk .sidebar,body.production-kiosk .mobile-header,body.product
 body.production-kiosk .main{margin:0!important;padding:20px!important}body.production-kiosk #tab-production{max-width:1400px;margin:auto}#productionKioskExit{position:fixed;top:10px;right:12px;z-index:10000;min-height:44px;padding:10px 18px;border-radius:12px;border:1px solid #ddd;background:#fff;color:#222}
 #productionStockHistory{margin:20px 12px;padding:20px;border:1px solid #e1e2e5;border-radius:18px;background:#fff;box-shadow:0 6px 20px #252d3a0a}#productionStockHistory li{padding:9px 0;border-bottom:1px solid #eee;font-size:13px}
 body.production-kiosk #ops-voicelogger-root,body.production-kiosk #ops-globalpills-root{display:none!important}
+/* Switching tabs (sidebar, bottom bar): the new screen eases in. A tab is hidden with display:none,
+   so the animation replays every time one is shown. */
+.tab-content{animation:tab-in .24s cubic-bezier(.2,.8,.3,1)}@keyframes tab-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){.tab-content{animation:none}}
