@@ -189,6 +189,8 @@ export async function finishJob(env: Env, id: string, p: { status?: string; resu
   const status = p.status === "done" ? "done" : "failed";
   const shot = p.screenshot && /^data:image\/jpeg;base64,/.test(p.screenshot) && p.screenshot.length < 900_000 ? p.screenshot : null;
   await run(env, "UPDATE browser_jobs SET status = ?, result = ?, screenshot = ?, updated_at = ? WHERE id = ?", status, String(p.result ?? "").slice(0, 2000), shot, now(), id);
+  // Its earlier "needs you" is over.
+  await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ? AND type = 'helper'", id);
   await notify(env, "helper", status === "done" ? "🖥️ Done" : "🖥️ The helper couldn't finish", `${j.instruction.slice(0, 70)}: ${String(p.result ?? "").slice(0, 200)}`, id, "/?tab=tasks");
   return { ok: true };
 }

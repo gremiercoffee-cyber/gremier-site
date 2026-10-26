@@ -248,7 +248,7 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   const completion=useImmediateCompletions((dash?.nudges??[]).flatMap(n=>[...(n.item_id?[n.item_id]:[]),...(n.items??[]).map(i=>i.id)]));
   const performAction=(n:Nudge,action:string)=>n.item_id&&['done','notneeded'].includes(action)?completion.complete(n.item_id,()=>onAct(n,action),()=>{}):onAct(n,action);
   const [showUpdates,setShowUpdates]=useState(false);
-  const allNudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??'') && n.type !== "briefing" && (area === "all" || nudgeArea(n) === area));
+  const allNudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??'') && n.type !== "briefing" && (n.type !== "helper" || n.title.includes("needs you")) && (area === "all" || nudgeArea(n) === area));
   const nudges=showUpdates?allNudges:allNudges.slice(0,5);
   const briefing = dash?.nudges.find((n) => n.type === "briefing");
   const [nowVisibleCount,setNowVisibleCount]=useState<number|null>(null);
