@@ -3,6 +3,7 @@ import type { GoogleStatus, Memory, Settings as S } from "../../shared/types";
 import { setAreas, useAreas } from "../areas";
 import { api, setToken } from "../api";
 import { Button, Card, Empty } from "../components/ui";
+import HashgachaAutopilot from "../components/HashgachaAutopilot";
 
 // OpenAI Realtime voices for live conversation.
 const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"];
@@ -310,6 +311,8 @@ export default function Settings({ settings, onSaved, installPrompt }: {
           <Button>Add</Button>
         </form>
       </Card>
+
+      <HashgachaAutopilot />
 
       <Card title="AI usage">
         <div className="flex gap-1.5 mb-3">

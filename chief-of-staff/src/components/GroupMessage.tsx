@@ -2,9 +2,10 @@ import {useEffect,useState} from 'react';
 import {api,type BroadcastRow,type GroupRow} from '../api';
 import {Button,timeAgo} from './ui';
 import {useOpenSet} from '../remember';
+import {greetingName} from '../../shared/greeting';
 const field='w-full rounded-xl border border-line bg-bg p-3 text-sm';
 const phone=(value:string)=>{const d=value.replace(/\D/g,'');return d.startsWith('0')?`972${d.slice(1)}`:d;};
-const personal=(text:string,name:string)=>text.replace(/\{name\}/gi,name).replace(/\{first_name\}/gi,/^(rabbi|rav|dr|reb)\.?\s/i.test(name)?name:name.split(/\s+/)[0]);
+const personal=(text:string,name:string)=>text.replace(/\{name\}/gi,name).replace(/\{first_name\}/gi,greetingName(name));
 export function GroupMessage({b,g,onChanged}:{b:BroadcastRow;g:GroupRow;onChanged:()=>void}){
  const [subject,setSubject]=useState(b.subject),[body,setBody]=useState(b.body),[busy,setBusy]=useState(false),[error,setError]=useState(''),[info,setInfo]=useState(''),[showPhones,setShowPhones]=useState(false);
  const editable=b.status==='draft'&&!b.archived_at,emails=g.members.filter(m=>m.email),phones=g.members.filter(m=>m.phone);

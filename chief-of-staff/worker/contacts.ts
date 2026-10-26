@@ -10,6 +10,7 @@
  */
 import type { Env } from "./env";
 import { CONTACTS_SCOPE, accessToken } from "./google";
+import { greetingName } from "../shared/greeting";
 import { all, first, now, run, uid } from "./db";
 
 /** Any phone format → digits with country code (Israel assumed for local numbers): "054-123 4567" → 972541234567. */
@@ -102,7 +103,7 @@ export async function findContacts(env: Env, query: string): Promise<ContactMatc
 }
 
 const personalize = (text: string, name: string) =>
-  text.replace(/\{name\}/gi, name).replace(/\{first_name\}/gi, /^(rabbi|rav|dr|reb)\.?\s/i.test(name) ? name : name.split(/\s+/)[0]);
+  text.replace(/\{name\}/gi, name).replace(/\{first_name\}/gi, greetingName(name));
 
 /**
  * Assistant tool: one WhatsApp per person, ready to send with one tap each. A recipient can be a name or a

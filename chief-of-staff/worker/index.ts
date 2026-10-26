@@ -1,4 +1,5 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
+import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
@@ -686,6 +687,8 @@ route("POST", "/api/push/test", async (_req, env) =>
 // ---- Google (Calendar + Gmail) ---------------------------------------------
 route("GET", "/api/google/status", async (_req, env) => json(await googleStatus(env)));
 // ---- Contacts and one-tap WhatsApps (the user sends each one from WhatsApp; the app never sends them) ----
+route("GET", "/api/hashgacha/autopilot", async (_req, env) => json(await autopilotPreview(env)));
+route("PUT", "/api/hashgacha/autopilot", async (req, env) => json(await saveAutopilot(env, await body(req))));
 route("GET", "/api/contacts/status", async (_req, env) => json(await contactsStatus(env)));
 route("POST", "/api/contacts/sync", async (_req, env) => {
   try { return json(await syncContacts(env)); } catch (e) { throw new HttpError(400, (e as Error).message); }
@@ -800,7 +803,7 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
-    ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+    ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
       .then(() => syncContactsDaily(env)).catch((e) => console.error("contacts", e))

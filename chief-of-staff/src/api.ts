@@ -9,6 +9,8 @@ import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
+export interface AutopilotPreview { enabled: boolean; start_week: string | null; week_of: string; filed: string[]; missing: string[]; no_email: string[]; error: string | null; sent: { kind: string; name: string; sent_at: string; error: string | null }[]; templates: Record<string, { subject: string; body: string }> }
+
 export interface WaDraft { id: string; batch_id: string; batch_title: string; name: string; phone: string; text: string; opened_at: string | null; created_at: string }
 
 export interface ReplyCard {
@@ -190,6 +192,8 @@ export const api = {
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
   bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
+  hashgachaAutopilot: () => request<AutopilotPreview>("GET", "/api/hashgacha/autopilot"),
+  saveHashgachaAutopilot: (p: { enabled?: boolean }) => request("PUT", "/api/hashgacha/autopilot", p),
   contactsStatus: () => request<{ count: number; synced_at: string | null }>("GET", "/api/contacts/status"),
   syncContacts: () => request<{ saved: number; missing_permission: string[] }>("POST", "/api/contacts/sync"),
   whatsapps: () => request<WaDraft[]>("GET", "/api/whatsapps"),

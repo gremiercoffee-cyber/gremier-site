@@ -8,6 +8,7 @@ import type { Env } from "./env";
 import { all, first, now, run, uid } from "./db";
 import { savePerson, type Person } from "./memory";
 import { sendEmail } from "./google";
+import { greetingName } from "../shared/greeting";
 
 export interface Group { id: string; name: string; description: string; created_at: string; updated_at: string }
 export interface Broadcast {
@@ -77,7 +78,7 @@ export async function draftBroadcast(env: Env, input: { group: string; subject?:
 
 /** "Hi {first_name}" → "Hi Avi". */
 export function personalize(text: string, p: { name: string }) {
-  const first = /^(rabbi|rav|harav|reb|mr|mrs|ms|dr|prof)\.?\s/i.test(p.name) ? p.name : p.name.split(/\s+/)[0] ?? p.name;
+  const first = greetingName(p.name); // "R' Heyman" stays whole; "Avi Cohen" → "Avi"
   return text.replace(/\{first_name\}/gi, first).replace(/\{name\}/gi, p.name);
 }
 
