@@ -16,7 +16,8 @@ const STATUS: Record<string, [string, string]> = {
 export default function HelperJobs({ refreshKey }: { refreshKey: number }) {
   const [jobs, setJobs] = useState<HelperJob[] | null>(null);
   const [text, setText] = useState(""), [busy, setBusy] = useState(""), [error, setError] = useState(""), [answers, setAnswers] = useState<Record<string, string>>({}), [openLog, setOpenLog] = useState<string | null>(null);
-  const load = () => api.helperJobs().then(setJobs).catch((e) => setError(e.message));
+  const [seen, setSeen] = useState<string | null | undefined>(undefined);
+  const load = () => { api.helperStatus().then((s) => setSeen(s.last_seen)).catch(() => {}); return api.helperJobs().then(setJobs).catch((e) => setError(e.message)); };
   useEffect(() => { void load(); }, [refreshKey]);
   // While something is in progress, check every 5 seconds.
   useEffect(() => {
@@ -38,6 +39,13 @@ export default function HelperJobs({ refreshKey }: { refreshKey: number }) {
         <p className="font-display text-xl">🖥️ Computer helper</p>
         <p className="text-xs text-muted">Jobs done in Chrome on your home computer, signed in as you. It never types passwords or pays, and asks you here when it needs you.</p>
       </div>
+      {/* Jobs waiting but the computer isn't checking in (it asks every 30 seconds when switched on). */}
+      {seen !== undefined && jobs.some((j) => j.status === "queued") && (!seen || Date.now() - Date.parse(seen) > 3 * 60_000) && (
+        <div className="rounded-xl bg-danger/10 border border-danger/30 p-3 text-sm space-y-1">
+          <p className="font-medium">Your computer helper isn't connected{seen ? ` (last seen ${new Date(seen).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })})` : ""}.</p>
+          <p className="text-muted">On the home computer: open <b>chrome://extensions</b>, press ↻ (reload) on “Chief of Staff for WhatsApp”, and allow what it asks. Then check the extension's popup has <b>Computer helper</b> switched on. Waiting jobs start within a minute.</p>
+        </div>
+      )}
       <div className="flex gap-2">
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Enable the People API in my Google Cloud project" className="flex-1 min-w-0 rounded-xl bg-sunken px-3 py-2 text-sm" />
         <Button onClick={() => void add()} disabled={!text.trim() || busy === "new"}>Send</Button>

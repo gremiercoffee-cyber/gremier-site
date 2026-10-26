@@ -212,6 +212,7 @@ export const api = {
   addAnswer: (trackerId: string, person: string, text: string) => request("POST", `/api/trackers/${trackerId}/answers`, { person, text }),
   trackerActive: (trackerId: string, active: boolean) => request("POST", `/api/trackers/${trackerId}/active`, { active }),
   helperJobs: () => request<HelperJob[]>("GET", "/api/helper/jobs"),
+  helperStatus: () => request<{ last_seen: string | null }>("GET", "/api/helper/status"),
   helperCreate: (instruction: string, start_url?: string) => request<{ id: string }>("POST", "/api/helper/jobs", { instruction, start_url }),
   helperDecide: (id: string, decision: "approve" | "cancel" | "answer", answer?: string) => request("POST", `/api/helper/jobs/${id}/${decision}`, { answer }),
   vault: () => request<VaultItem[]>("GET", "/api/vault"),

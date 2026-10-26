@@ -1,6 +1,6 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
-import { createJob, decideJob, expireJobs, finishJob, jobStatus, listJobs, nextAction, nextJob } from './browser';
+import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
@@ -84,6 +84,7 @@ const route = (method: string, path: string, h: Handler) =>
 const fileResponse = (bytes: Uint8Array, filename: string, mime: string) =>
   new Response(bytes, { headers: { "content-type": mime, "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`, "cache-control": "private, no-store" } });
 route("GET", "/api/helper/jobs", async (_req, env) => json(await listJobs(env)));
+route("GET", "/api/helper/status", async (_req, env) => json(await helperSeen(env)));
 route("POST", "/api/helper/jobs", async (req, env) => { try { return json(await createJob(env, { ...(await body<{ instruction: string; start_url?: string }>(req)), source: "you" })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("POST", "/api/helper/jobs/:id/:decision", async (req, env, [id, decision]) => {
   if (!["approve", "cancel", "answer"].includes(decision)) throw new HttpError(404, "not found");

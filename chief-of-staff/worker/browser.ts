@@ -71,6 +71,8 @@ export async function expireJobs(env: Env) {
 // ---- The extension's side ------------------------------------------------------------------------
 /** The next job for this computer (one at a time), or a job it was already doing. */
 export async function nextJob(env: Env, device: string) {
+  // The computer checked in: the app can tell "waiting for your computer" from "your computer isn't connected".
+  await run(env, "INSERT INTO settings (key, value) VALUES ('helper_last_seen', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", JSON.stringify(now()));
   const mine = await first<BrowserJob>(env, "SELECT * FROM browser_jobs WHERE claimed_by = ? AND status IN ('running','needs_you') ORDER BY created_at LIMIT 1", device);
   if (mine) return { job: { id: mine.id, instruction: mine.instruction, start_url: mine.start_url, status: mine.status, resume: true } };
   const busy = await first(env, "SELECT 1 FROM browser_jobs WHERE status IN ('running','needs_you')");
@@ -80,6 +82,12 @@ export async function nextJob(env: Env, device: string) {
   const claim = await run(env, "UPDATE browser_jobs SET status = 'running', claimed_by = ?, heartbeat_at = ?, updated_at = ? WHERE id = ? AND status = 'queued'", device, now(), now(), q.id);
   if (!claim.meta.changes) return { job: null };
   return { job: { id: q.id, instruction: q.instruction, start_url: q.start_url, status: "running", resume: false } };
+}
+
+/** When the computer helper last asked for work (null = never). */
+export async function helperSeen(env: Env) {
+  const r = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'helper_last_seen'");
+  try { return { last_seen: r ? JSON.parse(r.value) as string : null }; } catch { return { last_seen: null }; }
 }
 
 export const jobStatus = async (env: Env, id: string) => {
