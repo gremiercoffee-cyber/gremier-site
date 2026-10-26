@@ -40,7 +40,7 @@ export default function HelperJobs({ refreshKey }: { refreshKey: number }) {
         <p className="text-xs text-muted">Jobs done in Chrome on your home computer, signed in as you. It never types passwords or pays, and asks you here when it needs you.</p>
       </div>
       {/* Jobs waiting but the computer isn't checking in (it asks every 30 seconds when switched on). */}
-      {seen !== undefined && jobs.some((j) => j.status === "queued") && (!seen || Date.now() - Date.parse(seen) > 3 * 60_000) && (
+      {seen !== undefined && jobs.some((j) => j.status === "queued" && !(j.not_before && Date.parse(j.not_before) > Date.now())) && (!seen || Date.now() - Date.parse(seen) > 3 * 60_000) && (
         <div className="rounded-xl bg-danger/10 border border-danger/30 p-3 text-sm space-y-1">
           <p className="font-medium">Your computer helper isn't connected{seen ? ` (last seen ${new Date(seen).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })})` : ""}.</p>
           <p className="text-muted">On the home computer: open <b>chrome://extensions</b>, press ↻ (reload) on “Chief of Staff for WhatsApp”, and allow what it asks. Then check the extension's popup has <b>Computer helper</b> switched on. Waiting jobs start within a minute.</p>
@@ -52,7 +52,9 @@ export default function HelperJobs({ refreshKey }: { refreshKey: number }) {
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {jobs.map((j) => {
-        const [label, tone] = STATUS[j.status] ?? [j.status, "bg-sunken"];
+        // A job whose website was down runs again by itself at its time.
+        const later = j.status === "queued" && j.not_before && Date.parse(j.not_before) > Date.now();
+        const [label, tone] = later ? [`Site was down · trying again ${new Date(j.not_before!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, "bg-sunken text-muted"] : STATUS[j.status] ?? [j.status, "bg-sunken"];
         const log = (() => { try { return JSON.parse(j.log) as { did: string; url: string }[]; } catch { return []; } })();
         return (
           <div key={j.id} className="rounded-2xl bg-sunken/60 p-3 space-y-2">

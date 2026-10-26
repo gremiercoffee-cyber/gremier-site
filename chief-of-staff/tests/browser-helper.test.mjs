@@ -40,13 +40,14 @@ test('a job from Codex waits for your Allow (phone notification) and is not run 
  assert.equal((await h.nextJob(e,'home')).job.id,id);
 });
 
-test('steps use the cheap model, fall back to the strong one if its answer is unusable, and log what was done',async()=>{
+test('steps use the everyday model, fall back to the stronger one if its answer is unusable, and log what was done',async()=>{
  reset();const {env:e}=env();
  const {id}=await h.createJob(e,{instruction:'Make a CoSend account',source:'you'});await h.nextJob(e,'home');
  globalThis.__model.push('sorry, not JSON','{"action":"click","n":2,"thought":"use Google sign-in"}');
  const a=await h.nextAction(e,id,page());
  assert.equal(a.action,'click');assert.equal(a.n,2);
- assert.deepEqual(globalThis.__prompts.map(p=>p.tier),['writer','main']);
+ assert.deepEqual(globalThis.__prompts.map(p=>p.purpose),['browser_step','browser_step_retry']);
+ assert.ok(globalThis.__prompts.every(p=>p.json),'asks for JSON');
  assert.match(globalThis.__prompts[0].system,/never type into password fields/);
  const job=(await h.listJobs(e))[0];assert.equal(job.steps,1);assert.match(job.log,/clicked “Continue with Google”/);
 });
@@ -61,7 +62,7 @@ test('a CAPTCHA or a card form stops and asks you; your answer goes into the nex
  await h.decideJob(e,id,'answer','Done, I solved it');
  globalThis.__model.push('{"action":"click","n":2}');
  await h.nextAction(e,id,page());
- assert.match(globalThis.__prompts.at(-1).prompt,/THE USER ANSWERED YOUR LAST QUESTION: Done, I solved it/);
+ assert.match(globalThis.__prompts.at(-1).prompt,/YOUR QUESTIONS AND THE USER'S ANSWERS:[^]*you answered: Done, I solved it/);
  const card=await h.nextAction(e,id,page({flags:{card_field:true}}));assert.equal(card.action,'ask');assert.match(card.question,/card or payment/);
 });
 
@@ -84,4 +85,65 @@ test('finishing stores the result and screenshot and tells you; a stopped job en
  const second=await h.createJob(e,{instruction:'Something else',source:'you'});await h.nextJob(e,'home');
  await h.decideJob(e,second.id,'cancel');
  assert.equal((await h.nextAction(e,second.id,page())).action,'fail');
+});
+
+test('your answer stays with the job for every later step, so it never asks the same thing twice',async()=>{
+ reset();const {env:e}=env();
+ const {id}=await h.createJob(e,{instruction:'Connect WhatsApp',source:'you'});await h.nextJob(e,'home');
+ globalThis.__model.push('{"action":"ask","question":"Approve turning off View Once?"}');
+ assert.equal((await h.nextAction(e,id,page())).action,'ask');
+ await h.decideJob(e,id,'answer','Yes, approved');
+ globalThis.__model.push('{"action":"click","n":2}','{"action":"click","n":1}','{"action":"click","n":2}');
+ for(let i=0;i<3;i++)await h.nextAction(e,id,page());
+ const last=globalThis.__prompts.at(-1).prompt;
+ assert.ok(last.includes('asked you: Approve turning off View Once?'));assert.match(last,/you answered: Yes, approved/);
+});
+
+test('what each action did is shown on the next step, and repeating the same thing is called out',async()=>{
+ reset();const {env:e}=env();
+ const {id}=await h.createJob(e,{instruction:'Open settings',source:'you'});await h.nextJob(e,'home');
+ for(let i=0;i<4;i++){globalThis.__model.push('{"action":"click","n":2}');await h.nextAction(e,id,page({last_result:i?'clicked':''}));}
+ const last=globalThis.__prompts.at(-1).prompt;
+ assert.match(last,/clicked “Continue with Google” → clicked/);
+ assert.match(last,/NOTE: you have done “clicked “Continue with Google”” 3 times/);
+});
+
+test('a screenshot of the page goes to the model as a picture; dialog elements come first',async()=>{
+ reset();const {env:e}=env();
+ const {id}=await h.createJob(e,{instruction:'Sign in',source:'you'});await h.nextJob(e,'home');
+ globalThis.__model.push('{"action":"click","n":5}');
+ await h.nextAction(e,id,page({screenshot:'data:image/jpeg;base64,AAAA',dialog:'Choose an account',elements:[{n:1,tag:'a',label:'Home'},{n:5,tag:'button',label:'Gremier',dlg:true},{n:9,tag:'a',label:'Footer',vis:false}]}));
+ const r=globalThis.__prompts.at(-1);
+ assert.equal(r.attachments[0].kind,'image');assert.equal(r.attachments[0].dataUrl,'data:image/jpeg;base64,AAAA');
+ assert.ok(r.prompt.indexOf('[5]')<r.prompt.indexOf('[1]'),'dialog first');assert.ok(r.prompt.includes('[9] a "Footer" off-screen'));assert.ok(r.prompt.includes('OPEN DIALOG:\nChoose an account'));
+});
+
+test('a site that is down puts the job back to run later by itself, a few times, then it fails',async()=>{
+ reset();const {env:e,db}=env();
+ const {id}=await h.createJob(e,{instruction:'Make a CoSend account',source:'you'});await h.nextJob(e,'home');
+ globalThis.__model.push('{"action":"fail","retry_later":true,"result":"Error 522"}');
+ assert.equal((await h.nextAction(e,id,page())).action,'wait');
+ assert.equal((await h.jobStatus(e,id)).status,'queued');
+ assert.equal((await h.nextJob(e,'home')).job,null,'not before its time');
+ db.prepare("UPDATE browser_jobs SET not_before=? WHERE id=?").run(new Date(Date.now()-1000).toISOString(),id);
+ assert.equal((await h.nextJob(e,'home')).job.id,id,'runs again later');
+ db.prepare("UPDATE browser_jobs SET retries=3 WHERE id=?").run(id);
+ globalThis.__model.push('{"action":"fail","retry_later":true,"result":"Error 522"}');
+ assert.equal((await h.nextAction(e,id,page())).action,'fail','after 3 tries it gives up');
+});
+
+test('an unreadable answer looks again instead of ending the job; only repeated ones end it',async()=>{
+ reset();const {env:e}=env();
+ const {id}=await h.createJob(e,{instruction:'Send the email',source:'you'});await h.nextJob(e,'home');
+ globalThis.__model.push('nope','still nope');
+ assert.equal((await h.nextAction(e,id,page())).action,'wait');
+ globalThis.__model.push('nope','still nope');
+ assert.equal((await h.nextAction(e,id,page())).action,'wait');
+ globalThis.__model.push('nope','still nope');
+ assert.equal((await h.nextAction(e,id,page())).action,'fail');
+});
+
+test('the server tells the extension which helper version it expects',async()=>{
+ reset();const {env:e}=env();
+ assert.equal((await h.nextJob(e,'home')).helper_version,h.HELPER_VERSION);
 });

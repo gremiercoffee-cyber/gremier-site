@@ -84,7 +84,7 @@ export interface ModelProvider {
   /** Multi-step tool-using turn. */
   runAgent(req: AgentRequest): Promise<AgentResult>;
   /** Single prompt -> text (no tools). */
-  complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"]; effort?: "low" | "medium" | "high" }): Promise<string>;
+  complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"]; effort?: "low" | "medium" | "high"; json?: boolean }): Promise<string>;
   /** Research with live web search; returns the report text and how many searches it used. */
   research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }): Promise<{ text: string; searches: number; sources: string[] }>;
   startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }): Promise<string>;
@@ -326,7 +326,7 @@ class OpenAIProvider implements ModelProvider {
     return { done: true as const, text: r.output_text.trim(), searches: r.output.filter((o) => o.type === "web_search_call").length, sources: [...sources].slice(0, 15) };
   }
 
-  async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"]; effort?: "low" | "medium" | "high" }) {
+  async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"]; effort?: "low" | "medium" | "high"; json?: boolean }) {
     const route = modelRoute(this.env, req.purpose, req.tier);
     if (route.role === "brain") {
       const response = await this.respond({
@@ -338,6 +338,7 @@ class OpenAIProvider implements ModelProvider {
         // The token allowance includes reasoning as well as the requested JSON/text.
         max_output_tokens: Math.max(2048, (req.maxTokens ?? 2048) + 1024),
         prompt_cache_key: `cos:${req.purpose}`,
+        ...(req.json ? { text: { format: { type: "json_object" } } } : {}),
       });
       await this.logResponse(route.model, req.purpose, response);
       if (response.status !== "completed" || !response.output_text?.trim()) throw new Error("The decision could not finish. No classification was applied.");

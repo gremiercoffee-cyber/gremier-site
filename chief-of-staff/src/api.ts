@@ -14,7 +14,7 @@ export interface Collection {
   people: { name: string; answered: boolean; answers: { id: string; source: string; sender: string; text: string; said_at: string }[] }[];
   other: { id: string; source: string; sender: string; text: string; said_at: string }[];
 }
-export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string }
+export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string; not_before?: string | null }
 export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
 export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
   source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string; needed?: { label: string; ask: string }[]; scan_check?: "due" | "done" | null }
