@@ -82,10 +82,18 @@ export function personalize(text: string, p: { name: string }) {
 }
 
 /** Only called from the user's own tap on "Send email" in the app. */
-export async function sendBroadcast(env: Env, id: string, edit?:{subject?:string;body?:string}) {
+export async function sendBroadcast(env: Env, id: string, edit?:{subject?:string;body?:string;force?:boolean}) {
   let b = await first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", id);
   if (!b) throw new Error("message not found");
   if (b.status !== "draft"||b.archived_at) throw new Error("This message was already handled.");
+  // A second email to the same group within 2 minutes is almost always a mis-tap (e.g. an older draft that slid
+  // into place after the first send). It goes out only if the user confirms it.
+  if (!edit?.force) {
+    const recent = await first<{ sent_at: string; subject: string }>(env,
+      "SELECT sent_at, subject FROM broadcasts WHERE group_id = ? AND id != ? AND sent_at > ? ORDER BY sent_at DESC LIMIT 1",
+      b.group_id, id, new Date(Date.now() - 120_000).toISOString());
+    if (recent) throw new Error(`RECENT_SEND: You sent "${recent.subject || "a message"}" to this group ${Math.max(1, Math.round((Date.now() - Date.parse(recent.sent_at)) / 1000))} seconds ago. Send this one too?`);
+  }
   const people = await members(env, b.group_id);
   if(!people.some(p=>p.email))throw new Error('This group has no email recipients. Use WhatsApp.');
   const body=(edit?.body??b.body).trim(),subject=edit?.subject??b.subject;
@@ -105,6 +113,12 @@ export async function sendBroadcast(env: Env, id: string, edit?:{subject?:string
   }
   const failures=results.some(r=>r.email&&!r.ok),sent=results.some(r=>r.ok),t=now();
   await run(env,"UPDATE broadcasts SET status=?,results=?,sent_at=?,archived_at=? WHERE id=?",failures?(sent?'partial':'failed'):'sent',JSON.stringify(results),t,sent?t:null,id);
+  // Copies of what was just sent (the same text saved twice) are finished too: they must not be sendable again.
+  if (sent) {
+    const same = (s: string) => s.replace(/\{(?:first_)?name\}/gi, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+    for (const d of await all<{ id: string; body: string }>(env, "SELECT id, body FROM broadcasts WHERE group_id = ? AND id != ? AND status = 'draft' AND archived_at IS NULL", b.group_id, id))
+      if (same(d.body) === same(body)) await run(env, "UPDATE broadcasts SET archived_at = ? WHERE id = ?", t, d.id);
+  }
   return { sent: results.filter((r) => r.ok).length, skipped: results.filter((r) => !r.ok), total: people.length };
 }
 
