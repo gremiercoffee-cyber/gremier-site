@@ -23,7 +23,7 @@ import { areasText, saveArea } from "./areas";
 import { activeProjects } from "./projectmatch";
 import { prepareWhatsApps } from "./contacts";
 import { createJob } from "./browser";
-import { findEmailFiles, prepareSignedFile, saveVault, vaultSummary } from "./documents";
+import { fileForModel, fileInfo, fillForm, findEmailFiles, recentFiles, saveVault, signFile, vaultSummary } from "./documents";
 import {meetingPrepState,proposePrepNote,confirmPrepNote} from './meeting-prep';
 import { hubCall } from "./hub";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
@@ -820,23 +820,35 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "find_email_files",
-      description: "Find files (attachments) in the user's Gmail: 'find the mortgage papers from the bank'. Gmail search words, e.g. 'from:bank.co.il mortgage newer_than:60d' or 'filename:pdf from:dana'. The files appear in this chat with a preview; tell the user what you found (file name, from, date) and let them check it before doing anything with it.",
-      input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      description: "Find a file (attachment) in the user's Gmail and get it: 'find the mortgage papers from the bank'. Gmail search words, e.g. 'from:bank.co.il mortgage newer_than:60d' or 'filename:pdf from:dana'. purpose = what they want done with it (sign / fill / view). One match is taken and downloaded; several → they appear in the chat as 'Which one is it?' and the user taps one, so ask them to pick (don't sign or fill until it's chosen). You CAN download and work on email attachments; never say you can't.",
+      input_schema: { type: "object", properties: { query: { type: "string" }, purpose: { type: "string", enum: ["sign", "fill", "view"] } }, required: ["query"] },
       handler: async (input) => {
-        const files = await findEmailFiles(env, String(input.query));
-        if (files.length) note("find_email_files", `📎 Found ${files.length} file${files.length > 1 ? "s" : ""} — preview below`);
-        return files.length ? { files: files.map((f) => ({ file_id: f.id, name: f.filename, from: f.sender, subject: f.subject, date: f.sent_at, size_kb: f.size ? Math.round(f.size / 1024) : null })) }
-          : { files: [], clarification: "Nothing matched. Ask who it was from or roughly when, then search again." };
+        const files = await findEmailFiles(env, String(input.query), input.purpose as string | undefined);
+        if (files.length) note("find_email_files", files.length === 1 ? `📎 Got ${files[0].filename}` : `📎 Found ${files.length} files: which one is it?`);
+        if (!files.length) return { files: [], clarification: "Nothing matched. Ask who it was from or roughly when, then search again." };
+        const list = files.map((f) => ({ file_id: f.id, name: f.filename, from: f.sender, subject: f.subject, date: f.sent_at, size_kb: f.size ? Math.round(f.size / 1024) : null }));
+        return files.length === 1 ? { file: list[0], downloaded: true, next: "Do what they asked with it (fill_document / sign_document)." }
+          : { files: list, clarification: "Several matched: ask the user to tap the right one in the chat ('Which one is it?')." };
       },
     },
     {
       name: "sign_document",
-      description: "Put the user's saved signature(s) at the bottom of every page of a PDF found with find_email_files, as a new file to download (the original isn't changed and nothing is sent). signatures = names from My details, e.g. ['My signature', \"Wife's signature\"]. Only after the user has seen the file and asked for it.",
+      description: "Put the user's saved signature(s) at the bottom of every page of a PDF (from email, uploaded, or a filled copy), as a new copy shown in the chat to review, download or share (the original isn't changed and nothing is sent). signatures = names from My details, e.g. ['My signature', \"Wife's signature\"]. Only for the file the user picked.",
       input_schema: { type: "object", properties: { file_id: { type: "string" }, signatures: { type: "array", items: { type: "string" } },
         position: { type: "string", enum: ["bottom-right", "bottom-left", "bottom-center"] } }, required: ["file_id"] },
       handler: async (input) => {
-        const r = await prepareSignedFile(env, input as never);
-        if ("signed_file_id" in r) note("sign_document", `✍️ Signed copy of ${r.file} ready — preview below`);
+        const r = await signFile(env, input as never);
+        if ("file_id" in r && r.file_id) note("sign_document", "✍️ Signed copy ready — check it below");
+        return r;
+      },
+    },
+    {
+      name: "fill_document",
+      description: "Fill in a PDF form (from email or uploaded) with the user's saved details (## My details) and what they told you. Makes a filled copy shown in the chat to review, download or share; it stays editable. Returns what's still needed: ask the user for those, then call again on the FILLED copy's file_id with their answers in instructions. Flat/scanned PDFs have no fields: then say so and offer signatures.",
+      input_schema: { type: "object", properties: { file_id: { type: "string" }, instructions: { type: "string", description: "anything the user said about how to fill it, e.g. 'loan amount 850,000, both of us as borrowers'" } }, required: ["file_id"] },
+      handler: async (input) => {
+        const r = await fillForm(env, input as never);
+        if ("file_id" in r && r.file_id) note("fill_document", "📝 Filled copy ready — check it below");
         return r;
       },
     },
@@ -1116,13 +1128,15 @@ export async function titleConversation(env:Env,c:Conversation,firstText:string)
  await run(env,'UPDATE conversations SET title=? WHERE id=?',title,c.id);c.title=title;return title;
 }
 
-export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void } = {}) {
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[] } = {}) {
   const started=performance.now(),stages:Record<string,number>={};
   const provider = getProvider(env); // fail before storing anything if no model is configured
   const existing = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
   const stale = existing && Date.now() - new Date(existing.last_message_at).getTime() > CONVERSATION_IDLE_MS;
   let convo = await resolveConversation(env, existing?.id, !existing || !!stale);
 
+  const attached = (await Promise.all((opts.files ?? []).slice(0, 6).map((id) => fileInfo(env, id)))).filter(Boolean) as { id: string; filename: string }[];
+  if (attached.length) text = [text, ...attached.map((f) => `📎 ${f.filename}`)].filter(Boolean).join("\n");
   const userMsg: Message = { id: uid(), role: "user", content: text, mode, meta: null, created_at: now(), conversation_id: convo.id };
   await run(env, "INSERT INTO messages (id, role, content, mode, created_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?)",
     userMsg.id, userMsg.role, userMsg.content, userMsg.mode, userMsg.created_at, convo.id);
@@ -1153,6 +1167,9 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   // Everyday tools stay fixed (cached). The free keyword check (no AI) adds a rarely used group, with its
   // rules, only when this message is clearly about it, so it is there in the first round, not after a load step.
   const chatFeatures=stablePrefix?stableChatFeatures(features,routeQuery):features;
+  // A file attached now, or files already in this chat: the file tools (find, fill, sign) are always at hand.
+  const filesCtx = await filesContext(env, convo.id);
+  if (attached.length || filesCtx) chatFeatures.add("files");
   const tools = toolsFor(assistantTools(env, mode === "text" ? "chat" : "voice", notes), chatFeatures, new Set());
   if (history.length > 1 || stablePrefix) {
     tools.push({
@@ -1185,9 +1202,10 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
       "save_group", "update_idea", "create_project", "update_project", "save_area", "research_now", "start_mission", "update_mission",
       "draft_group_message", "propose_action", "send_whatsapp", "draft_email", "new_topic", "capture_idea", "save_watch",
       "save_recurring_reminder", "save_shopping_list", "add_shopping_items", "update_shopping_item"],
-    context,
+    context: context + filesCtx,
     history,
     tools,
+    attachments: (await Promise.all(attached.map((f) => fileForModel(env, f.id)))).filter((x): x is NonNullable<typeof x> => !!x),
   });
 
   stages.agentFinishedMs=Math.round(performance.now()-started);
@@ -1235,7 +1253,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   coffee: ["coffee_app"],
   meetings: ["get_meeting_prep","propose_meeting_prep_note","confirm_meeting_prep_note"],
   hashgacha: ["track_hashgacha_reports","get_hashgacha_reports"],
-  files: ["find_email_files","sign_document"],
+  files: ["find_email_files","sign_document","fill_document"],
 };
 /**
  * The always-on tools in the cached chat prefix: everyday filing, the schedule, recurring tasks, coffee,
@@ -1249,7 +1267,7 @@ const EXTRA_TRIGGERS: Record<string, RegExp> = {
   docs: /\b(google )?docs?\b|document|spreadsheet|\bsheets?\b|\bdrive\b|\bpdf\b|מסמך/i,
   meetings: /\bprep(are)?\b|להתכונן/i,
   hashgacha: /hashgacha|הש?גחה/i,
-  files: /(sign|signs|signed|signature|attachment|attached|pdf|document)|חתימה|לחתום|מסמך|קובץ/i,
+  files: /\b(sign|signs|signed|signature|attachment|attached|pdf|document|form|fill|upload|uploaded|screenshot)\b|חתימה|לחתום|מסמך|קובץ|טופס/i,
 };
 /** The tool groups for one chat message: the fixed core, plus a rare group only when the message clearly needs it. */
 export function stableChatFeatures(features: Set<string>, query: string) {
@@ -1339,4 +1357,18 @@ export function toolsFor(all: ToolDef[], features: Set<string>, loaded: Set<stri
     },
   });
   return live;
+}
+
+/** The files in this conversation (found in email, uploaded, or made), so "sign that one" works in a later message. */
+async function filesContext(env: Env, conversationId: string) {
+  const firstMsg = await first<{ created_at: string }>(env, "SELECT created_at FROM messages WHERE conversation_id = ? ORDER BY created_at LIMIT 1", conversationId);
+  if (!firstMsg) return "";
+  const files = await recentFiles(env, new Date(Date.parse(firstMsg.created_at) - 15 * 60_000).toISOString());
+  if (!files.length) return "";
+  const what = (f: { source?: string; chosen?: number; note?: string | null; purpose?: string | null }) =>
+    f.source === "made" ? `made by you: ${f.note ?? ""}` : f.source === "upload" ? "uploaded by the user" : f.chosen === 1 ? "from email, the one the user picked" : f.chosen === -1 ? "from email, not the one" : "from email, waiting for the user to pick";
+  return `
+
+## Files in this chat (oldest first)
+${files.map((f) => `- ${f.filename} — file_id ${f.id} — ${what(f)}${f.purpose ? ` (they want to ${f.purpose} it)` : ""}`).join("\n")}`;
 }

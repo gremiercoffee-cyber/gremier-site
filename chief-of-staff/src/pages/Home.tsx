@@ -5,13 +5,14 @@ import HomeWork from '../components/HomeWork';
 import {useImmediateCompletions} from '../useImmediateCompletions';
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
+import type { FoundFile } from "../api";
 import { api } from "../api";
 import { useAreas } from "../areas";
 import { BriefingView, DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
 import Celebration from "../components/Celebration";
-import FilesInChat from "../components/FilesInChat";
+import ChatFiles from "../components/ChatFiles";
 import Chips from "../components/NudgeActions";
 import TaskActions from "../components/TaskActions";
 import NowChecklist from '../components/NowChecklist';
@@ -39,6 +40,27 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(!!startTyping);
+  // Files added to the next message (📎 or paste), and the files that belong to this chat.
+  const [attached, setAttached] = useState<{ id: string; filename: string; mime: string }[]>([]);
+  const [uploading, setUploading] = useState(false), [uploadError, setUploadError] = useState("");
+  const [chatFiles, setChatFiles] = useState<FoundFile[]>([]);
+  const attachedRef = useRef(attached); attachedRef.current = attached;
+  async function attach(list: File[]) {
+    setTyping(true); setUploading(true); setUploadError("");
+    try {
+      for (const f of list.slice(0, 6)) {
+        const name = f.name && f.name !== "image.png" ? f.name : `Screenshot ${new Date().toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`;
+        const r = await api.uploadFile(f, name);
+        setAttached((a) => [...a, { id: r.id, filename: r.filename, mime: r.mime }]);
+      }
+    } catch (e) { setUploadError((e as Error).message); } finally { setUploading(false); }
+  }
+  // Paste a screenshot (or a copied file) anywhere on this screen.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => { const fs = Array.from(e.clipboardData?.files ?? []); if (fs.length) { e.preventDefault(); void attach(fs); } };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -75,14 +97,16 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   useEffect(() => { if (draft) { setTyping(true); setInput(draft); onDraftUsed?.(); } }, [draft]);
 
   async function send(text: string, mode: "text" | "dictation" = "text") {
-    const t = text.trim();
+    const files = attachedRef.current;
+    const t = text.trim() || (files.length ? "Here's a file." : "");
     if (!t) return;
+    setAttached([]);
     setError("");
     setSending(true);
     const optimistic: Message = { id: `tmp-${Date.now()}`, role: "user", content: t, mode, meta: null, created_at: new Date().toISOString() };
     setMessages((m) => [...m, optimistic]);
     try {
-      const res = await api.chat(t, mode, convoRef.current);
+      const res = await api.chat(t, mode, convoRef.current, files.map((f) => f.id));
       if (res.conversation.id !== convoRef.current) {
         // New or switched topic: show just this exchange in the fresh conversation.
         convoRef.current = res.conversation.id;
@@ -158,6 +182,20 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   // Files found / signed in this chat get preview cards (only if this chat looked for or signed a file).
   const filesSince = messages.some((m) => m.meta && (safeParse(m.meta) as ActionNote[]).some?.((a) => a.tool === "find_email_files" || a.tool === "sign_document"))
     ? messages[0]?.created_at ?? null : null;
+  const chatStart = messages.find((m) => !m.id.startsWith("tmp-"))?.created_at ?? null;
+  const loadChatFiles = () => {
+    if (!chatStart) { setChatFiles([]); return; }
+    api.files(new Date(Date.parse(chatStart) - 15 * 60_000).toISOString()).then((r) => setChatFiles(r.files)).catch(() => {});
+  };
+  useEffect(loadChatFiles, [chatStart, messages.length, refreshKey]);
+  // Each file sits under the first reply that came after it (or the last message, if it came later).
+  const filesUnder = new Map<string, FoundFile[]>();
+  const replies = messages.filter((m) => m.role === "assistant" && !m.id.startsWith("tmp-") && !m.id.startsWith("act-"));
+  for (const f of chatFiles) {
+    const at = f.created_at ?? "";
+    const host = replies.find((m) => m.created_at >= at) ?? messages[messages.length - 1];
+    if (host) filesUnder.set(host.id, [...(filesUnder.get(host.id) ?? []), f]);
+  }
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -171,11 +209,10 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
             onReply={(n) => { onConversation(null); convoRef.current = null; setTyping(true); setInput(`About "${n.title}": `); }} />
         ) : (
           <div className="space-y-3 pt-2">
-            {messages.map((m) => <Bubble key={m.id} m={m} />)}
+            {messages.map((m) => <div key={m.id}><Bubble m={m} />{filesUnder.has(m.id) && <ChatFiles files={filesUnder.get(m.id)!} onChanged={loadChatFiles} />}</div>)}
             {sending && <Thinking />}
           </div>
         )}
-        {inConversation&&filesSince&&<FilesInChat since={filesSince} refreshKey={refreshKey}/>}
         {inConversation&&groupDraftSince&&<GroupDraftApprovals refreshKey={refreshKey} onChanged={onDataChanged} since={groupDraftSince}/>}
         <MeetingPrepConfirmations refreshKey={refreshKey} onChanged={onDataChanged}/>
         {error && <p className="text-danger text-sm mt-2">{error}</p>}
@@ -187,6 +224,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
       <Composer
         live={live} typing={typing} setTyping={setTyping} input={input} setInput={setInput} sending={sending}
+        attached={attached} uploading={uploading} uploadError={uploadError} onAttach={(fs) => void attach(fs)} onUnattach={(id) => setAttached((a) => a.filter((x) => x.id !== id))}
         serverTranscription={serverTranscription} onSend={(t, mode) => { setInput(""); send(t, mode); }}
         onTalk={startLive} onEnd={stopLive} onMute={(m) => callRef.current?.setMuted(m)} levels={levels} onDictating={setDictatingNow}
       />
@@ -389,7 +427,8 @@ function Orb({ state }: { state: LiveState }) {
   );
 }
 
-function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, onMute, levels, onDictating }: {
+function Composer({ live, typing, setTyping, input, setInput, sending, serverTranscription, onSend, onTalk, onEnd, onMute, levels, onDictating, attached, uploading, uploadError, onAttach, onUnattach }: {
+  attached: { id: string; filename: string; mime: string }[]; uploading: boolean; uploadError: string; onAttach: (f: File[]) => void; onUnattach: (id: string) => void;
   live: LiveState; typing: boolean; setTyping: (b: boolean) => void; input: string; setInput: (s: string | ((v: string) => string)) => void;
   sending: boolean; serverTranscription: boolean; onSend: (t: string, mode: "text" | "dictation") => void; onTalk: () => void; onEnd: () => void;
   levels: () => { input: number; output: number }; onDictating: (on: boolean) => void; onMute: (m: boolean) => void;
@@ -452,6 +491,18 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
     return (
       <form className="rounded-3xl bg-surface border border-line shadow-card p-2 mb-1"
         onSubmit={(e) => { e.preventDefault(); onSend(input, "text"); }}>
+        {(attached.length > 0 || uploading || uploadError) && (
+          <div className="flex flex-wrap gap-1.5 px-2 pt-1">
+            {attached.map((a) => (
+              <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-sunken px-2.5 py-1 text-xs max-w-[220px]">
+                <span className="truncate">{/^image\//.test(a.mime) ? "🖼️" : "📎"} {a.filename}</span>
+                <button type="button" aria-label={`Remove ${a.filename}`} onClick={() => onUnattach(a.id)} className="text-muted">✕</button>
+              </span>
+            ))}
+            {uploading && <span className="text-xs text-muted px-1 py-1">Adding…</span>}
+            {uploadError && <span className="text-xs text-danger px-1 py-1">{uploadError}</span>}
+          </div>
+        )}
         <textarea autoFocus value={input} onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSend(input, "text"); } }}
           rows={Math.min(5, Math.max(1, input.split("\n").length))} placeholder="Tell me what's going on…"
@@ -459,9 +510,12 @@ function Composer({ live, typing, setTyping, input, setInput, sending, serverTra
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex gap-1">
             <button type="button" onClick={onTalk} className="rounded-full bg-sunken px-3 py-2 text-sm font-medium flex items-center gap-1.5"><MicIcon /> Talk</button>
+            <label className="rounded-full bg-sunken px-3 py-2 text-sm font-medium cursor-pointer" title="Add a file or screenshot (you can also paste one)">
+              📎<input type="file" multiple className="hidden" onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; if (fs.length) onAttach(fs); }} />
+            </label>
             <button type="button" onClick={() => setTyping(false)} className="rounded-full px-3 py-2 text-sm text-muted">Close</button>
           </div>
-          <button type="submit" disabled={!input.trim() || sending} className="rounded-full bg-accent text-accent-ink px-5 py-2 text-sm font-medium disabled:opacity-40">Send</button>
+          <button type="submit" disabled={(!input.trim() && !attached.length) || sending || uploading} className="rounded-full bg-accent text-accent-ink px-5 py-2 text-sm font-medium disabled:opacity-40">Send</button>
         </div>
       </form>
     );

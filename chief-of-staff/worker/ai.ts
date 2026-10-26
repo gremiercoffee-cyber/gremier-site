@@ -67,6 +67,8 @@ export interface AgentRequest {
   defer?: (work:Promise<unknown>)=>void;
   /** Stable key for automatic prefix caching. */
   cacheKey?: string;
+  /** Files the user attached to this message, for the model to look at (images; short PDFs). */
+  attachments?: { kind: "image" | "pdf"; name: string; dataUrl: string }[];
   /** Tools that only save/change things: if the model already wrote its reply alongside them, skip the extra round trip. */
   noFollowUp?: string[];
 }
@@ -148,6 +150,15 @@ class OpenAIProvider implements ModelProvider {
       { role: "developer", content: req.context },
       ...normaliseHistory(req.history),
     ];
+    // Attached files go with the latest message only (at the end, so the cached opening is unchanged).
+    if (req.attachments?.length) {
+      const i = input.map((m) => (m as { role?: string }).role).lastIndexOf("user");
+      if (i >= 0) {
+        const msg = input[i] as { role: "user"; content: string };
+        input[i] = { role: "user", content: [{ type: "input_text", text: msg.content },
+          ...req.attachments.map((a) => a.kind === "image" ? { type: "input_image", image_url: a.dataUrl, detail: "auto" } : { type: "input_file", filename: a.name, file_data: a.dataUrl })] } as unknown as OpenAI.Responses.ResponseInputItem;
+      }
+    }
     const result: AgentResult = { text: "", toolCalls: [] };
     const executed = new Map<string, string>();
     const reads=new Map<string,Promise<{output:string;receipt:AgentResult["toolCalls"][number]}>>();

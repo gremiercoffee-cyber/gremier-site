@@ -8,10 +8,11 @@
  * - Signing: put one or more saved signatures at the bottom of every page of a PDF and hand back a new file to
  *   download. The original is never changed, and nothing is sent anywhere.
  */
-import { PDFDocument } from "pdf-lib";
+import { PDFCheckBox, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField, type PDFField } from "pdf-lib";
 import type { Env } from "./env";
 import { accessToken, accountEmails } from "./google";
 import { all, first, now, run, uid } from "./db";
+import { getProvider } from "./ai";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -56,12 +57,40 @@ async function gmail<T>(token: string, path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string }
+export interface FoundFile {
+  id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
+  source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string;
+}
+export type Purpose = "sign" | "fill" | "view";
+const purposeOf = (p: unknown): Purpose => (p === "sign" || p === "fill" ? p : "view");
 
-/** Search all connected Gmail accounts for messages with attachments matching the query (Gmail search words). */
-export async function findEmailFiles(env: Env, query: string, max = 8) {
+// ---- Keeping file contents (uploads, downloaded email attachments, signed/filled copies) ------------------
+const CHUNK = 900_000; // raw bytes per stored piece (a database entry holds up to ~2 MB)
+const MAX_FILE = 15 * 1024 * 1024;
+const toB64 = (b: Uint8Array) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
+const fromB64 = (s: string) => { const bin = atob(s); return Uint8Array.from(bin, (c) => c.charCodeAt(0)); };
+
+async function storeBytes(env: Env, fileId: string, bytes: Uint8Array) {
+  if (bytes.length > MAX_FILE) throw new Error("That file is too big (over 15 MB).");
+  await run(env, "DELETE FROM file_chunks WHERE file_id = ?", fileId);
+  for (let i = 0, idx = 0; i < bytes.length || idx === 0; i += CHUNK, idx++)
+    await run(env, "INSERT INTO file_chunks (file_id, idx, data) VALUES (?, ?, ?)", fileId, idx, toB64(bytes.subarray(i, i + CHUNK)));
+  await run(env, "UPDATE found_files SET stored = 1, size = ? WHERE id = ?", bytes.length, fileId);
+}
+async function loadBytes(env: Env, fileId: string) {
+  const parts = await all<{ data: string }>(env, "SELECT data FROM file_chunks WHERE file_id = ? ORDER BY idx", fileId);
+  const chunks = parts.map((p) => fromB64(p.data));
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out;
+}
+
+// ---- Files from email --------------------------------------------------------------------------------
+/** Search all connected Gmail accounts for attachments (Gmail search words). One match is taken as "the one". */
+export async function findEmailFiles(env: Env, query: string, purpose?: string, max = 8) {
   const q = `${String(query ?? "").trim()} has:attachment`.trim();
   const found: FoundFile[] = [];
+  const batch = uid(), why = purposeOf(purpose);
   for (const account of await accountEmails(env)) {
     const token = await accessToken(env, account);
     const list = await gmail<{ messages?: { id: string }[] }>(token, `/messages?${new URLSearchParams({ q, maxResults: String(max) })}`);
@@ -72,40 +101,84 @@ export async function findEmailFiles(env: Env, query: string, max = 8) {
         if (/^(image\/(gif)|application\/(ics|pkcs))/i.test(p.mimeType) || (p.body.size ?? 0) < 2000) continue; // signatures/logos in emails
         const f: FoundFile = { id: uid(), account, filename: p.filename, mime: p.mimeType, size: p.body.size ?? null,
           sender: hdr(msg.payload, "from") || null, subject: hdr(msg.payload, "subject") || null, sent_at: new Date(Number(msg.internalDate)).toISOString() };
-        await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, sender, subject, sent_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          f.id, account, msg.id, p.partId, f.filename, f.mime, f.size, f.sender, f.subject, f.sent_at, now());
+        await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, sender, subject, sent_at, created_at, source, purpose, batch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'email', ?, ?)",
+          f.id, account, msg.id, p.partId, f.filename, f.mime, f.size, f.sender, f.subject, f.sent_at, now(), why, batch);
         found.push(f);
       }
     }
   }
-  return found.sort((a, b) => (b.sent_at ?? "").localeCompare(a.sent_at ?? "")).slice(0, 12);
+  const list = found.sort((a, b) => (b.sent_at ?? "").localeCompare(a.sent_at ?? "")).slice(0, 12);
+  if (list.length === 1) await chooseFile(env, list[0].id);
+  return list;
+}
+
+/** "This one": the file to work on. Its contents are downloaded and kept, and the others from that search step aside. */
+export async function chooseFile(env: Env, id: string) {
+  const f = await first<FoundFile & { batch: string | null }>(env, "SELECT * FROM found_files WHERE id = ?", id);
+  if (!f) throw new Error("That file isn't available any more. Ask me to find it again.");
+  if (f.batch) await run(env, "UPDATE found_files SET chosen = -1 WHERE batch = ? AND id != ?", f.batch, id);
+  await run(env, "UPDATE found_files SET chosen = 1 WHERE id = ?", id);
+  await fileBytes(env, id); // downloads it from the email now, and keeps it
+  return { file_id: id, filename: f.filename, purpose: f.purpose ?? "view" };
+}
+
+/** A file the user uploaded or pasted into the chat. */
+export async function uploadFile(env: Env, p: { filename: string; mime: string; bytes: Uint8Array; purpose?: string }) {
+  const id = uid();
+  const name = (p.filename || "file").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 120);
+  await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, purpose, chosen) VALUES (?, 'upload', '', '', ?, ?, ?, ?, 'upload', ?, 1)",
+    id, name, p.mime || "application/octet-stream", p.bytes.length, now(), p.purpose ? purposeOf(p.purpose) : null);
+  await storeBytes(env, id, p.bytes);
+  return { id, filename: name, mime: p.mime, size: p.bytes.length };
 }
 
 export const recentFiles = (env: Env, since: string) =>
-  all<FoundFile>(env, "SELECT id, account, filename, mime, size, sender, subject, sent_at FROM found_files WHERE created_at >= ? ORDER BY created_at DESC, sent_at DESC LIMIT 20", since);
+  all<FoundFile>(env, "SELECT id, account, filename, mime, size, sender, subject, sent_at, source, purpose, batch, chosen, parent_id, note, created_at FROM found_files WHERE created_at >= ? ORDER BY created_at, sent_at DESC LIMIT 40", since);
 
-/** The file's bytes, fetched fresh from Gmail (attachment ids change between fetches; the part id doesn't). */
+export const fileInfo = (env: Env, id: string) => first<FoundFile>(env, "SELECT * FROM found_files WHERE id = ?", id);
+
+/** The file's bytes: kept ones from here; email attachments fetched from Gmail the first time, then kept. */
 export async function fileBytes(env: Env, id: string) {
-  const f = await first<{ account: string; message_id: string; part_id: string; filename: string; mime: string | null }>(env, "SELECT * FROM found_files WHERE id = ?", id);
+  const f = await first<{ account: string; message_id: string; part_id: string; filename: string; mime: string | null; stored: number }>(env, "SELECT * FROM found_files WHERE id = ?", id);
   if (!f) throw new Error("That file isn't available any more. Ask me to find it again.");
+  const mime = f.mime || "application/octet-stream";
+  if (f.stored) return { bytes: await loadBytes(env, id), filename: f.filename, mime };
   const token = await accessToken(env, f.account);
   const msg = await gmail<{ payload: Part }>(token, `/messages/${f.message_id}?format=full`);
   const part = flat(msg.payload).find((p) => p.partId === f.part_id);
   if (!part?.body?.attachmentId) throw new Error("The attachment is no longer in that email.");
+  // Attachment ids change between fetches; the part id doesn't.
   const a = await gmail<{ data: string }>(token, `/messages/${f.message_id}/attachments/${part.body.attachmentId}`);
-  const bin = atob(a.data.replace(/-/g, "+").replace(/_/g, "/"));
-  return { bytes: Uint8Array.from(bin, (c) => c.charCodeAt(0)), filename: f.filename, mime: f.mime || "application/octet-stream" };
+  const bytes = fromB64(a.data.replace(/-/g, "+").replace(/_/g, "/"));
+  if (bytes.length <= MAX_FILE) await storeBytes(env, id, bytes).catch(() => {});
+  return { bytes, filename: f.filename, mime };
+}
+
+/** A new file made from another (a signed or filled copy), kept and shown for review. */
+async function saveMade(env: Env, parentId: string, bytes: Uint8Array, filename: string, note: string) {
+  const id = uid();
+  await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, parent_id, note, chosen) VALUES (?, 'made', '', '', ?, 'application/pdf', ?, ?, 'made', ?, ?, 1)",
+    id, filename, bytes.length, now(), parentId, note);
+  await storeBytes(env, id, bytes);
+  return id;
+}
+
+/** For the assistant: the file as something it can read (images and short PDFs), or null if too big. */
+export async function fileForModel(env: Env, id: string): Promise<{ kind: "image" | "pdf"; name: string; dataUrl: string } | null> {
+  const f = await fileBytes(env, id).catch(() => null);
+  if (!f || f.bytes.length > 4 * 1024 * 1024) return null;
+  if (/^image\/(png|jpe?g|webp|gif)$/i.test(f.mime)) return { kind: "image", name: f.filename, dataUrl: `data:${f.mime};base64,${toB64(f.bytes)}` };
+  if (/pdf/i.test(f.mime) || /\.pdf$/i.test(f.filename)) return { kind: "pdf", name: f.filename, dataUrl: `data:application/pdf;base64,${toB64(f.bytes)}` };
+  return null;
 }
 
 // ---- Signing ---------------------------------------------------------------------------------------------
 export type Position = "bottom-right" | "bottom-left" | "bottom-center";
-const pngBytes = (dataUrl: string) => { const bin = atob(dataUrl.split(",")[1] ?? ""); return Uint8Array.from(bin, (c) => c.charCodeAt(0)); };
+const pngBytes = (dataUrl: string) => fromB64(dataUrl.split(",")[1] ?? "");
 
 /** Put the signatures side by side at the bottom of every page. */
 export async function stampSignatures(pdf: Uint8Array, signatures: Uint8Array[], position: Position = "bottom-right") {
-  let doc: PDFDocument;
-  try { doc = await PDFDocument.load(pdf); }
-  catch (e) { throw new Error(/encrypt/i.test(String((e as Error).message)) ? "This PDF is locked (password-protected), so it can't be changed. Open it in the bank's signing app instead." : "That file couldn't be opened as a PDF."); }
+  const doc = await openPdf(pdf);
   const images = await Promise.all(signatures.map((s) => doc.embedPng(s)));
   const margin = 24, gap = 14;
   for (const page of doc.getPages()) {
@@ -119,27 +192,89 @@ export async function stampSignatures(pdf: Uint8Array, signatures: Uint8Array[],
   return { bytes: await doc.save(), pages: doc.getPageCount() };
 }
 
-/** Assistant tool: prepare a signed copy (which signatures, where). Returns where the user downloads it. */
-export async function prepareSignedFile(env: Env, input: { file_id: string; signatures?: string[]; position?: string }) {
-  const file = await first<{ filename: string; mime: string | null }>(env, "SELECT filename, mime FROM found_files WHERE id = ?", input.file_id);
-  if (!file) throw new Error("I don't have that file; find it first.");
-  if (!/pdf/i.test(file.mime ?? "") && !/\.pdf$/i.test(file.filename)) throw new Error("Only PDFs can be signed this way.");
-  const sigs = await all<{ id: string; label: string }>(env, "SELECT id, label FROM vault_items WHERE kind = 'signature' AND image IS NOT NULL");
-  if (!sigs.length) return { clarification: "No signature is saved yet. The user can add one under My details (a photo or screenshot of the signature)." };
-  const wanted = (input.signatures ?? []).map((s) => s.toLowerCase());
-  const chosen = wanted.length ? sigs.filter((s) => wanted.some((w) => s.id === w || s.label.toLowerCase().includes(w))) : sigs.length === 1 ? sigs : [];
-  if (!chosen.length) return { clarification: "Which signatures?", options: sigs.map((s) => s.label) };
-  const position = (["bottom-right", "bottom-left", "bottom-center"].includes(String(input.position)) ? input.position : "bottom-right") as Position;
-  const id = uid();
-  await run(env, "INSERT INTO signed_files (id, file_id, signatures, position, created_at) VALUES (?, ?, ?, ?, ?)", id, input.file_id, JSON.stringify(chosen.map((s) => s.id)), position, now());
-  return { signed_file_id: id, file: file.filename, signatures: chosen.map((s) => s.label), position, where: "A preview and Download button appear in this chat." };
+async function openPdf(pdf: Uint8Array) {
+  try { return await PDFDocument.load(pdf); }
+  catch (e) { throw new Error(/encrypt/i.test(String((e as Error).message)) ? "This PDF is locked (password-protected), so it can't be changed. Open it in the sender's signing app instead." : "That file couldn't be opened as a PDF."); }
 }
 
+async function pickSignatures(env: Env, wanted?: string[]) {
+  const sigs = await all<{ id: string; label: string; image: string }>(env, "SELECT id, label, image FROM vault_items WHERE kind = 'signature' AND image IS NOT NULL");
+  if (!sigs.length) return { error: "No signature is saved yet. Add one under My details (a photo or screenshot of the signature)." as const };
+  const w = (wanted ?? []).map((s) => s.toLowerCase());
+  const chosen = w.length ? sigs.filter((s) => w.some((x) => s.id === x || s.label.toLowerCase().includes(x))) : sigs.length === 1 ? sigs : [];
+  if (!chosen.length) return { ask: sigs.map((s) => s.label) };
+  return { chosen };
+}
+
+/** Sign every page now: a new signed copy, shown in the chat for review and download. */
+export async function signFile(env: Env, input: { file_id: string; signatures?: string[]; position?: string }) {
+  const info = await fileInfo(env, input.file_id);
+  if (!info) throw new Error("I don't have that file; find or upload it first.");
+  if (!/pdf/i.test(info.mime ?? "") && !/\.pdf$/i.test(info.filename)) throw new Error("Only PDFs can be signed this way.");
+  const pick = await pickSignatures(env, input.signatures);
+  if ("error" in pick) return { clarification: pick.error };
+  if ("ask" in pick) return { clarification: "Which signatures?", options: pick.ask };
+  const position = (["bottom-right", "bottom-left", "bottom-center"].includes(String(input.position)) ? input.position : "bottom-right") as Position;
+  const f = await fileBytes(env, input.file_id);
+  const out = await stampSignatures(f.bytes, pick.chosen!.map((s) => pngBytes(s.image)), position);
+  const id = await saveMade(env, input.file_id, out.bytes, f.filename.replace(/\.pdf$/i, "") + " (signed).pdf", `Signed by ${pick.chosen!.map((s) => s.label).join(" and ")} on all ${out.pages} pages`);
+  return { file_id: id, made: "signed copy", signatures: pick.chosen!.map((s) => s.label), pages: out.pages, where: "It's in the chat with a preview, Download and Share." };
+}
+
+// ---- Filling in a form ---------------------------------------------------------------------------------------
+/**
+ * Fill in a PDF form's fields from the user's saved details and what they said. Works on real (fillable) PDF
+ * forms; a flat/scanned PDF has no fields to fill, which is said plainly. The copy stays editable.
+ */
+export async function fillForm(env: Env, input: { file_id: string; instructions?: string }) {
+  const info = await fileInfo(env, input.file_id);
+  if (!info) throw new Error("I don't have that file; find or upload it first.");
+  if (!/pdf/i.test(info.mime ?? "") && !/\.pdf$/i.test(info.filename)) return { clarification: "I can fill in PDF forms. This file isn't a PDF." };
+  const f = await fileBytes(env, input.file_id);
+  const doc = await openPdf(f.bytes);
+  const form = doc.getForm();
+  const fields = form.getFields();
+  if (!fields.length) return { no_fields: true, clarification: "This PDF has no fill-in fields (it's a flat or scanned form), so I can't type into it. I can still add your signatures to every page." };
+  // Field kinds are checked with instanceof: class names don't survive bundling.
+  const kind = (fl: PDFField) => fl instanceof PDFTextField ? "Text" : fl instanceof PDFCheckBox ? "CheckBox" : fl instanceof PDFDropdown ? "Dropdown"
+    : fl instanceof PDFOptionList ? "OptionList" : fl instanceof PDFRadioGroup ? "RadioGroup" : "Other";
+  const desc = fields.slice(0, 200).map((fl) => {
+    const t = kind(fl);
+    const opts = fl instanceof PDFDropdown || fl instanceof PDFOptionList || fl instanceof PDFRadioGroup ? ` options: ${fl.getOptions().slice(0, 12).join(" / ")}` : "";
+    return `- ${fl.getName()} (${t})${opts}`;
+  }).join("\n");
+  const details = await vaultSummary(env);
+  const out = await getProvider(env).complete({
+    tier: "main", purpose: "fill_form", maxTokens: 3000,
+    system: `You fill in a PDF form for the user. Field names can be cryptic: use the name, its position in the list and the options to tell what each asks for. Use ONLY the user's saved details and what they said; never invent personal information, numbers or dates. Leave a field out if you don't know it. Reply ONLY JSON: {"values": {"<exact field name>": "text" | true | false | "<option>"}, "still_needed": ["short description of each important field you couldn't fill"]}`,
+    prompt: `File: ${f.filename}\nThe user's instructions: ${input.instructions || "(fill in what you can)"}\n\nThe user's saved details:\n${details || "(none saved)"}\n\nForm fields:\n${desc}`,
+  });
+  let v: { values?: Record<string, string | boolean>; still_needed?: string[] } = {};
+  try { v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { throw new Error("I couldn't work out how to fill this form."); }
+  let filled = 0;
+  for (const [name, val] of Object.entries(v.values ?? {})) {
+    try {
+      const fl = form.getField(name);
+      if (fl instanceof PDFTextField) fl.setText(String(val));
+      else if (fl instanceof PDFCheckBox) { if (val === true || /^(yes|true|x|on|1)$/i.test(String(val))) fl.check(); else fl.uncheck(); }
+      else if (fl instanceof PDFDropdown || fl instanceof PDFOptionList || fl instanceof PDFRadioGroup) fl.select(String(val));
+      else continue;
+      filled++;
+    } catch { /* a value that doesn't fit that field: left for the user */ }
+  }
+  if (!filled) return { clarification: "I couldn't fill any field from your saved details. Tell me the answers (or add them under My details) and I'll fill it.", still_needed: v.still_needed ?? [] };
+  const bytes = await doc.save({ updateFieldAppearances: true });
+  const missing = (v.still_needed ?? []).slice(0, 12);
+  const note = `Filled ${filled} of ${fields.length} fields${missing.length ? `. Still needed: ${missing.join("; ")}` : ""}`;
+  const id = await saveMade(env, input.file_id, bytes, f.filename.replace(/\.pdf$/i, "") + " (filled).pdf", note);
+  return { file_id: id, made: "filled copy", filled, of: fields.length, still_needed: missing, where: "It's in the chat with a preview, Download and Share. It stays editable." };
+}
+
+// ---- Older signed copies (made before files were kept) ------------------------------------------------------
 export const recentSigned = (env: Env, since: string) =>
   all<{ id: string; file_id: string; filename: string; signatures: string; position: string; created_at: string }>(env,
     "SELECT s.id, s.file_id, f.filename, s.signatures, s.position, s.created_at FROM signed_files s JOIN found_files f ON f.id = s.file_id WHERE s.created_at >= ? ORDER BY s.created_at DESC LIMIT 10", since);
 
-/** Build the signed PDF for download. */
 export async function signedFileBytes(env: Env, id: string) {
   const s = await first<{ file_id: string; signatures: string; position: Position }>(env, "SELECT * FROM signed_files WHERE id = ?", id);
   if (!s) throw new Error("That signed copy isn't available.");
@@ -151,3 +286,6 @@ export async function signedFileBytes(env: Env, id: string) {
   const out = await stampSignatures(f.bytes, ordered.map((x) => pngBytes(x.image)), s.position);
   return { bytes: out.bytes, filename: f.filename.replace(/\.pdf$/i, "") + " (signed).pdf" };
 }
+
+/** Kept for older callers: signing now makes the copy straight away. */
+export const prepareSignedFile = signFile;

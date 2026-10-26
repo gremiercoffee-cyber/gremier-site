@@ -1,7 +1,7 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { createJob, decideJob, expireJobs, finishJob, jobStatus, listJobs, nextAction, nextJob } from './browser';
-import { deleteVault, fileBytes, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signedFileBytes } from './documents';
+import { chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
@@ -100,6 +100,16 @@ route("GET", "/api/files", async (req, env) => {
 route("GET", "/api/files/:id", async (_req, env, [id]) => {
   try { const f = await fileBytes(env, id); return fileResponse(f.bytes, f.filename, f.mime); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
+route("POST", "/api/files/upload", async (req, env) => {
+  const form = await req.formData();
+  const f = form.get("file");
+  if (!f || typeof f === "string") throw new HttpError(400, "Choose a file.");
+  try { return json(await uploadFile(env, { filename: f.name || "file", mime: f.type, bytes: new Uint8Array(await f.arrayBuffer()), purpose: String(form.get("purpose") ?? "") || undefined })); }
+  catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("POST", "/api/files/:id/choose", async (_req, env, [id]) => { try { return json(await chooseFile(env, id)); } catch (e) { throw new HttpError(400, (e as Error).message); } });
+route("POST", "/api/files/:id/sign", async (req, env, [id]) => { try { return json(await signFile(env, { ...(await body<{ signatures?: string[]; position?: string }>(req)), file_id: id })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
+route("POST", "/api/files/:id/fill", async (req, env, [id]) => { try { return json(await fillForm(env, { ...(await body<{ instructions?: string }>(req)), file_id: id })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("POST", "/api/signed", async (req, env) => { try { return json(await prepareSignedFile(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("GET", "/api/signed/:id", async (_req, env, [id]) => {
   try { const f = await signedFileBytes(env, id); return fileResponse(f.bytes, f.filename, "application/pdf"); } catch (e) { throw new HttpError(400, (e as Error).message); }
@@ -297,12 +307,13 @@ route("DELETE", "/api/conversations/:id", async (_req, env, [id]) => {
   return json({ ok: true });
 });
 route("POST", "/api/chat", async (req, env, _p, ctx) => {
-  const b = await body<{ text?: string; mode?: string; conversation_id?: string | null }>(req);
-  const text = (b.text ?? "").trim();
+  const b = await body<{ text?: string; mode?: string; conversation_id?: string | null; files?: string[] }>(req);
+  const files = Array.isArray(b.files) ? b.files.map(String).slice(0, 6) : [];
+  const text = (b.text ?? "").trim() || (files.length ? "Here's a file." : "");
   if (!text) throw new HttpError(400, "text is required");
   if (text.length > 20000) throw new HttpError(413, "message too long");
   const mode = b.mode === "voice" || b.mode === "dictation" ? b.mode : "text";
-  return json(await chat(env, text, mode, b.conversation_id, { defer: (p) => ctx.waitUntil(p) }));
+  return json(await chat(env, text, mode, b.conversation_id, { defer: (p) => ctx.waitUntil(p), files }));
 });
 
 // Live voice (OpenAI Realtime over WebRTC).

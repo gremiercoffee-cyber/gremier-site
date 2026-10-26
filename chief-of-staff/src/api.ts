@@ -16,7 +16,8 @@ export interface Collection {
 }
 export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string }
 export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
-export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string }
+export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
+  source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string }
 export interface SignedFile { id: string; file_id: string; filename: string; signatures: string; position: string; created_at: string }
 
 export interface AutopilotPreview { enabled: boolean; start_week: string | null; week_of: string; filed: string[]; missing: string[]; no_email: string[]; error: string | null; sent: { kind: string; name: string; sent_at: string; error: string | null }[]; templates: Record<string, { subject: string; body: string }> }
@@ -108,8 +109,12 @@ export const api = {
   health: () => request<{ ok: boolean; configured: boolean; model: boolean; transcription: boolean }>("GET", "/api/health"),
   dashboard: () => request<Dashboard>("GET", "/api/dashboard"),
   messages: () => request<Message[]>("GET", "/api/messages"),
-  chat: (text: string, mode: "text" | "voice" | "dictation" = "text", conversation_id: string | null = null) =>
-    request<ChatResponse>("POST", "/api/chat", { text, mode, conversation_id }),
+  chat: (text: string, mode: "text" | "voice" | "dictation" = "text", conversation_id: string | null = null, files: string[] = []) =>
+    request<ChatResponse>("POST", "/api/chat", { text, mode, conversation_id, files }),
+  uploadFile: (file: Blob, filename: string) => { const f = new FormData(); f.append("file", file, filename); return request<{ id: string; filename: string; mime: string; size: number }>("POST", "/api/files/upload", f); },
+  chooseFile: (id: string) => request<{ file_id: string; purpose: string }>("POST", `/api/files/${id}/choose`),
+  signFileNow: (id: string, p: { signatures: string[]; position?: string }) => request<{ file_id?: string; clarification?: string; options?: string[] }>("POST", `/api/files/${id}/sign`, p),
+  fillFile: (id: string, instructions = "") => request<{ file_id?: string; clarification?: string; still_needed?: string[]; no_fields?: boolean }>("POST", `/api/files/${id}/fill`, { instructions }),
   conversations: (archived = false) => request<Conversation[]>("GET", `/api/conversations${archived ? "?archived=1" : ""}`),
   conversationsBulk: (ids: string[], action: "archive" | "restore" | "delete") =>
     request<{ ok: true; count: number }>("POST", "/api/conversations/bulk", { ids, action }),
