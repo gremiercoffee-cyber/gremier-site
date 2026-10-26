@@ -112,3 +112,12 @@ test('notification text uses saved choices instead of mutable raw add-on labels'
   assert.match(description,/Vanilla syrup/);assert.match(description,/2× Classic 5L/);
   assert.doesNotMatch(description,/Wrong syrup|Caramel/);
 });
+
+test('extras bought with the bar are recorded on it and listed in its description', () => {
+  const item = { selected_variations: { Guests: { label: '50', price: 599 } }, selected_guest_price: 599,
+    bar_extras: [{ product_id: 'jug-colombia', name_en: '5L Colombia Light Roast', qty: 1 }, { product_id: 'mini', name_en: 'Classic Mini 4-Pack', qty: 2 }, { product_id: 'bad', qty: 0 }] };
+  const config = api.buildCoffeeBarConfiguration(product(true), item);
+  assert.deepEqual(config.extras, [{ product_id: 'jug-colombia', name: '5L Colombia Light Roast', qty: 1 }, { product_id: 'mini', name: 'Classic Mini 4-Pack', qty: 2 }]);
+  assert.match(api.describeCoffeeBar(config), /\+ 1× 5L Colombia Light Roast · \+ 2× Classic Mini 4-Pack$/);
+  assert.equal(api.buildCoffeeBarConfiguration(product(true), { ...item, bar_extras: null }).extras, undefined);
+});

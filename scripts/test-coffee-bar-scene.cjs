@@ -71,3 +71,11 @@ test('the bar is centered on the table at every size, with even space on both si
     assert.ok(Math.abs(left - (scene.width - right)) < 1, 'left ' + left + ' right ' + (scene.width - right));
   }
 });
+
+test('an extra jerry can stands with the bar own jugs', () => {
+  const plan = { guests: 75, classic: 3, mix: {}, dispensers: 1, milkLiters: 7, syrups: 2 };
+  const withExtra = layout({ ...plan, extraCoffee: ['colomb'] });
+  assert.equal(of(withExtra, 'coffee').length, 4);
+  assert.equal(of(withExtra, 'coffee').at(-1).variant, 'colomb');
+  assert.deepEqual(of(withExtra, 'coffee').slice(0, 3).map(i => i.id), of(layout(plan), 'coffee').map(i => i.id));
+});

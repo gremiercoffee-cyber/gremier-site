@@ -162,3 +162,46 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 .planner .bb-q-note {display:block;margin-top:4px;}
 .planner .bb-booking {justify-content:center;text-align:center;}
 .planner .bb-q-hint {display:block;}
+
+/* The thumbnail while choosing: a little bigger, phones too */
+.bb-mini.planner, body:not(.has-tab-bar) .bb-mini.planner { width:188px; }
+.bb-thumb-picture { width:100%; }
+@media(max-width:760px) { .bb-mini.planner, body:not(.has-tab-bar) .bb-mini.planner { width:178px; } body.bb-mini-on #fabStack { bottom:calc(240px + env(safe-area-inset-bottom))!important; } }
+
+/* Coffee for home: added to the bar's order, with a count */
+.planner .bb-home-product { display:flex; align-items:center; gap:12px; padding:12px; background:#faf9f6; border:1px solid #e5e2db; border-radius:12px; color:#222; transition:border-color .15s, background .15s; }
+.planner .bb-home-product.on { background:#fff; border-color:#1a1a1a; }
+.planner .bb-home-product > span:not(.bb-home-step) { flex:1; font-size:14px; }
+.planner .bb-home-add, .planner .bb-home-step button { width:34px; height:34px; border-radius:50%; border:1px solid #dcdfe3; background:#fff; color:#1a1a1a; font:500 1.05rem/1 'DM Sans',sans-serif; cursor:pointer; flex:0 0 auto; }
+.planner .bb-home-add { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
+.planner .bb-home-step { display:inline-flex; align-items:center; gap:10px; }
+.planner .bb-home-step b { min-width:16px; text-align:center; font-variant-numeric:tabular-nums; }
+.planner .bb-jug-extra { margin-top:6px; padding-top:10px; border-top:1px dashed #e2ddd3; }
+
+/* "Add an extra jerry can?" */
+.bb-confirm { position:fixed; inset:0; z-index:420; display:none; align-items:flex-end; justify-content:center; background:rgba(20,16,12,.45); }
+.bb-confirm.open { display:flex; }
+.bb-confirm-box { width:100%; max-width:440px; background:#fff; border-radius:22px 22px 0 0; padding:24px 18px calc(18px + env(safe-area-inset-bottom)); text-align:center; animation:bbConfirmUp .28s cubic-bezier(.2,1,.4,1); }
+.bb-confirm-box h3 { font-family:'Playfair Display',serif; font-size:1.3rem; margin:0 0 8px; color:#1a1a1a; }
+.bb-confirm-box p { margin:0 0 16px; font-size:.9rem; line-height:1.55; color:#5f656d; }
+.bb-confirm-picks { display:grid; gap:8px; }
+.bb-confirm-picks button { display:flex; align-items:center; gap:12px; padding:10px 14px; border:1px solid #e3e5e8; border-radius:14px; background:#faf9f6; font:inherit; color:#1a1a1a; cursor:pointer; text-align:start; }
+.bb-confirm-picks button:hover, .bb-confirm-picks button:focus-visible { border-color:#1a1a1a; background:#fff; }
+.bb-confirm-picks img { width:40px; height:40px; object-fit:contain; mix-blend-mode:multiply; }
+.bb-confirm-picks span { flex:1; font-size:.92rem; font-weight:500; }
+.bb-confirm-picks b { font-weight:600; color:#8a5a1c; }
+.bb-confirm-cancel { margin-top:12px; background:none; border:none; padding:8px; font:500 .88rem 'DM Sans',sans-serif; color:#5f656d; text-decoration:underline; cursor:pointer; }
+@media(min-width:641px) { .bb-confirm { align-items:center; } .bb-confirm-box { border-radius:22px; } }
+@keyframes bbConfirmUp { from { transform:translateY(30px); opacity:0; } to { transform:none; opacity:1; } }
+
+/* Order form: what was added to the bar */
+#pdBarExtras:empty { display:none; }
+#pdBarExtras { margin:10px 0 4px; padding:10px 12px; border:1px solid #e5e2db; border-radius:12px; background:#faf9f6; }
+.pd-bar-extras-title { font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:#8a8f96; margin-bottom:4px; }
+.pd-bar-extra { display:flex; justify-content:space-between; gap:10px; font-size:.86rem; padding:3px 0; color:#1a1a1a; }
+
+/* Coffee Bars: nothing shows until the builder has drawn itself (no flash of the older page) */
+#coffeebarsPage:not(.bb-ready) > :not(#planner) { visibility:hidden; }
+#coffeebarsPage:not(.bb-ready) #planner { min-height:70vh; background:radial-gradient(circle at 50% 30vh, transparent 13px, transparent 14px) no-repeat; position:relative; }
+#coffeebarsPage:not(.bb-ready) #planner::after { content:""; position:absolute; left:50%; top:24vh; width:26px; height:26px; margin-left:-13px; border:2px solid #e2ddd3; border-top-color:#1a1a1a; border-radius:50%; animation:bbSpin .8s linear infinite; }
+@keyframes bbSpin { to { transform:rotate(360deg); } }

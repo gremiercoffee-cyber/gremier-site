@@ -168,6 +168,22 @@
     }, 250);
   }
 
+  // Switching category (sidebar, chips): the products ease in, like a page change.
+  function animateCategorySwitch() {
+    const set = window.setCategory;
+    if (typeof set !== 'function' || set.animated) return;
+    window.setCategory = function () {
+      const r = set.apply(this, arguments);
+      const grid = document.getElementById('shopGrid');
+      if (grid && document.getElementById('shopPage')?.classList.contains('active')) {
+        grid.classList.remove('cat-in'); void grid.offsetWidth; grid.classList.add('cat-in');
+      }
+      return r;
+    };
+    window.setCategory.animated = true;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', animateCategorySwitch); else animateCategorySwitch();
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { start(); restoreCartFromLink(); });
   else start();
 })();

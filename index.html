@@ -755,10 +755,10 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261025-14"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261025-15"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261026-1"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261026-2"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
-<script src="/storefront-nav.js?v=20261023-2"></script>
+<script src="/storefront-nav.js?v=20261026-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 </head>
 <body>
@@ -2006,8 +2006,20 @@ function pdGetSelectedAddons() {
   return selected;
 }
 function pdGetAddonsTotal() {
-  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0) * (a.per_liter ? a.liters : (a.qty || 1)), 0);
+  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0) * (a.per_liter ? a.liters : (a.qty || 1)), 0) + pdBarExtrasTotal();
 }
+// Extras bought with a coffee bar (an extra 5L jug, coffee to take home), chosen in the builder:
+// part of the bar's one cart item, at each product's full price. The server re-prices them.
+let pdBarExtras = [];
+const pdBarExtrasTotal = () => pdBarExtras.reduce((s, x) => s + (Number(x.price) || 0) * (Number(x.qty) || 0), 0);
+function pdSetBarExtras(list) {
+  pdBarExtras = (list || []).filter(x => x && x.product_id && x.qty > 0).map(x => ({ product_id: String(x.product_id), name_en: x.name_en, name_he: x.name_he, price: Number(x.price) || 0, qty: Number(x.qty) }));
+  let box = document.getElementById('pdBarExtras');
+  if (!box) { box = document.createElement('div'); box.id = 'pdBarExtras'; document.getElementById('pdAddonsSection')?.after(box); }
+  box.innerHTML = pdBarExtras.length ? `<div class="pd-bar-extras-title">${lang === 'he' ? 'נוסף לבר' : 'Added to your bar'}</div>` + pdBarExtras.map(x => `<div class="pd-bar-extra"><span>${x.qty}× ${escHtml(lang === 'he' ? (x.name_he || x.name_en) : x.name_en)}</span><span>+₪${x.price * x.qty}</span></div>`).join('') : '';
+  pdUpdateDrawerPrice();
+}
+window.pdSetBarExtras = pdSetBarExtras;
 function pdGetAddonSuffix() {
   const selected = pdGetSelectedAddons();
   if (!selected.length) return '';
@@ -2236,6 +2248,7 @@ function pdOnGuestChange(select) {
   pdUpdateDrawerPrice();
 }
 function openProductDrawerUI(productId) {
+  pdBarExtras = []; document.getElementById('pdBarExtras')?.replaceChildren();
   // Links can use the product id or a readable name (e.g. #product=classic-dark-roast, used in Status ads).
   const key = String(productId || '').toLowerCase();
   const p = products.find(x => String(x.id) === String(productId))
@@ -2363,14 +2376,15 @@ function pdAddToCart() {
   if (!pdCurrentProduct) return;
   const p = pdCurrentProduct;
   if(pdIsSubscription()){try{pdSubscriptionQuote();}catch(e){alert(lang==='he'?'יש להוסיף קפה למנוי.':e.message);return;}}
-  const suffix = pdGetVariationSuffix() + pdGetAddonSuffix();
+  const extrasSuffix = pdBarExtras.length ? ' · +' + pdBarExtras.map(x => `${x.qty}× ${lang === 'he' ? (x.name_he || x.name_en) : x.name_en}`).join(', ') : '';
+  const suffix = pdGetVariationSuffix() + pdGetAddonSuffix() + extrasSuffix;
   const subscriptionSelection = pdIsSubscription() ? getSubscriptionSelection() : [];
   if (pdIsSubscription() && getSubscriptionBundleProducts(p).length && !subscriptionSelection.length) {
     alert(lang === 'he' ? 'בחרו לפחות מוצר אחד למנוי' : 'Please choose at least one subscription item');
     return;
   }
   const price = pdIsSubscription() ? pdGetSubscriptionTotal() : pdGetVariationPrice(p) + pdGetAddonsTotal();
-  const addonKey = pdGetSelectedAddons().map(a => a.per_liter ? `${a.name}x${a.liters}` : a.qty ? `${a.name}x${a.qty}` : a.name).join('_');
+  const addonKey = [...pdGetSelectedAddons().map(a => a.per_liter ? `${a.name}x${a.liters}` : a.qty ? `${a.name}x${a.qty}` : a.name), ...pdBarExtras.map(x => `x${x.product_id}x${x.qty}`)].join('_');
   const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
   const guestKey = pdSelectedPrice != null ? String(pdSelectedPrice) : '';
   const subKey = pdIsSubscription()
@@ -2392,7 +2406,8 @@ function pdAddToCart() {
   qty: pdIsSubscription() ? 1 : pdQty,
   selected_variations: pdSelectedVariations,
   selected_addons: pdGetSelectedAddons(),
-  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice}) || null,
+  bar_extras: pdBarExtras.length ? pdBarExtras.map(x => ({ ...x })) : null,
+  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice,bar_extras:pdBarExtras}) || null,
   selected_guest_price: pdSelectedPrice,
   is_subscription: pdIsSubscription(),
   subscription_interval: pdIsSubscription() ? pdSubscriptionInterval : null,
@@ -2864,6 +2879,7 @@ const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expe
         qty: i.qty,
         selected_variations: i.selected_variations || null,
         selected_addons: i.selected_addons || null,
+        bar_extras: i.bar_extras || null,
         selected_guest_price: i.selected_guest_price || null,
         is_subscription: !!i.is_subscription,
         subscription_interval: i.subscription_interval || null,
@@ -5029,7 +5045,7 @@ async function sendChatMessageText(text) {
       if (!(typeof currentUser !== 'undefined' && currentUser)) {
         put(PK, { date: new Date().toISOString(), total: cart.reduce((s, i) => s + i.price * i.qty, 0),
           items: cart.map((i) => ({ product_id: i.base_product_id || String(i.id).split('_')[0], qty: i.qty, name_en: i.name_en, name_he: i.name_he,
-            is_subscription: !!i.is_subscription, selected_variations: i.selected_variations || null, selected_addons: i.selected_addons || null, selected_guest_price: i.selected_guest_price || null })) });
+            is_subscription: !!i.is_subscription, selected_variations: i.selected_variations || null, selected_addons: i.selected_addons || null, bar_extras: i.bar_extras || null, selected_guest_price: i.selected_guest_price || null })) });
       }
     } catch (_) {}
     return _submit.apply(this, arguments);
@@ -5249,9 +5265,9 @@ async function sendChatMessageText(text) {
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261025-5"></script>
 <script src="/storefront-engage.js?v=20261025-1"></script>
-<script src="/coffee-bar-order.js?v=20261025-1"></script>
-<script src="/storefront-bar-layout.js?v=20261025-6"></script>
-<script src="/storefront-planner.js?v=20261025-30"></script>
+<script src="/coffee-bar-order.js?v=20261026-1"></script>
+<script src="/storefront-bar-layout.js?v=20261026-1"></script>
+<script src="/storefront-planner.js?v=20261026-2"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

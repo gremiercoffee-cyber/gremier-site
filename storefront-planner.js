@@ -18,7 +18,12 @@
   const premium = () => all().find((p) => addonsOf(p).some((a) => a.per_liter || a.group)) || all().find((p) => /premium/i.test(p.name_en || ''));
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, syrups: { caramel: 0, vanilla: 0, sugar: 0 } };
+  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {} };
+  // Everyday products that can ride along with the bar at their full price.
+  const extraProduct = (id) => all().find((p) => String(p.id) === String(id) && p.is_active !== false && !p.is_coffee_bar && ['bottles', 'minis', 'bulk'].includes(p.category));
+  // The 5L jugs on their own (not the 3-jug pack): an extra jerry can of coffee for the bar.
+  const jugProducts = () => all().filter((p) => p.category === 'bulk' && p.is_active !== false && /5\s*l/i.test(p.name_en || '') && !/3\s*[×x]/i.test(p.name_en || ''));
+  const jugVariant = (p) => (/house/i.test(p.name_en || '') ? 'house' : /colomb/i.test(p.name_en || '') ? 'colomb' : /decaf/i.test(p.name_en || '') ? 'decaf' : 'classic');
   const FLAVOURS = [['house', /house/i, 'House Blend', 'האוס בלנד'], ['colomb', /colomb/i, 'Colombian', 'קולומביה'], ['decaf', /decaf/i, 'Decaf', 'נטול קפאין']];
   const name = (a) => (he() && a.name_he ? a.name_he : a.name);
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
@@ -77,6 +82,9 @@
       plan.syrupCounts[option.key]+=n;
       if(n){plan.qty.push([option.index,n]);total+=n*Number(option.addon.price);lines.push(`${n}× ${name(option.addon)}`);}
     }
+    plan.extras = Object.entries(state.extras || {}).map(([id, qty]) => ({ p: extraProduct(id), qty: Number(qty) || 0 })).filter((x) => x.p && x.qty > 0)
+      .map(({ p, qty }) => ({ product_id: String(p.id), name_en: p.name_en, name_he: p.name_he, price: Number(p.price) || 0, qty, jug: jugProducts().includes(p) ? jugVariant(p) : null }));
+    for (const x of plan.extras) { total += x.price * x.qty; lines.push(`+${x.qty}× ${he() ? (x.name_he || x.name_en) : x.name_en}`); }
     plan.lines = lines; plan.total = total;
     plan.tooBig = state.guests > tier.guests;
     return plan;
@@ -102,6 +110,7 @@
       if (dairy) t.push({ key: 'milk', pic: 'milk', n: dairy, title: T('Milk', 'חלב'), sub: T('1L cartons', 'קרטונים של ליטר') });
       for(const milk of plan.milk) t.push({key:'milk-'+milk.key,pic:'milk',n:milk.liters,tag:milk.label,title:milk.label,sub:T('1L cartons','קרטונים של ליטר')});
     }
+    for (const x of plan.extras || []) t.push({ key: 'extra-' + x.product_id, n: x.qty, title: (x.jug ? T('Extra ', 'עוד ') : '') + (he() ? (x.name_he || x.name_en) : x.name_en) });
     t.push({ key: 'cups', pic: 'cups', n: plan.tier.guests, title: T('Cups', 'כוסות') });
     t.push({ key: 'straws', pic: 'straws', n: plan.tier.guests, title: T('Straws', 'קשיות') });
     return t;
@@ -123,7 +132,7 @@
   }
   function sceneHtml(plan) {
     const list=tiles(plan);
-    const layout=window.CoffeeBarScene.layout({classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
+    const layout=window.CoffeeBarScene.layout({extraCoffee:(plan.extras||[]).flatMap(x=>x.jug?Array(x.qty).fill(x.jug):[]),classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
       milkLiters:plan.milkLiters,parveLiters:plan.liters,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),syrupCounts:plan.syrupCounts,guests:plan.tier.guests});
     const ratio=layout.width/(352+layout.width*.135+32);
     const items=layout.items.map((item,index)=>`<div class="bs-object drop" data-instance="${item.id}" data-kind="${item.kind}" data-variant="${item.variant}" data-units="${item.units}" style="left:${item.x}px;bottom:${item.bottom}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};--d:${Math.min(300,index*22)}ms">${itemArt(item)}</div>`).join('');
@@ -238,6 +247,7 @@
         const isJug = ([i]) => !!getProductAddons(plan.product)[i]?.per_jug;
         [...plan.qty.filter((q) => !isJug(q)), ...plan.qty.filter(isJug)].forEach(([i, n]) => typeof pdSetQty === 'function' && pdSetQty(i, n));
         plan.checks.forEach((i) => { const cb = document.querySelector(`#pdAddonsSection input[data-addon-idx="${i}"]`); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); } });
+        if (typeof pdSetBarExtras === 'function') pdSetBarExtras(plan.extras);
         if (typeof pdUpdateDrawerPrice === 'function') pdUpdateDrawerPrice();
         if (typeof showToast === 'function') showToast(T('We set it up for you — check and book', 'הכנו לכם הכל — בדקו והזמינו'));
       }, 150);
@@ -246,7 +256,7 @@
   window.openCoffeeBarBuilder = function(options={}) {
     state.guests=options.guests||25;
     state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.milk='dairy';state.milkMix=null;
-    state.syrups={caramel:0,vanilla:0,sugar:0};
+    state.syrups={caramel:0,vanilla:0,sugar:0};state.extras={};
     if(typeof showPage==='function')showPage('coffeebars');
     render();$('planner')?.scrollIntoView({behavior:'smooth',block:'start'});
   };
@@ -284,7 +294,9 @@
     };
     const choices=classicSwap?options.filter(x=>classicSwap==='upgrade'||(plan.mix[x.key]||0)>0):[];
     const picker=choices.length?`<div class="bb-classic-picker" role="group" aria-label="${T('Swap coffee','החלפת קפה')}"><button type="button" class="bb-swap-close" data-close-swap aria-label="${T('Close coffee choices','סגירת אפשרויות הקפה')}">×</button>${choices.map(x=>`<button type="button" data-classic-swap="${x.key}" data-swap-mode="${classicSwap}">${classicSwap==='restore'?`${x.label} → ${T('Classic','קלאסיק')}`:`${T('Classic','קלאסיק')} → ${x.label} <small>+₪${Number(x.addon.price)||0}</small>`}</button>`).join('')}</div>`:'';
-    return `<div class="bb-jugs">${row(T('Classic','קלאסיק'),plan.classic,'classic',0)}${picker}${options.map(x=>row(x.label,plan.mix[x.key]||0,x.key,Number(x.addon.price)||0)).join('')}</div>`;
+    const jugs=jugProducts(),extraJugs=(plan.extras||[]).filter(x=>x.jug);
+    const extraRow=jugs.length?`<div class="bb-jug bb-jug-extra"><span class="bb-jug-name">${T('Extra 5L jerry can','ג׳ריקן 5 ל׳ נוסף')} <small>${T('more coffee, full price','עוד קפה, במחיר מלא')}</small></span><span class="bb-jug-step"><button type="button" data-extra-jug-remove ${extraJugs.length?'':'disabled'} aria-label="${T('Remove an extra jerry can','הסרת ג׳ריקן נוסף')}">−</button><b>${extraJugs.reduce((n,x)=>n+x.qty,0)}</b><button type="button" data-extra-jug aria-label="${T('Add an extra jerry can','הוספת ג׳ריקן נוסף')}">+</button></span></div>`:'';
+    return `<div class="bb-jugs">${row(T('Classic','קלאסיק'),plan.classic,'classic',0)}${picker}${options.map(x=>row(x.label,plan.mix[x.key]||0,x.key,Number(x.addon.price)||0)).join('')}${extraRow}</div>`;
   }
   function milkOptions(p) {
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.milk_type||'parve'})).filter(x=>x.addon.per_liter&&!x.addon.legacy_milk);
@@ -318,7 +330,7 @@
     const available=all().filter(p=>!p.is_coffee_bar&&p.is_active!==false&&!/syrup|סירופ/i.test(p.name_en||p.name_he||''));
     const picks=[...available.filter(p=>p.category==='minis').slice(0,3),...available.filter(p=>p.category==='bottles').slice(0,3)];
     if(!picks.length)return '';
-    return `<section class="bb-take-home"><h3>${T('Coffee for home, too?','קפה גם לבית?')}</h3><p>${T('Add a mini four-pack or a litre bottle for later.','הוסיפו מארז רביעיית מיני או בקבוק ליטר לאחר כך.')}</p><div class="bb-home-products">${picks.map(p=>`<button type="button" data-take-home="${esc(p.id)}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span><b>+</b></button>`).join('')}</div></section>`;
+    return `<section class="bb-take-home"><h3>${T('Coffee for home, too?','קפה גם לבית?')}</h3><p>${T('Added to your coffee bar order and delivered with it.','נוסף להזמנת בר הקפה ומגיע איתו.')}</p><div class="bb-home-products">${picks.map(p=>{const n=Number(state.extras[p.id])||0;return `<div class="bb-home-product${n?' on':''}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span>${n?`<span class="bb-home-step"><button type="button" data-take-home="${esc(p.id)}" data-d="-1" aria-label="${esc(T('One less','אחד פחות'))}">−</button><b>${n}</b><button type="button" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('One more','עוד אחד'))}">+</button></span>`:`<button type="button" class="bb-home-add" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('Add to my coffee bar','הוספה לבר הקפה'))}">+</button>`}</div>`;}).join('')}</div></section>`;
   }
   function syrupOptions(p) {
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.bar_syrup})).filter(x=>['caramel','vanilla','sugar'].includes(x.key)&&Number(x.addon.max)>1);
@@ -343,6 +355,9 @@
     if (!box) return;
     const previousScene=$('bbScene');
     const plan = suggestion();
+    // The page shows once the builder can draw (until then its older content stays hidden, so it
+    // never flashes); with products loaded but no bar product, it shows as it is.
+    $('coffeebarsPage')?.classList.toggle('bb-ready', !!plan || all().length > 0);
     renderHero(plan);
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
@@ -381,13 +396,46 @@
     watch();
   }
 
+  // "+" on an extra jerry can asks first: it's a whole extra 5L of coffee at the full price.
+  function confirmExtraJug(){
+    const jugs=jugProducts();if(!jugs.length)return;
+    let el=$('bbJugConfirm');
+    if(!el){el=document.createElement('div');el.id='bbJugConfirm';el.className='bb-confirm';document.body.appendChild(el);
+      el.addEventListener('click',(ev)=>{
+        if(ev.target===el||ev.target.closest('[data-jug-cancel]')){el.classList.remove('open');return;}
+        const pick=ev.target.closest('[data-jug-pick]');
+        if(pick){const id=pick.dataset.jugPick;state.extras[id]=Math.min(20,(Number(state.extras[id])||0)+1);el.classList.remove('open');render();
+          const p=extraProduct(id);if(p&&typeof showToast==='function')showToast(T(`Extra jerry can added: ${pname(p)} +₪${Number(p.price)||0}`,`נוסף ג׳ריקן: ${pname(p)} +₪${Number(p.price)||0}`));}
+      });
+    }
+    const plan=suggestion();
+    el.innerHTML=`<div class="bb-confirm-box" role="dialog" aria-modal="true" aria-labelledby="bbJugConfirmTitle">
+      <h3 id="bbJugConfirmTitle">${T('Add an extra jerry can?','להוסיף ג׳ריקן נוסף?')}</h3>
+      <p>${T(`You're about to add an extra 5L jerry can of cold brew to your order, on top of the ${plan?.jugs||''} already included, at the full price. Is that what you want?`,`אתם עומדים להוסיף להזמנה ג׳ריקן קולד ברו נוסף של 5 ל׳, מעבר ל-${plan?.jugs||''} שכבר כלולים, במחיר מלא. זה מה שרציתם?`)}</p>
+      <div class="bb-confirm-picks">${jugs.map(p=>`<button type="button" data-jug-pick="${esc(p.id)}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="">`:''}<span>${esc(pname(p))}</span><b>+₪${Number(p.price)||0}</b></button>`).join('')}</div>
+      <button type="button" class="bb-confirm-cancel" data-jug-cancel>${T('No, cancel','לא, ביטול')}</button></div>`;
+    el.classList.add('open');
+    el.querySelector('[data-jug-pick]')?.focus();
+  }
+
   document.addEventListener('click', (e) => {
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
     const milkStep=e.target.closest('[data-milk-step]');
     if(milkStep){adjustMilk(milkStep.dataset.milkKind,Number(milkStep.dataset.milkStep));render();return;}
     const take=e.target.closest('[data-take-home]');
-    if(take){openProductDrawer(take.dataset.takeHome);return;}
+    if(take){
+      const id=take.dataset.takeHome,d=Number(take.dataset.d)||1,p=extraProduct(id);if(!p)return;
+      state.extras[id]=Math.max(0,Math.min(20,(Number(state.extras[id])||0)+d));if(!state.extras[id])delete state.extras[id];
+      if(d>0&&typeof showToast==='function')showToast(T(`Added to your coffee bar: ${pname(p)} +₪${Number(p.price)||0}`,`נוסף לבר הקפה: ${pname(p)} +₪${Number(p.price)||0}`));
+      render();return;
+    }
+    if(e.target.closest('[data-extra-jug]')){confirmExtraJug();return;}
+    if(e.target.closest('[data-extra-jug-remove]')){
+      const plan=suggestion(),last=(plan?.extras||[]).filter(x=>x.jug).pop();
+      if(last){state.extras[last.product_id]--;if(!state.extras[last.product_id])delete state.extras[last.product_id];render();}
+      return;
+    }
     const syrup=e.target.closest('[data-syrup-step]');
     if(syrup){state.syrups[syrup.dataset.syrup]=Math.max(0,(Number(state.syrups[syrup.dataset.syrup])||0)+Number(syrup.dataset.syrupStep));render();return;}
     const swap=e.target.closest('[data-classic-swap]');

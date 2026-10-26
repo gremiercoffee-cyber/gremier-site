@@ -461,3 +461,10 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .planner .bb-jug-step button { width:34px; height:34px; border-radius:50%; border:1px solid #dcdfe3; background:#fff; font:500 1.05rem/1 'DM Sans', sans-serif; color:#1a1a1a; cursor:pointer; }
 .planner .bb-jug-step button:disabled { opacity:.35; cursor:default; }
 .planner .bb-q-hint { display:block; margin-top:8px; font-size:.74rem; color:#8a5a1c; line-height:1.45; }
+
+/* Shop: switching category eases the products in (storefront-nav.js) */
+#shopGrid.cat-in > * { animation:catIn .34s cubic-bezier(.2,.8,.3,1) both; }
+#shopGrid.cat-in > :nth-child(2) { animation-delay:.03s; } #shopGrid.cat-in > :nth-child(3) { animation-delay:.06s; } #shopGrid.cat-in > :nth-child(4) { animation-delay:.09s; }
+#shopGrid.cat-in > :nth-child(5) { animation-delay:.12s; } #shopGrid.cat-in > :nth-child(n+6) { animation-delay:.15s; }
+@keyframes catIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { #shopGrid.cat-in > * { animation:none; } }

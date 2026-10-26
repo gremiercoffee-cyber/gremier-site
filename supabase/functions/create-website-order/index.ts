@@ -264,6 +264,10 @@ Deno.serve(async (req) => {
     }
 
     // Also load the products chosen inside any subscription box, for their real prices.
+    // Extras bought with a coffee bar (an extra 5L jug, bottles to take home): priced from the catalog.
+    const extraIds = items.flatMap((item: Record<string, unknown>) =>
+      Array.isArray(item.bar_extras) ? (item.bar_extras as Record<string, unknown>[]).map((x) => String(x?.product_id || "").trim()) : []
+    ).filter(Boolean);
     const boxIds = items.flatMap((item: Record<string, unknown>) =>
       Array.isArray(item.subscription_items)
         ? (item.subscription_items as Record<string, unknown>[]).map((c) => String(c?.product_id || "").trim())
@@ -272,7 +276,7 @@ Deno.serve(async (req) => {
     const { data: fetchedRows, error: productErr } = await admin
       .from("products")
       .select("id,name_en,name_he,price,is_active,variations,delivery_price,is_subscription,is_coffee_bar,category")
-      .in("id", [...new Set([...productIds, ...boxIds])]);
+      .in("id", [...new Set([...productIds, ...boxIds, ...extraIds])]);
     if (productErr) throw productErr;
 
     const productsById = new Map((fetchedRows || []).map((product: Record<string, unknown>) => [String(product.id), product]));
@@ -301,10 +305,25 @@ Deno.serve(async (req) => {
       const sub = subscriptionQuote ? {unitPrice:subscriptionQuote.total,contents:subscriptionQuote.contents} : isSub ? priceSubscription(product, item, productsById) : null;
       if(isSub && sub?.contents){const q=subscriptionModel.quote(sub.contents,[...productsById.values()]);if(!q.deliveryEligible && deliveryInfo.delivery_type!=="pickup")throw new Error("Subscription delivery requires two coffee items or one 5L container; otherwise choose pickup");}
       const qty = isSub ? 1 : Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 1)));
-      const unitPrice = sub ? sub.unitPrice : computeUnitPrice(product, item);
+      // A coffee bar can carry extras at their full catalog price: everyday coffee products only.
+      const barExtras: Record<string, unknown>[] = [];
+      if (!isSub && Array.isArray(item.bar_extras) && (product.is_coffee_bar || buildCoffeeBarConfiguration(product, item))) {
+        for (const raw of (item.bar_extras as Record<string, unknown>[]).slice(0, 12)) {
+          const extra = productsById.get(String(raw?.product_id || "").trim());
+          const n = Math.floor(Number(raw?.qty) || 0);
+          if (!extra || extra.is_active === false || extra.is_coffee_bar || isSubscriptionProductRow(extra)) throw new Error("Invalid coffee bar extra");
+          if (!["bottles", "minis", "bulk"].includes(String(extra.category || ""))) throw new Error("Invalid coffee bar extra");
+          if (!(n >= 1 && n <= 20) || !(Number(extra.price) > 0)) throw new Error("Invalid coffee bar extra");
+          const same = barExtras.find((x) => x.product_id === extra.id);
+          if (same) same.qty = Math.min(20, Number(same.qty) + n);
+          else barExtras.push({ product_id: String(extra.id), name_en: extra.name_en || null, name_he: extra.name_he || null, price: Number(extra.price), qty: n });
+        }
+      }
+      const extrasTotal = barExtras.reduce((sum, x) => sum + Number(x.price) * Number(x.qty), 0);
+      const unitPrice = (sub ? sub.unitPrice : computeUnitPrice(product, item)) + extrasTotal;
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
       const guest = resolveGuestSelection(product, item);
-      const coffeeBarConfiguration = isSub ? null : buildCoffeeBarConfiguration(product, item);
+      const coffeeBarConfiguration = isSub ? null : buildCoffeeBarConfiguration(product, { ...item, bar_extras: barExtras });
       if (["9361ff6e-4227-44cc-a23a-428a002f1f4c", "c211cedd-ef93-4dba-9a6e-b2edb1add6e0"].includes(productId) && !coffeeBarConfiguration) throw new Error("Choose the number of guests for your coffee bar");
       const interval = String(item.subscription_interval || "monthly").toLowerCase() === "weekly" ? "weekly" : "monthly";
       return {
@@ -316,6 +335,7 @@ Deno.serve(async (req) => {
         coffee_bar_configuration: coffeeBarConfiguration,
         selected_variations: isSub ? null : item.selected_variations || null,
         selected_addons: isSub ? null : item.selected_addons || null,
+        bar_extras: barExtras.length ? barExtras : null,
         selected_guest_price: isSub ? null : item.selected_guest_price || null,
         // Guest tier for display ("for N people") — validated against the catalog.
         selected_guests: guest?.guests ?? null,

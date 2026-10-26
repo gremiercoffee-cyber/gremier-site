@@ -40,6 +40,7 @@
     for (const [variant, n] of [['classic', plan.classic], ['house', plan.mix?.house], ['colomb', plan.mix?.colomb], ['decaf', plan.mix?.decaf]]) {
       for (let i = 0; i < count(n); i++) coffees.push({ variant });
     }
+    for (const variant of Array.isArray(plan.extraCoffee) ? plan.extraCoffee : []) coffees.push({ variant });   // extra jerry cans, full price
     group('coffee', coffees, 96);
     group('disp', Array.from({ length: count(plan.dispensers) }, () => ({})), 98);
     for (const kind of ['caramel', 'vanilla', 'sugar']) {

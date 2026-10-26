@@ -268,7 +268,12 @@ async function autoScheduleDelivery(
     }
   }
   const otherItems = bar ? items.filter(i => !i.coffee_bar_configuration && !['9361ff6e-4227-44cc-a23a-428a002f1f4c','c211cedd-ef93-4dba-9a6e-b2edb1add6e0'].includes(String(i.product_id))) : items;
-  const quantities = await resolveOpsQuantities(supabase, otherItems);
+  // Extras bought with a coffee bar (an extra 5L jug, bottles to take home) go out with it.
+  const barExtraItems = bar ? items.flatMap(i => {
+    const extras = ((i as Record<string, unknown>).coffee_bar_configuration as Record<string, unknown> | undefined)?.extras;
+    return Array.isArray(extras) ? (extras as Array<Record<string, unknown>>).map(x => ({ product_id: String(x.product_id || ""), name_en: String(x.name || ""), qty: (Number(x.qty) || 1) * (Number(i.qty) || 1) })) : [];
+  }) : [];
+  const quantities = await resolveOpsQuantities(supabase, [...otherItems, ...barExtraItems]);
   const jobId = "web_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
   const { error: jobErr } = await supabase.from("jobs").insert({
