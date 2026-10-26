@@ -11,6 +11,7 @@ import { BriefingView, DictateButton, Markdown, MicIcon, timeAgo } from "../comp
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
 import Celebration from "../components/Celebration";
+import FilesInChat from "../components/FilesInChat";
 import Chips from "../components/NudgeActions";
 import TaskActions from "../components/TaskActions";
 import NowChecklist from '../components/NowChecklist';
@@ -154,6 +155,9 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   // Group drafts show in a chat only if this chat made one (not every pending draft in every chat).
   const groupDraftSince = messages.some((m) => m.meta && (safeParse(m.meta) as ActionNote[]).some?.((a) => a.tool === "draft_group_message"))
     ? messages[0]?.created_at ?? null : null;
+  // Files found / signed in this chat get preview cards (only if this chat looked for or signed a file).
+  const filesSince = messages.some((m) => m.meta && (safeParse(m.meta) as ActionNote[]).some?.((a) => a.tool === "find_email_files" || a.tool === "sign_document"))
+    ? messages[0]?.created_at ?? null : null;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -171,6 +175,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
             {sending && <Thinking />}
           </div>
         )}
+        {inConversation&&filesSince&&<FilesInChat since={filesSince} refreshKey={refreshKey}/>}
         {inConversation&&groupDraftSince&&<GroupDraftApprovals refreshKey={refreshKey} onChanged={onDataChanged} since={groupDraftSince}/>}
         <MeetingPrepConfirmations refreshKey={refreshKey} onChanged={onDataChanged}/>
         {error && <p className="text-danger text-sm mt-2">{error}</p>}

@@ -9,6 +9,10 @@ import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
+export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
+export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string }
+export interface SignedFile { id: string; file_id: string; filename: string; signatures: string; position: string; created_at: string }
+
 export interface AutopilotPreview { enabled: boolean; start_week: string | null; week_of: string; filed: string[]; missing: string[]; no_email: string[]; error: string | null; sent: { kind: string; name: string; sent_at: string; error: string | null }[]; templates: Record<string, { subject: string; body: string }> }
 
 export interface WaDraft { id: string; batch_id: string; batch_title: string; name: string; phone: string; text: string; opened_at: string | null; created_at: string }
@@ -192,6 +196,11 @@ export const api = {
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
   bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
+  vault: () => request<VaultItem[]>("GET", "/api/vault"),
+  saveVault: (v: { id?: string; kind: "text" | "signature"; label: string; text?: string; image?: string }) => request<{ id: string }>("POST", "/api/vault", v),
+  deleteVault: (id: string) => request("DELETE", `/api/vault/${id}`),
+  files: (since: string) => request<{ files: FoundFile[]; signed: SignedFile[] }>("GET", `/api/files?since=${encodeURIComponent(since)}`),
+  signFile: (p: { file_id: string; signatures: string[]; position?: string }) => request<{ signed_file_id?: string; clarification?: string }>("POST", "/api/signed", p),
   hashgachaAutopilot: () => request<AutopilotPreview>("GET", "/api/hashgacha/autopilot"),
   saveHashgachaAutopilot: (p: { enabled?: boolean }) => request("PUT", "/api/hashgacha/autopilot", p),
   contactsStatus: () => request<{ count: number; synced_at: string | null }>("GET", "/api/contacts/status"),

@@ -18,13 +18,14 @@ import Schedule from "./pages/Schedule";
 import Groups from "./pages/Groups";
 import NotifBanner from "./components/NotifBanner";
 import ZoomControl from "./components/ZoomControl";
+import MyDetails from "./pages/MyDetails";
 import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 
-type View = "meetings" | "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups" | "shopping";
-const VIEW_TITLES: Record<View, string> = { meetings:"Meetings", home: "Chief of Staff", today: "Today", dump: "Library", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Settings", trackers: "Tasks", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
+type View = "meetings" | "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups" | "shopping" | "details";
+const VIEW_TITLES: Record<View, string> = { details: "My details", meetings:"Meetings", home: "Chief of Staff", today: "Today", dump: "Library", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Settings", trackers: "Tasks", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -197,6 +198,7 @@ export default function App() {
               <DrawerItem active={view === "groups"} onClick={() => go("groups")} icon={<><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/></>} label="Groups" />
               <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("projects")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Projects & tasks" />
               <DrawerItem active={view === 'shopping'} onClick={() => go('shopping')} icon={<><path d="M3 3h2l3 12h10l3-9H6M9 20h.01M18 20h.01" /></>} label="Shopping lists" />
+              <DrawerItem active={view === 'details'} onClick={() => go('details')} icon={<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>} label="My details" />
               <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
             </div>
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
@@ -257,6 +259,7 @@ export default function App() {
         {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
         {view === "projects" && <Projects onOpenItem={openItem} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
         {view === 'shopping' && <Shopping refreshKey={refreshKey} />}
+        {view === 'details' && <MyDetails />}
 
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />

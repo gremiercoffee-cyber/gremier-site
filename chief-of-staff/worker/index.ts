@@ -1,5 +1,6 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
+import { deleteVault, fileBytes, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signedFileBytes } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
@@ -68,6 +69,24 @@ type Handler = (req: Request, env: Env, params: string[], ctx: ExecutionContext)
 const routes: [string, RegExp, Handler][] = [];
 const route = (method: string, path: string, h: Handler) =>
   routes.push([method, new RegExp("^" + path.replace(/:\w+/g, "([^/]+)") + "$"), h]);
+
+// ---- My details, files found in email, signed copies (nothing here sends anything anywhere) ----
+const fileResponse = (bytes: Uint8Array, filename: string, mime: string) =>
+  new Response(bytes, { headers: { "content-type": mime, "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`, "cache-control": "private, no-store" } });
+route("GET", "/api/vault", async (_req, env) => json(await listVault(env)));
+route("POST", "/api/vault", async (req, env) => { try { return json(await saveVault(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); } });
+route("DELETE", "/api/vault/:id", async (_req, env, [id]) => { await deleteVault(env, id); return json({ ok: true }); });
+route("GET", "/api/files", async (req, env) => {
+  const since = new URL(req.url).searchParams.get("since") || new Date(Date.now() - 86400_000).toISOString();
+  return json({ files: await recentFiles(env, since), signed: await recentSigned(env, since) });
+});
+route("GET", "/api/files/:id", async (_req, env, [id]) => {
+  try { const f = await fileBytes(env, id); return fileResponse(f.bytes, f.filename, f.mime); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("POST", "/api/signed", async (req, env) => { try { return json(await prepareSignedFile(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); } });
+route("GET", "/api/signed/:id", async (_req, env, [id]) => {
+  try { const f = await signedFileBytes(env, id); return fileResponse(f.bytes, f.filename, "application/pdf"); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
 
 route('GET','/api/hashgacha',async(_req,env)=>json(await hashgachaCampaigns(env)));
 route('POST','/api/hashgacha/refresh',async(_req,env)=>{await syncHashgacha(env,{remind:false});return json(await hashgachaCampaigns(env));});

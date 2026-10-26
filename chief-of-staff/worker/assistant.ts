@@ -22,6 +22,7 @@ import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
 import { activeProjects } from "./projectmatch";
 import { prepareWhatsApps } from "./contacts";
+import { findEmailFiles, prepareSignedFile, saveVault, vaultSummary } from "./documents";
 import {meetingPrepState,proposePrepNote,confirmPrepNote} from './meeting-prep';
 import { hubCall } from "./hub";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
@@ -215,6 +216,9 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
   const lines: string[] = [];
   if (settings.name) lines.push(`The user's name is ${settings.name}.`);
   lines.push("## Areas", areaText);
+  // The user's saved details (addresses, business numbers; signatures by name): used when they ask to fill or sign something.
+  const myDetails = await vaultSummary(env).catch(() => "");
+  if (myDetails) lines.push("", "## My details (saved by the user)", myDetails);
   lines.push(memory);
   if (situations && want.has("schedule")) lines.push("", "## Schedule (time blocks)", situations);
   if (groups && want.has("groups")) lines.push("", "## Contact groups", groups);
@@ -800,6 +804,34 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
+      name: "save_detail",
+      description: "Save or update one of the user's details under My details (e.g. 'Business address', 'Business number', 'Home address', 'Wife's ID'), when they tell you one to keep. Saved details are listed under '## My details' and are what you use when they ask you to fill something in. Signatures are added by the user in the app (photo/screenshot), not here.",
+      input_schema: { type: "object", properties: { label: { type: "string" }, text: { type: "string" } }, required: ["label", "text"] },
+      handler: async (input) => { const r = await saveVault(env, { kind: "text", label: String(input.label), text: String(input.text) }); note("save_detail", `🗂️ Saved to My details: ${input.label}`); return r; },
+    },
+    {
+      name: "find_email_files",
+      description: "Find files (attachments) in the user's Gmail: 'find the mortgage papers from the bank'. Gmail search words, e.g. 'from:bank.co.il mortgage newer_than:60d' or 'filename:pdf from:dana'. The files appear in this chat with a preview; tell the user what you found (file name, from, date) and let them check it before doing anything with it.",
+      input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      handler: async (input) => {
+        const files = await findEmailFiles(env, String(input.query));
+        if (files.length) note("find_email_files", `📎 Found ${files.length} file${files.length > 1 ? "s" : ""} — preview below`);
+        return files.length ? { files: files.map((f) => ({ file_id: f.id, name: f.filename, from: f.sender, subject: f.subject, date: f.sent_at, size_kb: f.size ? Math.round(f.size / 1024) : null })) }
+          : { files: [], clarification: "Nothing matched. Ask who it was from or roughly when, then search again." };
+      },
+    },
+    {
+      name: "sign_document",
+      description: "Put the user's saved signature(s) at the bottom of every page of a PDF found with find_email_files, as a new file to download (the original isn't changed and nothing is sent). signatures = names from My details, e.g. ['My signature', \"Wife's signature\"]. Only after the user has seen the file and asked for it.",
+      input_schema: { type: "object", properties: { file_id: { type: "string" }, signatures: { type: "array", items: { type: "string" } },
+        position: { type: "string", enum: ["bottom-right", "bottom-left", "bottom-center"] } }, required: ["file_id"] },
+      handler: async (input) => {
+        const r = await prepareSignedFile(env, input as never);
+        if ("signed_file_id" in r) note("sign_document", `✍️ Signed copy of ${r.file} ready — preview below`);
+        return r;
+      },
+    },
+    {
       name: "prepare_whatsapps",
       description: "The usual way to WhatsApp people: 'send a WhatsApp to X, Y and Z saying…'. Prepares one message per person (numbers from the user's Contacts/address book) as one-tap WhatsApp links on the Replies page; the user sends each from WhatsApp. Use {first_name} to personalize. If it returns which_one or not_found, ask the user (show the options) and call again for those people only.",
       input_schema: { type: "object", properties: {
@@ -1194,6 +1226,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   coffee: ["coffee_app"],
   meetings: ["get_meeting_prep","propose_meeting_prep_note","confirm_meeting_prep_note"],
   hashgacha: ["track_hashgacha_reports","get_hashgacha_reports"],
+  files: ["find_email_files","sign_document"],
 };
 /**
  * The always-on tools in the cached chat prefix: everyday filing, the schedule, recurring tasks, coffee,
@@ -1207,6 +1240,7 @@ const EXTRA_TRIGGERS: Record<string, RegExp> = {
   docs: /\b(google )?docs?\b|document|spreadsheet|\bsheets?\b|\bdrive\b|\bpdf\b|מסמך/i,
   meetings: /\bprep(are)?\b|להתכונן/i,
   hashgacha: /hashgacha|הש?גחה/i,
+  files: /(sign|signs|signed|signature|attachment|attached|pdf|document)|חתימה|לחתום|מסמך|קובץ/i,
 };
 /** The tool groups for one chat message: the fixed core, plus a rare group only when the message clearly needs it. */
 export function stableChatFeatures(features: Set<string>, query: string) {
