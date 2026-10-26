@@ -6,6 +6,6 @@
   <ImageView android:id="@+id/widget_refresh" android:layout_width="44dp" android:layout_height="44dp" android:padding="10dp" android:src="@drawable/ic_refresh" android:background="@drawable/btn_bg" android:contentDescription="Refresh production widget"/>
  </LinearLayout>
  <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Log work · scroll for more" android:textSize="11sp" android:textColor="#66736A" android:paddingLeft="6dp" android:paddingTop="2dp" android:paddingBottom="10dp"/>
- <ListView android:id="@+id/widget_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="top" android:divider="@android:color/transparent" android:dividerHeight="10dp" android:scrollbars="vertical" android:clipToPadding="false" android:paddingBottom="4dp"/>
+ <ListView android:id="@+id/widget_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:stackFromBottom="false" android:divider="@android:color/transparent" android:dividerHeight="10dp" android:scrollbars="vertical" android:clipToPadding="false" android:paddingBottom="4dp"/>
  <TextView android:id="@+id/widget_empty" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Open Gremier Hub to connect" android:textSize="16sp" android:gravity="center" android:padding="20dp" android:textColor="#343C37"/>
 </LinearLayout>

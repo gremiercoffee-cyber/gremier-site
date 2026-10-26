@@ -12,6 +12,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ScrollView
 import org.json.JSONObject
 import kotlin.concurrent.thread
 
@@ -51,7 +52,7 @@ class MainActivity : Activity() {
             text = "Disconnect"
             setOnClickListener { Hub.setKey(this@MainActivity, null); Hub.setAppName(this@MainActivity, null); keyInput.setText(""); status.text = "Disconnected"; HubWidget.refreshAll(this@MainActivity, false) }
         })
-        setContentView(root)
+        setContentView(ScrollView(this).apply { addView(root) })
         status.text = Hub.appName(this)?.let { "✅ Connected as \"$it\"" } ?: "Not connected yet"
     }
 
