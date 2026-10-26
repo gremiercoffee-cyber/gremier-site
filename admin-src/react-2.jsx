@@ -476,7 +476,7 @@ function BeansSection({ beans, setBeans }) {
   }
   async function markDelivered(type) {
     const current = beans[type]||{};
-    const newKg = parseFloat(((current.kg||0)+(current.orderedKg||0)).toFixed(1));
+    const newKg = parseFloat(((current.kg||0)+(current.orderedKg||0)).toFixed(3));
     setBeans(p=>({...p,[type]:{kg:newKg,ordered:false,orderedKg:0}}));
     await opsFetch(`beans?type=eq.${type}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({kg:newKg,ordered:false,ordered_kg:0})});
     window.notifyGremierStockChanged?.();

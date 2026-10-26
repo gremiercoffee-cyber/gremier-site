@@ -30,7 +30,7 @@
   return new Promise(resolve=>{
    const d=modal('Who’s working now?','<label>Worker<select name="worker" required>'+options(person)+'</select></label><p>'+(clockIn?'Start or resume your shift. New production will be assigned to you.':'Choose who performed the work. Clock in separately to track hours.')+'</p>',clockIn?'Start / resume shift':'Use this person');
    const close=v=>{d.close();d.remove();resolve(v);};d.querySelector('[data-cancel]').onclick=()=>close(null);d.oncancel=e=>{e.preventDefault();close(null);};
-   d.querySelector('form').onsubmit=async e=>{e.preventDefault();const btn=d.querySelector('[type=submit]');btn.disabled=true;try{const id=d.querySelector('select').value;if(clockIn)await clock('in',id);else{person=id;shift=null;bar();}close({worker:person,shift:shift?.id||null});}catch(err){d.querySelector('[role=alert]').textContent=errorMessage(err);btn.disabled=false;}};
+   d.querySelector('form').onsubmit=async e=>{e.preventDefault();const btn=d.querySelector('[type=submit]');btn.disabled=true;try{const id=d.querySelector('select').value;if(clockIn)await clock('in',id);else{let q=root.MAIN_SB.from('production_shifts').select('*').is('ended_at',null);q=id==='owner'?q.eq('is_owner',true):q.eq('worker_id',id);const {data:open,error}=await q.maybeSingle();if(error)throw error;person=id;shift=open||null;bar();}close({worker:person,shift:shift?.id||null});}catch(err){d.querySelector('[role=alert]').textContent=errorMessage(err);btn.disabled=false;}};
   });
  };
  root.ensureProductionWorker=async function(){

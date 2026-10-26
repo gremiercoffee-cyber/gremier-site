@@ -1136,7 +1136,7 @@ function BeansSection({
   }
   async function markDelivered(type) {
     const current = beans[type] || {};
-    const newKg = parseFloat(((current.kg || 0) + (current.orderedKg || 0)).toFixed(1));
+    const newKg = parseFloat(((current.kg || 0) + (current.orderedKg || 0)).toFixed(3));
     setBeans(p => ({
       ...p,
       [type]: {
