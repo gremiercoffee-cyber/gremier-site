@@ -28,10 +28,14 @@ class MainActivity : Activity() {
             setPadding(pad, pad * 2, pad, pad)
             setBackgroundColor(Color.parseColor("#F7F4EF"))
         }
-        root.addView(TextView(this).apply { text = "☕ Gremier Hub"; textSize = 26f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1A1A1A")) })
+        root.addView(TextView(this).apply { text = "Gremier Hub"; textSize = 26f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1A1A1A")) })
         root.addView(TextView(this).apply {
             text = "Quick actions on your home screen.\n\n1. In the admin app open More → Connected apps, create a key named \"Widget\" (with \"Can log & change things\" ticked) and copy it.\n2. Paste it below and tap Connect.\n3. Long-press your home screen → Widgets → Gremier Hub, and drag it on."
             textSize = 15f; setTextColor(Color.parseColor("#444444")); setPadding(0, pad / 2, 0, pad)
+        })
+        root.addView(TextView(this).apply {
+            text = "Sectioned production widget · " + packageManager.getPackageInfo(packageName, 0).versionName + "\nAfter updating: if you still see the old button grid, remove the home-screen widget and add Gremier Hub again. Your connection stays saved."
+            textSize = 13f; setTextColor(Color.parseColor("#35614E")); setPadding(0, 0, 0, pad / 2)
         })
         keyInput = EditText(this).apply {
             hint = "ghk_…"
