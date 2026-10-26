@@ -26,6 +26,7 @@ import kotlin.concurrent.thread
  * server's field list (choice / number / text). Runs the action, shows the result, closes.
  */
 class QuickActionActivity : Activity() {
+    private val requestId=java.util.UUID.randomUUID().toString()
     private lateinit var button: JSONObject
     private val inputs = mutableListOf<Pair<JSONObject, View>>()
 
@@ -33,6 +34,7 @@ class QuickActionActivity : Activity() {
         super.onCreate(savedInstanceState)
         button = JSONObject(intent.getStringExtra("button") ?: run { finish(); return })
         when (button.optString("kind")) {
+            "open" -> { startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(button.getString("url"))));finish();return }
             "info" -> { showMessage(button.optString("message")); return }
             "view" -> { showView(); return }
             "voice" -> { startVoice(); return }
@@ -74,18 +76,18 @@ class QuickActionActivity : Activity() {
         row.addView(go, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         box.addView(row)
         go.setOnClickListener {
-            val body = collect() ?: run { status.text = "Fill in at least one amount"; return@setOnClickListener }
+            val body = collect()?.put("request_id",requestId) ?: run { status.text = "Fill in at least one amount"; return@setOnClickListener }
             go.isEnabled = false; cancel.isEnabled = false; status.text = "Saving…"
             thread {
                 val (ok, msg) = try {
-                    Hub.call(this, body)
+                    val result=Hub.call(this, body).optJSONObject("result")
                     Hub.setFlash(this, button.optString("id"))
-                    true to "✅ Done"
+                    true to if(result?.has("concentrate_used_l")==true)"✅ Saved · ${result.optDouble("concentrate_used_l")}L concentrate used · ${result.optDouble("concentrate_now_l")}L left" else "✅ Saved"
                 } catch (e: Exception) { false to "⚠️ ${e.message}" }
                 runOnUiThread {
                     status.text = msg
                     HubWidget.refreshAll(this)
-                    if (ok) status.postDelayed({ finish() }, 900) else { go.isEnabled = true; cancel.isEnabled = true }
+                    if (ok) status.postDelayed({ finish() }, 2400) else { go.isEnabled = true; cancel.isEnabled = true }
                 }
             }
         }
@@ -191,7 +193,7 @@ class QuickActionActivity : Activity() {
                             runOnUiThread {
                                 status.text = msg
                                 HubWidget.refreshAll(this)
-                                if (ok) status.postDelayed({ finish() }, 900) else { go.isEnabled = true; again.isEnabled = true }
+                                if (ok) status.postDelayed({ finish() }, 2400) else { go.isEnabled = true; again.isEnabled = true }
                             }
                         }
                     }
