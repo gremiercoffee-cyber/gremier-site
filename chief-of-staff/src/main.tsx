@@ -4,6 +4,17 @@ import App from "./App";
 import "./index.css";
 import { applyZoom, getZoom } from "./zoom";
 
+// After an update, an open app can ask for a piece of the old version that's gone ("Failed to fetch dynamically
+// imported module"). Reload once to the new version instead of showing that error.
+window.addEventListener("vite:preloadError", (e) => {
+  let last = 0;
+  try { last = Number(sessionStorage.getItem("reloaded-for-update") ?? 0); } catch { /* storage off */ }
+  if (Date.now() - last < 30_000) return;
+  e.preventDefault();
+  try { sessionStorage.setItem("reloaded-for-update", String(Date.now())); } catch { /* storage off */ }
+  window.location.reload();
+});
+
 applyZoom(getZoom()); // the page zoom chosen on this device
 
 try {

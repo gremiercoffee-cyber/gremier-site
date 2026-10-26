@@ -202,3 +202,22 @@ test('nothing to fill yet: it asks for the missing details instead of making an 
  const r=await docs.fillForm(env,{file_id:id});
  assert.equal(r.file_id,undefined);assert.equal(r.still_needed[0].label,'Home address');assert.match(r.next,/save_detail/);
 });
+
+test('what is still needed is kept on the newest copy as a form, and goes away once a newer copy answers it',async()=>{
+ const {env}=memoryEnv();
+ const {id}=await docs.uploadFile(env,{filename:'Bank form.pdf',mime:'application/pdf',bytes:await flatForm()});
+ globalThis.__fill=JSON.stringify({placements:[],still_needed:[{label:'Home address',ask:'Your home address?'}]});
+ await docs.fillForm(env,{file_id:id});
+ let files=await docs.recentFiles(env,'2000-01-01');
+ assert.deepEqual(files.find(f=>f.id===id).needed,[{label:'Home address',ask:'Your home address?'}],'nothing filled yet: the form shows on the file itself');
+ globalThis.__fill=JSON.stringify({placements:[{value:'Yoni Grey',anchor:2,where:'after'}],still_needed:[{label:'Phone',ask:'Phone?'}]});
+ const a=await docs.fillForm(env,{file_id:id});
+ files=await docs.recentFiles(env,'2000-01-01');
+ assert.deepEqual(files.find(f=>f.id===id).needed,[],'the original no longer asks');
+ assert.deepEqual(files.find(f=>f.id===a.file_id).needed,[{label:'Phone',ask:'Phone?'}]);
+ assert.match(globalThis.__asked?.system??'',/flat PDF/);
+ globalThis.__fill=JSON.stringify({placements:[{value:'Yoni Grey',anchor:2,where:'after'},{value:'058',anchor:5,where:'after'}],still_needed:[]});
+ const b=await docs.fillForm(env,{file_id:a.file_id});
+ files=await docs.recentFiles(env,'2000-01-01');
+ assert.deepEqual(files.find(f=>f.id===a.file_id).needed,[]);assert.deepEqual(files.find(f=>f.id===b.file_id).needed,[]);
+});

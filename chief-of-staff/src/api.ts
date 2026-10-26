@@ -17,7 +17,7 @@ export interface Collection {
 export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string }
 export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
 export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
-  source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string }
+  source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string; needed?: { label: string; ask: string }[] }
 export interface SignedFile { id: string; file_id: string; filename: string; signatures: string; position: string; created_at: string }
 
 export interface AutopilotPreview { enabled: boolean; start_week: string | null; week_of: string; filed: string[]; missing: string[]; no_email: string[]; error: string | null; sent: { kind: string; name: string; sent_at: string; error: string | null }[]; templates: Record<string, { subject: string; body: string }> }

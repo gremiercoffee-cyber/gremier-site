@@ -62,6 +62,7 @@ async function gmail<T>(token: string, path: string): Promise<T> {
 export interface FoundFile {
   id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
   source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string;
+  needed?: { label: string; ask: string }[];
 }
 export type Purpose = "sign" | "fill" | "view";
 const purposeOf = (p: unknown): Purpose => (p === "sign" || p === "fill" ? p : "view");
@@ -135,7 +136,8 @@ export async function uploadFile(env: Env, p: { filename: string; mime: string; 
 }
 
 export const recentFiles = (env: Env, since: string) =>
-  all<FoundFile>(env, "SELECT id, account, filename, mime, size, sender, subject, sent_at, source, purpose, batch, chosen, parent_id, note, created_at FROM found_files WHERE created_at >= ? ORDER BY created_at, sent_at DESC LIMIT 40", since);
+  all<FoundFile>(env, "SELECT id, account, filename, mime, size, sender, subject, sent_at, source, purpose, batch, chosen, parent_id, note, needed, created_at FROM found_files WHERE created_at >= ? ORDER BY created_at, sent_at DESC LIMIT 40", since)
+    .then((rows) => rows.map((r) => ({ ...r, needed: (() => { try { return r.needed ? JSON.parse(r.needed as unknown as string) : []; } catch { return []; } })() })));
 
 export const fileInfo = (env: Env, id: string) => first<FoundFile>(env, "SELECT * FROM found_files WHERE id = ?", id);
 
@@ -158,12 +160,18 @@ export async function fileBytes(env: Env, id: string) {
 }
 
 /** A new file made from another (a signed or filled copy), kept and shown for review. */
-async function saveMade(env: Env, parentId: string, bytes: Uint8Array, filename: string, note: string, fillValues?: unknown) {
+/** The questions a fill still has, kept on the file whose card shows the form for them ([] = none). */
+async function setNeeded(env: Env, id: string, needed: { label: string; ask: string }[]) {
+  await run(env, "UPDATE found_files SET needed = ? WHERE id = ?", needed.length ? JSON.stringify(needed) : null, id);
+}
+
+async function saveMade(env: Env, parentId: string, bytes: Uint8Array, filename: string, note: string, fillValues?: unknown, needed?: { label: string; ask: string }[]) {
   const id = uid();
   // Contents first, then the entry: a copy cut off mid-save never shows up as a broken card.
   await storeBytes(env, id, bytes);
   await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, parent_id, note, chosen, fill_values, stored) VALUES (?, 'made', '', '', ?, 'application/pdf', ?, ?, 'made', ?, ?, 1, ?, 1)",
     id, filename, bytes.length, now(), parentId, note, fillValues ? JSON.stringify(fillValues) : null);
+  if (needed?.length) await setNeeded(env, id, needed);
   return id;
 }
 
@@ -244,7 +252,7 @@ function parseJson<T>(out: string): T {
 const neededList = (n: unknown): Needed[] => (Array.isArray(n) ? n : [])
   .map((x) => typeof x === "string" ? { label: x, ask: x } : { label: String((x as Needed)?.label ?? ""), ask: String((x as Needed)?.ask ?? (x as Needed)?.label ?? "") })
   .filter((x) => x.label).slice(0, 12);
-const ASK_NEXT = "Ask the user for the still_needed items. When they answer, save each with save_detail under its label, then call fill_document again with THIS file_id: it refills from the clean original and keeps what's already written.";
+const ASK_NEXT = "The user now sees a short form in the chat with a box for each still_needed item and one 'Save & fill in' button: it saves every answer to My details and fills the form once. Tell them in one line to fill it in there (don't list the questions one by one). Don't call fill_document again yourself after each answer: if they answer in the chat instead, save each with save_detail, and fill again only once they've given everything they have or say 'fill it'.";
 
 // Fills run one at a time on a server: several at once (quick messages in a row) can run it out of memory.
 let fillQueue: Promise<unknown> = Promise.resolve();
@@ -267,7 +275,7 @@ async function fillFormNow(env: Env, input: { file_id: string; instructions?: st
   const today = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Jerusalem" });
   const common = `File: ${f.filename}\nToday: ${today}\nWhat the user said: ${input.instructions || "(fill in what you can)"}\n\nThe user's saved details:\n${details || "(none saved)"}`;
   const name = f.filename.replace(/\.pdf$/i, "").replace(/ \((filled|signed)\)$/i, "") + " (filled).pdf";
-  if (fields.length) return fillFields(env, { baseId, doc, fields, common, prev: prev?.mode === "fields" ? prev : null, name });
+  if (fields.length) return fillFields(env, { fileId: input.file_id, baseId, doc, fields, common, prev: prev?.mode === "fields" ? prev : null, name });
 
   // A flat PDF: write onto the page. Read where the text is; with (almost) none, it's a scan.
   const layout = await readLayout(f.bytes).catch(() => null);
@@ -307,18 +315,20 @@ Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "page": 0
       .map((p) => ({ ...p, anchor: undefined, page: Number(p.page), x: Number(p.x), y: Number(p.y) }));
     needed = neededList(v.still_needed);
   }
+  if (!placements.length) await setNeeded(env, input.file_id, needed);
   if (!placements.length) return { clarification: needed.length ? "I need a few details before I can fill this form." : "I couldn't find anything on this form to fill from your details. Tell me the answers and I'll write them in.", still_needed: needed, next: ASK_NEXT };
   const out = await overlay(f.bytes, scanned ? null : layout, placements);
   if (!out.written) return { clarification: "I couldn't place the answers on this form. Tell me where they go and I'll try again.", still_needed: needed };
-  const note = `Wrote ${out.written} answer${out.written === 1 ? "" : "s"} onto the page${scanned ? " (a scan: positions are estimated, check them)" : ""}${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (tell me in the chat)` : ""}`;
-  const id = await saveMade(env, baseId, out.bytes, name, note, { mode: scanned ? "scan" : "flat", placements });
+  const note = `Wrote ${out.written} answer${out.written === 1 ? "" : "s"} onto the page${scanned ? " (a scan: positions are estimated, check them)" : ""}${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (answer them in the form below)` : ""}`;
+  const id = await saveMade(env, baseId, out.bytes, name, note, { mode: scanned ? "scan" : "flat", placements }, needed);
+  await setNeeded(env, input.file_id, []); // answered by this newer copy
   return { file_id: id, made: "filled copy (written onto the page)", written: out.written, scanned, still_needed: needed,
     where: "It's in the chat with a preview, Download and Share.",
     ...(needed.length ? { next: ASK_NEXT } : {}),
     ...(scanned ? { check: "Positions on a scan are estimated: ask the user to check, and move any that are off (call again with e.g. 'move the ID number a little right')." } : {}) };
 }
 
-async function fillFields(env: Env, p: { baseId: string; doc: PDFDocument; fields: PDFField[]; common: string; prev: { values: Record<string, string | boolean> } | null; name: string }) {
+async function fillFields(env: Env, p: { fileId: string; baseId: string; doc: PDFDocument; fields: PDFField[]; common: string; prev: { values: Record<string, string | boolean> } | null; name: string }) {
   const form = p.doc.getForm();
   // Field kinds are checked with instanceof: class names don't survive bundling.
   const kind = (fl: PDFField) => fl instanceof PDFTextField ? "Text" : fl instanceof PDFCheckBox ? "CheckBox" : fl instanceof PDFDropdown ? "Dropdown"
@@ -347,10 +357,11 @@ async function fillFields(env: Env, p: { baseId: string; doc: PDFDocument; field
       filled++;
     } catch { /* a value that doesn't fit that field: left for the user */ }
   }
-  if (!filled) return { clarification: "I need a few details before I can fill this form.", still_needed: needed, next: ASK_NEXT };
+  if (!filled) { await setNeeded(env, p.fileId, needed); return { clarification: "I need a few details before I can fill this form.", still_needed: needed, next: ASK_NEXT }; }
   const bytes = await p.doc.save({ updateFieldAppearances: true });
-  const note = `Filled ${filled} of ${p.fields.length} fields${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (tell me in the chat)` : ""}`;
-  const id = await saveMade(env, p.baseId, bytes, p.name, note, { mode: "fields", values });
+  const note = `Filled ${filled} of ${p.fields.length} fields${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (answer them in the form below)` : ""}`;
+  const id = await saveMade(env, p.baseId, bytes, p.name, note, { mode: "fields", values }, needed);
+  await setNeeded(env, p.fileId, []);
   return { file_id: id, made: "filled copy", filled, of: p.fields.length, still_needed: needed, where: "It's in the chat with a preview, Download and Share. It stays editable.",
     ...(needed.length ? { next: ASK_NEXT } : {}) };
 }

@@ -57,6 +57,45 @@ function SignPanel({ f, onDone }: { f: FoundFile; onDone: () => void }) {
   );
 }
 
+/** What the form still needs: a box for each, and one button that saves them all to My details and fills once. */
+function NeededForm({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
+  const needed = f.needed ?? [];
+  const [vals, setVals] = useState<Record<string, string>>({}), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  // Anything already saved under the same name is filled in, to check or change.
+  useEffect(() => {
+    api.vault().then((v) => {
+      const have: Record<string, string> = {};
+      for (const n of needed) { const m = v.find((x) => x.kind === "text" && x.label.toLowerCase() === n.label.toLowerCase()); if (m) have[n.label] = m.text; }
+      setVals((cur) => ({ ...have, ...cur }));
+    }).catch(() => {});
+  }, [f.id]);
+  const filled = needed.filter((n) => (vals[n.label] ?? "").trim());
+  const submit = async () => {
+    setBusy(true); setMsg("");
+    try {
+      for (const n of filled) await api.saveVault({ kind: "text", label: n.label, text: vals[n.label].trim() });
+      const r = await api.fillFile(f.id);
+      if (r.file_id || r.still_needed?.length) onChanged(); else setMsg(r.clarification ?? "Couldn't fill it.");
+    } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
+  if (!needed.length) return null;
+  return (
+    <form className="rounded-xl bg-surface p-3 space-y-2.5" onSubmit={(e) => { e.preventDefault(); if (filled.length) void submit(); }}>
+      <p className="text-sm font-medium">Still needed for this form</p>
+      {needed.map((n) => (
+        <label key={n.label} className="block">
+          <span className="block text-xs text-muted mb-0.5">{n.ask}</span>
+          <input dir="auto" value={vals[n.label] ?? ""} onChange={(e) => setVals((v) => ({ ...v, [n.label]: e.target.value }))} placeholder={n.label}
+            className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[15px]" />
+        </label>
+      ))}
+      <p className="text-[11px] text-muted">Leave a box empty if it doesn't apply. Answers are saved under My details for next time.</p>
+      <Button type="submit" disabled={busy || !filled.length}>{busy ? "Filling…" : `Save & fill in${filled.length ? ` (${filled.length})` : ""}`}</Button>
+      {msg && <p className="text-sm text-danger">{msg}</p>}
+    </form>
+  );
+}
+
 /** The file to work on: preview and the action you asked for (fill / sign), with the other one beside it. */
 function WorkCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
   const [signing, setSigning] = useState(false), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
@@ -64,8 +103,7 @@ function WorkCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
     setBusy(true); setMsg("");
     try {
       const r = await api.fillFile(f.id);
-      if (r.file_id) onChanged();
-      else setMsg([r.clarification ?? "Couldn't fill it.", ...(r.still_needed ?? []).map((n) => `• ${n.ask}`), r.still_needed?.length ? "Answer in the chat; I'll save it under My details and fill the form." : ""].filter(Boolean).join("\n"));
+      if (r.file_id || r.still_needed?.length) onChanged(); else setMsg(r.clarification ?? "Couldn't fill it.");
     }
     catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
@@ -80,6 +118,7 @@ function WorkCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
       <Preview id={f.id} f={f} />
       {isPdf(f) && <div className="flex flex-wrap gap-2">{f.purpose === "sign" ? [signBtn, fillBtn] : [fillBtn, signBtn]}</div>}
       {signing && <SignPanel f={f} onDone={() => { setSigning(false); onChanged(); }} />}
+      <NeededForm f={f} onChanged={onChanged} />
       {msg && <p className="text-sm whitespace-pre-line">{msg}</p>}
       <div className="flex gap-3 text-xs"><button className="text-accent" onClick={async () => download(await getBlob(f), f.filename)}>Download</button><button className="text-accent" onClick={() => void share(f)}>Share</button></div>
     </div>
@@ -101,6 +140,7 @@ function ResultCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
         {!signed && <Button variant="soft" onClick={() => setSigning((v) => !v)}>✍️ Sign it too</Button>}
       </div>
       {signing && <SignPanel f={f} onDone={() => { setSigning(false); onChanged(); }} />}
+      <NeededForm f={f} onChanged={onChanged} />
       <p className="text-[11px] text-muted">Nothing has been sent. The original is unchanged.</p>
     </div>
   );
