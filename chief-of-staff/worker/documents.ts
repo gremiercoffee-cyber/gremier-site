@@ -43,6 +43,15 @@ export async function saveVault(env: Env, v: { id?: string; kind?: string; label
 export const deleteVault = (env: Env, id: string) => run(env, "DELETE FROM vault_items WHERE id = ?", id);
 
 /** For the assistant's context: text details in full, signatures by name only. */
+/** The user's name (from Settings) and email addresses, for a form's name / contact / signer fields. */
+async function whoAmI(env: Env) {
+  const name = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'name'").catch(() => null);
+  let n = name?.value ?? "";
+  try { n = JSON.parse(n); } catch { /* stored plain */ }
+  const emails = await accountEmails(env).catch(() => [] as string[]);
+  return [n && `name ${n}`, emails.length && `email ${emails.join(", ")}`].filter(Boolean).join("; ");
+}
+
 export async function vaultSummary(env: Env) {
   const items = await listVault(env);
   if (!items.length) return "";
@@ -273,7 +282,9 @@ async function fillFormNow(env: Env, input: { file_id: string; instructions?: st
   const fields = doc.getForm().getFields();
   const details = await vaultSummary(env);
   const today = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Jerusalem" });
-  const common = `File: ${f.filename}\nToday: ${today}\nWhat the user said: ${input.instructions || "(fill in what you can)"}\n\nThe user's saved details:\n${details || "(none saved)"}`;
+  // Who's filling it: their name and email belong in a form's name / contact / signer fields.
+  const who = await whoAmI(env);
+  const common = `File: ${f.filename}\nToday: ${today}\nThe user: ${who || "(name not set)"}\nWhat the user said: ${input.instructions || "(fill in what you can)"}\n\nThe user's saved details:\n${details || "(none saved)"}`;
   const name = f.filename.replace(/\.pdf$/i, "").replace(/ \((filled|signed)\)$/i, "") + " (filled).pdf";
   if (fields.length) return fillFields(env, { fileId: input.file_id, baseId, doc, fields, common, prev: prev?.mode === "fields" ? prev : null, name });
 
@@ -281,18 +292,18 @@ async function fillFormNow(env: Env, input: { file_id: string; instructions?: st
   const layout = await readLayout(f.bytes).catch(() => null);
   const scanned = !layout || layout.pieces.length < 6;
   const before = prev && prev.mode !== "fields" ? `\n\nAlready written on this form (keep these unless the user asks to change or move one; return the FULL list):\n${JSON.stringify(prev.placements)}` : "";
-  const rules = `Use ONLY the user's saved details and what they said; never invent personal information, numbers or dates (today's date is fine for a "Date" next to where they sign). Write each value as it should appear on the form. A tick box: value "X". ${NEEDED_RULE}`;
+  const rules = `Go through EVERY page and every blank meant for the user (the applicant / business / signer): each one is either filled or listed in still_needed — none silently skipped. Use the user's saved details, what they said, and the user's name and email; work out what follows plainly from them (a short business name from the business name; the contact or manager is the user; the signer's name next to a signature line; a phone or email repeated wherever the form asks again; today's date next to where they sign or for "date"). Never invent ID numbers, account numbers, amounts or facts. Write each value in the form's language when it's a word you'd translate naturally (e.g. city names in Hebrew on a Hebrew form), otherwise as saved. A tick box: value "X". ${NEEDED_RULE}`;
   let placements: Placement[] = [], needed: Needed[] = [];
   if (!scanned) {
     const out = await getProvider(env).complete({
-      tier: "main", purpose: "fill_form", maxTokens: 4000,
+      tier: "main", purpose: "fill_form", maxTokens: 8000, effort: "medium",
       system: `You fill in a flat PDF form (it has no fill-in boxes) by saying where each answer is written. You get every piece of text on the pages: #id, page, (x,y) of its start from the bottom-left in points, w = its width, then the text. Find what each label asks for and anchor the answer to it:
 - "after": to the right of the label on the same line (English forms, "Name: ____").
 - "left": to the left of the label (Hebrew right-to-left forms: the answer goes left of "שם:").
 - "on": on a blank-line piece itself ("__________"), anchoring that piece.
 - "below" / "above": when the space for the answer is under / over the label.
 A tick box: anchor the option's text, "left" for English (box before the text), "after" for Hebrew (box after it).
-Hebrew text may come out with its letters reversed; read it either way.
+Hebrew text may come out with its letters reversed; read it either way. Text marked [runs up the page] / [runs down the page] is a sideways part of the page: anchor to it the same way; the answer is written along that line too.
 ${rules}
 Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor": 12, "where": "after"}], "still_needed": [...]}`,
       prompt: `${common}\n\nPages: ${layout!.pages.map((p, i) => `p${i + 1} ${Math.round(p.w)}x${Math.round(p.h)}`).join(", ")}\n\nText on the pages:\n${describeLayout(layout!)}${before}`,
@@ -304,15 +315,17 @@ Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor":
     const file = f.bytes.length <= 4 * 1024 * 1024 ? { kind: "pdf" as const, name: f.filename, dataUrl: `data:application/pdf;base64,${toB64(f.bytes)}` } : null;
     if (!file) return { clarification: "This looks like a scan and it's too big for me to read. Send a smaller copy (or a photo of each page) and I'll fill it." };
     const out = await getProvider(env).complete({
-      tier: "main", purpose: "fill_form", maxTokens: 4000, attachments: [file],
-      system: `You fill in a scanned paper form (a picture, so no text to anchor to) by saying where each answer is written. Look at each page. For each answer give: page (0 = first), x and y in thousandths of the page width and height measured from the TOP-LEFT corner, at the point where the text starts on its line (the bottom of the letters sits at y), and size in points (usually 9-11; smaller for small boxes). Put it in the empty space beside or on the label's line, not over printed text. On a right-to-left (Hebrew) form the space is usually left of the label.
+      tier: "main", purpose: "fill_form", maxTokens: 8000, effort: "medium", attachments: [file],
+      system: `You fill in a scanned paper form (a picture, so no text to anchor to) by saying where each answer is written. Look carefully at each page, including pages scanned sideways or upside down and tables whose columns each ask something.
+For each answer mark its empty space as a line on the page: page (0 = first); x1,y1 = where the space starts and x2,y2 = where it ends, along the line the answer is written on. Both points in thousandths of the page width and height AS YOU SEE IT, measured from the TOP-LEFT corner; the bottom of the letters sits on that line. "Starts" = the left end when the form's printed text is read upright — so on a sideways page the line runs up or down the page, like the printed lines there, and the answer will be written that way too. Keep the line inside the blank (a table cell, after a label, on a dotted line), never over printed text. size = points (usually 9-11; smaller for small cells).
 ${rules}
-Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "page": 0, "x": 420, "y": 233, "size": 10}], "still_needed": [...]}`,
+Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "page": 0, "x1": 420, "y1": 233, "x2": 610, "y2": 233, "size": 10}], "still_needed": [...]}`,
       prompt: `${common}${before}`,
     });
     const v = parseJson<{ placements?: Placement[]; still_needed?: unknown }>(out);
-    placements = (v.placements ?? []).filter((p) => p && p.value != null && [p.page, p.x, p.y].every((n) => Number.isFinite(Number(n))))
-      .map((p) => ({ ...p, anchor: undefined, page: Number(p.page), x: Number(p.x), y: Number(p.y) }));
+    const num = (n: unknown) => n == null || n === "" ? undefined : Number(n);
+    placements = (v.placements ?? []).map((p) => ({ ...p, anchor: undefined, page: num(p.page), x1: num(p.x1 ?? p.x), y1: num(p.y1 ?? p.y), x2: num(p.x2), y2: num(p.y2), x: undefined, y: undefined }))
+      .filter((p) => p.value != null && [p.page, p.x1, p.y1].every((n) => Number.isFinite(n)));
     needed = neededList(v.still_needed);
   }
   if (!placements.length) await setNeeded(env, input.file_id, needed);
@@ -339,7 +352,7 @@ async function fillFields(env: Env, p: { fileId: string; baseId: string; doc: PD
   }).join("\n");
   const before = p.prev ? `\n\nAlready filled (keep these unless the user asks to change one; return them all):\n${JSON.stringify(p.prev.values)}` : "";
   const out = await getProvider(env).complete({
-    tier: "main", purpose: "fill_form", maxTokens: 3000,
+    tier: "main", purpose: "fill_form", maxTokens: 6000, effort: "medium",
     system: `You fill in a PDF form for the user. Field names can be cryptic: use the name, its position in the list and the options to tell what each asks for. Use ONLY the user's saved details and what they said; never invent personal information, numbers or dates. Leave a field out if you don't know it. ${NEEDED_RULE} Reply ONLY JSON: {"values": {"<exact field name>": "text" | true | false | "<option>"}, "still_needed": [...]}`,
     prompt: `${p.common}\n\nForm fields:\n${desc}${before}`,
   });

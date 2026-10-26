@@ -1,22 +1,30 @@
 /**
  * Writing onto flat PDFs (forms with no fill-in boxes): find the printed labels ("Name:", "כתובת", a blank line)
- * and write each answer beside them as real text, in English or Hebrew.
+ * and write each answer beside them as real text, in English or Hebrew, along the same line as the label —
+ * so a sideways page or a rotated block gets sideways answers, the way a person would write them.
  *
- * - readLayout: every piece of text on every page with its position (pdf.js, via unpdf, which runs in Workers).
- * - placeText: turns "write X after/left of/below/on piece #12" into page coordinates, sized to fit the space.
- * - drawValue: draws mixed Hebrew/English text (Hebrew in Noto Sans Hebrew, the rest in Helvetica), right to left
- *   when it's Hebrew.
- * Scanned pages have no text to anchor to; there the model looks at the page and gives positions itself.
+ * - readLayout: every piece of text on every page with its position and direction (pdf.js, via unpdf).
+ * - placeText: turns "write X after/left of/below/on piece #12" into a point and direction, sized to fit.
+ * - drawValue: draws mixed Hebrew/English text (Hebrew in Noto Sans Hebrew, the rest in Helvetica).
+ * Scanned pages have no text to anchor to; there the model looks at the page and marks each answer's space as
+ * a line (start and end), which gives its direction too.
  */
 import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { getDocumentProxy } from "unpdf";
 import { HEBREW_FONT_B64 } from "./fonts/hebrew";
 
-export interface Piece { id: number; page: number; x: number; y: number; w: number; h: number; text: string }
+/** A piece of text. x,y = where its line starts (PDF points from the bottom-left); angle = the line's direction
+ *  in degrees (0 = normal, 90 = running up the page); w = its length along the line, h = its size. */
+export interface Piece { id: number; page: number; x: number; y: number; angle: number; w: number; h: number; text: string }
 export interface Layout { pages: { w: number; h: number }[]; pieces: Piece[] }
 
-/** Each text piece's position, in PDF points from the bottom-left (the same space pdf-lib draws in). */
+// Points seen along a line at `angle`: (along, across). And back.
+const toLine = (x: number, y: number, a: number) => { const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r); return { u: x * c + y * s, v: -x * s + y * c }; };
+const fromLine = (u: number, v: number, a: number) => { const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r); return { x: u * c - v * s, y: u * s + v * c }; };
+const sameDir = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180) < 5;
+
+/** Each text piece's position and direction, in the space pdf-lib draws in. */
 export async function readLayout(bytes: Uint8Array, maxPages = 12): Promise<Layout> {
   const pdf = await getDocumentProxy(new Uint8Array(bytes));
   const pages: Layout["pages"] = [], pieces: Piece[] = [];
@@ -29,8 +37,10 @@ export async function readLayout(bytes: Uint8Array, maxPages = 12): Promise<Layo
     for (const it of tc.items as { str?: string; transform: number[]; width: number; height: number }[]) {
       const text = (it.str ?? "").replace(/\s+/g, " ");
       if (!text.trim()) continue;
-      const size = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
-      raw.push({ page: n - 1, x: it.transform[4], y: it.transform[5], w: it.width, h: size, text });
+      const t = it.transform;
+      const size = Math.hypot(t[2], t[3]) || it.height || 10;
+      const angle = Math.round((Math.atan2(t[1], t[0]) * 180) / Math.PI);
+      raw.push({ page: n - 1, x: t[4], y: t[5], angle: (angle + 360) % 360, w: it.width, h: size, text });
     }
     for (const p of joinFragments(raw)) pieces.push({ id: pieces.length + 1, ...p });
   }
@@ -41,81 +51,131 @@ export async function readLayout(bytes: Uint8Array, maxPages = 12): Promise<Layo
 }
 
 /** Text often comes in fragments (a word, a colon; Hebrew especially). Fragments that touch on the same line
- *  become one piece, so a label is one thing to anchor to. Hebrew reads right to left. */
+ *  (and run the same way) become one piece, so a label is one thing to anchor to. Hebrew reads right to left. */
 function joinFragments(raw: Omit<Piece, "id">[]) {
-  const sorted = [...raw].sort((a, b) => b.y - a.y || a.x - b.x);
-  const out: (Omit<Piece, "id"> & { parts: Omit<Piece, "id">[] })[] = [];
-  for (const r of sorted) {
-    const last = out[out.length - 1];
-    const gap = last ? r.x - (last.x + last.w) : Infinity;
-    if (last && Math.abs(r.y - last.y) < Math.min(r.h, last.h) * 0.4 && gap > -r.h * 0.3 && gap < Math.max(r.h, last.h) * 0.45) {
-      last.parts.push(r);
-      last.w = Math.max(last.w, r.x + r.w - last.x); last.h = Math.max(last.h, r.h);
-    } else out.push({ ...r, parts: [r] });
+  const out: Omit<Piece, "id">[] = [];
+  const dirs: number[] = [];
+  for (const r of raw) if (!dirs.some((d) => sameDir(d, r.angle))) dirs.push(r.angle);
+  for (const dir of dirs) {
+    const group = raw.filter((r) => sameDir(r.angle, dir)).map((r) => ({ ...r, ...toLine(r.x, r.y, dir) }))
+      .sort((a, b) => b.v - a.v || a.u - b.u);
+    const lines: (typeof group[number] & { parts: typeof group })[] = [];
+    for (const r of group) {
+      const last = lines[lines.length - 1];
+      const gap = last ? r.u - (last.u + last.w) : Infinity;
+      if (last && Math.abs(r.v - last.v) < Math.min(r.h, last.h) * 0.4 && gap > -r.h * 0.3 && gap < Math.max(r.h, last.h) * 0.45) {
+        last.parts.push(r);
+        last.w = Math.max(last.w, r.u + r.w - last.u); last.h = Math.max(last.h, r.h);
+      } else lines.push({ ...r, parts: [r] });
+    }
+    for (const { parts, u, v, ...p } of lines) {
+      const rtl = parts.some((x) => HEB.test(x.text));
+      const ordered = rtl ? [...parts].reverse() : parts;
+      // Hebrew is sometimes stored letter by letter as drawn (reversed). Judge the whole line, then put it back.
+      const all = parts.map((x) => x.text).join(" ");
+      const flip = rtl && count(all, REVERSED_END) > count(all, NORMAL_END);
+      const text = ordered.map((x, i) => {
+        const t = flip && HEB.test(x.text) ? [...x.text].reverse().join("") : x.text;
+        const prev = ordered[i - 1];
+        const spaced = prev && (rtl ? prev.u - (x.u + x.w) : x.u - (prev.u + prev.w)) > x.h * 0.15;
+        return (spaced ? " " : "") + t;
+      }).join("").replace(/\s+/g, " ").trim();
+      const at = fromLine(u, v, dir);
+      out.push({ page: p.page, x: at.x, y: at.y, angle: dir, w: p.w, h: p.h, text });
+    }
   }
-  return out.map(({ parts, ...p }) => {
-    const rtl = parts.some((x) => HEB.test(x.text));
-    const ordered = rtl ? [...parts].reverse() : parts;
-    // Hebrew is sometimes stored letter by letter as drawn (reversed). Judge the whole line, then put it back.
-    const all = parts.map((x) => x.text).join(" ");
-    const flip = rtl && count(all, REVERSED_END) > count(all, NORMAL_END);
-    const text = ordered.map((x, i) => {
-      const t = flip && HEB.test(x.text) ? [...x.text].reverse().join("") : x.text;
-      const prev = ordered[i - 1];
-      const spaced = prev && (rtl ? prev.x - (x.x + x.w) : x.x - (prev.x + prev.w)) > x.h * 0.15;
-      return (spaced ? " " : "") + t;
-    }).join("").replace(/\s+/g, " ").trim();
-    return { ...p, text };
-  });
+  return out;
 }
 // Letters that only end a Hebrew word (ך ם ן ף ץ): found at a word's start, the text was stored reversed.
 const REVERSED_END = /(^|[\s:.,])[ךםןףץ][א-ת]/g, NORMAL_END = /[א-ת][ךםןףץ](?=$|[\s:.,])/g;
 const count = (t: string, re: RegExp) => t.match(re)?.length ?? 0;
 
-/** The layout as short lines for the model: "#12 p1 (50,700 w177) Full name: ______". Top of page first. */
+/** The layout as short lines for the model: "#12 p1 (50,700 w177) Full name: ______", "… sideways" for text
+ *  that runs up or down the page. Reading order on each page. */
 export function describeLayout(l: Layout, max = 700) {
-  const sorted = [...l.pieces].sort((a, b) => a.page - b.page || b.y - a.y || a.x - b.x);
-  return sorted.slice(0, max).map((p) => `#${p.id} p${p.page + 1} (${Math.round(p.x)},${Math.round(p.y)} w${Math.round(p.w)}) ${p.text.slice(0, 90)}`).join("\n");
+  const key = (p: Piece) => { const q = toLine(p.x, p.y, p.angle); return { v: q.v, u: q.u }; };
+  const sorted = [...l.pieces].sort((a, b) => a.page - b.page || a.angle - b.angle || key(b).v - key(a).v || key(a).u - key(b).u);
+  const turn = (a: number) => a === 0 ? "" : sameDir(a, 90) ? " [runs up the page]" : sameDir(a, 270) ? " [runs down the page]" : sameDir(a, 180) ? " [upside down]" : ` [at ${a}°]`;
+  return sorted.slice(0, max).map((p) => `#${p.id} p${p.page + 1} (${Math.round(p.x)},${Math.round(p.y)} w${Math.round(p.w)})${turn(p.angle)} ${p.text.slice(0, 90)}`).join("\n");
 }
 
 export type Where = "after" | "left" | "below" | "above" | "on";
-export interface Placement { value: string; anchor?: number; where?: Where; page?: number; x?: number; y?: number; size?: number; what?: string }
+/** Anchored (text pages): anchor + where. Scanned pages: page + the answer's space as a line from (x1,y1) to
+ *  (x2,y2), in thousandths of the page as seen, from the top-left. (Older copies used a single x,y.) */
+export interface Placement { value: string; anchor?: number; where?: Where; page?: number; x1?: number; y1?: number; x2?: number; y2?: number; x?: number; y?: number; size?: number; what?: string }
 
 const HEB = /[֐-׿יִ-ﭏ]/;
 const BLANK = /[_.…‐-]{4,}/;
 
-/** Where to write a value relative to its anchor piece, and how big, so it fits before the next text. */
-export function placeText(l: Layout, p: Placement, width: (size: number) => number) {
+export interface Spot { page: number; x: number; y: number; size: number; angle: number }
+
+/** Where to write a value relative to its anchor piece, and how big, so it fits before the next text. Worked
+ *  out along the label's own line, so it's the same for sideways text. */
+export function placeText(l: Layout, p: Placement, width: (size: number) => number): Spot | null {
   const a = l.pieces.find((x) => x.id === p.anchor);
   if (!a) return null;
-  const page = l.pages[a.page];
+  const dir = a.angle;
+  const A = toLine(a.x, a.y, dir);
+  const pg = l.pages[a.page];
+  const corners = [[0, 0], [pg.w, 0], [0, pg.h], [pg.w, pg.h]].map(([x, y]) => toLine(x, y, dir).u);
+  const pageStart = Math.min(...corners) + 24, pageEnd = Math.max(...corners) - 24;
   const where: Where = p.where ?? (HEB.test(a.text) ? "left" : "after");
-  const sameLine = l.pieces.filter((x) => x.page === a.page && x.id !== a.id && Math.abs(x.y - a.y) < a.h * 0.6);
+  const sameLine = l.pieces.filter((x) => x.page === a.page && x.id !== a.id && sameDir(x.angle, dir))
+    .map((x) => ({ ...x, ...toLine(x.x, x.y, dir) })).filter((x) => Math.abs(x.v - A.v) < a.h * 0.6);
   let size = Math.max(6, Math.min(p.size ?? a.h, 11));
-  let x: number, y = a.y, room: number, rightAlign = false;
+  let u: number, v = A.v, room: number, rightAlign = false;
   const blank = a.text.match(BLANK);
   if (where === "on" || (where === "after" && blank && blank.index! > 0 && a.text.slice(blank.index! + blank[0].length).trim() === "")) {
     // Write on the blank line itself: from where the underscores start.
-    const start = blank ? a.x + a.w * (blank.index! / a.text.length) : a.x;
-    x = start + 2; y = a.y + 1.5; room = a.x + a.w - x;
+    const start = blank ? A.u + a.w * (blank.index! / a.text.length) : A.u;
+    u = start + 2; v = A.v + 1.5; room = A.u + a.w - u;
   } else if (where === "after") {
-    x = a.x + a.w + 4;
-    const next = sameLine.filter((o) => o.x >= a.x + a.w - 1).sort((m, n) => m.x - n.x)[0];
-    room = (next && !BLANK.test(next.text) ? next.x : page.w - 24) - x;
+    u = A.u + a.w + 4;
+    const next = sameLine.filter((o) => o.u >= A.u + a.w - 1).sort((m, n) => m.u - n.u)[0];
+    room = (next && !BLANK.test(next.text) ? next.u : pageEnd) - u;
   } else if (where === "left") {
-    // Right-to-left forms: the answer goes to the left of the label, ending just before it.
-    const prev = sameLine.filter((o) => o.x + o.w <= a.x + 1).sort((m, n) => n.x + n.w - (m.x + m.w))[0];
-    const left = prev && !BLANK.test(prev.text) ? prev.x + prev.w + 4 : 24;
-    x = a.x - 4; room = x - left; rightAlign = true;
+    // Right-to-left forms: the answer goes before the label, ending just before it.
+    const prev = sameLine.filter((o) => o.u + o.w <= A.u + 1).sort((m, n) => n.u + n.w - (m.u + m.w))[0];
+    const left = prev && !BLANK.test(prev.text) ? prev.u + prev.w + 4 : pageStart;
+    u = A.u - 4; room = u - left; rightAlign = true;
   } else {
     // below / above: under or over the label, lined up with its start (its end for Hebrew).
-    y = where === "below" ? a.y - a.h * 1.5 : a.y + a.h * 1.5;
-    if (HEB.test(a.text)) { x = a.x + a.w; rightAlign = true; room = a.x + a.w - 24; }
-    else { x = a.x; room = page.w - 24 - a.x; }
+    v = where === "below" ? A.v - a.h * 1.5 : A.v + a.h * 1.5;
+    if (HEB.test(a.text)) { u = A.u + a.w; rightAlign = true; room = A.u + a.w - pageStart; }
+    else { u = A.u; room = pageEnd - A.u; }
   }
   room = Math.max(room, 30);
   while (size > 5 && width(size) > room) size -= 0.5;
-  return { page: a.page, x: rightAlign ? x - width(size) : x, y, size };
+  const at = fromLine(rightAlign ? u - width(size) : u, v, dir);
+  return { page: a.page, x: at.x, y: at.y, size, angle: dir };
+}
+
+/** A scanned page: the answer's space marked as a line in thousandths of the page as it's shown (which can be
+ *  turned from how it's stored). Gives where the text starts, its direction and a size that fits the space. */
+export function placeOnScan(page: PDFPage, pageNo: number, p: Placement, width: (size: number) => number, rtl: boolean): Spot | null {
+  const x1 = p.x1 ?? p.x, y1 = p.y1 ?? p.y;
+  if (x1 == null || y1 == null) return null;
+  const { width: W, height: H } = page.getSize();
+  const rot = ((page.getRotation().angle % 360) + 360) % 360;
+  const [dw, dh] = rot === 90 || rot === 270 ? [H, W] : [W, H];
+  // A point as shown (from the top-left) → where it is on the stored page.
+  const toPage = (fx: number, fy: number) => {
+    const X = (fx / 1000) * dw, Y = (fy / 1000) * dh;
+    return rot === 90 ? { x: Y, y: X } : rot === 180 ? { x: W - X, y: Y } : rot === 270 ? { x: W - Y, y: H - X } : { x: X, y: H - Y };
+  };
+  const a = toPage(x1, y1);
+  // No end given (older copies): straight across as the page is shown.
+  const b = p.x2 != null && p.y2 != null ? toPage(p.x2, p.y2) : (() => { const e = toPage(x1 + 300, y1); return e; })();
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (len < 1) return null;
+  const angle = (Math.round((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI) + 360) % 360;
+  let size = Math.max(6, Math.min(p.size ?? 10, 14));
+  const fit = p.x2 != null ? len : Infinity;
+  while (size > 5 && width(size) > fit) size -= 0.5;
+  // Hebrew ends at the far (right) end of the space; English starts at the near end.
+  const start = rtl && p.x2 != null ? Math.max(0, len - width(size)) : 0;
+  const r = (angle * Math.PI) / 180;
+  return { page: pageNo, x: a.x + Math.cos(r) * start, y: a.y + Math.sin(r) * start, size, angle };
 }
 
 // ---- Drawing mixed Hebrew / English -------------------------------------------------------------------
@@ -127,13 +187,15 @@ export async function embedFonts(doc: PDFDocument): Promise<Fonts> {
   return { latin: await doc.embedFont(StandardFonts.Helvetica), hebrew: await doc.embedFont(bin, { subset: true }) };
 }
 
-/** Pieces in the order they're drawn left to right, each with its font. Hebrew text is reversed (simple bidi). */
+/**
+ * The value as runs drawn one after another, left to right, each with its font. In a Hebrew line the words go
+ * right to left while English/number stretches keep their order. The letters inside a Hebrew word are NOT
+ * reversed here: the font engine (fontkit) already lays Hebrew out right to left.
+ */
 export function runs(text: string, f: Fonts) {
   const tokens = text.match(/[֐-׿יִ-ﭏ"'׳״]+|[A-Za-z0-9@#&+\-/]+(?:[.,:][A-Za-z0-9]+)*|\s+|./gu) ?? [];
   const rtl = HEB.test(text);
   const strong = (t: string) => HEB.test(t) ? "H" : /[A-Za-z0-9@#&]/.test(t) ? "L" : "N";
-  // Right-to-left line: English/number stretches (with the spaces inside them) keep their order; the
-  // stretches themselves, and the Hebrew, go right to left.
   let ordered: string[] = [...tokens];
   if (rtl) {
     const cls = tokens.map(strong);
@@ -143,7 +205,7 @@ export function runs(text: string, f: Fonts) {
     }
     const groups: { c: string; t: string[] }[] = [];
     tokens.forEach((t, i) => { const g = groups[groups.length - 1]; if (g && g.c === cls[i]) g.t.push(t); else groups.push({ c: cls[i], t: [t] }); });
-    ordered = groups.reverse().flatMap((g) => g.c === "H" ? [...g.t].reverse().map((t) => [...t].reverse().join("")) : [g.t.join("")]);
+    ordered = groups.reverse().flatMap((g) => g.c === "H" ? [...g.t].reverse() : [g.t.join("")]);
   }
   const out: { text: string; font: PDFFont }[] = [];
   for (const s of ordered) {
@@ -159,16 +221,18 @@ export function runs(text: string, f: Fonts) {
 
 export const textWidth = (text: string, f: Fonts, size: number) => runs(text, f).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
 
-export function drawValue(page: PDFPage, text: string, at: { x: number; y: number; size: number }, f: Fonts) {
-  let x = at.x;
-  for (const r of runs(text, f)) {
-    page.drawText(r.text, { x, y: at.y, size: at.size, font: r.font, color: rgb(0.05, 0.1, 0.45) });
-    x += r.font.widthOfTextAtSize(r.text, at.size);
+/** Draw the value from its start point along its direction (angle in degrees). */
+export function drawValue(page: PDFPage, text: string, at: { x: number; y: number; size: number; angle?: number }, f: Fonts) {
+  const a = at.angle ?? 0, r = (a * Math.PI) / 180;
+  let x = at.x, y = at.y;
+  for (const run of runs(text, f)) {
+    page.drawText(run.text, { x, y, size: at.size, font: run.font, color: rgb(0.05, 0.1, 0.45), rotate: degrees(a) });
+    const w = run.font.widthOfTextAtSize(run.text, at.size);
+    x += Math.cos(r) * w; y += Math.sin(r) * w;
   }
 }
 
-/** Write every placement onto the PDF. Anchored ones use the layout; free ones (scanned pages) use x/y as
- *  thousandths of the page from the top-left. Returns the new file and how many were written. */
+/** Write every placement onto the PDF. Returns the new file and how many were written. */
 export async function overlay(bytes: Uint8Array, l: Layout | null, placements: Placement[]) {
   const doc = await PDFDocument.load(bytes);
   const f = await embedFonts(doc);
@@ -178,12 +242,9 @@ export async function overlay(bytes: Uint8Array, l: Layout | null, placements: P
     const value = String(p.value ?? "").trim();
     if (!value) continue;
     const w = (size: number) => textWidth(value, f, size);
-    let at: { page: number; x: number; y: number; size: number } | null = null;
+    let at: Spot | null = null;
     if (p.anchor != null && l) at = placeText(l, p, w);
-    else if (p.page != null && p.x != null && p.y != null && pages[p.page]) {
-      const { width, height } = pages[p.page].getSize();
-      at = { page: p.page, x: (p.x / 1000) * width, y: height - (p.y / 1000) * height, size: Math.max(6, Math.min(p.size ?? 10, 14)) };
-    }
+    else if (p.page != null && pages[p.page]) at = placeOnScan(pages[p.page], p.page, p, w, HEB.test(value));
     if (!at || !pages[at.page]) continue;
     drawValue(pages[at.page], value, at, f);
     written++;

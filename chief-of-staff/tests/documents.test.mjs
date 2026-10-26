@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {deflateSync,crc32} from 'node:zlib';
 import {build} from 'esbuild';
-import {PDFDocument,PDFName,StandardFonts} from 'pdf-lib';
+import {PDFDocument,PDFName,StandardFonts,degrees} from 'pdf-lib';
 import {getDocumentProxy} from 'unpdf';
 
 const out=await build({entryPoints:['worker/documents.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'no-network',setup(b){
@@ -171,7 +171,11 @@ test('Hebrew answers go left of a Hebrew label, right to left, with numbers kept
  drawValue(page,'שם מלא:',{x:480,y:700,size:11},fonts);
  for(let i=0;i<6;i++)drawValue(page,'שורה '+i,{x:480,y:600-i*20,size:11},fonts);
  const order=runs('רחוב הרצל 12, בית שמש',fonts).map(r=>r.text).join('');
- assert.equal(order,'שמש תיב ,12 לצרה בוחר','Hebrew reversed for drawing; the number stays 12');
+ assert.equal(order,'שמש בית ,12 הרצל רחוב','words right to left, letters left for the font engine, the number stays 12');
+ // The font engine itself lays each Hebrew word right to left (so letters must not be flipped twice).
+ const fk=(await import('@pdf-lib/fontkit')).default;const src=readFileSync('worker/fonts/hebrew.ts','utf8').match(/"([A-Za-z0-9+/=]{100,})"/)[1];
+ const font=fk.create(Buffer.from(src,'base64'));const gid=c=>font.glyphForCodePoint(c.codePointAt(0)).id;
+ assert.deepEqual(font.layout('קפה').glyphs.map(g=>g.id),[gid('ה'),gid('פ'),gid('ק')],'drawn left to right as ה פ ק, which reads קפה');
  assert.equal(runs('Apt 4B, Floor 2',fonts).map(r=>r.text).join(''),'Apt 4B, Floor 2','English unchanged');
  const {id}=await docs.uploadFile(env,{filename:'טופס.pdf',mime:'application/pdf',bytes:await d.save()});
  globalThis.__fill=JSON.stringify({placements:[{what:'שם',value:'יוני גריי',anchor:1}],still_needed:[]});
@@ -220,4 +224,48 @@ test('what is still needed is kept on the newest copy as a form, and goes away o
  const b=await docs.fillForm(env,{file_id:a.file_id});
  files=await docs.recentFiles(env,'2000-01-01');
  assert.deepEqual(files.find(f=>f.id===a.file_id).needed,[]);assert.deepEqual(files.find(f=>f.id===b.file_id).needed,[]);
+});
+
+const angleOf=i=>Math.round(Math.atan2(i.t[1],i.t[0])*180/Math.PI);
+async function itemsWithAngle(bytes,pageNo=1){
+ const doc=await getDocumentProxy(new Uint8Array(bytes));const tc=await (await doc.getPage(pageNo)).getTextContent();
+ return tc.items.map(i=>({s:i.str,t:i.transform,x:i.transform[4],y:i.transform[5],w:i.width}));
+}
+
+test('a form printed sideways: the answer is written sideways too, along the label’s line',async()=>{
+ const {env}=memoryEnv();
+ const d=await PDFDocument.create();const page=d.addPage([595,842]);const f=await d.embedFont(StandardFonts.Helvetica);
+ page.drawText('Full name:',{x:300,y:100,size:11,font:f,rotate:degrees(90)});
+ for(let i=0;i<6;i++)page.drawText('Line '+i,{x:50,y:700-i*20,size:11,font:f});
+ const {id}=await docs.uploadFile(env,{filename:'Sideways.pdf',mime:'application/pdf',bytes:await d.save()});
+ globalThis.__fill=JSON.stringify({placements:[{value:'Yoni Grey',anchor:1,where:'after'}],still_needed:[]});
+ const r=await docs.fillForm(env,{file_id:id});
+ assert.match(globalThis.__asked.prompt,/\[runs up the page\] Full name:/);
+ const it=(await itemsWithAngle((await docs.fileBytes(env,r.file_id)).bytes)).find(i=>i.s==='Yoni Grey');
+ assert.equal(angleOf(it),90,'written running up the page like the label');
+ assert.ok(Math.abs(it.x-300)<1&&it.y>100+40&&it.y<100+70,'just after the label along its line');
+});
+
+test('scans: a page stored turned, and a page scanned sideways, both get answers along the printed lines',async()=>{
+ const {env}=memoryEnv();
+ const d=await PDFDocument.create();
+ const turned=d.addPage([595,842]);turned.setRotation(degrees(90)); // shown landscape
+ d.addPage([595,842]);
+ const {id}=await docs.uploadFile(env,{filename:'scan.pdf',mime:'application/pdf',bytes:await d.save()});
+ globalThis.__fill=JSON.stringify({placements:[
+  // page 1 as shown (842 wide x 595 tall): a straight line across
+  {value:'Gremier Coffee',page:0,x1:100,y1:200,x2:400,y2:200,size:10},
+  // page 2 scanned sideways: the printed lines run up the page, so the space runs from bottom to top
+  {value:'קפה',page:1,x1:300,y1:900,x2:300,y2:500,size:10},
+ ],still_needed:[]});
+ const r=await docs.fillForm(env,{file_id:id});
+ assert.equal(r.written,2);
+ const bytes=(await docs.fileBytes(env,r.file_id)).bytes;
+ const a=(await itemsWithAngle(bytes,1)).find(i=>i.s.includes('Gremier'));
+ assert.equal(angleOf(a),90,'on the turned page the text is stored turned, so it shows upright');
+ assert.ok(Math.abs(a.x-0.2*595)<1&&Math.abs(a.y-0.1*842)<1,'the shown point maps onto the stored page');
+ const b=(await itemsWithAngle(bytes,2)).find(i=>/[א-ת]/.test(i.s));
+ assert.equal(angleOf(b),90,'runs up the sideways page');
+ assert.ok(Math.abs(b.x-0.3*595)<1,'on the line that was marked');
+ assert.ok(b.y>842*0.1&&b.y<842*0.5,'Hebrew ends at the far end of the space');
 });
