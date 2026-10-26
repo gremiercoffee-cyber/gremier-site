@@ -22,5 +22,6 @@ test('header plus opens the existing log handler without navigating, and queues 
  vm.runInNewContext(fs.readFileSync('admin-session.js','utf8'),{window:root,URLSearchParams});
  root.openAdminLog();assert.equal(root.__gremierPendingLog,true);
  root.__gremierOpenLog=()=>opened++;root.openAdminLog();assert.equal(opened,1);
+ root.document.getElementById=()=>({style:{display:'block'}});let production=0;root.__gremierOpenProductionLog=()=>production++;root.openAdminLog();assert.equal(production,1);assert.equal(opened,1);
  root.GremierAdminNavigation.remember('schedule');assert.equal(values.get('gremier_admin_screen'),'orders');
 });

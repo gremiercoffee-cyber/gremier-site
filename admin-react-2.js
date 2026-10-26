@@ -620,11 +620,14 @@ function ConcentrateScreen({
     onDec: () => save(k, Math.max(0, parseFloat(((concentrate[k] || 0) - 0.5).toFixed(1)))),
     onInc: () => save(k, parseFloat(((concentrate[k] || 0) + 0.5).toFixed(1))),
     onChange: e => save(k, e.target.value)
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("details", {
     style: SS.card
-  }, /*#__PURE__*/React.createElement("div", {
-    style: SS.hdr
-  }, "Upcoming Needs"), Object.entries(CONCENTRATE_TYPES).map(([k, ct]) => {
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      ...SS.hdr,
+      cursor: 'pointer'
+    }
+  }, "Production needs"), Object.entries(CONCENTRATE_TYPES).map(([k, ct]) => {
     const n = needed[k] || 0;
     const brewing = inProgress[k] || 0;
     const have = concentrate[k] || 0;

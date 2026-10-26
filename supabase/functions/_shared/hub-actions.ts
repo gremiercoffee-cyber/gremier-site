@@ -1,7 +1,7 @@
 // Shared by hub-api (plain JSON) and hub-mcp (Claude / MCP). See docs/HUB_API.md.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  adjustStock, BOTTLES, completeDelivery, logBottling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
+  adjustStock, BOTTLES, completeDelivery, logBottling, logLabeling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
   readSchedule, readStock, readStores, readSummary, startBrew,
 } from "./hub-ops.ts";
 import { marketingInventory, marketingProducts, marketingSales } from "./hub-marketing.ts";
@@ -22,7 +22,8 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   marketing_products: { properties: {} },
   marketing_sales: { properties: { from: str("YYYY-MM-DD"), to: str("YYYY-MM-DD (max 120 days)") }, required: ["from", "to"] },
   marketing_inventory: { properties: {} },
-  log_bottling: { properties: { product: { type: "string", enum: ["classic_liter", "sweetened_classic", "house_blend", "colombia_liter", "decaf_liter", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini", "house_blend_mini", "jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"] }, units: { type: "integer", description: "Bottles / minis / jerry cans made" } }, required: ["product", "units"] },
+  log_labeling: {properties:{product:str("Bottled product key"),units:num("Empty bottles labeled")},required:["product","units"]},
+  log_bottling: { properties: { product: { type: "string", enum: ["unfiltered_liter", "classic_liter", "sweetened_classic", "house_blend", "colombia_liter", "decaf_liter", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini", "house_blend_mini", "jerry_can", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"] }, units: { type: "integer", description: "Bottles / minis / jerry cans made" } }, required: ["product", "units"] },
   start_brew: { properties: { product: { type: "string", enum: ["classic", "unfiltered", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
   complete_drain: { properties: { job_id: str("Drain job id (from schedule)"), product: str("Or: complete the earliest pending drain of this coffee") } },
   log_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles, e.g. {\"classic_liter\": 6, \"vanilla_mini\": 4}" }, date: str("YYYY-MM-DD, default today") }, required: ["store", "quantities"] },
@@ -57,6 +58,7 @@ export const ACTIONS: Record<string, Handler> = {
   log_store_delivery: { scope: "write", describe: "Log a store delivery that happened. Args: store (name, fuzzy), quantities {product_key: qty}, date (default today). Deducts stock, adds the store billing row.", run: ({ sb }, a) => logStoreDelivery(sb, a as any) },
   complete_delivery: { scope: "write", describe: "Mark a scheduled delivery done. Args: job_id (default = next one today/overdue), quantities (optional actual amounts).", run: ({ sb }, a) => completeDelivery(sb, a as any) },
   adjust_stock: { scope: "write", describe: "Stock correction. Args: kind (inventory|concentrate|beans|labeled), product, delta (+/-).", run: ({ sb }, a) => adjustStock(sb, a as any) },
+  log_labeling: {scope:"write",describe:"Log empty bottles labeled. Args: product, units.",run:({sb},a)=>logLabeling(sb,a as any)},
   widget_config: { scope: "read", describe: "Buttons for the Android widget (server-driven, with live counts).", run: ({ sb }) => widgetConfig(sb) },
   stock_view: { scope: "read", describe: "Stock as a short readable list (for the widget's Stock pop-up).", run: ({ sb }) => stockView(sb) },
   voice_parse: { scope: "read", describe: "Turn a spoken sentence into a proposed action (nothing is changed). Args: text.", run: ({ sb }, a) => voiceParse(sb, String(a.text || "")) },
@@ -134,6 +136,8 @@ async function widgetConfig(sb: Sb) {
   // Bottling buttons: pick the product (with how many are in stock now), then how many were made.
   const { data: inv } = await sb.from("inventory").select("product, qty");
   const stockOf = Object.fromEntries((inv || []).map((r: any) => [r.product, Number(r.qty) || 0]));
+  const {data:unfiltered}=await sb.from("products").select("id,variations").ilike("name_en","%unfilter%").eq("is_active",true).limit(1);
+  const unfilteredProduct=unfiltered?.[0];if(unfilteredProduct){const key=(unfilteredProduct.variations||[]).find((v:any)=>v.type==='ops_settings')?.stock_key||unfilteredProduct.id;stockOf.unfiltered_liter=stockOf[key]||0;}
   const bottling = (cat: "liter" | "mini" | "jerry", icon: string, label: string, unitWord: string) => {
     const opts = Object.entries(BOTTLES).filter(([, m]) => m.category === cat);
     return {
@@ -170,7 +174,14 @@ async function widgetConfig(sb: Sb) {
     // ── page 3 ──
     { id: "voice", icon: "🎙️", label: "Voice log", kind: "voice", action: "voice_parse", title: "Voice log" },
   ];
-  return { per_page: 4, buttons, refreshed_at: new Date().toISOString() };
+  const sections = [
+    {title:"Brewing",buttons:COFFEES.map(([product,label])=>({id:'brew_'+product,icon:'☕',label,section:'Brewing',kind:'form',action:'start_brew',args:{product},title:'Brew '+label,submit:'Start brew',fields:[{key:'kg',type:'choice',label:'Beans',options:[1,1.5,2,3].map(kg=>({value:kg,label:kg+' kg'})),default:3}]}))},
+    {title:"Bottling",buttons:buttons.filter(b=>b.action==='log_bottling').map(b=>({...b,section:'Bottling'}))},
+    {title:"Labelling",buttons:['liter','mini','jerry'].map(cat=>({id:'label_'+cat,icon:'🏷',label:cat==='liter'?'Liter bottles':cat==='mini'?'Minis':'Jerry cans',kind:'form',action:'log_labeling',section:'Labelling',title:'Label bottles',submit:'Save labels',fields:[{key:'product',type:'choice',label:'Product',options:Object.entries(BOTTLES).filter(([,m])=>m.category===cat).map(([value,m])=>({value,label:m.label}))},{key:'units',type:'number',label:'How many bottles did you label?'}]}))},
+    {title:"Draining",buttons:drain?[{id:'drain_next',icon:'🧪',label:'Drain '+(COFFEES.find(([k])=>k===drain.product)?.[1]||drain.product),sub:drain.date+' '+(drain.time||''),kind:'confirm',section:'Draining',action:'complete_drain',args:{job_id:drain.id},confirm:'Confirm this brew has actually been drained?',submit:'Mark drained'}]:[{id:'no_drains',icon:'🧪',label:'No drains due',section:'Draining',kind:'info',message:'No brews are waiting to be drained.'}]},
+    {title:"Tools",buttons:[{id:'production',icon:'⚗️',label:'Production',kind:'open',section:'Tools',url:ADMIN_URL+'?tab=production'},buttons.find(b=>b.id==='voice'),buttons.find(b=>b.id==='stock')]}
+  ];
+  return {per_page:4,sections,buttons:sections.flatMap(s=>s.buttons),refreshed_at:new Date().toISOString()};
 }
 
 // ── Stock pop-up ──

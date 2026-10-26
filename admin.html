@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="/admin-session.js?v=20261025-1"></script>
+<script src="/admin-session.js?v=20261026-1"></script>
 <script>
   // Register the root service worker (needed for Web Push notifications).
   // Skip the /ops/ scope — the ops app manages its own worker.
@@ -723,7 +723,7 @@ window.gremierUiCacheSave = function (key, ids) {
 };
 </script>
 <link rel="stylesheet" href="/admin-dashboard.css?v=20261025-2">
-<link rel="stylesheet" href="/admin-surfaces.css?v=20261025-3"/>
+<link rel="stylesheet" href="/admin-surfaces.css?v=20261026-1"/>
 </head>
 <body>
 <!-- CONFIG -->
@@ -754,6 +754,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <div class="sidebar">
       <a class="sidebar-logo" href="#dashboard" onclick="event.preventDefault();showTab('dashboard')" aria-label="Open dashboard"><img src="logo.png" alt="Gremier Coffee Co."/><small>Gremier Hub</small></a>
       <div class="sidebar-nav" id="websiteNav">
+      <div class="nav-item" onclick="showTab('production')" id="nav-production"><span class="icon">⚗️</span><span>Production</span></div>
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
@@ -792,6 +793,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-stock" class="tab-content" style="display:none">
         <div id="ops-stock-root"></div>
       </div>
+      <div id="tab-production" class="tab-content" style="display:none"><header class="page-header"><h1 class="page-title">Production</h1></header><div id="ops-production-root"></div><section id="ops-production-extras-root" aria-label="Production calendar and completed work"></section><div id="productionStockHistory"></div></div>
       <!-- ORDERS -->
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
@@ -1467,8 +1469,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="tab-bar-btn" id="tbar-orders" onclick="showTab('orders')">
       <span class="tab-icon">&#128722;</span>Orders
     </button>
-    <button class="tab-bar-btn" id="tbar-stock" onclick="showTab('stock')">
-      <span class="tab-icon">&#9879;&#65039;</span>Stock
+    <button class="tab-bar-btn" id="tbar-production" onclick="showTab('production')">
+      <span class="tab-icon">&#9879;&#65039;</span>Production
     </button>
     <button class="tab-bar-btn" id="tbar-storedeliveries" onclick="showTab('storedeliveries')">
       <span class="tab-icon">&#127978;</span>Stores
@@ -1488,6 +1490,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <span>Gremier Hub</span>
       <button type="button" onclick="closeNavDrawer()" aria-label="Close menu">&#10005;</button>
     </div>
+    <button class="nav-drawer-item" onclick="showTab('stock');closeNavDrawer()"><span>📦</span>Stock</button>
     <button class="nav-drawer-item" onclick="showTab('products');closeNavDrawer()"><span>&#128230;</span>Products</button>
     <button class="nav-drawer-item" onclick="showTab('paylinks');closeNavDrawer()"><span>&#128279;</span>Payment Links</button>
     <button class="nav-drawer-item" onclick="showTab('members');closeNavDrawer()"><span>&#128100;</span>Members</button>
@@ -4197,15 +4200,7 @@ async function deductInventoryForOrder(order) {
 }
 async function markOrderFulfilled(orderId, forceEmail, skipToast) {
   try {
-    // only ask once — if this order isn't fulfilled yet, this is the moment that decides whether
-    // stock comes off the shelf for it. Resending a fulfillment email later won't ask again.
-    let order = allOrders.find(x => x.id === orderId);
-    if (!order) { const { data } = await sb.from('orders').select('*').eq('id', orderId).maybeSingle(); order = data; }
-    if (order && order.status !== 'fulfilled' && (order.items || []).length) {
-      const shouldDeduct = await askLowerStock(order);
-      if (shouldDeduct) await deductInventoryForOrder(order);
-    }
-
+    // The server completes the delivery and applies its stock transaction once.
     const { data } = await callAdminFunction('notify-order-fulfilled', {
       order_id: orderId,
       force: !!forceEmail,
@@ -6079,6 +6074,7 @@ function showTab(tab) {
   if (tab==='coupons') loadCoupons();
   if (tab==='giftcards') loadGiftCards();
   if (tab==='workers') loadWorkers();
+  if(tab==='production'){window.__gremierReloadProduction?.();window.loadProductionHistory?.();}
   if (tab==='stock') {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
@@ -8894,6 +8890,7 @@ function buildGiftCardEmailHtml({ amount, code, recipient_name, message, expires
       </table>
     </td></tr>
   </table>
+<script src="/admin-production.js?v=20261026-1"></script>
 </body></html>`;
 }
 function buildGiftCardEmailText({ amount, code, recipient_name, message, expires_at } = {}) {
@@ -9229,10 +9226,10 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
-<script src="/admin-react-1.js?v=f5717a8c05"></script>
-<script src="/admin-react-2.js?v=0ff5f54a7f"></script>
+<script src="/admin-react-1.js?v=7cd57a8994"></script>
+<script src="/admin-react-2.js?v=12e2833fd3"></script>
 
-<script src="/admin-react-3.js?v=d0da27494c"></script>
+<script src="/admin-react-3.js?v=a97912795c"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">
@@ -9694,19 +9691,20 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
-<link rel="stylesheet" href="/admin-financials.css?v=20261025-2"/>
-<script src="/admin-financials.js?v=20261025-2"></script>
+<link rel="stylesheet" href="/admin-financials.css?v=20261026-1"/>
+<script src="/admin-financials.js?v=20261026-1"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
 <script src="/admin-expense-cache.js?v=20261025-1"></script>
 <script src="/admin-finance.js?v=20261025-4"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
-<script src="/admin-revenue.js?v=20261025-3"></script>
+<script src="/admin-revenue.js?v=20261026-1"></script>
 <script src="/admin-receipts.js?v=20261023-1"></script>
 <script src="/admin-sales-breakdown.js?v=20261023-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261025-1"/>
 <script src="/admin-visitors.js?v=20261025-1"></script>
 <script src="/admin-messages.js?v=20261023-2"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
+<script src="/admin-production.js?v=20261026-1"></script>
 </body>
 </html>

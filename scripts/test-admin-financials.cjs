@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const {summarize,usRows,csvRows}=require('../admin-financials.js');
+const {summarize,usRows,usEstimate,csvRows}=require('../admin-financials.js');
 function month(name,website,other,cogs,operating,asset=0) {
   return {month:name,income_minor:website+other,cost_of_sales_minor:cogs,operating_expenses_minor:operating,
     expenses_minor:cogs+operating,net_minor:website+other-cogs-operating,fixed_assets_minor:asset,
@@ -36,7 +36,11 @@ assert.equal(usRows(m,{'שכירות רכב':'home_water'}).find(r=>r.label==='�
 assert.equal(usRows(m,{'שכירות רכב':'__proto__'}).find(r=>r.label==='שכירות רכב').bucket,'vehicle_lease');
 const csv=csvRows(m,payload,'us');
 assert(csv.some(r=>r[4].includes('electricity')&&r[5]===''&&r[7].includes('Not separately identified')),'Missing household bills are unknown, not zero');
-assert(csv.slice(1).every(r=>r[6]===''),'U.S. deductions remain blank for accountant review');
+assert(csv.some(r=>r[6]!==''&&Number(r[6])>0),'Eligible costs appear as estimates in the CSV');
+assert(csv.filter(r=>r[4].includes('Vehicle')).every(r=>r[6]===''),'Vehicle deductions stay excluded without records');
+const estimate=usEstimate(m);assert.equal(estimate.deductible,12000);assert.equal(estimate.pending,58000);
+const ingredientModel={categories:[{label:'כיבודים עם מעמ',group:'operating_expenses',amount_minor:10000},{label:'שכירות רכב',group:'operating_expenses',amount_minor:7000},{label:'הכנת דוח אמריקאי',group:'operating_expenses',amount_minor:2000}]};
+const ingredientEstimate=usEstimate(ingredientModel,{'כיבודים עם מעמ':'purchases'});assert.equal(ingredientEstimate.deductible,10000);assert.equal(ingredientEstimate.cogs,10000);assert.equal(ingredientEstimate.pending,9000);
 const injection=structuredClone(m);injection.suppliers=[['=HYPERLINK("bad")',100]];
 assert(csvRows(injection,payload,'accounts').some(r=>r[4].startsWith("'=HYPERLINK")),'CSV formula strings are neutralized');
 if(process.argv[2]) {

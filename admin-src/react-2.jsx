@@ -246,8 +246,8 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
           />
         ))}
       </div>
-      <div style={SS.card}>
-        <div style={SS.hdr}>Upcoming Needs</div>
+      <details style={SS.card}>
+        <summary style={{...SS.hdr,cursor:'pointer'}}>Production needs</summary>
         {Object.entries(CONCENTRATE_TYPES).map(([k,ct]) => {
           const n = needed[k]||0;
           const brewing = inProgress[k]||0;
@@ -264,7 +264,7 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
           );
         }).filter(Boolean)}
         {Object.values(needed).every(v=>v===0)&&<div style={{color:'#6a6a6a',fontSize:13}}>All needs covered</div>}
-      </div>
+      </details>
     </div>
   );
 }

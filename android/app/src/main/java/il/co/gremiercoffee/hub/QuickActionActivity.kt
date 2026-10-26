@@ -187,7 +187,7 @@ class QuickActionActivity : Activity() {
                     go.isEnabled = true
                     go.setOnClickListener {
                         go.isEnabled = false; again.isEnabled = false
-                        val call = JSONObject((r.optJSONObject("args") ?: JSONObject()).toString()).put("action", r.getString("action"))
+                        val call = JSONObject((r.optJSONObject("args") ?: JSONObject()).toString()).put("action", r.getString("action")).put("request_id",requestId)
                         thread {
                             val (ok, msg) = try { Hub.call(this, call); Hub.setFlash(this, "voice"); true to "✅ Done" } catch (e: Exception) { false to "⚠️ ${e.message}" }
                             runOnUiThread {

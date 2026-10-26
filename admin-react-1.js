@@ -608,7 +608,21 @@ async function incrementLabeledStock2(product, delta) {
   window.notifyGremierStockChanged?.();
 }
 /** Batch-decrement/increment many inventory rows in one read + parallel writes. deltas: {product: delta} */
-async function batchIncrementInventory2(deltas) {
+async function batchIncrementInventory2(deltas, deliveryRef) {
+  if (deliveryRef) {
+    const {
+      data,
+      error
+    } = await window.MAIN_SB.rpc('apply_delivery_stock', {
+      p_ref: deliveryRef,
+      p_quantities: Object.fromEntries(Object.entries(deltas).map(([pid, n]) => [pid, -n]))
+    });
+    if (error) throw error;
+    const inferred = (data || []).filter(x => x.inferred_units > 0);
+    if (inferred.length) window.showToast?.('Accounted for unlogged bottling: ' + inferred.map(x => `${x.inferred_units} ${x.product} · ${x.concentrate_used_l}L concentrate`).join(', '), 8000);
+    window.notifyGremierStockChanged?.();
+    return;
+  }
   const ids = Object.keys(deltas).filter(pid => deltas[pid]);
   if (!ids.length) return;
   const rows = await opsFetch(`inventory?product=in.(${ids.map(encodeURIComponent).join(',')})&select=product,qty`);
@@ -696,59 +710,52 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     }
   };
   const PRODS = window.__OPS_PRODUCTS__;
-  if (job.type === 'brew') {
-    const beanRows = await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}&select=kg`);
-    const currentKg = beanRows?.[0]?.kg || 0;
-    const newKg = parseFloat(Math.max(0, currentKg - (job.kg || 3)).toFixed(1));
-    await opsFetch(`beans?type=eq.${brewBeanType2(job.product)}`, {
-      method: 'PATCH',
-      prefer: 'return=minimal',
-      body: JSON.stringify({
-        kg: newKg
-      })
-    });
+  if (job.type === 'brew' || job.type === 'drain') {
+    const action = job.type === 'brew' ? 'start_production_brew' : 'complete_production_drain';
+    const args = job.type === 'brew' ? {
+      p_id: job.id,
+      p_product: job.product,
+      p_kg: job.kg
+    } : {
+      p_id: job.id
+    };
+    const {
+      data,
+      error
+    } = await window.MAIN_SB.rpc(action, args);
+    if (error) throw error;
     window.notifyGremierStockChanged?.();
-    await createDrain2(job);
-  }
-  if (job.type === 'drain') {
-    if (!isRealDrainJob2(job)) {
-      console.warn('[Gremier safety] Blocked suspicious drain side effect', job);
-      return;
-    }
-    await incrementConcentrate2(job.product, kgToL[Number(job.kg)] || 19);
-    if (job.sourceBrewId || job.source_brew_id) {
-      await patchJob2(job.sourceBrewId || job.source_brew_id, {
-        done: true
-      });
-    } else {
-      const brews = await opsFetch(`jobs?type=eq.brew&product=eq.${job.product}&brew_started=eq.true&done=eq.false&select=id`);
-      if (brews?.length) await patchJob2(brews[0].id, {
-        done: true
-      });
-    }
-    // Notify all React roots (ScheduleTab, GlobalPills, StockTab) to re-fetch so the
-    // linked brew job's done=true is reflected in the UI without a manual page reload.
     window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+    return data;
   }
   if (job.type === 'bottling') {
-    const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
-    if (concType) {
-      const liters = job.actualQty != null ? job.actualQty : job.liters || 0;
-      const baseRatio = MINI_P.includes(job.product) ? 0.29 : CONC_TYPES[concType]?.ratio || 0.43;
-      const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
-      await incrementConcentrate2(concType, -(liters * ratio));
-      const units = MINI_P.includes(job.product) ? Math.round(liters * 4) : JERRY_P.includes(job.product) ? Math.round(liters / 5) : Math.round(liters);
-      await incrementInventory2(job.product, units);
-    }
-    if (job.labeledUsed) {
-      for (const [pid, qty] of Object.entries(job.labeledUsed)) {
-        if (qty > 0) await incrementLabeledStock2(pid, -qty);
-      }
-    }
+    const {
+      data,
+      error
+    } = await window.MAIN_SB.rpc('complete_bottling', {
+      p_job: {
+        ...jobToRow2(job),
+        actual_qty: job.actualQty ?? job.liters
+      },
+      p_labeled: job.labeledUsed || {}
+    });
+    if (error) throw error;
+    window.notifyGremierStockChanged?.();
+    window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+    return data;
   }
   if (job.type === 'labeling') {
-    const LABELED = ['classic_liter', 'sweetened_classic', 'house_blend', 'colombia_liter', 'vanilla_mini', 'original_mini', 'caramel_mini', 'classic_mini', 'house_blend_mini'];
-    if (LABELED.includes(job.product)) await incrementLabeledStock2(job.product, job.qty || 0);
+    const {
+      data,
+      error
+    } = await window.MAIN_SB.rpc('complete_labeling', {
+      p_id: job.id,
+      p_product: job.product,
+      p_units: job.actualQty ?? job.qty
+    });
+    if (error) throw error;
+    window.notifyGremierStockChanged?.();
+    return data;
   }
   if (job.type === 'delivery') {
     const qtys = confirmedQtys || job.quantities || {};
@@ -771,7 +778,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
       });
     }
     // run inventory write, store_deliveries sync, and WA flag patch concurrently — they touch different tables
-    await Promise.all([batchIncrementInventory2(deltas), job.deliveryType === 'store' && job.storeName ? syncStoreDeliveryToAdmin(job, qtys) : Promise.resolve(), isStoreWaDelivery2(job, stores) ? patchJob2(job.id, {
+    await Promise.all([batchIncrementInventory2(deltas, 'delivery:' + (job.websiteOrderId || job.id)), job.deliveryType === 'store' && job.storeName ? syncStoreDeliveryToAdmin(job, qtys) : Promise.resolve(), isStoreWaDelivery2(job, stores) ? patchJob2(job.id, {
       wa_needs_send: true,
       wa_sent_at: null
     }) : Promise.resolve()]);
@@ -839,13 +846,24 @@ async function reverseJobSideEffects2(job, stores) {
 
   // BOTTLING — concentrate was consumed, inventory was added, labeled bottles were used
   if (job.type === 'bottling' && job.done) {
+    const {
+      data: reversed,
+      error
+    } = await window.MAIN_SB.rpc('reverse_bottling_stock', {
+      p_id: job.id
+    });
+    if (error) throw error;
+    if (reversed) {
+      window.notifyGremierStockChanged?.();
+      return;
+    }
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty != null ? job.actualQty : job.liters || 0;
       const baseRatio = MINI_P.includes(job.product) ? 0.29 : CONC_TYPES[concType]?.ratio || 0.43;
       const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, +(liters * ratio)); // give concentrate back
-      const units = MINI_P.includes(job.product) ? Math.round(liters * 4) : JERRY_P.includes(job.product) ? Math.round(liters / 5) : Math.round(liters);
+      const units = window.__OPS_PRODUCTS__?.[job.product]?.category === 'mini' ? Math.round(liters * 4) : JERRY_P.includes(job.product) ? Math.round(liters / 5) : Math.round(liters);
       await incrementInventory2(job.product, -units); // remove the bottles that were produced
     }
     if (job.labeledUsed) {
@@ -2519,13 +2537,7 @@ function DaySection({
     onTap: onTap,
     showDelete: true,
     onDelete: onDelete
-  }))), showDel && showProd && /*#__PURE__*/React.createElement("div", {
-    style: {
-      width: 1,
-      background: '#eeeeee',
-      flexShrink: 0
-    }
-  }), showProd && /*#__PURE__*/React.createElement("div", {
+  }))), showProd && /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
       minWidth: 0
@@ -2560,6 +2572,8 @@ function ScheduleForm({
   onModeChange
 }) {
   const logNow = mode === 'lognow';
+  const [submitting, setSubmitting] = useState2(false);
+  const submissionId = useRef2('production_' + Date.now() + '_' + Math.random().toString(36).slice(2));
   const FP = {
     classic_liter: {
       label: 'Classic',
@@ -2669,9 +2683,9 @@ function ScheduleForm({
   };
   const bottleProducts = Object.entries(FP).filter(([, p]) => p.category !== 'syrup' && p.category !== 'dispenser');
   const labelProducts = Object.entries(FP).filter(([, p]) => ['liter', 'mini', 'jerry'].includes(p.category));
-  const [jobType, setJobType] = useState2('delivery');
+  const [jobType, setJobType] = useState2(prefill?.jobType || 'delivery');
   const [subType, setSubType] = useState2(prefill?.subType || 'store');
-  const [prodType, setProdType] = useState2('brew');
+  const [prodType, setProdType] = useState2(prefill?.prodType || 'brew');
   const [date, setDate] = useState2(prefill?.date || todayISO2());
   const [time, setTime] = useState2(prefill?.time || '');
   const [storeName, setStoreName] = useState2(prefill?.storeName || '');
@@ -2709,7 +2723,7 @@ function ScheduleForm({
   const [cbSyrupQty, setCbSyrupQty] = useState2(cbSyrupInit.qty);
   const [cbExtras, setCbExtras] = useState2(prefill?.cbExtras || {});
   const [showCbExtras, setShowCbExtras] = useState2(Object.values(prefill?.cbExtras || {}).some(v => v > 0));
-  const [brewConc, setBrewConc] = useState2('classic');
+  const [brewConc, setBrewConc] = useState2(prefill?.product || 'classic');
   const [kg, setKg] = useState2(3);
   const [bottleQuantities, setBottleQuantities] = useState2(prefill?.quantities || {});
   const [labelQuantities, setLabelQuantities] = useState2({});
@@ -2877,7 +2891,7 @@ function ScheduleForm({
     type: "button",
     style: tog(!logNow),
     onClick: () => onModeChange('schedule')
-  }, "Schedule")), /*#__PURE__*/React.createElement("div", {
+  }, "Schedule")), prefill?.jobType !== 'production' && /*#__PURE__*/React.createElement("div", {
     style: {
       ...togRow,
       marginBottom: 14
@@ -3165,7 +3179,7 @@ function ScheduleForm({
   }, "Brew"), /*#__PURE__*/React.createElement("button", {
     style: tog(prodType === 'bottle', '#b8860b'),
     onClick: () => setProdType('bottle')
-  }, "Bottle"), (window.gremierLabelsEnabled() || prefill?.type === 'labeling') && /*#__PURE__*/React.createElement("button", {
+  }, "Bottle"), true && /*#__PURE__*/React.createElement("button", {
     style: tog(prodType === 'label', '#8a7060'),
     onClick: () => setProdType('label')
   }, "Label")), prodType === 'brew' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -3269,8 +3283,25 @@ function ScheduleForm({
     onClick: onClose
   }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     style: TS.btn('#1a1a1a', '#ffffff'),
-    onClick: () => onSubmit(build())
-  }, logNow ? '✓ Log as Done' : 'Save to Schedule'))));
+    disabled: submitting,
+    onClick: async () => {
+      if (submitting) return;
+      const built = build();
+      if (!built) return;
+      setSubmitting(true);
+      try {
+        const list = (Array.isArray(built) ? built : [built]).map((job, i) => ({
+          ...job,
+          id: submissionId.current + '_' + i
+        }));
+        await onSubmit(Array.isArray(built) ? list : list[0]);
+      } catch (err) {
+        window.showToast?.('Not saved: ' + err.message, 8000);
+      } finally {
+        setSubmitting(false);
+      }
+    }
+  }, submitting ? 'Saving…' : logNow ? '✓ Log as Done' : 'Save to Schedule'))));
 }
 const SCHEDULE_CACHE_KEY = 'gremier_schedule_cache_v1';
 function scheduleSignature(p) {
@@ -3278,12 +3309,16 @@ function scheduleSignature(p) {
   const norm = arr => JSON.stringify((arr || []).slice().sort((a, b) => String(a.id).localeCompare(String(b.id))));
   return norm(p.jobs) + '~' + norm(p.stores) + '~' + norm(p.pendingWeb);
 }
-function ScheduleTab() {
+function ScheduleTab({
+  production = false
+}) {
   const schedCacheRef = useRef2();
   if (schedCacheRef.current === undefined) schedCacheRef.current = window.gremierCacheGet(SCHEDULE_CACHE_KEY);
   const schedCache = schedCacheRef.current;
   const lastSchedSigRef = useRef2(schedCache ? scheduleSignature(schedCache) : null);
-  const [jobs, setJobs] = useState2(schedCache?.jobs || []);
+  const [allJobs, setJobs] = useState2(schedCache?.jobs || []);
+  const [productionView, setProductionView] = useState2('all');
+  const jobs = allJobs.filter(j => production ? j.type !== 'delivery' && (productionView !== 'drain' || j.type === 'drain') : j.type === 'delivery');
   const [stores, setStores] = useState2(schedCache?.stores || []);
   const [pendingWeb, setPendingWeb] = useState2(schedCache?.pendingWeb || []);
   const [loading, setLoading] = useState2(!schedCache);
@@ -3300,7 +3335,7 @@ function ScheduleTab() {
   const [showCompleted, setShowCompleted] = useState2(false);
   const [calOpen, setCalOpen] = useState2(() => {
     try {
-      return localStorage.getItem('gremier_collapse_schedcal') === '0';
+      return localStorage.getItem(production ? 'gremier_collapse_prodcal' : 'gremier_collapse_schedcal') === '0';
     } catch (_) {
       return false;
     }
@@ -3308,7 +3343,7 @@ function ScheduleTab() {
   const toggleCal = () => setCalOpen(o => {
     const n = !o;
     try {
-      localStorage.setItem('gremier_collapse_schedcal', n ? '0' : '1');
+      localStorage.setItem(production ? 'gremier_collapse_prodcal' : 'gremier_collapse_schedcal', n ? '0' : '1');
     } catch (_) {}
     return n;
   });
@@ -3345,21 +3380,27 @@ function ScheduleTab() {
   }
   useEffect2(() => {
     reload();
-    window.__gremierReloadSchedule = reload;
-    function openLog() {
+    if (production) window.__gremierReloadProduction = reload;else window.__gremierReloadSchedule = reload;
+    function openLog(options = {}) {
       setEditingJobId(null);
-      setFormPrefill(null);
-      setFormMode('lognow');
+      setFormPrefill(production ? {
+        jobType: 'production',
+        prodType: options.prodType || 'brew',
+        product: options.product,
+        quantities: options.quantities
+      } : null);
+      setFormMode(options.mode || 'lognow');
       setShowForm(true);
     }
-    window.__gremierOpenLog = openLog;
-    if (window.__gremierPendingLog) {
+    if (production) window.__gremierOpenProductionLog = openLog;else window.__gremierOpenLog = openLog;
+    if (!production && window.__gremierPendingLog) {
       window.__gremierPendingLog = false;
       openLog();
     }
     // listen for a prefill handed off from the global website-queue pill (tapped from another tab),
     // since this component mounts once and stays mounted — a plain mount check would miss later handoffs
     function onPrefillHandoff(e) {
+      if (Boolean(e.detail?.jobType === 'production') !== production) return;
       setFormPrefill(e.detail);
       setFormMode('schedule');
       setShowForm(true);
@@ -3373,15 +3414,12 @@ function ScheduleTab() {
     // confirm-quantities checkoff for one job, so stock still gets confirmed.
     async function onOpenJobCheckoff(e) {
       const jobId = e.detail && e.detail.jobId;
-      if (!jobId) {
-        window.showTab && window.showTab('orders');
-        return;
-      }
-      window.showTab && window.showTab('orders');
+      if (!jobId) return;
       try {
         const rows = await window.opsFetch(`jobs?id=eq.${encodeURIComponent(jobId)}&select=*`);
         const row = rows && rows[0];
-        if (!row) return;
+        if (!row || Boolean(row.type !== 'delivery') !== production) return;
+        window.showTab?.(production ? 'production' : 'orders');
         if (row.done) {
           window.showToast && window.showToast('That job is already done');
           return;
@@ -3400,7 +3438,9 @@ function ScheduleTab() {
     window.addEventListener('gremier:open-job-checkoff', onOpenJobCheckoff);
     window.addEventListener('gremier:catalog-products-changed', onCatalogChanged);
     return () => {
+      if (window.__gremierReloadProduction === reload) delete window.__gremierReloadProduction;
       if (window.__gremierReloadSchedule === reload) delete window.__gremierReloadSchedule;
+      if (window.__gremierOpenProductionLog === openLog) delete window.__gremierOpenProductionLog;
       if (window.__gremierOpenLog === openLog) delete window.__gremierOpenLog;
       window.removeEventListener('gremier:schedule-prefill', onPrefillHandoff);
       window.removeEventListener('gremier:jobs-changed', onJobsChanged);
@@ -3408,7 +3448,12 @@ function ScheduleTab() {
       window.removeEventListener('gremier:catalog-products-changed', onCatalogChanged);
     };
   }, []);
-
+  useEffect2(() => {
+    const timer = setInterval(() => {
+      if (document.getElementById(production ? 'tab-production' : 'tab-orders')?.style.display !== 'none') reload();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
   // derived
   const overdueJobs = jobs.filter(j => !j.done && !j.brewStarted && isJobOverdue2(j)).sort((a, b) => a.date.localeCompare(b.date));
   const todayJobs = jobs.filter(j => j.date === today && !j.done && !j.brewStarted);
@@ -3440,9 +3485,6 @@ function ScheduleTab() {
           ...j,
           brewStarted: true
         } : j));
-        await patchJob2(job.id, {
-          brew_started: true
-        });
         await applyJobSideEffects2(job, null, stores);
         await reload();
       } else if (job.type === 'drain') {
@@ -3452,11 +3494,27 @@ function ScheduleTab() {
       } else {
         setCheckoffJob(job);
       }
+    } catch (err) {
+      window.showToast?.('Not saved: ' + err.message, 7000);
+      await reload();
     } finally {
       setTimeout(() => checkoffInProgress.current.delete(job.id), 2000);
     }
   }
   async function confirmCheckoff(job, actual, confirmedQtys) {
+    if (job.type !== 'delivery') {
+      try {
+        await applyJobSideEffects2({
+          ...job,
+          actualQty: actual
+        }, null, stores);
+        setCheckoffJob(null);
+        await reload();
+      } catch (err) {
+        window.showToast?.('Not saved: ' + err.message, 7000);
+      }
+      return;
+    }
     setCheckoffJob(null);
     const finalJob = {
       ...job,
@@ -3472,7 +3530,6 @@ function ScheduleTab() {
         quantities: confirmedQtys
       } : {})
     };
-    setJobs(prev => prev.map(j => j.id === job.id ? finalJob : j));
     const patch = {
       done: true,
       actual_qty: actual,
@@ -3483,13 +3540,16 @@ function ScheduleTab() {
     // database keeps the original planned quantities forever, and a later delete reverses that stale
     // plan instead of whatever was actually decremented here, drifting inventory out of sync
     if (confirmedQtys) patch.quantities = confirmedQtys;
-    // patch the job row and run inventory/store/WA side effects in the background —
-    // UI is already updated optimistically above, no need to block on a full reload
-    patchJob2(job.id, patch).catch(err => console.error('checkoff patch failed:', err));
-    applyJobSideEffects2(finalJob, confirmedQtys, stores).catch(err => {
-      console.error('checkoff side effects failed:', err);
-      showToast(`⚠ ${err.message || 'Something failed saving this delivery — check Store Deliveries and inventory.'}`, 7000);
-    });
+    try {
+      await applyJobSideEffects2(finalJob, confirmedQtys, stores);
+      await patchJob2(job.id, patch);
+      setJobs(prev => prev.map(j => j.id === job.id ? finalJob : j));
+      window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+    } catch (err) {
+      window.showToast?.('Delivery not fully saved: ' + err.message + ' — retry to finish safely.', 8000);
+      await reload();
+      return;
+    }
     // If this delivery is linked to a website order, offer to mark it as fulfilled.
     if (job.websiteOrderId) {
       setFulfillOrderId(job.websiteOrderId);
@@ -3516,7 +3576,7 @@ function ScheduleTab() {
     // A pending drain belongs to a brew that is still "brewing". Deleting only the drain left
     // that brew stuck in Brewing Now forever (and its beans used) — offer to cancel it too.
     const brewId = job.type === 'drain' && !job.done ? job.sourceBrewId || job.source_brew_id : null;
-    const brew = brewId ? jobs.find(j => j.id === brewId && j.type === 'brew' && j.brewStarted && !j.done) : null;
+    const brew = brewId ? allJobs.find(j => j.id === brewId && j.type === 'brew' && j.brewStarted && !j.done) : null;
     const cancelBrewToo = !!brew && window.confirm(`This drain is for a ${brew.product} ${brew.kg}kg brew that hasn't been drained.
 
 Cancel that brew too and put ${brew.kg} kg of beans back in stock?
@@ -3618,7 +3678,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     }
     const created = incomingJobs.map((j, idx) => ({
       ...j,
-      id: `${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`,
+      id: j.id || `${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`,
       brewStarted: false,
       done: false,
       createdAt: new Date().toISOString()
@@ -3640,8 +3700,11 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       });
       await window.opsFetch('jobs', {
         method: 'POST',
-        prefer: 'return=minimal',
-        body: JSON.stringify(completed.map(jobToRow2))
+        prefer: 'resolution=ignore-duplicates,return=minimal',
+        body: JSON.stringify(completed.map(j => ({
+          ...jobToRow2(j),
+          done: false
+        })))
       });
       for (const doneJob of completed) await applyJobSideEffects2(doneJob, null, stores);
       setShowForm(false);
@@ -3736,6 +3799,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     }
   }), "Loading schedule\u2026");
   return /*#__PURE__*/React.createElement("div", {
+    className: production ? 'production-schedule' : 'delivery-schedule',
     style: {
       ...TS.screen,
       minHeight: 0,
@@ -3753,7 +3817,29 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       color: '#121212',
       margin: '0 0 14px'
     }
-  }, "Schedule")), brewingJobs.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, production ? 'Production schedule' : 'Delivery schedule'), production && /*#__PURE__*/React.createElement("div", {
+    className: "production-actions"
+  }, [['brew', 'Brew'], ['bottle', 'Bottle'], ['label', 'Label']].map(([type, label]) => /*#__PURE__*/React.createElement("button", {
+    key: type,
+    className: "btn btn-outline",
+    onClick: () => {
+      setProductionView('all');
+      window.__gremierOpenProductionLog?.({
+        prodType: type
+      });
+    }
+  }, label)), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-outline",
+    onClick: () => setProductionView(v => v === 'drain' ? 'all' : 'drain')
+  }, productionView === 'drain' ? 'All tasks' : 'Drains'), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-outline",
+    onClick: () => window.__gremierOpenProductionLog?.({
+      mode: 'schedule'
+    })
+  }, "Schedule"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-outline",
+    onClick: () => window.toggleProductionKiosk?.()
+  }, "Kiosk mode"))), brewingJobs.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       ...TS.card,
       border: '1px solid #3f7fc4',
@@ -3818,7 +3904,8 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
-      minWidth: 0
+      minWidth: 0,
+      display: production ? 'none' : 'block'
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3847,14 +3934,9 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     onDelete: handleDelete
   }))), /*#__PURE__*/React.createElement("div", {
     style: {
-      width: 1,
-      background: '#eeeeee',
-      flexShrink: 0
-    }
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
       flex: 1,
-      minWidth: 0
+      minWidth: 0,
+      display: production ? 'block' : 'none'
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4047,7 +4129,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       cursor: 'pointer'
     },
     onClick: () => handleDelete(j)
-  }, "\uD83D\uDDD1"))))), document.getElementById('ops-schedule-extras-root')), waOpen && /*#__PURE__*/React.createElement(WaDrawer2, {
+  }, "\uD83D\uDDD1"))))), document.getElementById(production ? 'ops-production-extras-root' : 'ops-schedule-extras-root')), waOpen && /*#__PURE__*/React.createElement(WaDrawer2, {
     jobs: waPending,
     stores: stores,
     onMarkSent: async id => {
@@ -4161,3 +4243,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
 }
 const schedRoot = document.getElementById('ops-schedule-root');
 if (schedRoot) ReactDOM.createRoot(schedRoot).render( /*#__PURE__*/React.createElement(ScheduleTab, null));
+const productionRoot = document.getElementById('ops-production-root');
+if (productionRoot) ReactDOM.createRoot(productionRoot).render( /*#__PURE__*/React.createElement(ScheduleTab, {
+  production: true
+}));

@@ -62,39 +62,9 @@ Deno.serve(async (req) => {
     if (job.type !== "drain") return json({ error: "Not a drain job" }, 400);
     if (job.done) return json({ ok: true, already: true, message: "Already marked done" });
 
-    const liters = KG_TO_LITERS[String(job.kg ?? 3)] ?? 19;
-
-    // Add the drained concentrate
-    const { data: conc } = await admin
-      .from("concentrate")
-      .select("type, liters")
-      .eq("type", job.product)
-      .maybeSingle();
-    const nextLiters = Number((Number(conc?.liters || 0) + liters).toFixed(2));
-    if (conc) {
-      await admin.from("concentrate").update({ liters: nextLiters }).eq("type", job.product);
-    } else {
-      await admin.from("concentrate").insert({ type: job.product, liters: nextLiters });
-    }
-
-    // Close the brew this drain came from, same as the in-app checkoff
-    if (job.source_brew_id) {
-      await admin.from("jobs").update({ done: true }).eq("id", job.source_brew_id);
-    } else {
-      const { data: brews } = await admin
-        .from("jobs")
-        .select("id")
-        .eq("type", "brew")
-        .eq("product", job.product)
-        .eq("brew_started", true)
-        .eq("done", false)
-        .limit(1);
-      if (brews?.length) await admin.from("jobs").update({ done: true }).eq("id", brews[0].id);
-    }
-
-    await admin.from("jobs").update({ done: true }).eq("id", job.id);
-
-    return json({ ok: true, product: job.product, liters_added: liters, concentrate_now: nextLiters });
+    const {data,error}=await admin.rpc("complete_production_drain",{p_id:job.id});
+    if(error)throw error;
+    return json({ok:true,product:job.product,...data});
   } catch (err) {
     console.error("job-action error:", err);
     return json({ error: err instanceof Error ? err.message : "failed" }, 400);

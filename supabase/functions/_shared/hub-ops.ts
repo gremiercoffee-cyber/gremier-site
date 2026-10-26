@@ -60,15 +60,15 @@ async function incInventoryBatch(sb: Sb, deltas: Record<string, number>) {
 async function incConcentrate(sb: Sb, type: string, delta: number): Promise<number | null> {
   const { data: row } = await sb.from("concentrate").select("liters").eq("type", type).maybeSingle();
   const next = Math.max(0, Number(((Number(row?.liters) || 0) + delta).toFixed(1)));
-  if (row) await sb.from("concentrate").update({ liters: next }).eq("type", type);
-  else await sb.from("concentrate").insert({ type, liters: next });
+  const result = row ? await sb.from("concentrate").update({liters:next}).eq("type",type) : await sb.from("concentrate").insert({type,liters:next});
+  if(result.error)throw new HubError("stock_failed",result.error.message);
   return next;
 }
 async function incBeans(sb: Sb, type: string, delta: number): Promise<number> {
   const { data: row } = await sb.from("beans").select("kg").eq("type", type).maybeSingle();
   const next = Math.max(0, Number(((Number(row?.kg) || 0) + delta).toFixed(1)));
-  if (row) await sb.from("beans").update({ kg: next }).eq("type", type);
-  else await sb.from("beans").insert({ type, kg: next });
+  const result = row ? await sb.from("beans").update({kg:next}).eq("type",type) : await sb.from("beans").insert({type,kg:next});
+  if(result.error)throw new HubError("stock_failed",result.error.message);
   return next;
 }
 async function incLabeled(sb: Sb, pid: string, delta: number): Promise<number> {
@@ -106,25 +106,15 @@ function cleanQuantities(q: unknown): Record<string, number> {
 // ── actions ──
 
 /** Start a brew now: deducts beans and schedules the drain (22h classic, 18h others). */
-export async function startBrew(sb: Sb, args: { product: string; kg?: number }) {
+export async function startBrew(sb: Sb, args: { product: string; kg?: number; request_id?: string }) {
   const product = String(args.product || "");
   const kg = Number(args.kg ?? 3);
   if (!CONCENTRATES.includes(product as any)) throw new HubError("bad_product", `product must be one of ${CONCENTRATES.join(", ")}`);
   if (![1, 1.5, 2, 3].includes(kg)) throw new HubError("bad_kg", "kg must be 1, 1.5, 2 or 3");
-  // Double/triple taps on the widget started several brews at once (Oct 4). Refuse a second
-  // brew of the same coffee started in the last 2 minutes.
-  const { data: recent } = await sb.from("jobs").select("id").eq("type", "brew").eq("product", product)
-    .gte("created_at", new Date(Date.now() - 120e3).toISOString()).limit(1);
-  if (recent?.length) throw new HubError("just_started", `A ${product} brew was started less than 2 minutes ago — not starting another`);
-  const now = jerusalemParts(new Date());
-  const brewId = newId("hub_");
-  await sb.from("jobs").insert({ id: brewId, type: "brew", product, kg, date: now.date, time: now.time, done: false, brew_started: true, label: `Brew ${product} ${kg}kg`, created_at: new Date().toISOString() });
-  const beansLeft = await incBeans(sb, beanTypeFor(product), -kg);
-  const hours = product === "classic" || product === "unfiltered" ? 22 : 18;
-  const drainAt = jerusalemParts(new Date(Date.now() + hours * 3600e3));
-  const drainId = newId("drain_");
-  await sb.from("jobs").insert({ id: drainId, type: "drain", product, kg, date: drainAt.date, time: drainAt.time, done: false, needs_confirmation: false, source_brew_id: brewId, label: `Drain ${product} (${hours}h brew)`, created_at: new Date().toISOString() });
-  return { refs: [`jobs:${brewId}`, `jobs:${drainId}`], brew_id: brewId, drain_id: drainId, drain_at: `${drainAt.date} ${drainAt.time}`, beans_left_kg: beansLeft };
+  const brewId=args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
+  const {data,error}=await sb.rpc("start_production_brew",{p_id:brewId,p_product:product,p_kg:kg});
+  if(error)throw new HubError("stock_failed",error.message);
+  return {refs:[`jobs:${brewId}`,`jobs:${data.drain_id}`],...data};
 }
 
 /** Complete a drain (adds concentrate, closes its brew). Picks the earliest pending drain if no id. */
@@ -139,23 +129,16 @@ export async function completeDrain(sb: Sb, args: { job_id?: string; product?: s
   const suspicious = /\b(remove|deduct|subtract|take away|takeaway|adjust|fix|correction|stock)\b/.test(label);
   const real = !suspicious && CONCENTRATES.includes(job.product) && [1, 1.5, 2, 3].includes(Number(job.kg)) && (!!job.source_brew_id || /^drain\b/.test(label.trim()));
   if (!real) throw new HubError("not_a_drain", "That job doesn't look like a real drain — complete it in the admin app");
-  const liters = KG_TO_LITERS[String(Number(job.kg))] ?? 19;
-  const { data: claimed } = await sb.from("jobs").update({ done: true }).eq("id", job.id).eq("done", false).select("id");
-  if (!claimed?.length) throw new HubError("already_done", "That drain was just completed");
-  const concentrateNow = await incConcentrate(sb, job.product, liters);
-  if (job.source_brew_id) await sb.from("jobs").update({ done: true }).eq("id", job.source_brew_id);
-  else {
-    const { data: brews } = await sb.from("jobs").select("id").eq("type", "brew").eq("product", job.product).eq("brew_started", true).eq("done", false).limit(1);
-    if (brews?.length) await sb.from("jobs").update({ done: true }).eq("id", (brews[0] as any).id);
-  }
-  return { refs: [`jobs:${job.id}`], drain_id: job.id, product: job.product, liters_added: liters, concentrate_now_l: concentrateNow };
+  const {data,error}=await sb.rpc("complete_production_drain",{p_id:job.id});
+  if(error)throw new HubError("stock_failed",error.message);
+  return {refs:[`jobs:${job.id}`],...data};
 }
 
 /** Stock keys of Unfiltered products (website product id or its stock key). */
 async function unfilteredKeys(sb: Sb): Promise<Set<string>> {
-  const { data } = await sb.from("products").select("id, stock_key, name_en, name_he").or("name_en.ilike.%unfilter%,name_he.ilike.%אנפילטר%");
+  const { data } = await sb.from("products").select("id, variations, name_en, name_he").or("name_en.ilike.%unfilter%,name_he.ilike.%אנפילטר%");
   const keys = new Set<string>(["unfiltered_liter"]);
-  for (const p of (data || []) as any[]) { keys.add(String(p.id)); if (p.stock_key) keys.add(String(p.stock_key)); }
+  for (const p of (data || []) as any[]) { keys.add(String(p.id)); for(const v of p.variations||[])if(v.type==="ops_settings"&&v.stock_key)keys.add(String(v.stock_key)); }
   return keys;
 }
 
@@ -167,7 +150,8 @@ async function deliverySideEffects(sb: Sb, job: any, qtys: Record<string, number
     for (const [pid, qty] of Object.entries(job.cb_syrups || {})) if (Number(qty) > 0) deltas[pid] = (deltas[pid] || 0) - Number(qty);
     for (const ct of (job.jerry_cans || []) as string[]) { const pid = JERRY_MAP[ct] || "jerry_can"; deltas[pid] = (deltas[pid] || 0) - 1; }
   }
-  await incInventoryBatch(sb, deltas);
+  const {error:stockError}=await sb.rpc("apply_delivery_stock",{p_ref:`delivery:${job.website_order_id||job.id}`,p_quantities:Object.fromEntries(Object.entries(deltas).map(([pid,n])=>[pid,-n]))});
+  if(stockError)throw new HubError("stock_failed",stockError.message);
   let storeDeliveryId: string | null = null;
   if ((job.delivery_type === "store" || !job.delivery_type) && store) {
     // Unfiltered has its own store price: count it apart from regular Large bottles.
@@ -228,6 +212,7 @@ export async function completeDelivery(sb: Sb, args: { job_id?: string; quantiti
 
 // Bottled products → concentrate used (window.__OPS_PRODUCTS_FULL__ in admin-src/react-1.jsx).
 export const BOTTLES: Record<string, { label: string; category: "liter" | "mini" | "jerry"; concentrate: string }> = {
+  unfiltered_liter: { label: "Unfiltered", category: "liter", concentrate: "unfiltered" },
   classic_liter: { label: "Classic", category: "liter", concentrate: "classic" },
   sweetened_classic: { label: "Sweetened Classic", category: "liter", concentrate: "classic" },
   house_blend: { label: "House Blend", category: "liter", concentrate: "houseBlend" },
@@ -250,27 +235,37 @@ const PRODUCT_RATIO: Record<string, number> = { unfiltered_liter: 0.40 };
 // Only the flavored minis are diluted further; Classic Mini / House Blend Mini use their coffee's rate.
 const FLAVORED_MINIS = new Set(["vanilla_mini", "original_mini", "caramel_mini"]);
 
+async function canonicalBottleKey(sb:Sb,key:string){
+ if(key!=="unfiltered_liter")return key;
+ const {data,error}=await sb.from("products").select("id,variations").ilike("name_en","%unfilter%").eq("is_active",true).limit(1);if(error)throw new HubError("catalog_failed",error.message);
+ const p=data?.[0];return p?(p.variations||[]).find((v:any)=>v.type==="ops_settings")?.stock_key||p.id:key;
+}
 /** Log bottles just made: adds them to stock and uses the matching concentrate (same math as the admin). */
-export async function logBottling(sb: Sb, args: { product: string; units: number }) {
-  const product = String(args.product || "");
-  const meta = BOTTLES[product];
+export async function logBottling(sb: Sb, args: { product: string; units: number; request_id?: string }) {
+  const requested = String(args.product || "");
+  const meta = BOTTLES[requested];
+  const product = await canonicalBottleKey(sb,requested);
   if (!meta) throw new HubError("bad_product", "Unknown bottled product");
-  const units = Math.round(Number(args.units));
-  if (!(units > 0 && units <= 2000)) throw new HubError("bad_units", "How many did you bottle?");
+  const units = Number(args.units);
+  if (!Number.isInteger(units)||!(units > 0 && units <= 2000)) throw new HubError("bad_units", "How many did you bottle?");
   // Admin bottling jobs are entered in liters: minis are 4 per liter, jerry cans are 5 L.
   const liters = meta.category === "mini" ? units / 4 : meta.category === "jerry" ? units * 5 : units;
   const ratio = PRODUCT_RATIO[product] ?? (FLAVORED_MINIS.has(product) ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.43));
   const now = jerusalemParts(new Date());
-  const id = newId("hub_");
-  await sb.from("jobs").insert({
-    id, type: "bottling", product, liters, actual_qty: liters, qty: meta.category === "jerry" ? units : null,
-    date: now.date, time: now.time, done: true, needs_confirmation: false,
-    label: `Bottled ${units} ${meta.label}`, created_at: new Date().toISOString(),
-  });
-  const concentrateNow = await incConcentrate(sb, meta.concentrate, -(liters * ratio));
-  await incInventoryBatch(sb, { [product]: units });
-  const { data: inv } = await sb.from("inventory").select("qty").eq("product", product).maybeSingle();
-  return { refs: [`jobs:${id}`], product, units, liters, concentrate_used_l: Number((liters * ratio).toFixed(1)), concentrate_now_l: concentrateNow, in_stock_now: Number((inv as any)?.qty ?? units) };
+  const id = args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
+  const {data:event,error}=await sb.rpc("complete_bottling",{p_job:{
+    id, type:"bottling", product, liters, actual_qty:liters,
+    date:now.date,time:now.time,label:`Bottled ${units} ${meta.label}`
+  },p_labeled:null});
+  if(error)throw new HubError("stock_failed",error.message);
+  return {refs:[`jobs:${id}`],product,units,liters,concentrate_used_l:event.concentrate_used_l,concentrate_now_l:event.concentrate_after,in_stock_now:event.inventory_after};
+}
+
+export async function logLabeling(sb:Sb,args:{product:string;units:number;request_id?:string}){
+ const units=Number(args.units);if(!BOTTLES[args.product]||!Number.isInteger(units)||units<=0||units>10000)throw new HubError("bad_units","Choose a product and a whole number of labels");
+ const id=args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
+ const {data,error}=await sb.rpc("complete_labeling",{p_id:id,p_product:await canonicalBottleKey(sb,args.product),p_units:units});if(error)throw new HubError("stock_failed",error.message);
+ return {refs:[`jobs:${id}`],...data};
 }
 
 /** Manual stock correction. kind: inventory | concentrate | beans | labeled. */

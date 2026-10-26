@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v31';
+const CACHE = 'gremier-v32';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -67,6 +67,14 @@ self.addEventListener('notificationclick', e => {
   const url = d.url || '/admin.html';
   e.notification.close();
 
+  // Production alerts open their scheduling form, without creating a job automatically.
+  if(e.action==='schedule_production'||new URL(url,self.location.origin).searchParams.has('production_plan')){
+    const target=new URL(url,self.location.origin).href;
+    e.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{
+      const client=list.find(c=>/^\/admin(?:\.html)?$/.test(new URL(c.url).pathname));
+      return client&&'navigate' in client?client.navigate(target).then(c=>(c||client).focus()):self.clients.openWindow(target);
+    }));return;
+  }
   // Customer notification: open the shop on the page it points to (reuse an open shop window).
   if (d.audience === 'customer') {
     const target = new URL(url, self.location.origin).href;

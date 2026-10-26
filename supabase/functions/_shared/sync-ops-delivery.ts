@@ -96,29 +96,23 @@ async function deductDeliveryInventory(
   supabase: SupabaseClient,
   quantities: Record<string, number>,
   job?: {
+    id?: string;
+    website_order_id?: string|null;
     delivery_type?: string | null;
     dispensers?: number | null;
     cb_syrups?: Record<string, number> | null;
     jerry_cans?: string[] | null;
   },
 ): Promise<void> {
-  for (const [pid, qty] of Object.entries(quantities)) {
-    if (Number(qty) > 0) await incrementInventory(supabase, pid, -Number(qty));
+  const combined={...quantities};
+  if(job?.delivery_type==="coffeebar"){
+    if(job.dispensers)combined.dispenser=(combined.dispenser||0)+Number(job.dispensers);
+    for(const [pid,q] of Object.entries(job.cb_syrups||{}))combined[pid]=(combined[pid]||0)+Number(q);
+    for(const type of job.jerry_cans||[]){const pid=JERRY_MAP[String(type)]||"jerry_can";combined[pid]=(combined[pid]||0)+1;}
   }
-  if (job?.delivery_type === "coffeebar") {
-    if (job.dispensers) await incrementInventory(supabase, "dispenser", -Number(job.dispensers));
-    for (const [pid, qty] of Object.entries(job.cb_syrups || {})) {
-      if (Number(qty) > 0) await incrementInventory(supabase, pid, -Number(qty));
-    }
-    const jd: Record<string, number> = {};
-    for (const ct of job.jerry_cans || []) {
-      const pid = JERRY_MAP[String(ct)] || "jerry_can";
-      jd[pid] = (jd[pid] || 0) + 1;
-    }
-    for (const [pid, qty] of Object.entries(jd)) {
-      await incrementInventory(supabase, pid, -qty);
-    }
-  }
+  if(!job?.id)throw Error("Delivery job reference required for stock update");
+  const {error}=await supabase.rpc("apply_delivery_stock",{p_ref:`delivery:${job.website_order_id||job.id}`,p_quantities:combined});
+  if(error)throw error;
 }
 
 async function markPendingDelivered(supabase: SupabaseClient, orderId: string, job?: { date?: string; time?: string | null }): Promise<void> {

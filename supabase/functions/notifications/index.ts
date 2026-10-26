@@ -1,3 +1,4 @@
+import { notifyProductionNeeds } from "../_shared/production-alerts.ts";
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 // ─── GREMIER COFFEE — NOTIFICATIONS EDGE FUNCTION ────────────────────────────
 // File location: supabase/functions/notifications/index.ts
@@ -346,7 +347,7 @@ Deno.serve(async (req: Request) => {
   try {
     if (type === "morning") await handleMorning(supabase);
     if (type === "afternoon") await handleAfternoon(supabase);
-    if (type === "reminders") await handleReminders(supabase);
+    if (type === "reminders") {await handleReminders(supabase);await notifyProductionNeeds(supabase,todayJerusalem());}
 
     return new Response(JSON.stringify({ ok: true, type }), {
       headers: { "Content-Type": "application/json" },

@@ -290,14 +290,18 @@ function validateVoiceJob3(job) {
   if (job.type === 'labeling' && !(Number(job.qty) > 0)) return 'Labeling is missing the quantity.';
   if ((job.type === 'brew' || job.type === 'drain') && !job.product) return 'Production is missing the concentrate type.';
   if (job.type === 'drain' && (job._unsafeDrain || isSuspiciousDrainJob2(job))) return 'That sounds like a bottle stock correction, not a real drain. Use the Stock tab; I will not save it as a drain.';
-  if (job.type === 'drain' && job.done) return 'Drain changes concentrate by a full brew amount. Please check off the Drain task from the Orders schedule so it shows the liters before changing stock.';
+  if (job.type === 'drain' && job.done) return 'Drain changes concentrate by a full brew amount. Please check off the Drain task from the Production schedule so it shows the liters before changing stock.';
   return null;
 }
 async function saveVoiceJobAndEffects3(job, intent, stores) {
   await window.opsFetch('jobs', {
     method: 'POST',
     prefer: 'return=minimal',
-    body: JSON.stringify(jobToRow2(job))
+    body: JSON.stringify(jobToRow2(intent === 'log' && job.type !== 'delivery' ? {
+      ...job,
+      done: false,
+      brewStarted: false
+    } : job))
   });
   if (intent === 'log') {
     await applyJobSideEffects2(job, job.type === 'delivery' ? job.quantities : null, stores);
@@ -1218,10 +1222,11 @@ Keep replies short — 1-2 sentences.`;
         if (!row) throw new Error('Job not found');
         if (intent === 'complete') {
           const job = rowToJob2(row);
-          await patchJob2(row.id, {
+          if (row.done) throw new Error('That task is already complete');
+          await applyJobSideEffects2(job, job.type === 'delivery' ? job.quantities : null, stores);
+          if (job.type === 'delivery') await patchJob2(row.id, {
             done: true
           });
-          await applyJobSideEffects2(job, job.type === 'delivery' ? job.quantities : null, stores);
           window.notifyGremierStockChanged?.();
           setMessages(prev => [...prev, {
             role: 'assistant',

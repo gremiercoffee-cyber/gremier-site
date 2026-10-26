@@ -37,3 +37,25 @@
 #statsYearOverview .fin-year-metrics {grid-template-columns:repeat(2,minmax(0,1fr));margin:18px 0 0;}
 #statsYearOverview .fin-metric {min-width:0;}
 @media(max-width:420px){#statsYearOverview .fin-metric strong {font-size:clamp(16px,4.5vw,24px);letter-spacing:-.04em;}}
+
+/* Clear sections, restrained copy, and strong titles across Stats. */
+#tab-reports{--stats-surface:#fff}
+#tab-reports>.sales-panel,#tab-reports .fin-panel{background:var(--stats-surface);border:0;border-radius:22px;box-shadow:0 8px 28px #202a3910,0 1px 3px #202a3909;padding:24px;margin-block:26px}
+#tab-reports h2,#tab-reports .sales-heading h2{font-size:22px;font-weight:750;letter-spacing:-.025em;color:#20272f;line-height:1.25}
+#tab-reports .fin-panel h2{margin-bottom:22px}
+#tab-reports .fin-views{padding:5px;background:#e7eaed;border-radius:14px;width:fit-content;margin:0 0 24px;gap:4px}
+#tab-reports .fin-views button{border:0;background:transparent;font-weight:650;border-radius:10px;padding:12px 18px}
+#tab-reports .fin-views [aria-pressed=true]{background:#fff;color:#20272f;box-shadow:0 2px 8px #18213415}
+#tab-reports .fin-row{border:0;padding:13px 0;font-size:14px}#tab-reports .fin-row:nth-of-type(even){background:#f8f9fa;border-radius:8px;padding-inline:10px}
+#tab-reports .sales-note,#tab-reports .fin-note{font-size:12px;line-height:1.55}
+#tab-reports[data-financial-view="us"]>.sales-panel{display:none}
+#tab-reports .stats-disclosure{margin:26px 0;background:#fff;border-radius:22px;box-shadow:0 8px 28px #202a3910;padding:22px}
+#tab-reports .stats-disclosure>summary{font-size:22px;font-weight:750;cursor:pointer;letter-spacing:-.025em}
+#tab-reports .stats-disclosure>.sales-panel{margin:20px 0 0;box-shadow:none;border:0;padding:0}
+#tab-reports .stats-disclosure .sales-heading h2{display:none}
+#tab-reports[data-financial-view="us"]>.stats-disclosure{display:none}
+@media(max-width:650px){#tab-reports>.sales-panel,#tab-reports .fin-panel{padding:18px;margin-block:22px}#tab-reports h2,#tab-reports .sales-heading h2,#tab-reports .stats-disclosure>summary{font-size:21px}#tab-reports .fin-views{width:100%}#tab-reports .fin-views button{flex:1;padding:11px 7px}#tab-reports .fin-us-category{min-width:150px}}
+
+#tab-reports .stats-accounting-details{margin:24px 0;padding:24px;background:#fff;box-shadow:0 8px 28px #202a3910;border-radius:22px}
+#tab-reports .stats-accounting-details>summary{font-size:22px;font-weight:750;cursor:pointer}
+#tab-reports #incomeBreakdown{box-shadow:none;border:0;padding:0;margin:18px 0;background:none}#tab-reports #incomeBreakdown>h2{display:none}

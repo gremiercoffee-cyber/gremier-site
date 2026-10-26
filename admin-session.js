@@ -22,6 +22,8 @@
   try{root.localStorage.setItem('gremier_admin_tab',screen);}catch{}
  }};
  root.openAdminLog=()=>{
+  const production=root.document.getElementById?.('tab-production');
+  if(production&&production.style.display!=='none'&&root.__gremierOpenProductionLog){root.__gremierOpenProductionLog();return;}
   if(root.__gremierOpenLog)root.__gremierOpenLog();
   else root.__gremierPendingLog=true;
  };

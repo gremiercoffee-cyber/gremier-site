@@ -1,0 +1,53 @@
+begin;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+do $$
+declare before_c numeric; r jsonb; after_c numeric;
+begin
+ select liters into before_c from concentrate where type='classic';
+ r:=complete_bottling('{"id":"test_production_110_minis","product":"caramel_mini","actual_qty":27.5}');
+ if (r->>'units')::numeric<>110 or (r->>'concentrate_used_l')::numeric<>7.975 then raise exception '110 mini recipe failed: %',r;end if;
+ r:=complete_bottling('{"id":"test_production_110_minis","product":"caramel_mini","actual_qty":27.5}');
+ if not (r->>'already')::boolean then raise exception 'Retry not idempotent';end if;
+ select liters into after_c from concentrate where type='classic';
+ if after_c<>before_c-7.975 then raise exception 'Stock deducted more than once';end if;
+ insert into inventory(product,qty) values('jerry_can',0) on conflict(product) do update set qty=0;
+ r:=apply_delivery_stock('test_delivery_no_can','{"jerry_can":1}');
+ if (r->0->>'inferred_units')::numeric<>1 or (r->0->>'concentrate_used_l')::numeric<>2.15 then raise exception 'Missing jerry not inferred: %',r;end if;
+ perform apply_delivery_stock('test_delivery_no_can','{"jerry_can":1}');
+ if (select count(*) from production_stock_events where ref='test_delivery_no_can')<>1 then raise exception 'Duplicate delivery stock event';end if;
+ update inventory set qty=1 where product='jerry_can';
+ r:=apply_delivery_stock('test_delivery_existing_can','{"jerry_can":1}');
+ if (r->0->>'inferred_units')::numeric<>0 or (r->0->>'concentrate_used_l')::numeric<>0 then raise exception 'Recorded production was counted twice';end if;
+ r:=complete_bottling('{"id":"test_classic_minis","product":"classic_mini","actual_qty":1}');
+ if (r->>'units')::numeric<>4 or (r->>'concentrate_used_l')::numeric<>0.43 then raise exception 'Classic mini recipe differs';end if;
+ r:=complete_bottling('{"id":"test_house_minis","product":"house_blend_mini","actual_qty":1}');
+ if (r->>'units')::numeric<>4 or (r->>'concentrate_used_l')::numeric<>0.5 then raise exception 'House mini recipe differs';end if;
+ r:=complete_bottling('{"id":"test_unfiltered","product":"unfiltered_liter","actual_qty":1}');
+ if r->>'concentrate_type'<>'unfiltered' or (r->>'concentrate_used_l')::numeric<>0.4 then raise exception 'Unfiltered recipe differs';end if;
+ r:=start_production_brew('test_brew_unfiltered','unfiltered',2);
+ if r->>'drain_id'<>'drain_test_brew_unfiltered' then raise exception 'Drain not created';end if;
+ r:=start_production_brew('test_brew_unfiltered','unfiltered',2);if not (r->>'already')::boolean then raise exception 'Brew deducted twice';end if;
+ r:=complete_production_drain('drain_test_brew_unfiltered');if (r->>'liters_added')::numeric<>12.7 then raise exception 'Drain amount incorrect';end if;
+ r:=complete_production_drain('drain_test_brew_unfiltered');if not (r->>'already')::boolean then raise exception 'Drain added twice';end if;
+ r:=complete_labeling('test_labels','classic_mini',10);r:=complete_labeling('test_labels','classic_mini',10);
+ if not (r->>'already')::boolean then raise exception 'Label retry duplicated';end if;
+end $$;
+select set_config('request.jwt.claims',jsonb_build_object('role','authenticated','email','gremiercoffee@gmail.com','sub',(select id::text from auth.users where email='gremiercoffee@gmail.com' limit 1))::text,true);
+do $$
+declare d jsonb; saved jsonb; before_l numeric; after_l numeric; store_uuid uuid;
+begin
+ select id into store_uuid from stores limit 1;
+ if store_uuid is null then raise exception 'No store available for transaction test';end if;
+ if exists(select 1 from store_deliveries where id='00000000-0000-4000-8000-000000000110') then raise exception 'Fixture id is occupied';end if;
+ update inventory set qty=0 where product='jerry_can';select liters into before_l from concentrate where type='classic';
+ d:=jsonb_build_object('id','00000000-0000-4000-8000-000000000110','store_id',store_uuid,'qty_large',0,'qty_small',0,'qty_dairy_free',0,'qty_unfiltered',0,'qty_syrup',0,'delivery_date','2026-10-26','quantities','{"jerry_can":1}'::jsonb,'allocation_mode','custom');
+ saved:=save_counted_store_delivery(d,null);
+ select liters into after_l from concentrate where type='classic';
+ if after_l<>before_l-2.15 then raise exception 'Store delivery did not infer missing concentrate';end if;
+ saved:=save_counted_store_delivery(d||'{"notes":"test note edit"}',(saved->>'updated_at')::timestamptz);
+ if (select liters from concentrate where type='classic')<>after_l then raise exception 'Store edit deducted concentrate twice';end if;
+ perform delete_counted_store_delivery('00000000-0000-4000-8000-000000000110');
+ if (select qty from inventory where product='jerry_can')<>1 then raise exception 'Undo did not return inferred finished stock';end if;
+end $$;
+select 'Production transactions passed; all fixture writes rolled back.' result;
+rollback;
