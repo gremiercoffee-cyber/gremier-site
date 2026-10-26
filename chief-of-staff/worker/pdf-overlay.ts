@@ -34,7 +34,9 @@ export async function readLayout(bytes: Uint8Array, maxPages = 12): Promise<Layo
     }
     for (const p of joinFragments(raw)) pieces.push({ id: pieces.length + 1, ...p });
   }
-  await pdf.cleanup?.();
+  // Let go of pdf.js's copy of the file straight away (memory is tight with several files).
+  const p = pdf as unknown as { destroy?: () => Promise<void>; cleanup?: () => Promise<void> };
+  try { await (p.destroy ?? p.cleanup)?.call(pdf); } catch { /* already released */ }
   return { pages, pieces };
 }
 

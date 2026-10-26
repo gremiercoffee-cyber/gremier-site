@@ -145,6 +145,7 @@ export async function fileBytes(env: Env, id: string) {
   if (!f) throw new Error("That file isn't available any more. Ask me to find it again.");
   const mime = f.mime || "application/octet-stream";
   if (f.stored) return { bytes: await loadBytes(env, id), filename: f.filename, mime };
+  if (f.account === "made" || f.account === "upload") throw new Error("This copy didn't finish saving. Ask me to do it again.");
   const token = await accessToken(env, f.account);
   const msg = await gmail<{ payload: Part }>(token, `/messages/${f.message_id}?format=full`);
   const part = flat(msg.payload).find((p) => p.partId === f.part_id);
@@ -159,9 +160,10 @@ export async function fileBytes(env: Env, id: string) {
 /** A new file made from another (a signed or filled copy), kept and shown for review. */
 async function saveMade(env: Env, parentId: string, bytes: Uint8Array, filename: string, note: string, fillValues?: unknown) {
   const id = uid();
-  await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, parent_id, note, chosen, fill_values) VALUES (?, 'made', '', '', ?, 'application/pdf', ?, ?, 'made', ?, ?, 1, ?)",
-    id, filename, bytes.length, now(), parentId, note, fillValues ? JSON.stringify(fillValues) : null);
+  // Contents first, then the entry: a copy cut off mid-save never shows up as a broken card.
   await storeBytes(env, id, bytes);
+  await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, parent_id, note, chosen, fill_values, stored) VALUES (?, 'made', '', '', ?, 'application/pdf', ?, ?, 'made', ?, ?, 1, ?, 1)",
+    id, filename, bytes.length, now(), parentId, note, fillValues ? JSON.stringify(fillValues) : null);
   return id;
 }
 
@@ -244,7 +246,15 @@ const neededList = (n: unknown): Needed[] => (Array.isArray(n) ? n : [])
   .filter((x) => x.label).slice(0, 12);
 const ASK_NEXT = "Ask the user for the still_needed items. When they answer, save each with save_detail under its label, then call fill_document again with THIS file_id: it refills from the clean original and keeps what's already written.";
 
-export async function fillForm(env: Env, input: { file_id: string; instructions?: string }) {
+// Fills run one at a time on a server: several at once (quick messages in a row) can run it out of memory.
+let fillQueue: Promise<unknown> = Promise.resolve();
+export function fillForm(env: Env, input: { file_id: string; instructions?: string }) {
+  const run = fillQueue.then(() => fillFormNow(env, input), () => fillFormNow(env, input));
+  fillQueue = run.catch(() => {});
+  return run;
+}
+
+async function fillFormNow(env: Env, input: { file_id: string; instructions?: string }) {
   const info = await fileInfo(env, input.file_id) as (FoundFile & { fill_values?: string | null }) | null;
   if (!info) throw new Error("I don't have that file; find or upload it first.");
   if (!/pdf/i.test(info.mime ?? "") && !/\.pdf$/i.test(info.filename)) return { clarification: "I can fill in PDF forms. This file isn't a PDF." };
@@ -283,7 +293,7 @@ Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor":
     placements = (v.placements ?? []).filter((p) => p && p.value != null && Number.isFinite(Number(p.anchor))).map((p) => ({ ...p, anchor: Number(p.anchor) }));
     needed = neededList(v.still_needed);
   } else {
-    const file = await fileForModel(env, baseId);
+    const file = f.bytes.length <= 4 * 1024 * 1024 ? { kind: "pdf" as const, name: f.filename, dataUrl: `data:application/pdf;base64,${toB64(f.bytes)}` } : null;
     if (!file) return { clarification: "This looks like a scan and it's too big for me to read. Send a smaller copy (or a photo of each page) and I'll fill it." };
     const out = await getProvider(env).complete({
       tier: "main", purpose: "fill_form", maxTokens: 4000, attachments: [file],
