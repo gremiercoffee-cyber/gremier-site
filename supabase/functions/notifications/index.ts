@@ -345,11 +345,13 @@ Deno.serve(async (req: Request) => {
   const type = body.type || "morning";
 
   try {
+    let production;
+    if(type === "production")production=await notifyProductionNeeds(supabase,todayJerusalem());
     if (type === "morning") await handleMorning(supabase);
     if (type === "afternoon") await handleAfternoon(supabase);
     if (type === "reminders") {await handleReminders(supabase);await notifyProductionNeeds(supabase,todayJerusalem());}
 
-    return new Response(JSON.stringify({ ok: true, type }), {
+    return new Response(JSON.stringify({ ok: true, type,production }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err: any) {

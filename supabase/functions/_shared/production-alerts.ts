@@ -39,9 +39,10 @@ export async function notifyProductionNeeds(sb:any,today:string){
  const alerts=productionAlerts(stock,stock.jobs,today),active=new Set(alerts.map(a=>a.key));
  const {data:states,error}=await sb.from('production_alert_state').select('key,active');if(error)throw error;
  for(const state of states||[])if(state.active&&!active.has(state.key))await sb.rpc('claim_production_alert',{p_key:state.key,p_active:false});
+ let created=0,pushSent=0,pushFailed=0;
  for(const a of alerts){const {data:claim,error}=await sb.rpc('claim_production_alert',{p_key:a.key,p_active:true});if(error)throw error;if(!claim)continue;
   const {error:logError}=await sb.from('notification_log').insert({title:a.title,body:a.body,url:a.url,kind:'production_low_stock'});if(logError){await sb.rpc('claim_production_alert',{p_key:a.key,p_active:false});throw logError;}
-  await sendWebPushToAdmins({title:a.title,body:a.body,url:a.url,tag:'production-'+a.key,actions:[{action:'schedule_production',title:a.key.startsWith('beans:')?'View beans':'Schedule'}]});
+  created++;const pushed=await sendWebPushToAdmins(sb,{title:a.title,body:a.body,url:a.url,tag:'production-'+a.key,actions:[{action:'schedule_production',title:a.key.startsWith('beans:')?'View beans':'Schedule'}]});pushSent+=pushed.sent;pushFailed+=pushed.failed;
  }
- return alerts.length;
+ return {evaluated:alerts.length,created,pushSent,pushFailed};
 }

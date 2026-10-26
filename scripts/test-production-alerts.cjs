@@ -6,3 +6,10 @@ test('low beans trigger ordering, without repeating an order already marked plac
 test('upcoming deliveries produce bottle and concentrate needs; scheduled bottles are included once',()=>{const s=stock(),j=[{id:'delivery',type:'delivery',date:'2026-10-27',quantities:{classic_liter:100}}];const a=alerts(s,j,'2026-10-26');assert.ok(a.some(x=>x.key==='bottle:classic_liter'&&x.url.includes('units=70')));assert.ok(a.some(x=>x.key==='concentrate:classic'));j.push({id:'bottle',type:'bottling',product:'classic_liter',liters:70,date:'2026-10-27'});const covered=alerts(s,j,'2026-10-26');assert.ok(!covered.some(x=>x.key==='bottle:classic_liter'));assert.ok(covered.find(x=>x.key==='concentrate:classic').body.includes('30.1L'));});
 
 test('catalogue-backed UUID stock keys retain their product type and label in alerts',()=>{const s=stock();s.products=[{id:'unfiltered-uuid',name_en:'Unfiltered Liter Bottle'}];s.inventory.push({product:'unfiltered-uuid',qty:0});s.concentrate.push({type:'unfiltered',liters:1});const a=alerts(s,[],'2026-10-26');assert.ok(a.some(x=>x.key==='bottle:unfiltered-uuid'&&x.title==='Bottle Unfiltered Liter Bottle'));});
+
+test('notification delivery passes the authenticated client and processes every low-stock item',async()=>{
+ const sent=[],logged=[],s=stock();s.beans[0].kg=5;s.concentrate[0].liters=2;s.inventory[0].qty=5;
+ const sb={from(table){const q={select(){return q},eq(){return q},then(resolve){resolve({data:table==='production_alert_state'?[]:s[table]||[],error:null})},insert(row){logged.push(row);return Promise.resolve({error:null})}};return q},rpc:async()=>({data:true,error:null})};
+ context.sendWebPushToAdmins=async(client,payload)=>{assert.equal(client,sb);assert.ok(payload.url);sent.push(payload);return {sent:1,failed:0}};
+ const result=await context.exports.notifyProductionNeeds(sb,'2026-10-26');assert.equal(result.created,3);assert.equal(result.pushSent,3);assert.equal(logged.length,3);assert.equal(sent.length,3);
+});

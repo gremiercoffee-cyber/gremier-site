@@ -105,7 +105,7 @@
   const get=id=>document.getElementById(id);
   const metric=(label,value,note,cls='')=>`<div class="fin-metric ${cls}"><span>${esc(label)}</span><strong>${esc(value)}</strong>${note?`<small>${esc(note)}</small>`:''}</div>`;
   const row=(label,value)=>`<div class="fin-row"><span dir="auto">${esc(label)}</span><strong>${esc(value)}</strong></div>`;
-  let snapshots=[],snapshot=null,preferences={},view='accounts',current=null,sequence=0,preferenceReady=false;
+  let snapshots=[],snapshot=null,preferences={},view='accounts',current=null,sequence=0,preferenceReady=false,preferenceState='loading';
   const client=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB;
   function setup() {
     const host=get('tab-reports');if(!host||get('financialResults'))return;
@@ -133,22 +133,22 @@
     if(!snapshot){host.textContent='Annual totals unavailable.';return;}
     const annual=summarize(snapshot.payload,'all'),year=snapshot.report_year;
     const live=root.GremierRevenue?.annualReport?.(year);
-    if(view==='us'){const estimate=usEstimate(annual,preferences.category_overrides||{});get('statsYearOverview').querySelector('h2').textContent='U.S. estimate';host.innerHTML=`<div class="fin-metrics fin-year-metrics">${metric('Estimated deductions',money(estimate.deductible),'Includes product ingredients')}${metric('Estimated business profit',live?money(live.total_minor-estimate.deductible):'Unavailable','Before personal taxes · ILS')}</div><details class="sales-help"><summary>Estimate details · ${money(estimate.pending)} not included</summary>${row('Income',live?money(live.total_minor):'Unavailable')}${row('Included costs',money(estimate.deductible))}${row('Unresolved / excluded costs',money(estimate.pending))}<p class="fin-note">Expenses through ${snapshot.as_of_date}. Recorded purchases and product ingredients are treated as cost of goods sold for this estimate; unsold inventory may require adjustment. Vehicle costs are excluded without a mileage log. Unconfirmed items and equipment are not deducted. Amounts are shown in ILS; a U.S. return requires USD conversion. This is a business-profit estimate, not your final U.S. tax bill.</p><a href="https://www.irs.gov/instructions/i1040sc" target="_blank" rel="noopener">IRS Schedule C</a> · <a href="https://www.irs.gov/individuals/international-taxpayers/foreign-currency-and-currency-exchange-rates" target="_blank" rel="noopener">Currency conversion</a></details>`;return;}
+    if(view==='us'){const estimate=usEstimate(annual,preferences.category_overrides||{});get('statsYearOverview').querySelector('h2').textContent='U.S. estimate';host.innerHTML=`<div class="fin-metrics fin-year-metrics">${metric('Estimated deductions',preferenceReady?money(estimate.deductible):preferenceState==='error'?'Unavailable':'Loading…','Includes product ingredients')}${metric('Estimated business profit',live&&preferenceReady?money(live.total_minor-estimate.deductible):preferenceState==='error'?'Unavailable':'Loading…','Before personal taxes · ILS')}</div><details class="sales-help"><summary>Estimate details${preferenceReady?' · '+money(estimate.pending)+' not included':''}</summary>${row('Income',live?money(live.total_minor):'Unavailable')}${row('Included costs',money(estimate.deductible))}${row('Unresolved / excluded costs',money(estimate.pending))}<p class="fin-note">Expenses through ${snapshot.as_of_date}. Recorded purchases and product ingredients are treated as cost of goods sold for this estimate; unsold inventory may require adjustment. Vehicle costs are excluded without a mileage log. Unconfirmed items and equipment are not deducted. Amounts are shown in ILS; a U.S. return requires USD conversion. This is a business-profit estimate, not your final U.S. tax bill.</p><a href="https://www.irs.gov/instructions/i1040sc" target="_blank" rel="noopener">IRS Schedule C</a> · <a href="https://www.irs.gov/individuals/international-taxpayers/foreign-currency-and-currency-exchange-rates" target="_blank" rel="noopener">Currency conversion</a></details>`;return;}
     get('statsYearOverview').querySelector('h2').textContent='Year overview';
     const today=root.GremierDashboard?.businessDate(new Date())||new Date().toISOString().slice(0,10);
-    host.innerHTML=`<div class="fin-metrics fin-year-metrics">${metric('Income',live?money(live.total_minor):'Unavailable',`Payments · ${year} through ${year===Number(today.slice(0,4))?today:year+'-12-31'}`)}${metric('Recorded expenses',money(annual.totals.expenses),`FinBot through ${snapshot.as_of_date}`)}</div><details class="sales-help"><summary>Why can the totals differ?</summary>${live?(()=>{const r=root.GremierRevenue.reconcile(live,annual.totals.income);return row('Saved FinBot income',money(r.snapshot))+row('Imported receipt adjustments / payment dates',money(r.importAdjustments))+(r.legacyWebsite?row('Old website · net sales after refund',money(r.legacyWebsite)):'')+row('Additional app receipts',money(r.newReceipts))+row('Paid online orders without receipts',money(r.unreceipted))+row('Current income · counted once',money(r.total));})():'<p>Live income could not be loaded. Refresh to retry.</p>'}<p class="fin-note">Income includes paid orders without receipts and links each order to its receipt once. FinBot figures below are a saved accounting report by document date. Expenses only include that report; newer expense documents are not included.</p></details>`;
+    host.innerHTML=`<div class="fin-metrics fin-year-metrics">${metric('Income',live?money(live.total_minor):root.GremierRevenue?.loading?'Loading…':'Unavailable',`Payments · ${year} through ${year===Number(today.slice(0,4))?today:year+'-12-31'}`)}${metric('Recorded expenses',money(annual.totals.expenses),`FinBot through ${snapshot.as_of_date}`)}</div><details class="sales-help"><summary>Why can the totals differ?</summary>${live?(()=>{const r=root.GremierRevenue.reconcile(live,annual.totals.income);return row('Saved FinBot income',money(r.snapshot))+row('Imported receipt adjustments / payment dates',money(r.importAdjustments))+(r.legacyWebsite?row('Old website · net sales after refund',money(r.legacyWebsite)):'')+row('Additional app receipts',money(r.newReceipts))+row('Paid online orders without receipts',money(r.unreceipted))+row('Current income · counted once',money(r.total));})():'<p>Live income could not be loaded. Refresh to retry.</p>'}<p class="fin-note">Income includes paid orders without receipts and links each order to its receipt once. FinBot figures below are a saved accounting report by document date. Expenses only include that report; newer expense documents are not included.</p></details>`;
   }
   root.addEventListener('gremier-revenue-ready',renderOverview);
   function chooseYear() {
     snapshot=snapshots.find(s=>String(s.report_year)===get('financialYear').value);current=null;
-    preferences={};preferenceReady=false;
+    preferences={};preferenceReady=false;preferenceState='loading';
     get('financialMonth').innerHTML='<option value="all">Year to date · snapshot</option>'+snapshot.payload.monthly.map(m=>`<option value="${esc(m.month)}">${esc(monthName(m.month))}${m.is_partial_month?' · partial':''}</option>`).join('');
     render();
     const year=snapshot.report_year;
     client().from('finbot_us_expense_preferences').select('category_overrides,filing_context').eq('report_year',year).maybeSingle().then(({data,error})=>{
       if(snapshot?.report_year!==year)return;
-      preferenceReady=!error;preferences=data||{};render();
-    }).catch(()=>{});
+      preferenceReady=!error;preferenceState=error?'error':'ready';preferences=data||{};render();
+    }).catch(()=>{if(snapshot?.report_year!==year)return;preferenceState='error';preferenceReady=false;render();});
   }
   function render() {
     if(!snapshot)return;
@@ -198,6 +198,7 @@
     }
   }
   function renderUS(m,coverage){
+    if(!preferenceReady){get('financialResults').innerHTML='<p class="fin-note">'+(preferenceState==='error'?'U.S. settings unavailable. Reload saved data to retry.':'Loading U.S. settings…')+'</p>';return;}
     const overrides=preferences.category_overrides||{},estimate=usEstimate(m,overrides),rows=estimate.rows;
     const usTitle=r=>r.label==='כיבודים עם מעמ'&&r.bucket==='purchases'?'Milk & sugar · ingredients':title(r.label);
     const options=id=>Object.entries(buckets).map(([key,label])=>`<option value="${key}" ${key===id?'selected':''}>${esc(label)}</option>`).join('');
