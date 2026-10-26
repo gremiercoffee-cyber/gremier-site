@@ -382,3 +382,33 @@ export async function setupPreview(env: Env, t: Tracker) {
     note: "Gmail was searched just now. WhatsApp history is searched by the add-on within a few minutes.",
   };
 }
+
+/** A group's collections, as folders: one row per person with what they've sent (and what you typed in). */
+export async function groupCollections(env: Env, groupId: string) {
+  const ts = await all<Tracker & { broadcast_id: string | null }>(env, "SELECT * FROM trackers WHERE group_id = ? ORDER BY active DESC, created_at DESC LIMIT 20", groupId);
+  const out = [];
+  for (const t of ts) {
+    const status = await trackerStatus(env, t);
+    const entries = await all<{ id: string; person: string | null; source: string; sender: string; text: string; said_at: string }>(env,
+      "SELECT id, person, source, sender, text, said_at FROM tracker_entries WHERE tracker_id = ? AND (verdict IS NULL OR verdict = 'good') ORDER BY said_at", t.id);
+    out.push({
+      id: t.id, name: t.name, collecting: t.expecting || t.topic, active: !!t.active, created_at: t.created_at, doc_link: t.doc_link,
+      answered: status.answered.length, total: status.total,
+      people: status.people.map((p) => ({ name: p.name, answered: p.answered, answers: entries.filter((e) => e.person === p.name) })),
+      other: entries.filter((e) => !e.person || !status.people.some((p) => p.name === e.person)),
+    });
+  }
+  return out;
+}
+
+/** An answer the user writes in themselves (e.g. a rabbi told them in person). */
+export async function addManualAnswer(env: Env, trackerId: string, person: string, text: string) {
+  const t = await first<Tracker>(env, "SELECT * FROM trackers WHERE id = ?", trackerId);
+  if (!t) throw new Error("That collection isn't there any more.");
+  const body = String(text ?? "").trim().slice(0, 4000);
+  if (!body) throw new Error("Write the answer first.");
+  const at = now();
+  await run(env, "INSERT INTO tracker_entries (id, tracker_id, hash, account, chat, sender, text, said_at, created_at, source, person, verdict) VALUES (?, ?, ?, 'personal', ?, 'You', ?, ?, ?, 'manual', ?, 'good')",
+    uid(), trackerId, uid(), person, body, at, at, person || null);
+  return { ok: true };
+}

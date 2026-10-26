@@ -1,4 +1,5 @@
 import {GroupMessage} from '../components/GroupMessage';
+import Collections from '../components/Collections';
 import { useEffect, useState } from "react";
 import { api, type BroadcastRow, type GroupRow } from "../api";
 import { Button, Empty } from "../components/ui";
@@ -69,6 +70,7 @@ function GroupDetail({ g, onClose, onChanged, onAsk }: { g: GroupRow; onClose: (
         </div>
       </section>
 
+      <Collections groupId={g.id} refreshKey={msgs.length} />
       {msgs.filter(b=>!isDone(b)).map(b=><GroupMessage key={b.id} b={b} g={g} onChanged={loadMsgs}/>)}
       <details className="rounded-xl border border-line p-3"><summary className="cursor-pointer text-sm">Archive ({msgs.filter(isDone).length})</summary><div className="space-y-3 mt-3">{msgs.filter(isDone).sort((a,b)=>(b.archived_at??b.sent_at??b.created_at).localeCompare(a.archived_at??a.sent_at??a.created_at)).map(b=><GroupMessage key={b.id} b={b} g={g} onChanged={loadMsgs}/>)}</div></details>
 

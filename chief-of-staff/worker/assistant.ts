@@ -477,12 +477,14 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "draft_group_message",
-      description: "Write a message to a whole contact group. It is saved as a draft; the user reviews and sends it in the app (email to everyone, WhatsApp preloaded). Never claims it was sent. Pass id to revise a draft.",
+      description: "Write a message to a whole contact group. It is saved as a draft; the user reviews and sends it in the app (email to everyone, WhatsApp preloaded). Never claims it was sent. Pass id to revise a draft. If the message asks each person to SEND SOMETHING BACK (a list, an answer, a form, their plans), set collecting to what they're sending, and in your reply ask the user to confirm: 'Should I collect their answers? I'd keep a folder in Groups with a place for each person.' Pass collect=true only when the user says yes (or collect=false for no); the draft card also has this switch.",
       input_schema: {
         type: "object",
         properties: {
           group: { type: "string" }, subject: { type: "string" }, body: { type: "string", description: "use {first_name} for a personal greeting" },
           from_account: { type: "string", description: "which connected Gmail to send from" }, id: { type: "string" },
+          collecting: { type: "string", description: "what each person is asked to send back, e.g. 'their Chanukah party plans'" },
+          collect: { type: "boolean", description: "the user confirmed: collect their answers in a folder (true) or not (false)" },
         },
         required: ["group", "body"],
       },

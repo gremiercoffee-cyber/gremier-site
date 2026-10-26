@@ -9,11 +9,13 @@ import { all, first, now, run, uid } from "./db";
 import { savePerson, type Person } from "./memory";
 import { sendEmail } from "./google";
 import { greetingName } from "../shared/greeting";
+import { saveTracker } from "./trackers";
 
 export interface Group { id: string; name: string; description: string; created_at: string; updated_at: string }
 export interface Broadcast {
   id: string; group_id: string; subject: string; body: string; from_account: string | null; status: string; results: string;
   created_at: string; sent_at: string | null; archived_at?:string|null;
+  collect_expecting?: string | null; collect?: number | null; tracker_id?: string | null;
 }
 type MemberInput = { name?: string; email?: string; phone?: string; id?: string };
 
@@ -58,7 +60,7 @@ export async function saveGroup(env: Env, input: { id?: string; name?: string; d
   return { ...g, members: await members(env, g.id) };
 }
 
-export async function draftBroadcast(env: Env, input: { group: string; subject?: string; body: string; from_account?: string; id?: string }) {
+export async function draftBroadcast(env: Env, input: { group: string; subject?: string; body: string; from_account?: string; id?: string; collecting?: string; collect?: boolean }) {
   const g = await findGroup(env, input.group);
   if (!g) throw new Error(`No group called "${input.group}". Create it first.`);
   if (input.id) {
@@ -66,13 +68,15 @@ export async function draftBroadcast(env: Env, input: { group: string; subject?:
     if(!b||b.group_id!==g.id)throw new Error('This draft does not belong to that group.');
     if(b.status!=='draft'||b.archived_at)throw new Error('Only unsent drafts can be edited.');
     if(!input.body.trim())throw new Error('Write a message first.');
+    if(input.collecting!==undefined||input.collect!==undefined)await setCollect(env,input.id,{collect:input.collect,expecting:input.collecting});
     await run(env,"UPDATE broadcasts SET subject=?,body=?,from_account=COALESCE(?,from_account) WHERE id=? AND status='draft' AND archived_at IS NULL",(input.subject??'').slice(0,200),input.body.slice(0,20000),input.from_account??null,input.id);
     return (await first<Broadcast>(env,'SELECT * FROM broadcasts WHERE id=?',input.id))!;
   }
   if(!input.body?.trim())throw new Error('Write a message first.');
   const id = uid();
-  await run(env, "INSERT INTO broadcasts (id, group_id, subject, body, from_account, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    id, g.id, (input.subject ?? "").slice(0, 200), input.body.slice(0, 20000), input.from_account ?? null, now());
+  await run(env, "INSERT INTO broadcasts (id, group_id, subject, body, from_account, created_at, collect_expecting, collect) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    id, g.id, (input.subject ?? "").slice(0, 200), input.body.slice(0, 20000), input.from_account ?? null, now(),
+    input.collecting ? String(input.collecting).slice(0, 600) : null, input.collect === undefined ? null : input.collect ? 1 : 0);
   return (await first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", id))!;
 }
 
@@ -114,6 +118,16 @@ export async function sendBroadcast(env: Env, id: string, edit?:{subject?:string
   }
   const failures=results.some(r=>r.email&&!r.ok),sent=results.some(r=>r.ok),t=now();
   await run(env,"UPDATE broadcasts SET status=?,results=?,sent_at=?,archived_at=? WHERE id=?",failures?(sent?'partial':'failed'):'sent',JSON.stringify(results),t,sent?t:null,id);
+  // "Collect their answers" was on: start collecting from this group, from now (email replies and WhatsApp).
+  if (sent && b.collect === 1 && !b.tracker_id) {
+    try {
+      const g = await first<{ name: string }>(env, "SELECT name FROM contact_groups WHERE id = ?", b.group_id);
+      const tr = await saveTracker(env, { name: (b.subject || b.collect_expecting || "Answers").slice(0, 80), group: g?.name ?? b.group_id,
+        expecting: b.collect_expecting || `Their reply to: ${b.subject || body.slice(0, 120)}`, sources: "gmail,whatsapp", backfill_days: 0 });
+      await run(env, "UPDATE trackers SET broadcast_id = ? WHERE id = ?", id, tr.id);
+      await run(env, "UPDATE broadcasts SET tracker_id = ? WHERE id = ?", tr.id, id);
+    } catch (e) { console.error("collection", e); }
+  }
   // Copies of what was just sent (the same text saved twice) are finished too: they must not be sendable again.
   if (sent) {
     const same = (s: string) => s.replace(/\{(?:first_)?name\}/gi, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
@@ -130,3 +144,13 @@ export async function groupsSummary(env: Env) {
 }
 
 export async function archiveBroadcast(env:Env,id:string){await run(env,"UPDATE broadcasts SET archived_at=? WHERE id=? AND status!='sending'",now(),id);return {ok:true};}
+
+/** Collect their answers? (the switch on a group draft). */
+export async function setCollect(env: Env, id: string, p: { collect?: boolean; expecting?: string }) {
+  const b = await first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", id);
+  if (!b) throw new Error("message not found");
+  if (b.status !== "draft") throw new Error("This message was already sent.");
+  await run(env, "UPDATE broadcasts SET collect = COALESCE(?, collect), collect_expecting = COALESCE(?, collect_expecting) WHERE id = ?",
+    p.collect === undefined ? null : p.collect ? 1 : 0, p.expecting === undefined ? null : String(p.expecting).slice(0, 600), id);
+  return first<Broadcast>(env, "SELECT * FROM broadcasts WHERE id = ?", id);
+}

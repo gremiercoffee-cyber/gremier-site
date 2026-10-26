@@ -22,10 +22,11 @@ export function GroupMessage({b,g,onChanged}:{b:BroadcastRow;g:GroupRow;onChange
  const save=()=>api.draftGroupMessage({id:b.id,group:g.id,subject,body});
  const results=(()=>{try{return JSON.parse(b.results) as {name:string;ok:boolean;error?:string}[];}catch{return [];}})();
  const waText=(name?:string)=>`${subject?`*${subject}*\n\n`:''}${name?personal(body,name):body.replace(/\{(?:first_name|name)\}/gi,'')}`;
- if(sent)return <section className="rounded-2xl bg-sunken p-4 space-y-2"><p className="text-sm font-semibold">To: {g.name}</p><p className="text-sm font-medium" dir="auto">{subject||'(no subject)'}</p><p role="status" className="text-sm text-ok">{sent}</p><Button variant="soft" onClick={onChanged}>Done</Button></section>;
+ if(sent)return <section className="rounded-2xl bg-sunken p-4 space-y-2"><p className="text-sm font-semibold">To: {g.name}</p><p className="text-sm font-medium" dir="auto">{subject||'(no subject)'}</p><p role="status" className="text-sm text-ok">{sent}</p>{b.collect===1&&<p className="text-sm">📁 Collecting their answers: see the folder under Groups → {g.name}.</p>}<Button variant="soft" onClick={onChanged}>Done</Button></section>;
  return <section className="rounded-2xl bg-sunken p-4 space-y-3">
   <p className="text-sm font-semibold">To: {g.name}</p><p className={`text-xs ${old&&b.status==='draft'&&!b.archived_at?'text-amber-700 font-medium':'text-muted'}`}>{b.archived_at?`Archived ${timeAgo(b.archived_at)}`:b.status==='draft'?(old?`Older draft, from ${old} — check it's still what you want`:'Draft — review and send'):b.status==='sending'?'Sending…':`${b.status} — check delivery details`}</p>
   {editable?<><input aria-label={`Subject for ${g.name}`} className={field} value={subject} onChange={e=>setSubject(e.target.value)} disabled={busy} placeholder="Email subject"/><textarea aria-label={`Message to ${g.name}`} className={field} rows={5} value={body} onChange={e=>setBody(e.target.value)} disabled={busy} dir="auto"/></>:<><p className="font-medium">{b.subject}</p><p className="text-sm whitespace-pre-wrap" dir="auto">{b.body}</p></>}
+  {editable&&<CollectChoice b={b}/>}
   {editable&&<><details><summary className="cursor-pointer text-xs text-muted">Email recipients ({emails.length})</summary><ul className="text-xs mt-2 space-y-1">{emails.map(m=><li key={m.id}>{m.name} · {m.email}</li>)}</ul></details>
    <div className="flex flex-wrap gap-2"><Button variant="soft" disabled={busy||!body.trim()} onClick={()=>void act(async()=>{await save();setInfo('Draft saved.');})}>Save draft</Button>
     <Button variant={confirming?'danger':undefined} disabled={busy||!body.trim()||!emails.length} onClick={()=>{if(!confirming){setConfirming(true);return;}void sendNow(false);}}>{busy?'Sending…':confirming?`Tap again to send to ${emails.length} people${old?` (draft from ${old})`:''}`:`Send to ${g.name} (${emails.length} emails)`}</Button>
@@ -58,4 +59,21 @@ export default function GroupDraftApprovals({refreshKey,onChanged,since}:{refres
    <summary className="cursor-pointer text-sm font-medium">✉️ Draft to {g.name}<span className="text-muted font-normal"> · {b.subject||'no subject'} · tap to review</span></summary>
    <div className="mt-3"><GroupMessage b={b} g={g} onChanged={()=>{void load();onChanged();}}/></div>
   </details>:null;})}{error&&<p role="alert" className="text-danger text-sm">{error}</p>}</div>;
+}
+
+/** "This asks them to reply: collect their answers?" Saved on the draft; the collection starts when it's sent. */
+function CollectChoice({b}:{b:BroadcastRow}){
+ const [collect,setCollect]=useState<number|null>(b.collect??null),[what,setWhat]=useState(b.collect_expecting??''),[err,setErr]=useState('');
+ const save=async(p:{collect?:boolean;expecting?:string})=>{setErr('');try{await api.setCollect(b.id,p);}catch(e){setErr((e as Error).message);}};
+ const ask=collect===null&&!!b.collect_expecting;
+ return <div className={`rounded-xl p-3 space-y-2 text-sm ${ask?'bg-amber-500/15':'bg-surface'}`}>
+  <p className="font-medium">📥 {ask?'This asks them to send something back. Collect their answers?':'Collect their answers in a folder?'}</p>
+  <div className="flex gap-2">
+   <button onClick={()=>{setCollect(1);void save({collect:true,expecting:what});}} className={`rounded-full px-3 py-1 text-xs font-medium ${collect===1?'bg-ink text-bg':'bg-sunken'}`}>Yes, collect</button>
+   <button onClick={()=>{setCollect(0);void save({collect:false});}} className={`rounded-full px-3 py-1 text-xs font-medium ${collect===0?'bg-ink text-bg':'bg-sunken'}`}>No</button>
+  </div>
+  {collect===1&&<input value={what} onChange={e=>setWhat(e.target.value)} onBlur={()=>void save({expecting:what})} placeholder="What are they sending? e.g. their Chanukah party plans" className="w-full rounded-lg bg-sunken px-3 py-2 text-sm"/>}
+  {collect===1&&<p className="text-xs text-muted">When you send it, a folder opens under this group with a place for each person. Their email replies and WhatsApps are filed there, and you can write answers in.</p>}
+  {err&&<p className="text-xs text-danger">{err}</p>}
+ </div>;
 }

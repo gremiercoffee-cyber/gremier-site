@@ -9,6 +9,11 @@ import type {
   BrainDump, CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
+export interface Collection {
+  id: string; name: string; collecting: string; active: boolean; created_at: string; doc_link: string | null; answered: number; total: number;
+  people: { name: string; answered: boolean; answers: { id: string; source: string; sender: string; text: string; said_at: string }[] }[];
+  other: { id: string; source: string; sender: string; text: string; said_at: string }[];
+}
 export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string }
 export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
 export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string }
@@ -32,7 +37,7 @@ export interface RoutineRow {
 
 export interface GroupMember { id: string; name: string; email: string | null; phone: string | null; role: string }
 export interface GroupRow { id: string; name: string; description: string; members: GroupMember[] }
-export interface BroadcastRow { id: string; group_id: string; subject: string; body: string; status: string; results: string; created_at: string; sent_at: string | null; archived_at?:string|null; group_name?:string;email_count?:number }
+export interface BroadcastRow { id: string; group_id: string; subject: string; body: string; status: string; results: string; created_at: string; sent_at: string | null; archived_at?:string|null; group_name?:string;email_count?:number; collect_expecting?: string | null; collect?: number | null; tracker_id?: string | null }
 
 export interface IdeaRow {
   id: string; title: string; area: string | null; summary: string; transcript: string; analysis: string; verdict: string | null;
@@ -197,6 +202,10 @@ export const api = {
   undoNudge: (id: string) => request("POST", `/api/nudges/${id}/undo`),
   bridgeStatus: () => request<{ configured: boolean; online: boolean; last_seen: string | null }>("GET", "/api/bridge-status"),
   googleStatus: () => request<GoogleStatus>("GET", "/api/google/status"),
+  setCollect: (id: string, p: { collect?: boolean; expecting?: string }) => request("POST", `/api/broadcasts/${id}/collect`, p),
+  groupCollections: (groupId: string) => request<Collection[]>("GET", `/api/groups/${groupId}/collections`),
+  addAnswer: (trackerId: string, person: string, text: string) => request("POST", `/api/trackers/${trackerId}/answers`, { person, text }),
+  trackerActive: (trackerId: string, active: boolean) => request("POST", `/api/trackers/${trackerId}/active`, { active }),
   helperJobs: () => request<HelperJob[]>("GET", "/api/helper/jobs"),
   helperCreate: (instruction: string, start_url?: string) => request<{ id: string }>("POST", "/api/helper/jobs", { instruction, start_url }),
   helperDecide: (id: string, decision: "approve" | "cancel" | "answer", answer?: string) => request("POST", `/api/helper/jobs/${id}/${decision}`, { answer }),

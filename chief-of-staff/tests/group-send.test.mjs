@@ -9,7 +9,7 @@ import {build} from 'esbuild';
 const sentMail=[];
 globalThis.__sentMail=sentMail;
 const output=await build({entryPoints:['worker/groups.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'no-network',setup(b){
- b.onLoad({filter:/[\\/]worker[\\/]google\.ts$/},()=>({contents:'export async function sendEmail(_env,m){globalThis.__sentMail.push(m);return {id:"x"}}',loader:'js'}));
+ b.onLoad({filter:/[\\/]worker[\\/]google\.ts$/},()=>({contents:'export const WORKSPACE_SCOPES=[];export const CONTACTS_SCOPE="contacts";export async function accessToken(){};export async function accountEmails(){return []};export async function sendEmail(_env,m){globalThis.__sentMail.push(m);return {id:"x"}}',loader:'js'}));
  b.onLoad({filter:/[\\/]worker[\\/]ai\.ts$/},()=>({contents:'export function getProvider(){throw Error("Unexpected AI call")}',loader:'js'}));
 }}]});
 const {sendBroadcast}=await import(`data:text/javascript;base64,${Buffer.from(output.outputFiles[0].text).toString('base64')}`);

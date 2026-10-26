@@ -27,7 +27,8 @@ import { tidyConversations } from "./tidy";
 import { detectMeeting } from "./meetings";
 import { getAreas, removeArea, saveArea } from "./areas";
 import { hubConfigured } from "./hub";
-import { archiveBroadcast, draftBroadcast, members, saveGroup, sendBroadcast, type Broadcast, type Group } from "./groups";
+import { archiveBroadcast, draftBroadcast, members, saveGroup, sendBroadcast, setCollect, type Broadcast, type Group } from "./groups";
+import { addManualAnswer, groupCollections } from "./trackers";
 import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
 import { actionsForNudge, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
@@ -466,6 +467,21 @@ route("GET", "/api/groups/:id/messages", async (_req, env, [id]) =>
   json(await all<Broadcast>(env, "SELECT * FROM broadcasts WHERE group_id = ? ORDER BY COALESCE(archived_at,sent_at,created_at) DESC", id)));
 route("POST", "/api/broadcasts", async (req, env) => {
   try { return json(await draftBroadcast(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+// Collecting answers from a group: the switch on a draft, the folders in Groups, and answers typed in by hand.
+route("POST", "/api/broadcasts/:id/collect", async (req, env, [id]) => {
+  const b = await body<{ collect?: boolean; expecting?: string }>(req);
+  try { return json(await setCollect(env, id, b)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("GET", "/api/groups/:id/collections", async (_req, env, [id]) => json(await groupCollections(env, id)));
+route("POST", "/api/trackers/:id/answers", async (req, env, [id]) => {
+  const b = await body<{ person?: string; text?: string }>(req);
+  try { return json(await addManualAnswer(env, id, String(b.person ?? ""), String(b.text ?? ""))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+});
+route("POST", "/api/trackers/:id/active", async (req, env, [id]) => {
+  const b = await body<{ active?: boolean }>(req);
+  await run(env, "UPDATE trackers SET active = ?, updated_at = ? WHERE id = ?", b.active ? 1 : 0, now(), id);
+  return json({ ok: true });
 });
 route("POST", "/api/broadcasts/:id/send", async (req, env, [id]) => {
   const edit=await req.text();
