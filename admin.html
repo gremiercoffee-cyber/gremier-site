@@ -756,6 +756,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="sidebar-nav" id="websiteNav">
       <div class="nav-item" onclick="showTab('production')" id="nav-production"><span class="icon">⚗️</span><span>Production</span></div>
       <div class="nav-item" onclick="showTab('stock')" id="nav-stock"><span class="icon">⚗️</span><span>Stock</span></div>
+      <div class="nav-item" onclick="showTab('workers')" id="nav-workers"><span class="icon">👷</span><span>Workers</span></div>
       <div class="nav-item active" onclick="showTab('orders')" id="nav-orders"><span class="icon">🛒</span><span>Orders</span></div>
       <div class="nav-item" onclick="showTab('storedeliveries')" id="nav-storedeliveries"><span class="icon">🏪</span><span>Store Deliveries</span></div>
       <div class="nav-item" onclick="showTab('products')" id="nav-products"><span class="icon">📦</span><span>Products</span></div>
@@ -766,7 +767,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
-      <div class="nav-item" onclick="showTab('workers')" id="nav-workers"><span class="icon">👷</span><span>Workers</span></div>
       <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
       </div></details>
       </div>
@@ -1491,13 +1491,13 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <button type="button" onclick="closeNavDrawer()" aria-label="Close menu">&#10005;</button>
     </div>
     <button class="nav-drawer-item" onclick="showTab('stock');closeNavDrawer()"><span>📦</span>Stock</button>
+    <button class="nav-drawer-item" onclick="showTab('workers');closeNavDrawer()"><span>&#128119;</span>Workers</button>
     <button class="nav-drawer-item" onclick="showTab('products');closeNavDrawer()"><span>&#128230;</span>Products</button>
     <button class="nav-drawer-item" onclick="showTab('paylinks');closeNavDrawer()"><span>&#128279;</span>Payment Links</button>
     <button class="nav-drawer-item" onclick="showTab('members');closeNavDrawer()"><span>&#128100;</span>Members</button>
     <button class="nav-drawer-item" onclick="showTab('reports');closeNavDrawer()"><span>&#128200;</span>Stats</button>
     <details class="settings-nav" id="drawerWebsiteSettings"><summary><span>⚙️</span><span>Website settings</span><span class="settings-chevron" aria-hidden="true">›</span></summary><div class="settings-items">
     <button class="nav-drawer-item" onclick="showTab('delivery');closeNavDrawer()"><span>&#128666;</span>Delivery</button>
-    <button class="nav-drawer-item" onclick="showTab('workers');closeNavDrawer()"><span>&#128119;</span>Workers</button>
     <button class="nav-drawer-item" onclick="showTab('coupons');closeNavDrawer()"><span>&#127903;&#65039;</span>Coupons</button>
     <button class="nav-drawer-item" onclick="showTab('giftcards');closeNavDrawer()"><span>&#127873;</span>Gift Cards</button>
     <button class="nav-drawer-item" onclick="showTab('siteimages');closeNavDrawer()"><span>&#128444;&#65039;</span>Site Images</button>
