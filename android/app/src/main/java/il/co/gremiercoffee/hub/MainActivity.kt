@@ -27,7 +27,7 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad * 2, pad, pad)
-            setBackgroundColor(Color.parseColor("#F7F4EF"))
+            setBackgroundColor(Color.parseColor("#F2F1EF"))
         }
         root.addView(TextView(this).apply { text = "Gremier Hub"; textSize = 26f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1A1A1A")) })
         root.addView(TextView(this).apply {
@@ -36,7 +36,7 @@ class MainActivity : Activity() {
         })
         root.addView(TextView(this).apply {
             text = "Sectioned production widget · " + packageManager.getPackageInfo(packageName, 0).versionName + "\nAfter updating: if you still see the old button grid, remove the home-screen widget and add Gremier Hub again. Your connection stays saved."
-            textSize = 13f; setTextColor(Color.parseColor("#35614E")); setPadding(0, 0, 0, pad / 2)
+            textSize = 13f; setTextColor(Color.parseColor("#9C713F")); setPadding(0, 0, 0, pad / 2)
         })
         keyInput = EditText(this).apply {
             hint = "ghk_…"

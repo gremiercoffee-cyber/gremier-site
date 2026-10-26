@@ -187,6 +187,7 @@ class QuickActionActivity : Activity() {
                     val workerOptions=r.optJSONArray("worker_options")
                     val workerPicker=if(workerOptions!=null && workerOptions.length()>0) Spinner(this).apply {
                         adapter=ArrayAdapter(this@QuickActionActivity,android.R.layout.simple_spinner_dropdown_item,(0 until workerOptions.length()).map { workerOptions.getJSONObject(it).optString("label") })
+                        (0 until workerOptions.length()).firstOrNull { workerOptions.getJSONObject(it).optString("value")=="owner" }?.let { setSelection(it) }
                     }.also { box.addView(it,box.indexOfChild(row)) } else null
                     go.isEnabled = true
                     go.setOnClickListener {

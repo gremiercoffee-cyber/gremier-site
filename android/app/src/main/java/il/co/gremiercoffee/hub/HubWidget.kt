@@ -25,6 +25,7 @@ class HubWidget:AppWidgetProvider(){
   fun render(c:Context,manager:AppWidgetManager,id:Int){
    val v=RemoteViews(c.packageName,R.layout.widget)
    v.setTextViewText(R.id.widget_status,if(Hub.key(c)==null)"Tap to connect Gremier Hub" else "Log work · swipe up for more")
+   v.setViewVisibility(R.id.widget_status,if(Hub.key(c)==null)android.view.View.VISIBLE else android.view.View.GONE)
    val adapter=Intent(c,ProductionWidgetService::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,id)
    adapter.data=Uri.parse(adapter.toUri(Intent.URI_INTENT_SCHEME))
    v.setRemoteAdapter(R.id.widget_list,adapter)

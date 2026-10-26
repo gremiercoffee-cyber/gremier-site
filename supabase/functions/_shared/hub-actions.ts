@@ -4,6 +4,7 @@ import {
   adjustStock, BOTTLES, completeDelivery, logBottling, logLabeling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
   readSchedule, readStock, readStores, readSummary, startBrew,
 } from "./hub-ops.ts";
+import { widgetDrains } from "./widget-production.ts";
 import { marketingInventory, marketingProducts, marketingSales } from "./hub-marketing.ts";
 import { cleanText } from "./security.ts";
 
@@ -136,9 +137,10 @@ async function widgetConfig(sb: Sb) {
   const [summary, stores, drains] = await Promise.all([
     readSummary(sb),
     readStores(sb),
-    sb.from("jobs").select("id, product, kg, date, time").eq("type", "drain").eq("done", false).order("date").order("time").limit(1),
+    sb.from("jobs").select("id, product, kg, date, time, label, source_brew_id").eq("type", "drain").eq("done", false).order("date").order("time").limit(100),
   ]);
   const s = summary as any;
+  if(drains.error)throw drains.error;
   const drain = (drains.data || [])[0] as any;
   const next = s.next_delivery as any;
   const nextWho = next ? (next.store_name || next.cb_name || next.private_name || next.label || "delivery") : "";
@@ -187,16 +189,13 @@ async function widgetConfig(sb: Sb) {
     {title:"Brewing",buttons:COFFEES.map(([product,label])=>({id:'brew_'+product,icon:'☕',label,section:'Brewing',kind:'form',action:'start_brew',args:{product},title:'Brew '+label,submit:'Start brew',fields:[{key:'kg',type:'choice',label:'Beans',options:[1,1.5,2,3].map(kg=>({value:kg,label:kg+' kg'})),default:3}]}))},
     {title:"Bottling",buttons:buttons.filter(b=>b.action==='log_bottling').map(b=>({...b,section:'Bottling'}))},
     {title:"Labelling",buttons:['liter','mini','jerry'].map(cat=>({id:'label_'+cat,icon:'🏷',label:cat==='liter'?'Liter bottles':cat==='mini'?'Minis':'Jerry cans',kind:'form',action:'log_labeling',section:'Labelling',title:'Label bottles',submit:'Save labels',fields:[{key:'product',type:'choice',label:'Product',options:Object.entries(BOTTLES).filter(([,m])=>m.category===cat).map(([value,m])=>({value,label:m.label}))},{key:'units',type:'number',label:'How many bottles did you label?'}]}))},
-    {title:"Draining",buttons:drain?[{id:'drain_next',icon:'🧪',label:'Drain '+(COFFEES.find(([k])=>k===drain.product)?.[1]||drain.product),sub:drain.date+' '+(drain.time||''),kind:'confirm',section:'Draining',action:'complete_drain',args:{job_id:drain.id},confirm:'Confirm this brew has actually been drained?',submit:'Mark drained'}]:[{id:'no_drains',icon:'🧪',label:'No drains due',section:'Draining',kind:'info',message:'No brews are waiting to be drained.'}]},
+
     {title:"Tools",buttons:[{id:'production',icon:'⚗️',label:'Production',kind:'open',section:'Tools',url:ADMIN_URL+'?tab=production'},buttons.find(b=>b.id==='voice'),buttons.find(b=>b.id==='stock')]}
   ];
+  const draining=widgetDrains(drains.data||[]);if(draining)sections.unshift(draining as any);
   const people=await productionPeople(sb);
-  const workerField={key:"worker_id",type:"choice",label:"Performed by",options:people.options};
+  const workerField={key:"worker_id",type:"choice",label:"Performed by",default:"owner",options:people.options};
   for(const section of sections)for(const b of section.buttons as any[]){if(["start_brew","log_bottling","log_labeling","complete_drain"].includes(b.action)){b.kind="form";b.fields=[workerField,...(b.fields||[])];}}
-  const {data:openShifts,error:shiftError}=await sb.from("production_shifts").select("id,worker_id,is_owner,started_at").is("ended_at",null);if(shiftError)throw shiftError;
-  const shiftButtons:any[]=[{id:"clock_in",icon:"👷",label:"Clock in",section:"Workers",kind:"form",action:"production_clock_in",title:"Who’s working now?",submit:"Clock in",fields:[workerField]}];
-  if(openShifts?.length)shiftButtons.push({id:"clock_out",icon:"🕒",label:"Clock out",section:"Workers",kind:"form",action:"production_clock_out",title:"Finish a shift",submit:"Clock out",fields:[{key:"shift_id",type:"choice",label:"Worker",options:openShifts.map(x=>({value:x.id,label:people.options.find(w=>w.value===(x.is_owner?"owner":x.worker_id))?.label||"Worker"}))}]});
-  sections.unshift({title:"Workers",buttons:shiftButtons});
   return {per_page:4,sections,buttons:sections.flatMap(s=>s.buttons),refreshed_at:new Date().toISOString()};
 }
 
