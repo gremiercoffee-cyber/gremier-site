@@ -124,9 +124,9 @@ export async function nextAction(env: Env, id: string, page: PageState): Promise
   ].filter(Boolean).join("\n\n");
 
   let a: Action | null = null;
-  for (const tier of ["writer", "main"] as const) { // the cheap model first; the stronger one if its answer isn't usable
+  for (const [tier, purpose] of [["writer", "browser_step"], ["main", "browser_step_retry"]] as const) { // the cheap model first; the stronger one if its answer isn't usable
     try {
-      const out = await getProvider(env).complete({ tier, purpose: "browser_step", system: STEP_SYSTEM, prompt, maxTokens: 400 });
+      const out = await getProvider(env).complete({ tier, purpose, system: STEP_SYSTEM, prompt, maxTokens: 400 });
       const v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)) as Action;
       if (v && typeof v.action === "string") { a = v; break; }
     } catch { /* try the next model */ }

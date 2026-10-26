@@ -1189,6 +1189,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
       },
     });
   }
+  cacheOrder(tools);
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
@@ -1335,6 +1336,13 @@ export async function featuresFor(env: Env, query: string,summaries?:ContextSumm
   const want = triageSections(query, { schedule: situations, groups, tasks, trackers, ideas, missions });
   for (const [k, re] of Object.entries(TOOL_TRIGGERS)) if (re.test(query)) want.add(k);
   return want;
+}
+
+/** Tools of the occasional groups go to the end, so a message that adds one still shares the cached opening
+ *  (everyday tools first, always in the same order). Sorts in place: load_tools keeps adding to the same list. */
+export function cacheOrder(tools: ToolDef[]) {
+  const occasional = new Set(Object.entries(TOOL_GROUPS).filter(([k]) => !CORE_FEATURES.includes(k)).flatMap(([, names]) => names));
+  return tools.sort((a, b) => Number(occasional.has(a.name)) - Number(occasional.has(b.name)));
 }
 
 /** Narrow a full tool list to what the features need, plus load_tools to add more mid-turn. */

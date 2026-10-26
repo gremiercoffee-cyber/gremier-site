@@ -3,7 +3,7 @@ import {CHAT_REPLY_POLICY,boundChatReply,routineConfirmation} from '../shared/ch
  * Model-provider abstraction. The rest of the Worker only talks to `ModelProvider`,
  * so adding another provider (or routing per task) never touches the assistant logic.
  *
- * Sol owns judgment and tool use. Luna only phrases already-decided replies.
+ * Luna owns judgment and tool use (Terra only for filling in forms). Luna also phrases replies.
  * Legacy main/fast labels do not route triage to the wording model.
  */
 import OpenAI from "openai";
@@ -58,9 +58,9 @@ export interface AgentRequest {
   history: Turn[];
   tools: ToolDef[];
   maxToolRounds?: number;
-  /** Sol decides and executes; Luna phrases only the compact final handoff. */
+  /** Terra decides and executes; Luna phrases only the compact final handoff. */
   renderReply?: boolean;
-  /** Sol returns the final concise chat reply directly. */
+  /** Terra returns the final concise chat reply directly. */
   directReply?: boolean;
   /** Submit saves and their final confirmation together; lookups still require reading results. */
   batchReply?:boolean;
@@ -143,7 +143,8 @@ class OpenAIProvider implements ModelProvider {
   }
 
   async runAgent(req: AgentRequest): Promise<AgentResult> {
-    const route = modelRoute(this.env, req.purpose, "brain");
+    // Luna reads pictures but not PDFs: a message with a PDF attached goes to the stronger model.
+    const route = modelRoute(this.env, req.attachments?.some((a) => a.kind !== "image") ? "read_file" : req.purpose, "brain");
     if(req.batchReply)req.tools.push({name:'finish_reply',description:'For save-only work, call alongside ALL requested writes in the SAME batch with the short intended confirmation. The server releases it only after successful writes. For questions needing lookup results, read them first. Never use this instead of the actual save tools.',input_schema:{type:'object',properties:{reply:{type:'string'}},required:['reply']},handler:async input=>({reply:String(input.reply||'')})});
     const input: OpenAI.Responses.ResponseInput = [
       { role: "developer", content: req.system + (req.directReply ? "\n\n"+CHAT_REPLY_POLICY : req.renderReply ? "\n\n" + BRAIN_HANDOFF : "") },

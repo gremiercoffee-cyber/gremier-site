@@ -14,6 +14,8 @@ export interface Env {
   MODEL_FAST: string;
   MODEL_BRAIN?: string;
   MODEL_WRITER?: string;
+  /** The stronger model for the few jobs that need it (filling in forms). */
+  MODEL_CAREFUL?: string;
   TIMEZONE: string;
   /** Web Push: raw P-256 public key (base64url), private key JWK (secret), and contact URL. */
   VAPID_PUBLIC_KEY?: string;

@@ -1,3 +1,64 @@
+# Current routing — 27 October 2026
+
+Everything runs on `gpt-6-luna` ($0.10/M input, $0.01/M cached, $0.50/M output: a tenth of Terra):
+chat and dictation, triage, briefings, project organization, research and the computer helper.
+`gpt-6.1-terra` (MODEL_CAREFUL) is kept only where accuracy or input type needs it: filling in
+forms (fill_form, fill_check), a chat message with a PDF attached (Luna's model page lists text and
+image input only), and the helper's second try at a step Luna couldn't work out.
+
+Why: on 26 October the chat alone cost about $0.67 on Sol (50 messages at ~11k input tokens each).
+The fixed opening of every message (tools + instructions, ~8.5k tokens) also missed the prompt cache
+whenever a keyword added an occasional tool group, because those tools were inserted in the middle.
+They now go last (cacheOrder), so the shared opening stays identical.
+
+Live check (temporary agent-key route, removed): Luna called a fixture tool, replied, and returned
+classification JSON. Note: it merged two reminders from one mixed English/Hebrew message into one.
+
+---
+
+# Earlier: Terra routing (26 October 2026)
+
+# Current routing — 26 October 2026
+
+Default decision model: `gpt-6.1-terra`, with existing low reasoning effort and
+Responses API tool execution. This covers chat/dictation, voice decisions,
+message/reply classification, project organization, meeting prep, planning,
+briefings, helper decisions, and explicitly approved research/background jobs.
+There is no automatic Sol fallback, Sol verification pass, or always-on premium
+research route. Explicit wording-only work remains `gpt-6-luna`. Realtime audio,
+transcription, deterministic reminders and Hashgacha polling retain their roles.
+
+Both MODEL_BRAIN and the legacy MODEL_MAIN are set to Terra, and the unset-config
+fallback is Terra. Unknown judgment purposes use that same decision model.
+Research still requires separate explicit approval; paid web-search call limits
+and all send/meeting confirmation rules remain enforced by existing handlers.
+Research model selection changes through the same shared router, without changing
+search counts, job schedules or tool authority.
+
+Public documentation confirms Terra supports low reasoning, Responses tools,
+structured output and web search. Standard text rates are $1/M uncached input,
+$0.05/M cached input, and $5/M output; cost per finished task also depends on
+reasoning/output token counts, cache writes, and separate search fees. These rates
+are not a monthly-bill forecast. The account usage log had no research/task/mission
+calls recorded in the seven days reviewed on 26 October.
+
+Sources:
+- https://developers.openai.com/api/docs/models/gpt-6.1-terra
+- https://developers.openai.com/api/docs/guides/latest-model
+
+Validation: production build and all 169 automated tests passed, including routing,
+background-search limits, tool execution, reasoning continuity, approval boundaries,
+and failures without action replay. A temporary agent-key-protected check then
+verified a live Terra Responses call using synthetic English/Hebrew classification
+and a fixture-only function call. Both passed on the existing account. No real user
+task, message, or research job was created. The temporary check route was removed
+before the final deployment; this is a smoke test, not a broad quality benchmark.
+
+Historical architecture notes follow. Their Sol references describe the earlier
+configuration, not the current default.
+
+---
+
 # Chief of Staff: judgment and wording
 
 Released 2026-10-16. Live Worker version: `754661ed-53c8-4415-98b1-0e2e3a0ca4a9`.

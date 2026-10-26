@@ -5,10 +5,14 @@ export type Tier = 'main' | 'fast' | 'brain' | 'writer';
 // These jobs phrase an already-decided answer. New/unknown jobs default to judgment,
 // even when an older caller labels its workload "fast".
 const WRITING = new Set(['title', 'reply_draft', 'chat_wording']);
+// Placing answers on a form (scans arrive as PDFs and pictures) needs the stronger model; so does the
+// computer helper's second try at a step the everyday model couldn't work out.
+const CAREFUL = new Set(['fill_form', 'fill_check', 'browser_step_retry', 'read_file']);
 export function modelRoute(env: Env, purpose: string, tier: Tier = 'main') {
   const role = tier === 'brain' ? 'brain' : tier === 'writer' || WRITING.has(purpose) ? 'writer' : 'brain';
+  if (role === 'brain' && CAREFUL.has(purpose)) return { role, model: env.MODEL_CAREFUL || 'gpt-6.1-terra', effort: 'low' as const };
   return role === 'brain'
-    ? { role, model: env.MODEL_BRAIN || env.MODEL_MAIN || 'gpt-6.1-sol', effort: 'low' as const }
+    ? { role, model: env.MODEL_BRAIN || env.MODEL_MAIN || 'gpt-6-luna', effort: 'low' as const }
     : { role, model: env.MODEL_WRITER || env.MODEL_FAST || 'gpt-6-luna', effort: 'none' as const };
 }
 

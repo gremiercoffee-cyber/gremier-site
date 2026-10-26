@@ -8,12 +8,12 @@ async function load(path) {
 }
 const {getProvider}=await load('worker/ai.ts');
 const {modelRoute}=await load('worker/ai-routing.ts');
-const config={MODEL_MAIN:'gpt-6.1-sol',MODEL_FAST:'gpt-6-luna'};
+const config={MODEL_MAIN:'gpt-6.1-terra',MODEL_FAST:'gpt-6-luna',MODEL_CAREFUL:'careful-fixture'};
 const usage={input_tokens:1200,output_tokens:140,total_tokens:1340,input_tokens_details:{cached_tokens:800},output_tokens_details:{reasoning_tokens:80}};
 const message=text=>({type:'message',id:'msg_'+Math.random(),role:'assistant',status:'completed',content:[{type:'output_text',text,annotations:[]}]});
 const answer=(text,output)=>({id:'resp_'+Math.random(),object:'response',status:'completed',output:output??[message(text)],usage});
 const call=(name,args={},id='call1')=>({type:'function_call',name,arguments:JSON.stringify(args),call_id:id,id:'fc_'+id,status:'completed'});
-const brainRequest=(overrides={})=>({tier:'main',purpose:'chat:text',system:'Follow the existing approval rules.',context:'Private context only for Sol.',history:[{role:'user',content:'Remind me tomorrow.'}],tools:[],...overrides});
+const brainRequest=(overrides={})=>({tier:'main',purpose:'chat:text',system:'Follow the existing approval rules.',context:'Private context only for Terra.',history:[{role:'user',content:'Remind me tomorrow.'}],tools:[],...overrides});
 async function mocked(responses,fn) {
   const original=globalThis.fetch,requests=[],logs=[];
   const env={...config,OPENAI_API_KEY:'test-key-never-sent',DB:{prepare:(sql)=>({bind(...args){if(/usage_log/.test(sql))logs.push(args);return this},async run(){return {meta:{changes:1}}}})}};
@@ -26,9 +26,9 @@ async function mocked(responses,fn) {
   finally {globalThis.fetch=original;}
 }
 
-test('all judgment purposes use Sol despite legacy fast labels; unknown work also stays with the brain',()=>{
-  for(const purpose of ['whatsapp_triage','email_triage','shopping_triage','meeting_detect','watch_check','watch_keywords','tracker_check','wa_match','learn','reply_style','tidy','project_match','brain_dump','briefing','rundown','weekly_review','customers_due','meeting_notes','task_plan','task_escalate','idea_plan','reply_decision','new_judgment']) {
-    assert.equal(modelRoute(config,purpose,'fast').model,'gpt-6.1-sol',purpose);
+test('all judgment purposes use Terra despite legacy fast labels; unknown work also stays with the brain',()=>{
+  for(const purpose of ['whatsapp_triage','email_triage','shopping_triage','meeting_detect','watch_check','watch_keywords','tracker_check','wa_match','learn','reply_style','tidy','project_match','brain_dump','briefing','rundown','weekly_review','customers_due','meeting_notes','task_plan','task_escalate','idea_plan','reply_decision','project_organization','reply_batch','voice_decision','browser_step','new_judgment']) {
+    assert.equal(modelRoute(config,purpose,'fast').model,'gpt-6.1-terra',purpose);
     assert.equal(modelRoute(config,purpose,'fast').effort,'low',purpose);
   }
   for(const purpose of ['title','reply_draft','chat_wording'])assert.equal(modelRoute(config,purpose,'main').model,'gpt-6-luna');
@@ -38,9 +38,9 @@ test('all judgment purposes use Sol despite legacy fast labels; unknown work als
 test('a tiny JSON classification has a reasoning allowance, uses Responses low, and records model and cache usage',async()=>{
   await mocked([answer('{"needed":false}')],async(p,requests,logs)=>{
     assert.equal(await p.complete({tier:'fast',purpose:'whatsapp_triage',system:'Return JSON',prompt:'Thanks!',maxTokens:5}),'{"needed":false}');
-    const req=requests[0];assert.ok(req.url.endsWith('/responses'));assert.equal(req.body.model,'gpt-6.1-sol');
+    const req=requests[0];assert.ok(req.url.endsWith('/responses'));assert.equal(req.body.model,'gpt-6.1-terra');
     assert.equal(req.body.reasoning.effort,'low');assert.ok(req.body.max_output_tokens>=2048);
-    assert.equal(logs[0][1],'gpt-6.1-sol');assert.equal(logs[0][2],'whatsapp_triage');assert.equal(logs[0][5],800);
+    assert.equal(logs[0][1],'gpt-6.1-terra');assert.equal(logs[0][2],'whatsapp_triage');assert.equal(logs[0][5],800);
   });
 });
 
@@ -51,7 +51,7 @@ test('incomplete judgment is never accepted as a classification or silently down
   });
 });
 
-test('Sol executes tools, preserves reasoning across rounds and dynamically loaded tools, Luna receives no authority or full context',async()=>{
+test('Terra executes tools, preserves reasoning across rounds and dynamically loaded tools, Luna receives no authority or full context',async()=>{
   const reasoning={type:'reasoning',id:'reason1',summary:[]};let saved=0;
   const tools=[{name:'load_tools',description:'Load filing',input_schema:{type:'object',properties:{}},handler:async()=>{
     tools.push({name:'create_item',description:'Save',input_schema:{type:'object',properties:{title:{type:'string'}}},handler:async()=>{saved++;return {id:'saved',status:'open'}}});return {loaded:true};
@@ -69,14 +69,14 @@ test('Sol executes tools, preserves reasoning across rounds and dynamically load
     assert.equal(requests[1].body.tools.some(t=>t.name==='create_item'),true);
     assert.equal(requests[0].body.tools[0].strict,false);assert.equal(requests[0].body.reasoning.effort,'low');
     const writer=requests[3].body;assert.equal(writer.model,'gpt-6-luna');assert.equal(writer.tools,undefined);
-    assert.equal(JSON.stringify(writer).includes('Private context only for Sol.'),false);
+    assert.equal(JSON.stringify(writer).includes('Private context only for Terra.'),false);
     assert.match(writer.messages[1].content,/execution_receipts/);
-    assert.deepEqual(logs.map(l=>l[1]),['gpt-6.1-sol','gpt-6.1-sol','gpt-6.1-sol','gpt-6-luna']);
+    assert.deepEqual(logs.map(l=>l[1]),['gpt-6.1-terra','gpt-6.1-terra','gpt-6.1-terra','gpt-6-luna']);
     assert.equal(logs[3][2],'chat_wording');
   });
 });
 
-test('a pending paid job stays pending and save-only work avoids a redundant Sol round',async()=>{
+test('a pending paid job stays pending and save-only work avoids a redundant Terra round',async()=>{
   let queued=0;
   await mocked([
     answer('Research requested; waiting for human approval.',[call('save_task'),message('Research requested; waiting for human approval.')]),
@@ -88,7 +88,7 @@ test('a pending paid job stays pending and save-only work avoids a redundant Sol
   });
 });
 
-test('tool errors go back to Sol for a decision instead of reusing a premature success message',async()=>{
+test('tool errors go back to Terra for a decision instead of reusing a premature success message',async()=>{
   await mocked([answer('Done',[call('save'),message('Done')]),answer('Save failed. Nothing was created.')],async(p,requests)=>{
     const r=await p.runAgent(brainRequest({noFollowUp:['save'],tools:[{name:'save',description:'Save',input_schema:{},handler:async()=>{throw new Error('Invalid time')}}]}));
     assert.match(r.text,/failed/);assert.equal(r.toolCalls[0].error,'Invalid time');assert.equal(requests.length,2);
@@ -121,13 +121,13 @@ test('refusals are preserved without a wording call',async()=>{
 test('research uses the brain and preserves the paid search limit',async()=>{
   await mocked([answer('Report',[message('Report'),{type:'web_search_call',id:'search1',status:'completed'}])],async(p,requests)=>{
     const r=await p.research({purpose:'task_research',system:'Research',prompt:'Approved query',maxSearches:2});
-    assert.equal(requests[0].body.model,'gpt-6.1-sol');assert.equal(requests[0].body.max_tool_calls,2);assert.equal(r.searches,1);
+    assert.equal(requests[0].body.model,'gpt-6.1-terra');assert.equal(requests[0].body.max_tool_calls,2);assert.equal(r.searches,1);
   });
 });
 
-// Chat speed: direct Sol answers retain judgment while removing the mandatory rewrite.
-test('direct chat uses one Sol request, low verbosity, and no separate writer even if legacy rendering is enabled',async()=>{
- await mocked([answer('Yes, tomorrow works.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,renderReply:true}));assert.equal(r.text,'Yes, tomorrow works.');assert.equal(requests.length,1);assert.equal(requests[0].body.model,'gpt-6.1-sol');assert.equal(requests[0].body.text.verbosity,'low');assert.match(requests[0].body.input[0].content,/Hard ceiling: 180 words/);assert.ok(!requests[0].body.input[0].content.includes('compact factual handoff'));assert.equal(r.metrics.rounds,1);});
+// Chat speed: direct Terra answers retain judgment while removing the mandatory rewrite.
+test('direct chat uses one Terra request, low verbosity, and no separate writer even if legacy rendering is enabled',async()=>{
+ await mocked([answer('Yes, tomorrow works.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,renderReply:true}));assert.equal(r.text,'Yes, tomorrow works.');assert.equal(requests.length,1);assert.equal(requests[0].body.model,'gpt-6.1-terra');assert.equal(requests[0].body.text.verbosity,'low');assert.match(requests[0].body.input[0].content,/Hard ceiling: 180 words/);assert.ok(!requests[0].body.input[0].content.includes('compact factual handoff'));assert.equal(r.metrics.rounds,1);});
 });
 test('a simple reminder is confirmed from the successful receipt in a single model round',async()=>{
  let writes=0;await mocked([answer('',[call('create_item',{kind:'reminder',title:'Call David',due_at:'2026-10-19T07:00:00Z'})])],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,history:[{role:'user',content:'Remind me to call David tomorrow.'}],tools:[{name:'create_item',description:'Save',input_schema:{},handler:async()=>{writes++;return{id:'saved',kind:'reminder',due_at:'2026-10-19T07:00:00Z'}}}]}));assert.equal(writes,1);assert.equal(r.text,'Reminder set.');assert.equal(requests.length,1);});
@@ -135,7 +135,7 @@ test('a simple reminder is confirmed from the successful receipt in a single mod
 test('direct chat never releases a premature success message when a save is awaiting approval',async()=>{
  await mocked([answer('Done.',[call('save_task'),message('Done.')]),answer('Awaiting your approval.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,noFollowUp:['save_task'],tools:[{name:'save_task',description:'Approval',input_schema:{},handler:async()=>({status:'pending_approval'})}]}));assert.equal(r.text,'Awaiting your approval.');assert.equal(requests.length,2);assert.match(JSON.stringify(requests[1].body.input),/pending_approval/);});
 });
-test('a failed reminder save must return to Sol and cannot receive the short success confirmation',async()=>{
+test('a failed reminder save must return to Terra and cannot receive the short success confirmation',async()=>{
  await mocked([answer('Reminder set.',[call('create_item',{kind:'reminder'}),message('Reminder set.')]),answer('That time is invalid. When should I remind you?')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,noFollowUp:['create_item'],tools:[{name:'create_item',description:'Save',input_schema:{},handler:async()=>{throw Error('Invalid time')}}]}));assert.match(r.text,/invalid/);assert.equal(requests.length,2);});
 });
 test('independent read-only lookups run concurrently, retain result order, and unchanged duplicate reads are reused',{timeout:2000},async()=>{
@@ -159,7 +159,7 @@ test('reminder shortcut does not swallow a question that needs an actual answer'
  await mocked([answer('',[call('create_item',{kind:'reminder'})]),answer('Reminder set. Daily is sufficient because the deadline is next week.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,history:[{role:'user',content:'Remind me tomorrow. Why should I do this daily?'}],tools:[{name:'create_item',description:'Save',input_schema:{},handler:async()=>({id:'saved',kind:'reminder',due_at:'2026-10-19'})}]}));assert.equal(requests.length,2);assert.match(r.text,/because/);});
 });
 
-test('a result that requires interpretation still returns to Sol rather than taking the fast save-only shortcut',async()=>{
+test('a result that requires interpretation still returns to Terra rather than taking the fast save-only shortcut',async()=>{
  await mocked([answer('Idea saved.',[call('capture_idea'),message('Idea saved.')]),answer('Idea saved. Next: compare suppliers, estimate costs, then choose a launch date.')],async(p,requests)=>{const r=await p.runAgent(brainRequest({directReply:true,noFollowUp:['capture_idea'],tools:[{name:'capture_idea',description:'Idea',input_schema:{},handler:async()=>({id:'idea',now_do_this:'Summarize the next steps',steps:['Compare suppliers','Estimate costs']})}]}));assert.equal(requests.length,2);assert.match(r.text,/Next:/);});
 });
 
@@ -196,4 +196,27 @@ test('the 24-hour prompt cache is requested once, remembered when refused, and n
     await p.complete({tier:'fast',purpose:'meeting_detect',system:'JSON',prompt:'b'});
     assert.equal(seen.length,3,'does not retry the refused option on later calls');assert.equal(seen[2].prompt_cache_retention,undefined);
   } finally {globalThis.fetch=original;}
+});
+
+test('unset configuration defaults to Luna; filling in forms and the helper retry use the careful model',()=>{
+ assert.equal(modelRoute({},'new_judgment').model,'gpt-6-luna');
+ assert.equal(modelRoute({},'chat:text','brain').model,'gpt-6-luna');
+ for(const purpose of ['fill_form','fill_check','browser_step_retry','read_file']){
+  assert.equal(modelRoute({MODEL_BRAIN:'gpt-6-luna'},purpose).model,'gpt-6.1-terra',purpose);
+  assert.equal(modelRoute({MODEL_BRAIN:'gpt-6-luna',MODEL_CAREFUL:'custom-careful'},purpose).model,'custom-careful',purpose);
+ }
+ assert.equal(modelRoute({MODEL_BRAIN:'gpt-6-luna'},'browser_step','writer').model,'gpt-6-luna');
+});
+
+test('a chat message with a PDF goes to the careful model; a picture stays on the everyday one',async()=>{
+ await mocked([answer('A form.'),answer('A photo.')],async(p,requests)=>{
+  await p.runAgent(brainRequest({directReply:true,attachments:[{kind:'file',name:'f.pdf',dataUrl:'data:application/pdf;base64,AA=='}]}));
+  await p.runAgent(brainRequest({directReply:true,attachments:[{kind:'image',name:'p.jpg',dataUrl:'data:image/jpeg;base64,AA=='}]}));
+  assert.equal(requests[0].body.model,'careful-fixture');assert.equal(requests[1].body.model,config.MODEL_MAIN);
+ });
+});
+
+test('background research uses the brain with its existing search cap',async()=>{
+ assert.equal(modelRoute({MODEL_BRAIN:'custom-brain',MODEL_MAIN:'legacy-brain'},'chat:text').model,'custom-brain');
+ await mocked([answer('Queued')],async(p,requests)=>{await p.startBackground({system:'Research',prompt:'Approved fixture',maxSearches:3});assert.equal(requests[0].body.model,'gpt-6.1-terra');assert.equal(requests[0].body.max_tool_calls,3);assert.equal(requests[0].body.background,true);});
 });
