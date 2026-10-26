@@ -2,6 +2,13 @@
 importScripts("config.js");
 importScripts("helper.js"); // the computer helper (off until switched on in the popup) // defines COS_CONFIG = { api_base, bridge_key, my_names }
 
+// When the add-on is reloaded or updated, the reader inside an already-open WhatsApp tab is cut off and silently
+// stops (WhatsApp and shopping messages are missed) until that tab is refreshed. Refresh it here instead.
+chrome.runtime.onInstalled.addListener(async (d) => {
+  if (d.reason !== "update" && d.reason !== "install") return;
+  for (const t of await chrome.tabs.query({ url: "https://web.whatsapp.com/*" })) chrome.tabs.reload(t.id).catch(() => {});
+});
+
 /** Which WhatsApp this Chrome profile holds: "personal" or "business" (set in the popup). */
 async function account() {
   return (await chrome.storage.local.get("account")).account || "personal";
