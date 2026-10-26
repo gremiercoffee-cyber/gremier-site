@@ -722,7 +722,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const {
       data,
       error
-    } = await window.MAIN_SB.rpc(action, args);
+    } = await window.productionRun(action, args);
     if (error) throw error;
     window.notifyGremierStockChanged?.();
     window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
@@ -732,7 +732,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const {
       data,
       error
-    } = await window.MAIN_SB.rpc('complete_bottling', {
+    } = await window.productionRun('complete_bottling', {
       p_job: {
         ...jobToRow2(job),
         actual_qty: job.actualQty ?? job.liters
@@ -748,7 +748,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     const {
       data,
       error
-    } = await window.MAIN_SB.rpc('complete_labeling', {
+    } = await window.productionRun('complete_labeling', {
       p_id: job.id,
       p_product: job.product,
       p_units: job.actualQty ?? job.qty
@@ -3676,6 +3676,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       if (cat === 'jerry') return j.qty || Math.round((j.liters || 0) / 5);
       return Math.round(j.liters || 0);
     }
+    if (mode === 'lognow' && incomingJobs.some(j => j.type !== 'delivery') && !(await window.ensureProductionWorker())) return;
     const created = incomingJobs.map((j, idx) => ({
       ...j,
       id: j.id || `${Date.now()}_${idx}_${Math.random().toString(36).slice(2)}`,

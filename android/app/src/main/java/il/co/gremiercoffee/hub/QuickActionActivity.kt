@@ -184,10 +184,17 @@ class QuickActionActivity : Activity() {
                     status.textSize = 17f
                     status.setTypeface(status.typeface, Typeface.BOLD)
                     status.setTextColor(Color.parseColor("#1A1A1A"))
+                    val workerOptions=r.optJSONArray("worker_options")
+                    val workerPicker=if(workerOptions!=null && workerOptions.length()>0) Spinner(this).apply {
+                        adapter=ArrayAdapter(this@QuickActionActivity,android.R.layout.simple_spinner_dropdown_item,(0 until workerOptions.length()).map { workerOptions.getJSONObject(it).optString("label") })
+                    }.also { box.addView(it,box.indexOfChild(row)) } else null
                     go.isEnabled = true
                     go.setOnClickListener {
+                        if(workerPicker!=null && workerPicker.selectedItemPosition==0){status.text="Choose who performed this work";return@setOnClickListener}
+
                         go.isEnabled = false; again.isEnabled = false
                         val call = JSONObject((r.optJSONObject("args") ?: JSONObject()).toString()).put("action", r.getString("action")).put("request_id",requestId)
+                        if(workerPicker!=null)call.put("worker_id",workerOptions!!.getJSONObject(workerPicker.selectedItemPosition).getString("value"))
                         thread {
                             val (ok, msg) = try { Hub.call(this, call); Hub.setFlash(this, "voice"); true to "✅ Done" } catch (e: Exception) { false to "⚠️ ${e.message}" }
                             runOnUiThread {

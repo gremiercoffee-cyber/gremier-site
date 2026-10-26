@@ -5,7 +5,7 @@
  async function awake(){if(active&&document.visibilityState==='visible')try{wake=await navigator.wakeLock?.request('screen');}catch{root.showToast?.('Keep this tablet plugged in; screen wake lock is unavailable.');}}
  root.toggleProductionKiosk=async function(){active=!active;document.body.classList.toggle('production-kiosk',active);
   document.getElementById('productionKioskExit')?.remove();
-  if(active){root.showTab('production');const exit=document.createElement('button');exit.id='productionKioskExit';exit.textContent='Exit kiosk';exit.onclick=root.toggleProductionKiosk;document.body.append(exit);try{await document.documentElement.requestFullscreen?.();}catch{}await awake();}
+  if(active){root.showTab('production');root.dispatchEvent(new CustomEvent('gremier:production-kiosk-open'));const exit=document.createElement('button');exit.id='productionKioskExit';exit.textContent='Exit kiosk';exit.onclick=root.toggleProductionKiosk;document.body.append(exit);try{await document.documentElement.requestFullscreen?.();}catch{}await awake();}
   else{await wake?.release();wake=null;if(document.fullscreenElement)await document.exitFullscreen();}
  };
  document.addEventListener('visibilitychange',awake);

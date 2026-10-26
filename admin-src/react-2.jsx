@@ -202,19 +202,31 @@ const SS = {
   needBadge: (ok) => ({ fontSize:12, fontWeight:700, color:ok?'#2e8b57':'#d5544a', whiteSpace:'nowrap' }),
 };
 
-function NumRow({ label, value, onDec, onInc, onChange, suffix, warn, pid }) {
-  return (
-    <div style={{ ...SS.row, gap:10 }}>
-      {pid&&<img src={window.getProductImage(pid)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:'cover',flexShrink:0,background:'#fafafa',border:'1px solid #e0e0e0'}}/>}
-      <span style={{ ...SS.lbl, flex:1, color: warn ? '#d5544a' : '#333333' }}>{label}</span>
-      {suffix && <span style={{ fontSize:11, color:'#6a6a6a', marginRight:6 }}>{suffix}</span>}
-      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-        <button style={SS.btn} onClick={onDec}>−</button>
-        <input style={SS.inp} type="number" value={value??''} onChange={onChange}/>
-        <button style={SS.btn} onClick={onInc}>+</button>
-      </div>
-    </div>
-  );
+function NumRow({ label, value, onCommit, step=1, allowFraction=false, unit='items', suffix, warn, pid }) {
+  const [draft,setDraft]=useState(String(value??'')),[status,setStatus]=useState('');
+  const editing=useRef(false),current=useRef(value??0),queue=useRef(Promise.resolve()),revision=useRef(0),cancel=useRef(false),pending=useRef(0),latest=useRef(String(value??''));
+  useEffect(()=>{if(!editing.current&&!pending.current){current.current=value??0;latest.current=String(value??'');setDraft(latest.current);}},[value]);
+  function commit(raw){
+    const v=window.GremierStockNumbers.parse(raw,allowFraction?0.001:step);
+    editing.current=false;
+    if(v===null){setDraft(String(value??0));setStatus('Enter a valid '+(step===1?'whole number':'amount'));return;}
+    latest.current=String(v);setDraft(latest.current);if(v===Number(current.current))return;
+    current.current=v;const rev=++revision.current;pending.current++;setStatus('Saving…');
+    queue.current=queue.current.catch(()=>{}).then(()=>onCommit(v)).then(()=>{if(rev===revision.current)setStatus('Saved');}).catch(()=>{if(rev===revision.current){setStatus('Not saved — try again');current.current=NaN;}}).finally(()=>{pending.current--;});
+  }
+  function bump(direction){const base=window.GremierStockNumbers.parse(latest.current,allowFraction?0.001:step);commit(window.GremierStockNumbers.bump(base??(Number(value)||0),step,direction));}
+  return <div style={{...SS.row,gap:10}}>
+    {pid&&<img src={window.getProductImage(pid)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:'cover',flexShrink:0}}/>}
+    <span style={{...SS.lbl,flex:1,color:warn?'#d5544a':'#333'}}>{label}{suffix&&<small style={{display:'block'}}>{suffix}</small>}</span>
+    <div><div style={{display:'flex',alignItems:'center',gap:6}}>
+      <button style={SS.btn} aria-label={'Decrease '+label+' by '+step+' '+unit} onMouseDown={e=>e.preventDefault()} onClick={()=>bump(-1)}>−</button>
+      <input style={SS.inp} type="text" inputMode={step===1&&!allowFraction?'numeric':'decimal'} aria-label={label+' ('+unit+')'} value={draft}
+        onFocus={e=>{editing.current=true;e.target.select();}}
+        onChange={e=>{latest.current=e.target.value.replace(/^0+(?=\d)/,'');setDraft(latest.current);setStatus('');}}
+        onBlur={()=>{if(cancel.current){cancel.current=false;return;}commit(draft);}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();if(e.key==='Escape'){cancel.current=true;latest.current=String(value??'');setDraft(latest.current);editing.current=false;e.currentTarget.blur();}}}/>
+      <button style={SS.btn} aria-label={'Increase '+label+' by '+step+' '+unit} onMouseDown={e=>e.preventDefault()} onClick={()=>bump(1)}>+</button>
+    </div><small aria-live="polite" style={{display:'block',textAlign:'center',fontSize:10,color:status.startsWith('Not')?'#b33':'#777'}}>{status||('±'+step+' '+unit)}</small></div>
+  </div>;
 }
 
 // ── CONCENTRATE sub-screen ─────────────────────────────────
@@ -228,8 +240,8 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
   });
   async function save(k, val) {
     const v = Math.max(0, parseFloat(val)||0);
-    setConcentrate(p=>({...p,[k]:v}));
     await patchConcentrate(k, v);
+    setConcentrate(p=>({...p,[k]:v}));
   }
   return (
     <div>
@@ -240,9 +252,7 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
             pid={k}
             label={ct.label}
             value={concentrate[k]??''}
-            onDec={()=>save(k, Math.max(0,parseFloat(((concentrate[k]||0)-0.5).toFixed(1))))}
-            onInc={()=>save(k, parseFloat(((concentrate[k]||0)+0.5).toFixed(1)))}
-            onChange={e=>save(k,e.target.value)}
+            step={0.5} unit="L" onCommit={v=>save(k,v)}
           />
         ))}
       </div>
@@ -271,99 +281,7 @@ function ConcentrateScreen({ concentrate, setConcentrate, jobs, inventory }) {
 
 // ── BOTTLED COFFEE sub-screen ──────────────────────────────
 function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, filterCats }) {
-  const [confirmAdd, setConfirmAdd] = useState2(null); // {pid, label, delta, newQty}
-  const [pendingQty, setPendingQty] = useState2({}); // pid -> live display value while a tap burst is still settling
-  const tapTimers = useRef2({});
-  const TAP_SETTLE_MS = 500;
-  // Tracks in-flight saves so a concurrent reloadStock can't flash the stale
-  // server value over an optimistic update that hasn't persisted yet.
-  const savesInFlight = useRef2({});
-
-  function displayValue(pid) {
-    return pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid] ?? '');
-  }
-
-  async function save(pid, val) {
-    const v = Math.max(0, parseInt(val)||0);
-    // Pin the confirmed value in pendingQty for the whole network round-trip so
-    // any concurrent reloadStock can't overwrite it with the pre-save server value.
-    savesInFlight.current[pid] = v;
-    setPendingQty(p=>({...p,[pid]:v}));
-    try {
-      await patchInventory(pid, v);
-      setInventory(p=>({...p,[pid]:v}));
-    } finally {
-      // Only clear the pin if nothing newer has superseded it while we were waiting.
-      if (savesInFlight.current[pid] === v) {
-        delete savesInFlight.current[pid];
-        setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
-      }
-    }
-  }
-
-  // "made this now" — same math as the Bottle production flow: units → liters → concentrate used
-  async function saveAsProduction(pid, delta, newQty) {
-    setInventory(p=>({...p,[pid]:newQty}));
-    await patchInventory(pid, newQty);
-    const prod = PRODUCTS[pid];
-    if (prod?.concentrate && delta>0) {
-      const ratio = getProductRatio(pid, prod.concentrate);
-      const liters = delta * (prod.litersPerUnit||0);
-      if (liters>0) {
-        await incrementConcentrate2(prod.concentrate, -(liters*ratio));
-        if (typeof setConcentrate==='function') {
-          setConcentrate(c=>({...c, [prod.concentrate]: Math.max(0, parseFloat(((c[prod.concentrate]||0)-(liters*ratio)).toFixed(1)))}));
-        }
-      }
-    }
-  }
-
-  // called once a burst of taps (or a typed edit) has actually settled — decides whether
-  // this needs the "did you make this now?" question or can just save straight through
-  function settleIncrease(pid, label, newQty) {
-    // Stock tab adjustments must be stock-only.
-    // Production/bottling side effects belong in Schedule/Log Now, not in a manual inventory edit.
-    // This prevents a simple +2 bottles adjustment from silently consuming concentrate.
-    save(pid, newQty);
-  }
-
-  // tapping + repeatedly only bumps a local display number immediately (so it still feels responsive);
-  // the actual save — and the confirm question, if it's needed — only fires once tapping stops for
-  // TAP_SETTLE_MS. Five quick taps = one question at the end, not five.
-  function tapInc(pid, label) {
-    const base = pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid]||0);
-    const next = base + 1;
-    setPendingQty(p=>({...p,[pid]:next}));
-    if (tapTimers.current[pid]) clearTimeout(tapTimers.current[pid]);
-    tapTimers.current[pid] = setTimeout(()=>{
-      delete tapTimers.current[pid];
-      setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
-      settleIncrease(pid, label, next);
-    }, TAP_SETTLE_MS);
-  }
-
-  // a decrease always commits immediately, no waiting and no question — per Yoni, removing stock never needs to ask
-  function tapDec(pid) {
-    if (tapTimers.current[pid]) { clearTimeout(tapTimers.current[pid]); delete tapTimers.current[pid]; }
-    const base = pendingQty[pid] !== undefined ? pendingQty[pid] : (inventory[pid]||0);
-    setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
-    save(pid, Math.max(0, base-1));
-  }
-
-  // typing was settling on every single keystroke instead of waiting for the number to be
-  // finished — typing "30" would commit/confirm after just the "3". Route it through the same
-  // debounce as the tap buttons: only the display updates live, the real decision waits for
-  // TAP_SETTLE_MS of no further typing.
-  function handleTypedChange(pid, label, val) {
-    const next = Math.max(0, parseInt(val)||0);
-    setPendingQty(p=>({...p,[pid]:next}));
-    if (tapTimers.current[pid]) clearTimeout(tapTimers.current[pid]);
-    tapTimers.current[pid] = setTimeout(()=>{
-      delete tapTimers.current[pid];
-      setPendingQty(p=>{ const n={...p}; delete n[pid]; return n; });
-      settleIncrease(pid, label, next);
-    }, TAP_SETTLE_MS);
-  }
+  async function save(pid,qty){await patchInventory(pid,qty);setInventory(p=>({...p,[pid]:qty}));}
 
   const allGroups = [
     { label:'Liter Bottles', cats:['liter'] },
@@ -389,34 +307,14 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, f
               <NumRow key={pid}
                 pid={pid}
                 label={p.label}
-                value={displayValue(pid)}
-                onDec={()=>tapDec(pid)}
-                onInc={()=>tapInc(pid, p.label)}
-                onChange={e=>handleTypedChange(pid, p.label, e.target.value)}
+                value={inventory[pid]??0}
+                unit={p.category==='jerry'?'cans':p.category==='dispenser'?'dispensers':'bottles'} onCommit={v=>save(pid,v)}
               />
             ))}
           </div>
         );
       })}
-      {confirmAdd&&(
-        <div style={TS.modal} onClick={()=>setConfirmAdd(null)}>
-          <div style={TS.modalBox} onClick={e=>e.stopPropagation()}>
-            <div style={TS.modalTitle}>Did you make this now?</div>
-            {confirmAdd.delta>=10&&(
-              <div style={{background:'#fdf1ec',border:'1px solid #d5544a',borderRadius:6,padding:'8px 10px',marginBottom:12,color:'#b3372c',fontSize:13,fontWeight:600}}>
-                ⚠ That's a big jump — double check this is really {confirmAdd.delta} before confirming.
-              </div>
-            )}
-            <div style={{color:'#333333',fontSize:14,marginBottom:16,lineHeight:1.6}}>
-              Adding {confirmAdd.delta} × <strong style={{color:'#121212'}}>{confirmAdd.label}</strong>. If you just bottled it, say yes and concentrate gets deducted automatically.
-            </div>
-            <div style={{display:'flex',gap:10}}>
-              <button style={TS.btn('#eeeeee','#121212')} onClick={()=>{save(confirmAdd.pid, confirmAdd.newQty); setConfirmAdd(null);}}>No, just adjusting stock</button>
-              <button style={TS.btn('#1a1a1a','#fff')} onClick={()=>{saveAsProduction(confirmAdd.pid, confirmAdd.delta, confirmAdd.newQty); setConfirmAdd(null);}}>Yes, I made this ✓</button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -425,8 +323,8 @@ function BottledScreen({ inventory, setInventory, concentrate, setConcentrate, f
 function LabelsScreen({ labeledStock, setLabeledStock }) {
   async function save(pid, val) {
     const v = Math.max(0, parseInt(val)||0);
-    setLabeledStock(p=>({...p,[pid]:v}));
     await patchLabeledStock(pid, v);
+    setLabeledStock(p=>({...p,[pid]:v}));
   }
   const groups = [
     { label:'Liter Bottles', pids:Object.keys(PRODUCTS).filter(pid => PRODUCTS[pid]?.category === 'liter') },
@@ -448,9 +346,7 @@ function LabelsScreen({ labeledStock, setLabeledStock }) {
                 value={qty}
                 warn={isLow}
                 suffix={isLow?'● Low':null}
-                onDec={()=>save(pid,Math.max(0,qty-1))}
-                onInc={()=>save(pid,qty+1)}
-                onChange={e=>save(pid,e.target.value)}
+                unit="labels" onCommit={v=>save(pid,v)}
               />
             );
           })}
@@ -569,8 +465,8 @@ function MakeScreen({ jobs, inventory, concentrate }) {
 function BeansSection({ beans, setBeans }) {
   async function saveKg(type, kg) {
     const v = Math.max(0, parseFloat(kg)||0);
-    setBeans(p=>({...p,[type]:{...(p[type]||{}),kg:v}}));
     await patchBeans(type, v);
+    setBeans(p=>({...p,[type]:{...(p[type]||{}),kg:v}}));
   }
   async function markOrdered(type, orderedKg) {
     const v = parseFloat(orderedKg)||0;
@@ -602,9 +498,7 @@ function BeansSection({ beans, setBeans }) {
               label={bt.label}
               value={d.kg??''}
               warn={isLow}
-              onDec={()=>saveKg(k,Math.max(0,parseFloat(((d.kg||0)-1).toFixed(1))))}
-              onInc={()=>saveKg(k,parseFloat(((d.kg||0)+1).toFixed(1)))}
-              onChange={e=>saveKg(k,e.target.value)}
+              allowFraction unit="kg" onCommit={v=>saveKg(k,v)}
             />
             {isLow&&!d.ordered&&(
               <BeanOrderRow beanKey={k} onOrder={markOrdered}/>

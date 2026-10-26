@@ -105,20 +105,27 @@ function cleanQuantities(q: unknown): Record<string, number> {
 
 // ── actions ──
 
+async function productionCall(sb:Sb,action:string,params:Record<string,unknown>,args:any){
+ let shift=args.shift_id||null;
+ if(!shift&&args.worker_id){let q=sb.from("production_shifts").select("id").is("ended_at",null);q=args.worker_id==="owner"?q.eq("is_owner",true):q.eq("worker_id",args.worker_id);const {data:open,error:e}=await q.maybeSingle();if(e)throw new HubError("clock_failed",e.message);shift=open?.id||null;}
+ const {data,error}=await sb.rpc("production_execute",{p_action:action,p_args:params,p_worker:args.worker_id||null,p_shift:shift,p_source:"Widget / connected app"});
+ return {data,error};
+}
+
 /** Start a brew now: deducts beans and schedules the drain (22h classic, 18h others). */
-export async function startBrew(sb: Sb, args: { product: string; kg?: number; request_id?: string }) {
+export async function startBrew(sb: Sb, args: { product: string; kg?: number; request_id?: string; worker_id?: string; shift_id?: string }) {
   const product = String(args.product || "");
   const kg = Number(args.kg ?? 3);
   if (!CONCENTRATES.includes(product as any)) throw new HubError("bad_product", `product must be one of ${CONCENTRATES.join(", ")}`);
   if (![1, 1.5, 2, 3].includes(kg)) throw new HubError("bad_kg", "kg must be 1, 1.5, 2 or 3");
   const brewId=args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
-  const {data,error}=await sb.rpc("start_production_brew",{p_id:brewId,p_product:product,p_kg:kg});
+  const {data,error}=await productionCall(sb,"start_production_brew",{p_id:brewId,p_product:product,p_kg:kg},args);
   if(error)throw new HubError("stock_failed",error.message);
   return {refs:[`jobs:${brewId}`,`jobs:${data.drain_id}`],...data};
 }
 
 /** Complete a drain (adds concentrate, closes its brew). Picks the earliest pending drain if no id. */
-export async function completeDrain(sb: Sb, args: { job_id?: string; product?: string }) {
+export async function completeDrain(sb: Sb, args: { job_id?: string; product?: string; worker_id?: string; shift_id?: string }) {
   let q = sb.from("jobs").select("id, type, product, kg, done, label, source_brew_id").eq("type", "drain").eq("done", false);
   if (args.job_id) q = q.eq("id", String(args.job_id));
   else if (args.product) q = q.eq("product", String(args.product));
@@ -129,7 +136,7 @@ export async function completeDrain(sb: Sb, args: { job_id?: string; product?: s
   const suspicious = /\b(remove|deduct|subtract|take away|takeaway|adjust|fix|correction|stock)\b/.test(label);
   const real = !suspicious && CONCENTRATES.includes(job.product) && [1, 1.5, 2, 3].includes(Number(job.kg)) && (!!job.source_brew_id || /^drain\b/.test(label.trim()));
   if (!real) throw new HubError("not_a_drain", "That job doesn't look like a real drain — complete it in the admin app");
-  const {data,error}=await sb.rpc("complete_production_drain",{p_id:job.id});
+  const {data,error}=await productionCall(sb,"complete_production_drain",{p_id:job.id},args);
   if(error)throw new HubError("stock_failed",error.message);
   return {refs:[`jobs:${job.id}`],...data};
 }
@@ -241,7 +248,7 @@ async function canonicalBottleKey(sb:Sb,key:string){
  const p=data?.[0];return p?(p.variations||[]).find((v:any)=>v.type==="ops_settings")?.stock_key||p.id:key;
 }
 /** Log bottles just made: adds them to stock and uses the matching concentrate (same math as the admin). */
-export async function logBottling(sb: Sb, args: { product: string; units: number; request_id?: string }) {
+export async function logBottling(sb: Sb, args: { product: string; units: number; request_id?: string; worker_id?: string; shift_id?: string }) {
   const requested = String(args.product || "");
   const meta = BOTTLES[requested];
   const product = await canonicalBottleKey(sb,requested);
@@ -253,18 +260,18 @@ export async function logBottling(sb: Sb, args: { product: string; units: number
   const ratio = PRODUCT_RATIO[product] ?? (FLAVORED_MINIS.has(product) ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.43));
   const now = jerusalemParts(new Date());
   const id = args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
-  const {data:event,error}=await sb.rpc("complete_bottling",{p_job:{
+  const {data:event,error}=await productionCall(sb,"complete_bottling",{p_job:{
     id, type:"bottling", product, liters, actual_qty:liters,
     date:now.date,time:now.time,label:`Bottled ${units} ${meta.label}`
-  },p_labeled:null});
+  },p_labeled:null},args);
   if(error)throw new HubError("stock_failed",error.message);
   return {refs:[`jobs:${id}`],product,units,liters,concentrate_used_l:event.concentrate_used_l,concentrate_now_l:event.concentrate_after,in_stock_now:event.inventory_after};
 }
 
-export async function logLabeling(sb:Sb,args:{product:string;units:number;request_id?:string}){
+export async function logLabeling(sb:Sb,args:{product:string;units:number;request_id?:string;worker_id?:string;shift_id?:string}){
  const units=Number(args.units);if(!BOTTLES[args.product]||!Number.isInteger(units)||units<=0||units>10000)throw new HubError("bad_units","Choose a product and a whole number of labels");
  const id=args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
- const {data,error}=await sb.rpc("complete_labeling",{p_id:id,p_product:await canonicalBottleKey(sb,args.product),p_units:units});if(error)throw new HubError("stock_failed",error.message);
+ const {data,error}=await productionCall(sb,"complete_labeling",{p_id:id,p_product:await canonicalBottleKey(sb,args.product),p_units:units},args);if(error)throw new HubError("stock_failed",error.message);
  return {refs:[`jobs:${id}`],...data};
 }
 

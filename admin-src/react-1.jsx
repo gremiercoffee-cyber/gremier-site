@@ -511,17 +511,17 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
   if(job.type==='brew'||job.type==='drain'){
     const action=job.type==='brew'?'start_production_brew':'complete_production_drain';
     const args=job.type==='brew'?{p_id:job.id,p_product:job.product,p_kg:job.kg}:{p_id:job.id};
-    const {data,error}=await window.MAIN_SB.rpc(action,args);if(error)throw error;
+    const {data,error}=await window.productionRun(action,args);if(error)throw error;
     window.notifyGremierStockChanged?.();window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));return data;
   }
   if (job.type==='bottling') {
-    const {data,error}=await window.MAIN_SB.rpc('complete_bottling',{p_job:{...jobToRow2(job),actual_qty:job.actualQty??job.liters},p_labeled:job.labeledUsed||{}});
+    const {data,error}=await window.productionRun('complete_bottling',{p_job:{...jobToRow2(job),actual_qty:job.actualQty??job.liters},p_labeled:job.labeledUsed||{}});
     if(error)throw error;
     window.notifyGremierStockChanged?.();window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
     return data;
   }
   if(job.type==='labeling'){
-    const {data,error}=await window.MAIN_SB.rpc('complete_labeling',{p_id:job.id,p_product:job.product,p_units:job.actualQty??job.qty});
+    const {data,error}=await window.productionRun('complete_labeling',{p_id:job.id,p_product:job.product,p_units:job.actualQty??job.qty});
     if(error)throw error;window.notifyGremierStockChanged?.();return data;
   }
 if (job.type==='delivery') {
@@ -1701,6 +1701,8 @@ async function addJobFromForm(job, mode) {
       if (cat === 'jerry') return j.qty || Math.round((j.liters||0)/5);
       return Math.round(j.liters||0);
     }
+
+    if(mode==='lognow'&&incomingJobs.some(j=>j.type!=='delivery')&&!await window.ensureProductionWorker())return;
 
     const created = incomingJobs.map((j,idx)=>({
       ...j,

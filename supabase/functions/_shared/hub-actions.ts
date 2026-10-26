@@ -59,6 +59,9 @@ export const ACTIONS: Record<string, Handler> = {
   complete_delivery: { scope: "write", describe: "Mark a scheduled delivery done. Args: job_id (default = next one today/overdue), quantities (optional actual amounts).", run: ({ sb }, a) => completeDelivery(sb, a as any) },
   adjust_stock: { scope: "write", describe: "Stock correction. Args: kind (inventory|concentrate|beans|labeled), product, delta (+/-).", run: ({ sb }, a) => adjustStock(sb, a as any) },
   log_labeling: {scope:"write",describe:"Log empty bottles labeled. Args: product, units.",run:({sb},a)=>logLabeling(sb,a as any)},
+  production_people: {scope:"read",describe:"Active production workers and owner.",run:async({sb})=>productionPeople(sb)},
+  production_clock_in: {scope:"write",describe:"Start or resume a production shift.",run:async({sb},a)=>{const {data,error}=await sb.rpc("production_clock",{p_worker:a.worker_id,p_operation:"in",p_id:a.request_id});if(error)throw new HubError("clock_failed",error.message);return data;}},
+  production_clock_out: {scope:"write",describe:"End a selected production shift and record hours/pay.",run:async({sb},a)=>{const {data:s,error:e}=await sb.from("production_shifts").select("*").eq("id",String(a.shift_id)).single();if(e)throw new HubError("clock_failed",e.message);const {data,error}=await sb.rpc("production_clock",{p_worker:s.is_owner?"owner":s.worker_id,p_operation:"out",p_id:s.id});if(error)throw new HubError("clock_failed",error.message);return data;}},
   widget_config: { scope: "read", describe: "Buttons for the Android widget (server-driven, with live counts).", run: ({ sb }) => widgetConfig(sb) },
   stock_view: { scope: "read", describe: "Stock as a short readable list (for the widget's Stock pop-up).", run: ({ sb }) => stockView(sb) },
   voice_parse: { scope: "read", describe: "Turn a spoken sentence into a proposed action (nothing is changed). Args: text.", run: ({ sb }, a) => voiceParse(sb, String(a.text || "")) },
@@ -110,6 +113,12 @@ export async function runAction(sb: Sb, app: { name: string; scopes: string[] },
   }
   return result;
 }
+
+async function productionPeople(sb:Sb){
+ const {data,error}=await sb.from("workers").select("id,name").eq("is_active",true).order("name");if(error)throw error;
+ return {options:[{value:"",label:"Choose who did this"},{value:"owner",label:"Owner"},...(data||[]).map(w=>({value:w.id,label:w.name}))]};
+}
+for(const action of ["start_brew","complete_drain","log_bottling","log_labeling"]){SCHEMAS[action].properties.worker_id=str("Person performing the work: owner or worker UUID. Required; never guess.");}
 
 // ── Android widget buttons ──
 // Server-driven so buttons/labels/order change without updating the app. kinds:
@@ -181,6 +190,13 @@ async function widgetConfig(sb: Sb) {
     {title:"Draining",buttons:drain?[{id:'drain_next',icon:'🧪',label:'Drain '+(COFFEES.find(([k])=>k===drain.product)?.[1]||drain.product),sub:drain.date+' '+(drain.time||''),kind:'confirm',section:'Draining',action:'complete_drain',args:{job_id:drain.id},confirm:'Confirm this brew has actually been drained?',submit:'Mark drained'}]:[{id:'no_drains',icon:'🧪',label:'No drains due',section:'Draining',kind:'info',message:'No brews are waiting to be drained.'}]},
     {title:"Tools",buttons:[{id:'production',icon:'⚗️',label:'Production',kind:'open',section:'Tools',url:ADMIN_URL+'?tab=production'},buttons.find(b=>b.id==='voice'),buttons.find(b=>b.id==='stock')]}
   ];
+  const people=await productionPeople(sb);
+  const workerField={key:"worker_id",type:"choice",label:"Performed by",options:people.options};
+  for(const section of sections)for(const b of section.buttons as any[]){if(["start_brew","log_bottling","log_labeling","complete_drain"].includes(b.action)){b.kind="form";b.fields=[workerField,...(b.fields||[])];}}
+  const {data:openShifts,error:shiftError}=await sb.from("production_shifts").select("id,worker_id,is_owner,started_at").is("ended_at",null);if(shiftError)throw shiftError;
+  const shiftButtons:any[]=[{id:"clock_in",icon:"👷",label:"Clock in",section:"Workers",kind:"form",action:"production_clock_in",title:"Who’s working now?",submit:"Clock in",fields:[workerField]}];
+  if(openShifts?.length)shiftButtons.push({id:"clock_out",icon:"🕒",label:"Clock out",section:"Workers",kind:"form",action:"production_clock_out",title:"Finish a shift",submit:"Clock out",fields:[{key:"shift_id",type:"choice",label:"Worker",options:openShifts.map(x=>({value:x.id,label:people.options.find(w=>w.value===(x.is_owner?"owner":x.worker_id))?.label||"Worker"}))}]});
+  sections.unshift({title:"Workers",buttons:shiftButtons});
   return {per_page:4,sections,buttons:sections.flatMap(s=>s.buttons),refreshed_at:new Date().toISOString()};
 }
 
@@ -231,7 +247,8 @@ async function voiceParse(sb: Sb, text: string) {
   if (!VOICE_ACTIONS.includes(action)) throw new HubError("not_understood", "Couldn't work out what to log");
   let args: Record<string, unknown> = {};
   try { args = JSON.parse(call.function.arguments || "{}"); } catch (_) { /* empty */ }
-  return { heard: text, action, args, say: describeProposal(action, args) };
+  delete args.worker_id;delete args.shift_id; // Attribution is chosen by the human, never by voice AI.
+  return { heard: text, action, args, say: describeProposal(action, args),worker_options:["start_brew","complete_drain","log_bottling","log_labeling"].includes(action)?(await productionPeople(sb)).options:[] };
 }
 function describeProposal(action: string, a: Record<string, any>): string {
   const coffee = Object.fromEntries(COFFEES);

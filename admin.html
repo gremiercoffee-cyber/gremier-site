@@ -793,7 +793,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-stock" class="tab-content" style="display:none">
         <div id="ops-stock-root"></div>
       </div>
-      <div id="tab-production" class="tab-content" style="display:none"><header class="page-header"><h1 class="page-title">Production</h1></header><div id="ops-production-root"></div><section id="ops-production-extras-root" aria-label="Production calendar and completed work"></section><div id="productionStockHistory"></div></div>
+      <div id="tab-production" class="tab-content" style="display:none"><header class="page-header"><h1 class="page-title">Production</h1></header><div id="productionWorkerBar"></div><div id="ops-production-root"></div><section id="ops-production-extras-root" aria-label="Production calendar and completed work"></section><div id="productionWorkEntries"></div><div id="productionStockHistory"></div></div>
       <!-- ORDERS -->
       <div id="tab-orders" class="tab-content" style="display:none">
         <div class="page-header">
@@ -1389,7 +1389,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
   <div class="stat-grid" id="workerStats"></div>
 
-  <div id="workersList"><div class="loading"><div class="spinner"></div></div></div>
+  <div id="productionAttendance"></div><div id="workersList"><div class="loading"><div class="spinner"></div></div></div>
 </div>
 
 <!-- Add / edit worker -->
@@ -2982,7 +2982,7 @@ async function deleteWorker() {
   if (!id) return;
   if (!window.confirm('Delete this worker and all their logged hours and payments?')) return;
   try {
-    await sb.from('workers').delete().eq('id', id);
+    const {error}=await sb.from('workers').delete().eq('id', id);if(error)throw error;
     closeWorkerModal();
     if (workerOpenId === id) workerOpenId = null;
     await loadWorkers();
@@ -3089,10 +3089,10 @@ async function saveWorkerOwed(workerId) {
 async function deleteWorkerEntry(entryId, workerId) {
   if (!window.confirm('Delete this entry?')) return;
   try {
-    await sb.from('worker_entries').delete().eq('id', entryId);
+    const {error}=await sb.from('worker_entries').delete().eq('id', entryId);if(error)throw error;
     workerOpenId = workerId;
     await loadWorkers();
-  } catch (e) { console.error(e); showToast('Could not delete entry'); }
+  } catch (e) { console.error(e); showToast(e.message||'Could not delete entry'); }
 }
 
 // ══ MOBILE NAV DRAWER ══
@@ -6073,8 +6073,8 @@ function showTab(tab) {
   if (tab==='storedeliveries') { loadStores(); loadStoreDeliveries(); }
   if (tab==='coupons') loadCoupons();
   if (tab==='giftcards') loadGiftCards();
-  if (tab==='workers') loadWorkers();
-  if(tab==='production'){window.__gremierReloadProduction?.();window.loadProductionHistory?.();}
+  if (tab==='workers') {loadWorkers();window.refreshProductionWorkers?.();}
+  if(tab==='production'){window.__gremierReloadProduction?.();window.loadProductionHistory?.();window.refreshProductionWorkers?.();}
   if (tab==='stock') {
     if (typeof window.__gremierReloadStock === 'function') window.__gremierReloadStock({ silent: true });
     else if (typeof window.notifyGremierStockChanged === 'function') window.notifyGremierStockChanged(0);
@@ -9225,10 +9225,11 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261022-2"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
-<script src="/admin-react-1.js?v=7cd57a8994"></script>
-<script src="/admin-react-2.js?v=12e2833fd3"></script>
+<script src="/admin-react-1.js?v=ca33f873f8"></script>
+<script src="/admin-stock-numbers.js?v=20261026-1"></script>
+<script src="/admin-react-2.js?v=8c01464419"></script>
 
-<script src="/admin-react-3.js?v=a97912795c"></script>
+<script src="/admin-react-3.js?v=fcf2f95bba"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">
@@ -9690,6 +9691,9 @@ window.opsFetch = window.opsFetch || (function () {
   };
 })();
 </script>
+<script src="/organized-expenses.js?v=20261015-1"></script>
+<link rel="stylesheet" href="/admin-analytics.css?v=20261019-1"/>
+<script src="/admin-analytics.js?v=20261019-1"></script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261026-1"/>
 <script src="/admin-financials.js?v=20261026-2"></script>
 <link rel="stylesheet" href="/admin-finance.css?v=20261020-3"/>
@@ -9704,6 +9708,8 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-visitors.js?v=20261025-1"></script>
 <script src="/admin-messages.js?v=20261023-2"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
-<script src="/admin-production.js?v=20261026-1"></script>
+<script src="/admin-production.js?v=20261026-2"></script>
+<link rel="stylesheet" href="/admin-production-workers.css?v=20261026-1"/>
+<script src="/admin-production-workers.js?v=20261026-1"></script>
 </body>
 </html>

@@ -294,6 +294,7 @@ function validateVoiceJob3(job) {
   return null;
 }
 async function saveVoiceJobAndEffects3(job, intent, stores) {
+  if (intent === 'log' && job.type !== 'delivery' && !(await window.ensureProductionWorker())) throw new Error('Choose a worker before logging production');
   await window.opsFetch('jobs', {
     method: 'POST',
     prefer: 'return=minimal',
