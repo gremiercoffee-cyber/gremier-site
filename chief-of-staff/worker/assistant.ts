@@ -814,7 +814,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "save_detail",
-      description: "Save or update one of the user's details under My details (e.g. 'Business address', 'Business number', 'Home address', 'Wife's ID'), when they tell you one to keep. Saved details are listed under '## My details' and are what you use when they ask you to fill something in. Signatures are added by the user in the app (photo/screenshot), not here.",
+      description: "Save or update one of the user's details under My details (e.g. 'Business address', 'Business number', 'Home address', 'Wife's ID'), when they tell you one to keep, or when they answer a form's still_needed question (use the label fill_document gave; an existing label is updated, not duplicated). Saved details are listed under '## My details' and are what you use when they ask you to fill something in. Signatures are added by the user in the app (photo/screenshot), not here.",
       input_schema: { type: "object", properties: { label: { type: "string" }, text: { type: "string" } }, required: ["label", "text"] },
       handler: async (input) => { const r = await saveVault(env, { kind: "text", label: String(input.label), text: String(input.text) }); note("save_detail", `🗂️ Saved to My details: ${input.label}`); return r; },
     },
@@ -844,7 +844,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "fill_document",
-      description: "Fill in a PDF form (from email or uploaded) with the user's saved details (## My details) and what they told you. Makes a filled copy shown in the chat to review, download or share; it stays editable. Returns what's still needed: ask the user for those, then call again on the FILLED copy's file_id with their answers in instructions. Flat/scanned PDFs have no fields: then say so and offer signatures.",
+      description: "Fill in any PDF form (from email or uploaded) with the user's saved details (## My details) and what they told you: a form with fill-in boxes gets them filled; a flat or scanned PDF gets the answers written onto the page beside each label (Hebrew or English). Makes a filled copy shown in the chat to review, download or share; the original isn't changed. still_needed lists what's missing, each with a label: ask the user for those (one short message, all at once). When they answer: save each answer with save_detail under that label (so it's there next time), then call fill_document again on the FILLED copy's file_id. It refills from the clean original and keeps what's already written. Use instructions for answers they gave only for this form, or to move/correct something ('move the date a little right', 'the ID is 0123…').",
       input_schema: { type: "object", properties: { file_id: { type: "string" }, instructions: { type: "string", description: "anything the user said about how to fill it, e.g. 'loan amount 850,000, both of us as borrowers'" } }, required: ["file_id"] },
       handler: async (input) => {
         const r = await fillForm(env, input as never);

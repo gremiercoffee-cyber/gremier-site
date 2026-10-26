@@ -4,7 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {deflateSync,crc32} from 'node:zlib';
 import {build} from 'esbuild';
-import {PDFDocument,PDFName} from 'pdf-lib';
+import {PDFDocument,PDFName,StandardFonts} from 'pdf-lib';
+import {getDocumentProxy} from 'unpdf';
 
 const out=await build({entryPoints:['worker/documents.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'no-network',setup(b){
  b.onLoad({filter:/[\\/]worker[\\/]google\.ts$/},()=>({contents:'export async function accessToken(){throw Error("no network")};export async function accountEmails(){return []}',loader:'js'}));
@@ -93,7 +94,7 @@ test('filling a form types saved details into its fields and keeps the original'
  const {id}=await docs.uploadFile(env,{filename:'BDOTS.pdf',mime:'application/pdf',bytes:await d.save()});
  globalThis.__fill=JSON.stringify({values:{applicant_name:'Yoni Grey',addr_line1:'12 Herzl St, Beit Shemesh',agree:true,nope:'x'},still_needed:['Phone number']});
  const r=await docs.fillForm(env,{file_id:id,instructions:'my name is Yoni Grey'});
-assert.equal(r.filled,3);assert.equal(r.of,4);assert.deepEqual(r.still_needed,['Phone number']);
+assert.equal(r.filled,3);assert.equal(r.of,4);assert.deepEqual(r.still_needed,[{label:'Phone number',ask:'Phone number'}]);
  assert.match(globalThis.__asked.prompt,/addr_line1/);assert.match(globalThis.__asked.prompt,/12 Herzl St/);
  const copy=await docs.fileBytes(env,r.file_id);assert.equal(copy.filename,'BDOTS (filled).pdf');
  const f2=(await PDFDocument.load(copy.bytes)).getForm();
@@ -102,9 +103,102 @@ assert.equal(r.filled,3);assert.equal(r.of,4);assert.deepEqual(r.still_needed,['
  assert.match((await docs.fileInfo(env,r.file_id)).note,/Filled 3 of 4.*Phone number/);
 });
 
-test('a flat PDF with no fields says so instead of pretending',async()=>{
+
+/** A flat form: printed labels only, no fill-in boxes. */
+async function flatForm(){
+ const d=await PDFDocument.create();const page=d.addPage([595,842]);const f=await d.embedFont(StandardFonts.Helvetica);
+ page.drawText('Application form',{x:50,y:790,size:16,font:f});
+ page.drawText('Full name:',{x:50,y:700,size:11,font:f});
+ page.drawText('Address: ______________________________',{x:50,y:660,size:11,font:f});
+ page.drawText('ID number:',{x:50,y:620,size:11,font:f});
+ page.drawText('Phone:',{x:300,y:620,size:11,font:f});
+ page.drawText('Signature: __________________   Date: ________',{x:50,y:560,size:11,font:f});
+ return d.save();
+}
+async function textOn(bytes){
+ const doc=await getDocumentProxy(new Uint8Array(bytes));const tc=await (await doc.getPage(1)).getTextContent();
+ return tc.items.map(i=>({s:i.str,x:i.transform[4],y:i.transform[5],w:i.width}));
+}
+
+test('a flat PDF gets the answers written beside its labels, in the space after each one',async()=>{
+ const {env}=memoryEnv();
+ const {id}=await docs.uploadFile(env,{filename:'Bank form.pdf',mime:'application/pdf',bytes:await flatForm()});
+ globalThis.__fill=JSON.stringify({placements:[
+  {what:'Full name',value:'Yoni Grey',anchor:2,where:'after'},
+  {what:'Address',value:'12 Herzl St, Beit Shemesh',anchor:3,where:'after'},
+ ],still_needed:[{label:'ID number',ask:"What's your ID number?"},'Phone']});
+ const r=await docs.fillForm(env,{file_id:id});
+ assert.equal(r.written,2);assert.equal(r.scanned,false);
+ assert.deepEqual(r.still_needed,[{label:'ID number',ask:"What's your ID number?"},{label:'Phone',ask:'Phone'}]);
+ assert.match(r.next,/save_detail/);
+ assert.match(globalThis.__asked.prompt,/#2 p1 \(50,700 w\d+\) Full name:/,'the model sees each label with its position');
+ const items=await textOn((await docs.fileBytes(env,r.file_id)).bytes);
+ const label=items.find(i=>i.s==='Full name:'),name=items.find(i=>i.s==='Yoni Grey');
+ assert.ok(name,'the name is real text on the page');
+ assert.ok(Math.abs(name.y-label.y)<1&&name.x>label.x+label.w&&name.x<label.x+label.w+10,'right after the label, same line');
+ const addrLabel=items.find(i=>i.s.startsWith('Address:')),addr=items.find(i=>i.s.includes('Herzl'));
+ assert.ok(addr.x>addrLabel.x+40&&addr.x<addrLabel.x+addrLabel.w,'written on the blank line, not after it');
+ const info=await docs.fileInfo(env,r.file_id);
+ assert.match(info.note,/Wrote 2 answers onto the page. Still needed: ID number; Phone/);
+});
+
+test('answering what was missing: it refills from the clean original and keeps what was written',async()=>{
+ const {env}=memoryEnv();
+ const {id}=await docs.uploadFile(env,{filename:'Bank form.pdf',mime:'application/pdf',bytes:await flatForm()});
+ globalThis.__fill=JSON.stringify({placements:[{what:'Full name',value:'Yoni Grey',anchor:2,where:'after'}],still_needed:[{label:'ID number',ask:'ID?'}]});
+ const first=await docs.fillForm(env,{file_id:id});
+ // The user answers; the assistant saves it under the label, then fills the copy again.
+ await docs.saveVault(env,{kind:'text',label:'ID number',text:'012345678'});
+ globalThis.__fill=JSON.stringify({placements:[{what:'Full name',value:'Yoni Grey',anchor:2,where:'after'},{what:'ID number',value:'012345678',anchor:4,where:'after'}],still_needed:[]});
+ const second=await docs.fillForm(env,{file_id:first.file_id});
+ assert.match(globalThis.__asked.prompt,/Already written on this form[\s\S]*Yoni Grey/,'the model is told what was already written');
+ assert.match(globalThis.__asked.prompt,/ID number: 012345678/,'and sees the newly saved detail');
+ assert.equal(second.written,2);assert.deepEqual(second.still_needed,[]);
+ const info=await docs.fileInfo(env,second.file_id);
+ assert.equal(info.parent_id,id,'made from the clean original, not the filled copy');
+ assert.equal(info.filename,'Bank form (filled).pdf');
+ const items=await textOn((await docs.fileBytes(env,second.file_id)).bytes);
+ assert.equal(items.filter(i=>i.s==='Yoni Grey').length,1,'the name is written once, not twice');
+ assert.ok(items.some(i=>i.s==='012345678'));
+});
+
+test('Hebrew answers go left of a Hebrew label, right to left, with numbers kept in order',async()=>{
+ const {env}=memoryEnv();
+ const d=await PDFDocument.create();const page=d.addPage([595,842]);
+ const {embedFonts,drawValue,runs}=await import('data:text/javascript;base64,'+Buffer.from((await build({entryPoints:['worker/pdf-overlay.ts'],bundle:true,write:false,format:'esm',platform:'node'})).outputFiles[0].text).toString('base64'));
+ const fonts=await embedFonts(d);
+ // a Hebrew form: label at the right edge
+ drawValue(page,'שם מלא:',{x:480,y:700,size:11},fonts);
+ for(let i=0;i<6;i++)drawValue(page,'שורה '+i,{x:480,y:600-i*20,size:11},fonts);
+ const order=runs('רחוב הרצל 12, בית שמש',fonts).map(r=>r.text).join('');
+ assert.equal(order,'שמש תיב ,12 לצרה בוחר','Hebrew reversed for drawing; the number stays 12');
+ assert.equal(runs('Apt 4B, Floor 2',fonts).map(r=>r.text).join(''),'Apt 4B, Floor 2','English unchanged');
+ const {id}=await docs.uploadFile(env,{filename:'טופס.pdf',mime:'application/pdf',bytes:await d.save()});
+ globalThis.__fill=JSON.stringify({placements:[{what:'שם',value:'יוני גריי',anchor:1}],still_needed:[]});
+  const r=await docs.fillForm(env,{file_id:id});
+ assert.match(globalThis.__asked.prompt,/#1 p1 \(480,700 w\d+\) שם מלא:/,'the label reads as one piece, in reading order');
+ assert.equal(r.written,1);
+ const items=await textOn((await docs.fileBytes(env,r.file_id)).bytes);
+const label=items.find(i=>i.x===480&&i.y===700);
+ const val=items.find(i=>i.y===700&&i.x<480);
+ assert.ok(val&&val.x+val.w<=label.x,'the answer ends just left of the Hebrew label');
+});
+
+test('a scanned form (no text) is read as a picture and answers go where the model points',async()=>{
  const {env}=memoryEnv();
  const {id}=await docs.uploadFile(env,{filename:'scan.pdf',mime:'application/pdf',bytes:await pdf(1)});
+ globalThis.__fill=JSON.stringify({placements:[{what:'Name',value:'Yoni Grey',page:0,x:200,y:100,size:10}],still_needed:[]});
  const r=await docs.fillForm(env,{file_id:id});
- assert.equal(r.no_fields,true);assert.match(r.clarification,/no fill-in fields/);
+ assert.equal(r.scanned,true);assert.equal(r.written,1);assert.match(r.check,/estimated/);
+ assert.equal(globalThis.__asked.attachments[0].kind,'pdf','the page itself was sent to look at');
+ const item=(await textOn((await docs.fileBytes(env,r.file_id)).bytes)).find(i=>i.s==='Yoni Grey');
+ assert.ok(Math.abs(item.x-119)<1&&Math.abs(item.y-(842-84.2))<1,'thousandths of the page from the top-left');
+});
+
+test('nothing to fill yet: it asks for the missing details instead of making an empty copy',async()=>{
+ const {env}=memoryEnv();
+ const {id}=await docs.uploadFile(env,{filename:'Bank form.pdf',mime:'application/pdf',bytes:await flatForm()});
+ globalThis.__fill=JSON.stringify({placements:[],still_needed:[{label:'Home address',ask:"What's your home address?"}]});
+ const r=await docs.fillForm(env,{file_id:id});
+ assert.equal(r.file_id,undefined);assert.equal(r.still_needed[0].label,'Home address');assert.match(r.next,/save_detail/);
 });

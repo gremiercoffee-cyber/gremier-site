@@ -5,6 +5,7 @@
  *   when asked. Signatures are cropped, transparent PNGs made in the app from a photo or screenshot.
  * - Files from email: "find the file from the bank" searches Gmail for attachments and lists what it found, so the
  *   user can see it before anything is done with it. Only a pointer is kept; the file is fetched fresh from Gmail.
+ * - Filling: a form's own boxes, or (flat and scanned PDFs) answers written onto the page; see pdf-overlay.ts.
  * - Signing: put one or more saved signatures at the bottom of every page of a PDF and hand back a new file to
  *   download. The original is never changed, and nothing is sent anywhere.
  */
@@ -13,6 +14,7 @@ import type { Env } from "./env";
 import { accessToken, accountEmails } from "./google";
 import { all, first, now, run, uid } from "./db";
 import { getProvider } from "./ai";
+import { describeLayout, overlay, readLayout, type Placement } from "./pdf-overlay";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -155,10 +157,10 @@ export async function fileBytes(env: Env, id: string) {
 }
 
 /** A new file made from another (a signed or filled copy), kept and shown for review. */
-async function saveMade(env: Env, parentId: string, bytes: Uint8Array, filename: string, note: string) {
+async function saveMade(env: Env, parentId: string, bytes: Uint8Array, filename: string, note: string, fillValues?: unknown) {
   const id = uid();
-  await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, parent_id, note, chosen) VALUES (?, 'made', '', '', ?, 'application/pdf', ?, ?, 'made', ?, ?, 1)",
-    id, filename, bytes.length, now(), parentId, note);
+  await run(env, "INSERT INTO found_files (id, account, message_id, part_id, filename, mime, size, created_at, source, parent_id, note, chosen, fill_values) VALUES (?, 'made', '', '', ?, 'application/pdf', ?, ?, 'made', ?, ?, 1, ?)",
+    id, filename, bytes.length, now(), parentId, note, fillValues ? JSON.stringify(fillValues) : null);
   await storeBytes(env, id, bytes);
   return id;
 }
@@ -223,36 +225,109 @@ export async function signFile(env: Env, input: { file_id: string; signatures?: 
 
 // ---- Filling in a form ---------------------------------------------------------------------------------------
 /**
- * Fill in a PDF form's fields from the user's saved details and what they said. Works on real (fillable) PDF
- * forms; a flat/scanned PDF has no fields to fill, which is said plainly. The copy stays editable.
+ * Fill in a PDF: a real form's boxes when it has them; otherwise the answers are written onto the page beside
+ * the printed labels (flat PDFs), or at positions read off the picture (scanned PDFs). Answers come only from
+ * the user's saved details and what they said; anything missing comes back as still_needed, each with the label
+ * to save the answer under in My details. Filling a filled copy again starts from the clean original and keeps
+ * what was already written, so answers can be added or corrected without writing twice.
  */
+type Needed = { label: string; ask: string };
+type FillState = { mode: "fields"; values: Record<string, string | boolean> } | { mode: "flat" | "scan"; placements: Placement[] };
+
+const NEEDED_RULE = `"still_needed": one entry per thing the form asks for that you couldn't fill: {"label": the name to save the answer under in the user's details (reuse a saved label if one fits; otherwise a plain one like "Home address", "ID number", "Phone", "Date of birth", "Bank account"), "ask": a short question for the user}. Skip "office use only" sections and things for someone else to fill.`;
+
+function parseJson<T>(out: string): T {
+  try { return JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)) as T; } catch { throw new Error("I couldn't work out how to fill this form."); }
+}
+const neededList = (n: unknown): Needed[] => (Array.isArray(n) ? n : [])
+  .map((x) => typeof x === "string" ? { label: x, ask: x } : { label: String((x as Needed)?.label ?? ""), ask: String((x as Needed)?.ask ?? (x as Needed)?.label ?? "") })
+  .filter((x) => x.label).slice(0, 12);
+const ASK_NEXT = "Ask the user for the still_needed items. When they answer, save each with save_detail under its label, then call fill_document again with THIS file_id: it refills from the clean original and keeps what's already written.";
+
 export async function fillForm(env: Env, input: { file_id: string; instructions?: string }) {
-  const info = await fileInfo(env, input.file_id);
+  const info = await fileInfo(env, input.file_id) as (FoundFile & { fill_values?: string | null }) | null;
   if (!info) throw new Error("I don't have that file; find or upload it first.");
   if (!/pdf/i.test(info.mime ?? "") && !/\.pdf$/i.test(info.filename)) return { clarification: "I can fill in PDF forms. This file isn't a PDF." };
-  const f = await fileBytes(env, input.file_id);
+  let baseId = input.file_id, prev: FillState | null = null;
+  if (info.source === "made" && info.fill_values && info.parent_id) { try { prev = JSON.parse(info.fill_values); baseId = info.parent_id; } catch { /* fill the copy as it is */ } }
+  const f = await fileBytes(env, baseId);
   const doc = await openPdf(f.bytes);
-  const form = doc.getForm();
-  const fields = form.getFields();
-  if (!fields.length) return { no_fields: true, clarification: "This PDF has no fill-in fields (it's a flat or scanned form), so I can't type into it. I can still add your signatures to every page." };
+  const fields = doc.getForm().getFields();
+  const details = await vaultSummary(env);
+  const today = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Jerusalem" });
+  const common = `File: ${f.filename}\nToday: ${today}\nWhat the user said: ${input.instructions || "(fill in what you can)"}\n\nThe user's saved details:\n${details || "(none saved)"}`;
+  const name = f.filename.replace(/\.pdf$/i, "").replace(/ \((filled|signed)\)$/i, "") + " (filled).pdf";
+  if (fields.length) return fillFields(env, { baseId, doc, fields, common, prev: prev?.mode === "fields" ? prev : null, name });
+
+  // A flat PDF: write onto the page. Read where the text is; with (almost) none, it's a scan.
+  const layout = await readLayout(f.bytes).catch(() => null);
+  const scanned = !layout || layout.pieces.length < 6;
+  const before = prev && prev.mode !== "fields" ? `\n\nAlready written on this form (keep these unless the user asks to change or move one; return the FULL list):\n${JSON.stringify(prev.placements)}` : "";
+  const rules = `Use ONLY the user's saved details and what they said; never invent personal information, numbers or dates (today's date is fine for a "Date" next to where they sign). Write each value as it should appear on the form. A tick box: value "X". ${NEEDED_RULE}`;
+  let placements: Placement[] = [], needed: Needed[] = [];
+  if (!scanned) {
+    const out = await getProvider(env).complete({
+      tier: "main", purpose: "fill_form", maxTokens: 4000,
+      system: `You fill in a flat PDF form (it has no fill-in boxes) by saying where each answer is written. You get every piece of text on the pages: #id, page, (x,y) of its start from the bottom-left in points, w = its width, then the text. Find what each label asks for and anchor the answer to it:
+- "after": to the right of the label on the same line (English forms, "Name: ____").
+- "left": to the left of the label (Hebrew right-to-left forms: the answer goes left of "שם:").
+- "on": on a blank-line piece itself ("__________"), anchoring that piece.
+- "below" / "above": when the space for the answer is under / over the label.
+A tick box: anchor the option's text, "left" for English (box before the text), "after" for Hebrew (box after it).
+Hebrew text may come out with its letters reversed; read it either way.
+${rules}
+Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "anchor": 12, "where": "after"}], "still_needed": [...]}`,
+      prompt: `${common}\n\nPages: ${layout!.pages.map((p, i) => `p${i + 1} ${Math.round(p.w)}x${Math.round(p.h)}`).join(", ")}\n\nText on the pages:\n${describeLayout(layout!)}${before}`,
+    });
+    const v = parseJson<{ placements?: Placement[]; still_needed?: unknown }>(out);
+    placements = (v.placements ?? []).filter((p) => p && p.value != null && Number.isFinite(Number(p.anchor))).map((p) => ({ ...p, anchor: Number(p.anchor) }));
+    needed = neededList(v.still_needed);
+  } else {
+    const file = await fileForModel(env, baseId);
+    if (!file) return { clarification: "This looks like a scan and it's too big for me to read. Send a smaller copy (or a photo of each page) and I'll fill it." };
+    const out = await getProvider(env).complete({
+      tier: "main", purpose: "fill_form", maxTokens: 4000, attachments: [file],
+      system: `You fill in a scanned paper form (a picture, so no text to anchor to) by saying where each answer is written. Look at each page. For each answer give: page (0 = first), x and y in thousandths of the page width and height measured from the TOP-LEFT corner, at the point where the text starts on its line (the bottom of the letters sits at y), and size in points (usually 9-11; smaller for small boxes). Put it in the empty space beside or on the label's line, not over printed text. On a right-to-left (Hebrew) form the space is usually left of the label.
+${rules}
+Reply ONLY JSON: {"placements": [{"what": "Full name", "value": "...", "page": 0, "x": 420, "y": 233, "size": 10}], "still_needed": [...]}`,
+      prompt: `${common}${before}`,
+    });
+    const v = parseJson<{ placements?: Placement[]; still_needed?: unknown }>(out);
+    placements = (v.placements ?? []).filter((p) => p && p.value != null && [p.page, p.x, p.y].every((n) => Number.isFinite(Number(n))))
+      .map((p) => ({ ...p, anchor: undefined, page: Number(p.page), x: Number(p.x), y: Number(p.y) }));
+    needed = neededList(v.still_needed);
+  }
+  if (!placements.length) return { clarification: needed.length ? "I need a few details before I can fill this form." : "I couldn't find anything on this form to fill from your details. Tell me the answers and I'll write them in.", still_needed: needed, next: ASK_NEXT };
+  const out = await overlay(f.bytes, scanned ? null : layout, placements);
+  if (!out.written) return { clarification: "I couldn't place the answers on this form. Tell me where they go and I'll try again.", still_needed: needed };
+  const note = `Wrote ${out.written} answer${out.written === 1 ? "" : "s"} onto the page${scanned ? " (a scan: positions are estimated, check them)" : ""}${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (tell me in the chat)` : ""}`;
+  const id = await saveMade(env, baseId, out.bytes, name, note, { mode: scanned ? "scan" : "flat", placements });
+  return { file_id: id, made: "filled copy (written onto the page)", written: out.written, scanned, still_needed: needed,
+    where: "It's in the chat with a preview, Download and Share.",
+    ...(needed.length ? { next: ASK_NEXT } : {}),
+    ...(scanned ? { check: "Positions on a scan are estimated: ask the user to check, and move any that are off (call again with e.g. 'move the ID number a little right')." } : {}) };
+}
+
+async function fillFields(env: Env, p: { baseId: string; doc: PDFDocument; fields: PDFField[]; common: string; prev: { values: Record<string, string | boolean> } | null; name: string }) {
+  const form = p.doc.getForm();
   // Field kinds are checked with instanceof: class names don't survive bundling.
   const kind = (fl: PDFField) => fl instanceof PDFTextField ? "Text" : fl instanceof PDFCheckBox ? "CheckBox" : fl instanceof PDFDropdown ? "Dropdown"
     : fl instanceof PDFOptionList ? "OptionList" : fl instanceof PDFRadioGroup ? "RadioGroup" : "Other";
-  const desc = fields.slice(0, 200).map((fl) => {
-    const t = kind(fl);
+  const desc = p.fields.slice(0, 200).map((fl) => {
     const opts = fl instanceof PDFDropdown || fl instanceof PDFOptionList || fl instanceof PDFRadioGroup ? ` options: ${fl.getOptions().slice(0, 12).join(" / ")}` : "";
-    return `- ${fl.getName()} (${t})${opts}`;
+    return `- ${fl.getName()} (${kind(fl)})${opts}`;
   }).join("\n");
-  const details = await vaultSummary(env);
+  const before = p.prev ? `\n\nAlready filled (keep these unless the user asks to change one; return them all):\n${JSON.stringify(p.prev.values)}` : "";
   const out = await getProvider(env).complete({
     tier: "main", purpose: "fill_form", maxTokens: 3000,
-    system: `You fill in a PDF form for the user. Field names can be cryptic: use the name, its position in the list and the options to tell what each asks for. Use ONLY the user's saved details and what they said; never invent personal information, numbers or dates. Leave a field out if you don't know it. Reply ONLY JSON: {"values": {"<exact field name>": "text" | true | false | "<option>"}, "still_needed": ["short description of each important field you couldn't fill"]}`,
-    prompt: `File: ${f.filename}\nThe user's instructions: ${input.instructions || "(fill in what you can)"}\n\nThe user's saved details:\n${details || "(none saved)"}\n\nForm fields:\n${desc}`,
+    system: `You fill in a PDF form for the user. Field names can be cryptic: use the name, its position in the list and the options to tell what each asks for. Use ONLY the user's saved details and what they said; never invent personal information, numbers or dates. Leave a field out if you don't know it. ${NEEDED_RULE} Reply ONLY JSON: {"values": {"<exact field name>": "text" | true | false | "<option>"}, "still_needed": [...]}`,
+    prompt: `${p.common}\n\nForm fields:\n${desc}${before}`,
   });
-  let v: { values?: Record<string, string | boolean>; still_needed?: string[] } = {};
-  try { v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { throw new Error("I couldn't work out how to fill this form."); }
+  const v = parseJson<{ values?: Record<string, string | boolean>; still_needed?: unknown }>(out);
+  const values = { ...(p.prev?.values ?? {}), ...(v.values ?? {}) };
+  const needed = neededList(v.still_needed);
   let filled = 0;
-  for (const [name, val] of Object.entries(v.values ?? {})) {
+  for (const [name, val] of Object.entries(values)) {
     try {
       const fl = form.getField(name);
       if (fl instanceof PDFTextField) fl.setText(String(val));
@@ -262,12 +337,12 @@ export async function fillForm(env: Env, input: { file_id: string; instructions?
       filled++;
     } catch { /* a value that doesn't fit that field: left for the user */ }
   }
-  if (!filled) return { clarification: "I couldn't fill any field from your saved details. Tell me the answers (or add them under My details) and I'll fill it.", still_needed: v.still_needed ?? [] };
-  const bytes = await doc.save({ updateFieldAppearances: true });
-  const missing = (v.still_needed ?? []).slice(0, 12);
-  const note = `Filled ${filled} of ${fields.length} fields${missing.length ? `. Still needed: ${missing.join("; ")}` : ""}`;
-  const id = await saveMade(env, input.file_id, bytes, f.filename.replace(/\.pdf$/i, "") + " (filled).pdf", note);
-  return { file_id: id, made: "filled copy", filled, of: fields.length, still_needed: missing, where: "It's in the chat with a preview, Download and Share. It stays editable." };
+  if (!filled) return { clarification: "I need a few details before I can fill this form.", still_needed: needed, next: ASK_NEXT };
+  const bytes = await p.doc.save({ updateFieldAppearances: true });
+  const note = `Filled ${filled} of ${p.fields.length} fields${needed.length ? `. Still needed: ${needed.map((n) => n.label).join("; ")} (tell me in the chat)` : ""}`;
+  const id = await saveMade(env, p.baseId, bytes, p.name, note, { mode: "fields", values });
+  return { file_id: id, made: "filled copy", filled, of: p.fields.length, still_needed: needed, where: "It's in the chat with a preview, Download and Share. It stays editable.",
+    ...(needed.length ? { next: ASK_NEXT } : {}) };
 }
 
 // ---- Older signed copies (made before files were kept) ------------------------------------------------------

@@ -62,7 +62,11 @@ function WorkCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
   const [signing, setSigning] = useState(false), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
   const fill = async () => {
     setBusy(true); setMsg("");
-    try { const r = await api.fillFile(f.id); if (r.file_id) onChanged(); else setMsg(r.clarification ?? "Couldn't fill it."); }
+    try {
+      const r = await api.fillFile(f.id);
+      if (r.file_id) onChanged();
+      else setMsg([r.clarification ?? "Couldn't fill it.", ...(r.still_needed ?? []).map((n) => `• ${n.ask}`), r.still_needed?.length ? "Answer in the chat; I'll save it under My details and fill the form." : ""].filter(Boolean).join("\n"));
+    }
     catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const fillBtn = <Button key="fill" variant={f.purpose === "fill" ? "primary" : "soft"} onClick={() => void fill()} disabled={busy}>{busy ? "Filling…" : "📝 Fill out this form"}</Button>;
@@ -76,7 +80,7 @@ function WorkCard({ f, onChanged }: { f: FoundFile; onChanged: () => void }) {
       <Preview id={f.id} f={f} />
       {isPdf(f) && <div className="flex flex-wrap gap-2">{f.purpose === "sign" ? [signBtn, fillBtn] : [fillBtn, signBtn]}</div>}
       {signing && <SignPanel f={f} onDone={() => { setSigning(false); onChanged(); }} />}
-      {msg && <p className="text-sm">{msg}</p>}
+      {msg && <p className="text-sm whitespace-pre-line">{msg}</p>}
       <div className="flex gap-3 text-xs"><button className="text-accent" onClick={async () => download(await getBlob(f), f.filename)}>Download</button><button className="text-accent" onClick={() => void share(f)}>Share</button></div>
     </div>
   );

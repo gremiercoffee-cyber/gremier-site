@@ -114,7 +114,7 @@ export const api = {
   uploadFile: (file: Blob, filename: string) => { const f = new FormData(); f.append("file", file, filename); return request<{ id: string; filename: string; mime: string; size: number }>("POST", "/api/files/upload", f); },
   chooseFile: (id: string) => request<{ file_id: string; purpose: string }>("POST", `/api/files/${id}/choose`),
   signFileNow: (id: string, p: { signatures: string[]; position?: string }) => request<{ file_id?: string; clarification?: string; options?: string[] }>("POST", `/api/files/${id}/sign`, p),
-  fillFile: (id: string, instructions = "") => request<{ file_id?: string; clarification?: string; still_needed?: string[]; no_fields?: boolean }>("POST", `/api/files/${id}/fill`, { instructions }),
+  fillFile: (id: string, instructions = "") => request<{ file_id?: string; clarification?: string; still_needed?: { label: string; ask: string }[]; no_fields?: boolean }>("POST", `/api/files/${id}/fill`, { instructions }),
   conversations: (archived = false) => request<Conversation[]>("GET", `/api/conversations${archived ? "?archived=1" : ""}`),
   conversationsBulk: (ids: string[], action: "archive" | "restore" | "delete") =>
     request<{ ok: true; count: number }>("POST", "/api/conversations/bulk", { ids, action }),

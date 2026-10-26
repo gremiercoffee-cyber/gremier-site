@@ -84,7 +84,7 @@ export interface ModelProvider {
   /** Multi-step tool-using turn. */
   runAgent(req: AgentRequest): Promise<AgentResult>;
   /** Single prompt -> text (no tools). */
-  complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }): Promise<string>;
+  complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"] }): Promise<string>;
   /** Research with live web search; returns the report text and how many searches it used. */
   research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }): Promise<{ text: string; searches: number; sources: string[] }>;
   startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }): Promise<string>;
@@ -325,11 +325,14 @@ class OpenAIProvider implements ModelProvider {
     return { done: true as const, text: r.output_text.trim(), searches: r.output.filter((o) => o.type === "web_search_call").length, sources: [...sources].slice(0, 15) };
   }
 
-  async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number }) {
+  async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"] }) {
     const route = modelRoute(this.env, req.purpose, req.tier);
     if (route.role === "brain") {
       const response = await this.respond({
-        model: route.model, instructions: req.system, input: req.prompt,
+        model: route.model, instructions: req.system,
+        // A file to look at (e.g. a scanned form) goes with the prompt.
+        input: req.attachments?.length ? [{ role: "user", content: [{ type: "input_text", text: req.prompt },
+          ...req.attachments.map((x) => x.kind === "image" ? { type: "input_image", image_url: x.dataUrl, detail: "high" } : { type: "input_file", filename: x.name, file_data: x.dataUrl })] } as unknown as OpenAI.Responses.ResponseInputItem] : req.prompt,
         reasoning: { effort: route.effort },
         // The token allowance includes reasoning as well as the requested JSON/text.
         max_output_tokens: Math.max(2048, (req.maxTokens ?? 2048) + 1024),

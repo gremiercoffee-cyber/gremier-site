@@ -18,11 +18,13 @@
     "deploy": "npm run build && wrangler d1 migrations apply chief-of-staff --remote && wrangler deploy"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "1.1.1",
     "openai": "^7.27.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "unpdf": "1.8.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261004.1",
