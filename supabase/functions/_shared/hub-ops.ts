@@ -10,13 +10,13 @@ export const CONCENTRATES = ["classic", "unfiltered", "houseBlend", "colombia", 
 /** Unfiltered is its own concentrate but is brewed from Classic Dark Roast beans. */
 const beanTypeFor = (product: string) => (product === "unfiltered" ? "classic" : product);
 export const KG_TO_LITERS: Record<string, number> = { "3": 19, "2": 12.7, "1.5": 9.5, "1": 6.4 };
-const JERRY_MAP: Record<string, string> = { classic: "jerry_can", houseBlend: "jerry_can_houseblend", colombia: "jerry_can_colombia", decaf: "jerry_can_decaf" };
+const JERRY_MAP: Record<string, string> = { classic: "jerry_can", unfiltered: "jerry_can_unfiltered", houseBlend: "jerry_can_houseblend", colombia: "jerry_can_colombia", decaf: "jerry_can_decaf" };
 
 // Same static catalog as window.__OPS_PRODUCTS__; unknown keys are inferred from their name.
 const CATEGORY: Record<string, string> = {
   classic_liter: "liter", sweetened_classic: "liter", house_blend: "liter", colombia_liter: "liter", decaf_liter: "liter",
   classic_mini: "mini", house_blend_mini: "mini", vanilla_mini: "mini", original_mini: "mini", caramel_mini: "mini",
-  jerry_can: "jerry", jerry_can_houseblend: "jerry", jerry_can_colombia: "jerry", jerry_can_decaf: "jerry",
+  jerry_can: "jerry", jerry_can_unfiltered: "jerry", jerry_can_houseblend: "jerry", jerry_can_colombia: "jerry", jerry_can_decaf: "jerry",
   vanilla_syrup: "syrup", caramel_syrup: "syrup", sugar_syrup: "syrup", dispenser: "dispenser",
 };
 export function categoryOf(pid: string): string {
@@ -231,6 +231,7 @@ export const BOTTLES: Record<string, { label: string; category: "liter" | "mini"
   caramel_mini: { label: "Caramel mini", category: "mini", concentrate: "classic" },
   house_blend_mini: { label: "House Blend mini", category: "mini", concentrate: "houseBlend" },
   jerry_can: { label: "Classic jerry can", category: "jerry", concentrate: "classic" },
+  jerry_can_unfiltered: { label: "Unfiltered jerry can", category: "jerry", concentrate: "unfiltered" },
   jerry_can_houseblend: { label: "House Blend jerry can", category: "jerry", concentrate: "houseBlend" },
   jerry_can_colombia: { label: "Colombia jerry can", category: "jerry", concentrate: "colombia" },
   jerry_can_decaf: { label: "Decaf jerry can", category: "jerry", concentrate: "decaf" },

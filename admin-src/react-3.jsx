@@ -36,7 +36,7 @@ const VOICE_PRODUCT_META3 = {
   jerry_can:{label:'Classic Jerry Can',category:'jerry',aliases:['jerry can','classic jerry','classic jerry can','classic 5 liter','classic 5l']},
   jerry_can_houseblend:{label:'House Blend Jerry Can',category:'jerry',aliases:['house blend jerry','house blend jerry can','houseblend jerry','medium jerry']},
   jerry_can_colombia:{label:'Colombia Jerry Can',category:'jerry',aliases:['colombia jerry','colombia jerry can','light roast jerry']},
-  jerry_can_decaf:{label:'Decaf Jerry Can',category:'jerry',aliases:['decaf jerry','decaf jerry can']},
+  jerry_can_decaf:{label:'Decaf Jerry Can',category:'jerry',aliases:['decaf jerry','decaf jerry can']}, jerry_can_unfiltered:{label:'Unfiltered Jerry Can',category:'jerry',aliases:['unfiltered jerry','unfiltered jerry can']},
   vanilla_syrup:{label:'Vanilla Syrup',category:'syrup',aliases:['vanilla syrup']},
   caramel_syrup:{label:'Caramel Syrup',category:'syrup',aliases:['caramel syrup']},
   sugar_syrup:{label:'Sugar Syrup',category:'syrup',aliases:['sugar syrup','simple syrup']},

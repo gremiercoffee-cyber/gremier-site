@@ -103,6 +103,11 @@ const VOICE_PRODUCT_META3 = {
     category: 'jerry',
     aliases: ['decaf jerry', 'decaf jerry can']
   },
+  jerry_can_unfiltered: {
+    label: 'Unfiltered Jerry Can',
+    category: 'jerry',
+    aliases: ['unfiltered jerry', 'unfiltered jerry can']
+  },
   vanilla_syrup: {
     label: 'Vanilla Syrup',
     category: 'syrup',

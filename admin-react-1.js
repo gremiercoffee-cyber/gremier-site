@@ -204,6 +204,7 @@ function generateWAMessage2(storeName, job) {
     jerry_can_houseblend: 'House Blend Jerry Can',
     jerry_can_colombia: 'Colombia Jerry Can',
     jerry_can_decaf: 'Decaf Jerry Can',
+    jerry_can_unfiltered: 'Unfiltered Jerry Can',
     vanilla_syrup: 'Vanilla Syrup',
     caramel_syrup: 'Caramel Syrup',
     sugar_syrup: 'Sugar Syrup',
@@ -271,6 +272,9 @@ window.__OPS_PRODUCTS__ = {
     category: 'jerry'
   },
   jerry_can_decaf: {
+    category: 'jerry'
+  },
+  jerry_can_unfiltered: {
     category: 'jerry'
   },
   vanilla_syrup: {
@@ -378,6 +382,7 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
       return 'original_mini';
     }
     if (isJerry) {
+      if (/unfilter/.test(t)) return 'jerry_can_unfiltered';
       if (/house|blend|האוס|בלנד/.test(t)) return 'jerry_can_houseblend';
       if (/colombia|sidamo|ethiopia|light|קולומב|סידמו|אתיופי/.test(t)) return 'jerry_can_colombia';
       if (/decaf|נטול/.test(t)) return 'jerry_can_decaf';
@@ -685,9 +690,10 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
     1: 6.4
   };
   const MINI_P = ['vanilla_mini', 'original_mini', 'caramel_mini'];
-  const JERRY_P = ['jerry_can', 'jerry_can_houseblend', 'jerry_can_colombia', 'jerry_can_decaf'];
+  const JERRY_P = ['jerry_can', 'jerry_can_houseblend', 'jerry_can_colombia', 'jerry_can_decaf', 'jerry_can_unfiltered'];
   const JERRY_MAP = {
     classic: 'jerry_can',
+    unfiltered: 'jerry_can_unfiltered',
     houseBlend: 'jerry_can_houseblend',
     colombia: 'jerry_can_colombia',
     decaf: 'jerry_can_decaf'
@@ -792,9 +798,10 @@ async function reverseJobSideEffects2(job, stores) {
     1: 6.4
   };
   const MINI_P = ['vanilla_mini', 'original_mini', 'caramel_mini'];
-  const JERRY_P = ['jerry_can', 'jerry_can_houseblend', 'jerry_can_colombia', 'jerry_can_decaf'];
+  const JERRY_P = ['jerry_can', 'jerry_can_houseblend', 'jerry_can_colombia', 'jerry_can_decaf', 'jerry_can_unfiltered'];
   const JERRY_MAP = {
     classic: 'jerry_can',
+    unfiltered: 'jerry_can_unfiltered',
     houseBlend: 'jerry_can_houseblend',
     colombia: 'jerry_can_colombia',
     decaf: 'jerry_can_decaf'
@@ -947,6 +954,9 @@ window.__OPS_PRODUCTS_FULL__ = {
   },
   jerry_can_decaf: {
     concentrate: 'decaf'
+  },
+  jerry_can_unfiltered: {
+    concentrate: 'unfiltered'
   }
 };
 
@@ -1236,7 +1246,7 @@ function CheckoffModal2({
 }) {
   const LABELED = ['classic_liter', 'sweetened_classic', 'house_blend', 'colombia_liter', 'vanilla_mini', 'original_mini', 'caramel_mini', 'classic_mini', 'house_blend_mini'];
   const MINI_P = ['vanilla_mini', 'original_mini', 'caramel_mini'];
-  const JERRY_P = ['jerry_can', 'jerry_can_houseblend', 'jerry_can_colombia', 'jerry_can_decaf'];
+  const JERRY_P = ['jerry_can', 'jerry_can_houseblend', 'jerry_can_colombia', 'jerry_can_decaf', 'jerry_can_unfiltered'];
   const PRODS = window.__OPS_PRODUCTS_FULL__;
   const planned = job.liters || job.plannedTotal || 0;
   const [actual, setActual] = useState2(planned);
@@ -1266,6 +1276,7 @@ function CheckoffModal2({
     jerry_can_houseblend: 'Jerry Can House Blend',
     jerry_can_colombia: 'Jerry Can Colombia',
     jerry_can_decaf: 'Jerry Can Decaf',
+    jerry_can_unfiltered: 'Jerry Can Unfiltered',
     vanilla_syrup: 'Vanilla Syrup',
     caramel_syrup: 'Caramel Syrup',
     sugar_syrup: 'Sugar Syrup',
@@ -2629,6 +2640,10 @@ function ScheduleForm({
     },
     jerry_can_decaf: {
       label: 'Jerry Can Decaf',
+      category: 'jerry'
+    },
+    jerry_can_unfiltered: {
+      label: 'Jerry Can Unfiltered',
       category: 'jerry'
     },
     vanilla_syrup: {

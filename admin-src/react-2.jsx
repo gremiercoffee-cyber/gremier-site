@@ -51,7 +51,7 @@ const PRODUCTS = {
   jerry_can:            { label: 'Jerry Can Classic',     category: 'jerry',     concentrate: 'classic',    litersPerUnit: 5    },
   jerry_can_houseblend: { label: 'Jerry Can House Blend', category: 'jerry',     concentrate: 'houseBlend', litersPerUnit: 5    },
   jerry_can_colombia:   { label: 'Jerry Can Colombia',    category: 'jerry',     concentrate: 'colombia',   litersPerUnit: 5    },
-  jerry_can_decaf:      { label: 'Jerry Can Decaf',       category: 'jerry',     concentrate: 'decaf',      litersPerUnit: 5    },
+  jerry_can_decaf:      { label: 'Jerry Can Decaf',       category: 'jerry',     concentrate: 'decaf',      litersPerUnit: 5    }, jerry_can_unfiltered:      { label: 'Jerry Can Unfiltered',       category: 'jerry',     concentrate: 'unfiltered',      litersPerUnit: 5    },
   vanilla_syrup:        { label: 'Vanilla Syrup',         category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
   caramel_syrup:        { label: 'Caramel Syrup',         category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
   sugar_syrup:          { label: 'Sugar Syrup',           category: 'syrup',     concentrate: null,         litersPerUnit: 0    },
@@ -129,7 +129,7 @@ function concentrateNeeded(jobs, inventory, concentrate) {
   const n = { classic:0, unfiltered:0, houseBlend:0, colombia:0, decaf:0 };
   const remStock = { ...inventory };
   const remConc  = { ...concentrate };
-  const JERRY_MAP = { classic:'jerry_can', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
+  const JERRY_MAP = { classic:'jerry_can',unfiltered:'jerry_can_unfiltered', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
   const kgToL = { 3:19, 2:12.7, 1.5:9.5, 1:6.4 };
   [...jobs].filter(j=>!j.done).sort((a,b)=>a.date.localeCompare(b.date)).forEach(j => {
     if (j.type === 'bottling' && PRODUCTS[j.product]?.concentrate) {
@@ -178,7 +178,7 @@ function bottleNeeds(jobs, inventory) {
     if (j.delivery_type === 'coffeebar') {
       const canCount = Math.floor((j.people||0)/25);
       const cans = j.jerry_cans||Array(canCount).fill('classic');
-      const JERRY_MAP = { classic:'jerry_can', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
+      const JERRY_MAP = { classic:'jerry_can',unfiltered:'jerry_can_unfiltered', houseBlend:'jerry_can_houseblend', colombia:'jerry_can_colombia', decaf:'jerry_can_decaf' };
       cans.forEach(ct => { const pid = JERRY_MAP[ct]||'jerry_can'; needs[pid]=(needs[pid]||0)+1; });
     }
   });

@@ -150,6 +150,12 @@ const PRODUCTS = {
     concentrate: 'decaf',
     litersPerUnit: 5
   },
+  jerry_can_unfiltered: {
+    label: 'Jerry Can Unfiltered',
+    category: 'jerry',
+    concentrate: 'unfiltered',
+    litersPerUnit: 5
+  },
   vanilla_syrup: {
     label: 'Vanilla Syrup',
     category: 'syrup',
@@ -342,6 +348,7 @@ function concentrateNeeded(jobs, inventory, concentrate) {
   };
   const JERRY_MAP = {
     classic: 'jerry_can',
+    unfiltered: 'jerry_can_unfiltered',
     houseBlend: 'jerry_can_houseblend',
     colombia: 'jerry_can_colombia',
     decaf: 'jerry_can_decaf'
@@ -406,6 +413,7 @@ function bottleNeeds(jobs, inventory) {
       const cans = j.jerry_cans || Array(canCount).fill('classic');
       const JERRY_MAP = {
         classic: 'jerry_can',
+        unfiltered: 'jerry_can_unfiltered',
         houseBlend: 'jerry_can_houseblend',
         colombia: 'jerry_can_colombia',
         decaf: 'jerry_can_decaf'
