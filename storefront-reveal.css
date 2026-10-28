@@ -1,6 +1,8 @@
-/* Separate translate preserves the cards' existing hover transforms. */
+/* Only off-screen content is held; no JavaScript means everything stays visible. */
 @media (prefers-reduced-motion:no-preference) {
-  .gremier-enter { animation:gremier-enter .42s cubic-bezier(.2,.65,.3,1); }
-  @keyframes gremier-enter { from { opacity:0; translate:0 10px; } to { opacity:1; translate:0 0; } }
+  .gremier-pending { opacity:0; translate:0 18px; }
+  .gremier-enter { animation:gremier-enter .6s cubic-bezier(.2,.65,.3,1); }
+  @keyframes gremier-enter { from { opacity:0; translate:0 18px; } to { opacity:1; translate:0 0; } }
 }
-@media print { .gremier-enter { animation:none!important; opacity:1!important; translate:none!important; } }
+@media (prefers-reduced-motion:reduce) { .gremier-pending,.gremier-enter { animation:none!important; opacity:1!important; translate:none!important; } }
+@media print { .gremier-pending,.gremier-enter { animation:none!important; opacity:1!important; translate:none!important; } }

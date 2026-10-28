@@ -1,22 +1,28 @@
-/* One quiet entrance for off-screen content. Nothing is hidden while waiting. */
+/* Reveal off-screen sections once they reach the screen. Initial content stays immediate. */
 (function () {
   'use strict';
   if (!window.IntersectionObserver || !window.MutationObserver) return;
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const targets = '.discovery-route,.section-header,.shelf-heading,.product-card,.why-item,.cbp-step,.pl-q,.bb-build-title,.bb-take-home,.shop-bar-route,.gcx-preview-col,.gcx-form,.account-profile-card,.account-points-card,.order-card';
+  const targets = '#homePage > .section,.discovery-route,.section-header,.shelf-heading,.product-card,.why-item,.cbp-step,.pl-q,.bb-build-title,.bb-take-home,.shop-bar-route,.gcx-preview-col,.gcx-form,.account-profile-card,.account-points-card,.order-card';
+  const edge = innerWidth < 1024 ? 96 : 48;
   const seen = new WeakSet(), watching = new Set();
-  let frame = 0;
+  let frame = 0, activePage = null;
   const show = (el, animate) => {
     observer.unobserve(el); watching.delete(el); seen.add(el);
+    el.classList.remove('gremier-pending');
     if (!animate || motion.matches) return;
     el.classList.add('gremier-enter');
-    el.addEventListener('animationend', () => el.classList.remove('gremier-enter'), { once: true });
+    const finished = e => {
+      if (e.target !== el || e.animationName !== 'gremier-enter') return;
+      el.classList.remove('gremier-enter'); el.removeEventListener('animationend', finished);
+    };
+    el.addEventListener('animationend', finished);
   };
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) {
-      if (entry.isIntersecting && entry.target.closest('.page.active')) show(entry.target, true);
+      if (entry.isIntersecting && watching.has(entry.target) && entry.target.closest('.page.active')) show(entry.target, true);
     }
-  }, { rootMargin: '0px 0px 24px 0px', threshold: 0 });
+  }, { rootMargin: `0px 0px -${edge}px 0px`, threshold: 0 });
   function scan() {
     frame = 0;
     for (const el of watching) {
@@ -25,13 +31,16 @@
     if (motion.matches) return;
     const page = document.querySelector('.page.active');
     if (!page) return;
+    const pageChanged = page !== activePage; activePage = page;
     for (const el of page.querySelectorAll(targets)) {
       if (seen.has(el) || el.parentElement?.closest(targets)) continue;
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) continue;
-      // Visible content, including a restored scroll position, is ready immediately.
-      if (r.top < innerHeight && r.bottom > 0 && r.left < innerWidth && r.right > 0) show(el, false);
-      else if (!watching.has(el)) { watching.add(el); observer.observe(el); }
+      // A later DOM update must not cancel an already queued entrance while scrolling.
+      if (watching.has(el) && !pageChanged) continue;
+      // The first visible content on each page is ready immediately.
+      if (r.top < innerHeight - edge && r.bottom > 0 && r.left < innerWidth && r.right > 0) show(el, false);
+      else if (!watching.has(el)) { el.classList.add('gremier-pending'); watching.add(el); observer.observe(el); }
     }
     for (const img of page.querySelectorAll('img:not([loading])')) {
       if (img.fetchPriority === 'high') continue;
@@ -49,6 +58,7 @@
   });
   motion.addEventListener?.('change', () => {
     if (motion.matches) {
+      for (const el of watching) show(el, false);
       observer.disconnect(); watching.clear();
       document.querySelectorAll('.gremier-enter').forEach(el => el.classList.remove('gremier-enter'));
     } else schedule();
