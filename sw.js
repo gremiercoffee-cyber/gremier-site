@@ -1,10 +1,10 @@
-const CACHE = 'gremier-v35';
+const CACHE = 'gremier-v36';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
   '/logo.png',
-  '/storefront-boot.css?v=20261028-1',
-  '/storefront-boot.js?v=20261028-1',
+  '/storefront-boot.css?v=20261028-2',
+  '/storefront-boot.js?v=20261028-2',
   '/admin.html',
   '/pay.html',
   '/manifest.json',

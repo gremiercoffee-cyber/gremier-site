@@ -15,8 +15,8 @@
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <title>Gremier Coffee Co.</title>
   <link rel="preload" as="image" href="/logo.png"/>
-  <link rel="stylesheet" href="/storefront-boot.css?v=20261028-1"/>
-  <script src="/storefront-boot.js?v=20261028-1"></script>
+  <link rel="stylesheet" href="/storefront-boot.css?v=20261028-2"/>
+  <script src="/storefront-boot.js?v=20261028-2"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="preconnect" href="https://res.cloudinary.com" crossorigin/>
@@ -33,7 +33,6 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="Gremier"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -768,9 +767,10 @@
 </head>
 <body>
 <div id="gremierBoot" role="status" aria-live="polite" aria-label="Loading Gremier Coffee">
- <div class="boot-scene"><div class="boot-aura" aria-hidden="true"></div><div class="boot-burst" aria-hidden="true"></div><div class="boot-streak" aria-hidden="true"></div><img class="boot-logo" src="/logo.png" alt="" width="100" height="100" fetchpriority="high"><div class="boot-name-mask"><span class="boot-name">Gremier</span></div><span class="boot-coffee">Coffee</span></div>
+ <div class="boot-scene"><div class="boot-aura" aria-hidden="true"></div><div class="boot-core" aria-hidden="true"></div><div class="boot-burst" aria-hidden="true"></div><div class="boot-streak" aria-hidden="true"></div><img class="boot-logo" src="/logo.png" alt="" width="100" height="100" fetchpriority="high"><div class="boot-name-mask"><span class="boot-name">Gremier</span></div><span class="boot-coffee">Coffee</span></div>
  <button id="bootSkip" type="button">Continue to site</button>
 </div>
+<script>window.GremierBoot?.start();</script>
 <script src="/vendor/supabase-js.min.js?v=2"></script>
 <!-- ══ MEMBERSHIP BANNER (non-members only) ══ -->
 <div id="memberBanner" class="hidden">
