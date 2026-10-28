@@ -760,6 +760,8 @@
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
+<link rel="stylesheet" href="/storefront-discovery.css?v=20261028-1"/>
+<script src="/storefront-discovery.js?v=20261028-1"></script>
 </head>
 <body>
 <!-- ══ MEMBERSHIP BANNER (non-members only) ══ -->
@@ -871,11 +873,22 @@
         </div>
       </div>
       <p class="hero-desc" id="t-hero-desc">Israel's finest cold brew — crafted slow, delivered fresh.</p>
-      <div class="hero-btns">
-        <button class="btn btn-primary" onclick="showPage('shop')" id="t-hero-shop">Shop Now</button>
-        <button class="btn btn-outline" onclick="showPage('coffeebars')" id="t-hero-bars">Coffee Bars</button>
-      </div>
+
     </div>
+  </div>
+  <div class="discovery-routes" aria-label="Shop coffee or build a coffee bar">
+    <a class="discovery-route" href="#shop" onclick="event.preventDefault();showPage('shop')">
+      <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="The shop" data-discovery-he="החנות">The shop</div><h2 data-discovery-en="Stock your fridge." data-discovery-he="מלאו את המקרר בקפה.">Stock your fridge.</h2><p data-discovery-en="Your favourite cold brew, ready whenever you are." data-discovery-he="הקולד ברו האהוב עליכם, מוכן מתי שתרצו.">Your favourite cold brew, ready whenever you are.</p></div>
+      <div class="discovery-visual"><div class="discovery-bottles" id="discoveryBottles"><img src="https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872206/gremier_products/wzvelx8f0t8vadobgkki.jpg" alt="House Blend"><img src="https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872197/gremier_products/tdwwgxlgfeuayejcw9xx.png" alt="Classic"><img src="https://res.cloudinary.com/dqhfv5grg/image/upload/v1780872214/gremier_products/gm5cyhiuvtgziywrlumy.jpg" alt="Colombia"></div></div>
+      <div class="discovery-peek"><strong data-discovery-en="A shelf for every favourite" data-discovery-he="מדף לכל קפה אהוב">A shelf for every favourite</strong><span data-discovery-en="Liter bottles · Mini packs · Wholesale · Syrups" data-discovery-he="בקבוקי ליטר · מארזי מיני · סיטונאי · סירופים">Liter bottles · Mini packs · Wholesale · Syrups</span></div>
+      <div class="discovery-footer"><span id="t-hero-shop" data-discovery-en="Shop the collection" data-discovery-he="לכל הקולקציה">Shop the collection</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
+    </a>
+    <a class="discovery-route discovery-bar" href="#coffeebars" onclick="event.preventDefault();showPage('coffeebars')">
+      <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="Coffee bars" data-discovery-he="עמדות קפה">Coffee bars</div><h2 data-discovery-en="Make it a coffee bar." data-discovery-he="הפכו את זה לבר קפה.">Make it a coffee bar.</h2><p data-discovery-en="A complete setup, made for your guest count." data-discovery-he="כל מה שצריך, לפי מספר האורחים שלכם.">A complete setup, made for your guest count.</p></div>
+      <div class="discovery-visual"><img src="/bar/studio/bar-master-v3.webp" alt="Gremier coffee bar with coffee, dispenser, syrups, milk, cups and straws" decoding="async"></div>
+      <div class="discovery-peek"><strong data-discovery-en="Start with your guests" data-discovery-he="מתחילים במספר האורחים">Start with your guests</strong><div class="discovery-guests"><b>25</b><b>50</b><b>75</b><b>100+</b></div><span data-discovery-en="Choose coffee · Pick milk · Add syrups" data-discovery-he="בחרו קפה · בחרו חלב · הוסיפו סירופים">Choose coffee · Pick milk · Add syrups</span></div>
+      <div class="discovery-footer"><span id="t-hero-bars" data-discovery-en="Build your coffee bar" data-discovery-he="בנו את עמדת הקפה שלכם">Build your coffee bar</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
+    </a>
   </div>
   <div class="section section-home-products">
     <div class="section-header">
@@ -1288,7 +1301,7 @@
       <ul class="footer-links">
         <li><a onclick="showPage('shop')">All Products</a></li>
         <li><a onclick="showPage('shop'); setCategory('bottles')">Bottled Cold Brew</a></li>
-        <li><a onclick="showPage('shop'); setCategory('bulk')">Bulk & 5L</a></li>
+        <li><a onclick="showPage('shop'); setCategory('bulk')">Wholesale</a></li>
         <li><a onclick="showPage('shop'); setCategory('subscriptions')">Subscriptions</a></li>
       </ul>
     </div>
@@ -1450,7 +1463,7 @@ const T = {
     't-wa-label':'Contact us',
     'sign-in':'Sign In','sign-out':'Sign Out',
     'enquire':'Enquire & Book',
-    'cats':{'all':'All','bottles':'Bottles','minis':'Mini Packs','bulk':'Bulk & 5L','syrups':'Syrups','coffeebars':'Coffee Bars','subscriptions':'Subscriptions'},
+    'cats':{'all':'All','bottles':'Bottles','minis':'Mini Packs','bulk':'Wholesale','syrups':'Syrups','coffeebars':'Coffee Bars','subscriptions':'Subscriptions'},
     'empty-cart':'Your cart is empty',
     'empty-orders':'No orders yet.',
     'order-status':{'pending':'Pending','awaiting_payment':'Awaiting Payment','confirmed':'Confirmed','fulfilled':'Fulfilled','cancelled':'Cancelled'},
@@ -1503,7 +1516,7 @@ const T = {
     't-wa-label':'צור קשר',
     'sign-in':'התחברות','sign-out':'התנתקות',
     'enquire':'לפרטים ותיאום',
-    'cats':{'all':'הכל','bottles':'בקבוקים','minis':'מיני פקים','bulk':'5 ליטר','syrups':'סירופים','coffeebars':'עמדות קפה','subscriptions':'מנויים'},
+    'cats':{'all':'הכל','bottles':'בקבוקים','minis':'מיני פקים','bulk':'סיטונאי','syrups':'סירופים','coffeebars':'עמדות קפה','subscriptions':'מנויים'},
     'empty-cart':'העגלה ריקה',
     'empty-orders':'אין הזמנות עדיין.',
     'order-status':{'pending':'ממתין','awaiting_payment':'ממתין לתשלום','confirmed':'אושר','fulfilled':'סופק','cancelled':'בוטל'},
@@ -2495,6 +2508,7 @@ function productCardHTML(p) {
 function renderFeatured() {
   const grid = document.getElementById('featuredGrid');
   if (!grid) return;
+  window.GremierDiscovery.home(products,lang==='he',cloudinaryOptimize);
   const featured = getFeaturedProducts().filter(p=>!isSubscriptionProduct(p));
   const title = document.getElementById('t-feat-title');
   if (title) title.textContent = window.GremierTaste?.isPersonal() ? (lang==='he' ? 'נבחר בשבילך' : 'Picked for you') : tr('feat-title');
@@ -2518,23 +2532,24 @@ function setCategory(cat) {
   const callout = document.getElementById('subCallout');
   if (callout) callout.style.display = 'none';
   renderShop();
+  window.GremierDiscovery.jump(activeCategory);
 }
 function renderShop() {
   const filter = document.getElementById('catFilter');
-  const available=products.filter(p=>!isSubscriptionProduct(p)&&p.id!=='9e1abc84-b3b8-40e0-a23c-3bfbeb8602f4');
+  const available=products.filter(p=>!isSubscriptionProduct(p)&&p.id!=='9e1abc84-b3b8-40e0-a23c-3bfbeb8602f4'&&shopCategoryOf(p)!=='coffeebars');
   if (filter) {
     const icons = {all:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"4\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>",bottles:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 3h4v3.5l1.6 2.4c.3.5.4 1 .4 1.6V20a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-9.5c0-.6.1-1.1.4-1.6L10 6.5z\"/><path d=\"M8 13h8\"/></svg>",minis:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"9\" width=\"16\" height=\"11\" rx=\"1.5\"/><path d=\"M8 9V6.5a1.5 1.5 0 0 1 3 0V9M13 9V6.5a1.5 1.5 0 0 1 3 0V9M12 9v11\"/></svg>",bulk:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7h8l3 3v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z\"/><path d=\"M9 7V4h4v3M15 4h3\"/></svg>",syrups:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3.5c3 4 5 6.6 5 9.5a5 5 0 0 1-10 0c0-2.9 2-5.5 5-9.5z\"/></svg>",coffeebars:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z\"/><path d=\"M16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c0 1 1 1.5 1 2.5M12 3.5c0 1 1 1.5 1 2.5\"/></svg>"};
     filter.innerHTML = categories.map(c => {
-      const n = c.key === 'all' ? available.length : available.filter(p => shopCategoryOf(p) === c.key).length;
+      const n = c.key === 'coffeebars' ? getCoffeeBarProducts().length : c.key === 'all' ? available.length : available.filter(p => shopCategoryOf(p) === c.key).length;
       return `<button class="filter-btn ${activeCategory===c.key?'active':''}" onclick="setCategory('${c.key}')"><span class="fb-ico" aria-hidden="true">${icons[c.key]||icons.all}</span><span>${trCat(c.key)}</span><span class="fb-n">${n}</span></button>`;
     }).join('');
   }
   const grid = document.getElementById('shopGrid');
   if (!grid) return;
-  const base = activeCategory === 'all' ? available : available.filter(p => shopCategoryOf(p) === activeCategory);
+  const base = available;
   const taste = window.GremierTaste;
   const list = base.sort((a, b) => (taste ? taste.rank(a.id) - taste.rank(b.id) : 0) || shopRank(a) - shopRank(b));
-  grid.innerHTML = list.length ? list.map(productCardHTML).join('') : '<p style="color:var(--text2);text-align:center;width:100%">No products in this category.</p>';
+  window.GremierDiscovery.renderShop(grid,list,shopCategoryOf,productCardHTML,lang==='he');
 }
 function renderCoffeeBars() {
   const grid = document.getElementById('coffeeBarGrid');
@@ -4728,7 +4743,7 @@ async function sendChatMessageText(text) {
     ['Cancel', 'ביטול'],
     ['All Products', 'כל המוצרים'],
     ['Bottled Cold Brew', 'קולד ברו בבקבוקים'],
-    ['Bulk & 5L', '5 ליטר'],
+    ['Wholesale', 'סיטונאי'],
     ['Subscriptions', 'מנויים'],
     ['Email:', 'אימייל:'],
     ['About Us', 'עלינו'],
