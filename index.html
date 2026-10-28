@@ -232,7 +232,7 @@
     .filter-btn.active, .filter-btn:hover { border-color:#1a1a1a; color:#1a1a1a; background:rgba(200,135,58,.08); }
     .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:22px; max-width:1200px; margin:0 auto; }
     .product-card { background:#ffffff; border:1px solid var(--border); border-radius:4px; overflow:hidden; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transition:transform .2s,border-color .2s,box-shadow .2s; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
-    .product-card:hover { transform:translateY(-4px); border-color:rgba(200,135,58,.6); box-shadow:0 12px 32px rgba(0,0,0,.12); }
+    @media(hover:hover) and (pointer:fine) { .product-card:hover { transform:translateY(-4px); border-color:rgba(200,135,58,.6); box-shadow:0 12px 32px rgba(0,0,0,.12); } }
     .product-img { width:100%; aspect-ratio:4/3; background:#f7f5f2; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
     .product-img img { width:100%; height:100%; object-fit:cover; pointer-events:none; user-select:none; }
     .serving-pack-product .product-img { background:#f7f5ef; }
@@ -760,7 +760,7 @@
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
-<link rel="stylesheet" href="/storefront-discovery.css?v=20261028-2"/>
+<link rel="stylesheet" href="/storefront-discovery.css?v=20261028-3"/>
 <script src="/storefront-discovery.js?v=20261028-1"></script>
 </head>
 <body>
@@ -1799,7 +1799,7 @@ function cloudinaryOptimize(url, width) {
   return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_' + w + '/');
 }
 async function loadProducts() {
-  const CACHE_KEY = 'gremier_products_v3';
+  const CACHE_KEY = 'gremier_products_v4';
   const CACHE_TTL = 5 * 60 * 1000;
   function mapProduct(p) {
     const dv = (p.variations || []).find(v => v.type === 'delivery_price');
@@ -2489,7 +2489,7 @@ function productCardHTML(p) {
     : `<div class="product-img-placeholder">${productIcon(p.category)}</div>`;
   const badge = p.badge_text ? `<div class="product-badge ${p.badge_type === 'sale' ? 'sale' : ''}">${p.badge_text}</div>` : '';
   return `
-    <div class="product-card${(p.variations||[]).some(v=>v.type==='serving_pack')?' serving-pack-product':''}" data-product-id="${p.id}">
+    <div class="product-card${(p.variations||[]).some(v=>v.type==='serving_pack')?' serving-pack-product':''}${p.category==='minis'?' mini-product':''}" data-product-id="${p.id}">
       <div class="product-img">
         <div class="product-img-gradient"></div>
         ${img}${badge}
