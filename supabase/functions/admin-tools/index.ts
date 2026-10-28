@@ -462,31 +462,26 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
 
 // ── "How was it?" emails ──
 // 2–7 days after delivery (enough time to taste it), once per order, at most once a month per
-// person (subscribers aren't asked every delivery), daytime only. Five faces: one click answers.
+// person (subscribers aren't asked every delivery), daytime only. One link opens a combined rating and comment form.
 // No referral offer in these emails: customers find "give ₪20, get ₪20" on the website.
 function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], opts: { recap?: string; optoutUrl?: string } = {}) {
+  const esc = (v: string) => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
   const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
-  const faces = [["😍", "Loved it", "אהבתי"], ["🙂", "Good", "טוב"], ["😐", "Okay", "בסדר"], ["😕", "Not great", "לא משהו"], ["😞", "Bad", "רע"]];
-  // links[] is ordered by rating 1..5; show the best first.
-  const rows = faces.map(([f, en, hb], i) => ({ f, label: he ? hb : en, url: links[4 - i] }));
   const subject = he ? "איך היה הקולד ברו? ☕" : "How was your cold brew? ☕";
-  const intro = he ? `היי${first ? " " + first : ""}, תודה רבה שבחרת בגרמיר! איך הייתה החוויה?` : `Hi${first ? " " + first : ""}, thank you so much for choosing Gremier! How was your experience?`;
-  const recap = opts.recap ? `${opts.recap}\n\n` : "";
-  // Emails can't hold a text box: "write" opens one on the site (with the faces).
+  const intro = he ? `היי${first ? " " + first : ""}, איך הייתה ההזמנה שלך מגרמיר?` : `Hi${first ? " " + first : ""}, how was your Gremier order?`;
+  const recap = opts.recap || orderRecap(o, he);
   const writeUrl = links[0].replace(/&r=\d$/, "&write=1");
-  const writeLabel = he ? "✍️ לכתוב לנו כמה מילים" : "✍️ Write us a few words";
-  const hint = he ? "לחצו על פרצוף, ואז אפשר לספר לנו עוד במילים שלכם." : "Tap a face, then you can tell us more in your own words.";
-  const stop = opts.optoutUrl ? `\n\n—\n${he ? "לא רוצים מיילים כאלה?" : "Don't want emails like this?"} ${opts.optoutUrl}` : "";
-  const text = `${intro}\n\n${recap}${rows.map((r) => `${r.f} ${r.label}: ${r.url}`).join("\n")}\n\n${hint}\n${writeLabel}: ${writeUrl}\n\n${he ? "גרמיר קופי" : "Gremier Coffee"}${stop}`;
-  const dir = he ? "rtl" : "ltr";
-  const html = `<div dir="${dir}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
-    <p style="font-size:17px;line-height:1.5;margin:0 0 ${opts.recap ? 8 : 20}px">${intro}</p>
-    ${opts.recap ? `<p style="font-size:14px;line-height:1.5;color:#5f656d;margin:0 0 18px">${opts.recap}</p>` : ""}
-    <div>${rows.map((r) => `<a href="${r.url}" style="display:inline-block;margin:4px;padding:10px 12px;border:1px solid #e3e5e8;border-radius:14px;text-decoration:none;color:#1a1a1a;min-width:64px"><div style="font-size:30px;line-height:1">${r.f}</div><div style="font-size:12px;margin-top:6px;color:#5f656d">${r.label}</div></a>`).join("")}</div>
-    <p style="font-size:13px;line-height:1.5;color:#5f656d;margin:16px 0 10px">${hint}</p>
-    <a href="${writeUrl}" style="display:inline-block;padding:10px 18px;border-radius:999px;border:1px solid #1a1a1a;color:#1a1a1a;text-decoration:none;font-size:14px">${writeLabel}</a>
-    <p style="font-size:13px;color:#8a8f96;margin-top:28px">${he ? "גרמיר קופי" : "Gremier Coffee"}</p>
-    ${opts.optoutUrl ? `<p style="font-size:11px;color:#a0a5ab;margin-top:18px"><a href="${opts.optoutUrl}" style="color:#a0a5ab">${he ? "להסרה מרשימת הדיוור" : "Unsubscribe"}</a></p>` : ""}</div>`;
+  const writeLabel = he ? "דירוג וכתיבת משוב" : "Rate your order";
+  const hint = he ? "בחרו דירוג והוסיפו כמה מילים אם תרצו — הכול בטופס אחד." : "Choose a rating and add a few words if you like—all in one form.";
+  const stop = opts.optoutUrl ? `\n\n${he ? "להסרה:" : "Unsubscribe:"} ${opts.optoutUrl}` : "";
+  const text = `${intro}\n\n${recap}\n\n${hint}\n${writeLabel}: ${writeUrl}\n\nGremier Coffee${stop}`;
+  const html = `<div dir="${he ? 'rtl' : 'ltr'}" style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px 16px;color:#1a1a1a;text-align:center">
+    <p style="font-size:17px;line-height:1.5">${esc(intro)}</p>
+    <p style="font-size:14px;line-height:1.6;background:#f5f6f7;border-radius:12px;padding:14px">${esc(recap)}</p>
+    <p style="font-size:14px;color:#666">${hint}</p>
+    <a href="${writeUrl}" style="display:inline-block;padding:14px 24px;border-radius:30px;background:#252422;color:white;text-decoration:none">${writeLabel}</a>
+    <p style="font-size:13px;color:#888;margin-top:28px">Gremier Coffee</p>
+    ${opts.optoutUrl ? `<a href="${opts.optoutUrl}" style="font-size:11px;color:#999">${he ? 'להסרה מרשימת הדיוור' : 'Unsubscribe'}</a>` : ''}</div>`;
   return { subject, text, html };
 }
 
@@ -506,7 +501,7 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
   const since = /^\d{4}-\d{2}-\d{2}$/.test(String(body.since || "")) ? String(body.since) : "2026-09-01";
   const dryRun = body.dry_run === true || !!body.send_test_to;
   const { data: orders } = await sb.from("orders")
-    .select("id, order_number, created_at, customer_email, customer_name, delivery_address, delivery_info, items")
+    .select("id, order_number, created_at, customer_email, customer_name, delivery_address, delivery_info, items, created_at")
     .eq("status", "fulfilled").eq("payment_status", "paid").eq("source", "website").not("customer_email", "is", null)
     .gte("created_at", since).order("created_at", { ascending: false });
   const own = (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase();
@@ -573,7 +568,7 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
   if (!dryRun && quietNow()) return { skipped_run: "quiet_hours" };
   const now = Date.now();
   const { data: orders } = await sb.from("orders")
-    .select("id, order_number, customer_email, customer_name, delivery_address, delivery_info, items")
+    .select("id, order_number, customer_email, customer_name, delivery_address, delivery_info, items, created_at")
     .eq("status", "fulfilled").eq("payment_status", "paid").eq("source", "website").not("customer_email", "is", null)
     .gte("created_at", new Date(now - 45 * 864e5).toISOString());
   const own = (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase();
@@ -706,7 +701,7 @@ Deno.serve(async (req) => {
       case "feedback_requests": {
         if (body.preview_order_id) {
           // The email a given order would get, optionally sent to a test address (nothing is marked as asked).
-          const { data: o } = await sb.from("orders").select("id, customer_email, customer_name, delivery_address, delivery_info").eq("id", String(body.preview_order_id)).maybeSingle();
+          const { data: o } = await sb.from("orders").select("id, customer_email, customer_name, delivery_address, delivery_info, items, created_at").eq("id", String(body.preview_order_id)).maybeSingle();
           if (!o) return json({ error: "order_not_found" }, 404);
           const he = body.lang ? body.lang === "he" : orderIsHe(o);
           const t = await signToken("feedback", o.id);

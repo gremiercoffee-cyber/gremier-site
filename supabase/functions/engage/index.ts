@@ -63,13 +63,21 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      case "feedback_context": {
+        const orderId = String(body.order_id || "");
+        if (!isUuid(orderId) || body.t !== await signToken("feedback", orderId)) return json({ error: "bad_link" }, 403);
+        const { data: order } = await sb.from("orders").select("order_number, items").eq("id", orderId).maybeSingle();
+        if (!order) return json({ error: "order_not_found" }, 404);
+        return json({ ok: true, order_number: order.order_number, items: (Array.isArray(order.items) ? order.items : []).map((i: any) => ({ name_en: i.name_en || i.name || "", name_he: i.name_he || "", qty: i.qty ?? i.quantity ?? 1 })) });
+      }
+
       case "feedback": {
         const orderId = String(body.order_id || "");
         if (!isUuid(orderId) || body.t !== await signToken("feedback", orderId)) return json({ error: "bad_link" }, 403);
         const rating = Math.round(Number(body.rating));
         if (!(rating >= 1 && rating <= 5)) return json({ error: "bad_rating" }, 400);
         const comment = typeof body.comment === "string" ? body.comment.trim().slice(0, 2000) : undefined;
-        const { data: order } = await sb.from("orders").select("id, order_number, customer_name, customer_email").eq("id", orderId).maybeSingle();
+        const { data: order } = await sb.from("orders").select("id, order_number, customer_name, customer_email, items").eq("id", orderId).maybeSingle();
         if (!order) return json({ error: "order_not_found" }, 404);
         const { data: before } = await sb.from("feedback").select("rating, comment").eq("order_id", orderId).maybeSingle();
         const row: Record<string, unknown> = { order_id: orderId, email: order.customer_email, rating, source: body.source === "site" ? "site" : "email", updated_at: new Date().toISOString() };
@@ -77,11 +85,11 @@ Deno.serve(async (req) => {
         const { error } = await sb.from("feedback").upsert(row, { onConflict: "order_id" });
         if (error) throw error;
         // Tell the owner about new answers and new comments (not every re-click).
-        if (!before || (comment && comment !== before.comment)) {
+        if (!before || rating !== before.rating || (comment && comment !== before.comment)) {
           const faces = ["", "😞", "😕", "😐", "🙂", "😍"];
           await notifyOwner(
             `${faces[rating]} Feedback ${rating}/5 — order #${order.order_number}`,
-            `${order.customer_name || "A customer"} (${order.customer_email || "no email"}) rated order #${order.order_number}: ${rating}/5 ${faces[rating]}${comment ? `\n\n"${comment}"` : ""}`,
+            `${order.customer_name || "A customer"} (${order.customer_email || "no email"}) rated order #${order.order_number}: ${rating}/5 ${faces[rating]}${comment ? `\n\n"${comment}"` : ""}\n\nOrder: ${(Array.isArray(order.items) ? order.items : []).map((i: any) => `${i.name_en || i.name_he || i.name || "Item"} ×${i.qty ?? i.quantity ?? 1}`).join(", ")}`,
           );
         }
         // Happy customers are the moment to offer their referral link.

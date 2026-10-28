@@ -177,78 +177,51 @@
   const track = (kind) => engage({ action: 'track', sid: sid(), kind });
 
   // ── Feedback: one click from the email (/?fb=<order>.<token>&r=1..5), or the card on a later visit ──
-  function feedbackSheet(orderId, t, rating, refLink) {
-    $('fbSheet')?.remove();
-    const el = document.createElement('div');
-    el.id = 'fbSheet';
-    el.innerHTML = `<div class="fb-box" role="dialog" aria-modal="true">
-      <button type="button" class="fb-x" aria-label="${T('Close', 'סגירה')}">×</button>
-      <div class="fb-big">${['', '😞', '😕', '😐', '🙂', '😍'][rating]}</div>
-      <h3>${T('Thank you so much!', 'תודה רבה!')}</h3>
-      <p>${T('Anything you’d like to tell us? What did you like in your coffee?', 'רוצים לספר לנו עוד? מה אהבתם בקפה?')}</p>
-      <textarea class="form-input" rows="3" maxlength="2000" placeholder="${T('Optional', 'לא חובה')}"></textarea>
-      <button type="button" class="fb-send">${T('Send', 'שליחה')}</button>
-      <div class="fb-ref"></div>
-    </div>`;
-    document.body.appendChild(el);
-    const close = () => el.remove();
-    el.addEventListener('click', (e) => { if (e.target === el || e.target.closest('.fb-x')) close(); });
-    el.querySelector('.fb-send').addEventListener('click', async () => {
-      const comment = el.querySelector('textarea').value.trim();
-      if (comment) await engage({ action: 'feedback', order_id: orderId, t, rating, comment });
-      el.querySelector('.fb-box').innerHTML = `<div class="fb-big">💛</div><h3>${T('Thanks — it really helps us', 'תודה — זה באמת עוזר לנו')}</h3><div class="fb-ref"></div><button type="button" class="fb-send">${T('Close', 'סגירה')}</button>`;
-      el.querySelector('.fb-send').addEventListener('click', close);
-      if (refLink) fillRef(el, refLink);
-    });
-    if (refLink) fillRef(el, refLink);
-  }
   function fillRef(el, refLink) {
     const code = (refLink.match(/REF-[A-Z0-9]+/) || [''])[0];
     el.querySelector('.fb-ref').innerHTML = `<div class="ref-card" data-code="${esc(code)}" data-link="${esc(refLink)}">
       <div class="ref-text"><b>${T('Know someone who’d love it?', 'מכירים מישהו שיאהב?')}</b><span>${T('Give them ₪20 off — you get ₪20 when they order.', 'תנו להם ₪20 הנחה — ותקבלו ₪20 כשהם מזמינים.')}</span></div>
       <div class="ref-actions"><button type="button" data-ref="share">${T('Share', 'שיתוף')}</button><button type="button" data-ref="copy">${T('Copy link', 'העתקת קישור')}</button></div></div>`;
   }
-  async function rate(orderId, t, rating, source) {
-    const r = await engage({ action: 'feedback', order_id: orderId, t, rating, source });   // saved right away
-    whenLanguageSet(() => {
-      if (r.ok) feedbackSheet(orderId, t, rating, r.ref_link);
-      else toast(T('That link didn’t work — thank you anyway!', 'הקישור לא עבד — תודה בכל זאת!'));
-    });
-  }
-  // "Write us a few words" from the email: pick a face and write, in one window.
-  function writeSheet(orderId, t) {
+  // Rating and comment are submitted together, only after Send.
+  function writeSheet(orderId, t, initialRating = 0, source = 'email') {
     $('fbSheet')?.remove();
     const el = document.createElement('div');
     el.id = 'fbSheet';
-    el.innerHTML = `<div class="fb-box" role="dialog" aria-modal="true">
+    el.innerHTML = `<div class="fb-box" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
       <button type="button" class="fb-x" aria-label="${T('Close', 'סגירה')}">×</button>
-      <h3>${T('How was it?', 'איך היה?')}</h3>
-      <div class="fb-pick">${[5, 4, 3, 2, 1].map((n) => `<button type="button" data-r="${n}" aria-label="${n}/5">${['', '😞', '😕', '😐', '🙂', '😍'][n]}</button>`).join('')}</div>
-      <textarea class="form-input" rows="4" maxlength="2000" placeholder="${T('Tell us what you think — what did you like in your coffee?', 'ספרו לנו מה דעתכם — מה אהבתם בקפה?')}"></textarea>
-      <p class="fb-hint" hidden>${T('Pick a face first 🙂', 'בחרו פרצוף קודם 🙂')}</p>
-      <button type="button" class="fb-send">${T('Send', 'שליחה')}</button>
+      <h3 id="fbTitle">${T('How was your order?', 'איך הייתה ההזמנה?')}</h3>
+      <div class="fb-order" aria-live="polite">${T('Loading your order…', 'טוענים את ההזמנה…')}</div>
+      <div class="fb-pick" role="group" aria-label="${T('Rating', 'דירוג')}">${[5,4,3,2,1].map(n=>`<button type="button" data-r="${n}" aria-label="${n}/5" aria-pressed="${n===initialRating}" class="${n===initialRating?'on':''}">${['','😞','😕','😐','🙂','😍'][n]}</button>`).join('')}</div>
+      <label class="fb-comment-label" for="fbComment">${T('Anything else? (optional)', 'רוצים להוסיף משהו? (לא חובה)')}</label>
+      <textarea id="fbComment" class="form-input" rows="3" maxlength="2000" placeholder="${T('Tell us what you thought', 'ספרו לנו מה דעתכם')}"></textarea>
+      <p class="fb-hint" role="alert" hidden></p>
+      <button type="button" class="fb-send">${T('Send feedback', 'שליחת משוב')}</button>
     </div>`;
     document.body.appendChild(el);
-    let rating = 0;
+    let rating = initialRating, submitting = false;
     const close = () => el.remove();
-    el.addEventListener('click', async (e) => {
-      if (e.target === el || e.target.closest('.fb-x')) return close();
-      const face = e.target.closest('.fb-pick [data-r]');
-      if (face) {
-        rating = Number(face.dataset.r);
-        el.querySelectorAll('.fb-pick button').forEach((b) => b.classList.toggle('on', b === face));
-        el.querySelector('.fb-hint').hidden = true;
-        return;
-      }
-      if (!e.target.closest('.fb-send')) return;
-      if (!rating) { el.querySelector('.fb-hint').hidden = false; return; }
-      const comment = el.querySelector('textarea').value.trim();
-      const r = await engage({ action: 'feedback', order_id: orderId, t, rating, source: 'email', ...(comment ? { comment } : {}) });
-      el.querySelector('.fb-box').innerHTML = r.ok
-        ? `<div class="fb-big">💛</div><h3>${T('Thanks — it really helps us', 'תודה — זה באמת עוזר לנו')}</h3><div class="fb-ref"></div><button type="button" class="fb-send fb-done">${T('Close', 'סגירה')}</button>`
-        : `<h3>${T('That link didn’t work — thank you anyway!', 'הקישור לא עבד — תודה בכל זאת!')}</h3><button type="button" class="fb-send fb-done">${T('Close', 'סגירה')}</button>`;
-      el.querySelector('.fb-done').addEventListener('click', close);
-      if (r.ref_link) fillRef(el, r.ref_link);
+    engage({action:'feedback_context', order_id:orderId, t}).then(r=>{
+      const box=el.querySelector('.fb-order');if(!box)return;
+      if(!r.ok){box.textContent=T('Your order details could not be loaded.', 'לא הצלחנו לטעון את פרטי ההזמנה.');return;}
+      box.innerHTML=`<b>${T('Order', 'הזמנה')} #${esc(r.order_number)}</b><ul>${(r.items||[]).map(i=>`<li>${esc(he()?(i.name_he||i.name_en):(i.name_en||i.name_he))} ×${esc(i.qty)}</li>`).join('')}</ul>`;
+    });
+    el.addEventListener('click', async e=>{
+      if(e.target===el||e.target.closest('.fb-x'))return close();
+      if(submitting)return;
+      const face=e.target.closest('.fb-pick [data-r]');
+      if(face){rating=Number(face.dataset.r);el.querySelectorAll('.fb-pick button').forEach(b=>{b.classList.toggle('on',b===face);b.setAttribute('aria-pressed',String(b===face));});el.querySelector('.fb-hint').hidden=true;return;}
+      const send=e.target.closest('.fb-send');if(!send||send.classList.contains('fb-done'))return;
+      const hint=el.querySelector('.fb-hint');
+      if(!rating){hint.textContent=T('Choose a rating first.', 'בחרו דירוג קודם.');hint.hidden=false;return;}
+      submitting=true;send.disabled=true;send.textContent=T('Sending…','שולחים…');hint.hidden=true;
+      const comment=el.querySelector('textarea').value.trim();
+      const r=await engage({action:'feedback',order_id:orderId,t,rating,comment,source});
+      if(!r.ok){submitting=false;send.disabled=false;send.textContent=T('Send feedback','שליחת משוב');hint.textContent=T('Couldn’t send. Please try again—your message is still here.','השליחה נכשלה. נסו שוב — ההודעה נשמרה כאן.');hint.hidden=false;return;}
+      put('gremier_fb_done:'+orderId,1);
+      el.querySelector('.fb-box').innerHTML=`<div class="fb-big">💛</div><h3>${T('Thanks — it really helps us','תודה — זה באמת עוזר לנו')}</h3><div class="fb-ref"></div><button type="button" class="fb-send fb-done">${T('Close','סגירה')}</button>`;
+      el.querySelector('.fb-done').addEventListener('click',close);
+      if(r.ref_link)fillRef(el,r.ref_link);
     });
   }
   function arriveFromFeedbackEmail() {
@@ -258,12 +231,12 @@
     stripParams('fb', 'r', 'write');
     const [orderId, t] = fb.split('.');
     put('gremier_fb_done:' + orderId, 1);
-    if (r >= 1 && r <= 5) rate(orderId, t, r, 'email');
-    else whenLanguageSet(() => writeSheet(orderId, t));
+    whenLanguageSet(() => writeSheet(orderId, t, r >= 1 && r <= 5 ? r : 0, 'email'));
   }
 
   // Next visit: one small card, once per delivered order, only if the email wasn't answered.
   async function feedbackCard() {
+    if ($('fbSheet')) return;
     let ids = (get('gremier_order_history_v1') || []).map((o) => o.id);
     const u = typeof currentUser !== 'undefined' ? currentUser : null;
     if (u && typeof sb !== 'undefined') {
@@ -278,17 +251,7 @@
     const o = pending && pending[0];
     if (!o || $('fbCard')) return;
     put('gremier_fb_done:' + o.order_id, 1);   // shown once, answered or not
-    const card = document.createElement('div');
-    card.id = 'fbCard';
-    card.innerHTML = `<span>${T('How was your coffee?', 'איך היה הקפה?')}</span>
-      <div class="fb-faces">${[5, 4, 3, 2, 1].map((n) => `<button type="button" data-r="${n}" aria-label="${n}/5">${['', '😞', '😕', '😐', '🙂', '😍'][n]}</button>`).join('')}</div>
-      <button type="button" class="fb-x" aria-label="${T('Close', 'סגירה')}">×</button>`;
-    card.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-r]');
-      if (b) { card.remove(); rate(o.order_id, o.t, Number(b.dataset.r), 'site'); }
-      else if (e.target.closest('.fb-x')) card.remove();
-    });
-    document.body.appendChild(card);
+    writeSheet(o.order_id, o.t, 0, 'site');
   }
 
   function hook() {

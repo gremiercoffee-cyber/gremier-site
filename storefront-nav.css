@@ -468,3 +468,5 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 #shopGrid.cat-in > :nth-child(5) { animation-delay:.12s; } #shopGrid.cat-in > :nth-child(n+6) { animation-delay:.15s; }
 @keyframes catIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
 @media (prefers-reduced-motion: reduce) { #shopGrid.cat-in > * { animation:none; } }
+
+#fbSheet .fb-box{max-height:calc(100dvh - 32px);overflow-y:auto}#fbSheet .fb-order{margin:14px 0;padding:12px 14px;background:#f5f6f7;border-radius:12px;text-align:start;font-size:13px;color:#514b43}#fbSheet .fb-order ul{margin:6px 0 0;padding-inline-start:18px;line-height:1.6}#fbSheet .fb-comment-label{display:block;text-align:start;font-size:13px;margin-bottom:7px}#fbSheet .fb-send:disabled{opacity:.6;cursor:wait}

@@ -117,7 +117,7 @@
   }
 
   let lastTotal = null;
-  const MASTER = '/bar/studio/bar-master-v3.webp?v=1';
+  const MASTER = '/bar/studio/bar-master-dark-v4.webp?v=1';
   function itemArt(item) {
     const r=item.region;
     const label=item.kind==='coffee'&&item.variant!=='classic'

@@ -757,7 +757,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261026-1"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261028-2"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261026-2"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
@@ -893,7 +893,7 @@
     </a>
     <a class="discovery-route discovery-bar" href="#coffeebars" onclick="event.preventDefault();showPage('coffeebars')">
       <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="Coffee bars" data-discovery-he="עמדות קפה">Coffee bars</div><h2 data-discovery-en="Make it a coffee bar." data-discovery-he="הפכו את זה לבר קפה.">Make it a coffee bar.</h2><p data-discovery-en="A complete setup, made for your guest count." data-discovery-he="כל מה שצריך, לפי מספר האורחים שלכם.">A complete setup, made for your guest count.</p></div>
-      <div class="discovery-visual"><div class="discovery-bar-scene"><div class="discovery-bar-table" aria-hidden="true"><img src="/bar/table-logo.webp" alt="" class="discovery-table-logo"></div><img class="discovery-bar-products" src="/bar/studio/bar-master-v3.webp" alt="Gremier coffee bar on its wooden counter, with coffee, dispenser, syrups, milk, cups and straws" decoding="async"></div></div>
+      <div class="discovery-visual"><div class="discovery-bar-scene"><div class="discovery-bar-table" aria-hidden="true"><img src="/bar/table-logo.webp" alt="" class="discovery-table-logo"></div><img class="discovery-bar-products" src="/bar/studio/bar-master-dark-v4.webp" alt="Gremier coffee bar on its wooden counter, with coffee, dispenser, syrups, milk, cups and straws" decoding="async"></div></div>
       <div class="discovery-peek"><strong data-discovery-en="Start with your guests" data-discovery-he="מתחילים במספר האורחים">Start with your guests</strong><div class="discovery-guests"><b>25</b><b>50</b><b>75</b><b>100+</b></div><span data-discovery-en="Choose coffee · Pick milk · Add syrups" data-discovery-he="בחרו קפה · בחרו חלב · הוסיפו סירופים">Choose coffee · Pick milk · Add syrups</span></div>
       <div class="discovery-footer"><span id="t-hero-bars" data-discovery-en="Build your coffee bar" data-discovery-he="בנו את עמדת הקפה שלכם">Build your coffee bar</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
     </a>
@@ -1802,6 +1802,7 @@ function getFeaturedProducts() {
   }).slice(0, 4);
 }
 function cloudinaryOptimize(url, width) {
+  if (String(url || '').includes('/rhe8sj9ex7vogfpqo5y0.')) return '/products/classic-jug-dark-v2.webp';
   if (!url || !url.includes('res.cloudinary.com')) return url;
   var w = width || 600;
   return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_' + w + '/');
@@ -5287,10 +5288,10 @@ async function sendChatMessageText(text) {
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261025-5"></script>
-<script src="/storefront-engage.js?v=20261025-1"></script>
+<script src="/storefront-engage.js?v=20261028-2"></script>
 <script src="/coffee-bar-order.js?v=20261026-1"></script>
 <script src="/storefront-bar-layout.js?v=20261026-1"></script>
-<script src="/storefront-planner.js?v=20261026-2"></script>
+<script src="/storefront-planner.js?v=20261028-2"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>
