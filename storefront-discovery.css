@@ -20,3 +20,11 @@
 
 /* Mini pack photography sits on plain white, without the warm image overlay. */
 .mini-product .product-img{background:#fff}.mini-product .product-img-gradient{display:none}
+
+/* The home coffee-bar invitation shares the builder's counter and warm wall. */
+.discovery-bar .discovery-bar-scene{position:relative;width:100%;max-width:380px;aspect-ratio:1.8;flex-shrink:0;overflow:hidden;border-radius:12px 12px 0 0;background:radial-gradient(ellipse at 45% 20%,#fff9,transparent 75%),linear-gradient(#f8f6f2,#eee9df);isolation:isolate}
+.discovery-bar .discovery-visual{height:225px}
+.discovery-bar .discovery-visual .discovery-bar-products{position:absolute;left:2%;top:0;width:96%;height:auto;max-width:none;object-fit:contain;z-index:2}
+.discovery-bar-table{position:absolute;inset:78% 0 0;background:url('/bar/table-panel.webp') center/auto 100%;border-top:7px solid #9f6c38;box-shadow:0 -2px 0 #c4945a,0 2px 5px #0005}
+.discovery-bar .discovery-visual .discovery-table-logo{position:absolute;left:50%;top:16%;transform:translateX(-50%);height:70%;width:auto;object-fit:contain}
+@media(max-width:640px){.discovery-bar .discovery-visual{height:auto;aspect-ratio:1.8;bottom:54px}.discovery-bar-table{border-top-width:4px}.discovery-bar .discovery-visual .discovery-bar-products{height:auto}.discovery-bar .discovery-visual .discovery-table-logo{height:70%;width:auto}}
