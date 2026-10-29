@@ -19,6 +19,7 @@ interface TgMessage {
   voice?: { file_id: string; duration: number }; audio?: { file_id: string }; date: number; migrate_to_chat_id?: number; migrate_from_chat_id?: number;
   photo?: { file_id: string; width: number; height: number }[]; document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
   reply_to_message?: { message_id: number; from?: TgUser };
+  reply_markup?: { inline_keyboard: { text: string; callback_data?: string }[][] };
 }
 export interface TgUpdate {
   update_id: number; message?: TgMessage;
@@ -110,6 +111,8 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
     const where = { chat: msg.chat.id, thread: msg.is_topic_message ? msg.message_thread_id : undefined };
     defer((async () => {
       const data = await buttonFromKey(env, q.data ?? "");
+      // A shopping tick: straight to the list, with the message itself so it changes at once.
+      if (data.startsWith("s~")) { const [, id, arg] = data.split("~"); const { pressShopping } = await import("./telegram-topics"); await pressShopping(env, id, arg ?? "", { chat: msg.chat.id, message_id: msg.message_id, reply_markup: msg.reply_markup }); return; }
       const { pressCard } = await import("./telegram-cards");
       if (await pressCard(env, data, where, msg.message_id, (w, t, f) => talkIn(env, w, t, defer, f))) return;
       const { handleButton } = await import("./jobs");

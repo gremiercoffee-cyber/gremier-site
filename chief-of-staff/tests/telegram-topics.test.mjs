@@ -47,22 +47,29 @@ test('a Coffee topic is made once, and what is said there goes to its own coffee
  assert.equal(calls('sendMessage').at(-1).message_thread_id,a.thread,'the reply stays in the topic');
 });
 
-test('the Shopping topic pins a list; a tap ticks the item and the list updates',async()=>{
+test('each shopping list gets its own pinned message; a tap takes the item off at once, with Undo',async()=>{
  reset();const {db,env:e}=env();
- const {addShoppingItems}=await import(`data:text/javascript;base64,${Buffer.from((await build({entryPoints:['worker/shopping.ts'],bundle:true,write:false,format:'esm',platform:'node'})).outputFiles[0].text).toString('base64')}`);
- await addShoppingItems(e,undefined,[{name:'Milk',quantity:'2'},{name:'Eggs'}]);
+ const shop=await import(`data:text/javascript;base64,${Buffer.from((await build({entryPoints:['worker/shopping.ts'],bundle:true,write:false,format:'esm',platform:'node'})).outputFiles[0].text).toString('base64')}`);
+ await shop.addShoppingItems(e,undefined,[{name:'Milk',quantity:'2'},{name:'Eggs'}]);
  assert.equal(calls('sendMessage').length,0,'no Shopping topic yet: nothing sent');
+ await shop.saveShoppingList(e,{name:'Amazon'});await shop.addShoppingItems(e,'Amazon',[{name:'Claritin'}]);
  await topics.makeSubjectTopic(e,{subject:'shopping'});
- const card=calls('sendMessage').at(-1);
- assert.match(card.text,/2 to get/);
- assert.deepEqual(card.reply_markup.inline_keyboard.map(r=>r[0].text),['⬜ Milk (2)','⬜ Eggs']);
- assert.equal(calls('pinChatMessage').length,1);
+ const cards=calls('sendMessage').filter(m=>m.reply_markup||/to get/.test(m.text));
+ assert.deepEqual(cards.map(c=>c.text.match(/<b>(.+?)<\/b>/)[1]),['Store','Amazon'],'never mixed');
+ assert.deepEqual(cards[0].reply_markup.inline_keyboard.map(r=>r[0].text),['⬜ Milk (2)','⬜ Eggs']);
+ assert.deepEqual(cards[1].reply_markup.inline_keyboard.map(r=>r[0].text),['⬜ Claritin']);
+ assert.equal(calls('pinChatMessage').length,2);
+ const storeMsg=calls('pinChatMessage')[0].message_id;
  const milk=db.prepare("SELECT id FROM shopping_items WHERE name='Milk'").get().id;
- await topics.pressShopping(e,milk,'c');
+ const before=globalThis.__tg.length;
+ await topics.pressShopping(e,milk,'c',{chat:-100,message_id:storeMsg,reply_markup:cards[0].reply_markup});
+ const firstCall=globalThis.__tg[before];
+ assert.equal(firstCall.method,'editMessageText','the message changes first, before saving');
+ assert.deepEqual(firstCall.body.reply_markup.inline_keyboard.map(r=>r[0].text),['⬜ Eggs','↩️ Undo: Milk (2)']);
+ assert.match(firstCall.body.text,/1 to get/);
  assert.equal(db.prepare('SELECT checked FROM shopping_items WHERE id=?').get(milk).checked,1);
- const edit=calls('editMessageText').at(-1);
- assert.match(edit.text,/1 to get/);
- assert.deepEqual(edit.reply_markup.inline_keyboard.map(r=>r[0].text),['⬜ Eggs','✅ Milk']);
+ const after=calls('editMessageText').filter(b=>b.message_id===storeMsg).at(-1);
+ assert.deepEqual(after.reply_markup.inline_keyboard.map(r=>r[0].text),['⬜ Eggs','↩️ Undo: Milk (2)'],'the refresh agrees');
  await topics.pressShopping(e,milk,'u');
- assert.match(calls('editMessageText').at(-1).text,/2 to get/,'tapping ✅ puts it back');
+ assert.match(calls('editMessageText').filter(b=>b.message_id===storeMsg).at(-1).text,/2 to get/,'Undo puts it back');
 });

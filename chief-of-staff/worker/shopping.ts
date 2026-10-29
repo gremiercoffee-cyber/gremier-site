@@ -132,6 +132,7 @@ export async function processShoppingMessage(env: Env, id: string) {
       ON CONFLICT(list_id, normalized_name) WHERE checked = 0 DO NOTHING`).bind(uid(), i.name.trim().slice(0, 160), shoppingKey(i.name.slice(0, 160)), String(i.quantity ?? '').slice(0, 80), String(i.notes ?? '').slice(0, 500), now(), now(), id));
     statements.push(env.DB.prepare("UPDATE shopping_messages SET status = 'done', added = ?, updated_at = ? WHERE id = ? AND status = 'processing'").bind(items.length, now(), id));
     await env.DB.batch(statements);
+    if (items.length) await changed(env);
     return { handled: items.length > 0, added: items.length };
   } catch (e) {
     await run(env, "UPDATE shopping_messages SET status = 'pending', updated_at = ? WHERE id = ?", now(), id);
