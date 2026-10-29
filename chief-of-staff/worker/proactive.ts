@@ -21,7 +21,7 @@ import { missionsSummary, runMissions } from "./missions";
 import { runDueRoutines, advanceRoutineRuns } from "./routines";
 import { runSituations } from "./situations";
 import { nudgeStaleIdea, runIdeaResearch } from "./ideas";
-import { customersDue, hubCall } from "./hub";
+import { coffeeToDo, customersDue, hubCall } from "./hub";
 import { tidyConversations } from "./tidy";
 import { runTrackerEmail, trackersToday } from "./trackers";
 
@@ -187,6 +187,8 @@ async function createBriefing(env: Env, date: string, tz: string) {
   const sweep = sunday ? await cracks(env) : [];
   const missions = await missionsSummary(env);
   const pending = await all<{ description: string }>(env, "SELECT description FROM pending_actions WHERE status = 'pending' LIMIT 5");
+  // Coffee production (brew / bottle / beans), from what's actually been delivered.
+  const coffee = await coffeeToDo(env);
 
   let body: string;
   try {
@@ -210,7 +212,7 @@ ${listing}${meetings.length?`\n\nMeetings today (saved schedule, include in Toda
 ${quiet.length ? `\nNoted quietly since yesterday:\n${quiet.map((q) => `- ${q.title}${q.body ? `: ${q.body}` : ""}`).join("\n")}` : ""}
 ${pending.length ? `\nWaiting for the user's approval:\n${pending.map((p) => `- ${p.description}`).join("\n")}` : ""}
 ${sweep.length ? `\nMay have slipped:\n${sweep.join("\n")}` : ""}
-${missions ? `\nMissions:\n${missions}` : ""}`,
+${missions ? `\nMissions:\n${missions}` : ""}${coffee.length ? `\nCoffee production (from deliveries; put in Today or Heads-up):\n${coffee.map((l) => `- ${l}`).join("\n")}` : ""}`,
       maxTokens: 900,
     });
   } catch {

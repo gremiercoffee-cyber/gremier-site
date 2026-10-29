@@ -519,9 +519,9 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "coffee_app",
-      description: "Read the Gremier Coffee admin app (live business data): summary (today's jobs, next delivery, orders to fulfil, unpaid, money owed, concentrate, beans), schedule (jobs between dates), orders (to_fulfil|unpaid), stock, stores (with phone & prices), activity (timeline of deliveries/orders since a date). Read-only.",
+      description: "Read the Gremier Coffee admin app (live business data): outlook (how long each coffee lasts from actual deliveries, not hand-typed stock: fine / brew by a day / brew now, counting concentrate + bottles already made against the usual pace and scheduled deliveries; what to bottle; beans to order: use it for any 'do I need to brew?' or planning question), summary (today's jobs, next delivery, orders to fulfil, unpaid, money owed, concentrate, beans), schedule (jobs between dates), orders (to_fulfil|unpaid), stock, stores (with phone & prices), activity (timeline of deliveries/orders since a date). Read-only.",
       input_schema: { type: "object", properties: {
-        action: { type: "string", enum: ["summary", "schedule", "orders", "stock", "stores", "activity"] },
+        action: { type: "string", enum: ["outlook", "summary", "schedule", "orders", "stock", "stores", "activity"] },
         from: { type: "string", description: "schedule: YYYY-MM-DD" }, to: { type: "string", description: "schedule: YYYY-MM-DD" },
         status: { type: "string", enum: ["to_fulfil", "unpaid"] }, since: { type: "string", description: "activity: ISO date" }, limit: { type: "integer" },
       }, required: ["action"] },
@@ -1325,7 +1325,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
 
 /** Which tools belong to which feature. Anything not listed is always sent. */
 const TOOL_GROUPS: Record<string, string[]> = {
-  worktime: ["start_work_session"],
+  worktime: ["start_work_session", "coffee_app"],
   shopping: ['get_shopping_lists', 'save_shopping_list', 'add_shopping_items', 'update_shopping_item'],
   schedule: ["save_time_block"],
   calendar: ["calendar_lookup"],
@@ -1365,7 +1365,7 @@ const GROUP_INFO: Record<string, string> = {
 };
 /** Rules that only matter with their tools: sent with the group, never otherwise. */
 const GROUP_RULES: Record<string, string> = {
-  worktime: "Free time (\"I'm here, I have 40 minutes, what should I do?\"): suggest 3-6 numbered options from their open tasks (search_items if they aren't in the context) that fit the time: overdue/due-soon and important first, then quick wins; each one line with a rough time (~15m). Skip things they're only waiting on others for (a long-quiet one can be \"follow up with X\"). Add one line on what's coming up next (meeting, deadline). Ask which they'll do. When they choose (\"1, 3 and the email\"), call start_work_session with those item ids and their minutes (create_item first for anything new), then reply in one short line.",
+  worktime: "Free time (\"I'm here, I have 40 minutes, what should I do?\", \"I have time this afternoon\"): first look at what they usually do in that part of the day (their time blocks and areas in the context, and what they've told you), and at the coffee business: call coffee_app outlook and treat its summary (brew / bottle / order beans) as real tasks when it says so, including the honest \"you're fine for ~N days\" when nothing is needed. Then suggest 3-6 numbered options from their open tasks (search_items if they aren't in the context) and those coffee jobs that fit the time: overdue/due-soon and important first, then quick wins; each one line with a rough time (~15m). Skip things they're only waiting on others for (a long-quiet one can be \"follow up with X\"). Add one line on what's coming up next (meeting, deadline). Ask which they'll do. Things they tell you about how they like to use their time (\"afternoons are for coffee\") go to remember. When they choose (\"1, 3 and the email\"), call start_work_session with those item ids and their minutes (create_item first for anything new), then reply in one short line.",
   email: "When they want an email SENT to someone (\"email the suppliers\", \"send Dana an email asking…\"), use email_with_codex: Codex writes it and sends it from their Gmail after they tap Send in its chat. draft_email only when they just want a Gmail draft.",
   shopping: "Shopping goes only to the shopping-list tools (Store is the default list), never to tasks.",
   hashgacha: "Hashgacha completion comes from online submissions (get_hashgacha_reports/track_hashgacha_reports), never an email reply or a new week. Missing, partial and unavailable are different. No automatic outreach.",

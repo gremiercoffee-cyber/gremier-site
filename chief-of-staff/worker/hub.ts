@@ -9,7 +9,14 @@ import { first, now, run } from "./db";
 import { notify } from "./push";
 
 const DEFAULT_URL = "https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/hub-api";
-export const HUB_READ_ACTIONS = ["summary", "schedule", "orders", "stock", "stores", "activity"] as const;
+export const HUB_READ_ACTIONS = ["summary", "outlook", "schedule", "orders", "stock", "stores", "activity"] as const;
+
+/** The coffee to-dos right now (brew / bottle / order beans), worked out from deliveries. [] when all is fine or not connected. */
+export async function coffeeToDo(env: Env): Promise<string[]> {
+  if (!hubConfigured(env)) return [];
+  const o = await hubCall(env, "outlook").catch((e) => { console.error("coffee outlook", e); return null; }) as { summary?: string[] } | null;
+  return (o?.summary ?? []).filter((l) => !/^All good/.test(l));
+}
 
 export const hubConfigured = (env: Env) => !!env.HUB_KEY;
 
