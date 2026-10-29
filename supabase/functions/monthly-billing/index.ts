@@ -1,5 +1,6 @@
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { VAT_RATE } from "../_shared/vat.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,6 +139,12 @@ Deno.serve(async (req) => {
         (store.qtyDairyFree * store.dairyFreePrice) +
         (store.qtyUnfiltered * store.unfilteredPrice);
 
+      // A month already on a VAT invoice is fixed: don't regenerate it.
+      const { data: existingBill } = await sb.from("store_billing").select("tax_invoice_id").eq("store_id", store.id).eq("year", year).eq("month", month).maybeSingle();
+      if (existingBill?.tax_invoice_id) { results.push({ store: store.name, total: storeTotal, skipped: "already_invoiced" }); continue; }
+      // Osek Morshe: VAT on top of the store's price.
+      const vat = Math.round(storeTotal * VAT_RATE * 100) / 100;
+
       grandTotal  += storeTotal;
       totalLarge  += store.qtyLarge;
       totalSmall  += store.qtySmall;
@@ -178,7 +185,7 @@ tbody td{padding:7px 10px;border-bottom:1px solid #eee}
 <body>
 <div class="header"><div></div><div style="text-align:right;line-height:1.7">
   <div class="biz-name">${BIZ_NAME}</div>
-  <div>עוסק פטור מס': ${BIZ_TAXID}</div>
+  <div>עוסק מורשה מס': ${BIZ_TAXID}</div>
   <div>${BIZ_EMAIL}</div>
   <div>כתובת: ${BIZ_ADDRESS}</div>
   <div>${BIZ_PHONE}</div>
@@ -195,8 +202,8 @@ tbody td{padding:7px 10px;border-bottom:1px solid #eee}
 <table class="totals">
   <tr><td>סה"כ</td><td style="text-align:left">₪${storeTotal.toFixed(2)}</td></tr>
   <tr><td>הנחה</td><td style="text-align:left">₪0.00</td></tr>
-  <tr><td>מע"מ 0%</td><td style="text-align:left">₪0.00</td></tr>
-  <tr class="grand"><td>סה"כ לתשלום</td><td style="text-align:left">₪${storeTotal.toFixed(2)}</td></tr>
+  <tr><td>מע"מ ${Math.round(VAT_RATE * 100)}%</td><td style="text-align:left">₪${vat.toFixed(2)}</td></tr>
+  <tr class="grand"><td>סה"כ לתשלום</td><td style="text-align:left">₪${(storeTotal + vat).toFixed(2)}</td></tr>
 </table>
 <div class="notes"><p><strong>פרטים להעברה:</strong></p><p>${BIZ_BANK}</p></div>
 <div class="footer"><span>תאריך הפקה: ${today}</span><strong>מסמך ממוחשב חתום דיגיטלית</strong></div>

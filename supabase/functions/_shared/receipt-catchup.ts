@@ -1,5 +1,6 @@
 import {receiptSettings,receiptRow,receiptOrder,issueFinbotReceipt,receiptAttachment} from './finbot-receipts.ts';
 import {sendOrderEmails} from './order-email.ts';
+import {websiteDocType} from './finbot-receipt-model.ts';
 
 // Separate receipt email: never replay fulfillment, payments, stock, or the order confirmation.
 export async function runReceiptCatchup(db:any) {
@@ -30,8 +31,9 @@ export async function runReceiptCatchup(db:any) {
         const order=await receiptOrder(db,job.order_id);
         const attachment=await receiptAttachment(db,job.order_id,order.order_number);
         if(!attachment)throw Error('receipt_pdf_unavailable');
-        const title=`Gremier · Receipt / קבלה · #${order.order_number||job.order_id}`;
-        const text=`Your official receipt for order #${order.order_number||job.order_id} is attached. Thank you!\n\nמצורפת הקבלה עבור הזמנה #${order.order_number||job.order_id}. תודה!`;
+        const taxed=websiteDocType(order)==='2',n=order.order_number||job.order_id;
+        const title=taxed?`Gremier · Tax invoice/receipt · חשבונית מס/קבלה · #${n}`:`Gremier · Receipt / קבלה · #${n}`;
+        const text=taxed?`Your tax invoice/receipt for order #${n} is attached. Thank you!\n\nמצורפת חשבונית מס/קבלה עבור הזמנה #${n}. תודה!`:`Your official receipt for order #${n} is attached. Thank you!\n\nמצורפת הקבלה עבור הזמנה #${n}. תודה!`;
         const sent=await sendOrderEmails({ownerSubject:title,ownerText:text,ownerAttachments:[attachment],skipOwner:!!order.customer_email,
           customerEmail:order.customer_email,customerSubject:title,customerText:text,customerAttachments:[attachment]});
         if(!sent.ok)throw Error('receipt_email_requires_review');

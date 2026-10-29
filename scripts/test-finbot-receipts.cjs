@@ -244,3 +244,16 @@ test('pause after queue claim restores pending work without sending anything',as
  db.rpc=async name=>{const result=await claim(name);db.settings.enabled=false;return result;};
  await runReceiptCatchup(db);assert.equal(calls.length,0);assert.equal(db.queue.get('a').status,'pending');
 });
+test('paid after becoming Osek Morshe: tax invoice/receipt with VAT inside the same total',()=>{
+ const after=order({total:169,payment_confirmed_at:'2026-10-25T08:00:00Z'});
+ const p=receiptPayload(after,'2026-10-25',new Date('2026-10-26T10:00:00Z'));
+ assert.equal(p.type,'2');assert.equal(p.vatType,true);assert.equal(p.items[0].price,143.22);assert.equal(p.payments[0].sum,169);
+ const before=receiptPayload(order({payment_confirmed_at:'2026-10-22T10:00:00Z'}),'2026-10-22',new Date('2026-10-26T10:00:00Z'));
+ assert.equal(before.type,'1');assert.equal(before.vatType,false);assert.equal(before.items[0].price,125.25);
+});
+test('VAT shares add up exactly; every total gets a price that comes back to it',()=>{
+ const v=require('../supabase/functions/_shared/vat.ts');
+ const s=v.invoiceShares([{id:'a',net_minor:153000},{id:'b',net_minor:76801},{id:'c',net_minor:59650}]);
+ assert.equal(s.gross_minor,s.shares.reduce((n,x)=>n+x.gross_minor,0));assert.equal(s.vat_minor,Math.round(289451*0.18));
+ for(let g=100;g<=200000;g+=7){const p=v.priceBeforeVat(g);assert.equal(Math.round(Math.round(p*10000)*1.18/100),g,'total '+g);}
+});

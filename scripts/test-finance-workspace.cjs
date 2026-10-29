@@ -41,7 +41,7 @@ function service(mode='ok',store=false){
   storage:{from(){return {upload:async()=>({error:null})}}}};
  const context={Request,Response,File,TextEncoder,Uint8Array,URL,AbortSignal,crypto,btoa,console,Date,
   Deno:{env:{get:k=>({FINBOT_API_KEY:'fixture',SUPABASE_URL:'https://fixture.test',SUPABASE_SERVICE_ROLE_KEY:'fixture'})[k]},serve:fn=>handler=fn},
-  createClient:()=>db,isServiceOrAdmin:async()=>mode!=='denied',forbidden:()=>Response.json({error:'admin_only'},{status:403}),customerFields,normalizeManualInput,manualPayload,resultDocument,
+  createClient:()=>db,isServiceOrAdmin:async()=>mode!=='denied',forbidden:()=>Response.json({error:'admin_only'},{status:403}),customerFields,normalizeManualInput,manualPayload,resultDocument,vatApplies:require('../supabase/functions/_shared/vat.ts').vatApplies,
   originalPdf:async()=>new TextEncoder().encode('%PDF-1.7 fixture'),
   fetch:async(url,options)=>{calls.push({url,options});if(mode==='timeout')throw Error('network timeout');return Response.json({status:1,data:'https://api.finbotai.co.il/fixture.pdf'});}};
  const code=fs.readFileSync('supabase/functions/business-receipts/index.ts','utf8').replace(/^import .*;\r?\n/gm,'');
@@ -64,7 +64,7 @@ test('receipt review shows all customer and payment details and escapes untruste
 });
 test('store amount overrides reveal the adjustment reason only when needed',()=>{
  const source=fs.readFileSync('admin-finance.js','utf8'),nodes={manualAmount:{value:''},manualAdjustmentGroup:{hidden:true},manualAdjustment:{required:false},manualSettlement:{hidden:true,textContent:''}};
- let selection=[];const ctx={selectedBills:()=>selection,money:n=>'ILS '+n/100,get:id=>nodes[id]};
+ let selection=[];const ctx={selectedBills:()=>selection,owed:b=>b.invoiced_gross_minor??Math.round(Number(b.total)*100),money:n=>'ILS '+n/100,get:id=>nodes[id]};
  vm.runInNewContext(source.slice(source.indexOf('function updateSettlement('),source.indexOf('function receiptReviewDetails(')),ctx);
  ctx.updateSettlement();assert.equal(nodes.manualSettlement.hidden,true);assert.equal(nodes.manualAdjustmentGroup.hidden,true);
  selection=[{total:100},{total:150}];nodes.manualAmount.value='250';ctx.updateSettlement();assert.equal(nodes.manualAdjustmentGroup.hidden,true);assert.match(nodes.manualSettlement.textContent,/2 months.*250/);

@@ -121,17 +121,19 @@
   if(!c?.store_id)return;
   status('manualReceiptStatus','Loading outstanding months…');
   try{
-   const [r,claimed]=await Promise.all([sbc().from('store_billing').select('id,year,month,total').eq('store_id',c.store_id).is('paid_at',null).is('cancelled_at',null).order('year').order('month'),sbc().from('business_receipt_bills').select('billing_id')]);
+   const [r,claimed]=await Promise.all([sbc().from('store_billing').select('id,year,month,total,tax_invoice_id,invoiced_gross_minor').eq('store_id',c.store_id).is('paid_at',null).is('cancelled_at',null).order('year').order('month'),sbc().from('business_receipt_bills').select('billing_id')]);
    if(c.id!==get('manualCustomer').value)return;if(r.error||claimed.error)throw Error('Could not load outstanding bills.');
    const ids=new Set(claimed.data.map(x=>x.billing_id));bills=r.data.filter(b=>!ids.has(b.id));
-   get('manualBills').innerHTML=bills.length?'<h3>Months paid for</h3><p class="fw-note">Selected months are marked paid when the receipt is issued.</p><div class="fw-months">'+bills.map(b=>`<label class="fw-month"><input type="checkbox" value="${esc(b.id)}" class="manual-bill"><span>${b.year}-${String(b.month).padStart(2,'0')}</span><strong>${money(Math.round(Number(b.total)*100))}</strong></label>`).join('')+'</div>':'';
-   get('manualBills').querySelectorAll('input').forEach(i=>i.onchange=()=>{const selected=selectedBills();get('manualAmount').value=(selected.reduce((s,b)=>s+Math.round(Number(b.total)*100),0)/100).toFixed(2);get('manualDescription').value=('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);updateSettlement();});
+   get('manualBills').innerHTML=bills.length?'<h3>Months paid for</h3><p class="fw-note">Selected months are marked paid when the receipt is issued.</p><div class="fw-months">'+bills.map(b=>`<label class="fw-month"><input type="checkbox" value="${esc(b.id)}" class="manual-bill"><span>${b.year}-${String(b.month).padStart(2,'0')}${b.tax_invoice_id?' · incl. VAT':''}</span><strong>${money(owed(b))}</strong></label>`).join('')+'</div>':'';
+   get('manualBills').querySelectorAll('input').forEach(i=>i.onchange=()=>{const selected=selectedBills();get('manualAmount').value=(selected.reduce((s,b)=>s+owed(b),0)/100).toFixed(2);get('manualDescription').value=('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);updateSettlement();});
    status('manualReceiptStatus',bills.length?'':'No outstanding months available.');
   }catch(e){status('manualReceiptStatus',e.message);}
  }
+ // A month on a VAT invoice is owed its invoiced amount (VAT included); its receipt links to that invoice.
+ const owed=b=>b.invoiced_gross_minor??Math.round(Number(b.total)*100);
  const selectedBills=()=>bills.filter(b=>[...document.querySelectorAll('.manual-bill:checked')].some(i=>i.value===b.id));
  function updateSettlement(){
-  const selected=selectedBills(),billed=selected.reduce((sum,b)=>sum+Math.round(Number(b.total)*100),0),actual=Math.round(Number(get('manualAmount').value)*100);
+  const selected=selectedBills(),billed=selected.reduce((sum,b)=>sum+owed(b),0),actual=Math.round(Number(get('manualAmount').value)*100);
   const differs=selected.length>0&&Number.isFinite(actual)&&actual>0&&actual!==billed;
   get('manualAdjustmentGroup').hidden=!differs;
   get('manualAdjustment').required=differs;
@@ -140,7 +142,7 @@
  }
  function receiptReviewDetails(p){
   const c=p.customer,check=p.payment_details||{},method=({cash:'Cash',bank_transfer:'Bank transfer',check:'Check · צ׳ק',bit:'Bit · ביט'})[p.payment_method];
-  const rows=[['Document','קבלה · ILS'],['Issue date',p.payload?.date||today()],['Date received',p.payment_date],['Method',method],
+  const rows=[['Document',p.payload?.type==='2'?'חשבונית מס/קבלה · VAT included · ILS':p.invoice?'קבלה for tax invoice '+p.invoice.document_number+' · ILS':'קבלה · ILS'],['Issue date',p.payload?.date||today()],['Date received',p.payment_date],['Method',method],
    ['ח.פ./עוסק',c.tax_id],['Address',c.address],['Phone',c.phone],['Reference',p.payment_reference],['Description',p.description],
    ...(p.payment_method==='check'?[['Bank',check.bank_code],['Branch',check.branch],['Account',check.account],['Check number',check.check_number],['Check date',check.check_date]]:[]),
    ...(p.bills.length?[['Months paid for',p.bills.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')],['Original bills',money(p.billed_total_minor)],['Settlement','Selected months will be marked paid in full']]:[]),
@@ -150,7 +152,7 @@
  async function review(){
   get('manualPreview').disabled=true;status('manualReceiptStatus','Preparing review…');
   try{
-   const selected=selectedBills(),input={id:requestId,customer_id:get('manualCustomer').value,customer_version:customers.find(c=>c.id===get('manualCustomer').value)?.updated_at||'',amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,adjustment_reason:get('manualAdjustmentGroup').hidden?'':get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+Math.round(Number(b.total)*100),0):null,email_requested:get('manualEmail').checked};
+   const selected=selectedBills(),input={id:requestId,customer_id:get('manualCustomer').value,customer_version:customers.find(c=>c.id===get('manualCustomer').value)?.updated_at||'',amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,adjustment_reason:get('manualAdjustmentGroup').hidden?'':get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+owed(b),0):null,email_requested:get('manualEmail').checked};
    input.payment_details=get('manualMethod').value==='check'?{bank_code:get('manualCheckBank').value,branch:get('manualCheckBranch').value,account:get('manualCheckAccount').value,check_number:get('manualCheckNumber').value,check_date:get('manualCheckDate').value}:{};
    const r=await call('business-receipts',{action:'preview',...input});if(r.already_claimed)throw Error('This request already has a receipt or needs review. Check the receipt history.');
    preview=input;get('manualReceiptForm').hidden=true;const p=r.preview;

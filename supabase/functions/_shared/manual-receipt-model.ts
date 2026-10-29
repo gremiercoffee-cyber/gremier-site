@@ -1,4 +1,5 @@
 import {amountMinor,israelDate} from './finbot-receipt-model.ts';
+import {priceBeforeVat} from './vat.ts';
 export function customerFields(raw:any) {
  const name=String(raw.name||'').trim(),tax=String(raw.tax_id||'').trim(),email=String(raw.email||'').trim(),phone=String(raw.phone||'').replace(/[\s().-]/g,'');
  if(!name||name.length>100)throw Error('customer_name_required');
@@ -39,13 +40,16 @@ export function normalizeManualInput(raw:any,now=new Date()) {
   payment_reference,description,billing_ids:ids,
   adjustment_reason,billed_total_minor:ids.length?billed:null,email_requested:raw.email_requested===true};
 }
-export function manualPayload(input:any,customer:any,now=new Date()) {
+// taxed: a sale paid after becoming Osek Morshe that has no tax invoice of its own (an event, a
+// private customer) gets a חשבונית מס/קבלה with VAT inside the amount. A store paying a VAT invoice
+// gets a plain קבלה linked to that invoice.
+export function manualPayload(input:any,customer:any,now=new Date(),taxed=false) {
  const c=customerFields(customer),fmt=(s:string)=>s.split('-').reverse().join('/');
  if(input.email_requested&&!c.email)throw Error('customer_email_required');
- return {type:'1',date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:false,rounding:false,
+ return {type:taxed?'2':'1',date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:taxed,rounding:false,
   title:`Gremier payment ${input.id.slice(0,8)}`,description:input.description,remark:input.adjustment_reason||'',
   customer:{name:c.name,...(c.tax_id?{tax:c.tax_id}:{}),...(c.phone?{phone:c.phone}:{}),...(c.address?{address:c.address}:{}),save:false},
-  items:[{name:input.description.slice(0,100),amount:1,price:input.amount_minor/100,save:false}],
+  items:[{name:input.description.slice(0,100),amount:1,price:taxed?priceBeforeVat(input.amount_minor):input.amount_minor/100,save:false}],
   payments:[{type:({cash:'0',bank_transfer:'1',check:'3',bit:'8'} as Record<string,string>)[input.payment_method],date:fmt(input.payment_method==='check'?input.payment_details.check_date:input.payment_date),sum:input.amount_minor/100,
    ...(input.payment_method==='check'?{bankName:Number(input.payment_details.bank_code),bankBranch:Number(input.payment_details.branch),bankAccount:Number(input.payment_details.account),checkNumber:Number(input.payment_details.check_number)}:{}),
    ...(input.payment_reference?{transactionNumber:input.payment_reference}:{})}]};

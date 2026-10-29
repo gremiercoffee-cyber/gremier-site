@@ -2,6 +2,7 @@ import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
 import {customerFields,normalizeManualInput,manualPayload} from '../_shared/manual-receipt-model.ts';
 import {resultDocument} from '../_shared/finbot-receipt-model.ts';
+import {vatApplies} from '../_shared/vat.ts';
 import {originalPdf} from '../_shared/finbot-receipts.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(b:unknown,status=200)=>new Response(JSON.stringify(b),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -13,6 +14,7 @@ async function pdf(db:any,row:any) {
  const {error}=await db.storage.from('order-receipts').upload(path,bytes,{contentType:'application/pdf',upsert:true});if(error)throw Error('pdf_storage_failed');
  const r=await db.from('business_receipts').update({pdf_path:path,error_code:null}).eq('id',row.id).select('*').single();if(r.error)throw Error('pdf_status_failed');return r.data;
 }
+const docName=(row:any)=>!row.store_id&&vatApplies(row.payment_date+'T23:59:00+03:00')?'חשבונית מס/קבלה':'קבלה';
 async function email(db:any,row:any){
  if(!row.email_requested||row.email_sent_at)return row;
  try{
@@ -22,7 +24,7 @@ async function email(db:any,row:any){
   const bytes=new Uint8Array(await file.data.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.slice(i,i+8192));
   const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':`business-receipt/${row.id}`},
    body:JSON.stringify({from:Deno.env.get('ORDER_EMAIL_FROM')||'Gremier Coffee <onboarding@resend.dev>',to:[row.customer_snapshot.email],
-    reply_to:Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com',subject:'Gremier Coffee — קבלה',text:`שלום ${row.customer_snapshot.name},\nמצורפת קבלה על תשלום בסך ₪${(row.amount_minor/100).toFixed(2)}.\nתודה, גרמיר קפה`,
+    reply_to:Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com',subject:`Gremier Coffee — ${docName(row)}`,text:`שלום ${row.customer_snapshot.name},\nמצורפת ${docName(row)} על תשלום בסך ₪${(row.amount_minor/100).toFixed(2)}.\nתודה, גרמיר קפה`,
     attachments:[{filename:`Gremier-receipt-${row.id.slice(0,8)}.pdf`,content:btoa(binary)}]}),signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw Error('email_delivery_failed');
   const saved=await db.from('business_receipts').update({email_sent_at:new Date().toISOString(),email_error:null}).eq('id',row.id).select('*').single();return saved.data||row;
@@ -48,20 +50,33 @@ Deno.serve(async req=>{
   const c=await db.from('receipt_customers').select('*').eq('id',input.customer_id).is('archived_at',null).single();if(c.error)throw Error('customer_not_available');
   if((raw.action==='issue'||input.customer_version)&&input.customer_version!==String(c.data.updated_at||''))throw Error('customer_changed_refresh_preview');
   const customer=customerFields(c.data),store_id=c.data.store_id||null;
-  let bills:any[]=[];
+  let bills:any[]=[],invoice:any=null;
   if(store_id){
    if(!input.billing_ids.length)throw Error('choose_paid_months');
-   const r=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at').in('id',input.billing_ids);if(r.error)throw Error('billing_unavailable');bills=r.data;
+   const r=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at,tax_invoice_id,invoiced_gross_minor').in('id',input.billing_ids);if(r.error)throw Error('billing_unavailable');bills=r.data;
    if(bills.length!==input.billing_ids.length||bills.some(b=>b.store_id!==store_id||b.paid_at||b.cancelled_at))throw Error('month_not_outstanding');
-   const total=bills.reduce((s,b)=>s+Math.round(Number(b.total)*100),0);if(total!==input.billed_total_minor)throw Error('billing_changed_refresh_preview');
+   // Months on a VAT invoice are owed their invoiced amount, and the receipt links to that invoice.
+   const total=bills.reduce((s,b)=>s+(b.invoiced_gross_minor??Math.round(Number(b.total)*100)),0);if(total!==input.billed_total_minor)throw Error('billing_changed_refresh_preview');
+   const invoiceIds=[...new Set(bills.map(b=>b.tax_invoice_id||null))];
+   if(invoiceIds.length>1)throw Error('one_invoice_per_receipt');
+   if(invoiceIds[0]){
+    const inv=await db.from('store_tax_invoices').select('id,status,document_number,gross_minor').eq('id',invoiceIds[0]).single();
+    if(inv.error||inv.data.status!=='issued')throw Error('invoice_not_issued');
+    if(!inv.data.document_number)throw Error('invoice_number_missing');
+    const rest=await db.from('store_billing').select('id').eq('tax_invoice_id',inv.data.id).is('paid_at',null).is('cancelled_at',null);
+    if((rest.data||[]).some((r:any)=>!input.billing_ids.includes(r.id)))throw Error('pay_whole_invoice');
+    invoice=inv.data;
+   }
    if(total!==input.amount_minor&&input.adjustment_reason.length<3)throw Error('adjustment_reason_required');
   }else if(input.billing_ids.length)throw Error('customer_not_linked_to_store');
-  const payload=manualPayload(input,customer);
-  if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,payload},creates_document:false});
+  // Not a store month: paid on or after the switch day → tax invoice/receipt.
+  const taxed=!store_id&&vatApplies(input.payment_date+'T23:59:00+03:00');
+  const payload={...manualPayload(input,customer,new Date(),taxed),...(invoice?{linkedDocument:String(invoice.document_number)}:{})};
+  if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,invoice,payload},creates_document:false});
   if(raw.payment_received!==true||raw.not_already_receipted!==true)return json({error:'confirm_received_and_no_existing_receipt'},400);
   if(input.email_requested&&!Deno.env.get('RESEND_API_KEY'))throw Error('email_not_configured');
   const key=Deno.env.get('FINBOT_API_KEY');if(!key)throw Error('finbot_not_configured');
-  const claim=await db.rpc('claim_business_receipt',{d:{...input,request_hash,store_id,customer_snapshot:customer},bill_ids:input.billing_ids});
+  const claim=await db.rpc('claim_business_receipt',{d:{...input,request_hash,store_id,customer_snapshot:customer,tax_invoice_id:invoice?.id||null},bill_ids:input.billing_ids});
   if(claim.error)throw Error('payment_or_month_already_claimed_refresh');
   if(!claim.data.created)return json({receipt:clean(claim.data.receipt),already_claimed:true});
   let issued=false;

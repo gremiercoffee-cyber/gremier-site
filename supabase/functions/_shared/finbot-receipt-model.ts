@@ -1,4 +1,9 @@
-// Pure mappings: type 1 is a קבלה; Finbot requires an amount summary matching its payment.
+// Pure mappings: type 1 is a קבלה, type 2 a חשבונית מס/קבלה (paid after becoming Osek Morshe);
+// Finbot requires an amount summary matching its payment.
+import {priceBeforeVat,vatApplies} from './vat.ts';
+// Paid after the switch → tax invoice/receipt with VAT inside the price.
+export const websiteDocType=(order:any)=>vatApplies(order.payment_confirmed_at||order.created_at)?'2':'1';
+export const docTitle=(type:string)=>type==='2'?'חשבונית מס / קבלה':'קבלה';
 export function israelDate(value: string | Date): string {
   const date=new Date(value);
   if (!Number.isFinite(date.getTime())) throw Error('invalid_date');
@@ -42,14 +47,16 @@ export function receiptPayload(order: any, paymentDate: string, now=new Date()):
   const installments=Number(order.delivery_info?.receipt_installments);
   if(!Number.isInteger(installments)||installments<1||installments>999)throw Error('installment_count_required');
   const phone=String(order.customer_phone||'').trim().replace(/[\s().-]/g,'');
+  const type=websiteDocType(order),taxed=type==='2';
   return {
-    // This business is exempt: Finbot explicitly rejects vatType=true with validation code 115.
-    type:'1',date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:false,rounding:false,
+    // Before the switch the business was exempt (Finbot rejects vatType=true for exempt businesses, code 115).
+    // After it, the price includes VAT; FinBot takes item prices before VAT and adds it back.
+    type,date:fmt(israelDate(now)),language:'HE',currency:'ILS',vatType:taxed,rounding:false,
     title:`Gremier order ${order.order_number||order.id}`,
     description:`תשלום עבור הזמנה ${order.order_number||order.id}`,
     remark:`הזמנה מספר ${order.order_number||order.id}`,
     customer:{name:String(order.customer_name).trim().slice(0,100),...(/^\+?\d{7,15}$/.test(phone)?{phone}:{}),save:false},
-    items:[{name:`תשלום עבור הזמנה ${order.order_number||order.id}`,amount:1,price:amountMinor(order.total)/100,save:false}],
+    items:[{name:`תשלום עבור הזמנה ${order.order_number||order.id}`,amount:1,price:taxed?priceBeforeVat(amountMinor(order.total)):amountMinor(order.total)/100,save:false}],
     payments:[{type:'2',date:fmt(paymentDate),sum:amountMinor(order.total)/100,cardNumber:Number(card),numberPayments:installments,transactionNumber:String(order.delivery_info?.payme_transaction_id||paymentReference(order).slice(6)).slice(0,40)}],
     // No customer email: our confirmation email carries the original PDF, avoiding a second provider email.
   };

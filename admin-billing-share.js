@@ -2,7 +2,8 @@
 (function(root){
  'use strict';
  function outstanding(rows,store){return rows.filter(r=>r.store_id===store&&r.billed_at&&!r.paid_at&&!r.cancelled_at);}
- const total=rows=>rows.reduce((sum,r)=>sum+Math.round(Number(r.total||0)*100),0)/100;
+ // A month on a VAT invoice is owed its invoiced amount (VAT included).
+ const total=rows=>rows.reduce((sum,r)=>sum+(r.invoiced_gross_minor??Math.round(Number(r.total||0)*100)),0)/100;
  function selected(rows,ids){const wanted=new Set(ids);return rows.filter(r=>wanted.has(r.id));}
  function message(name,amount,all=true){const sum=Number(amount).toLocaleString('en-IL',{minimumFractionDigits:2,maximumFractionDigits:2});return all?`Hi ${name}, your outstanding balance is ₪${sum}. All unpaid statements are attached. Please arrange payment. Thank you!\n\nשלום ${name}, יתרת התשלום שלכם היא ₪${sum}. מצורפים כל החשבונות שטרם שולמו. נשמח להסדרת התשלום. תודה!`:`Hi ${name}, the attached unpaid statements total ₪${sum}. Please arrange payment. Thank you!\n\nשלום ${name}, סכום החשבונות המצורפים שטרם שולמו הוא ₪${sum}. נשמח להסדרת התשלום. תודה!`;}
  function phone(value){let n=String(value||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);if(n.startsWith('0'))n='972'+n.slice(1);return /^\d{10,15}$/.test(n)?n:'';}
@@ -23,7 +24,7 @@
  api.open=async function(storeId,choose=false){
   close();panel=document.createElement('dialog');panel.className='billing-share-dialog';panel.innerHTML=heading(choose?'Share multiple statements':'Share all unpaid statements')+'<p role="status">Loading statements…</p>';document.body.append(panel);wireClose(panel);panel.addEventListener('cancel',event=>{event.preventDefault();close();});panel.showModal();const active=panel;
   try{
-   const rows=[];for(let start=0;;start+=1000){const result=await sb.from('store_billing').select('id,store_id,total,year,month,billed_at,paid_at,cancelled_at,image_url,stores(name,phone)').eq('store_id',storeId).order('year').order('month').order('id').range(start,start+999);if(result.error)throw result.error;rows.push(...(result.data||[]));if((result.data||[]).length<1000)break;}
+   const rows=[];for(let start=0;;start+=1000){const result=await sb.from('store_billing').select('id,store_id,total,invoiced_gross_minor,year,month,billed_at,paid_at,cancelled_at,image_url,stores(name,phone)').eq('store_id',storeId).order('year').order('month').order('id').range(start,start+999);if(result.error)throw result.error;rows.push(...(result.data||[]));if((result.data||[]).length<1000)break;}
    if(panel!==active)return;const unpaid=outstanding(rows,storeId);if(!unpaid.length)throw Error('No billed and unpaid statements for this store.');
    const store=typeof allStores!=='undefined'?allStores.find(s=>s.id===storeId):null,name=unpaid[0].stores?.name||store?.name||'Store',number=phone(store?.phone||unpaid[0].stores?.phone);
    async function prepare(chosen){
