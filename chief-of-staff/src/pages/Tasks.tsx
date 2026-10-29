@@ -4,6 +4,8 @@ import { Button, Card, Empty, Markdown, timeAgo } from "../components/ui";
 import Missions from "./Missions";
 import AiJobApprovals from '../components/AiJobApprovals';
 import HelperJobs from '../components/HelperJobs';
+import { ResearchList } from "../components/ResearchChats";
+import type { JobChatRow } from "../api";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DEPTHS: { id: string; label: string; detail: string; cost: number }[] = [
@@ -18,9 +20,11 @@ const runsPerMonth = (s: RoutineSchedule) =>
   s.kind === "hours" ? (30 * 24) / (s.every_hours ?? 6) : s.kind === "daily" ? 30 : s.kind === "weekly" ? 4.3 * (s.weekdays?.length || 1) : 1;
 
 /** Recurring jobs your Chief of Staff runs on a schedule: research, reports, checks. */
-export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
+export default function Tasks({ onAsk, onOpenReport, refreshKey, jobs, onOpenResearch, onJobsChanged }: {
   onAsk: (text: string) => void; onOpenReport: (id: string, mode: "brief" | "read") => void; refreshKey: number;
+  jobs: JobChatRow[]; onOpenResearch: (id: string) => void; onJobsChanged: () => void;
 }) {
+  const [older, setOlder] = useState(false);
   const [list, setList] = useState<RoutineRow[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [situations, setSituations] = useState<SituationRow[]>([]);
@@ -42,17 +46,16 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey }: {
     <div className="space-y-4">
       <HelperJobs refreshKey={refreshKey} />
       <AiJobApprovals refreshKey={refreshKey} onChanged={load} />
-      <p className="text-sm text-muted px-1">
-        Things I work on for you. <b>One-time</b>: a goal I work through until it's done ("get every rabbi's list by Monday").
-        <b> Repeating</b>: something I do on a schedule ("every Sunday, a report on the coffee market"). Just tell me what you need.
-      </p>
-      <Button onClick={() => onAsk("New task: ")}>+ New task</Button>
+      <ResearchList jobs={jobs} onOpen={onOpenResearch} onChanged={onJobsChanged} onNew={() => onAsk("Research ")} />
       <Missions embedded refreshKey={refreshKey} onAsk={onAsk} />
-      {list.length === 0 && <Empty>No repeating tasks yet.</Empty>}
-
-      {list.map((r) => editing === r.id
-        ? <Editor key={r.id} r={r} onDone={() => { setEditing(null); load(); }} />
-        : <TaskCard key={r.id} r={r} onEdit={() => setEditing(r.id)} onChanged={load} onOpenReport={onOpenReport} />)}
+      {list.length > 0 && (
+        <div className="space-y-2">
+          <button className="text-sm text-muted" onClick={() => setOlder((v) => !v)}>{older ? "▾" : "▸"} Older tasks (Google Doc reports) · {list.length}</button>
+          {older && list.map((r) => editing === r.id
+            ? <Editor key={r.id} r={r} onDone={() => { setEditing(null); load(); }} />
+            : <TaskCard key={r.id} r={r} onEdit={() => setEditing(r.id)} onChanged={load} onOpenReport={onOpenReport} />)}
+        </div>
+      )}
     </div>
   );
 }

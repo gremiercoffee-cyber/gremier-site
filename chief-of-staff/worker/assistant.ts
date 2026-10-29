@@ -65,7 +65,7 @@ Trackers: when the user wants to collect what comes in from people or on a topic
 - A topic from anyone ("everything the rabbis say about X"): keywords in Hebrew AND English (generous) plus topic.
 Prefer following people whenever the user names who it's from. Don't create a one-time task for this. If it's unclear what counts as an answer or who it's from, ask one short question before creating it. After creating it, ALWAYS report the preview back and check it: "So far: Menachemov sent 3 names, Heyman sent 1; nothing yet from the other 5. Does that look right?" If they say something was missed or wrong, adjust (update expecting/people) and mention they can tap ✓/✗ on messages and "Link WhatsApp" next to anyone not found. If the preview lists whatsapp_not_found, tell the user you couldn't find that WhatsApp chat and ask for the exact name (or offer the Link WhatsApp button). To report on it, call get_tracker_entries (includes who answered / who is still missing) and summarize: what each person sent, who is still missing, and any patterns.
 
-Tasks (recurring jobs): when the user wants something done periodically ("every Sunday prepare a report on the coffee market in Israel", "check green-bean prices daily", "keep researching X"), set it up with save_task: a short name, clear instructions, a schedule, depth (quick = a fast check, standard = solid report, deep = comprehensive research; default standard, deep for "comprehensive"/"in-depth"), and where results go (doc by default: a Google Doc plus a notification that opens it; alert for a notification without a Doc; briefing for quiet results). When asked about a report, use get_report and brief like a sharp analyst: key points, what changed, what to do. Confirm in one line what will run and when. To change or pause one, call save_task with its id. They're listed on the Tasks page.
+Tasks (research chats): research, reports and checks, once or on a schedule ("every Sunday a report on the coffee market in Israel", "hourly updates on X until tonight", "research Y and tell me what to do"), are research chats: start them with start_job. Each is pinned in the side panel (and gets its own Telegram topic), answers arrive there with a notification, and the user changes or stops it by writing in it. Confirm in one line what will run, then say to tap Start in its chat. For an older report, get_report.
 
 Missions: when the user hands you a goal that takes several steps over days ("get every rabbi's list by Monday", "sort out the supplier for green beans"), confirm the plan in one or two lines and start a mission with start_mission. You then work on it in the background on a schedule, report progress in the briefing, and ask only when stuck. When the user answers a mission's question, or says pause/stop/cancel, use update_mission. Don't start a mission for something that's a single task.
 
@@ -831,7 +831,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "start_job",
-      description: "Start a research or monitoring job that reports in its own Telegram topic: once, every N minutes until stopped or a time limit (e.g. hourly election updates), or weekly (asks before each report). It waits for the user's Start tap there.",
+      description: "Start a research chat: research or monitoring once, every N minutes until stopped or a time limit (e.g. hourly election updates), or weekly (asks before each report). Pinned in the side panel (and its own Telegram topic); waits for the user's Start tap.",
       input_schema: { type: "object", properties: {
         title: { type: "string", description: "2-5 words" },
         instructions: { type: "string", description: "everything the user asked for, in full: what to research or watch, what to judge it by, and how to report (format, summary, action items, a recommendation)" },
@@ -839,11 +839,11 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         every_minutes: { type: "integer", description: "every: e.g. 60 for hourly" },
         until: { type: "string", description: "every: local YYYY-MM-DDTHH:MM to stop; omit for until they say stop" },
         weekday: { type: "integer", description: "weekly: 0=Sunday" }, time: { type: "string", description: "weekly: HH:MM" },
-        engine: { type: "string", enum: ["auto", "claude", "codex", "api"], description: "auto unless they name one (Claude, Codex/ChatGPT, or the API)" },
+        engine: { type: "string", enum: ["auto", "claude", "codex", "api"], description: "auto (their Claude/Codex plans) unless they name one; api only when they ask for the API" },
         only_changes: { type: "boolean", description: "post only when something changed (default for 'every')" },
         model: { type: "string", description: "only if they name one: luna, terra, sol, or a model name" },
       }, required: ["title", "instructions", "kind"] },
-      handler: async (input) => { const { createJob: newJob } = await import("./jobs"); const r = await newJob(env, input as never); note("start_job", `🔁 ${r.title}: tap Start in Telegram`); return r; },
+      handler: async (input) => { const { createJob: newJob } = await import("./jobs"); const r = await newJob(env, input as never); note("start_job", `🔎 ${r.title}: pinned in the side panel, tap Start there`); return r; },
     },
     {
       name: "list_jobs", readOnly: true,
@@ -1292,8 +1292,10 @@ const TOOL_GROUPS: Record<string, string[]> = {
   docs: ["create_doc", "create_sheet", "append_rows", "search_drive", "read_file", "share_file"],
   groups: ["save_group", "draft_group_message", "get_group", "check_group_messages"],
   trackers: ["save_tracker", "get_tracker_entries"],
-  ideas: ["capture_idea", "update_idea", "idea_step"],
-  tasks: ["save_task", "get_report"],
+  ideas: ["capture_idea", "update_idea", "idea_step", "research_now"],
+  tasks: ["get_report", "start_job", "list_jobs"],
+  // The older Google-Doc research tasks: kept for changing an existing one, never offered for new research.
+  oldtasks: ["save_task"],
   missions: ["start_mission", "update_mission"],
   // Project filing is everyday behavior: keep its tools available on every turn.
   coffee: ["coffee_app"],
@@ -1302,7 +1304,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   files: ["find_email_files","sign_document","fill_document","save_detail"],
   recurring: ["get_recurring_reminders","save_recurring_reminder"],
   areas: ["save_area"],
-  research: ["research_now"],
+  research: ["start_job", "list_jobs"],
   helper: ["computer_helper"],
   details: ["save_detail"],
   people: ["save_person"],
@@ -1312,9 +1314,9 @@ const TOOL_GROUPS: Record<string, string[]> = {
 const GROUP_INFO: Record<string, string> = {
   shopping: "shopping lists", schedule: "the user's time blocks", calendar: "Google Calendar", email: "Gmail search, read, drafts",
   whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups and group messages", trackers: "trackers that collect answers",
-  ideas: "ideas and brainstorms", tasks: "recurring AI research/report jobs", missions: "missions (multi-step follow-ups)", coffee: "Gremier Coffee business data",
+  ideas: "ideas and brainstorms", tasks: "research chats and older reports", missions: "missions (multi-step follow-ups)", coffee: "Gremier Coffee business data",
   meetings: "meeting prep notes", hashgacha: "Hashgacha report tracking", files: "find, fill and sign documents", recurring: "fixed monthly reminders",
-  areas: "add or rename life areas", research: "one-off web research", helper: "do something on a website (computer helper)",
+  areas: "add or rename life areas", research: "research chats (research once or on a schedule)", helper: "do something on a website (computer helper)",
   details: "save the user's details (My details)", people: "add or update people in the address book",
   jobs: "research or monitoring jobs that report in Telegram (once, every N minutes, weekly)",
 };
@@ -1324,10 +1326,10 @@ const GROUP_RULES: Record<string, string> = {
   hashgacha: "Hashgacha completion comes from online submissions (get_hashgacha_reports/track_hashgacha_reports), never an email reply or a new week. Missing, partial and unavailable are different. No automatic outreach.",
   meetings: "Meeting prep: hold the note and ask which meeting (name/date/time); attach it only after they choose. No prep documents or automatic offers.",
   recurring: "Fixed monthly reminders (one or several days a month) use save_recurring_reminder, never save_task; include any link. Marking a month done stops that month's remaining reminders.",
-  research: "Research goes through research_now (or idea_step) approval cards: say it's waiting for approval in Tasks. Never pretend to have browsed.",
+  research: "Research the user wants done is a research chat: start_job (kind once, or every/weekly when it repeats), with everything they asked for in instructions. It waits for their Start tap in the chat. Never pretend to have browsed.",
   details: "save_detail: one of the user's details (an existing label is updated). Signatures are added in the app, not here.",
   helper: "computer_helper: only when they want something done on a website. Write the whole job: the site, what to do, what counts as done; start_url when known.",
-  jobs: "start_job: for research or watching something over time. Put everything they said about what and how into instructions (their criteria, format, summary, action items). Hourly-style checks are kind every; regular reports are weekly. Tell them to tap Start in its Telegram topic. Changes later happen by replying in that topic.",
+  jobs: "start_job: for research or watching something over time. Put everything they said about what and how into instructions (their criteria, format, summary, action items). Hourly-style checks are kind every; regular reports are weekly. It runs on their Claude/Codex plans (engine auto); the API only if they ask for it. Tell them to tap Start in the research chat pinned in the side panel; changes later happen by writing in that chat.",
 };
 /**
  * The always-on tools in the cached chat prefix: everyday filing, the schedule, recurring tasks, coffee,

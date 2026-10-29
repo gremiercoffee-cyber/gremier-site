@@ -186,8 +186,10 @@ export function BriefingView({ text }: { text: string }) {
 
 export function Markdown({ text }: { text: string }) {
   const inline = (s: string) =>
-    s.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).map((part, i) => {
+    s.split(/(\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g).map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
+      const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      if (link) return <a key={i} href={link[2]} target="_blank" rel="noreferrer" className="text-accent underline">{link[1]}</a>;
       if (/^https?:\/\//.test(part)) {
         return <a key={i} href={part} target="_blank" rel="noreferrer" className="text-accent underline break-all">{part.replace(/^https?:\/\/(www\.)?/, "").slice(0, 48)}</a>;
       }

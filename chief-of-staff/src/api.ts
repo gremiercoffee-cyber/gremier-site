@@ -15,6 +15,9 @@ export interface Collection {
   other: { id: string; source: string; sender: string; text: string; said_at: string }[];
 }
 export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string; not_before?: string | null }
+export interface JobChatRow { id: string; title: string; status: string; pinned: boolean; unread: number; schedule: string; last_text: string; last_at: string; kind: string; engine: string; model: string | null }
+export interface JobMsg { id: string; job_id: string; role: "you" | "bot"; text: string; buttons: { text: string; data: string }[][] | null; created_at: string }
+export interface JobChat { id: string; title: string; status: string; pinned: boolean; kind: string; engine: string; model: string | null; schedule: string; busy: boolean; messages: JobMsg[] }
 export interface VaultItem { id: string; kind: "text" | "signature"; label: string; text: string; image: string | null; updated_at: string }
 export interface FoundFile { id: string; filename: string; mime: string | null; size: number | null; sender: string | null; subject: string | null; sent_at: string | null; account: string;
   source?: string; purpose?: string | null; batch?: string | null; chosen?: number; parent_id?: string | null; note?: string | null; created_at?: string; needed?: { label: string; ask: string }[]; scan_check?: "due" | "done" | null }
@@ -212,6 +215,11 @@ export const api = {
   groupCollections: (groupId: string) => request<Collection[]>("GET", `/api/groups/${groupId}/collections`),
   addAnswer: (trackerId: string, person: string, text: string) => request("POST", `/api/trackers/${trackerId}/answers`, { person, text }),
   trackerActive: (trackerId: string, active: boolean) => request("POST", `/api/trackers/${trackerId}/active`, { active }),
+  jobs: () => request<JobChatRow[]>("GET", "/api/jobs"),
+  job: (id: string) => request<JobChat>("GET", `/api/jobs/${id}`),
+  jobMessage: (id: string, text: string) => request<{ reply: string }>("POST", `/api/jobs/${id}/message`, { text }),
+  jobPin: (id: string, pinned: boolean) => request<{ ok: boolean }>("POST", `/api/jobs/${id}/pin`, { pinned }),
+  jobButton: (data: string) => request<{ ok: boolean }>("POST", "/api/jobs/button", { data }),
   helperJobs: () => request<HelperJob[]>("GET", "/api/helper/jobs"),
   helperStatus: () => request<{ last_seen: string | null }>("GET", "/api/helper/status"),
   helperCreate: (instruction: string, start_url?: string) => request<{ id: string }>("POST", "/api/helper/jobs", { instruction, start_url }),

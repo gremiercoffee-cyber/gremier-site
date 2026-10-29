@@ -30,13 +30,13 @@ const posts=()=>globalThis.__tg.filter(t=>t.method==='sendMessage');
 
 test('a new job gets its own topic and waits for Start; Start runs it and schedules the next hourly run',async()=>{
  reset();const {env:e,db}=env();
- const r=await jobs.createJob(e,{title:'US elections',instructions:'Hourly updates on the US elections. End with what to watch next.',kind:'every',every_minutes:60,until:'2026-11-04T23:00'});
+ const r=await jobs.createJob(e,{title:'US elections',instructions:'Hourly updates on the US elections. End with what to watch next.',kind:'every',every_minutes:60,until:'2026-11-04T23:00',engine:'api'});
  assert.equal(r.status,'waiting for Start');
  assert.equal(globalThis.__tg[0].method,'createForumTopic');
  const intro=posts()[0].body;assert.equal(intro.message_thread_id,77);assert.match(intro.reply_markup.inline_keyboard[0][0].callback_data,/^start:/);
  assert.equal(globalThis.__bg.length,0,'nothing runs before Start');
  await jobs.handleButton(e,intro.reply_markup.inline_keyboard[0][0].callback_data,-100,77,5);
- assert.equal(globalThis.__bg.length,1,'runs right away on the API (no plan available)');
+ assert.equal(globalThis.__bg.length,1,'runs right away on the API it was given');
  assert.match(globalThis.__bg[0].prompt,/THE TASK[^]*End with what to watch next/);
  const j=db.prepare('SELECT * FROM jobs').get();assert.equal(j.status,'active');assert.ok(Date.parse(j.next_run_at)>Date.now()+50*60_000);
  assert.equal(j.until_at,'2026-11-04T21:00:00.000Z','the time limit is local time');
@@ -44,7 +44,7 @@ test('a new job gets its own topic and waits for Start; Start runs it and schedu
 
 test('hourly: results post in the topic, "nothing changed" stays quiet, and it ends at its time limit',async()=>{
  reset();const {env:e,db}=env();
- const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch the count.',kind:'every',every_minutes:60});
+ const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch the count.',kind:'every',every_minutes:60,engine:'api'});
  await jobs.handleButton(e,`start:${id}`,-100,77,5);
  globalThis.__done={bg1:{done:true,text:'Pennsylvania called.'}};
  await jobs.tickJobs(e);
@@ -63,7 +63,7 @@ test('hourly: results post in the topic, "nothing changed" stays quiet, and it e
 
 test('weekly: asks before each report and runs only on Yes; Skip skips',async()=>{
  reset();const {env:e,db}=env();
- const {id}=await jobs.createJob(e,{title:'Cold brew market',instructions:'Weekly cold-brew market report with action items for Gremier.',kind:'weekly',weekday:0,time:'09:00'});
+ const {id}=await jobs.createJob(e,{title:'Cold brew market',instructions:'Weekly cold-brew market report with action items for Gremier.',kind:'weekly',weekday:0,time:'09:00',engine:'api'});
  await jobs.handleButton(e,`start:${id}`,-100,77,5);
  assert.equal(globalThis.__bg.length,1,'the first report runs on Start');assert.equal(globalThis.__bg[0].purpose,'job_report');
  db.prepare("UPDATE jobs SET next_run_at=? WHERE id=?").run(new Date(Date.now()-1000).toISOString(),id);
@@ -76,23 +76,24 @@ test('weekly: asks before each report and runs only on Yes; Skip skips',async()=
  assert.equal(globalThis.__bg.length,1,'a skipped week cannot be run afterwards');
 });
 
-test('auto picks the Codex plan when the runner is on and has room, then Claude, then the API',async()=>{
+test('Automatic uses the plans only: Codex when on with room, then Claude; the API only when chosen',async()=>{
  reset();
  const job={engine:'auto'};
  let {env:e,db}=env();
- assert.equal(await jobs.pickEngine(e,job),'api');
+ assert.equal(await jobs.pickEngine(e,job),null,'no plan free: wait, never the API by itself');
+ assert.equal(await jobs.pickEngine(e,{engine:'api'}),'api');
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:10,secondary:30}));
  assert.equal(await jobs.pickEngine(e,job),'codex');
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:90,secondary:30}));
- assert.equal(await jobs.pickEngine(e,job),'api','a nearly used-up Codex plan is left alone');
+ assert.equal(await jobs.pickEngine(e,job),null,'a nearly used-up Codex plan is left alone');
  ({env:e,db}=env({CLAUDE_ROUTINE_URL:'https://example/fire',CLAUDE_ROUTINE_TOKEN:'x'}));
  assert.equal(await jobs.pickEngine(e,job),'claude');
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('claude_limited_until',?)").run(JSON.stringify(new Date(Date.now()+3600_000).toISOString()));
- assert.equal(await jobs.pickEngine(e,job),'api','Claude is avoided after hitting its limit');
- assert.equal(await jobs.pickEngine(e,{engine:'codex'}),'api','a chosen plan that is offline falls back');
+ assert.equal(await jobs.pickEngine(e,job),null,'Claude is avoided after hitting its limit');
+ assert.equal(await jobs.pickEngine(e,{engine:'codex'}),null,'a chosen plan that is offline: wait for it');
 });
 
-test('the Codex runner takes the run, sends the answer back, and a run that takes too long goes to the API',async()=>{
+test('the Codex runner takes the run and answers; a run Codex never finishes waits for a plan (not the API)',async()=>{
  reset();const {env:e,db}=env();
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:5,secondary:5}));
  const {id}=await jobs.createJob(e,{title:'Bean prices',instructions:'Arabica price now.',kind:'once'});
@@ -108,8 +109,10 @@ test('the Codex runner takes the run, sends the answer back, and a run that take
  const second=await jobs.createJob(e,{title:'Bean prices again',instructions:'Again.',kind:'once'});
  await jobs.handleButton(e,`start:${second.id}`,-100,77,6);
  db.prepare("UPDATE job_runs SET started_at=? WHERE status='queued'").run(new Date(Date.now()-20*60_000).toISOString());
+ db.prepare("UPDATE settings SET value=? WHERE key='codex_runner'").run(JSON.stringify({seen_at:new Date(Date.now()-3600_000).toISOString(),primary:5,secondary:5}));
  await jobs.tickJobs(e);
- assert.equal(globalThis.__bg.length,1,'the API took over');
+ assert.equal(globalThis.__bg.length,0,'not moved to the API by itself');
+ assert.match(posts().at(-1).body.text,/Waiting for your Claude or Codex plan[^]*use the API/);
 });
 
 test('replying in the topic changes the job: stop, how often, and how it reports',async()=>{
@@ -140,7 +143,7 @@ test('Claude plan: the run gets a one-time reply link; only that link, once, can
 
 test('a job can use a chosen model: by name on the API, and passed on to Codex',async()=>{
  reset();const {env:e,db}=env();
- const {id}=await jobs.createJob(e,{title:'Deep dive',instructions:'Deep market analysis.',kind:'once',model:'sol'});
+ const {id}=await jobs.createJob(e,{title:'Deep dive',instructions:'Deep market analysis.',kind:'once',model:'sol',engine:'api'});
  await jobs.handleButton(e,`start:${id}`,-100,77,5);
  assert.equal(globalThis.__bg[0].model,'gpt-6.1-sol');
  const j=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
@@ -151,4 +154,31 @@ test('a job can use a chosen model: by name on the API, and passed on to Codex',
  const c=await jobs.createJob(e,{title:'Codex model',instructions:'x',kind:'once',engine:'codex',model:'gpt-5.5'});
  await jobs.handleButton(e,`start:${c.id}`,-100,77,6);
  assert.equal((await jobs.nextCodexRun(e,{device:'home'})).run.model,'gpt-5.5');
+});
+
+test('in the app: the chat keeps every message, buttons work from it, and unread counts clear when opened',async()=>{
+ reset();const {env:e}=env();
+ const {id}=await jobs.createJob(e,{title:'Bean prices',instructions:'Arabica price now.',kind:'once',engine:'api'});
+ let list=await jobs.listJobChats(e);assert.equal(list[0].pinned,true);assert.equal(list[0].unread,1);
+ let chat=await jobs.jobChat(e,id);
+ assert.equal(chat.messages[0].role,'bot');const start=chat.messages[0].buttons[0][0].data;assert.match(start,/^start:/);
+ assert.equal((await jobs.listJobChats(e))[0].unread,0,'opened = read');
+ await jobs.pressButton(e,start);
+ chat=await jobs.jobChat(e,id);assert.equal(chat.messages[0].buttons,null,'a used button is gone');assert.equal(chat.busy,true);
+ globalThis.__done={bg1:{done:true,text:'286¢/lb.'}};await jobs.tickJobs(e);
+ globalThis.__model.push(JSON.stringify({changes:{},run_now:false,reply:'It was 286¢ per pound.'}));
+ const j=(await jobs.jobChat(e,id));
+ assert.equal(await jobs.messageJob(e,{...j,last_result:'286¢/lb.'},'what was the price?','app'),'It was 286¢ per pound.');
+ chat=await jobs.jobChat(e,id);assert.deepEqual(chat.messages.slice(-2).map(m=>m.role),['you','bot']);
+});
+
+test('unpinning turns a repeating job off; pinning it again turns it back on',async()=>{
+ reset();const {env:e,db}=env();
+ const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch.',kind:'every',every_minutes:60,engine:'api'});
+ await jobs.pressButton(e,`start:${id}`);
+ await jobs.setPinned(e,id,false);
+ let row=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);assert.equal(row.status,'paused');assert.equal(row.pinned,0);assert.equal(row.next_run_at,null);
+ await jobs.setPinned(e,id,true);
+ row=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);assert.equal(row.status,'active');assert.ok(row.next_run_at);
+ assert.match((await jobs.jobChat(e,id)).messages.at(-1).text,/Back on/);
 });

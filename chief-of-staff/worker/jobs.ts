@@ -15,14 +15,18 @@ import { all, first, getSettings, localParts, now, run, uid } from "./db";
 import { getProvider } from "./ai";
 import { localToUtc, nextRun } from "./routines";
 import { say, tg, tgConfig } from "./telegram";
+import { sendPush } from "./push";
+import { createDoc } from "./gworkspace";
 
 export type Engine = "claude" | "codex" | "api";
 export interface Job {
   id: string; title: string; instructions: string; kind: "once" | "every" | "weekly"; every_minutes: number | null; weekday: number | null;
   time: string | null; until_at: string | null; engine: "auto" | Engine; only_changes: number; status: string; chat_id: number | null;
   topic_id: number | null; next_run_at: string | null; last_run_at: string | null; last_result: string | null; created_at: string; updated_at: string;
-  model?: string | null;
+  model?: string | null; pinned?: number; seen_at?: string | null;
 }
+export interface JobMessage { id: string; job_id: string; role: "you" | "bot"; text: string; buttons: string | null; created_at: string }
+type Buttons = { text: string; data: string }[][];
 interface JobRun { id: string; job_id: string; engine: Engine | null; status: string; ref: string | null; claimed_by: string | null; attempts: number; created_at: string; started_at: string | null; result: string | null }
 
 const ENGINE_NAME: Record<Engine, string> = { claude: "Claude plan", codex: "Codex plan", api: "API" };
@@ -35,7 +39,9 @@ export function cleanModel(m: unknown) {
   if (!s || s === "auto" || s === "default") return null;
   return MODEL_NAMES[s] ?? (/^[\w.:-]{2,60}$/.test(s) ? s : null);
 }
-/** How long a plan run may take before the API does it instead. */
+/** Reports longer than this also go into a Google Doc (the chat gets the top of it and the link). */
+const LONG_REPORT = 6000;
+/** How long a plan run may take before the other plan (or the API, when chosen) does it instead. */
 const PLAN_TIMEOUT_MIN: Record<Engine, number> = { codex: 15, claude: 25, api: 30 };
 
 // ---- Time -----------------------------------------------------------------------------------------
@@ -90,13 +96,9 @@ export async function createJob(env: Env, input: JobInput) {
   };
   await run(env, `INSERT INTO jobs (id, title, instructions, kind, every_minutes, weekday, time, until_at, engine, only_changes, status, chat_id, topic_id, created_at, updated_at, model)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, j.id, j.title, j.instructions, j.kind, j.every_minutes, j.weekday, j.time, j.until_at, j.engine, j.only_changes, j.status, j.chat_id, j.topic_id, j.created_at, j.updated_at, j.model);
-  if (chatId) {
-    await say(env, chatId, `**${title}**\n${instructions}\n\n${await describeJob(env, j)}`, {
-      thread: topic ?? undefined,
-      buttons: [[{ text: j.kind === "weekly" ? "▶ Start (and run the first one now)" : "▶ Start", data: `start:${j.id}` }, { text: "✗ Cancel", data: `cancel:${j.id}` }]],
-    });
-  }
-  return { id: j.id, title, schedule: await describeJob(env, j), telegram: chatId ? (topic ? "its own topic in the Telegram group" : "the Telegram chat") : "no Telegram connected yet", status: "waiting for Start" };
+  await post(env, j, `**${title}**\n${instructions}\n\n${await describeJob(env, j)}`,
+    [[{ text: j.kind === "weekly" ? "▶ Start (and run the first one now)" : "▶ Start", data: `start:${j.id}` }, { text: "✗ Cancel", data: `cancel:${j.id}` }]]);
+  return { id: j.id, title, schedule: await describeJob(env, j), where: `a research chat pinned in the side panel${chatId ? (topic ? ", and its own Telegram topic" : ", and the Telegram chat") : ""}`, status: "waiting for Start" };
 }
 
 export async function jobByTopic(env: Env, chatId: number, topic: number) {
@@ -104,9 +106,15 @@ export async function jobByTopic(env: Env, chatId: number, topic: number) {
 }
 
 async function where(j: Job) { return j.chat_id ? { chat: j.chat_id, thread: j.topic_id ?? undefined } : null; }
-async function post(env: Env, j: Job, text: string, buttons?: { text: string; data: string }[][]) {
+async function log(env: Env, j: Job, role: "you" | "bot", text: string, buttons?: Buttons) {
+  await run(env, "INSERT INTO job_messages (id, job_id, role, text, buttons, created_at) VALUES (?, ?, ?, ?, ?, ?)", uid(), j.id, role, text, buttons ? JSON.stringify(buttons) : null, now());
+}
+/** A message from the job: in its chat in the app, in its Telegram topic (when connected), and on the phone when asked. */
+async function post(env: Env, j: Job, text: string, buttons?: Buttons, opts: { push?: boolean; telegram?: boolean } = {}) {
+  await log(env, j, "bot", text, buttons);
   const w = await where(j);
-  if (w) await say(env, w.chat, text, { thread: w.thread, buttons });
+  if (w && opts.telegram !== false) await say(env, w.chat, text, { thread: w.thread, buttons }).catch((e) => console.error("telegram post", e));
+  if (opts.push) await sendPush(env, { title: `🔎 ${j.title}`, body: text.replace(/[*#_`>]/g, "").split("\n").find((l) => l.trim())?.slice(0, 160) ?? "", url: `/?job=${j.id}`, tag: `job-${j.id}` }).catch(() => {});
 }
 
 async function start(env: Env, j: Job) {
@@ -118,21 +126,67 @@ async function start(env: Env, j: Job) {
   if (j.kind === "every") await run(env, "UPDATE jobs SET next_run_at = ? WHERE id = ?", new Date(Date.now() + j.every_minutes! * 60_000).toISOString(), j.id);
 }
 
-async function stop(env: Env, j: Job, why = "Stopped.") {
-  await run(env, "UPDATE jobs SET status = 'stopped', next_run_at = NULL, updated_at = ? WHERE id = ?", now(), j.id);
+async function stop(env: Env, j: Job, why = "Stopped.", status: "stopped" | "paused" = "stopped") {
+  await run(env, "UPDATE jobs SET status = ?, next_run_at = NULL, updated_at = ? WHERE id = ?", status, now(), j.id);
   await run(env, "UPDATE job_runs SET status = 'skipped', finished_at = ? WHERE job_id = ? AND status IN ('asking','queued')", now(), j.id);
+  await run(env, "UPDATE job_messages SET buttons = NULL WHERE job_id = ? AND buttons IS NOT NULL", j.id);
   await post(env, j, `⏹ ${why}`);
+}
+
+/** Unpinning a research chat turns it off; pinning it again turns it back on (a finished one-time job stays finished). */
+export async function setPinned(env: Env, id: string, pinned: boolean) {
+  const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", id);
+  if (!j) throw new Error("That research chat isn't there any more.");
+  await run(env, "UPDATE jobs SET pinned = ?, updated_at = ? WHERE id = ?", pinned ? 1 : 0, now(), id);
+  if (!pinned && j.status === "active") await stop(env, j, "Unpinned, so it's off. Pin it again to turn it back on.", "paused");
+  if (pinned && (j.status === "paused" || j.status === "stopped") && j.kind !== "once") {
+    const next = j.kind === "weekly" ? nextRun({ kind: "weekly", weekdays: [j.weekday ?? 0], time: j.time ?? "09:00" }, await tz(env)).toISOString()
+      : new Date(Date.now() + 60_000).toISOString();
+    await run(env, "UPDATE jobs SET status = 'active', next_run_at = ?, updated_at = ? WHERE id = ?", next, now(), id);
+    await post(env, j, j.kind === "weekly" ? `▶ Back on: I'll ask ${WEEKDAYS[j.weekday ?? 0]} at ${j.time ?? "09:00"}.` : "▶ Back on: the next check runs in a minute.");
+  }
+  return { ok: true };
+}
+
+/** The research chats for the app: pinned first, with how many new messages each has. */
+export async function listJobChats(env: Env) {
+  const js = await all<Job & { unread: number; last_text: string | null; last_at: string | null }>(env, `SELECT j.*,
+      (SELECT COUNT(*) FROM job_messages m WHERE m.job_id = j.id AND m.role = 'bot' AND m.created_at > COALESCE(j.seen_at, '')) AS unread,
+      (SELECT text FROM job_messages m WHERE m.job_id = j.id ORDER BY created_at DESC LIMIT 1) AS last_text,
+      (SELECT created_at FROM job_messages m WHERE m.job_id = j.id ORDER BY created_at DESC LIMIT 1) AS last_at
+    FROM jobs j WHERE j.status != 'cancelled' ORDER BY j.pinned DESC, COALESCE(last_at, j.created_at) DESC LIMIT 100`);
+  return Promise.all(js.map(async (j) => ({ id: j.id, title: j.title, status: j.status, pinned: !!j.pinned, unread: j.unread, schedule: await describeJob(env, j),
+    last_text: (j.last_text ?? "").replace(/\s+/g, " ").slice(0, 120), last_at: j.last_at ?? j.created_at, kind: j.kind, engine: j.engine, model: j.model ?? null })));
+}
+
+/** One research chat, read (which clears its unread count). */
+export async function jobChat(env: Env, id: string) {
+  const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", id);
+  if (!j) throw new Error("That research chat isn't there any more.");
+  await run(env, "UPDATE jobs SET seen_at = ? WHERE id = ?", now(), id);
+  const messages = await all<JobMessage>(env, "SELECT * FROM job_messages WHERE job_id = ? ORDER BY created_at LIMIT 500", id);
+  const busy = !!(await first(env, "SELECT 1 FROM job_runs WHERE job_id = ? AND status IN ('queued','running')", id));
+  return { id: j.id, title: j.title, status: j.status, pinned: !!j.pinned, kind: j.kind, engine: j.engine, model: j.model ?? null, schedule: await describeJob(env, j), busy,
+    messages: messages.map((m) => ({ ...m, buttons: m.buttons ? JSON.parse(m.buttons) as Buttons : null })) };
 }
 
 /** Buttons in Telegram: start / cancel a new job; run / skip this week's report. */
 export async function handleButton(env: Env, data: string, chatId: number, _thread: number | undefined, messageId: number) {
+  return pressButton(env, data, () => tg(env, "editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).then(() => undefined).catch(() => {}));
+}
+
+/** The same buttons, pressed anywhere (the app or Telegram). */
+export async function pressButton(env: Env, data: string, clearTelegram: () => Promise<void> = async () => {}) {
   const [what, id] = data.split(":");
-  const clear = () => tg(env, "editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+  const clear = async () => {
+    await clearTelegram();
+    await run(env, "UPDATE job_messages SET buttons = NULL WHERE buttons LIKE ?", `%"${data.replace(/[%_]/g, "")}"%`);
+  };
   if (what === "start" || what === "cancel") {
     const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", id);
     await clear();
     if (!j) return;
-    if (what === "cancel") return stop(env, j, "Cancelled.");
+    if (what === "cancel") { await stop(env, j, "Cancelled."); await run(env, "UPDATE jobs SET pinned = 0 WHERE id = ?", j.id); return; }
     await start(env, j);
     return;
   }
@@ -145,6 +199,14 @@ export async function handleButton(env: Env, data: string, chatId: number, _thre
     await run(env, "UPDATE job_runs SET status = 'queued' WHERE id = ?", r.id);
     await dispatch(env, j, { ...r, status: "queued" });
   }
+}
+
+/** A message to a job from its chat (the app, or its Telegram topic): logged with the reply. */
+export async function messageJob(env: Env, j: Job, text: string, from: "app" | "telegram") {
+  await log(env, j, "you", text);
+  const reply = await talkToJob(env, j, text);
+  await log(env, j, "bot", reply);
+  return reply;
 }
 
 /** A message in a job's topic: stop it, change it, run it now, or ask about it. */
@@ -210,13 +272,16 @@ export async function engineStatus(env: Env) {
   };
 }
 
-export async function pickEngine(env: Env, j: Job, avoid: Engine[] = []): Promise<Engine> {
+/** Automatic uses your plans only (Codex when it has room, then Claude); the API runs a job only when it's chosen.
+ *  null = no engine free right now: the run waits and is tried again every 5 minutes. */
+export async function pickEngine(env: Env, j: Pick<Job, "engine">, avoid: Engine[] = []): Promise<Engine | null> {
   const s = await engineStatus(env);
   const ok = (e: Engine) => !avoid.includes(e) && (e === "api" || (e === "codex" ? s.codex.online : s.claude.configured && !s.claude.limited));
-  if (j.engine !== "auto" && ok(j.engine)) return j.engine;
-  if (j.engine === "auto" && ok("codex") && s.codex.room) return "codex";
-  if (j.engine === "auto" && ok("claude")) return "claude";
-  return "api";
+  if (j.engine === "api") return "api";
+  if (j.engine !== "auto") return ok(j.engine) ? j.engine : null;
+  if (ok("codex") && s.codex.room) return "codex";
+  if (ok("claude")) return "claude";
+  return null;
 }
 
 /** The lean instructions every engine gets. */
@@ -232,8 +297,15 @@ async function brief(env: Env, j: Job) {
 
 async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
   const engine = await pickEngine(env, j, avoid);
+  if (!engine) {
+    // Waiting for a plan: say so once, and keep trying.
+    const first_wait = !(await first(env, "SELECT 1 FROM job_runs WHERE id = ? AND error = 'waiting'", r.id));
+    await run(env, "UPDATE job_runs SET engine = NULL, status = 'queued', ref = NULL, claimed_by = NULL, error = 'waiting' WHERE id = ?", r.id);
+    if (first_wait) await post(env, j, `⏳ Waiting for ${j.engine === "auto" ? "your Claude or Codex plan" : ENGINE_NAME[j.engine as Engine]} to be free (${j.engine === "codex" || j.engine === "auto" ? "Codex needs the computer on; " : ""}a plan may be at its limit). I'll keep trying. Say “use the API” to run it now on the API instead.`);
+    return;
+  }
   const prompt = await brief(env, j);
-  await run(env, "UPDATE job_runs SET engine = ?, status = 'queued', attempts = attempts + 1, started_at = ?, ref = NULL, claimed_by = NULL WHERE id = ?", engine, now(), r.id);
+  await run(env, "UPDATE job_runs SET engine = ?, status = 'queued', attempts = attempts + 1, started_at = ?, ref = NULL, claimed_by = NULL, error = NULL WHERE id = ?", engine, now(), r.id);
   try {
     if (engine === "api") {
       const ref = await getProvider(env).startBackground({ purpose: j.kind === "weekly" ? "job_report" : "job_check", model: j.model && OPENAI_MODELS.has(j.model) ? j.model : undefined, system: "You are a careful research assistant. Be accurate and brief.", prompt, maxSearches: j.kind === "weekly" ? 8 : 4, maxTokens: 3000 });
@@ -273,7 +345,17 @@ export async function finishRun(env: Env, runId: string, text: string, engine?: 
   await run(env, "UPDATE job_runs SET status = 'done', result = ?, finished_at = ?, engine = COALESCE(?, engine) WHERE id = ?", body.slice(0, 20000), now(), engine ?? null, runId);
   if (/^NO_CHANGE\b/.test(body)) return { ok: true, posted: false };
   await run(env, "UPDATE jobs SET last_result = ?, last_run_at = ?, status = CASE WHEN kind = 'once' THEN 'done' ELSE status END WHERE id = ?", body.slice(0, 6000), now(), j.id);
-  await post(env, j, `${body}\n\n· via ${ENGINE_NAME[(engine ?? r.engine ?? "api") as Engine]}`);
+  const via = `· via ${ENGINE_NAME[(engine ?? r.engine ?? "api") as Engine]}`;
+  if (body.length > LONG_REPORT) {
+    const doc = await createDoc(env, `${j.title} — ${(await localNow(env)).replace(/ at .*/, "")}`, body).catch(() => null) as { url?: string; link?: string } | null;
+    const link = doc?.url ?? doc?.link;
+    if (link) {
+      const cut = body.lastIndexOf("\n\n", 1500) > 400 ? body.lastIndexOf("\n\n", 1500) : 1500;
+      await post(env, j, `${body.slice(0, cut).trim()}\n\n📄 **The full report:** [open it in Google Docs](${link})\n\n${via}`, undefined, { push: true });
+      return { ok: true, posted: true, doc: link };
+    }
+  }
+  await post(env, j, `${body}\n\n${via}`, undefined, { push: true });
   return { ok: true, posted: true };
 }
 
@@ -291,7 +373,7 @@ export async function tickJobs(env: Env) {
       await run(env, "UPDATE jobs SET next_run_at = ? WHERE id = ?", nextRun({ kind: "weekly", weekdays: [j.weekday ?? 0], time: j.time ?? "09:00" }, await tz(env)).toISOString(), j.id);
       const id = uid();
       await run(env, "INSERT INTO job_runs (id, job_id, status, created_at) VALUES (?, ?, 'asking', ?)", id, j.id, t);
-      await post(env, j, `Do you want this week's **${j.title}** now?`, [[{ text: "▶ Yes, run it", data: `run:${id}` }, { text: "Skip this week", data: `skip:${id}` }]]);
+      await post(env, j, `Do you want this week's **${j.title}** now?`, [[{ text: "▶ Yes, run it", data: `run:${id}` }, { text: "Skip this week", data: `skip:${id}` }]], { push: true });
     }
   }
   // API runs: collect finished background research.
@@ -302,11 +384,16 @@ export async function tickJobs(env: Env) {
     if ("failed" in res && res.failed) await failRun(env, j, r.id, String(res.failed));
     else await finishRun(env, r.id, (res as { text: string }).text, "api");
   }
-  // A plan run that's taking too long (computer off, plan limit): the API does it instead.
+  // Runs waiting for a plan: try again.
+  for (const r of await all<JobRun>(env, "SELECT * FROM job_runs WHERE status = 'queued' AND engine IS NULL LIMIT 10")) {
+    const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id);
+    if (j && j.status === "active") await dispatch(env, j, r);
+  }
+  // A plan run that's taking too long (computer off, plan limit): the other plan (or, when chosen, the API) does it.
   for (const r of await all<JobRun>(env, "SELECT * FROM job_runs WHERE status IN ('queued','running') AND engine IN ('codex','claude')")) {
     if (Date.now() - Date.parse(r.started_at ?? r.created_at) < PLAN_TIMEOUT_MIN[r.engine!] * 60_000) continue;
     const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
-    if (r.attempts >= 3) { await failRun(env, j, r.id, "No engine finished it in time."); continue; }
+    if (r.attempts >= 4) { await failRun(env, j, r.id, "No engine finished it in time."); continue; }
     await dispatch(env, j, r, [r.engine!]);
   }
 }

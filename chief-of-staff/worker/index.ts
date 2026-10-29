@@ -2,7 +2,7 @@ import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { transcribeAudio } from "./transcribe";
 import { connectWebhook, handleUpdate, tgConfig, type TgUpdate } from "./telegram";
-import { nextCodexRun, replyWithToken, runResult, tickJobs } from "./jobs";
+import { jobChat, listJobChats, messageJob, nextCodexRun, pressButton, replyWithToken, runResult, setPinned, tickJobs, type Job } from "./jobs";
 import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { checkPlacement, chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
@@ -87,6 +87,18 @@ const route = (method: string, path: string, h: Handler) =>
 // ---- My details, files found in email, signed copies (nothing here sends anything anywhere) ----
 const fileResponse = (bytes: Uint8Array, filename: string, mime: string) =>
   new Response(bytes, { headers: { "content-type": mime, "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`, "cache-control": "private, no-store" } });
+// Research chats (jobs): the side panel's pinned list and the Tasks tab, one chat, talking to it, pin/unpin, buttons.
+route("GET", "/api/jobs", async (_req, env) => json(await listJobChats(env)));
+route("GET", "/api/jobs/:id", async (_req, env, [id]) => { try { return json(await jobChat(env, id)); } catch (e) { throw new HttpError(404, (e as Error).message); } });
+route("POST", "/api/jobs/:id/message", async (req, env, [id]) => {
+  const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", id);
+  if (!j) throw new HttpError(404, "That research chat isn't there any more.");
+  const text = String((await body<{ text?: string }>(req)).text ?? "").trim().slice(0, 2000);
+  if (!text) throw new HttpError(400, "Type a message.");
+  return json({ reply: await messageJob(env, j, text, "app") });
+});
+route("POST", "/api/jobs/:id/pin", async (req, env, [id]) => json(await setPinned(env, id, !!(await body<{ pinned?: boolean }>(req)).pinned)));
+route("POST", "/api/jobs/button", async (req, env) => { await pressButton(env, String((await body<{ data?: string }>(req)).data ?? "")); return json({ ok: true }); });
 route("GET", "/api/helper/jobs", async (_req, env) => json(await listJobs(env)));
 route("GET", "/api/helper/status", async (_req, env) => json(await helperSeen(env)));
 route("POST", "/api/helper/jobs", async (req, env) => { try { return json(await createJob(env, { ...(await body<{ instruction: string; start_url?: string }>(req)), source: "you" })); } catch (e) { throw new HttpError(400, (e as Error).message); } });

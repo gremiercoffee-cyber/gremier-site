@@ -145,9 +145,9 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
       if (!text || text === "/start") { await say(env, where.chat, "I'm here. Ask me anything, or tell me what to keep an eye on.", { thread: where.thread }); return; }
       // A message inside a job's topic is about that job.
       if (where.thread) {
-        const { jobByTopic, talkToJob } = await import("./jobs");
+        const { jobByTopic, messageJob } = await import("./jobs");
         const job = await jobByTopic(env, where.chat, where.thread);
-        if (job) { await say(env, where.chat, await talkToJob(env, job, text), { thread: where.thread }); return; }
+        if (job) { await say(env, where.chat, await messageJob(env, job, text, "telegram"), { thread: where.thread }); return; }
       }
       const key = `${where.chat}:${where.thread ?? 0}`;
       const res = await chat(env, text, "text", await conversationFor(env, key), { defer });

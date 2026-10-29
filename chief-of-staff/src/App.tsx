@@ -23,9 +23,11 @@ import Tasks from "./pages/Tasks";
 import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
+import { PinnedResearch, ResearchChat } from "./components/ResearchChats";
+import type { JobChatRow } from "./api";
 
-type View = "meetings" | "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups" | "shopping" | "details";
-const VIEW_TITLES: Record<View, string> = { details: "My details", meetings:"Meetings", home: "Chief of Staff", today: "Today", dump: "Library", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Settings", trackers: "Tasks", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
+type View = "research" | "meetings" | "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups" | "shopping" | "details";
+const VIEW_TITLES: Record<View, string> = { research: "Research", details: "My details", meetings:"Meetings", home: "Chief of Staff", today: "Today", dump: "Library", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Settings", trackers: "Tasks", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -34,7 +36,7 @@ export default function App() {
   const [health, setHealth] = useState<{ configured: boolean; model: boolean; transcription: boolean } | null>(null);
   const params = new URLSearchParams(location.search);
   const legacyTab = params.get("tab");
-  const [view, setView] = useState<View>(legacyTab === "review" || legacyTab === "ideas" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
+  const [view, setView] = useState<View>(params.get("job") ? "research" : legacyTab === "review" || legacyTab === "ideas" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
   // Shared from another app (Android share sheet): hand it to the Chief of Staff to file.
   const shared = [params.get("share_title"), params.get("share_text"), params.get("share_url")].filter(Boolean).join("\n");
   const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? (shared ? `I'm sharing this with you:\n${shared}\n\nFile it where it belongs (to-do, idea, tracker, memory, list) and tell me in one line what you did.` : undefined));
@@ -42,6 +44,10 @@ export default function App() {
   const [startTyping] = useState(params.get("type") === "1");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Research chats: the pinned ones sit in the side panel; ?job= (from a notification) opens one.
+  const [jobs, setJobs] = useState<JobChatRow[]>([]);
+  const [jobId, setJobId] = useState<string | null>(params.get("job"));
+  const loadJobs = () => api.jobs().then(setJobs).catch(() => {});
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState<S | null>(null);
   const [sheet, setSheet] = useState<{ item: Item | null; kind?: ItemKind } | null>(null);
@@ -60,7 +66,13 @@ export default function App() {
   const setTyping = (text: string) => setDraft(text);
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null);
 
-  const refresh = () => setRefreshKey((k) => k + 1);
+  const refresh = () => { setRefreshKey((k) => k + 1); loadJobs(); };
+  useEffect(() => {
+    if (!authed) return;
+    loadJobs();
+    const t = setInterval(() => { if (document.visibilityState === "visible") loadJobs(); }, 60_000);
+    return () => clearInterval(t);
+  }, [authed]);
   const loadConversations = () => api.conversations().then(setConversations).catch(() => {});
 
   useEffect(() => {
@@ -70,7 +82,7 @@ export default function App() {
     const onInstall = (e: Event) => { e.preventDefault(); setInstall(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", onInstall);
     // Links like ?ask= are one-shot; keep the address bar clean.
-    if (params.get("ask") || params.get("share_text") || params.get("share_url") || params.get("share_title") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("report")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
+    if (params.get("ask") || params.get("share_text") || params.get("share_url") || params.get("share_title") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("report") || params.get("job")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
     return () => { window.removeEventListener("cos:unauthorised", onUnauth); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
 
@@ -170,6 +182,7 @@ export default function App() {
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
   const goHome = () => openConversation(null);
   const openItem = (item: Item) => setSheet({ item });
+  const openResearch = (id: string) => { setJobId(id); setView("research"); setDrawer(false); };
   const current = conversations.find((c) => c.id === conversationId);
   const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => {
@@ -201,6 +214,7 @@ export default function App() {
               <DrawerItem active={view === 'details'} onClick={() => go('details')} icon={<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>} label="My details" />
               <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
             </div>
+            <PinnedResearch jobs={jobs} activeId={view === "research" ? jobId : null} onOpen={openResearch} />
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
               onOpen={(id) => openConversation(id)}
               onChanged={() => api.conversations().then((list) => {
@@ -230,7 +244,7 @@ export default function App() {
           </button>
         ) : <span className="w-11" />}
         <button onClick={goHome} className="flex-1 min-w-0 text-center font-medium truncate">
-          {view === "home" ? current?.title || "Chief of Staff" : VIEW_TITLES[view]}
+          {view === "home" ? current?.title || "Chief of Staff" : view === "research" ? jobs.find((j) => j.id === jobId)?.title || "Research" : VIEW_TITLES[view]}
         </button>
         <ZoomControl />
         <button onClick={() => openConversation(null)} aria-label="New conversation" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
@@ -245,7 +259,8 @@ export default function App() {
         </div>
       )}
 
-      <main className={`flex-1 min-h-0 px-4 ${view === "home" ? "pb-safe" : "overflow-y-auto pb-6"}`}>
+      <main className={`flex-1 min-h-0 px-4 ${view === "home" || view === "research" ? "pb-safe" : "overflow-y-auto pb-6"}`}>
+        {view === "research" && jobId && <ResearchChat id={jobId} onChanged={loadJobs} />}
         {view === "home" && (
           <Home name={settings?.name ?? ""} conversationId={conversationId}
             onConversation={(id) => { setConversationId(id); loadConversations(); }}
@@ -267,7 +282,7 @@ export default function App() {
         {(view === "tasks" || view === "trackers") && (
           <Switch value={view} onChange={(v) => setView(v as View)} options={[["tasks", "Tasks"], ["trackers", "Trackers"]]} />
         )}
-        {view === "tasks" && <Tasks refreshKey={refreshKey} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
+        {view === "tasks" && <Tasks refreshKey={refreshKey} jobs={jobs} onOpenResearch={openResearch} onJobsChanged={loadJobs} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "trackers" && <div className="mt-4"><Trackers refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} /></div>}
         {view === "groups" && <Groups refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "meetings" && <MeetingsPage refreshKey={refreshKey} onChanged={refresh} onAsk={p=>{openConversation(null);setAsk(undefined);setTimeout(()=>setTyping(p),0);}} />}
