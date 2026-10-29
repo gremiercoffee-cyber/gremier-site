@@ -51,10 +51,19 @@ Deno.serve(async req=>{
    const file=await db.from('expense_inbox_files').select('storage_path').eq('id',b.id).single();if(file.error)throw Error('file_unavailable');
    const r=await db.storage.from('expense-inbox').createSignedUrl(file.data.storage_path,600);if(r.error)throw Error('file_unavailable');return json({url:r.data.signedUrl});
   }
-  if(b.action==='filed'||b.action==='archive'){
+  if(['filed','archive','shared','unshare'].includes(b.action)){
    const ids=Array.isArray(b.ids)?b.ids:[];if(ids.length<1||ids.length>20||ids.some((x:any)=>!/^[0-9a-f-]{36}$/i.test(x)))throw Error('choose_up_to_20_files');
-   const r=await db.from('expense_inbox_files').update({status:b.action==='filed'?'filed':'archived',...(b.action==='filed'?{filed_at:new Date().toISOString(),batch_id:crypto.randomUUID()}: {})}).in('id',ids).eq('status','pending');
-   if(r.error)throw Error('filing_status_failed');await notify(db);return json({saved:true});
+   const now=new Date().toISOString();
+   // shared: the batch left the phone (share sheet / ZIP) and leaves the waiting list, labelled with when.
+   // filed: done, from waiting or shared. unshare: a shared batch goes back to waiting.
+   const change:Record<string,unknown>=b.action==='filed'?{status:'filed',filed_at:now}:b.action==='archive'?{status:'archived'}:b.action==='shared'?{status:'shared',shared_at:now,batch_id:crypto.randomUUID()}:{status:'pending',shared_at:null,batch_id:null};
+   const from=b.action==='filed'?['pending','shared']:b.action==='unshare'?['shared']:['pending'];
+   const q=db.from('expense_inbox_files').update(change).in('id',ids).in('status',from);
+   const r=await q;
+   if(r.error)throw Error('filing_status_failed');
+   // Filing a waiting batch gives it its own batch id; a shared batch keeps the one it was shared with.
+   if(b.action==='filed')await db.from('expense_inbox_files').update({batch_id:crypto.randomUUID()}).in('id',ids).is('batch_id',null);
+   await notify(db);return json({saved:true,...(b.action==='shared'?{batch_id:change.batch_id}:{})});
   }
   return json({error:'unsupported_action'},400);
  }catch(e){return json({error:e instanceof Error&&/^[a-z0-9_]+$/.test(e.message)?e.message:'expense_request_failed'},400);}

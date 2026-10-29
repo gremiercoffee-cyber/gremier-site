@@ -20,3 +20,49 @@
 .fw-review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px;margin:14px 0}.fw-review-grid>div{padding:10px 0;border-top:1px solid var(--border);min-width:0}.fw-review-grid dt{font-size:.7rem;color:var(--text2);margin-bottom:5px}.fw-review-grid dd{font-size:.82rem;margin:0;overflow-wrap:anywhere}
 @media(max-width:650px){.fw-primary{grid-template-columns:1fr}.fw-customer-actions .btn{flex:none;min-width:0}.fw-review-grid{gap:0 12px}}
 @media(max-width:650px){.fw-panel{padding:16px}.fw-form{grid-template-columns:1fr}.fw-expense-row{align-items:start;flex-direction:column}.fw-actions .btn{flex:1;min-width:130px}}
+
+/* Expense inbox: clear cards, strong headers, one "+" and a camera (admin-finance.js) */
+#tab-expenses .ex-card{background:#fff;border:1px solid #dfe3e8;border-radius:18px;padding:18px 20px;margin:16px 0;box-shadow:0 1px 2px rgba(20,28,40,.05),0 6px 20px rgba(20,28,40,.05)}
+#tab-expenses .ex-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid #eceff3}
+#tab-expenses .ex-head h2{margin:0;font-size:1.12rem;font-weight:700;letter-spacing:-.01em;color:#111}
+#tab-expenses .ex-head-tools{display:flex;align-items:center;gap:10px}
+#tab-expenses .ex-size{display:flex;align-items:center;gap:6px;font-size:.78rem;color:#5f656d}
+#tab-expenses .ex-size select{width:auto;padding:5px 8px;font-size:.8rem}
+#tab-expenses .ex-sub{margin:-4px 0 12px;font-size:.8rem;color:#5f656d}
+#tab-expenses .ex-sub:empty{display:none}
+#tab-expenses .ex-empty{margin:6px 0;font-size:.85rem;color:#8a8f96}
+#tab-expenses .ex-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* Add: a big + and a camera, the email as a quiet line */
+#tab-expenses .ex-add{display:flex;align-items:center;gap:14px}
+#tab-expenses .ex-plus,#tab-expenses .ex-cam{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;cursor:pointer;position:relative;transition:transform .12s,box-shadow .15s}
+#tab-expenses .ex-plus{background:#1a1a1a;color:#fff;font:300 2rem/1 'DM Sans',sans-serif;box-shadow:0 6px 16px rgba(0,0,0,.18)}
+#tab-expenses .ex-cam{background:#f2f4f7;color:#1a1a1a;border:1px solid #dfe3e8}
+#tab-expenses .ex-plus:active,#tab-expenses .ex-cam:active{transform:scale(.94)}
+#tab-expenses .ex-plus:focus-within,#tab-expenses .ex-cam:focus-within{outline:3px solid #2b806b;outline-offset:3px}
+#tab-expenses .ex-add-text{display:grid;gap:3px;min-width:0}
+#tab-expenses .ex-add-text b{font-size:1.02rem;color:#111}
+#tab-expenses .ex-add-text small{font-size:.76rem;color:#6b7178;overflow-wrap:anywhere}
+/* Ready to share: the one thing to act on stands out */
+#tab-expenses .ex-ready{border:2px solid #2b806b;background:linear-gradient(180deg,#f3faf7,#fff 60%)}
+#tab-expenses .ex-ready .ex-head{border-bottom-color:#d6ebe3}
+#tab-expenses #expensePrepared:empty::before{content:"No batch ready yet. One is prepared automatically when enough documents are waiting, or select documents below and press Prepare selected.";display:block;font-size:.84rem;color:#6b7178}
+#tab-expenses .ex-ready-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#tab-expenses .ex-ready-top div{display:grid;gap:3px}
+#tab-expenses .ex-ready-top b{font-size:1rem;color:#111}
+#tab-expenses .ex-ready-top small{font-size:.76rem;color:#5f656d}
+#tab-expenses .ex-share{padding:12px 22px;font-size:.95rem;border-radius:999px}
+/* Waiting rows */
+#tab-expenses .fw-expense-row{padding:10px 0;border-top:1px solid #f0f2f5}
+#tab-expenses .fw-expense-row:first-child{border-top:none}
+#tab-expenses .ex-row-actions{display:flex;gap:6px;flex:0 0 auto}
+/* Shared batches: a dated card each */
+#tab-expenses .ex-batch{border:1px solid #e4e7eb;border-radius:14px;padding:12px 14px;margin:10px 0;background:#fafbfc}
+#tab-expenses .ex-batch-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#tab-expenses .ex-batch-top>div:first-child{display:grid;gap:2px}
+#tab-expenses .ex-batch-top b{font-size:.92rem;color:#111}
+#tab-expenses .ex-batch-top small{font-size:.75rem;color:#6b7178}
+#tab-expenses .ex-batch-actions{display:flex;gap:6px;flex-wrap:wrap}
+#tab-expenses .ex-batch details{margin-top:8px;font-size:.78rem;color:#5f656d}
+#tab-expenses .ex-quiet{background:#fafbfc;box-shadow:none}
+#tab-expenses .ex-quiet summary{font-weight:600;cursor:pointer;color:#3a3f45}
+@media(max-width:650px){#tab-expenses .ex-card{padding:16px}#tab-expenses .fw-expense-row{flex-direction:row;align-items:center}#tab-expenses .fw-expense-row .fw-check{flex:1;margin:4px 0}#tab-expenses .ex-row-actions .btn{padding:6px 10px;font-size:.72rem}#tab-expenses .ex-share{width:100%}#tab-expenses .ex-batch-actions .btn{flex:1;min-width:0}}
