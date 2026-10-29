@@ -154,3 +154,17 @@ test('old website net summary is online income once, annual only, without invent
  assert.equal(m.income(d,'2025-01-01','2025-12-31',s=>s.slice(0,10)).total_minor,0);
  const bridge=m.reconcile(report,0);assert.equal(bridge.legacyWebsite,1414780);assert.equal(bridge.newReceipts,0);assert.equal(bridge.importAdjustments,0);
 });
+test('stores owe each unpaid month once; a paid month counts by its receipt, even when short-paid',()=>{
+ const bills=[{id:'a',store_id:'s',year:2026,month:9,total:1000,billed_at:'2026-10-01'},{id:'b',store_id:'s',year:2026,month:10,total:500},{id:'c',store_id:'s',year:2026,month:8,total:700,billed_at:'x',paid_at:'x'},{id:'d',store_id:'s',year:2026,month:7,total:300,cancelled_at:'x'},{id:'e',store_id:'s',year:2025,month:12,total:900}];
+ let o=m.owed(bills,'2026-01-01','2026-12-31');
+ assert.deepEqual([o.billed,o.running,o.total_minor],[100000,50000,150000]);
+ // The store pays ₪800 for September: the receipt (₪800) counts in income and September leaves "owed".
+ const d=base();d.businessReceipts=[{id:'r',status:'issued',store_id:'s',amount_minor:80000,payment_date:'2026-10-20'}];
+ o=m.owed(bills,'2026-01-01','2026-12-31',[{billing_id:'a',receipt_id:'r'}],new Map([['r',d.businessReceipts[0]]]));
+ assert.equal(o.total_minor,50000);
+ const inc=m.income(d,'2026-01-01','2026-12-31',s=>s.slice(0,10));
+ assert.equal(inc.totals.stores,80000);assert.equal(inc.total_minor+o.total_minor-45000,130000);
+ // A receipt still being issued doesn't take the month off the list.
+ assert.equal(m.owed(bills,'2026-01-01','2026-12-31',[{billing_id:'a',receipt_id:'p'}],new Map([['p',{status:'issuing'}]])).total_minor,150000);
+ assert.equal(m.owed(bills,'2026-10-01','2026-10-31').total_minor,50000);
+});
