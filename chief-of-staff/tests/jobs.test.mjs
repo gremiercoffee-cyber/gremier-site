@@ -123,3 +123,32 @@ test('replying in the topic changes the job: stop, how often, and how it reports
  assert.equal(await jobs.talkToJob(e,after,'stop'),"Done, it's stopped.");
  assert.equal(db.prepare('SELECT status FROM jobs WHERE id=?').get(id).status,'stopped');
 });
+
+test('Claude plan: the run gets a one-time reply link; only that link, once, can answer it',async()=>{
+ reset();const {env:e}=env({CLAUDE_ROUTINE_URL:'https://example/fire',CLAUDE_ROUTINE_TOKEN:'x'});
+ const {id}=await jobs.createJob(e,{title:'Cold brew',instructions:'Weekly cold-brew market with action items.',kind:'once'});
+ await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ const fire=globalThis.__tg.find(t=>t.method==='fire');
+ const payload=JSON.parse(fire.body.text);
+ assert.match(payload.task,/action items/);
+ const m=payload.reply_url.match(/\/api\/runs\/([\w-]+)\/result\?k=(\w+)$/);assert.ok(m,'reply link');
+ assert.equal((await jobs.replyWithToken(e,m[1],'wrong-token-wrong-token',{text:'x'})).ok,false);
+ await jobs.replyWithToken(e,m[1],m[2],{text:'Cold brew demand is up 12%.'});
+ assert.match(posts().at(-1).body.text,/up 12%[^]*via Claude plan/);
+ assert.equal((await jobs.replyWithToken(e,m[1],m[2],{text:'again'})).ok,false,'used once');
+});
+
+test('a job can use a chosen model: by name on the API, and passed on to Codex',async()=>{
+ reset();const {env:e,db}=env();
+ const {id}=await jobs.createJob(e,{title:'Deep dive',instructions:'Deep market analysis.',kind:'once',model:'sol'});
+ await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ assert.equal(globalThis.__bg[0].model,'gpt-6.1-sol');
+ const j=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
+ globalThis.__model.push(JSON.stringify({changes:{model:'terra'},run_now:false,reply:'Using Terra now.'}));
+ await jobs.talkToJob(e,j,'use terra for this');
+ assert.equal(db.prepare('SELECT model FROM jobs WHERE id=?').get(id).model,'gpt-6.1-terra');
+ db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:1,secondary:1}));
+ const c=await jobs.createJob(e,{title:'Codex model',instructions:'x',kind:'once',engine:'codex',model:'gpt-5.5'});
+ await jobs.handleButton(e,`start:${c.id}`,-100,77,6);
+ assert.equal((await jobs.nextCodexRun(e,{device:'home'})).run.model,'gpt-5.5');
+});

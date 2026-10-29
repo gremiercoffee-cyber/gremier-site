@@ -841,6 +841,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         weekday: { type: "integer", description: "weekly: 0=Sunday" }, time: { type: "string", description: "weekly: HH:MM" },
         engine: { type: "string", enum: ["auto", "claude", "codex", "api"], description: "auto unless they name one (Claude, Codex/ChatGPT, or the API)" },
         only_changes: { type: "boolean", description: "post only when something changed (default for 'every')" },
+        model: { type: "string", description: "only if they name one: luna, terra, sol, or a model name" },
       }, required: ["title", "instructions", "kind"] },
       handler: async (input) => { const { createJob: newJob } = await import("./jobs"); const r = await newJob(env, input as never); note("start_job", `🔁 ${r.title}: tap Start in Telegram`); return r; },
     },

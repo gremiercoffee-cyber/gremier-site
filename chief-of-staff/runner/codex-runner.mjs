@@ -63,11 +63,12 @@ function planUsage() {
 }
 
 /** One run: Codex answers the prompt with live web search; the last message is the answer. */
-function runCodex(prompt) {
+function runCodex(prompt, model) {
   return new Promise((resolve) => {
     const dir = join(WORK, String(Date.now()));
     mkdirSync(dir, { recursive: true });
-    const p = spawn(codexExe(), ["exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-c", 'web_search="live"', "-"], { cwd: dir, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const args = ["exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-c", 'web_search="live"', ...(model ? ["-m", model] : []), "-"];
+    const p = spawn(codexExe(), args, { cwd: dir, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     let buf = "", last = "", err = "";
     p.stdout.on("data", (d) => {
       buf += d;
@@ -91,7 +92,7 @@ for (;;) {
     const { run } = await api("/api/agent/codex/next", { device: "home-codex", ...usage });
     if (run) {
       log(`run ${run.id}`);
-      const res = await runCodex(run.prompt);
+      const res = await runCodex(run.prompt, run.model);
       const limit = /usage limit|rate limit|too many requests/i.test(res.error);
       await api(`/api/agent/runs/${run.id}/result`, { text: res.text, error: res.error, limit_reached: limit, engine: "codex" });
       log(`run ${run.id} ${res.text ? "answered" : `failed: ${res.error.slice(0, 120)}`}`);

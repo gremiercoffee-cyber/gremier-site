@@ -2,7 +2,7 @@ import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { transcribeAudio } from "./transcribe";
 import { connectWebhook, handleUpdate, tgConfig, type TgUpdate } from "./telegram";
-import { nextCodexRun, runResult, tickJobs } from "./jobs";
+import { nextCodexRun, replyWithToken, runResult, tickJobs } from "./jobs";
 import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { checkPlacement, chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
@@ -800,6 +800,9 @@ export default {
       if (update) await handleUpdate(env, update as TgUpdate, (p) => ctx.waitUntil(p.catch((e) => console.error("telegram", e))));
       return json({ ok: true });
     }
+    // A Claude plan run sends its answer here, to the one-time link it was given for that run.
+    const reply = url.pathname.match(/^\/api\/runs\/([\w-]+)\/result$/);
+    if (reply && req.method === "POST") return json(await replyWithToken(env, reply[1], url.searchParams.get("k") ?? "", (await req.json().catch(() => ({}))) as Parameters<typeof replyWithToken>[3]));
     if (url.pathname.startsWith("/api/agent/")) {
       const key = req.headers.get("x-agent-key") ?? "";
       if (!env.AGENT_KEY || !safeEqual(key, env.AGENT_KEY)) return json({ error: "unauthorised" }, 401);

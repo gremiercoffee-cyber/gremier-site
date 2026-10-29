@@ -15,7 +15,7 @@ interface TgUser { id: number; first_name?: string }
 interface TgChat { id: number; type: string; title?: string; is_forum?: boolean }
 interface TgMessage {
   message_id: number; from?: TgUser; chat: TgChat; text?: string; caption?: string; message_thread_id?: number; is_topic_message?: boolean;
-  voice?: { file_id: string; duration: number }; audio?: { file_id: string }; date: number;
+  voice?: { file_id: string; duration: number }; audio?: { file_id: string }; date: number; migrate_to_chat_id?: number; migrate_from_chat_id?: number;
 }
 export interface TgUpdate {
   update_id: number; message?: TgMessage;
@@ -124,6 +124,13 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
   }
 
   const m = u.message;
+  // Turning on Topics upgrades a basic group to a supergroup, which has a new id: follow it.
+  if (m && c.group_id && (m.migrate_from_chat_id === c.group_id || (m.chat.id === c.group_id && m.migrate_to_chat_id))) {
+    const group_id = m.migrate_to_chat_id ?? m.chat.id;
+    await saveConfig(env, { ...c, group_id });
+    if (m.migrate_from_chat_id) await say(env, group_id, "Topics are on. This topic (General) is our chat; each job you start gets its own topic.");
+    return;
+  }
   if (!m || m.from?.id !== c.owner_id) return;
   const where = { chat: m.chat.id, thread: m.is_topic_message ? m.message_thread_id : undefined };
   if (m.chat.type !== "private" && m.chat.id !== c.group_id) return; // only our group and the private chat

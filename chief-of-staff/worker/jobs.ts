@@ -21,10 +21,20 @@ export interface Job {
   id: string; title: string; instructions: string; kind: "once" | "every" | "weekly"; every_minutes: number | null; weekday: number | null;
   time: string | null; until_at: string | null; engine: "auto" | Engine; only_changes: number; status: string; chat_id: number | null;
   topic_id: number | null; next_run_at: string | null; last_run_at: string | null; last_result: string | null; created_at: string; updated_at: string;
+  model?: string | null;
 }
 interface JobRun { id: string; job_id: string; engine: Engine | null; status: string; ref: string | null; claimed_by: string | null; attempts: number; created_at: string; started_at: string | null; result: string | null }
 
 const ENGINE_NAME: Record<Engine, string> = { claude: "Claude plan", codex: "Codex plan", api: "API" };
+const PUBLIC_ORIGIN = "https://chief-of-staff.gremiercoffee.workers.dev";
+/** Short names the user can say for the API's models; anything else is passed on as written (e.g. a Codex model). */
+const MODEL_NAMES: Record<string, string> = { luna: "gpt-6-luna", terra: "gpt-6.1-terra", sol: "gpt-6.1-sol" };
+const OPENAI_MODELS = new Set(Object.values(MODEL_NAMES));
+export function cleanModel(m: unknown) {
+  const s = String(m ?? "").trim().toLowerCase();
+  if (!s || s === "auto" || s === "default") return null;
+  return MODEL_NAMES[s] ?? (/^[\w.:-]{2,60}$/.test(s) ? s : null);
+}
 /** How long a plan run may take before the API does it instead. */
 const PLAN_TIMEOUT_MIN: Record<Engine, number> = { codex: 15, claude: 25, api: 30 };
 
@@ -47,13 +57,13 @@ export async function describeJob(env: Env, j: Job) {
   const when = j.kind === "once" ? "once" : j.kind === "every"
     ? `every ${j.every_minutes! % 60 === 0 ? `${j.every_minutes! / 60 === 1 ? "hour" : `${j.every_minutes! / 60} hours`}` : `${j.every_minutes} minutes`}${j.until_at ? ` until ${await localText(env, j.until_at)}` : " until you say stop"}`
     : `${WEEKDAYS[j.weekday ?? 0]}s at ${j.time ?? "09:00"} (asks first)`;
-  return `${when} · ${j.engine === "auto" ? "Automatic" : ENGINE_NAME[j.engine]}${j.only_changes ? " · only when something changed" : ""}`;
+  return `${when} · ${j.engine === "auto" ? "Automatic" : ENGINE_NAME[j.engine]}${j.model ? ` · model ${j.model}` : ""}${j.only_changes ? " · only when something changed" : ""}`;
 }
 
 // ---- Creating and changing ----------------------------------------------------------------------
 export interface JobInput {
   title?: string; instructions?: string; kind?: string; every_minutes?: number; weekday?: number; time?: string;
-  until?: string | null; engine?: string; only_changes?: boolean;
+  until?: string | null; engine?: string; only_changes?: boolean; model?: string;
 }
 const ENGINES = ["auto", "claude", "codex", "api"];
 
@@ -76,9 +86,10 @@ export async function createJob(env: Env, input: JobInput) {
     engine: (ENGINES.includes(String(input.engine)) ? input.engine : "auto") as Job["engine"],
     only_changes: input.only_changes ?? kind === "every" ? 1 : 0,
     status: "pending", chat_id: chatId, topic_id: topic, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(),
+    model: cleanModel(input.model),
   };
-  await run(env, `INSERT INTO jobs (id, title, instructions, kind, every_minutes, weekday, time, until_at, engine, only_changes, status, chat_id, topic_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, j.id, j.title, j.instructions, j.kind, j.every_minutes, j.weekday, j.time, j.until_at, j.engine, j.only_changes, j.status, j.chat_id, j.topic_id, j.created_at, j.updated_at);
+  await run(env, `INSERT INTO jobs (id, title, instructions, kind, every_minutes, weekday, time, until_at, engine, only_changes, status, chat_id, topic_id, created_at, updated_at, model)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, j.id, j.title, j.instructions, j.kind, j.every_minutes, j.weekday, j.time, j.until_at, j.engine, j.only_changes, j.status, j.chat_id, j.topic_id, j.created_at, j.updated_at, j.model);
   if (chatId) {
     await say(env, chatId, `**${title}**\n${instructions}\n\n${await describeJob(env, j)}`, {
       thread: topic ?? undefined,
@@ -142,11 +153,12 @@ export async function talkToJob(env: Env, j: Job, text: string) {
   const out = await getProvider(env).complete({
     tier: "main", purpose: "job_edit", json: true, maxTokens: 600,
     system: `You manage one job for the user from their message in the job's chat. Local time now: ${await localNow(env)} (${await tz(env)}).
-Reply ONLY JSON: {"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly","every_minutes"?,"until_local"?:"YYYY-MM-DDTHH:MM" or null (no limit),"weekday"?:0-6,"time"?:"HH:MM","engine"?:"auto|claude|codex|api","only_changes"?:bool,"status"?:"active|paused|stopped"},"run_now":bool,"reply":"one short sentence"}
+Reply ONLY JSON: {"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly","every_minutes"?,"until_local"?:"YYYY-MM-DDTHH:MM" or null (no limit),"weekday"?:0-6,"time"?:"HH:MM","engine"?:"auto|claude|codex|api","model"?:"luna|terra|sol|auto or a model name","only_changes"?:bool,"status"?:"active|paused|stopped"},"run_now":bool,"reply":"one short sentence"}
 - Anything about WHAT to research or HOW to report (focus, sources, format, length, a summary, action items, a recommendation, what to judge by) goes into "instructions": return the full updated instructions, keeping everything they asked for before unless they replace it.
+- Which model: "model" (luna = cheapest, terra = stronger, sol = strongest, auto = the usual one). Naming Claude, Codex/ChatGPT or the API sets "engine".
 - How often: every_minutes (or kind). Until when: until_local. "Tell me everything each time" → only_changes false.
 - Only include what they asked to change. A question about the job or its results: answer it in "reply" from the latest result, with no changes.`,
-    prompt: JSON.stringify({ job: { title: j.title, instructions: j.instructions, kind: j.kind, every_minutes: j.every_minutes, until: j.until_at, weekday: j.weekday, time: j.time, engine: j.engine, only_changes: !!j.only_changes, status: j.status }, latest_result: (j.last_result ?? "").slice(0, 2500), message: text }),
+    prompt: JSON.stringify({ job: { title: j.title, instructions: j.instructions, kind: j.kind, every_minutes: j.every_minutes, until: j.until_at, weekday: j.weekday, time: j.time, engine: j.engine, model: j.model ?? "auto", only_changes: !!j.only_changes, status: j.status }, latest_result: (j.last_result ?? "").slice(0, 2500), message: text }),
   });
   let v: { changes?: Record<string, unknown>; run_now?: boolean; reply?: string };
   try { v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { return "Sorry, I didn't get that. Try “stop”, “every 2 hours”, “until Friday 8pm” or “use Claude”."; }
@@ -163,6 +175,7 @@ Reply ONLY JSON: {"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly
   if (ch.weekday !== undefined && kind === "weekly") upd.weekday = Math.min(6, Math.max(0, Math.round(Number(ch.weekday))));
   if (typeof ch.time === "string" && /^\d\d:\d\d$/.test(ch.time)) upd.time = ch.time;
   if (ENGINES.includes(String(ch.engine))) upd.engine = ch.engine;
+  if ("model" in ch) upd.model = cleanModel(ch.model);
   if (typeof ch.only_changes === "boolean") upd.only_changes = ch.only_changes ? 1 : 0;
   if (ch.status === "paused" || ch.status === "active") upd.status = ch.status;
   if (Object.keys(upd).length) {
@@ -223,13 +236,16 @@ async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
   await run(env, "UPDATE job_runs SET engine = ?, status = 'queued', attempts = attempts + 1, started_at = ?, ref = NULL, claimed_by = NULL WHERE id = ?", engine, now(), r.id);
   try {
     if (engine === "api") {
-      const ref = await getProvider(env).startBackground({ purpose: j.kind === "weekly" ? "job_report" : "job_check", system: "You are a careful research assistant. Be accurate and brief.", prompt, maxSearches: j.kind === "weekly" ? 8 : 4, maxTokens: 3000 });
+      const ref = await getProvider(env).startBackground({ purpose: j.kind === "weekly" ? "job_report" : "job_check", model: j.model && OPENAI_MODELS.has(j.model) ? j.model : undefined, system: "You are a careful research assistant. Be accurate and brief.", prompt, maxSearches: j.kind === "weekly" ? 8 : 4, maxTokens: 3000 });
       await run(env, "UPDATE job_runs SET status = 'running', ref = ? WHERE id = ?", ref, r.id);
     } else if (engine === "claude") {
+      // The answer comes back to a one-time link for this run only (the cloud task holds no key of ours).
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(16).padStart(2, "0")).join("");
+      await run(env, "UPDATE job_runs SET reply_token = ? WHERE id = ?", token, r.id);
       const res = await fetch(env.CLAUDE_ROUTINE_URL!, {
         method: "POST",
         headers: { authorization: `Bearer ${env.CLAUDE_ROUTINE_TOKEN}`, "anthropic-beta": "experimental-cc-routine-2026-04-01", "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ text: JSON.stringify({ run_id: r.id, task: prompt }) }),
+        body: JSON.stringify({ text: JSON.stringify({ task: prompt, reply_url: `${PUBLIC_ORIGIN}/api/runs/${r.id}/result?k=${token}` }) }),
       });
       if (!res.ok) throw new Error(`Claude didn't start (${res.status})`);
       const out = (await res.json().catch(() => ({}))) as { claude_code_session_url?: string; session_url?: string };
@@ -305,7 +321,15 @@ export async function nextCodexRun(env: Env, p: { device?: string; primary?: num
   const claimed = await run(env, "UPDATE job_runs SET status = 'running', claimed_by = ?, started_at = ? WHERE id = ? AND status = 'queued'", String(p.device ?? "computer").slice(0, 40), now(), r.id);
   if (!claimed.meta.changes) return { run: null };
   const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
-  return { run: { id: r.id, prompt: await brief(env, j) } };
+  return { run: { id: r.id, prompt: await brief(env, j), model: j.model ?? null } };
+}
+
+/** A Claude plan run's answer, sent to its one-time link: accepted once, only with that run's token. */
+export async function replyWithToken(env: Env, id: string, token: string, p: Parameters<typeof runResult>[2]) {
+  const r = await first<{ reply_token: string | null }>(env, "SELECT reply_token FROM job_runs WHERE id = ?", id);
+  if (!r?.reply_token || token.length < 20 || r.reply_token !== token) return { ok: false, error: "unknown run" };
+  await run(env, "UPDATE job_runs SET reply_token = NULL WHERE id = ?", id);
+  return runResult(env, id, p);
 }
 
 /** A plan run's answer (from Codex or Claude), or its failure. A plan that hit its limit is avoided for a while. */
