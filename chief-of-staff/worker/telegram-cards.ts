@@ -22,11 +22,14 @@ type Talk = (where: Where, text: string, files?: string[]) => Promise<void>;
 /** A tap on one of these cards' buttons. false = not one of ours. */
 export async function pressCard(env: Env, data: string, where: Where, messageId: number, talk: Talk): Promise<boolean> {
   const [kind, id, arg] = data.split("~");
-  if (!["n", "a", "b", "f", "r", "w"].includes(kind) || !id) return false;
+  if (!["n", "a", "b", "f", "r", "w", "s"].includes(kind) || !id) return false;
   const clear = () => tg(env, "editMessageReplyMarkup", { chat_id: where.chat, message_id: messageId, reply_markup: { inline_keyboard: [] } }).catch(() => {});
   const answer = (text: string, buttons?: TgButton[][]) => say(env, where.chat, text, { thread: where.thread, replyTo: messageId, buttons });
   try {
-    if (kind === "w") {
+    if (kind === "s") {
+      const { pressShopping } = await import("./telegram-topics");
+      await pressShopping(env, id, arg ?? "");
+    } else if (kind === "w") {
       const { pressWork } = await import("./worksession");
       await pressWork(env, id, arg ?? "", where, messageId);
     } else if (kind === "n") {

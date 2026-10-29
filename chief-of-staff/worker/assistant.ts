@@ -26,6 +26,7 @@ import { createJob } from "./browser";
 import { fileForModel, fileInfo, fillForm, findEmailFiles, recentFiles, saveVault, signFile, vaultSummary } from "./documents";
 import {meetingPrepState,proposePrepNote,confirmPrepNote} from './meeting-prep';
 import { hubCall, saveCoffeeRule, setCoffeeStock } from "./hub";
+import { makeSubjectTopic } from "./telegram-topics";
 import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
@@ -546,6 +547,12 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         note("coffee_update", `☕ App updated: ${String(action).replace(/_/g, " ")}`);
         return { done: true, app_updated: true, result: r };
       },
+    },
+    {
+      name: "make_telegram_topic",
+      description: "Make a topic in the user's Telegram group for a subject, with its own separate chat: coffee (☕ Coffee: the coffee app's tools in every message), shopping (🛒 Shopping: a pinned list with a tap-to-tick button per item, always up to date), or any other name. Asking again for one that exists just points to it.",
+      input_schema: { type: "object", properties: { subject: { type: "string", description: "coffee, shopping, or a short name for another subject" } }, required: ["subject"] },
+      handler: async (input) => { const r = await makeSubjectTopic(env, input as never); note("make_telegram_topic", `Telegram topic: ${r.name}`); return { ...r, tell_user: "Topics can't be pinned by a bot: to keep it at the top, long-press the topic in the group and choose Pin." }; },
     },
     {
       name: "coffee_rule",
@@ -1238,7 +1245,7 @@ export async function titleConversation(env:Env,c:Conversation,firstText:string)
  await run(env,'UPDATE conversations SET title=? WHERE id=?',title,c.id);c.title=title;return title;
 }
 
-export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[]; channel?: "telegram" } = {}) {
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[]; channel?: "telegram"; subject?: { name: string; feature?: string } } = {}) {
   const started=performance.now(),stages:Record<string,number>={};
   const provider = getProvider(env); // fail before storing anything if no model is configured
   const existing = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
@@ -1259,7 +1266,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   // From Telegram there are no app screens: say so with this message only (the cached prompt stays the same).
   if (opts.channel === "telegram" && history.length) history[history.length - 1] = { ...history[history.length - 1], content: `${history[history.length - 1].content}
 
-[Sent from Telegram: there are no app screens, forms or cards here. Ask for anything you need (e.g. a form's missing details) right in the chat, and never say to open the app or tap a card. Approvals, group messages, file choices and finished files appear as buttons/files right after your reply.]` };
+[Sent from Telegram: there are no app screens, forms or cards here. Ask for anything you need (e.g. a form's missing details) right in the chat, and never say to open the app or tap a card. Approvals, group messages, file choices and finished files appear as buttons/files right after your reply.${opts.subject ? ` This is the Telegram topic “${opts.subject.name}”: assume what's said here is about that.${opts.subject.feature === "shopping" ? " The pinned list in this topic updates by itself, with a tap-to-tick button per item." : ""}` : ""}]` };
 
   const notes: ActionNote[] = [];
   let switched = false;
@@ -1279,6 +1286,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   // per-message set is cheaper.
   // A small fixed core (cached); the free keyword check (no AI) adds a group, with its rules, when this message
   // is about it, so it is there in the first round, and load_tools fetches any other one mid-turn.
+  if (opts.subject?.feature) features.add(opts.subject.feature);
   const chatFeatures=new Set(features);
   // A file attached now, or files already in this chat: the file tools (find, fill, sign) are always at hand.
   const filesCtx = await filesContext(env, convo.id);
@@ -1378,10 +1386,12 @@ const TOOL_GROUPS: Record<string, string[]> = {
   details: ["save_detail"],
   people: ["save_person"],
   jobs: ["start_job", "list_jobs", "email_with_codex"],
+  topics: ["make_telegram_topic"],
 };
 /** What each group is for, so load_tools can say what there is to load. */
 const GROUP_INFO: Record<string, string> = {
   worktime: "planning free time now, with done buttons",
+  topics: "Telegram topics for a subject (coffee, shopping…)",
   shopping: "shopping lists", schedule: "the user's time blocks", calendar: "Google Calendar", email: "Gmail search, read, drafts",
   whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups and group messages", trackers: "trackers that collect answers",
   ideas: "ideas and brainstorms", tasks: "research chats and older reports", missions: "missions (multi-step follow-ups)", coffee: "Gremier Coffee business data",
@@ -1410,6 +1420,7 @@ const GROUP_RULES: Record<string, string> = {
  * prep, hashgacha) is one load_tools call away, which keeps the prefix small and identical every message.
  */
 const TOOL_TRIGGERS: Record<string, RegExp> = {
+  topics: /(topics?|telegram|thread|separate chat|dedicated chat|its own chat)/i,
   worktime: /(i have (some )?(time|d+|an? (hour|few|couple))|free (time|now|for)|what (should|can|do) i (do|work on|get done)|what('s| is) (next|on my plate)|i'?m (here|free|ready)|ready to work|let'?s (work|go|get)|work session|i'?ll do|i'?m (going to|gonna) do)|יש לי (זמן|שעה)|מה (לעשות|אני צריך לעשות)/i,
   files: /\b(sign|signs|signed|signature|attachment|attached|pdf|document|form|fill|upload|uploaded|screenshot)\b|חתימה|לחתום|מסמך|קובץ|טופס/i,
   recurring: /\b(every month|monthly|each month|recurring|every (\d+(st|nd|rd|th)?|first|last)\b)|כל חודש/i,

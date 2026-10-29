@@ -813,6 +813,7 @@ export default {
       if (rm && req.method === "POST") return json(await runResult(env, rm[1], (await req.json().catch(() => ({}))) as Parameters<typeof runResult>[2]));
       // The coffee production outlook (read-only), as Chief of Staff sees it.
       if (url.pathname === "/api/agent/coffee/outlook" && req.method === "POST") { const { hubCall } = await import("./hub"); return json(await hubCall(env, "outlook")); }
+      if (url.pathname === "/api/agent/telegram/topic" && req.method === "POST") { const { makeSubjectTopic } = await import("./telegram-topics"); return json(await makeSubjectTopic(env, (await req.json().catch(() => ({}))) as { subject?: string })); }
       if (url.pathname === "/api/agent/telegram/connect" && req.method === "POST") return json(await connectWebhook(env, url.origin));
       if (url.pathname === "/api/agent/telegram/owner" && req.method === "POST") {
         const b = (await req.json().catch(() => ({}))) as { owner_id?: number };

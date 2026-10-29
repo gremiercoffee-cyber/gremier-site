@@ -3,7 +3,8 @@
  *
  * Only the owner's Telegram account is listened to (paired once, by user id); anyone else is ignored, and a group
  * the bot is added to by someone else is left at once. In the owner's group (with Topics on), the General topic is
- * the Chief of Staff chat; every other topic belongs to a job (see jobs.ts). A private chat with the bot works too.
+ * the Chief of Staff chat; a subject topic (☕ Coffee, 🛒 Shopping…) is its own chat about that (telegram-topics.ts);
+ * every other topic belongs to a job (see jobs.ts). A private chat with the bot works too.
  */
 import type { Env } from "./env";
 import { first, run } from "./db";
@@ -60,12 +61,12 @@ async function attachment(env: Env, m: TgMessage) {
 }
 
 /** A message to the Chief of Staff from Telegram (General or the private chat): the reply, then any cards it made. */
-async function talkIn(env: Env, where: { chat: number; thread?: number }, text: string, defer: (p: Promise<unknown>) => void, files?: string[]) {
+async function talkIn(env: Env, where: { chat: number; thread?: number }, text: string, defer: (p: Promise<unknown>) => void, files?: string[], subject?: { name: string; feature?: string } | null) {
   await tg(env, "sendChatAction", { chat_id: where.chat, action: "typing", ...(where.thread ? { message_thread_id: where.thread } : {}) }).catch(() => {});
   const since = new Date(Date.now() - 1000).toISOString();
   const key = `${where.chat}:${where.thread ?? 0}`;
   const { chat } = await import("./assistant");
-  const res = await chat(env, text, "text", await conversationFor(env, key), { defer, files, channel: "telegram" });
+  const res = await chat(env, text, "text", await conversationFor(env, key), { defer, files, channel: "telegram", subject: subject ?? undefined });
   await rememberConversation(env, key, res.conversation.id);
   await say(env, where.chat, res.reply.content, { thread: where.thread });
   const { cardsSince } = await import("./telegram-cards");
@@ -137,6 +138,7 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
       if (!text && (m.voice || m.audio)) text = await voiceText(env, (m.voice ?? m.audio)!.file_id);
       const file = await attachment(env, m);
       if (/^\/jobs\b/.test(text)) { const { jobsSummary } = await import("./jobs"); await say(env, where.chat, await jobsSummary(env), { thread: where.thread }); return; }
+      if (/^\/list\b/.test(text)) { const { repostShoppingCard } = await import("./telegram-topics"); if (!await repostShoppingCard(env)) await say(env, where.chat, "There's no Shopping topic yet. Ask me to make one.", { thread: where.thread }); return; }
       if (/^\/today\b/.test(text)) text = "What's on my plate today? My tasks, reminders and meetings, most important first.";
       if (/^\/notifications\b/.test(text)) {
         const on = (await tgConfig(env)).notify === false;
@@ -150,6 +152,10 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
         const { replyToCard } = await import("./telegram-cards");
         if (await replyToCard(env, where, m.reply_to_message.message_id, text, (w, t, f) => talkIn(env, w, t, defer, f))) return;
       }
+      // A subject topic (Coffee, Shopping…) is its own chat about that subject.
+      const { subjectFor } = await import("./telegram-topics");
+      const subject = await subjectFor(env, where.chat, where.thread);
+      if (subject) { await talkIn(env, where, text, defer, file ? [file] : undefined, subject); return; }
       // A message inside a job's topic is about that job.
       if (where.thread) {
         const { jobByTopic, messageJob } = await import("./jobs");
@@ -171,7 +177,7 @@ export async function connectWebhook(env: Env, origin: string) {
     url: `${origin}/api/telegram/webhook`, secret_token: env.TELEGRAM_WEBHOOK_SECRET,
     allowed_updates: ["message", "my_chat_member", "callback_query"], drop_pending_updates: false,
   });
-  await tg(env, "setMyCommands", { commands: [{ command: "today", description: "What's on today" }, { command: "jobs", description: "Research and jobs running" },
+  await tg(env, "setMyCommands", { commands: [{ command: "today", description: "What's on today" }, { command: "jobs", description: "Research and jobs running" }, { command: "list", description: "Shopping list with tick buttons" },
     { command: "notifications", description: "Reminders here on/off" }, { command: "start", description: "Say hi" }] });
   return { ok: true };
 }

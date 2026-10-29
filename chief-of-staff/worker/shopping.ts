@@ -17,6 +17,8 @@ export async function saveShoppingConfig(env: Env, input: ShoppingConfig) {
   await run(env, "DELETE FROM shopping_messages WHERE status != 'done'");
   return config;
 }
+/** The pinned list in Telegram's Shopping topic follows every change (here, the app, WhatsApp). */
+const changed = (env: Env) => import('./telegram-topics').then(t => t.refreshShoppingCard(env)).catch(e => console.error('telegram shopping', e));
 export async function shoppingState(env: Env): Promise<ShoppingState> {
   const lists = await all<Omit<ShoppingList, 'items'>>(env, "SELECT * FROM shopping_lists ORDER BY id != 'store', created_at");
   const items = await all<ShoppingItem>(env, 'SELECT * FROM shopping_items ORDER BY checked, created_at');
@@ -64,6 +66,7 @@ export async function addShoppingItems(env: Env, listRef: string | undefined, it
       .bind(uid(), list, name, shoppingKey(name), String(i.quantity ?? '').slice(0, 80), String(i.notes ?? '').slice(0, 500), source, now(), now());
   });
   const results = await env.DB.batch(statements);
+  await changed(env);
   return { list_id: list, added: results.reduce((n, r) => n + (r.meta.changes ?? 0), 0) };
 }
 export async function updateShoppingItem(env: Env, id: string, input: { name?: string; quantity?: string; notes?: string; checked?: boolean }) {
@@ -77,10 +80,12 @@ export async function updateShoppingItem(env: Env, id: string, input: { name?: s
   await run(env, `UPDATE shopping_items SET name = ?, normalized_name = ?, quantity = ?, notes = ?,
     checked_at = CASE WHEN ?=0 THEN NULL WHEN checked=0 THEN ? ELSE COALESCE(checked_at,updated_at) END,
     checked = ?, updated_at = ? WHERE id = ?`, name, shoppingKey(name), input.quantity === undefined ? item.quantity : String(input.quantity).slice(0, 80), input.notes === undefined ? item.notes : String(input.notes).slice(0, 500), checked, stamp, checked, stamp, id);
+  await changed(env);
   return { ok: true };
 }
 export async function deleteShoppingItem(env: Env, id: string) {
   await run(env, 'DELETE FROM shopping_items WHERE id = ?', id);
+  await changed(env);
   return { ok: true };
 }
 
