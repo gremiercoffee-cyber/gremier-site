@@ -17,7 +17,7 @@ migrations_dir = "migrations"
 
 # Proactive pass: morning briefing, overdue/reminder checks, stale "waiting for" nudges.
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/5 * * * *"]
 
 [vars]
 # Everything runs on Luna (a tenth of Terra's price); filling in forms uses Terra.

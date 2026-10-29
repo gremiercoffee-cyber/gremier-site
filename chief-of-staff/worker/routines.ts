@@ -32,7 +32,7 @@ export const DEPTH: Record<string, { subs: number; searches: number; label: stri
 const parse = <T>(s: string | null | undefined, d: T): T => { try { return s ? JSON.parse(s) as T : d; } catch { return d; } };
 
 /** The UTC instant for a local wall-clock time in tz. */
-function localToUtc(tz: string, ymd: string, hh: number, mm: number) {
+export function localToUtc(tz: string, ymd: string, hh: number, mm: number) {
   const target = Date.parse(`${ymd}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00Z`);
   let guess = target;
   for (let i = 0; i < 3; i++) {

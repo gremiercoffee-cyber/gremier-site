@@ -830,6 +830,27 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
+      name: "start_job",
+      description: "Start a research or monitoring job that reports in its own Telegram topic: once, every N minutes until stopped or a time limit (e.g. hourly election updates), or weekly (asks before each report). It waits for the user's Start tap there.",
+      input_schema: { type: "object", properties: {
+        title: { type: "string", description: "2-5 words" },
+        instructions: { type: "string", description: "everything the user asked for, in full: what to research or watch, what to judge it by, and how to report (format, summary, action items, a recommendation)" },
+        kind: { type: "string", enum: ["once", "every", "weekly"] },
+        every_minutes: { type: "integer", description: "every: e.g. 60 for hourly" },
+        until: { type: "string", description: "every: local YYYY-MM-DDTHH:MM to stop; omit for until they say stop" },
+        weekday: { type: "integer", description: "weekly: 0=Sunday" }, time: { type: "string", description: "weekly: HH:MM" },
+        engine: { type: "string", enum: ["auto", "claude", "codex", "api"], description: "auto unless they name one (Claude, Codex/ChatGPT, or the API)" },
+        only_changes: { type: "boolean", description: "post only when something changed (default for 'every')" },
+      }, required: ["title", "instructions", "kind"] },
+      handler: async (input) => { const { createJob: newJob } = await import("./jobs"); const r = await newJob(env, input as never); note("start_job", `🔁 ${r.title}: tap Start in Telegram`); return r; },
+    },
+    {
+      name: "list_jobs", readOnly: true,
+      description: "The research/monitoring jobs and their schedules.",
+      input_schema: { type: "object", properties: {} },
+      handler: async () => { const { jobsSummary } = await import("./jobs"); return jobsSummary(env); },
+    },
+    {
       name: "computer_helper",
       description: "Hand a job to the user's computer helper: Chrome on their home computer does it, signed in as them (e.g. 'enable the People API in Google Cloud', 'make a CoSend account', 'fill in this form'). Use only when the user asks for something done on a website. Write the instruction fully (which site, what to do, what counts as done); add start_url when known. It never types passwords or pays; it asks the user on their phone when it needs them, and sends a screenshot when done.",
       input_schema: { type: "object", properties: { instruction: { type: "string" }, start_url: { type: "string" } }, required: ["instruction"] },
@@ -1284,6 +1305,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   helper: ["computer_helper"],
   details: ["save_detail"],
   people: ["save_person"],
+  jobs: ["start_job", "list_jobs"],
 };
 /** What each group is for, so load_tools can say what there is to load. */
 const GROUP_INFO: Record<string, string> = {
@@ -1293,6 +1315,7 @@ const GROUP_INFO: Record<string, string> = {
   meetings: "meeting prep notes", hashgacha: "Hashgacha report tracking", files: "find, fill and sign documents", recurring: "fixed monthly reminders",
   areas: "add or rename life areas", research: "one-off web research", helper: "do something on a website (computer helper)",
   details: "save the user's details (My details)", people: "add or update people in the address book",
+  jobs: "research or monitoring jobs that report in Telegram (once, every N minutes, weekly)",
 };
 /** Rules that only matter with their tools: sent with the group, never otherwise. */
 const GROUP_RULES: Record<string, string> = {
@@ -1303,6 +1326,7 @@ const GROUP_RULES: Record<string, string> = {
   research: "Research goes through research_now (or idea_step) approval cards: say it's waiting for approval in Tasks. Never pretend to have browsed.",
   details: "save_detail: one of the user's details (an existing label is updated). Signatures are added in the app, not here.",
   helper: "computer_helper: only when they want something done on a website. Write the whole job: the site, what to do, what counts as done; start_url when known.",
+  jobs: "start_job: for research or watching something over time. Put everything they said about what and how into instructions (their criteria, format, summary, action items). Hourly-style checks are kind every; regular reports are weekly. Tell them to tap Start in its Telegram topic. Changes later happen by replying in that topic.",
 };
 /**
  * The always-on tools in the cached chat prefix: everyday filing, the schedule, recurring tasks, coffee,
@@ -1317,6 +1341,7 @@ const TOOL_TRIGGERS: Record<string, RegExp> = {
   helper: /\b(web ?sites?|sign ?up|account|log ?in|register|online|computer helper|browser|chrome|portal|console|enable)\b|אתר/i,
   details: /\b(my details|address|id number|vat|business number|licen[cs]e|osek|teudat)\b|ת"ז|תעודת זהות|כתובת|עוסק/i,
   people: /\b(is my|is our|works (at|for)|phone number|email address|contact|address book|supplier|accountant|lawyer|boss)\b/i,
+  jobs: /\b(monitor|keep (an eye|checking|track)|every (\d+ )?(hour|minute)s?|hourly|updates? (on|about)|weekly report|report (on|every)|watch (for|the)|track|jobs?)\b|מעקב|כל שעה|עדכונים/i,
   ideas: /\b(idea|what if|thinking (about|of)|brainstorm|business plan)\b|רעיון|מה אם/i,
   tasks: /\b(every (day|week|morning|evening|sunday|monday|tuesday|wednesday|thursday|friday)|weekly|daily|report)\b|כל שבוע|כל יום|דוח/i,
   shopping: /\b(shopping|grocer(?:y|ies)|supermarket|list|buy|bought|pick up|milk|eggs|bread)\b|קניות|לקנות|מכולת|סופר/i,

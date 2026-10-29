@@ -87,7 +87,7 @@ export interface ModelProvider {
   complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"]; effort?: "low" | "medium" | "high"; json?: boolean }): Promise<string>;
   /** Research with live web search; returns the report text and how many searches it used. */
   research(req: { purpose: string; system: string; prompt: string; maxSearches: number; maxTokens?: number }): Promise<{ text: string; searches: number; sources: string[] }>;
-  startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }): Promise<string>;
+  startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier; purpose?: string }): Promise<string>;
   checkBackground(id: string, purpose: string): Promise<{ done: false; status?: string } | { done: true; failed: string } | { done: true; text: string; searches: number; sources: string[]; failed?: undefined }>;
 }
 
@@ -292,9 +292,9 @@ class OpenAIProvider implements ModelProvider {
   }
 
   /** Start a long job on OpenAI's side (background mode) and return its id right away. */
-  async startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier }) {
+  async startBackground(req: { system: string; prompt: string; maxTokens?: number; maxSearches?: number; tier?: Tier; purpose?: string }) {
     const params = {
-      model: modelRoute(this.env, "background_research", "brain").model,
+      model: modelRoute(this.env, req.purpose ?? "background_research", "brain").model,
       instructions: req.system,
       input: req.prompt,
       ...(req.maxSearches ? { tools: [{ type: "web_search" }], max_tool_calls: Math.max(1, req.maxSearches) } : {}),

@@ -7,7 +7,7 @@ export type Tier = 'main' | 'fast' | 'brain' | 'writer';
 const WRITING = new Set(['title', 'reply_draft', 'chat_wording']);
 // Placing answers on a form (scans arrive as PDFs and pictures) needs the stronger model; so does the
 // computer helper's second try at a step the everyday model couldn't work out.
-const CAREFUL = new Set(['fill_form', 'fill_check', 'browser_step_retry', 'read_file']);
+const CAREFUL = new Set(['fill_form', 'fill_check', 'browser_step_retry', 'read_file', 'job_report']);
 export function modelRoute(env: Env, purpose: string, tier: Tier = 'main') {
   const role = tier === 'brain' ? 'brain' : tier === 'writer' || WRITING.has(purpose) ? 'writer' : 'brain';
   if (role === 'brain' && CAREFUL.has(purpose)) return { role, model: env.MODEL_CAREFUL || 'gpt-6.1-terra', effort: 'low' as const };

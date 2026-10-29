@@ -1,5 +1,8 @@
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
+import { transcribeAudio } from "./transcribe";
+import { connectWebhook, handleUpdate, tgConfig, type TgUpdate } from "./telegram";
+import { nextCodexRun, runResult, tickJobs } from "./jobs";
 import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { checkPlacement, chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
 import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
@@ -7,6 +10,7 @@ import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
 import {attentionState,actionableItem,actionableNotice,actionableNoticeItem} from './attention';
 import {organizeProjects} from './projectorganization';
+import {organizeMeetingRounds} from './meeting-rounds';
 import type { CalendarEvent, Conversation, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
 import { recurringReminders, saveRecurringReminder, syncRecurringReminders } from './reminders';
@@ -338,24 +342,8 @@ route("POST", "/api/transcribe", async (req, env) => {
   if (!audio || typeof audio === "string") throw new HttpError(400, "audio file required");
   if (audio.size > 24 * 1024 * 1024) throw new HttpError(413, "audio too large");
   const t0 = Date.now();
-  const out = new FormData();
-  out.append("file", audio, audio.name || "dictation.webm");
-  // Groq (Whisper, very fast) when its key is set; otherwise OpenAI.
-  const groq = !!env.GROQ_API_KEY;
-  out.append("model", groq ? "whisper-large-v3-turbo" : env.TRANSCRIBE_MODEL || "gpt-transcribe");
-  let r = await fetch(groq ? "https://api.groq.com/openai/v1/audio/transcriptions" : `${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${groq ? env.GROQ_API_KEY : env.OPENAI_API_KEY}` },
-    body: out,
-  });
-  if (!r.ok && groq && env.OPENAI_API_KEY) {
-    const again = new FormData();
-    again.append("file", audio, audio.name || "dictation.webm");
-    again.append("model", env.TRANSCRIBE_MODEL || "gpt-transcribe");
-    r = await fetch(`${env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/transcriptions`, { method: "POST", headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` }, body: again });
-  }
-  if (!r.ok) throw new HttpError(502, `transcription failed (${r.status})`);
-  const data = (await r.json()) as { text: string };
+  const data = await transcribeAudio(env, audio, audio.name || "dictation.webm").catch((e) => { throw new HttpError(502, (e as Error).message); });
+  const groq = data.via === "groq";
   // How long transcription takes (for tuning; last 20 kept).
   try {
     const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'transcribe_ms'");
@@ -406,7 +394,7 @@ route("DELETE", "/api/items/:id", async (_req, env, [id]) => {
 route("GET", "/api/projects", async (_req, env) =>
   json(await all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count
      FROM projects p ORDER BY p.status='active' DESC, p.updated_at DESC`)));
-route("POST", "/api/projects/organize",async (_req,env)=>json(await organizeProjects(env,{force:true})));
+route("POST", "/api/projects/organize",async (_req,env)=>json({meetings:await organizeMeetingRounds(env,{force:true}),...await organizeProjects(env,{force:true})}));
 route("POST", "/api/projects", async (req, env) => json(await createProject(env, await body(req)), 201));
 route("PATCH", "/api/projects/:id", async (req, env, [id]) => {
   const p = await first<Project>(env, "SELECT * FROM projects WHERE id = ?", id);
@@ -805,6 +793,13 @@ export default {
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
     // Outside agents (Codex, Claude Code): ask the computer helper for a job and check on it. Every job waits for
     // the user's Allow on their phone. Their own key, never the app passcode.
+    // Telegram calls this for every message to the bot; the secret header proves it's Telegram.
+    if (url.pathname === "/api/telegram/webhook" && req.method === "POST") {
+      if (!env.TELEGRAM_WEBHOOK_SECRET || !safeEqual(req.headers.get("x-telegram-bot-api-secret-token") ?? "", env.TELEGRAM_WEBHOOK_SECRET)) return json({ error: "unauthorised" }, 401);
+      const update = await req.json().catch(() => null);
+      if (update) await handleUpdate(env, update as TgUpdate, (p) => ctx.waitUntil(p.catch((e) => console.error("telegram", e))));
+      return json({ ok: true });
+    }
     if (url.pathname.startsWith("/api/agent/")) {
       const key = req.headers.get("x-agent-key") ?? "";
       if (!env.AGENT_KEY || !safeEqual(key, env.AGENT_KEY)) return json({ error: "unauthorised" }, 401);
@@ -812,6 +807,18 @@ export default {
         const b = (await req.json().catch(() => ({}))) as { instruction?: string; start_url?: string; from?: string };
         try { return json(await createJob(env, { instruction: String(b.instruction ?? ""), start_url: b.start_url, source: String(b.from || "An outside agent").replace(/^you$/i, "An outside agent") })); }
         catch (e) { return json({ error: (e as Error).message }, 400); }
+      }
+      // Jobs: the Codex runner on the home computer takes Codex runs (and reports the plan's usage);
+      // the runner and the Claude Code task send each run's answer back.
+      if (url.pathname === "/api/agent/codex/next" && req.method === "POST") return json(await nextCodexRun(env, (await req.json().catch(() => ({}))) as Parameters<typeof nextCodexRun>[1]));
+      const rm = url.pathname.match(/^\/api\/agent\/runs\/([\w-]+)\/result$/);
+      if (rm && req.method === "POST") return json(await runResult(env, rm[1], (await req.json().catch(() => ({}))) as Parameters<typeof runResult>[2]));
+      if (url.pathname === "/api/agent/telegram/connect" && req.method === "POST") return json(await connectWebhook(env, url.origin));
+      if (url.pathname === "/api/agent/telegram/owner" && req.method === "POST") {
+        const b = (await req.json().catch(() => ({}))) as { owner_id?: number };
+        if (!Number.isInteger(b.owner_id)) return json({ error: "owner_id required" }, 400);
+        await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('telegram', ?)", JSON.stringify({ ...(await tgConfig(env)), owner_id: b.owner_id }));
+        return json({ ok: true });
       }
       const am = url.pathname.match(/^\/api\/agent\/helper-jobs\/([^/]+)$/);
       if (am && req.method === "GET") { const j = (await listJobs(env)).find((x) => x.id === am[1]); return j ? json({ id: j.id, status: j.status, question: j.question, result: j.result }) : json({ error: "not found" }, 404); }
@@ -885,9 +892,14 @@ export default {
     return json({ error: "not found" }, 404);
   },
 
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    // Every 5 minutes: jobs (start what's due, collect results). Everything else keeps its 15-minute rhythm
+    // (one schedule: the account allows no more).
+    ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
+    if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
+      .then(() => organizeMeetingRounds(env)).catch(e=>console.error('meeting rounds',e))
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
       .then(() => syncContactsDaily(env)).catch((e) => console.error("contacts", e))
