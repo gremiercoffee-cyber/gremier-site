@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v42';
+const CACHE = 'gremier-v43';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',
@@ -141,6 +141,17 @@ self.addEventListener('notificationclick', e => {
         });
       }
     })());
+    return;
+  }
+
+  // A paid-order alert opens that order's details (reuse an open admin window).
+  const orderId = new URL(url, self.location.origin).searchParams.get('order');
+  if (orderId) {
+    e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const client = list.find(c => /^\/admin(?:\.html)?\/?$/.test(new URL(c.url).pathname) && 'focus' in c);
+      if (client) { client.postMessage({ type: 'gremier:open-order', orderId }); return client.focus(); }
+      return self.clients.openWindow(new URL(url, self.location.origin).href);
+    }));
     return;
   }
 

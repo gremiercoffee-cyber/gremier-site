@@ -382,7 +382,7 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
         order.delivery_address || "",
       ].filter(Boolean).join(" · "),
       kind: "order",
-      url: "/admin.html",
+      url: `/admin.html?order=${order.id}`,
     });
   } catch (e) {
     console.error("notification_log (order) failed:", e);
@@ -412,7 +412,7 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
         order.delivery_address || "",
         notes ? `📝 ${notes.length > 90 ? notes.slice(0, 90) + "…" : notes}` : "",
       ].filter(Boolean).join("\n"),
-      url: "/admin.html",
+      url: `/admin.html?order=${order.id}`,   // a tap opens this order's details
       tag: `order-${order.id}`,
     });
   } catch (e) {

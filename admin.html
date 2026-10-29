@@ -1970,6 +1970,33 @@ function gremierOpenJobFromNotification(jobId) {
   const t = setInterval(() => { fire(); if (++tries >= 6) clearInterval(t); }, 700);
   fire();
 }
+// Open one order's details (paid-order alerts). On a cold start the orders and the sign-in
+// arrive late, so keep trying briefly; an order outside the loaded list is fetched on its own.
+function gremierOpenOrderFromNotification(orderId) {
+  if (!orderId) return;
+  let tries = 0, busy = false;
+  const attempt = async () => {
+    if (busy) return; busy = true;
+    try {
+      if (typeof allOrders !== 'undefined' && typeof openOrderDetail === 'function' && adminUser) {
+        if (!allOrders.some(o => o.id === orderId)) {
+          const { data } = await sb.from('orders').select('*').eq('id', orderId).maybeSingle();
+          if (data && !allOrders.some(o => o.id === orderId)) allOrders.push(data);
+        }
+        if (allOrders.some(o => o.id === orderId)) {
+          clearInterval(t);
+          if (typeof closeNotificationsPanel === 'function') closeNotificationsPanel();
+          openOrderDetail(orderId);
+          return;
+        }
+      }
+    } catch (e) { console.warn('open order failed:', e); }
+    finally { busy = false; }
+    if (++tries >= 30) clearInterval(t);
+  };
+  const t = setInterval(attempt, 500);
+  attempt();
+}
 // Open the Notifications panel once the app scripts are ready (it mounts late).
 function gremierOpenNotificationsFromPush() {
   let tries = 0;
@@ -1982,7 +2009,10 @@ function gremierOpenNotificationsFromPush() {
   try {
     const params = new URLSearchParams(location.search);
     const jobId = params.get('job');
-    if (jobId && params.get('checkoff')) {
+    if (params.get('order')) {
+      gremierOpenOrderFromNotification(params.get('order'));
+      history.replaceState({}, '', location.pathname);
+    } else if (jobId && params.get('checkoff')) {
       gremierOpenJobFromNotification(jobId);
       history.replaceState({}, '', location.pathname);
     } else if (params.get('notif')) {
@@ -1994,7 +2024,8 @@ function gremierOpenNotificationsFromPush() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', ev => {
       if (!ev.data) return;
-      if (ev.data.type === 'gremier:open-job') gremierOpenJobFromNotification(ev.data.jobId);
+      if (ev.data.type === 'gremier:open-order') gremierOpenOrderFromNotification(ev.data.orderId);
+      else if (ev.data.type === 'gremier:open-job') gremierOpenJobFromNotification(ev.data.jobId);
       else if (ev.data.type === 'gremier:open-notifications') gremierOpenNotificationsFromPush();
     });
   }
@@ -2698,6 +2729,15 @@ async function openNotification(id) {
   if (n.kind === 'expense_batch') {
     closeNotificationsPanel();
     window.GremierFinance?.openExpenseBatch();
+    return;
+  }
+  // Older order alerts have no link; find the order by its number in the title.
+  const orderNumber = n.kind === 'order' ? (String(n.title || '').match(/order #(\d+)/i) || [])[1] : null;
+  const orderId = (String(n.url || '').match(/[?&]order=([0-9a-f-]{36})/i) || [])[1]
+    || (orderNumber && typeof allOrders !== 'undefined' ? allOrders.find(o => String(o.order_number) === orderNumber)?.id : null);
+  if (orderId) {
+    closeNotificationsPanel();
+    gremierOpenOrderFromNotification(orderId);
     return;
   }
   if (n.job_id) {
