@@ -528,8 +528,8 @@ export async function createDraft(env: Env, opts: { threadId?: string; to?: stri
   const raw = btoa(String.fromCharCode(...enc.encode(lines.join("\r\n")))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   if(send){
     onSending?.();
-    const result=await gapi<{id:string}>(auth.token,`${GMAIL}/messages/send`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw,...(opts.threadId?{threadId:opts.threadId}:{})})});
-    return {message_id:result.id,from_account:auth.email,to,subject};
+    const result=await gapi<{id:string;threadId?:string}>(auth.token,`${GMAIL}/messages/send`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw,...(opts.threadId?{threadId:opts.threadId}:{})})});
+    return {message_id:result.id,thread_id:result.threadId??opts.threadId??null,from_account:auth.email,to,subject};
   }
   const d = await gapi<{ id: string; message: { threadId: string } }>(auth.token, `${GMAIL}/drafts`, {
     method: "POST", headers: { "content-type": "application/json" },

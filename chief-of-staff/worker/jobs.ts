@@ -17,6 +17,7 @@ import { localToUtc, nextRun } from "./routines";
 import { say, tg, tgConfig } from "./telegram";
 import { sendPush } from "./push";
 import { createDoc } from "./gworkspace";
+import * as mail from "./outreach";
 
 export type Engine = "claude" | "codex" | "api";
 export interface Job {
@@ -27,7 +28,9 @@ export interface Job {
 }
 export interface JobMessage { id: string; job_id: string; role: "you" | "bot"; text: string; buttons: string | null; created_at: string }
 type Buttons = { text: string; data: string }[][];
-interface JobRun { id: string; job_id: string; engine: Engine | null; status: string; ref: string | null; claimed_by: string | null; attempts: number; created_at: string; started_at: string | null; result: string | null }
+interface JobRun { id: string; job_id: string; engine: Engine | null; status: string; ref: string | null; claimed_by: string | null; attempts: number; created_at: string; started_at: string | null; result: string | null; mode?: string | null; ask?: string | null }
+/** Email runs (writing or sending with the user's Gmail) always go to Codex, which has their Gmail app. */
+const isEmail = (r: Pick<JobRun, "mode">) => !!r.mode && r.mode.startsWith("email");
 
 const ENGINE_NAME: Record<Engine, string> = { claude: "Claude plan", codex: "Codex plan", api: "API" };
 const PUBLIC_ORIGIN = "https://chief-of-staff.gremiercoffee.workers.dev";
@@ -101,6 +104,29 @@ export async function createJob(env: Env, input: JobInput) {
   return { id: j.id, title, schedule: await describeJob(env, j), where: `a research chat pinned in the side panel${chatId ? (topic ? ", and its own Telegram topic" : ", and the Telegram chat") : ""}`, status: "waiting for Start" };
 }
 
+/** "Email the bottle suppliers asking for prices" from the main chat: its own chat, where Codex writes the emails
+ *  (shown there with Send buttons). From a research chat's results when one is named. */
+export async function createEmailChat(env: Env, input: { title?: string; ask?: string; research_chat?: string }) {
+  const ask = String(input.ask ?? "").trim().slice(0, 3000);
+  if (!ask) throw new Error("What should the email say, and to whom?");
+  if (input.research_chat) {
+    const q = `%${String(input.research_chat).trim()}%`;
+    const r = await first<Job>(env, "SELECT * FROM jobs WHERE id = ? OR title LIKE ? ORDER BY created_at DESC LIMIT 1", input.research_chat, q);
+    if (r) { await log(env, r, "you", ask); await post(env, r, await mail.requestDrafts(env, r, ask)); return { where: `the “${r.title}” research chat`, status: "Codex is writing the emails; they'll appear there with Send buttons" }; }
+  }
+  const title = String(input.title ?? "").trim().slice(0, 80) || "Emails";
+  const c = await tgConfig(env);
+  const chatId = c.group_id ?? c.private_id ?? null;
+  const topic = c.group_id ? await tg<{ message_thread_id: number }>(env, "createForumTopic", { chat_id: c.group_id, name: `✉️ ${title}`.slice(0, 120) }).then((t) => t.message_thread_id).catch(() => null) : null;
+  const j = { id: uid(), title, instructions: ask, kind: "once", every_minutes: null, weekday: null, time: null, until_at: null, engine: "codex", only_changes: 0, status: "done",
+    chat_id: chatId, topic_id: topic, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(), model: null } as Job;
+  await run(env, `INSERT INTO jobs (id, title, instructions, kind, engine, only_changes, status, chat_id, topic_id, created_at, updated_at) VALUES (?, ?, ?, 'once', 'codex', 0, 'done', ?, ?, ?, ?)`,
+    j.id, j.title, j.instructions, j.chat_id, j.topic_id, j.created_at, j.updated_at);
+  await log(env, j, "you", ask);
+  await post(env, j, await mail.requestDrafts(env, j, ask));
+  return { where: `a new chat “${title}” pinned in the side panel${topic ? " (and its own Telegram topic)" : ""}`, status: "Codex is writing the emails; they'll appear there with Send buttons" };
+}
+
 export async function jobByTopic(env: Env, chatId: number, topic: number) {
   return first<Job>(env, "SELECT * FROM jobs WHERE chat_id = ? AND topic_id = ? ORDER BY created_at DESC LIMIT 1", chatId, topic);
 }
@@ -110,7 +136,7 @@ async function log(env: Env, j: Job, role: "you" | "bot", text: string, buttons?
   await run(env, "INSERT INTO job_messages (id, job_id, role, text, buttons, created_at) VALUES (?, ?, ?, ?, ?, ?)", uid(), j.id, role, text, buttons ? JSON.stringify(buttons) : null, now());
 }
 /** A message from the job: in its chat in the app, in its Telegram topic (when connected), and on the phone when asked. */
-async function post(env: Env, j: Job, text: string, buttons?: Buttons, opts: { push?: boolean; telegram?: boolean } = {}) {
+export async function post(env: Env, j: Job, text: string, buttons?: Buttons, opts: { push?: boolean; telegram?: boolean } = {}) {
   await log(env, j, "bot", text, buttons);
   const w = await where(j);
   if (w && opts.telegram !== false) await say(env, w.chat, text, { thread: w.thread, buttons }).catch((e) => console.error("telegram post", e));
@@ -178,6 +204,7 @@ export async function handleButton(env: Env, data: string, chatId: number, _thre
 /** The same buttons, pressed anywhere (the app or Telegram). */
 export async function pressButton(env: Env, data: string, clearTelegram: () => Promise<void> = async () => {}) {
   const [what, id] = data.split(":");
+  if (what.startsWith("e")) { await clearTelegram(); return mail.pressEmailButton(env, what, id); }
   const clear = async () => {
     await clearTelegram();
     await run(env, "UPDATE job_messages SET buttons = NULL WHERE buttons LIKE ?", `%"${data.replace(/[%_]/g, "")}"%`);
@@ -215,15 +242,28 @@ export async function talkToJob(env: Env, j: Job, text: string) {
   const out = await getProvider(env).complete({
     tier: "main", purpose: "job_edit", json: true, maxTokens: 600,
     system: `You manage one job for the user from their message in the job's chat. Local time now: ${await localNow(env)} (${await tz(env)}).
-Reply ONLY JSON: {"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly","every_minutes"?,"until_local"?:"YYYY-MM-DDTHH:MM" or null (no limit),"weekday"?:0-6,"time"?:"HH:MM","engine"?:"auto|claude|codex|api","model"?:"luna|terra|sol|auto or a model name","only_changes"?:bool,"status"?:"active|paused|stopped"},"run_now":bool,"reply":"one short sentence"}
+Reply ONLY JSON: {"email"?:{"action":"write|edit|send|skip|reply|status","numbers"?:[1,2],"ask"?:"what they want, in their words"},"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly","every_minutes"?,"until_local"?:"YYYY-MM-DDTHH:MM" or null (no limit),"weekday"?:0-6,"time"?:"HH:MM","engine"?:"auto|claude|codex|api","model"?:"luna|terra|sol|auto or a model name","only_changes"?:bool,"status"?:"active|paused|stopped"},"run_now":bool,"reply":"one short sentence"}
 - Anything about WHAT to research or HOW to report (focus, sources, format, length, a summary, action items, a recommendation, what to judge by) goes into "instructions": return the full updated instructions, keeping everything they asked for before unless they replace it.
 - Which model: "model" (luna = cheapest, terra = stronger, sol = strongest, auto = the usual one). Naming Claude, Codex/ChatGPT or the API sets "engine".
 - How often: every_minutes (or kind). Until when: until_local. "Tell me everything each time" → only_changes false.
+- Emails (Codex writes them and sends them from their Gmail): "email/write to them…" → write, with ask = everything they said (who, what to ask, tone). "Make #2 shorter" → edit. "Send it/#2/them all" → send (numbers empty = all unsent). "Don't send #3" → skip. "Reply to #2: …" or a follow-up → reply. "Who replied?" / email status → status. With "email", leave "changes" empty.
 - Only include what they asked to change. A question about the job or its results: answer it in "reply" from the latest result, with no changes.`,
-    prompt: JSON.stringify({ job: { title: j.title, instructions: j.instructions, kind: j.kind, every_minutes: j.every_minutes, until: j.until_at, weekday: j.weekday, time: j.time, engine: j.engine, model: j.model ?? "auto", only_changes: !!j.only_changes, status: j.status }, latest_result: (j.last_result ?? "").slice(0, 2500), message: text }),
+    prompt: JSON.stringify({ job: { title: j.title, instructions: j.instructions, kind: j.kind, every_minutes: j.every_minutes, until: j.until_at, weekday: j.weekday, time: j.time, engine: j.engine, model: j.model ?? "auto", only_changes: !!j.only_changes, status: j.status }, latest_result: (j.last_result ?? "").slice(0, 2500), emails: await mail.emailsBrief(env, j.id), message: text }),
   });
-  let v: { changes?: Record<string, unknown>; run_now?: boolean; reply?: string };
+  let v: { email?: { action?: string; numbers?: number[]; ask?: string }; changes?: Record<string, unknown>; run_now?: boolean; reply?: string };
   try { v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { return "Sorry, I didn't get that. Try “stop”, “every 2 hours”, “until Friday 8pm” or “use Claude”."; }
+  if (v.email?.action) {
+    const nums = (v.email.numbers ?? []).map(Number).filter((n) => n > 0);
+    const ask = v.email.ask || text;
+    switch (v.email.action) {
+      case "write": return mail.requestDrafts(env, j, ask);
+      case "edit": return mail.editEmails(env, j, nums, ask);
+      case "send": return mail.sendNumbers(env, j.id, nums);
+      case "skip": return mail.skipNumbers(env, j.id, nums);
+      case "reply": return nums[0] ? mail.replyDraft(env, j, nums[0], ask) : "Which email should I reply to? Say e.g. “reply to #2: …”.";
+      case "status": return mail.emailStatus(env, j.id);
+    }
+  }
   const ch = v.changes ?? {};
   if (ch.status === "stopped") { await stop(env, j); return v.reply || "Stopped."; }
   const upd: Record<string, unknown> = {};
@@ -254,9 +294,9 @@ Reply ONLY JSON: {"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly
 }
 
 // ---- Running ------------------------------------------------------------------------------------
-async function queueRun(env: Env, j: Job) {
-  const r: JobRun = { id: uid(), job_id: j.id, engine: null, status: "queued", ref: null, claimed_by: null, attempts: 0, created_at: now(), started_at: null, result: null };
-  await run(env, "INSERT INTO job_runs (id, job_id, status, created_at) VALUES (?, ?, 'queued', ?)", r.id, j.id, r.created_at);
+export async function queueRun(env: Env, j: Job, o: { mode?: string; ask?: string } = {}) {
+  const r: JobRun = { id: uid(), job_id: j.id, engine: null, status: "queued", ref: null, claimed_by: null, attempts: 0, created_at: now(), started_at: null, result: null, mode: o.mode ?? null, ask: o.ask ?? null };
+  await run(env, "INSERT INTO job_runs (id, job_id, status, created_at, mode, ask) VALUES (?, ?, 'queued', ?, ?, ?)", r.id, j.id, r.created_at, r.mode, r.ask);
   await dispatch(env, j, r);
 }
 
@@ -285,10 +325,11 @@ export async function pickEngine(env: Env, j: Pick<Job, "engine">, avoid: Engine
 }
 
 /** The lean instructions every engine gets. */
-async function brief(env: Env, j: Job) {
+async function brief(env: Env, j: Job, ask?: string | null) {
   const report = j.kind === "weekly";
   return [
     `THE TASK (follow it exactly, including any format, focus, length, summary, action items or recommendation it asks for):\n${j.instructions}`,
+    ask ? `THIS TIME, THE USER ALSO ASKED: ${ask}` : "",
     `Local time: ${await localNow(env)} (${await tz(env)}). The user lives in Israel and runs Gremier Coffee, a cold-brew business. Search the web for current information. This is one run: the schedule is handled for you, so never mention scheduling, follow-ups or what you can't do.`,
     j.only_changes && j.last_result ? `The previous update, for comparison:\n${j.last_result.slice(0, 1500)}\nIf nothing important changed since then, reply exactly NO_CHANGE.` : "",
     `If the task doesn't say how to format it: ${report ? "a 3-5 bullet bottom line, then the key details" : "a one-line headline, then up to 6 bullets"}. Cite sources as links. No introduction. This goes to a phone chat.`,
@@ -296,6 +337,14 @@ async function brief(env: Env, j: Job) {
 }
 
 async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
+  if (isEmail(r)) {
+    // Codex takes it from the queue; if the computer is off it waits (said once).
+    const online = (await engineStatus(env)).codex.online;
+    const waited = !!(await first(env, "SELECT 1 FROM job_runs WHERE id = ? AND error = 'waiting'", r.id));
+    await run(env, "UPDATE job_runs SET engine = 'codex', status = 'queued', attempts = attempts + 1, started_at = ?, claimed_by = NULL, error = ? WHERE id = ?", now(), online ? null : "waiting", r.id);
+    if (!online && !waited) await post(env, j, "⏳ Waiting for Codex: the computer needs to be on. It'll go as soon as it is.");
+    return;
+  }
   const engine = await pickEngine(env, j, avoid);
   if (!engine) {
     // Waiting for a plan: say so once, and keep trying.
@@ -304,7 +353,7 @@ async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
     if (first_wait) await post(env, j, `⏳ Waiting for ${j.engine === "auto" ? "your Claude or Codex plan" : ENGINE_NAME[j.engine as Engine]} to be free (${j.engine === "codex" || j.engine === "auto" ? "Codex needs the computer on; " : ""}a plan may be at its limit). I'll keep trying. Say “use the API” to run it now on the API instead.`);
     return;
   }
-  const prompt = await brief(env, j);
+  const prompt = await brief(env, j, r.ask);
   await run(env, "UPDATE job_runs SET engine = ?, status = 'queued', attempts = attempts + 1, started_at = ?, ref = NULL, claimed_by = NULL, error = NULL WHERE id = ?", engine, now(), r.id);
   try {
     if (engine === "api") {
@@ -332,6 +381,8 @@ async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
 }
 
 async function failRun(env: Env, j: Job, runId: string, error: string) {
+  const fr = await first<JobRun>(env, "SELECT * FROM job_runs WHERE id = ?", runId);
+  if (fr) await mail.emailRunFailed(env, fr);
   await run(env, "UPDATE job_runs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?", error.slice(0, 500), now(), runId);
   await post(env, j, `⚠️ This run didn't work: ${error.slice(0, 200)}`);
 }
@@ -343,6 +394,7 @@ export async function finishRun(env: Env, runId: string, text: string, engine?: 
   const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
   const body = text.trim();
   await run(env, "UPDATE job_runs SET status = 'done', result = ?, finished_at = ?, engine = COALESCE(?, engine) WHERE id = ?", body.slice(0, 20000), now(), engine ?? null, runId);
+  if (isEmail(r)) { await mail.finishEmailRun(env, j, r, body); return { ok: true, posted: true }; }
   if (/^NO_CHANGE\b/.test(body)) return { ok: true, posted: false };
   await run(env, "UPDATE jobs SET last_result = ?, last_run_at = ?, status = CASE WHEN kind = 'once' THEN 'done' ELSE status END WHERE id = ?", body.slice(0, 6000), now(), j.id);
   const via = `· via ${ENGINE_NAME[(engine ?? r.engine ?? "api") as Engine]}`;
@@ -389,13 +441,25 @@ export async function tickJobs(env: Env) {
     const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id);
     if (j && j.status === "active") await dispatch(env, j, r);
   }
+  // Email runs waiting for the computer: try again.
+  for (const r of await all<JobRun>(env, "SELECT * FROM job_runs WHERE status = 'queued' AND engine = 'codex' AND error = 'waiting' LIMIT 10")) {
+    const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id);
+    if (j) await dispatch(env, j, r);
+  }
   // A plan run that's taking too long (computer off, plan limit): the other plan (or, when chosen, the API) does it.
   for (const r of await all<JobRun>(env, "SELECT * FROM job_runs WHERE status IN ('queued','running') AND engine IN ('codex','claude')")) {
     if (Date.now() - Date.parse(r.started_at ?? r.created_at) < PLAN_TIMEOUT_MIN[r.engine!] * 60_000) continue;
     const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
+    // An email run waiting for the computer keeps waiting; one Codex took but didn't finish fails
+    // (it may have sent: the user is told to look in Sent before sending again).
+    if (isEmail(r)) {
+      if (r.status === "running") await failRun(env, j, r.id, "Codex didn't finish. If it was sending, check Gmail's Sent folder before sending again.");
+      continue;
+    }
     if (r.attempts >= 4) { await failRun(env, j, r.id, "No engine finished it in time."); continue; }
     await dispatch(env, j, r, [r.engine!]);
   }
+  await mail.checkEmailReplies(env).catch((e) => console.error("email replies", e));
 }
 
 // ---- The Codex runner on the home computer, and the Claude task, report back here -----------------
@@ -408,7 +472,8 @@ export async function nextCodexRun(env: Env, p: { device?: string; primary?: num
   const claimed = await run(env, "UPDATE job_runs SET status = 'running', claimed_by = ?, started_at = ? WHERE id = ? AND status = 'queued'", String(p.device ?? "computer").slice(0, 40), now(), r.id);
   if (!claimed.meta.changes) return { run: null };
   const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
-  return { run: { id: r.id, prompt: await brief(env, j), model: j.model ?? null } };
+  if (isEmail(r)) return { run: { id: r.id, prompt: await mail.emailPrompt(env, j, { mode: r.mode ?? null, ask: r.ask ?? null }), model: j.model ?? null, gmail: true } };
+  return { run: { id: r.id, prompt: await brief(env, j, r.ask), model: j.model ?? null } };
 }
 
 /** A Claude plan run's answer, sent to its one-time link: accepted once, only with that run's token. */
@@ -426,7 +491,7 @@ export async function runResult(env: Env, id: string, p: { text?: string; error?
   if (p.limit_reached && r.engine === "claude") await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('claude_limited_until', ?)", JSON.stringify(new Date(Date.now() + 5 * 3600_000).toISOString()));
   if (p.text?.trim()) return finishRun(env, id, p.text, (r.engine ?? undefined) as Engine | undefined);
   const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
-  if (r.engine && r.engine !== "api" && r.attempts < 3) { await dispatch(env, j, r, [r.engine]); return { ok: true, retried: true }; }
+  if (r.engine && r.engine !== "api" && r.attempts < 3 && !isEmail(r)) { await dispatch(env, j, r, [r.engine]); return { ok: true, retried: true }; }
   await failRun(env, j, id, p.error || "no answer");
   return { ok: true };
 }

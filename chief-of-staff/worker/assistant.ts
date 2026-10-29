@@ -846,6 +846,16 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async (input) => { const { createJob: newJob } = await import("./jobs"); const r = await newJob(env, input as never); note("start_job", `🔎 ${r.title}: pinned in the side panel, tap Start there`); return r; },
     },
     {
+      name: "email_with_codex",
+      description: "Email people for the user through Codex (their ChatGPT plan, with their Gmail): e.g. the suppliers a research chat found, or 'email Dana asking for the invoice'. Codex writes the emails (looking up missing addresses), they appear in a chat with Send buttons, Codex sends only when the user taps Send, and replies are tracked there.",
+      input_schema: { type: "object", properties: {
+        ask: { type: "string", description: "everything they said: who to email, what to ask or say, tone, language" },
+        title: { type: "string", description: "2-4 words for a new email chat" },
+        research_chat: { type: "string", description: "the research chat's title when the emails are about its results" },
+      }, required: ["ask"] },
+      handler: async (input) => { const { createEmailChat } = await import("./jobs"); const r = await createEmailChat(env, input as never); note("email_with_codex", `✉️ Emails: ${r.where}`); return r; },
+    },
+    {
       name: "list_jobs", readOnly: true,
       description: "The research/monitoring jobs and their schedules.",
       input_schema: { type: "object", properties: {} },
@@ -1287,7 +1297,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   shopping: ['get_shopping_lists', 'save_shopping_list', 'add_shopping_items', 'update_shopping_item'],
   schedule: ["save_time_block"],
   calendar: ["calendar_lookup"],
-  email: ["search_email", "read_email_thread", "draft_email"],
+  email: ["search_email", "read_email_thread", "draft_email", "email_with_codex"],
   whatsapp: ["prepare_whatsapps", "send_whatsapp"],
   docs: ["create_doc", "create_sheet", "append_rows", "search_drive", "read_file", "share_file"],
   groups: ["save_group", "draft_group_message", "get_group", "check_group_messages"],
@@ -1304,11 +1314,11 @@ const TOOL_GROUPS: Record<string, string[]> = {
   files: ["find_email_files","sign_document","fill_document","save_detail"],
   recurring: ["get_recurring_reminders","save_recurring_reminder"],
   areas: ["save_area"],
-  research: ["start_job", "list_jobs"],
+  research: ["start_job", "list_jobs", "email_with_codex"],
   helper: ["computer_helper"],
   details: ["save_detail"],
   people: ["save_person"],
-  jobs: ["start_job", "list_jobs"],
+  jobs: ["start_job", "list_jobs", "email_with_codex"],
 };
 /** What each group is for, so load_tools can say what there is to load. */
 const GROUP_INFO: Record<string, string> = {
@@ -1322,6 +1332,7 @@ const GROUP_INFO: Record<string, string> = {
 };
 /** Rules that only matter with their tools: sent with the group, never otherwise. */
 const GROUP_RULES: Record<string, string> = {
+  email: "When they want an email SENT to someone (\"email the suppliers\", \"send Dana an email asking…\"), use email_with_codex: Codex writes it and sends it from their Gmail after they tap Send in its chat. draft_email only when they just want a Gmail draft.",
   shopping: "Shopping goes only to the shopping-list tools (Store is the default list), never to tasks.",
   hashgacha: "Hashgacha completion comes from online submissions (get_hashgacha_reports/track_hashgacha_reports), never an email reply or a new week. Missing, partial and unavailable are different. No automatic outreach.",
   meetings: "Meeting prep: hold the note and ask which meeting (name/date/time); attach it only after they choose. No prep documents or automatic offers.",
