@@ -1,7 +1,9 @@
 /**
- * Gremier Coffee admin app ("Hub API"): read-only view of the coffee business — today's jobs,
- * deliveries, website orders, stock, stores, and the activity timeline. Needs HUB_KEY (a read-only
- * `ghk_…` key from Admin → More → Connected apps), set by the user as a Worker secret.
+ * Gremier Coffee admin app ("Hub API"): the coffee business — today's jobs, deliveries, website orders, stock,
+ * stores, the activity timeline and the production outlook; and, when the user says so in the chat, the same
+ * updates the app makes (bottled, brewed, drained, delivered, stock is now X). Needs HUB_KEY (a `ghk_…` key from
+ * Admin → More → Connected apps; the Chief of Staff key has read and write), set as a Worker secret.
+ * The user's stock rules ("decaf is brewed only to order, keep 2") are kept here and go with every outlook.
  */
 import type { Env } from "./env";
 import { getProvider } from "./ai";
@@ -10,6 +12,46 @@ import { notify } from "./push";
 
 const DEFAULT_URL = "https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/hub-api";
 export const HUB_READ_ACTIONS = ["summary", "outlook", "schedule", "orders", "stock", "stores", "activity"] as const;
+/** Changes, made only when the user asks in the chat; each is recorded in the app's timeline as Chief of Staff. */
+export const HUB_WRITE_ACTIONS = ["log_bottling", "log_labeling", "start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"] as const;
+
+export interface CoffeeRule { mode?: "on_demand" | "normal"; keep?: number; note?: string }
+export async function coffeeRules(env: Env): Promise<Record<string, CoffeeRule>> {
+  const r = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'coffee_rules'");
+  try { return r ? JSON.parse(r.value) : {}; } catch { return {}; }
+}
+/** "Decaf is brewed only to order; keep 2 bottled": a rule for a coffee (classic, decaf…) or a product (decaf_liter…). */
+export async function saveCoffeeRule(env: Env, input: { key?: string; mode?: string; keep?: number | null; note?: string; remove?: boolean }) {
+  const key = String(input.key ?? "").trim();
+  if (!/^[a-zA-Z_]{3,40}$/.test(key)) throw new Error("Which coffee or product? Use its key, e.g. decaf, classic, houseBlend, decaf_liter, jerry_can.");
+  const rules = await coffeeRules(env);
+  if (input.remove) delete rules[key];
+  else {
+    const prev = rules[key] ?? {};
+    rules[key] = {
+      ...prev,
+      ...(input.mode === "on_demand" || input.mode === "normal" ? { mode: input.mode } : {}),
+      ...(input.keep !== undefined ? { keep: input.keep === null ? undefined : Math.max(0, Math.round(Number(input.keep) || 0)) } : {}),
+      ...(input.note ? { note: String(input.note).slice(0, 200) } : {}),
+    };
+  }
+  await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('coffee_rules', ?)", JSON.stringify(rules));
+  return { saved: !input.remove, key, rule: rules[key] ?? null, all_rules: rules };
+}
+
+/** "I have 20 Classic liters": sets stock to what the user has (the app takes changes, so this works out the difference). */
+export async function setCoffeeStock(env: Env, input: { kind?: string; product?: string; value?: number }) {
+  const kind = ["inventory", "concentrate", "beans", "labeled"].includes(String(input.kind)) ? String(input.kind) : "inventory";
+  const product = String(input.product ?? "").trim(), value = Number(input.value);
+  if (!product || !Number.isFinite(value) || value < 0) throw new Error("Say what and how much, e.g. 20 Classic liters.");
+  const s = await hubCall(env, "stock") as { inventory: { product: string; qty: number }[]; concentrate_l: { type: string; liters: number }[]; beans_kg: { type: string; kg: number }[]; labeled: { product: string; qty: number }[] };
+  const list = kind === "inventory" ? s.inventory.map((r) => [r.product, r.qty]) : kind === "concentrate" ? s.concentrate_l.map((r) => [r.type, r.liters])
+    : kind === "beans" ? s.beans_kg.map((r) => [r.type, r.kg]) : s.labeled.map((r) => [r.product, r.qty]);
+  const before = Number((list.find(([k]) => k === product) ?? [product, 0])[1]) || 0;
+  const delta = Math.round((value - before) * 1000) / 1000;
+  if (delta) await hubCall(env, "adjust_stock", { kind, product, delta });
+  return { app_updated: !!delta, kind, product, before, now: value, change: delta };
+}
 
 /** The coffee to-dos right now (brew / bottle / order beans), worked out from deliveries. [] when all is fine or not connected. */
 export async function coffeeToDo(env: Env): Promise<string[]> {
@@ -22,7 +64,8 @@ export const hubConfigured = (env: Env) => !!env.HUB_KEY;
 
 export async function hubCall(env: Env, action: string, args: Record<string, unknown> = {}) {
   if (!env.HUB_KEY) throw new Error("The coffee admin app isn't connected yet (no HUB_KEY).");
-  if (!(HUB_READ_ACTIONS as readonly string[]).includes(action)) throw new Error(`Unknown or not-allowed action: ${action}`);
+  if (![...HUB_READ_ACTIONS, ...HUB_WRITE_ACTIONS].includes(action as never)) throw new Error(`Unknown or not-allowed action: ${action}`);
+  if (action === "outlook" && !args.rules) args = { ...args, rules: await coffeeRules(env) };
   const res = await fetch(env.HUB_URL || DEFAULT_URL, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${env.HUB_KEY}` },
