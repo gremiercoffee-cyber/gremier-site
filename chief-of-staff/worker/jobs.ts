@@ -242,15 +242,17 @@ export async function talkToJob(env: Env, j: Job, text: string) {
   const out = await getProvider(env).complete({
     tier: "main", purpose: "job_edit", json: true, maxTokens: 600,
     system: `You manage one job for the user from their message in the job's chat. Local time now: ${await localNow(env)} (${await tz(env)}).
-Reply ONLY JSON: {"email"?:{"action":"write|edit|send|skip|reply|status","numbers"?:[1,2],"ask"?:"what they want, in their words"},"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly","every_minutes"?,"until_local"?:"YYYY-MM-DDTHH:MM" or null (no limit),"weekday"?:0-6,"time"?:"HH:MM","engine"?:"auto|claude|codex|api","model"?:"luna|terra|sol|auto or a model name","only_changes"?:bool,"status"?:"active|paused|stopped"},"run_now":bool,"reply":"one short sentence"}
+Reply ONLY JSON: {"ask"?:"a one-off request for the next run only, in their words","email"?:{"action":"write|edit|send|skip|reply|status","numbers"?:[1,2],"ask"?:"what they want, in their words"},"changes":{"title"?,"instructions"?,"kind"?:"once|every|weekly","every_minutes"?,"until_local"?:"YYYY-MM-DDTHH:MM" or null (no limit),"weekday"?:0-6,"time"?:"HH:MM","engine"?:"auto|claude|codex|api","model"?:"luna|terra|sol|auto or a model name","only_changes"?:bool,"status"?:"active|paused|stopped"},"run_now":bool,"reply":"one short sentence"}
 - Anything about WHAT to research or HOW to report (focus, sources, format, length, a summary, action items, a recommendation, what to judge by) goes into "instructions": return the full updated instructions, keeping everything they asked for before unless they replace it.
 - Which model: "model" (luna = cheapest, terra = stronger, sol = strongest, auto = the usual one). Naming Claude, Codex/ChatGPT or the API sets "engine".
 - How often: every_minutes (or kind). Until when: until_local. "Tell me everything each time" → only_changes false.
 - Emails (Codex writes them and sends them from their Gmail): "email/write to them…" → write, with ask = everything they said (who, what to ask, tone). "Make #2 shorter" → edit. "Send it/#2/them all" → send (numbers empty = all unsent). "Don't send #3" → skip. "Reply to #2: …" or a follow-up → reply. "Who replied?" / email status → status. With "email", leave "changes" empty.
+- A one-off request ("prepare a report comparing X", "look into Y now", "what about Z?" that needs fresh research): "ask" = everything they asked for, in their words, and run_now true; leave "changes" empty unless they also want the regular update itself changed from now on.
+- "Run it now" / "update me now": run_now true.
 - Only include what they asked to change. A question about the job or its results: answer it in "reply" from the latest result, with no changes.`,
     prompt: JSON.stringify({ job: { title: j.title, instructions: j.instructions, kind: j.kind, every_minutes: j.every_minutes, until: j.until_at, weekday: j.weekday, time: j.time, engine: j.engine, model: j.model ?? "auto", only_changes: !!j.only_changes, status: j.status }, latest_result: (j.last_result ?? "").slice(0, 2500), emails: await mail.emailsBrief(env, j.id), message: text }),
   });
-  let v: { email?: { action?: string; numbers?: number[]; ask?: string }; changes?: Record<string, unknown>; run_now?: boolean; reply?: string };
+  let v: { ask?: string; email?: { action?: string; numbers?: number[]; ask?: string }; changes?: Record<string, unknown>; run_now?: boolean; reply?: string };
   try { v = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { return "Sorry, I didn't get that. Try “stop”, “every 2 hours”, “until Friday 8pm” or “use Claude”."; }
   if (v.email?.action) {
     const nums = (v.email.numbers ?? []).map(Number).filter((n) => n > 0);
@@ -289,7 +291,8 @@ Reply ONLY JSON: {"email"?:{"action":"write|edit|send|skip|reply|status","number
     const keys = Object.keys(upd);
     await run(env, `UPDATE jobs SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ?`, ...keys.map((k) => upd[k]), now(), j.id);
   }
-  if (v.run_now) await queueRun(env, { ...j, ...upd } as Job);
+  // Asked for now: always posted (never "nothing changed"), with their request on top of the usual task.
+  if (v.run_now || v.ask) await queueRun(env, { ...j, ...upd } as Job, { mode: "asked", ask: String(v.ask || text).slice(0, 3000) });
   return v.reply || "Done.";
 }
 
@@ -325,13 +328,13 @@ export async function pickEngine(env: Env, j: Pick<Job, "engine">, avoid: Engine
 }
 
 /** The lean instructions every engine gets. */
-async function brief(env: Env, j: Job, ask?: string | null) {
+async function brief(env: Env, j: Job, ask?: string | null, asked = false) {
   const report = j.kind === "weekly";
   return [
     `THE TASK (follow it exactly, including any format, focus, length, summary, action items or recommendation it asks for):\n${j.instructions}`,
-    ask ? `THIS TIME, THE USER ALSO ASKED: ${ask}` : "",
+    ask ? `THIS TIME, THE USER ASKED (this is what this run is for; answer it fully, using the task above as background):\n${ask}` : "",
     `Local time: ${await localNow(env)} (${await tz(env)}). The user lives in Israel and runs Gremier Coffee, a cold-brew business. Search the web for current information. This is one run: the schedule is handled for you, so never mention scheduling, follow-ups or what you can't do.`,
-    j.only_changes && j.last_result ? `The previous update, for comparison:\n${j.last_result.slice(0, 1500)}\nIf nothing important changed since then, reply exactly NO_CHANGE.` : "",
+    j.only_changes && j.last_result && !asked ? `The previous update, for comparison:\n${j.last_result.slice(0, 1500)}\nIf nothing important changed since then, reply exactly NO_CHANGE.` : "",
     `If the task doesn't say how to format it: ${report ? "a 3-5 bullet bottom line, then the key details" : "a one-line headline, then up to 6 bullets"}. Cite sources as links. No introduction. This goes to a phone chat.`,
   ].filter(Boolean).join("\n\n");
 }
@@ -353,7 +356,7 @@ async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
     if (first_wait) await post(env, j, `⏳ Waiting for ${j.engine === "auto" ? "your Claude or Codex plan" : ENGINE_NAME[j.engine as Engine]} to be free (${j.engine === "codex" || j.engine === "auto" ? "Codex needs the computer on; " : ""}a plan may be at its limit). I'll keep trying. Say “use the API” to run it now on the API instead.`);
     return;
   }
-  const prompt = await brief(env, j, r.ask);
+  const prompt = await brief(env, j, r.ask, r.mode === "asked");
   await run(env, "UPDATE job_runs SET engine = ?, status = 'queued', attempts = attempts + 1, started_at = ?, ref = NULL, claimed_by = NULL, error = NULL WHERE id = ?", engine, now(), r.id);
   try {
     if (engine === "api") {
@@ -395,8 +398,12 @@ export async function finishRun(env: Env, runId: string, text: string, engine?: 
   const body = text.trim();
   await run(env, "UPDATE job_runs SET status = 'done', result = ?, finished_at = ?, engine = COALESCE(?, engine) WHERE id = ?", body.slice(0, 20000), now(), engine ?? null, runId);
   if (isEmail(r)) { await mail.finishEmailRun(env, j, r, body); return { ok: true, posted: true }; }
-  if (/^NO_CHANGE\b/.test(body)) return { ok: true, posted: false };
-  await run(env, "UPDATE jobs SET last_result = ?, last_run_at = ?, status = CASE WHEN kind = 'once' THEN 'done' ELSE status END WHERE id = ?", body.slice(0, 6000), now(), j.id);
+  if (/^NO_CHANGE\b/.test(body)) {
+    if (r.mode === "asked") await post(env, j, "Nothing new since the last update.");
+    return { ok: true, posted: r.mode === "asked" };
+  }
+  // A one-off request isn't the regular update: the next hourly check still compares with the last regular one.
+  if (r.mode !== "asked") await run(env, "UPDATE jobs SET last_result = ?, last_run_at = ?, status = CASE WHEN kind = 'once' THEN 'done' ELSE status END WHERE id = ?", body.slice(0, 6000), now(), j.id);
   const via = `· via ${ENGINE_NAME[(engine ?? r.engine ?? "api") as Engine]}`;
   if (body.length > LONG_REPORT) {
     const doc = await createDoc(env, `${j.title} — ${(await localNow(env)).replace(/ at .*/, "")}`, body).catch(() => null) as { url?: string; link?: string } | null;
@@ -473,7 +480,7 @@ export async function nextCodexRun(env: Env, p: { device?: string; primary?: num
   if (!claimed.meta.changes) return { run: null };
   const j = (await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", r.job_id))!;
   if (isEmail(r)) return { run: { id: r.id, prompt: await mail.emailPrompt(env, j, { mode: r.mode ?? null, ask: r.ask ?? null }), model: j.model ?? null, gmail: true } };
-  return { run: { id: r.id, prompt: await brief(env, j, r.ask), model: j.model ?? null } };
+  return { run: { id: r.id, prompt: await brief(env, j, r.ask, r.mode === "asked"), model: j.model ?? null } };
 }
 
 /** A Claude plan run's answer, sent to its one-time link: accepted once, only with that run's token. */

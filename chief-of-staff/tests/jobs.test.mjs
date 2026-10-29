@@ -182,3 +182,18 @@ test('unpinning turns a repeating job off; pinning it again turns it back on',as
  row=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);assert.equal(row.status,'active');assert.ok(row.next_run_at);
  assert.match((await jobs.jobChat(e,id)).messages.at(-1).text,/Back on/);
 });
+
+test('a different report asked for in the topic: the run gets the request, never "nothing changed", and is posted',async()=>{
+ reset();const {env:e,db}=env();
+ const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch the count.',kind:'every',every_minutes:60,engine:'api'});
+ await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ globalThis.__done={bg1:{done:true,text:'Likud 30.'}};await jobs.tickJobs(e);
+ globalThis.__model.push(JSON.stringify({ask:'Compare Arab turnout and seats with the last election',changes:{},run_now:true,reply:'On it.'}));
+ await jobs.talkToJob(e,db.prepare('SELECT * FROM jobs WHERE id=?').get(id),'prepare a report comparing Arab turnout with last time');
+ const p=globalThis.__bg.at(-1).prompt;
+ assert.match(p,/THIS TIME, THE USER ASKED[^]*Compare Arab turnout/);
+ assert.doesNotMatch(p,/NO_CHANGE/,'an asked-for run is always answered');
+ globalThis.__done.bg2={done:true,text:'Arab turnout was 53%.'};await jobs.tickJobs(e);
+ assert.match(posts().at(-1).body.text,/Arab turnout was 53%/);
+ assert.equal(db.prepare('SELECT last_result FROM jobs WHERE id=?').get(id).last_result,'Likud 30.','the hourly update still compares with the last regular one');
+});
