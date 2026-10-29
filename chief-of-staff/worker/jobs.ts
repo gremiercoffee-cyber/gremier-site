@@ -289,7 +289,7 @@ async function brief(env: Env, j: Job) {
   const report = j.kind === "weekly";
   return [
     `THE TASK (follow it exactly, including any format, focus, length, summary, action items or recommendation it asks for):\n${j.instructions}`,
-    `Local time: ${await localNow(env)} (${await tz(env)}). The user lives in Israel and runs Gremier Coffee, a cold-brew business. Search the web for current information.`,
+    `Local time: ${await localNow(env)} (${await tz(env)}). The user lives in Israel and runs Gremier Coffee, a cold-brew business. Search the web for current information. This is one run: the schedule is handled for you, so never mention scheduling, follow-ups or what you can't do.`,
     j.only_changes && j.last_result ? `The previous update, for comparison:\n${j.last_result.slice(0, 1500)}\nIf nothing important changed since then, reply exactly NO_CHANGE.` : "",
     `If the task doesn't say how to format it: ${report ? "a 3-5 bullet bottom line, then the key details" : "a one-line headline, then up to 6 bullets"}. Cite sources as links. No introduction. This goes to a phone chat.`,
   ].filter(Boolean).join("\n\n");

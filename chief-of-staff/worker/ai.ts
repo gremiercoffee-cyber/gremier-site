@@ -329,11 +329,13 @@ class OpenAIProvider implements ModelProvider {
   async complete(req: { tier: Tier; purpose: string; system: string; prompt: string; maxTokens?: number; attachments?: AgentRequest["attachments"]; effort?: "low" | "medium" | "high"; json?: boolean }) {
     const route = modelRoute(this.env, req.purpose, req.tier);
     if (route.role === "brain") {
+      // JSON mode needs the word "json" in the input itself (the instructions don't count).
+      const prompt = req.json ? `${req.prompt}\n\nAnswer in JSON.` : req.prompt;
       const response = await this.respond({
         model: route.model, instructions: req.system,
         // A file to look at (e.g. a scanned form) goes with the prompt.
-        input: req.attachments?.length ? [{ role: "user", content: [{ type: "input_text", text: req.prompt },
-          ...req.attachments.map((x) => x.kind === "image" ? { type: "input_image", image_url: x.dataUrl, detail: "high" } : { type: "input_file", filename: x.name, file_data: x.dataUrl })] } as unknown as OpenAI.Responses.ResponseInputItem] : req.prompt,
+        input: req.attachments?.length ? [{ role: "user", content: [{ type: "input_text", text: prompt },
+          ...req.attachments.map((x) => x.kind === "image" ? { type: "input_image", image_url: x.dataUrl, detail: "high" } : { type: "input_file", filename: x.name, file_data: x.dataUrl })] } as unknown as OpenAI.Responses.ResponseInputItem] : prompt,
         reasoning: { effort: req.effort ?? route.effort },
         // The token allowance includes reasoning as well as the requested JSON/text.
         max_output_tokens: Math.max(2048, (req.maxTokens ?? 2048) + 1024),
