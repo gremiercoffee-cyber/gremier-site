@@ -4,6 +4,8 @@
 // own bottles first (at its usual delivery pace, or its scheduled deliveries if more), and only what they can't
 // cover draws on the concentrate. The day the concentrate can't keep up is when you run out → "brew by Sunday".
 // For each bottled product: bottles on hand against the scheduled deliveries and the usual pace → "bottle 18".
+// The owner's rules (from Chief of Staff) come in as args.rules: a coffee brewed only to order ("decaf": mode
+// on_demand) ignores its past pace and only counts scheduled orders; "keep" = bottles to always have on hand.
 // Read-only (hub action "outlook"). Same recipe numbers as hub-ops.ts (BOTTLES, ratios, liters per brew).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { BOTTLES, KG_TO_LITERS, todayISO } from "./hub-ops.ts";
@@ -49,7 +51,10 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const plural = (product: string, label: string) => meta(product)?.category === "liter" ? `${label} liters` : `${label.replace(/ mini$/, " minis").replace(/ can$/, " cans")}`;
 const dayName = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
-export async function readOutlook(sb: Sb, args: { weeks?: number; horizon_days?: number }) {
+type Rule = { mode?: string; keep?: number; note?: string };
+export async function readOutlook(sb: Sb, args: { weeks?: number; horizon_days?: number; rules?: Record<string, Rule> }) {
+  const rules = (args.rules && typeof args.rules === "object" ? args.rules : {}) as Record<string, Rule>;
+  const onDemand = (coffee: string) => rules[coffee]?.mode === "on_demand";
   const today = todayISO();
   const weeks = Math.min(16, Math.max(2, Number(args.weeks) || 8));
   const horizon = Math.min(30, Math.max(3, Number(args.horizon_days) || 14));
@@ -95,16 +100,20 @@ export async function readOutlook(sb: Sb, args: { weeks?: number; horizon_days?:
 
   // Each bottled product: what's on hand vs. what's coming up and the usual pace.
   const products = Object.keys(BOTTLES).concat("dairy_free_mini").map((p) => {
-    const perDay = (used[p] || 0) / days;
+    const coffee = meta(p)!.concentrate, toOrder = onDemand(coffee);
+    // Brewed to order: the past pace doesn't predict anything, only scheduled orders (and the stock kept) count.
+    const perDay = (used[p] || 0) / days, pace = toOrder ? 0 : perDay;
+    const keep = Math.max(0, Number(rules[p]?.keep ?? (toOrder && meta(p)!.category === "liter" ? rules[coffee]?.keep : 0) ?? 0) || 0);
     const have = onHand[p] || 0, need = upcoming[p] || 0;
-    const coverDays = perDay > 0 ? Math.floor(Math.max(0, have - need) / perDay) : null;
-    // Bottle when scheduled deliveries need more than is on hand, or a regular seller (3+ a week) is about to run
-    // out; jerry cans are filled to order, so only for deliveries. Enough for those plus about a week of the pace.
-    const regular = meta(p)!.category !== "jerry" && perDay * 7 >= 3;
-    const toBottle = Math.max(0, Math.ceil(need + (regular ? perDay * 7 : 0) - have));
-    return { product: p, label: meta(p)!.label, coffee: meta(p)!.concentrate, on_hand: have, per_week: r1(perDay * 7), scheduled: need, scheduled_7d: nextWeek[p] || 0,
-      days_left_after_scheduled: coverDays, bottle_now: (need > have || (regular && coverDays !== null && coverDays < 3)) && toBottle > 0 ? toBottle : 0 };
-  }).filter((p) => p.on_hand || p.per_week || p.scheduled);
+    const coverDays = pace > 0 ? Math.floor(Math.max(0, have - need - keep) / pace) : null;
+    // Bottle when scheduled deliveries (plus what you keep) need more than is on hand, or a regular seller (3+ a week)
+    // is about to run out; jerry cans are filled to order, so only for deliveries. Enough for those plus a week's pace.
+    const regular = !toOrder && meta(p)!.category !== "jerry" && pace * 7 >= 3;
+    const toBottle = Math.max(0, Math.ceil(need + keep + (regular ? pace * 7 : 0) - have));
+    return { product: p, label: meta(p)!.label, coffee, on_hand: have, per_week: r1(perDay * 7), pace_per_week: r1(pace * 7), on_demand: toOrder, keep,
+      scheduled: need, scheduled_7d: nextWeek[p] || 0, days_left_after_scheduled: coverDays,
+      bottle_now: (need + keep > have || (regular && coverDays !== null && coverDays < 3)) && toBottle > 0 ? toBottle : 0 };
+  }).filter((p) => p.on_hand || p.per_week || p.scheduled || p.keep);
 
   // Each coffee, day by day: every product uses its own bottles first; what they can't cover comes from the
   // concentrate (plus what's brewing). The first day it can't is when this coffee runs out.
@@ -112,22 +121,23 @@ export async function readOutlook(sb: Sb, args: { weeks?: number; horizon_days?:
   const coffees = (conc.data || []).map((c: any) => {
     const type = c.type, mine = products.filter((p) => p.coffee === type);
     const concentrate = Math.max(0, Number(c.liters) || 0), incoming = incomingL[type] || 0, available = concentrate + incoming;
-    const demand = (p: typeof mine[number], d: number) => Math.max((scheduledOn[p.product] || []).filter((x) => x.day <= d).reduce((t, x) => t + x.n, 0), Math.floor((p.per_week / 7) * d)); // whole bottles / cans
+    const demand = (p: typeof mine[number], d: number) => p.keep + Math.max((scheduledOn[p.product] || []).filter((x) => x.day <= d).reduce((t, x) => t + x.n, 0), Math.floor((p.pace_per_week / 7) * d)); // whole bottles / cans
     const fromConcentrate = (p: typeof mine[number], d: number) => Math.max(0, demand(p, d) - p.on_hand) * concentrateIn(p.product);
     const draw = (d: number) => mine.reduce((t, p) => t + fromConcentrate(p, d), 0);
     const name = NAMES[type] || type;
-    const active = mine.some((p) => p.per_week > 0 || p.scheduled > 0);
+    const toOrder = onDemand(type);
+    const active = mine.some((p) => p.pace_per_week > 0 || p.scheduled > 0 || p.keep > 0);
     let daysLeft: number | null = null;
     if (active) { daysLeft = MAX_DAYS; for (let d = 0; d <= MAX_DAYS; d++) if (draw(d) > available + 1e-9) { daysLeft = Math.max(0, d - 1); break; } }
     // What's eating the concentrate (by then), and what's already bottled for longer.
     const at = Math.min(MAX_DAYS, (daysLeft ?? 0) + 1);
     const drivers = mine.map((p) => ({ p, l: fromConcentrate(p, at) })).filter((x) => x.l > 0).sort((x, y) => y.l - x.l).slice(0, 2)
-      .map(({ p }) => `${plural(p.product, p.label)} (~${p.per_week}/week${p.on_hand ? `, ${p.on_hand} bottled` : ", none bottled"})`);
-    const shelf = mine.filter((p) => p.on_hand > 0 && p.per_week > 0 && p.on_hand / (p.per_week / 7) > (daysLeft ?? 0) + 3)
+      .map(({ p }) => `${plural(p.product, p.label)} (${p.on_demand ? `${p.scheduled} ordered${p.keep ? `, keeping ${p.keep}` : ""}` : `~${p.per_week}/week`}${p.on_hand ? `, ${p.on_hand} bottled` : ", none bottled"})`);
+    const shelf = mine.filter((p) => p.on_hand > 0 && p.pace_per_week > 0 && p.on_hand / (p.pace_per_week / 7) > (daysLeft ?? 0) + 3)
       .sort((x, y) => y.on_hand * concentrateIn(y.product) - x.on_hand * concentrateIn(x.product)).slice(0, 1)
-      .map((p) => `You have ${p.on_hand} ${plural(p.product, p.label)} bottled (~${Math.round(p.on_hand / (p.per_week / 7))} days), but `)[0] ?? "";
+      .map((p) => `You have ${p.on_hand} ${plural(p.product, p.label)} bottled (~${Math.round(p.on_hand / (p.pace_per_week / 7))} days), but `)[0] ?? "";
     let verdict: "brew_now" | "brew_soon" | "ok" | "idle";
-    if (daysLeft === null) verdict = "idle";
+    if (daysLeft === null) verdict = toOrder ? "ok" : "idle";
     else if (daysLeft <= BREW_LEAD_DAYS + 1) verdict = "brew_now";
     else if (daysLeft <= BREW_LEAD_DAYS + SAFETY_DAYS + 3) verdict = "brew_soon";
     else verdict = "ok";
@@ -136,10 +146,11 @@ export async function readOutlook(sb: Sb, args: { weeks?: number; horizon_days?:
     const what = drivers.join(" and ") || "deliveries";
     const line = verdict === "brew_now" ? `${name}: brew now. ${shelf}${what} come from the ${from}, which ${daysLeft ? `only lasts ~${daysLeft} day${daysLeft > 1 ? "s" : ""}` : "doesn't cover what's going out"}.`
       : verdict === "brew_soon" ? `${name}: brew by ${brewBy === today ? "today" : dayName(brewBy!)}. ${shelf}${what} come from the ${from}, which lasts ~${daysLeft} days.`
+      : verdict === "ok" && toOrder ? `${name}: brewed to order. Nothing scheduled needs more than you have${mine.some((p) => p.keep) ? " (including what you keep on hand)" : ""}.`
       : verdict === "ok" ? `${name}: fine for ${daysLeft! >= MAX_DAYS ? "2+ months" : `~${daysLeft} days`}${daysLeft! < 21 ? ` (brew around ${dayName(brewBy!)})` : ""}.`
       : `${name}: no recent use${concentrate ? ` (${r1(concentrate)}L on hand)` : ""}.`;
     const bottled = mine.reduce((t, p) => t + p.on_hand * concentrateIn(p.product), 0);
-    return { coffee: type, name, concentrate_l: r1(concentrate), brewing_l: r1(incoming), bottled_l: r1(bottled),
+    return { coffee: type, name, brewed_to_order: toOrder, concentrate_l: r1(concentrate), brewing_l: r1(incoming), bottled_l: r1(bottled),
       concentrate_l_per_week: r1(draw(7)), days_left: daysLeft, verdict, brew_by: brewBy, drivers, line };
   });
 
@@ -153,12 +164,13 @@ export async function readOutlook(sb: Sb, args: { weeks?: number; horizon_days?:
 
   const toDo = [
     ...coffees.filter((c) => c.verdict === "brew_now" || c.verdict === "brew_soon").map((c) => c.line),
-    ...products.filter((p) => p.bottle_now).map((p) => `Bottle ${p.bottle_now} ${p.label}: ${p.on_hand} on hand${p.scheduled ? `, ${p.scheduled} scheduled to go out` : ""}.`),
+    ...products.filter((p) => p.bottle_now).map((p) => `Bottle ${p.bottle_now} ${p.label}: ${p.on_hand} on hand${p.scheduled ? `, ${p.scheduled} scheduled to go out` : ""}${p.keep ? `, you keep ${p.keep}` : ""}.`),
     ...beansOut.filter((b) => b.order_now).map((b) => `Order ${b.name} beans: ${b.kg}kg left, ~${b.weeks_left} weeks at the usual pace.`),
   ];
   return {
     as_of: today, based_on: `deliveries over the last ${days} days`,
     summary: toDo.length ? toDo : ["All good: no brewing, bottling or bean orders needed right now."],
+    rules_applied: rules,
     coffees, products, beans: beansOut,
     upcoming_deliveries: deliveries.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 15),
     planned_bottling: bottlingPlanned,
