@@ -18,7 +18,7 @@ import { addShoppingItems, captureShopping, deleteShoppingItem, deleteShoppingLi
 import { getProvider } from "./ai";
 import { modelRoute } from "./ai-routing";
 import { ProviderUnavailable } from "./ai";
-import { chat, executeApproved } from "./assistant";
+import { chat, decidePendingAction } from "./assistant";
 import { processBrainDump } from "./braindump";
 import {
   HttpError, all, archiveFinishedProjects, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, syncProject, updateItem,
@@ -704,24 +704,7 @@ route("POST", "/api/proactive/run", async (req, env) => {
   return json(await runProactive(env, { forceBriefing: !!b.briefing }));
 });
 route('GET', '/api/ai-job-approvals', async (_req, env) => json(await all(env,"SELECT * FROM pending_actions WHERE action LIKE 'ai_%' AND status='pending' ORDER BY created_at DESC")));
-route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => {
-  const a = await first<PendingAction>(env, "SELECT * FROM pending_actions WHERE id = ? AND status = 'pending'", id);
-  if (!a) throw new HttpError(404, "no pending action");
-  if (!['approve','reject'].includes(decision)) throw new HttpError(400,'decision must be approve or reject');
-  const claim = await run(env,"UPDATE pending_actions SET status='executing' WHERE id=? AND status='pending'",id);
-  if (!claim.meta.changes) throw new HttpError(409,'This approval is already being handled.');
-  let outcome = "rejected";
-  try {
-  if (decision === "approve") outcome = await executeApproved(env, a.action, JSON.parse(a.payload || "{}"));
-  else if (decision !== "reject") throw new HttpError(400, "decision must be approve or reject");
-  await run(env, "UPDATE pending_actions SET status = ?, resolved_at = ? WHERE id = ?",
-    decision === "approve" ? "approved" : "rejected", now(), id);
-  } catch (e) {
-    await run(env,"UPDATE pending_actions SET status='failed',resolved_at=? WHERE id=?",now(),id);
-    throw e;
-  }
-  return json({ ok: true, outcome });
-});
+route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => json(await decidePendingAction(env, id, decision)));
 
 // ---- Settings, usage, notifications foundation ------------------------------
 route("GET", "/api/settings", async (_req, env) => json(await getSettings(env)));
@@ -911,6 +894,8 @@ export default {
     // Every 5 minutes: jobs (start what's due, collect results). Everything else keeps its 15-minute rhythm
     // (one schedule: the account allows no more).
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
+    // Approvals made in the background are asked in Telegram too.
+    ctx.waitUntil(import("./telegram-notices").then((t) => t.pendingCards(env)).catch((e) => console.error("telegram approvals", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))

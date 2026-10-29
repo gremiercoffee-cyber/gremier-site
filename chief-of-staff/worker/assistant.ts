@@ -8,7 +8,7 @@ import { recurringReminders, saveRecurringReminder } from './reminders';
 import { addShoppingItems, saveShoppingList, shoppingState, updateShoppingItem } from './shopping';
 import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
-  all, createItem, createProject, first, getSettings, now, resolveProjectId, run, uid, updateItem,
+  all, createItem, createProject, first, getSettings, HttpError, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
 import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upcomingEventsText } from "./google";
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
@@ -1120,6 +1120,24 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
   ];
 }
 
+/** The user tapped Approve or Reject on a pending action (in the app or in Telegram). Runs it once. */
+export async function decidePendingAction(env: Env, id: string, decision: string) {
+  const a = await first<{ id: string; action: string; payload: string }>(env, "SELECT * FROM pending_actions WHERE id = ? AND status = 'pending'", id);
+  if (!a) throw new HttpError(404, "no pending action");
+  if (!["approve", "reject"].includes(decision)) throw new HttpError(400, "decision must be approve or reject");
+  const claim = await run(env, "UPDATE pending_actions SET status='executing' WHERE id=? AND status='pending'", id);
+  if (!claim.meta.changes) throw new HttpError(409, "This approval is already being handled.");
+  let outcome = "rejected";
+  try {
+    if (decision === "approve") outcome = await executeApproved(env, a.action, JSON.parse(a.payload || "{}"));
+    await run(env, "UPDATE pending_actions SET status = ?, resolved_at = ? WHERE id = ?", decision === "approve" ? "approved" : "rejected", now(), id);
+  } catch (e) {
+    await run(env, "UPDATE pending_actions SET status='failed',resolved_at=? WHERE id=?", now(), id);
+    throw e;
+  }
+  return { ok: true, outcome };
+}
+
 /** Executes an approved pending action. Only internal actions exist in this phase. */
 export async function executeApproved(env: Env, action: string, payload: Record<string, unknown>) {
   const id = String(payload.id ?? "");
@@ -1184,7 +1202,7 @@ export async function titleConversation(env:Env,c:Conversation,firstText:string)
  await run(env,'UPDATE conversations SET title=? WHERE id=?',title,c.id);c.title=title;return title;
 }
 
-export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[] } = {}) {
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[]; channel?: "telegram" } = {}) {
   const started=performance.now(),stages:Record<string,number>={};
   const provider = getProvider(env); // fail before storing anything if no model is configured
   const existing = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
@@ -1202,6 +1220,10 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const history: Turn[] = recent.reverse().map((m, i, arr) => ({
     role: m.role, content: i < arr.length - 4 && m.content.length > 700 ? `${m.content.slice(0, 700)}… [trimmed]` : m.content,
   }));
+  // From Telegram there are no app screens: say so with this message only (the cached prompt stays the same).
+  if (opts.channel === "telegram" && history.length) history[history.length - 1] = { ...history[history.length - 1], content: `${history[history.length - 1].content}
+
+[Sent from Telegram: there are no app screens, forms or cards here. Ask for anything you need (e.g. a form's missing details) right in the chat, and never say to open the app or tap a card. Approvals, group messages, file choices and finished files appear as buttons/files right after your reply.]` };
 
   const notes: ActionNote[] = [];
   let switched = false;

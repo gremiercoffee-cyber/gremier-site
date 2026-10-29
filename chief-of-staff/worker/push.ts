@@ -139,5 +139,7 @@ export async function notify(env: Env, type: string, title: string, body = "", i
     actions: (await actionsForNudge(env, { type, item_id: itemId, topic_key:topic, body })).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
   if (delivered.sent) await run(env, "UPDATE nudges SET pushed_at = ? WHERE id = ?", now(),id);
+  // The same notice, with its buttons, in Telegram (so nothing needs the app).
+  await import("./telegram-notices").then((t) => t.noticeToTelegram(env, { id, type, title, body, item_id: itemId, topic_key: topic })).catch((e) => console.error("telegram notice", e));
   return id;
 }

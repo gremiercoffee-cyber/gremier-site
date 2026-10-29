@@ -7,64 +7,22 @@
  */
 import type { Env } from "./env";
 import { first, run } from "./db";
-import { chat } from "./assistant";
 import { transcribeAudio } from "./transcribe";
 
-export interface TgConfig { owner_id?: number; group_id?: number; private_id?: number; last_update?: number }
+import { buttonFromKey, saveConfig, say, tg, tgConfig, type TgConfig } from "./telegram-api";
+export { buttonFromKey, say, sendFile, tg, tgConfig, toTelegramHtml, type TgButton, type TgConfig } from "./telegram-api";
 interface TgUser { id: number; first_name?: string }
 interface TgChat { id: number; type: string; title?: string; is_forum?: boolean }
 interface TgMessage {
   message_id: number; from?: TgUser; chat: TgChat; text?: string; caption?: string; message_thread_id?: number; is_topic_message?: boolean;
   voice?: { file_id: string; duration: number }; audio?: { file_id: string }; date: number; migrate_to_chat_id?: number; migrate_from_chat_id?: number;
+  photo?: { file_id: string; width: number; height: number }[]; document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+  reply_to_message?: { message_id: number; from?: TgUser };
 }
 export interface TgUpdate {
   update_id: number; message?: TgMessage;
   my_chat_member?: { chat: TgChat; from: TgUser; new_chat_member: { status: string } };
   callback_query?: { id: string; from: TgUser; data?: string; message?: TgMessage };
-}
-
-export async function tg<T = unknown>(env: Env, method: string, body: Record<string, unknown>): Promise<T> {
-  if (!env.TELEGRAM_BOT_TOKEN) throw new Error("Telegram isn't set up");
-  const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-  });
-  const data = (await r.json()) as { ok: boolean; result: T; description?: string };
-  if (!data.ok) throw new Error(`Telegram ${method}: ${data.description ?? r.status}`);
-  return data.result;
-}
-
-export async function tgConfig(env: Env): Promise<TgConfig> {
-  const row = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'telegram'");
-  return row ? JSON.parse(row.value) : {};
-}
-async function saveConfig(env: Env, c: TgConfig) {
-  await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('telegram', ?)", JSON.stringify(c));
-}
-
-/** Chat replies use a little Markdown; Telegram gets the same as simple HTML (bold, links, code). */
-export function toTelegramHtml(md: string) {
-  const esc = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return esc
-    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
-    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>')
-    .replace(/^#{1,4} (.+)$/gm, "<b>$1</b>");
-}
-
-/** Sends text to a chat (and topic), split at Telegram's 4096-character limit. */
-export async function say(env: Env, chatId: number, text: string, opts: { thread?: number; buttons?: { text: string; data: string }[][] } = {}) {
-  const parts: string[] = [];
-  for (let rest = text.trim() || "…"; rest; ) {
-    const cut = rest.length <= 3800 ? rest.length : Math.max(rest.lastIndexOf("\n", 3800), 2000);
-    parts.push(rest.slice(0, cut)); rest = rest.slice(cut).trim();
-  }
-  for (const [i, part] of parts.entries()) {
-    const body: Record<string, unknown> = { chat_id: chatId, text: toTelegramHtml(part), parse_mode: "HTML", link_preview_options: { is_disabled: true } };
-    if (opts.thread) body.message_thread_id = opts.thread;
-    if (opts.buttons && i === parts.length - 1) body.reply_markup = { inline_keyboard: opts.buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) };
-    // A reply whose HTML Telegram can't read goes out as plain text instead of failing.
-    await tg(env, "sendMessage", body).catch(() => tg(env, "sendMessage", { ...body, text: part, parse_mode: undefined }));
-  }
 }
 
 /** The Chief of Staff conversation for one Telegram place (the group's General topic, a private chat). */
@@ -79,11 +37,39 @@ async function rememberConversation(env: Env, key: string, id: string) {
   await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('telegram_threads', ?)", JSON.stringify(map));
 }
 
+/** A file sent to the bot (voice note, photo, document), downloaded. */
+async function download(env: Env, fileId: string) {
+  const f = await tg<{ file_path: string }>(env, "getFile", { file_id: fileId });
+  return (await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${f.file_path}`)).blob();
+}
+
 /** A voice note, as text. */
 async function voiceText(env: Env, fileId: string) {
-  const f = await tg<{ file_path: string }>(env, "getFile", { file_id: fileId });
-  const audio = await (await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${f.file_path}`)).blob();
-  return (await transcribeAudio(env, audio, "voice.ogg")).text;
+  return (await transcribeAudio(env, await download(env, fileId), "voice.ogg")).text;
+}
+
+/** A photo or document sent to the bot becomes a file in the chat (to read, sign, fill, file away…). */
+async function attachment(env: Env, m: TgMessage) {
+  const photo = m.photo?.at(-1);
+  if (!photo && !m.document) return null;
+  if ((m.document?.file_size ?? 0) > 20 * 1024 * 1024) throw new Error("That file is too big for Telegram bots (20 MB). Send it in the app instead.");
+  const blob = await download(env, photo ? photo.file_id : m.document!.file_id);
+  const { uploadFile } = await import("./documents");
+  const name = m.document?.file_name || `photo-${new Date().toISOString().slice(0, 10)}.jpg`;
+  return (await uploadFile(env, { filename: name, mime: m.document?.mime_type || (photo ? "image/jpeg" : blob.type), bytes: new Uint8Array(await blob.arrayBuffer()) })).id;
+}
+
+/** A message to the Chief of Staff from Telegram (General or the private chat): the reply, then any cards it made. */
+async function talkIn(env: Env, where: { chat: number; thread?: number }, text: string, defer: (p: Promise<unknown>) => void, files?: string[]) {
+  await tg(env, "sendChatAction", { chat_id: where.chat, action: "typing", ...(where.thread ? { message_thread_id: where.thread } : {}) }).catch(() => {});
+  const since = new Date(Date.now() - 1000).toISOString();
+  const key = `${where.chat}:${where.thread ?? 0}`;
+  const { chat } = await import("./assistant");
+  const res = await chat(env, text, "text", await conversationFor(env, key), { defer, files, channel: "telegram" });
+  await rememberConversation(env, key, res.conversation.id);
+  await say(env, where.chat, res.reply.content, { thread: where.thread });
+  const { cardsSince } = await import("./telegram-cards");
+  await cardsSince(env, where, since, res.actions).catch((e) => console.error("telegram cards", e));
 }
 
 /** Handles one update from Telegram. Never throws: a failure is told to the owner where it happened. */
@@ -117,9 +103,17 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
   if (u.callback_query) {
     const q = u.callback_query;
     if (q.from.id !== c.owner_id) return;
-    const { handleButton } = await import("./jobs");
     await tg(env, "answerCallbackQuery", { callback_query_id: q.id }).catch(() => {});
-    if (q.message) await handleButton(env, q.data ?? "", q.message.chat.id, q.message.message_thread_id, q.message.message_id);
+    if (!q.message) return;
+    const msg = q.message;
+    const where = { chat: msg.chat.id, thread: msg.is_topic_message ? msg.message_thread_id : undefined };
+    defer((async () => {
+      const data = await buttonFromKey(env, q.data ?? "");
+      const { pressCard } = await import("./telegram-cards");
+      if (await pressCard(env, data, where, msg.message_id, (w, t, f) => talkIn(env, w, t, defer, f))) return;
+      const { handleButton } = await import("./jobs");
+      await handleButton(env, data, msg.chat.id, msg.message_thread_id, msg.message_id);
+    })().catch((e) => console.error("telegram button", e)));
     return;
   }
 
@@ -141,18 +135,28 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
       await tg(env, "sendChatAction", { chat_id: where.chat, action: "typing", ...(where.thread ? { message_thread_id: where.thread } : {}) }).catch(() => {});
       let text = (m.text ?? m.caption ?? "").trim();
       if (!text && (m.voice || m.audio)) text = await voiceText(env, (m.voice ?? m.audio)!.file_id);
+      const file = await attachment(env, m);
       if (/^\/jobs\b/.test(text)) { const { jobsSummary } = await import("./jobs"); await say(env, where.chat, await jobsSummary(env), { thread: where.thread }); return; }
-      if (!text || text === "/start") { await say(env, where.chat, "I'm here. Ask me anything, or tell me what to keep an eye on.", { thread: where.thread }); return; }
+      if (/^\/today\b/.test(text)) text = "What's on my plate today? My tasks, reminders and meetings, most important first.";
+      if (/^\/notifications\b/.test(text)) {
+        const on = (await tgConfig(env)).notify === false;
+        await saveConfig(env, { ...(await tgConfig(env)), notify: on });
+        await say(env, where.chat, on ? "🔔 Notifications are on here: reminders and alerts come to this chat, with their buttons." : "🔕 Notifications are off here. They still come to the app. Send /notifications to turn them back on.", { thread: where.thread });
+        return;
+      }
+      if (!file && (!text || text === "/start")) { await say(env, where.chat, "I'm here. Ask me anything, or tell me what to keep an eye on. You can also send photos, files and voice notes.", { thread: where.thread }); return; }
+      // A reply to one of my messages (a reminder, the helper's question, a new time…) is about that message.
+      if (m.reply_to_message && text && !where.thread) {
+        const { replyToCard } = await import("./telegram-cards");
+        if (await replyToCard(env, where, m.reply_to_message.message_id, text, (w, t, f) => talkIn(env, w, t, defer, f))) return;
+      }
       // A message inside a job's topic is about that job.
       if (where.thread) {
         const { jobByTopic, messageJob } = await import("./jobs");
         const job = await jobByTopic(env, where.chat, where.thread);
         if (job) { await say(env, where.chat, await messageJob(env, job, text, "telegram"), { thread: where.thread }); return; }
       }
-      const key = `${where.chat}:${where.thread ?? 0}`;
-      const res = await chat(env, text, "text", await conversationFor(env, key), { defer });
-      await rememberConversation(env, key, res.conversation.id);
-      await say(env, where.chat, res.reply.content, { thread: where.thread });
+      await talkIn(env, where, text, defer, file ? [file] : undefined);
     } catch (e) {
       console.error("telegram", e);
       await say(env, where.chat, `Something went wrong: ${(e as Error).message.slice(0, 200)}`, { thread: where.thread }).catch(() => {});
@@ -167,6 +171,7 @@ export async function connectWebhook(env: Env, origin: string) {
     url: `${origin}/api/telegram/webhook`, secret_token: env.TELEGRAM_WEBHOOK_SECRET,
     allowed_updates: ["message", "my_chat_member", "callback_query"], drop_pending_updates: false,
   });
-  await tg(env, "setMyCommands", { commands: [{ command: "jobs", description: "What's running" }, { command: "start", description: "Say hi" }] });
+  await tg(env, "setMyCommands", { commands: [{ command: "today", description: "What's on today" }, { command: "jobs", description: "Research and jobs running" },
+    { command: "notifications", description: "Reminders here on/off" }, { command: "start", description: "Say hi" }] });
   return { ok: true };
 }
