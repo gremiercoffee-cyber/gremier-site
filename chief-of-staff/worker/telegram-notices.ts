@@ -27,7 +27,7 @@ export const rows = <T>(xs: T[], n = 2) => xs.reduce<T[][]>((out, x, i) => (i % 
 /** A notification that buzzed the phone also arrives here, with its buttons. A newer version replaces the old message. */
 export async function noticeToTelegram(env: Env, n: Pick<Nudge, "id" | "type" | "title" | "body" | "item_id"> & { topic_key?: string | null }) {
   const where = await home(env, true);
-  if (!where) return;
+  if (!where) return false;
   const { actionsForNudge } = await import("./actions");
   const actions = await actionsForNudge(env, { type: n.type, item_id: n.item_id, topic_key: n.topic_key ?? undefined, body: n.body });
   for (const old of await all<{ chat_id: number; message_id: number }>(env, "SELECT chat_id, message_id FROM tg_sent WHERE kind = 'nudge' AND ref = ?", n.id)) {
@@ -39,6 +39,7 @@ export async function noticeToTelegram(env: Env, n: Pick<Nudge, "id" | "type" | 
   const id = await say(env, where.chat, text, { buttons: rows(actions.map((a) => ({ text: a.title, data: `n~${n.id}~${a.id}` }))) });
   await remember(env, where, id, "nudge", n.id);
   if (helperAsks) await remember(env, where, id, "helper", n.item_id!).catch(() => {});
+  return !!id;
 }
 
 /** Approvals waiting for a tap (from a chat, or made in the background): each one asked once. */

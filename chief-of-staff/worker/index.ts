@@ -730,7 +730,7 @@ route("POST", "/api/push/subscribe", async (req, env) => {
 });
 route("GET", "/api/push/key", async (_req, env) => json({ key: pushConfigured(env) ? env.VAPID_PUBLIC_KEY : null }));
 route("POST", "/api/push/test", async (_req, env) =>
-  json(await sendPush(env, { title: "Notifications are on", body: "This is how your reminders will arrive.", url: "/?tab=today", tag: "test" })));
+  json(await sendPush(env, { force: true, title: "Notifications are on", body: "This is how your reminders will arrive.", url: "/?tab=today", tag: "test" })));
 // ---- Google (Calendar + Gmail) ---------------------------------------------
 route("GET", "/api/google/status", async (_req, env) => json(await googleStatus(env)));
 // ---- Contacts and one-tap WhatsApps (the user sends each one from WhatsApp; the app never sends them) ----
@@ -896,6 +896,7 @@ export default {
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
     // Approvals made in the background are asked in Telegram too.
     ctx.waitUntil(import("./telegram-notices").then((t) => t.pendingCards(env)).catch((e) => console.error("telegram approvals", e)));
+    ctx.waitUntil(import("./worksession").then((w) => w.tickWorkSession(env)).catch((e) => console.error("work session", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))

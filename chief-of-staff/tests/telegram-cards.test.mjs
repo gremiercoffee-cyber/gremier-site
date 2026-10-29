@@ -112,3 +112,46 @@ test('long button data is kept and sent as a short key that still works',async()
  assert.match(await telegram.buttonFromKey(e,data),/^n~x+~accept_p:y+$/);
  assert.ok(id);
 });
+
+// ---- Work sessions and the waiting rule ----
+const wsOut=await build({entryPoints:['worker/worksession.ts'],bundle:true,write:false,format:'esm',platform:'node'});
+const ws=await import(`data:text/javascript;base64,${Buffer.from(wsOut.outputFiles[0].text).toString('base64')}`);
+const wOut=await build({entryPoints:['worker/waiting.ts'],bundle:true,write:false,format:'esm',platform:'node'});
+const waiting=await import(`data:text/javascript;base64,${Buffer.from(wOut.outputFiles[0].text).toString('base64')}`);
+
+test('"I\'ll do these now": each task gets Done / Didn\'t get to it / Won\'t do it, and the session wraps up',async()=>{
+ reset();const {env:e,db}=env();task(db,'i1');task(db,'i2');task(db,'i3');
+ db.prepare("UPDATE items SET title='Email the printer', due_at=? WHERE id='i2'").run(new Date(Date.now()-3600_000).toISOString());
+ const r=await ws.startWorkSession(e,{item_ids:['i1','i2','i3','nope'],minutes:45});
+ assert.equal(r.tasks.length,3);
+ const cardsSent=sent().filter(m=>m.reply_markup);assert.equal(cardsSent.length,3);
+ assert.match(sent()[0].text,/Let's go: 3 things.*until/);
+ const ids=db.prepare("SELECT message_id, ref FROM tg_sent WHERE kind='work'").all();
+ const press=async(ref,what)=>{await tap(e,`w~${ref}~${what}`,ids.find(x=>x.ref===ref).message_id);await settle();};
+ await press('i1','done');await press('i2','skip');
+ assert.equal(db.prepare("SELECT status FROM items WHERE id='i1'").get().status,'done');
+ const i2=db.prepare("SELECT status,due_at FROM items WHERE id='i2'").get();assert.equal(i2.status,'open');assert.ok(Date.parse(i2.due_at)>Date.now(),'moved to tomorrow');
+ assert.ok(globalThis.__tg.some(t=>t.method==='editMessageText'&&/Done: Call the accountant/.test(t.body.text)));
+ await press('i3','drop');
+ assert.equal(db.prepare("SELECT status FROM items WHERE id='i3'").get().status,'dropped');
+ assert.match(sent().at(-1).text,/1 done\. 1 for another time\. 1 dropped\./);
+ assert.equal(db.prepare("SELECT 1 FROM settings WHERE key='work_session'").get(),undefined,'session over');
+});
+
+test('when the time is up, what is left is asked about once',async()=>{
+ reset();const {env:e,db}=env();task(db,'i1');task(db,'i2');
+ await ws.startWorkSession(e,{item_ids:['i1','i2'],minutes:30});
+ const s=JSON.parse(db.prepare("SELECT value FROM settings WHERE key='work_session'").get().value);s.until=new Date(Date.now()-1000).toISOString();
+ db.prepare("UPDATE settings SET value=? WHERE key='work_session'").run(JSON.stringify(s));
+ await ws.tickWorkSession(e);await ws.tickWorkSession(e);
+ assert.equal(sent().filter(m=>/Time's up/.test(m.text)).length,1);
+});
+
+test('waiting on someone: quiet at first, a follow-up after 4 days',()=>{
+ const fresh={kind:'waiting',title:"Wait for Arnpack's packaging quote",person:'arnpackil@gmail.com',created_at:new Date().toISOString()};
+ const old={...fresh,created_at:new Date(Date.now()-5*86400_000).toISOString()};
+ assert.equal(waiting.quietWait(fresh),true);assert.equal(waiting.needsFollowUp(old),true);
+ assert.equal(waiting.followUpLine(old),"Follow up with arnpackil? No reply in 5 days: Arnpack's packaging quote");
+ assert.equal(waiting.isWaiting({kind:'task',title:'Await plans from Gershon'}),true,'a task worded as waiting counts');
+ assert.equal(waiting.isWaiting({kind:'task',title:'Call Gershon'}),false);
+});

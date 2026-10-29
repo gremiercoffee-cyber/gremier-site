@@ -1,6 +1,7 @@
 import {isDrivingBlock} from './work-context';
 import {collectWhatsAppReplies,replyQueue} from './replies';
 import {attentionState,actionableItem,blockWindow} from './attention';
+import { followUpLine, isWaiting, quietWait } from "./waiting";
 /**
  * Proactive pass, run by the cron trigger (and on demand from the dashboard).
  * Deterministic checks are free; only the briefing (and missions) call a model.
@@ -172,8 +173,9 @@ async function createBriefing(env: Env, date: string, tz: string) {
     `SELECT * FROM items WHERE status = 'open' AND kind != 'idea'
      ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, priority LIMIT 40`);
   const projectNames = new Map((await all<{ id: string; name: string }>(env, "SELECT id, name FROM projects")).map((p) => [p.id, p.name]));
-  const listing = items
-    .map((i) => `- ${i.kind}: ${i.title}${i.due_at ? ` (due ${i.due_at})` : ""}${i.person ? ` [${i.person}]` : ""} p${i.priority}${i.snooze_count >= 2 ? ` (postponed ${i.snooze_count}x)` : ""}${i.category ? ` {${i.category}}` : ""}${i.project_id && projectNames.has(i.project_id) ? ` <project: ${projectNames.get(i.project_id)}>` : ""}`)
+  // Things only waited on stay out; one that's been quiet too long is a follow-up for the user.
+  const listing = items.filter((i) => !quietWait(i))
+    .map((i) => isWaiting(i) ? `- follow-up: ${followUpLine(i)}` : `- ${i.kind}:${i.title}${i.due_at ? ` (due ${i.due_at})` : ""}${i.person ? ` [${i.person}]` : ""} p${i.priority}${i.snooze_count >= 2 ? ` (postponed ${i.snooze_count}x)` : ""}${i.category ? ` {${i.category}}` : ""}${i.project_id && projectNames.has(i.project_id) ? ` <project: ${projectNames.get(i.project_id)}>` : ""}`)
     .join("\n") || "(nothing open)";
   // Things that waited quietly for this briefing instead of buzzing. Reminders about an item already listed
   // above are left out, so nothing is said twice.
@@ -200,7 +202,7 @@ Then sections, each ONLY if it has content, each starting with a heading line "#
 ## Decisions for you — up to 3 things only the user can decide (undated promises, things postponed repeatedly, approvals, unanswered requests), with the options in the same bullet.
 ${sweep.length ? "## Weekly check — may have slipped: the ones that matter, each with a suggested action.\n" : ""}## Missions — only if an active mission needs the user's input.
 Every bullet: ONE line (about 15 words max) that starts with a **bold lead** (the thing, or "10:00 · Dentist"), then a short dash and why or what to do. At most 5 bullets per section. No paragraphs, no other markdown.
-Only include what still needs the user. NEVER mention things already done, handled, replied to or cleared.
+Only include what still needs the user. NEVER mention things already done, handled, replied to or cleared, or things they're just waiting on others for (quotes, replies, plans): only the "follow-up" lines given, each as one short bullet.
 Say each thing ONCE, in one section only. Items tagged <project: X> are steps of project X: mention the project once with its steps together (e.g. "**Bottles** — order cups, confirm sizes"), never the project and its steps as separate points.`,
       prompt: `Today is ${date}. UTC now ${now()}.
 Open items:
@@ -255,12 +257,12 @@ async function checkIns(env: Env, tz: string) {
         AND EXISTS (SELECT 1 FROM nudges q WHERE q.item_id=i.id AND q.dismissed=0
           AND q.type IN ('overdue','headsup','waiting','email','whatsapp') AND q.created_at > ?)
         ORDER BY i.created_at LIMIT 20`, new Date(Date.now() - 12 * 3600_000).toISOString());
-    const extra = quiet.filter(i=>!w.some(reply=>reply.id===i.id));
+    const extra = quiet.filter(i=>!w.some(reply=>reply.id===i.id) && !quietWait(i));
     if (w.length || extra.length) {
       const items=await mergeCatchupItems(env,[...w,...extra]);
       if (!items.length) return n;
       await notify(env, "digest", `${items.length} ${items.length===1 ? "thing" : "things"} to catch up on`,
-        items.map(i=>`• ${i.title}`).join("\n"),
+        items.map(i=>`• ${isWaiting(i) ? followUpLine(i) : i.title}`).join("\n"),
         null, "/", {itemIds:items.map(i=>i.id)});
       n++;
     }

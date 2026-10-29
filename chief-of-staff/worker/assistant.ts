@@ -974,6 +974,15 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
+      name: "start_work_session",
+      description: "The user picked what they'll do now (after you suggested options for their free time). Sends each task to Telegram with Done / Didn't get to it / Won't do it buttons.",
+      input_schema: { type: "object", properties: {
+        item_ids: { type: "array", items: { type: "string" }, description: "the ids of the open items they chose (create_item first for anything new)" },
+        minutes: { type: "integer", description: "how long they have, if they said" },
+      }, required: ["item_ids"] },
+      handler: async (input) => { const { startWorkSession } = await import("./worksession"); const r = await startWorkSession(env, input as never); note("start_work_session", `▶️ ${r.tasks.length} tasks with buttons in Telegram`); return r; },
+    },
+    {
       name: "update_item",
       description: "Change an item: complete it (status done), drop it, reschedule, rename, move to a project.",
       input_schema: {
@@ -1316,6 +1325,7 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
 
 /** Which tools belong to which feature. Anything not listed is always sent. */
 const TOOL_GROUPS: Record<string, string[]> = {
+  worktime: ["start_work_session"],
   shopping: ['get_shopping_lists', 'save_shopping_list', 'add_shopping_items', 'update_shopping_item'],
   schedule: ["save_time_block"],
   calendar: ["calendar_lookup"],
@@ -1344,6 +1354,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
 };
 /** What each group is for, so load_tools can say what there is to load. */
 const GROUP_INFO: Record<string, string> = {
+  worktime: "planning free time now, with done buttons",
   shopping: "shopping lists", schedule: "the user's time blocks", calendar: "Google Calendar", email: "Gmail search, read, drafts",
   whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups and group messages", trackers: "trackers that collect answers",
   ideas: "ideas and brainstorms", tasks: "research chats and older reports", missions: "missions (multi-step follow-ups)", coffee: "Gremier Coffee business data",
@@ -1354,6 +1365,7 @@ const GROUP_INFO: Record<string, string> = {
 };
 /** Rules that only matter with their tools: sent with the group, never otherwise. */
 const GROUP_RULES: Record<string, string> = {
+  worktime: "Free time (\"I'm here, I have 40 minutes, what should I do?\"): suggest 3-6 numbered options from their open tasks (search_items if they aren't in the context) that fit the time: overdue/due-soon and important first, then quick wins; each one line with a rough time (~15m). Skip things they're only waiting on others for (a long-quiet one can be \"follow up with X\"). Add one line on what's coming up next (meeting, deadline). Ask which they'll do. When they choose (\"1, 3 and the email\"), call start_work_session with those item ids and their minutes (create_item first for anything new), then reply in one short line.",
   email: "When they want an email SENT to someone (\"email the suppliers\", \"send Dana an email asking…\"), use email_with_codex: Codex writes it and sends it from their Gmail after they tap Send in its chat. draft_email only when they just want a Gmail draft.",
   shopping: "Shopping goes only to the shopping-list tools (Store is the default list), never to tasks.",
   hashgacha: "Hashgacha completion comes from online submissions (get_hashgacha_reports/track_hashgacha_reports), never an email reply or a new week. Missing, partial and unavailable are different. No automatic outreach.",
@@ -1370,6 +1382,7 @@ const GROUP_RULES: Record<string, string> = {
  * prep, hashgacha) is one load_tools call away, which keeps the prefix small and identical every message.
  */
 const TOOL_TRIGGERS: Record<string, RegExp> = {
+  worktime: /(i have (some )?(time|d+|an? (hour|few|couple))|free (time|now|for)|what (should|can|do) i (do|work on|get done)|what('s| is) (next|on my plate)|i'?m (here|free|ready)|ready to work|let'?s (work|go|get)|work session|i'?ll do|i'?m (going to|gonna) do)|יש לי (זמן|שעה)|מה (לעשות|אני צריך לעשות)/i,
   files: /\b(sign|signs|signed|signature|attachment|attached|pdf|document|form|fill|upload|uploaded|screenshot)\b|חתימה|לחתום|מסמך|קובץ|טופס/i,
   recurring: /\b(every month|monthly|each month|recurring|every (\d+(st|nd|rd|th)?|first|last)\b)|כל חודש/i,
   areas: /\b(areas?|categor(y|ies))\b/i,

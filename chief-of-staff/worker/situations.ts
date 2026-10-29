@@ -1,5 +1,6 @@
 import {isDrivingBlock,drivingSuitable} from './work-context';
 import {attentionState,actionableItem} from './attention';
+import { followUpLine, isWaiting, quietWait } from "./waiting";
 /**
  * Schedule (time blocks): the user's day in blocks — recurring ("In yeshiva", Sun–Thu 09:00–13:00),
  * one-off ("Coffee time", today 14:00–18:00), or calendar-triggered ("At events").
@@ -102,7 +103,8 @@ export async function resolveBlock(env: Env, ref: string | null | undefined) {
     ?? (await first<Situation>(env, "SELECT * FROM situations WHERE lower(name) LIKE lower(?) ORDER BY active DESC, created_at DESC", `%${ref}%`));
 }
 
-/** Attached tasks first, then intuited ones (same area or keywords). */
+/** Attached tasks first, then intuited ones (same area or keywords). Things only waited on are left out until
+ *  they need a follow-up (waiting.ts). */
 export async function itemsFor(env: Env, s: Situation, extra: string[] = []) {
   const kw = [...words(s.keywords), ...extra];
   const open = await all<Item & { block_id: string | null }>(env,
@@ -117,6 +119,7 @@ export async function itemsFor(env: Env, s: Situation, extra: string[] = []) {
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   const seen = new Set<string>();
   return [...attached, ...intuited].filter((i) => {
+    if (quietWait(i)) return false;
     const k = norm(i.title);
     if (driving&&!drivingSuitable(i))return false;
     if (seen.has(k) || !driving&&(i.source === "whatsapp" || i.source === "gmail") && i.kind === "task") return false;
@@ -141,7 +144,7 @@ export async function nowChecklist(env: Env, provided?: Awaited<ReturnType<typeo
   const state=provided??await attentionState(env);
   const block = await currentBlock(env);
   const available = [...state.items.values()].filter(i =>
-    ['task','commitment','reminder'].includes(i.kind) && actionableItem(i,state.blocks,state.tz,state.at)
+    ['task','commitment','reminder'].includes(i.kind) && !quietWait(i) && actionableItem(i,state.blocks,state.tz,state.at)
     && !( !drivingSuitable(i)&&['whatsapp','gmail'].includes(i.source) && i.kind==='task'));
   const immediate = available.filter(i => i.due_at ? new Date(i.due_at)<=state.at : !block)
     .sort((a,b) => (a.due_at?0:1)-(b.due_at?0:1) || a.priority-b.priority || (a.due_at??a.created_at).localeCompare(b.due_at??b.created_at));
@@ -170,10 +173,11 @@ async function fire(env: Env, s: Situation, title: string, extra: string[] = [])
   // Steps of one project are one line under the project's name, not a list inside the list.
   const names = new Map((await all<{ id: string; name: string }>(env, "SELECT id, name FROM projects")).map((p) => [p.id, p.name]));
   const byProject = new Map<string, string[]>();
-  for (const i of items) if (i.project_id && names.has(i.project_id)) byProject.set(i.project_id, [...(byProject.get(i.project_id) ?? []), i.title]);
+  for (const i of items) if (!isWaiting(i) && i.project_id && names.has(i.project_id)) byProject.set(i.project_id, [...(byProject.get(i.project_id) ?? []), i.title]);
   const doneProjects = new Set<string>();
   const bullets: string[] = [];
   for (const i of items) {
+    if (isWaiting(i)) { bullets.push(`• 📨 ${followUpLine(i)}`); continue; }
     const pid = i.project_id && byProject.get(i.project_id)!.length > 1 ? i.project_id : null;
     if (pid) {
       if (doneProjects.has(pid)) continue;
@@ -218,7 +222,7 @@ export async function runSituations(env: Env) {
       const end = minutes(s.end_time);
       if (mins >= end && mins < end + 90) {
         await run(env, "UPDATE situations SET last_wrapped = ? WHERE id = ?", date, s.id);
-        const left = await itemsFor(env, s);
+        const left = (await itemsFor(env, s)).filter((i) => !isWaiting(i));
         if (left.length) {
           await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = 'situation' AND title LIKE ?", `%${s.name}%`);
           await notify(env, "wrapup", `🏁 ${s.name} is over: did you get to these?`,
