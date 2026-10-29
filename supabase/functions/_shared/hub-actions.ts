@@ -5,6 +5,7 @@ import {
   readSchedule, readStock, readStores, readSummary, startBrew,
 } from "./hub-ops.ts";
 import { widgetDrains } from "./widget-production.ts";
+import { readOutlook } from "./hub-outlook.ts";
 import { marketingInventory, marketingProducts, marketingSales } from "./hub-marketing.ts";
 import { cleanText } from "./security.ts";
 
@@ -18,6 +19,7 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   schedule: { properties: { from: str("YYYY-MM-DD, default today"), to: str("YYYY-MM-DD, default = from"), include_done: { type: "boolean" } } },
   orders: { properties: { status: { type: "string", enum: ["to_fulfil", "unpaid"], description: "Omit for the latest orders" }, limit: num("Max 100") } },
   stock: { properties: {} },
+  outlook: { properties: { weeks: num("How many past weeks of deliveries to learn the pace from (default 8)"), horizon_days: num("How far ahead to count scheduled deliveries (default 14)") } },
   stores: { properties: {} },
   activity: { properties: { since: str("ISO timestamp"), limit: num("Max 200") } },
   marketing_products: { properties: {} },
@@ -48,6 +50,7 @@ export const ACTIONS: Record<string, Handler> = {
   schedule: { scope: "read", describe: "Jobs (brews, drains, deliveries…). Args: from, to (YYYY-MM-DD, default today), include_done.", run: ({ sb }, a) => readSchedule(sb, a as any) },
   orders: { scope: "read", describe: "Website orders. Args: status ('to_fulfil' | 'unpaid' | omit for latest), limit.", run: ({ sb }, a) => readOrders(sb, a as any) },
   stock: { scope: "read", describe: "Inventory (bottles), concentrate (L), beans (kg), labeled bottles.", run: ({ sb }) => readStock(sb) },
+  outlook: { scope: "read", describe: "How long the coffee lasts, from actual deliveries (not hand-typed stock): per coffee fine / brew by DATE / brew now (concentrate + already-bottled vs. usual pace and scheduled deliveries), per product what to bottle, beans to order. Args: weeks, horizon_days.", run: ({ sb }, a) => readOutlook(sb, a as any) },
   stores: { scope: "read", describe: "Stores with phone and prices.", run: ({ sb }) => readStores(sb) },
   activity: { scope: "read", describe: "Timeline of everything done (admin, website, apps). Args: since (ISO time), limit.", run: ({ sb }, a) => readActivity(sb, a as any) },
   marketing_products: { scope: "read", describe: "Website product catalog for marketing (id, names, price, category, active).", run: ({ sb }) => marketingProducts(sb) },
