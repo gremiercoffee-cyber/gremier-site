@@ -205,3 +205,5 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 #coffeebarsPage:not(.bb-ready) #planner { min-height:70vh; background:radial-gradient(circle at 50% 30vh, transparent 13px, transparent 14px) no-repeat; position:relative; }
 #coffeebarsPage:not(.bb-ready) #planner::after { content:""; position:absolute; left:50%; top:24vh; width:26px; height:26px; margin-left:-13px; border:2px solid #e2ddd3; border-top-color:#1a1a1a; border-radius:50%; animation:bbSpin .8s linear infinite; }
 @keyframes bbSpin { to { transform:rotate(360deg); } }
+
+.bb-lids-choice{display:flex;align-items:center;gap:12px;cursor:pointer;text-align:start;font-size:14px;padding-top:8px}.bb-lids-choice input{width:20px;height:20px;accent-color:#252422;flex-shrink:0}.bb-lids-choice img{width:65px;height:50px;object-fit:contain}.bb-lids-choice span{flex:1}.bb-lids-choice small{display:block;color:#777;font-size:12px;margin-top:5px}.bb-lids-choice b{white-space:nowrap}@media(max-width:440px){.bb-lids-choice{gap:8px}.bb-lids-choice img{width:45px}}

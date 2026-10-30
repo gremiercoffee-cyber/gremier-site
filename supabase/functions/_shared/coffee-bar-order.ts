@@ -28,7 +28,7 @@ export function buildCoffeeBarConfiguration(product, item) {
   const includedSyrups = settings?.syrups || (full ? ['caramel', 'vanilla', 'sugar'] : ['sugar']);
   const syrupNames = { caramel: 'Caramel syrup', vanilla: 'Vanilla syrup', sugar: 'Sugar syrup' };
   includedSyrups.forEach(key => syrups.push({ key, name: syrupNames[key] || key, bottles: 1 }));
-  let parveLiters = 0;
+  let parveLiters = 0, lids = 0;
   const milkTotal = full ? Math.floor(guests / 10) : 0;
   const seen = new Set();
   for (const selected of item.selected_addons || []) {
@@ -47,6 +47,8 @@ export function buildCoffeeBarConfiguration(product, item) {
       const key = allowed.milk_type || 'parve';
       const name = allowed.milk_label || (key === 'parve' ? 'Parve milk (type not specified)' : allowed.name);
       milk.push({ key, name, liters });
+    } else if (Number(allowed.bar_lids)>0) {
+      lids += Number(allowed.bar_lids)*Math.min(positive(allowed.max),positive(selected.qty));
     } else if (/dispenser/i.test(allowed.name)) {
       dispensers += Number(allowed.max) > 1 ? Math.min(positive(allowed.max), positive(selected.qty)) : 1;
     } else if (/syrup/i.test(allowed.name)) {
@@ -65,7 +67,7 @@ export function buildCoffeeBarConfiguration(product, item) {
   // validated and priced by the server: delivered with the bar.
   const extras = (Array.isArray(item.bar_extras) ? item.bar_extras : []).filter(x => x && x.product_id && positive(x.qty))
     .map(x => ({ product_id: String(x.product_id), name: String(x.name_en || x.name || 'Extra'), qty: positive(x.qty) }));
-  return { version: 1, package: packageType, guests, coffee, milk, dispensers, syrups, cups: guests, straws: guests, ...(extras.length ? { extras } : {}) };
+  return { version: 1, package: packageType, guests, coffee, milk, dispensers, syrups, cups: guests, straws: guests, ...(lids ? { lids } : {}), ...(extras.length ? { extras } : {}) };
 }
 
 export function describeCoffeeBar(configuration) {
@@ -78,6 +80,7 @@ export function describeCoffeeBar(configuration) {
     `${c.dispensers} dispenser${c.dispensers === 1 ? '' : 's'}`,
     ...(c.syrups || []).map(x => `${x.bottles}× ${x.name}`),
     `${c.cups} cups`, `${c.straws} straws`,
+    ...(c.lids ? [`${c.lids} domed lids`] : []),
     ...(c.extras || []).map(x => `+ ${x.qty}× ${x.name}`)
   ].join(' · ');
 }

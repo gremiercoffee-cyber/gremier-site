@@ -13,6 +13,7 @@
     sugar: { x: 483.04, y: 154, w: 74.56 },
     milk: { x: 557.6, y: 143, w: 82 },
     cups: { x: 639.6, y: 169, w: 69.6 },
+    lids: {x:0,y:287,w:110},
     straws: { x: 709.2, y: 160, w: 90.8 }
   };
   const count = value => Math.max(0, Math.floor(Number(value) || 0));
@@ -57,6 +58,7 @@
     const guests = Math.max(1, count(plan.guests));
     const bundles = Array.from({ length: Math.ceil(guests / 50) }, (_, i) => Math.min(50, guests - i * 50));
     group('cups', bundles.map(units => ({ units, sx: .95 + units / 50 * .1, sy: .55 + units / 50 * .9 })), 48);
+    group('lids',Array.from({length:Math.ceil(count(plan.lids)/25)},()=>({units:25})),58);
     group('straws', bundles.map(units => ({ units, sx: .88 + units / 50 * .24, sy: .84 + units / 50 * .32 })), 65);
     // Centered on the table: a small bar sits in the middle and new things appear on both sides;
     // the canvas only widens (and the view zooms out) once the bar needs more than its width.
