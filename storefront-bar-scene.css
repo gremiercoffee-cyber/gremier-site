@@ -209,10 +209,6 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 .bb-lids-choice{display:flex;align-items:center;gap:12px;cursor:pointer;text-align:start;font-size:14px;padding-top:8px}.bb-lids-choice input{width:20px;height:20px;accent-color:#252422;flex-shrink:0}.bb-lids-choice img{width:65px;height:50px;object-fit:contain}.bb-lids-choice span{flex:1}.bb-lids-choice small{display:block;color:#777;font-size:12px;margin-top:5px}.bb-lids-choice b{white-space:nowrap}@media(max-width:440px){.bb-lids-choice{gap:8px}.bb-lids-choice img{width:45px}}
 
 /* Clearer builder: how it works, numbered steps, a shared bar, and a short booking summary. */
-.planner .bb-how { list-style:none; display:flex; justify-content:center; gap:10px; flex-wrap:wrap; max-width:760px; margin:0 auto 18px; padding:0; counter-reset:how; }
-.planner .bb-how li { counter-increment:how; display:flex; align-items:center; gap:8px; padding:9px 14px; background:#f7f5f2; border-radius:999px; font-size:13px; color:#4a4a4a; }
-.planner .bb-how li::before { content:counter(how); display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#1a1a1a; color:#fff; font-size:11px; font-weight:600; }
-.planner .bb-how b { color:#1a1a1a; }
 .planner .bb-shared { max-width:760px; margin:0 auto 18px; padding:14px 18px; border-radius:14px; background:#fbf6ee; color:#5c3d12; font-size:14px; line-height:1.55; text-align:center; }
 .planner { counter-reset:bbstep; }
 .planner .pl-q > h2::before { counter-increment:bbstep; content:counter(bbstep); display:inline-grid; place-items:center; width:24px; height:24px; margin-inline-end:8px; border-radius:50%; background:#1a1a1a; color:#fff; font-size:12px; font-weight:600; vertical-align:2px; }
@@ -229,3 +225,5 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 .planner .bb-del-fields { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin:14px 0 6px; }
 .planner .bb-del-fields label { display:grid; gap:6px; font-size:13px; color:#6b7178; min-width:150px; }
 .planner .bb-delivery.bb-attention { box-shadow:0 0 0 3px #eb6834; border-radius:14px; transition:box-shadow .2s; }
+/* Booking from the builder works in the product window and cart out of sight, straight to checkout. */
+body.pd-silent #pdDrawer, body.pd-silent #pdBackdrop, body.pd-silent #cartDrawer, body.pd-silent #cartOverlay { visibility:hidden !important; transition:none !important; }

@@ -305,6 +305,11 @@
       return;
     }
     try{localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));}catch{}
+    // The product window does the pricing and the cart line; it works hidden, and is shown only if
+    // its price doesn't match the builder's (then the customer checks it there).
+    document.body.classList.add('pd-silent');
+    const btns=[...document.querySelectorAll('#planner .pl-order')];btns.forEach(x=>{x.disabled=true;x.dataset.label=x.innerHTML;x.textContent=T('Getting your checkout ready…','מכינים את הקופה…');});
+    const done=()=>{document.body.classList.remove('pd-silent');btns.forEach(x=>{x.disabled=false;if(x.dataset.label)x.innerHTML=x.dataset.label;});};
     openProductDrawer(plan.product.id);
     setTimeout(() => {
       const sel = document.querySelector('#pdVariationsSection select');
@@ -319,11 +324,13 @@
         plan.checks.forEach((i) => { const cb = document.querySelector(`#pdAddonsSection input[data-addon-idx="${i}"]`); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); } });
         if (typeof pdSetBarExtras === 'function') pdSetBarExtras(plan.extras);
         if (typeof pdUpdateDrawerPrice === 'function') pdUpdateDrawerPrice();
-        const d=$('pdDrawer');if(d){d.classList.add('pd-from-builder');d.querySelector('.pd-bar-summary')?.remove();
-          const box=document.createElement('div');box.className='pd-bar-summary';
-          box.innerHTML=`<div class="pd-bar-summary-title">${T('Your coffee bar','בר הקפה שלכם')} · ${T(`${plan.tier.guests} guests`,`${plan.tier.guests} אורחים`)}</div><ul>${tiles(plan).filter(t=>t.n).map(t=>`<li>${t.n}× ${esc(t.title)}${t.sub?` <small>(${esc(t.sub)})</small>`:''}</li>`).join('')}</ul><button type="button" class="pd-bar-change" onclick="closeProductDrawer()">${T('← Change something','← לשנות משהו')}</button><p class="pd-bar-next">${state.deliveryMode==='event'?T(`Delivery: at the event, ${state.deliveryDate} at ${state.deliveryTime}.`,`משלוח: לאירוע, ${state.deliveryDate} בשעה ${state.deliveryTime}.`):T(`Delivery: ${shipFor()==='expedited'?'expedited':'regular'}, on ${state.deliveryDate}.`,`משלוח: ${shipFor()==='expedited'?'מהיר':'רגיל'}, ב-${state.deliveryDate}.`)} ${T('Next: add it to your cart; at checkout you add the address.','השלב הבא: מוסיפים לעגלה, ובקופה מוסיפים כתובת.')}</p>`;
-          $('pdAddonsSection')?.before(box);
-          const add=$('pdAddBtn');if(add)add.textContent=T(`Add to cart · ₪${plan.total}`,`הוספה לעגלה · ₪${plan.total}`);}
+        const ready=typeof pdGetVariationPrice==='function'&&typeof pdGetAddonsTotal==='function'&&typeof pdCurrentProduct!=='undefined'&&pdCurrentProduct
+          &&Math.round(pdGetVariationPrice(pdCurrentProduct)+pdGetAddonsTotal())===Math.round(plan.total);
+        if(!ready||typeof pdAddToCart!=='function'){done();if(typeof showToast==='function')showToast(T('Please check your coffee bar and add it to the cart','בדקו את בר הקפה והוסיפו לעגלה'));return;}
+        const count=cart.length;pdAddToCart();
+        if(cart.length===count&&!cart.some(i=>String(i.base_product_id||i.id).startsWith(String(plan.product.id)))){done();return;}
+        if(typeof openCheckout==='function')openCheckout();
+        setTimeout(done,400);
       }, 150);
     }, 700);
   };
@@ -442,7 +449,7 @@
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
       ${window.CoffeeBarOffers?.builderBanner()||''}
-      ${sharedShown?`<div class="bb-shared">${T('✨ This coffee bar was set up for you. Check the details below, change anything you like, and press <b>Book</b> when it looks right.','✨ בר הקפה הזה הוכן במיוחד בשבילכם. בדקו את הפרטים, שנו מה שתרצו, ולחצו <b>להזמנה</b> כשהכל נראה טוב.')}</div>`:`<ol class="bb-how"><li><b>${T('Choose','בוחרים')}</b> ${T('guests, coffee & milk','אורחים, קפה וחלב')}</li><li><b>${T('Book','מזמינים')}</b> ${T('and pay online','ומשלמים באתר')}</li><li><b>${T('We deliver','אנחנו מביאים')}</b> ${T('everything, ready to pour','הכל, מוכן להגשה')}</li></ol>`}
+      ${sharedShown?`<div class="bb-shared">${T('✨ This coffee bar was set up for you. Check the details below, change anything you like, and press <b>Book</b> when it looks right.','✨ בר הקפה הזה הוכן במיוחד בשבילכם. בדקו את הפרטים, שנו מה שתרצו, ולחצו <b>להזמנה</b> כשהכל נראה טוב.')}</div>`:''}
       <div class="bb-grid">
           <div class="pl-q bb-guest-start"><h2>${T('How many guests are you expecting?', 'כמה אורחים צפויים להגיע?')}</h2>
             <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
