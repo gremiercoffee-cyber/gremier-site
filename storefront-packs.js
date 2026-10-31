@@ -17,7 +17,7 @@
   const packFor = (pool) => all().find((p) => packOf(p)?.pool === pool && p.is_active !== false);
   let open = null;   // { pack, picks: {id: n} }
   let returnFocus = null, previousOverflow = '';
-  const art = (pool, flavour) => `/packs/studio/${pool}-${flavour}-${pool === 'bottles' ? 'v2' : 'v1'}.webp`;
+  const art = (pool, flavour) => `/packs/studio/${pool}-${flavour}-${flavour === 'carrier' ? 'v3' : pool === 'bottles' ? 'v2' : 'v1'}.webp`;
   function flavour(p, pool) {
     const name = String(p?.name_en || '').toLowerCase();
     if (pool === 'minis') return /classic/.test(name) ? 'classic' : /vanilla/.test(name) ? 'vanilla' : /caramel/.test(name) ? 'caramel' : 'original';
@@ -39,9 +39,9 @@
       if (old) { old.classList.remove('entering'); old.classList.add('leaving'); setTimeout(() => old.remove(), 240); }
       if (!id) return;
       const p = all().find(p => String(p.id) === id), node = document.createElement('div');
-      const back = slot < 3, col = slot % 3, width = pool === 'minis' ? (back ? 19 : 21) : (back ? 13 : 14.5);
+      const g = PackSceneSlots.geometry(slot,pool);
       node.className = 'pack-scene-bottle entering'; node.dataset.slot = slot; node.dataset.product = id;
-      node.style.cssText = `--left:${(back ? 33 : 28) + col * 21 - width/2}%;--bottom:${back ? 29 : 12}%;--width:${width}%;--height:${back ? 63 : 67}%;--z:${back ? 5 : 15};`;
+      node.style.cssText = `--left:${g.left}%;--bottom:${g.bottom}%;--width:${g.width}%;--height:${g.height}%;--z:${g.z};`;
       const img = document.createElement('img'); img.src = art(pool, flavour(p,pool)); img.alt = nameOf(p); img.draggable = false;
       node.appendChild(img); scene.appendChild(node);
     });
@@ -84,8 +84,9 @@
     </div>`;
     const scene = prior || document.createElement('div');
     if (!prior) {
-      scene.className = 'pack-scene'; scene.setAttribute('role','img');
-      scene.innerHTML = `<img class="pack-scene-carrier" src="${art(cfg.pool,'carrier')}" alt=""><div class="pack-scene-lip"><img class="pack-scene-carrier" src="${art(cfg.pool,'carrier')}" alt=""></div>`;
+      scene.className = 'pack-scene'; scene.dataset.pool = cfg.pool; scene.setAttribute('role','img');
+      const carrier = `<img class="pack-scene-carrier" src="${art(cfg.pool,'carrier')}" alt="">`;
+      scene.innerHTML = `${carrier}<div class="pack-scene-middle">${carrier}</div><div class="pack-scene-lip">${carrier}</div>`;
     }
     scene.setAttribute('aria-label', T(`Your pack: ${q.count} of ${q.size} bottles selected`, `השישייה שלכם: ${q.count} מתוך ${q.size} בקבוקים נבחרו`));
     el.querySelector('.pack-scene-mount').replaceWith(scene);
