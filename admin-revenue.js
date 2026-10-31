@@ -130,6 +130,8 @@
  api.annualReport=year=>loaded?income(loaded,year+'-01-01',[year+'-12-31',date(new Date())].sort()[0],date):null;
  const storeOwed=(from,to)=>loaded?.bills?owed(loaded.bills,from,to,loaded.billLinks||[],new Map(loaded.businessReceipts.map(r=>[r.id,r]))):null;
  api.annualOwed=year=>storeOwed(year+'-01-01',year+'-12-31');
+ // Month by month, counted once like the income total (stores by payments here; Stats charts use store statements).
+ api.monthly=year=>loaded?Array.from({length:12},(_,i)=>{const m=year+'-'+String(i+1).padStart(2,'0'),r=root.GremierSales?.monthRange?root.GremierSales.monthRange(m):{from:m+'-01',to:m+'-31'};const c=channels(income(loaded,r.from,r.to,date));return {month:m,...c};}):null;
  const totalsHtml=totals=>['stores','coffee','coffee_bar',...['other','unclassified'].filter(k=>totals[k])].map(k=>`<div class="fin-row"><span>${labels[k]}</span><strong>${money(totals[k])}</strong></div>`).join('');
  api.dashboardOnline=(orders,r,purposes=[],storeValue=null)=>{
   const host=get('dashOnlineRevenue');if(!host)return;
