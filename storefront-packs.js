@@ -16,6 +16,15 @@
   const unitPrice = (p) => Number(p.price) / perProduct(p);
   const packFor = (pool) => all().find((p) => packOf(p)?.pool === pool && p.is_active !== false);
   let open = null;   // { pack, picks: {id: n} }
+  // The minis' photos show their 4-pack carton; in the picker each mini is one bottle, so it's drawn as
+  // a single bottle in its label colour (until single-bottle photos exist).
+  function miniBottle(p) {
+    const n = String(p.name_en || ''), dark = /classic/i.test(n);
+    const label = /vanilla/i.test(n) ? '#f3efe6' : /caramel/i.test(n) ? '#e08a2c' : dark ? '#f2c418' : '#c79a68';
+    return `<svg class="pack-img" viewBox="0 0 46 46" aria-hidden="true"><rect x="0" y="0" width="46" height="46" rx="10" fill="#f3f0eb"/>
+      <rect x="18" y="5" width="10" height="5" rx="1.5" fill="#c9a24a"/><path d="M19 10h8v5c0 2 4 4 4 8v15a3 3 0 0 1-3 3H18a3 3 0 0 1-3-3V23c0-4 4-6 4-8z" fill="${dark ? '#2b1a12' : '#c9a987'}" stroke="#d8d2c8" stroke-width="1"/>
+      <rect x="15" y="26" width="16" height="8" fill="${label}" stroke="${label === '#f3efe6' ? '#cfc8bb' : 'none'}" stroke-width=".8"/></svg>`;
+  }
 
   function quote(pack, picks) {
     const cfg = packOf(pack), size = Number(cfg.size) || 6;
@@ -36,7 +45,7 @@
       <p class="pack-sub">${T(`Pick any ${q.size}, mix the flavours. <b>5% cheaper</b> than buying them one by one.`, `בחרו ${q.size}, שלבו טעמים. <b>זול ב-5%</b> מקנייה אחד אחד.`)}</p>
       <div class="pack-slots" aria-label="${T(`${q.count} of ${q.size} chosen`, `${q.count} מתוך ${q.size} נבחרו`)}">${Array.from({ length: q.size }, (_, i) => `<i class="${i < q.count ? 'on' : ''}"></i>`).join('')}<span>${T(`${q.count} of ${q.size}`, `${q.count} מתוך ${q.size}`)}</span></div>
       <div class="pack-list">${pool.map((p) => { const n = open.picks[p.id] || 0; return `<div class="pack-row${n ? ' on' : ''}">
-        ${p.images?.[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(p.images[0], 120) : p.images[0])}" alt="" loading="lazy">` : '<span class="pack-img"></span>'}
+        ${perProduct(p) > 1 ? miniBottle(p) : p.images?.[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(p.images[0], 120) : p.images[0])}" alt="" loading="lazy">` : '<span class="pack-img"></span>'}
         <span class="pack-name">${esc(nameOf(p).replace(/\s*(4[\s-]*pack|רביעייה)\s*/i, ' ').trim())}<small>${money(unitPrice(p))}</small></span>
         <span class="pack-step"><button type="button" data-pack-step="${esc(p.id)}" data-d="-1" ${n ? '' : 'disabled'} aria-label="${T('One less', 'אחד פחות')}">−</button><b>${n}</b><button type="button" data-pack-step="${esc(p.id)}" data-d="1" ${left ? '' : 'disabled'} aria-label="${T('One more', 'עוד אחד')}">+</button></span></div>`; }).join('')}</div>
       <div class="pack-total">${q.count && !left ? `<span><s>${money(q.full)}</s> <b>${money(q.total)}</b></span><small>${T(`You save ${money(q.full - q.total)}`, `חוסכים ${money(q.full - q.total)}`)}</small>` : `<span>${q.count ? money(q.full) + ' ' + T('so far', 'עד עכשיו') : ''}</span><small>${T('5% off when you reach 6', '5% הנחה כשמגיעים ל-6')}</small>`}</div>
