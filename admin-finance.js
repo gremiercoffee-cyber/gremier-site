@@ -144,7 +144,7 @@
  }
  function receiptReviewDetails(p){
   const c=p.customer,check=p.payment_details||{},method=({cash:'Cash',bank_transfer:'Bank transfer',check:'Check · צ׳ק',bit:'Bit · ביט'})[p.payment_method];
-  const rows=[['Document',p.payload?.type==='2'?'חשבונית מס/קבלה · VAT included · ILS':p.invoice?'קבלה for tax invoice '+p.invoice.document_number+' · ILS':'קבלה · ILS'],['Issue date',p.payload?.date||today()],['Date received',p.payment_date],['Method',method],
+  const rows=[['Document',p.payload?.type==='2'?'חשבונית מס/קבלה · VAT included · ILS':p.invoices?.length?'קבלה for tax invoice'+(p.invoices.length>1?'s ':' ')+p.invoices.map(i=>i.document_number).join(', ')+' · ILS':'קבלה · ILS'],['Issue date',p.payload?.date||today()],['Date received',p.payment_date],['Method',method],
    ['ח.פ./עוסק',c.tax_id],['Address',c.address],['Phone',c.phone],['Reference',p.payment_reference],['Description',p.description],
    ...(p.payment_method==='check'?[['Bank',check.bank_code],['Branch',check.branch],['Account',check.account],['Check number',check.check_number],['Check date',check.check_date]]:[]),
    ...(p.bills.length?[['Months paid for',p.bills.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')],['Original bills',money(p.billed_total_minor)],['Settlement','Selected months will be marked paid in full']]:[]),

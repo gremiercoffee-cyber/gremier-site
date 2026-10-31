@@ -1,6 +1,6 @@
 // Store tax invoices (חשבונית מס) through FinBot. Admin only.
-//   { action:'preview', id, store_id, email_requested? }  → what would be issued, no document created
-//   { action:'issue', id, store_id, email_requested?, confirm:true } → issues it (once per id)
+//   { action:'preview', id, store_id }  → each unpaid, not-yet-invoiced month's invoice; no document created
+//   { action:'issue', id, store_id, billing_id, gross_minor, email_requested?, confirm:true } → that month's invoice (once per id)
 //   { action:'pdf', id }                    → short-lived link to the original PDF
 //   { action:'set_number', id, number }     → the invoice number, when it couldn't be read from the PDF
 //   { action:'release', id, confirm_not_in_finbot:true } → a refused invoice gives its months back
@@ -79,10 +79,15 @@ Deno.serve(async req=>{
   if(raw.email_requested&&!customer.email)throw Error('store_email_required');
   const b=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at,tax_invoice_id').eq('store_id',raw.store_id).is('paid_at',null).is('cancelled_at',null).is('tax_invoice_id',null).gt('total',0);
   if(b.error)throw Error('billing_unavailable');
-  const plan=invoiceBills(b.data,raw.store_id),payload=invoicePayload(customer,plan.lines);
-  const summary={customer,months:plan.lines.map(l=>({id:l.id,label:monthLabel(l),net_minor:l.net_minor})),net_minor:plan.net_minor,vat_minor:plan.vat_minor,gross_minor:plan.gross_minor,vat_rate:VAT_RATE};
-  if(raw.action==='preview')return json({preview:{...summary,payload},creates_document:false});
+  // One invoice per month (stores pay month by month or several at once). Preview shows every month's invoice.
+  if(raw.action==='preview'){
+   const all=invoiceBills(b.data,raw.store_id);
+   const months=all.lines.map(l=>{const one=invoiceBills([l],raw.store_id);return {id:l.id,label:monthLabel(l),net_minor:one.net_minor,vat_minor:one.vat_minor,gross_minor:one.gross_minor};});
+   return json({preview:{customer,months,vat_rate:VAT_RATE},creates_document:false});
+  }
   if(raw.confirm!==true)return json({error:'confirm_required'},400);
+  const bill=b.data.find((x:any)=>x.id===raw.billing_id);if(!bill)throw Error('month_not_invoiceable');
+  const plan=invoiceBills([bill],raw.store_id),payload=invoicePayload(customer,plan.lines);
   if(raw.gross_minor!==plan.gross_minor)throw Error('billing_changed_refresh_preview');
   const key=Deno.env.get('FINBOT_API_KEY');if(!key)throw Error('finbot_not_configured');
   const request_hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(payload))))).map(x=>x.toString(16).padStart(2,'0')).join('');

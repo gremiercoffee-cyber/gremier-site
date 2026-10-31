@@ -1,7 +1,9 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
 import {receiptSettings,receiptRow,receiptOrder,receiptPaymentMetadata,receiptPreviewOrder,issueFinbotReceipt,repairReceiptPdf,sendReceiptTest,originalPdf} from '../_shared/finbot-receipts.ts';
-import {amountMinor,israelDate,receiptPayload} from '../_shared/finbot-receipt-model.ts';
+import {amountMinor,israelDate,receiptPayload,websiteDocType} from '../_shared/finbot-receipt-model.ts';
+import {receiptAttachment} from '../_shared/finbot-receipts.ts';
+import {sendOrderEmails} from '../_shared/order-email.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
 function serviceKey(){const key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(key)return key;try{const keys=JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')||'{}');return keys.default||keys.service_role||''}catch{return ''}}
@@ -75,6 +77,21 @@ Deno.serve(async req=>{
       const result=await issueFinbotReceipt(db,id,{test:true,paymentDate:String(body.payment_date||''),retryValidatedRejection:body.retry_validated_rejection===true});
       if(result.receipt?.status==='issued'&&result.receipt.is_test&&result.receipt.pdf_path)await sendReceiptTest(db,id);
       return json(result);
+    }
+    // Email the customer their official document (the same email the automatic catch-up sends).
+    if(body.action==='email_customer') {
+      const row=await receiptRow(db,id);if(row?.status!=='issued'||!row.pdf_path)return json({error:'issued_receipt_with_pdf_required'},409);
+      const order=await receiptOrder(db,id);if(!order.customer_email)return json({error:'no_customer_email'},409);
+      const attachment=await receiptAttachment(db,id,order.order_number);if(!attachment)return json({error:'receipt_pdf_unavailable'},409);
+      const taxed=websiteDocType(order)==='2',n=order.order_number||id;
+      const title=taxed?`Gremier · Tax invoice/receipt · חשבונית מס/קבלה · #${n}`:`Gremier · Receipt / קבלה · #${n}`;
+      const text=taxed?`Your tax invoice/receipt for order #${n} is attached. Thank you!
+
+מצורפת חשבונית מס/קבלה עבור הזמנה #${n}. תודה!`:`Your official receipt for order #${n} is attached. Thank you!
+
+מצורפת הקבלה עבור הזמנה #${n}. תודה!`;
+      const sent=await sendOrderEmails({ownerSubject:title,ownerText:text,ownerAttachments:[attachment],skipOwner:true,customerEmail:order.customer_email,customerSubject:title,customerText:text,customerAttachments:[attachment]});
+      return json({sent:!!sent.ok});
     }
     if(body.action==='retry_pdf')return json({receipt:await repairReceiptPdf(db,id)});
     if(body.action==='send_test_email')return json(await sendReceiptTest(db,id));
