@@ -142,14 +142,23 @@
  }
 
  // Sales per month: store statements (delivered value), website and other income counted once.
+ // Stores count what was delivered (the month's statement, paid or not). Months without statements
+ // (before June 2026) count store payments instead; payments received in statement months beyond what
+ // paid those statements were for earlier deliveries, so they're kept too, in the month received.
  function salesByMonth(y){
-  const rev=root.GremierRevenue?.monthly?.(y);
-  return months(y).map((m,i)=>{
-   const billed=data.bills.filter(b=>!b.cancelled_at&&b.year+'-'+String(b.month).padStart(2,'0')===m);
-   const stores=billed.length?Math.round(billed.reduce((s,b)=>s+Number(b.total||0),0)*100):(rev?.[i]?.stores||0);
+  const rev=root.GremierRevenue?.monthly?.(y),keys=months(y);
+  const billed=keys.map(m=>data.bills.filter(b=>!b.cancelled_at&&b.year+'-'+String(b.month).padStart(2,'0')===m));
+  const inStatementMonths=keys.reduce((s,m,i)=>s+(billed[i].length?(rev?.[i]?.stores||0):0),0);
+  const paidStatements=data.bills.filter(b=>!b.cancelled_at&&b.paid_at&&b.year===y).reduce((s,b)=>s+Math.round(Number(b.total||0)*100),0);
+  const late=inStatementMonths?Math.max(0,inStatementMonths-paidStatements)/inStatementMonths:0;
+  return keys.map((m,i)=>{
+   const pay=rev?.[i]?.stores||0;
+   const stores=billed[i].length?Math.round(billed[i].reduce((s,b)=>s+Number(b.total||0),0)*100)+Math.round(pay*late):pay;
    return {month:m,stores,online:rev?.[i]?.online||0,other:rev?.[i]?.other||0};
   });
  }
+ // Old-website sales exist only as one total for the year, so they're in year totals but not in any month.
+ const oldWebsite=y=>(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary).reduce((s,r)=>s+r.amount_minor,0);
  const finbotYear=y=>data.snaps.find(s=>s.report_year===y);
  const finbotMonth=(y,m)=>finbotYear(y)?.payload?.monthly?.find(x=>x.month===m);
  // From 2026 the site knows every sale (receipts, paid orders without one yet, store deliveries, events);
@@ -168,17 +177,17 @@
   get('statsNew-overview').innerHTML=`<div class="st-tiles">
    ${isNow&&thisMonth?tile(monthLong(cur)+' so far',money(sum(thisMonth)),prevKey!==cur?`${monthShort(prevKey)}: ${money(sum(rows.find(r=>r.month===prevKey)))}`:''):''}
    ${isNow&&lastYearSame?tile('Same month last year',money(lastYearSame.income_minor),'FinBot income'):''}
-   ${tile((isNow?'This year so far':'Year '+year),money(ytd),'Stores delivered + website + events')}
+   ${tile((isNow?'This year so far':'Year '+year),money(ytd+oldWebsite(year)),'Stores delivered (paid or not) + website + events'+(oldWebsite(year)?` · incl. ${money(oldWebsite(year))} old website`:''))}
    ${(()=>{const a=yearByMonth(year),b=yearByMonth(year-1),upTo=+cur.slice(5)-(isNow?1:0),through=isNow?upTo:12;if(!b.some(v=>v)||through<1)return '';
-    const now=a.slice(0,through).reduce((s,v)=>s+(v||0),0),then=b.slice(0,through).reduce((s,v)=>s+(v||0),0);
+    const now=a.slice(0,through).reduce((s,v)=>s+(v||0),0)+oldWebsite(year),then=b.slice(0,through).reduce((s,v)=>s+(v||0),0);
     return tile('vs last year',pct(now,then)||'—',`${money(now)} vs ${money(then)}, Jan–${monthShort(year+'-'+String(through).padStart(2,'0'))}`);})()}
   </div>
   ${line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
-   note:'Stores: the month\'s statement (what was delivered); before June 2026, store payments. Website and events: payments, each counted once.'})}
+   note:'Stores: what was delivered each month (paid or not); before June 2026, store payments. Website and events: payments, each counted once.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})}
   ${(()=>{const ys=[year-2,year-1,year].filter(y=>y>=APP_FROM||finbotYear(y));if(ys.length<2)return `<section class="st-card"><h3>Year over year</h3><p class="sales-note">Earlier years appear here once their FinBot reports are imported.</p></section>`;
-   const total=y=>yearByMonth(y).reduce((s,v)=>s+(v||0),0);
+   const total=y=>yearByMonth(y).reduce((s,v)=>s+(v||0),0)+(y>=APP_FROM?oldWebsite(y):0);
    return line({title:'Year over year · income by month',labels:Array.from({length:12},(_,i)=>({label:monthShort('2000-'+String(i+1).padStart(2,'0'))})),series:ys.map((y,j)=>({name:String(y),color:j===ys.length-1?C[0]:j===ys.length-2?C[1]:C[2],values:yearByMonth(y)})),
-    note:`From ${APP_FROM}: every sale we know of, as in Sales by month above. Earlier years: income as recorded in FinBot. `+ys.map(y=>`${y}: ${money(total(y))}`).join(' · ')});})()}
+    note:`From ${APP_FROM}: every sale we know of, as in Sales by month above (old-website sales are in the year total only; they have no months). Earlier years: income as recorded in FinBot. `+ys.map(y=>`${y}: ${money(total(y))}`).join(' · ')});})()}
   ${owed.length?`<section class="st-card"><h3>Stores owing for over 45 days</h3>${owed.map(({s,x})=>`<div class="fin-row"><span>${esc(s.name)}<small> · oldest statement ${esc(x.oldestBilled.slice(0,10))}</small></span><strong>${money(x.owed)}</strong></div>`).join('')}</section>`:''}`;
  }
 
