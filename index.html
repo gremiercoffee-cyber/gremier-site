@@ -13,7 +13,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://cloudflareinsights.com https://ayuzmwpmhncxrugsyxmw.supabase.co wss://ayuzmwpmhncxrugsyxmw.supabase.co https://data.gov.il https://api.cloudinary.com; frame-src 'self' https://*.payme.io https://*.paymeservice.com; form-action 'self'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
-  <title>Gremier Coffee Co.</title>
+  <title>Gremier Coffee Co. · Slow-brewed cold brew · קולד ברו בחליטה איטית</title>
+  <meta name="description" content="Slow-brewed cold brew delivered across Israel: liter bottles, minis, 5L jerry cans and coffee bars for events. Kosher. · קולד ברו בחליטה איטית עם משלוח: בקבוקי ליטר, מיני, ג׳ריקנים ובר קפה לאירועים. כשר.">
+  <link rel="canonical" href="https://gremiercoffee.co.il/">
+  <meta property="og:type" content="website"><meta property="og:site_name" content="Gremier Coffee Co.">
+  <meta property="og:title" content="Gremier Coffee Co. · Slow-brewed cold brew">
+  <meta property="og:description" content="Slow-brewed cold brew for home, the office and events, delivered in Israel. Kosher.">
+  <meta property="og:url" content="https://gremiercoffee.co.il/"><meta property="og:image" content="https://gremiercoffee.co.il/icon-512.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Gremier Coffee Co.","url":"https://gremiercoffee.co.il/","logo":"https://gremiercoffee.co.il/icon-512.png","email":"gremiercoffee@gmail.com","areaServed":"IL"}</script>
   <link rel="preload" as="image" href="/logo.png"/>
   <link rel="stylesheet" href="/storefront-boot.css?v=20261028-3"/>
   <script src="/storefront-boot.js?v=20261028-2"></script>
@@ -2396,7 +2403,7 @@ function closeProductDrawer(fromNav) {
     pdCurrentProduct = null;
     return;
   }
-  if ((window.location.hash || '').replace(/^#\/?/, '').toLowerCase().startsWith('product=')) {
+  if ((window.location.hash || '').replace(/^#\/?/, '').toLowerCase().startsWith('product=') || productPath()) {
     closeProductDrawer(true);
     navReplace({ page: appPage, layer: null });
   } else {
@@ -3268,9 +3275,17 @@ let appPage = 'home';
 let navSkipPush = false;
 const APP_PAGES = new Set(['home', 'shop', 'coffeebars', 'myorders', 'giftcards']);
   
+// Products have their own link, /p/<name>; it opens the product in its drawer over the home page.
+const productPath = () => (window.location.pathname.match(/^\/p\/([^/?#]+)/) || [])[1] || null;
+const siteBase = () => (productPath() ? '/' : (window.location.pathname || '/'));
+function productLinkName(id) {
+  const p = (typeof products !== 'undefined' ? products : []).find(x => String(x.id) === String(id));
+  return p ? slugifyProductName(p.name_en) : String(id);
+}
 function parsePageFromUrl() {
   const raw = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase();
   const original = (window.location.hash || '').replace(/^#\/?/, '');
+  if (productPath() && !raw) return { page: 'home', layer: 'product', productId: decodeURIComponent(productPath()) };
   if (raw.startsWith('product=')) {
     return {
       page: 'home',
@@ -3284,7 +3299,7 @@ function parsePageFromUrl() {
 }
 
 function buildPageUrl(pageOrHash, stripSearch = false) {
-  const base = window.location.pathname || '/';
+  const base = siteBase();
   const search = stripSearch ? '' : window.location.search;
   if (!pageOrHash || pageOrHash === 'home') return base + search;
   return `${base}${search}#${pageOrHash}`;
@@ -3292,9 +3307,8 @@ function buildPageUrl(pageOrHash, stripSearch = false) {
 
 function buildNavUrl(state, stripSearch = false) {
   if (state.layer === 'product' && state.productId) {
-    const base = window.location.pathname || '/';
     const search = stripSearch ? '' : window.location.search;
-    return `${base}${search}#product=${encodeURIComponent(state.productId)}`;
+    return `/p/${encodeURIComponent(productLinkName(state.productId))}${search}`;
   }
   if (state.scrollTo === 'aboutSection') return buildPageUrl('about', stripSearch);
   const page = state.page || 'home';
