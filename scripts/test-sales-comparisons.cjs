@@ -59,3 +59,16 @@ test('Jewish months match known new-year dates and distinguish both Adars in lea
  leap[0].from='bad';assert.equal(m.hebrewMonths(5784)[0].from,'2023-09-16');
  assert.throws(()=>m.hebrewMonths(5787.5));assert.throws(()=>m.hebrewMonths(0));
 });
+
+// Sales by product: each product's share; store liters by recorded flavour, minis as one line.
+{
+  const assert = require('node:assert/strict');
+  const m = require('../admin-sales-breakdown.js');
+  const products = [{ id: 'c', name_en: 'Classic Dark Roast', category: 'bottles' }, { id: 'h', name_en: '5L House Blend', category: 'bulk' }, { id: 'm', name_en: 'Vanilla Cremier 4 Pack', category: 'minis' }];
+  const on = m.onlineTotals([{ payment_status: 'paid', status: 'fulfilled', items: [{ product_id: 'c', qty: 2, price: 45 }, { product_id: 'h', qty: 1, price: 180 }, { product_id: 'm', qty: 1, price: 60 }] }], products);
+  assert.deepEqual([on.products['large:classic'].units, on.products['jerry:house'].revenue, on.products.mini.units], [2, 180, 4]);
+  const st = m.storeTotals([{ store_id: 's', qty_large: 10, qty_small: 6, qty_unfiltered: 2, quantities: { classic_liter: 6, house_blend: 3, vanilla_mini: 6 } }], [{ id: 's', price_large: 30, price_small: 10, price_unfiltered: 32 }]);
+  assert.deepEqual([st.products['large:classic'].units, st.products['large:house'].units, st.products['large:unknown'].units, st.products['large:unfiltered'].revenue, st.products.mini.units], [6, 3, 1, 64, 6]);
+  assert.equal(Object.values(st.products).reduce((s, x) => s + x.revenue, 0), Object.values(st.totals).reduce((s, x) => s + x.revenue, 0));
+  console.log('Sales by product checks passed.');
+}

@@ -13,6 +13,25 @@
   ];
   const VIEWS = [['all', 'Overall'], ['stores', 'Stores'], ['online', 'Online']];
   const blank = () => Object.fromEntries(TYPES.map(t => [t.key, { units: 0, revenue: 0 }]));
+  // Each product within its type, so every product's share of sales can be shown. Minis stay one
+  // line (store deliveries don't record flavours reliably), coffee bars too.
+  const FLAVOURS = { classic: 'Classic Dark Roast', sweetened: 'Sweetened Classic', colombia: 'Colombia Light Roast', house: 'House Blend', decaf: 'Decaf', unfiltered: 'Unfiltered', unknown: 'Flavour not recorded' };
+  const flavourOf = name => /sweeten/.test(name) ? 'sweetened' : /unfilter/.test(name) ? 'unfiltered' : /decaf/.test(name) ? 'decaf' : /colomb/.test(name) ? 'colombia' : /house/.test(name) ? 'house' : /classic|dark/.test(name) ? 'classic' : 'unknown';
+  function productOf(type, item, product) {
+    const name = [item?.name_en, product?.name_en, item?.name_he, product?.name_he].filter(Boolean).join(' ').toLowerCase();
+    if (type === 'large' || type === 'jerry') { const f = flavourOf(name); return { key: type + ':' + f, label: FLAVOURS[f] + (type === 'large' ? ' · liter' : ' · 5L jerry can') }; }
+    if (type === 'mini') return { key: 'mini', label: 'Minis (all flavours)' };
+    if (type === 'bar') return { key: 'bar', label: 'Coffee bars & add-ons' };
+    if (/syrup|סירופ/.test(name)) return { key: 'syrup', label: 'Syrups' };
+    if (/gift.?card|כרטיס.*מתנה/.test(name)) return { key: 'gift', label: 'Gift cards' };
+    return { key: 'other', label: 'Delivery fees & other' };
+  }
+  function addProduct(map, type, p, units, revenue) {
+    const row = map[p.key] || (map[p.key] = { type, label: p.label, units: 0, revenue: 0 });
+    row.units += units; row.revenue += revenue;
+  }
+  // Store delivery keys → liter flavours (minis, unfiltered and syrups come from their own counts).
+  const STORE_LITERS = { classic_liter: 'classic', colombia_liter: 'colombia', house_blend: 'house', house_blend_liter: 'house', sweetened_classic: 'sweetened', decaf_liter: 'decaf' };
 
   // ── classification (pure; exported for tests) ──
   /** Type of one product line + how many physical units one "qty" is (3 × 5L = 3 cans, a 4-pack = 4 minis). */
@@ -37,7 +56,7 @@
 
   function onlineTotals(orders, products) {
     const byId = new Map((products || []).map(p => [String(p.id), p]));
-    const t = blank();
+    const t = blank(), perProduct = {};
     let count = 0;
     for (const o of (orders || []).filter(eligible)) {
       count++;
@@ -50,36 +69,41 @@
           const weights = contents.map(c => (Number(c.price) || 0) * (Number(c.qty) || 1));
           const totalW = weights.reduce((s, w) => s + w, 0);
           contents.forEach((c, i) => {
-            const { type, per } = classify(c, byId.get(String(c.product_id)));
-            t[type].units += (Number(c.qty) || 1) * per * qty;
-            t[type].revenue += totalW ? lineRevenue * (weights[i] / totalW) : lineRevenue / contents.length;
+            const p = byId.get(String(c.product_id)), { type, per } = classify(c, p);
+            const units = (Number(c.qty) || 1) * per * qty, revenue = totalW ? lineRevenue * (weights[i] / totalW) : lineRevenue / contents.length;
+            t[type].units += units; t[type].revenue += revenue; addProduct(perProduct, type, productOf(type, c, p), units, revenue);
           });
           continue;
         }
-        const { type, per } = classify(item, byId.get(String(item.product_id)));
+        const p = byId.get(String(item.product_id)), { type, per } = classify(item, p);
         t[type].units += qty * per;
         t[type].revenue += lineRevenue;
+        addProduct(perProduct, type, productOf(type, item, p), qty * per, lineRevenue);
       }
     }
-    return { totals: t, count };
+    return { totals: t, count, products: perProduct };
   }
 
   function storeTotals(deliveries, stores) {
     const byId = new Map((stores || []).map(s => [s.id, s]));
-    const t = blank();
+    const t = blank(), perProduct = {};
     for (const d of deliveries || []) {
       const s = byId.get(d.store_id) || {};
-      const add = (type, qty, price) => { qty = Number(qty) || 0; if (qty <= 0) return; t[type].units += qty; t[type].revenue += qty * (Number(price) || 0); };
-      add('large', d.qty_large, s.price_large);
-      add('large', d.qty_unfiltered, s.price_unfiltered);
-      add('mini', d.qty_small, s.price_small);
-      add('mini', d.qty_dairy_free, s.price_dairy_free);
-      add('other', d.qty_syrup, s.price_syrup);
+      const add = (type, qty, price, p) => { qty = Number(qty) || 0; if (qty <= 0) return; const revenue = qty * (Number(price) || 0); t[type].units += qty; t[type].revenue += revenue; addProduct(perProduct, type, p, qty, revenue); };
+      // Liters by flavour as recorded; anything not split by flavour stays "flavour not recorded".
+      const q = d.quantities && typeof d.quantities === 'object' ? d.quantities : {};
+      let split = 0;
+      for (const [k, f] of Object.entries(STORE_LITERS)) { const n = Math.max(0, Number(q[k]) || 0); if (!n) continue; split += n; add('large', n, s.price_large, { key: 'large:' + f, label: FLAVOURS[f] + ' · liter' }); }
+      add('large', (Number(d.qty_large) || 0) - split, s.price_large, { key: 'large:unknown', label: FLAVOURS.unknown + ' · liter' });
+      add('large', d.qty_unfiltered, s.price_unfiltered, { key: 'large:unfiltered', label: FLAVOURS.unfiltered + ' · liter' });
+      add('mini', d.qty_small, s.price_small, { key: 'mini', label: 'Minis (all flavours)' });
+      add('mini', d.qty_dairy_free, s.price_dairy_free, { key: 'mini', label: 'Minis (all flavours)' });
+      add('other', d.qty_syrup, s.price_syrup, { key: 'syrup', label: 'Syrups' });
     }
-    return { totals: t, count: (deliveries || []).length };
+    return { totals: t, count: (deliveries || []).length, products: perProduct };
   }
 
-  const api = { classify, onlineTotals, storeTotals, TYPES };
+  const api = { classify, productOf, onlineTotals, storeTotals, TYPES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (!root.document) return;
   root.GremierSalesByType = api;
@@ -94,7 +118,8 @@
   const day = v => { const d = new Date(v); return Number.isFinite(d.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(d) : ''; };
   let view = 'all';
   try { view = localStorage.getItem('gremier_sales_by_type_view') || 'all'; } catch (e) { /* private mode */ }
-  let state = null, serial = 0;
+  let state = null, serial = 0, mode = 'groups';
+  try { mode = localStorage.getItem('gremier_sales_by_type_mode') || 'groups'; } catch (e) { /* private mode */ }
 
   function range() {
     const kind = get('sbtPeriod')?.value || 'month', t = today(), y = +t.slice(0, 4);
@@ -117,7 +142,7 @@
     panel.id = 'salesByType';
     panel.className = 'sales-panel sbt-panel';
     panel.innerHTML = `
-      <div class="sales-heading"><div><h2>Sales by product type</h2></div></div>
+      <div class="sales-heading"><div><h2>Sales by product</h2></div></div>
       <div class="sales-controls">
         <label>Period<select class="form-input" id="sbtPeriod">
           <option value="month">This month to date</option><option value="lastmonth">Last full month</option>
@@ -126,6 +151,7 @@
         </select></label>
         <label id="sbtMonthWrap" hidden>Month<input type="month" class="form-input" id="sbtMonth" value="${today().slice(0, 7)}"></label>
         <div class="sbt-seg" role="group" aria-label="Which sales">${VIEWS.map(([k, l]) => `<button type="button" data-view="${k}" aria-pressed="${view === k}">${l}</button>`).join('')}</div>
+        <div class="sbt-seg" role="group" aria-label="Show">${[['groups', 'By group'], ['products', 'Every product']].map(([k, l]) => `<button type="button" data-mode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       </div>
       <p class="sales-note" id="sbtStatus" role="status"></p>
       <div id="sbtResults"></div>
@@ -133,11 +159,19 @@
         Online: paid website orders (cancelled, refunded and test orders left out), using each line's price — delivery fees and gift cards are under Other.
         Subscription boxes are split by what's inside them. Packs count each bottle (a 4-pack = 4 minis; 3 × 5L = 3 jerry cans).
         Stores: store deliveries, valued at each store's current prices like the billing screens. Large includes Unfiltered; Minis include dairy-free.
-        Stores don't currently receive jerry cans or coffee bars.</p></details>`;
+        Stores don't currently receive jerry cans or coffee bars.
+        Minis are one line: store deliveries don't record mini flavours reliably. Store liters use the flavours recorded on each delivery; deliveries without them show as "flavour not recorded". Store deliveries are recorded from June 2026.
+        Event and coffee-bar payments made by receipt (not through the website) aren't itemized, so they aren't included here.</p></details>`;
     const after = get('salesExplorer');
     if (after) after.after(panel); else { const tb = host.querySelector('.fin-toolbar'); if (tb) tb.before(panel); else host.append(panel); }
     get('sbtPeriod').onchange = () => { get('sbtMonthWrap').hidden = get('sbtPeriod').value !== 'pick'; load(); };
     get('sbtMonth').onchange = load;
+    panel.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+      mode = b.getAttribute('data-mode');
+      try { localStorage.setItem('gremier_sales_by_type_mode', mode); } catch (e) { /* ignore */ }
+      panel.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      draw();
+    });
     panel.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
       view = b.getAttribute('data-view');
       try { localStorage.setItem('gremier_sales_by_type_view', view); } catch (e) { /* ignore */ }
@@ -166,7 +200,7 @@
       const client = typeof sb !== 'undefined' ? sb : (root.MAIN_SB || root.ADMIN_SB);
       const [orders, deliveries, products, stores] = await Promise.all([
         pages(() => client.from('orders').select('id,created_at,items,payment_status,status,delivery_info,customer_name').eq('payment_status', 'paid').gte('created_at', shift(r.from, -1) + 'T00:00:00Z').lt('created_at', shift(r.to, 1) + 'T23:59:59Z').order('created_at').order('id')),
-        pages(() => client.from('store_deliveries').select('id,store_id,delivery_date,qty_large,qty_small,qty_dairy_free,qty_unfiltered,qty_syrup').gte('delivery_date', r.from).lte('delivery_date', r.to).order('delivery_date').order('id')),
+        pages(() => client.from('store_deliveries').select('id,store_id,delivery_date,qty_large,qty_small,qty_dairy_free,qty_unfiltered,qty_syrup,quantities').gte('delivery_date', r.from).lte('delivery_date', r.to).order('delivery_date').order('id')),
         pages(() => client.from('products').select('id,name_en,name_he,category,is_coffee_bar').order('id')),
         pages(() => client.from('stores').select('id,price_large,price_small,price_dairy_free,price_unfiltered,price_syrup').order('id')),
       ]);
@@ -189,6 +223,10 @@
     const t = blank();
     for (const p of parts) for (const k of Object.keys(t)) { t[k].units += p.totals[k].units; t[k].revenue += p.totals[k].revenue; }
     const total = Object.values(t).reduce((s, x) => s + x.revenue, 0);
+    const items = {};
+    for (const p of parts) for (const [k, v] of Object.entries(p.products || {})) { const r = items[k] || (items[k] = { ...v, units: 0, revenue: 0 }); r.units += v.units; r.revenue += v.revenue; }
+    const pct = n => total ? (n / total) * 100 : 0, bar = n => `<span class="sbt-bar" aria-hidden="true"><span style="width:${pct(n).toFixed(1)}%"></span></span>${n ? pct(n).toFixed(pct(n) < 10 ? 1 : 0) + '%' : '—'}`;
+    const byProduct = mode === 'products';
     const rows = TYPES.filter(x => x.key !== 'other' || t.other.units || t.other.revenue);
     const basis = view === 'stores' ? `${state.stores.count} store deliveries`
       : view === 'online' ? `${state.online.count} paid website orders`
@@ -196,11 +234,13 @@
     get('sbtResults').innerHTML = `
       <p class="sales-note">${esc(state.range.from)} → ${esc(state.range.to)} · ${esc(basis)}</p>
       <div class="table-wrap sales-table"><table class="sbt-table">
-        <thead><tr><th scope="col">Type</th><th scope="col">Units</th><th scope="col">Revenue</th><th scope="col">Share of revenue</th></tr></thead>
-        <tbody>${rows.map(r => {
-          const v = t[r.key], share = total ? (v.revenue / total) * 100 : 0;
-          return `<tr><th scope="row">${esc(r.label)}</th><td>${v.units ? count(v.units) : '—'}</td><td>${v.revenue ? money(v.revenue) : '—'}</td>
-            <td><span class="sbt-bar" aria-hidden="true"><span style="width:${share.toFixed(1)}%"></span></span>${share ? share.toFixed(0) + '%' : '—'}</td></tr>`;
+        <thead><tr><th scope="col">${byProduct ? 'Product' : 'Type'}</th><th scope="col">Units</th><th scope="col">Revenue</th><th scope="col">Share of all sales</th></tr></thead>
+        <tbody>${byProduct
+          ? Object.values(items).filter(v => v.revenue || v.units).sort((a, b) => b.revenue - a.revenue).map(v => `<tr><th scope="row">${esc(v.label)}</th><td>${v.units ? count(v.units) : '—'}</td><td>${v.revenue ? money(v.revenue) : '—'}</td><td>${bar(v.revenue)}</td></tr>`).join('')
+          : rows.slice().sort((a, b) => t[b.key].revenue - t[a.key].revenue).map(r => {
+          const v = t[r.key], inside = Object.values(items).filter(x => x.type === r.key && (x.revenue || x.units)).sort((a, b) => b.revenue - a.revenue);
+          return `<tr class="sbt-group"><th scope="row">${esc(r.label)}</th><td>${v.units ? count(v.units) : '—'}</td><td>${v.revenue ? money(v.revenue) : '—'}</td><td>${bar(v.revenue)}</td></tr>`
+            + (inside.length > 1 ? inside.map(x => `<tr class="sbt-item"><th scope="row">${esc(x.label)}</th><td>${x.units ? count(x.units) : '—'}</td><td>${x.revenue ? money(x.revenue) : '—'}</td><td>${bar(x.revenue)}</td></tr>`).join('') : '');
         }).join('')}</tbody>
         <tfoot><tr><th scope="row">Total</th><td></td><td>${money(total)}</td><td></td></tr></tfoot>
       </table></div>`;
@@ -219,6 +259,9 @@
     .sbt-table td,.sbt-table th{white-space:nowrap}
     .sbt-bar{display:inline-block;width:70px;height:6px;border-radius:6px;background:var(--bg3, #2a2a2a);margin-right:8px;vertical-align:middle;overflow:hidden}
     .sbt-bar span{display:block;height:100%;background:var(--gold, #c8860a)}
+    .sbt-group th,.sbt-group td{font-weight:600}
+    .sbt-item th{font-weight:400;padding-left:22px!important;color:var(--text2)}
+    .sbt-item td{color:var(--text2)}
     .sbt-table tfoot th,.sbt-table tfoot td{font-weight:600;border-top:1px solid var(--border)}
   `;
   document.head.appendChild(css);
