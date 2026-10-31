@@ -59,8 +59,8 @@
   async function shareLink(checkout){
     // A checkout link leaves delivery to them unless a date was already chosen here.
     const url=location.origin+'/?bar='+toCode()+(checkout?'&go=checkout':'')+'#coffeebars',plan=suggestion();
-    const text=plan?(checkout?T(`Your coffee bar for ${plan.tier.guests} guests · ₪${plan.total}. Choose delivery and pay here:`,`בר הקפה שלכם ל-${plan.tier.guests} אורחים · ₪${plan.total}. בוחרים משלוח ומשלמים כאן:`)
-      :T(`Coffee bar for ${plan.tier.guests} guests · ₪${plan.total}. Open it to check and book:`,`בר קפה ל-${plan.tier.guests} אורחים · ₪${plan.total}. פתחו כדי לבדוק ולהזמין:`)):'';
+    const text=plan?(checkout?T(`Your coffee bar for ${plan.tier.guests} guests. Choose delivery and pay here:`,`בר הקפה שלכם ל-${plan.tier.guests} אורחים. בוחרים משלוח ומשלמים כאן:`)
+      :T(`Coffee bar for ${plan.tier.guests} guests. Open it to check and book:`,`בר קפה ל-${plan.tier.guests} אורחים. פתחו כדי לבדוק ולהזמין:`)):'';
     try{if(navigator.share){await navigator.share({title:'Gremier coffee bar',text,url});return;}}catch(e){if(e&&e.name==='AbortError')return;}
     try{await navigator.clipboard.writeText(url);if(typeof showToast==='function')showToast(T('Link copied. Paste it in WhatsApp or anywhere.','הקישור הועתק. הדביקו בוואטסאפ או בכל מקום.'));}
     catch{window.prompt(T('Copy this link:','העתיקו את הקישור:'),url);}
