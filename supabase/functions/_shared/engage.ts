@@ -87,6 +87,7 @@ export async function settleReferral(sb: Sb, orderId: string): Promise<void> {
   await sendOrderEmails({
     ownerSubject: "", ownerText: "", skipOwner: true,
     customerEmail: ref.email,
+    customerCard: { label: "Gift card · כרטיס מתנה", big: `₪${REFERRAL_AMOUNT}`, codeLabel: "Your code · הקוד שלכם", code, note: "Enter it at checkout · מזינים בקופה" },
     customerSubject: "Your friend ordered — here's ₪20 from Gremier Coffee ☕",
     customerText: `Thank you for sharing Gremier Coffee!\n\nYour friend just placed their first order, so here's a ₪${REFERRAL_AMOUNT} gift card for your next one:\n\n${code}\n\nEnter it at checkout under "Coupon or gift card".\n${SITE}\n\nתודה ששיתפת! החבר/ה שלך הזמינו בפעם הראשונה, אז הנה כרטיס מתנה של ₪${REFERRAL_AMOUNT} להזמנה הבאה שלך:\n${code}\n\nGremier Coffee`,
   });

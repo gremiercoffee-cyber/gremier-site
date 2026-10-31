@@ -1,4 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
+import {designedEmailHtml} from '../_shared/email-design.ts';
 import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
 import {customerFields,normalizeManualInput,manualPayload} from '../_shared/manual-receipt-model.ts';
 import {resultDocument} from '../_shared/finbot-receipt-model.ts';
@@ -25,6 +26,8 @@ async function email(db:any,row:any){
   const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':`business-receipt/${row.id}`},
    body:JSON.stringify({from:Deno.env.get('ORDER_EMAIL_FROM')||'Gremier Coffee <onboarding@resend.dev>',to:[row.customer_snapshot.email],
     reply_to:Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com',subject:`Gremier Coffee — ${docName(row)}`,text:`שלום ${row.customer_snapshot.name},\nמצורפת ${docName(row)} על תשלום בסך ₪${(row.amount_minor/100).toFixed(2)}.\nתודה, גרמיר קפה`,
+    html:designedEmailHtml({he:true,preheader:`${docName(row)} · ₪${(row.amount_minor/100).toFixed(2)}`,hello:`שלום ${row.customer_snapshot.name}`,lead:`מצורפת ${docName(row)} על התשלום שלכם.`,
+     body:[`סכום: ₪${(row.amount_minor/100).toFixed(2)}`,'המסמך המקורי מצורף למייל הזה כקובץ PDF.'],sign:'תודה, גרמיר קפה'}),
     attachments:[{filename:`Gremier-receipt-${row.id.slice(0,8)}.pdf`,content:btoa(binary)}]}),signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw Error('email_delivery_failed');
   const saved=await db.from('business_receipts').update({email_sent_at:new Date().toISOString(),email_error:null}).eq('id',row.id).select('*').single();return saved.data||row;

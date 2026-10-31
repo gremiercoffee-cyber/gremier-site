@@ -1,3 +1,4 @@
+import { designedFromText, type CodeCard, type EmailItem } from "./email-design.ts";
 /** Order email via Resend (Supabase secrets: RESEND_API_KEY, NOTIFY_EMAIL, ORDER_EMAIL_FROM).
 
  * NOTIFY_EMAIL = where owner alerts are delivered (e.g. gremiercoffee@gmail.com).
@@ -46,6 +47,11 @@ export async function sendOrderEmails(params: {
   customerAttachments?: Array<{ filename: string; content: string }>;
   /** Optional HTML version of the customer email (the text version is still sent). */
   customerHtml?: string;
+  /** Items to show with photos in the designed email (an order, a cart). */
+  customerItems?: EmailItem[];
+  customerItemsTitle?: string;
+  /** A gift-card-style code card (gift cards, promo codes). */
+  customerCard?: CodeCard;
   ownerAttachments?: Array<{ filename: string; content: string }>;
 
 }): Promise<{ ok: boolean; detail?: string }> {
@@ -133,7 +139,9 @@ export async function sendOrderEmails(params: {
   const customer = String(params.customerEmail || "").trim();
   if (customer && customer.toLowerCase() !== owner.toLowerCase()) {
     if (params.customerSubject && params.customerText) {
-      await sendOne(customer, params.customerSubject, params.customerText, params.customerAttachments, params.customerHtml);
+      // Every customer email is designed: its own HTML, or one made from its text.
+      const html = params.customerHtml || designedFromText(params.customerText, { subject: params.customerSubject, items: params.customerItems, itemsTitle: params.customerItemsTitle, card: params.customerCard });
+      await sendOne(customer, params.customerSubject, params.customerText, params.customerAttachments, html);
     }
   }
 
@@ -250,7 +258,7 @@ export async function sendFulfillmentEmail(order: {
   customer_name?: string | null;
   order_number?: number | null;
   delivery_address?: string | null;
-}): Promise<{ ok: boolean; emailed: boolean; detail?: string }> {
+}, items?: EmailItem[]): Promise<{ ok: boolean; emailed: boolean; detail?: string }> {
   const customer = String(order.customer_email || "").trim();
   if (!customer) return { ok: true, emailed: false, detail: "no customer email" };
   const { subject, text } = buildFulfillmentEmailText(order);
@@ -262,6 +270,8 @@ export async function sendFulfillmentEmail(order: {
     customerName: order.customer_name,
     customerSubject: subject,
     customerText: text,
+    customerItems: items,
+    customerItemsTitle: "Your order",
   });
   return { ok: res.ok, emailed: res.ok, detail: res.detail };
 }

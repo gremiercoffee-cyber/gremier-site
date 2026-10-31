@@ -2,6 +2,7 @@ import { describeCoffeeBar } from "./coffee-bar-order.ts";
 import { subscriptionDeliveryTarget, SUBSCRIPTION_DELIVERY_NOTE } from "./subscription-delivery.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
+import { emailItems } from "./email-items.ts";
 import { sendWebPushToAdmins } from "./web-push.ts";
 import { receiptAttachment } from "./finbot-receipts.ts";
 
@@ -280,7 +281,7 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
 /** Notify when an order is paid. Resend (primary) + optional Google Sheet + Pushover fallback. */
 export async function sendOrderPaidNotification(
   order: OrderNotifyRow,
-  options?: { force?: boolean; receiptPdf?: {filename:string;content:string} | null },
+  options?: { force?: boolean; receiptPdf?: {filename:string;content:string} | null; sb?: SupabaseClient },
 ): Promise<{ ok: boolean; detail?: string }> {
   const { subject, text, payload } = buildOrderMessage(order);
   const itemsSummary = String(payload.items_summary || "—");
@@ -301,7 +302,11 @@ export async function sendOrderPaidNotification(
     notes: order.notes,
   });
 
+  // The designed email shows what they ordered, with photos.
+  const heMail = /[֐-׿]/.test(customerReceipt.text);
+  const customerItems = options?.sb ? await emailItems(options.sb, order.items, heMail).catch(() => []) : [];
   const resend = await sendOrderEmails({
+    customerItems, customerItemsTitle: heMail ? "ההזמנה שלכם" : "Your order",
     ownerSubject: subject,
     ownerText: text,
     customerEmail: order.customer_email,
@@ -364,7 +369,7 @@ const info = order.delivery_info && typeof order.delivery_info === "object"
 
   let receiptPdf = null;
   try { receiptPdf = await receiptAttachment(supabase, orderId, order.order_number); } catch { /* receipt tables may not be configured yet */ }
-  const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force, receiptPdf });
+  const result = await sendOrderPaidNotification(order as OrderNotifyRow, { force: options?.force, receiptPdf, sb: supabase });
 
   const delivery = describeDelivery(order.delivery_info as Record<string, unknown>);
   // Lead a requested delivery date so it can't be missed at a glance.

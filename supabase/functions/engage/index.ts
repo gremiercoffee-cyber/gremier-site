@@ -151,6 +151,35 @@ Deno.serve(async (req) => {
         return json({ ok: true, linked: !!email });
       }
 
+      case "birthday_save":
+      case "birthday_get": {
+        // A birthday (day + month) for the 5% birthday-month code. Saved only with proof it's theirs:
+        // their login, or an order placed in the last day with that email.
+        let email: string | null = null, userId: string | null = null;
+        const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        if (jwt && jwt !== Deno.env.get("SUPABASE_ANON_KEY")) {
+          const { data } = await sb.auth.getUser(jwt).catch(() => ({ data: { user: null } }));
+          if (data?.user?.email) { email = data.user.email.toLowerCase(); userId = data.user.id; }
+        }
+        if (!email && body.action === "birthday_save" && isUuid(body.order_id)) {
+          const { data: o } = await sb.from("orders").select("customer_email, created_at").eq("id", body.order_id).maybeSingle();
+          if (o?.customer_email && Date.now() - new Date(o.created_at).getTime() < 864e5) email = String(o.customer_email).toLowerCase();
+        }
+        if (!email) return json({ error: "not_allowed" }, 403);
+        if (body.action === "birthday_get") {
+          const { data } = await sb.from("customer_birthdays").select("month, day").eq("email", email).maybeSingle();
+          return json({ birthday: data || null });
+        }
+        const month = Number(body.month), day = Number(body.day);
+        const maxDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+        if (!Number.isInteger(month) || !maxDay || !Number.isInteger(day) || day < 1 || day > maxDay) return json({ error: "bad_date" }, 400);
+        const row: Record<string, unknown> = { email, month, day, lang: body.lang === "en" ? "en" : "he", updated_at: new Date().toISOString() };
+        if (userId) row.user_id = userId;
+        const { error } = await sb.from("customer_birthdays").upsert(row, { onConflict: "email" });
+        if (error) { console.error("birthday_save:", error.message); return json({ error: "save_failed" }, 500); }
+        return json({ ok: true });
+      }
+
       case "push_unsubscribe": {
         const endpoint = String(body.endpoint || "").trim();
         if (endpoint) await sb.from("customer_push_subscriptions").delete().eq("endpoint", endpoint);

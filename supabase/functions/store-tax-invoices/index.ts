@@ -5,6 +5,7 @@
 //   { action:'set_number', id, number }     → the invoice number, when it couldn't be read from the PDF
 //   { action:'release', id, confirm_not_in_finbot:true } → a refused invoice gives its months back
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
+import {designedEmailHtml} from '../_shared/email-design.ts';
 import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
 import {resultDocument} from '../_shared/finbot-receipt-model.ts';
 import {originalPdf} from '../_shared/finbot-receipts.ts';
@@ -38,6 +39,8 @@ async function email(db:any,row:any){
    body:JSON.stringify({from:Deno.env.get('ORDER_EMAIL_FROM')||'Gremier Coffee <onboarding@resend.dev>',to:[row.customer_snapshot.email],
     reply_to:Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com',subject:`Gremier Coffee — חשבונית מס${row.document_number?' '+row.document_number:''}`,
     text:`שלום ${row.customer_snapshot.name},\nמצורפת חשבונית מס עבור ${months}: ₪${(row.gross_minor/100).toFixed(2)} כולל מע"מ.\nתודה, גרמיר קפה`,
+    html:designedEmailHtml({he:true,preheader:`חשבונית מס · ${months}`,hello:`שלום ${row.customer_snapshot.name}`,lead:`מצורפת חשבונית מס עבור ${months}.`,
+     body:[`סה"כ לתשלום: ₪${(row.gross_minor/100).toFixed(2)} כולל מע"מ${row.document_number?` · חשבונית מס ${row.document_number}`:''}`,'המסמך המקורי מצורף למייל הזה כקובץ PDF.'],sign:'תודה, גרמיר קפה'}),
     attachments:[{filename:`Gremier-invoice-${row.document_number||row.id.slice(0,8)}.pdf`,content:btoa(binary)}]}),signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw Error('email_delivery_failed');
   const saved=await db.from('store_tax_invoices').update({email_sent_at:new Date().toISOString(),email_error:null}).eq('id',row.id).select('*').single();return saved.data||row;

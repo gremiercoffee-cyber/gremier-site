@@ -11,6 +11,8 @@
 // Every call must pass isServiceOrAdmin (crons use the service key).
 
 import { siteAnalyticsPeriod, siteShoppingActivity } from "../_shared/site-analytics.ts";
+import { designedEmailHtml, itemsHtml } from "../_shared/email-design.ts";
+import { emailItems } from "../_shared/email-items.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { sendWebPushToAdmins } from "../_shared/web-push.ts";
@@ -339,17 +341,10 @@ function promoEmail(name: string, items: Record<string, any>[], he: boolean, opt
   const stop = he ? "להסרה מרשימת הדיוור" : "Unsubscribe";
   const text = `${intro}\n\n${cartTitle}\n${lines.map((l) => "• " + l).join("\n")}\n\n${cta}: ${link}\n\n${note}\n\n${sign}\n\n—\n${stop}: ${optoutUrl}`;
   const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as Record<string, string>)[c]);
-  const html = `<div dir="${he ? "rtl" : "ltr"}" style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1a1a1a;text-align:center">
-    <p style="font-size:17px;line-height:1.5;margin:0 0 18px">${esc(intro)}</p>
-    <p style="font-size:13px;color:#5f656d;margin:0 0 6px">${cartTitle}</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px;border-collapse:collapse">${items.map((i, n) => {
-      const img = images[String(i.base_product_id || i.product_id || i.id).split("_")[0]];
-      return `<tr><td style="padding:6px 8px">${img ? `<img src="${img}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid #eee">` : ""}</td><td style="padding:6px 8px;font-size:15px;text-align:${he ? "right" : "left"}">${esc(lines[n])}</td></tr>`;
-    }).join("")}</table>
-    <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:15px">${cta}</a>
-    <p style="font-size:12px;color:#8a8f96;margin:22px 0 0">${note}</p>
-    <p style="font-size:13px;color:#8a8f96;margin-top:24px">${sign}</p>
-    <p style="font-size:11px;color:#a0a5ab;margin-top:18px"><a href="${optoutUrl}" style="color:#a0a5ab">${stop}</a></p></div>`;
+  // Designed, with photos of what's in their cart.
+  const html = designedEmailHtml({ he, preheader: intro, hello: he ? "משלוח חינם לפני שבת 🕯️" : "Free delivery before Shabbat 🕯️", lead: intro,
+    bodyBlocks: [itemsHtml(items.map((i) => ({ name: he ? (i.name_he || i.name_en) : i.name_en, qty: Number(i.qty) || 1, image: images[String(i.base_product_id || i.product_id || i.id).split("_")[0]] || null })), he, cartTitle.replace(/:$/, ""))],
+    cta: { label: cta, url: link }, small: [note, stop], smallLinks: ["", optoutUrl], sign });
   return { subject, text, html };
 }
 
@@ -464,7 +459,7 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
 // 2–7 days after delivery (enough time to taste it), once per order, at most once a month per
 // person (subscribers aren't asked every delivery), daytime only. One link opens a combined rating and comment form.
 // No referral offer in these emails: customers find "give ₪20, get ₪20" on the website.
-function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], opts: { recap?: string; optoutUrl?: string } = {}) {
+async function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], opts: { recap?: string; optoutUrl?: string } = {}, sb?: Sb) {
   const esc = (v: string) => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
   const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
   const subject = he ? "איך היה הקולד ברו? ☕" : "How was your cold brew? ☕";
@@ -475,13 +470,14 @@ function feedbackEmail(o: Record<string, any>, he: boolean, links: string[], opt
   const hint = he ? "בחרו דירוג והוסיפו כמה מילים אם תרצו — הכול בטופס אחד." : "Choose a rating and add a few words if you like—all in one form.";
   const stop = opts.optoutUrl ? `\n\n${he ? "להסרה:" : "Unsubscribe:"} ${opts.optoutUrl}` : "";
   const text = `${intro}\n\n${recap}\n\n${hint}\n${writeLabel}: ${writeUrl}\n\nGremier Coffee${stop}`;
-  const html = `<div dir="${he ? 'rtl' : 'ltr'}" style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px 16px;color:#1a1a1a;text-align:center">
-    <p style="font-size:17px;line-height:1.5">${esc(intro)}</p>
-    <p style="font-size:14px;line-height:1.6;background:#f5f6f7;border-radius:12px;padding:14px">${esc(recap)}</p>
-    <p style="font-size:14px;color:#666">${hint}</p>
-    <a href="${writeUrl}" style="display:inline-block;padding:14px 24px;border-radius:30px;background:#252422;color:white;text-decoration:none">${writeLabel}</a>
-    <p style="font-size:13px;color:#888;margin-top:28px">Gremier Coffee</p>
-    ${opts.optoutUrl ? `<a href="${opts.optoutUrl}" style="font-size:11px;color:#999">${he ? 'להסרה מרשימת הדיוור' : 'Unsubscribe'}</a>` : ''}</div>`;
+  // Designed, with photos of what they ordered.
+  const items = sb ? await emailItems(sb, o.items, he).catch(() => []) : [];
+  const html = designedEmailHtml({ he, preheader: hint, hello: intro, lead: hint,
+    bodyBlocks: [items.length ? itemsHtml(items, he, he ? "ההזמנה שלכם" : "Your order") : ""],
+    body: items.length ? [] : [recap],
+    cta: { label: writeLabel, url: writeUrl },
+    small: opts.optoutUrl ? [he ? "להסרה מרשימת הדיוור" : "Unsubscribe"] : [], smallLinks: opts.optoutUrl ? [opts.optoutUrl] : [],
+    sign: he ? "באהבה, גרמיר קפה" : "With love, Gremier Coffee" });
   return { subject, text, html };
 }
 
@@ -527,7 +523,7 @@ async function feedbackCampaign(sb: Sb, body: Record<string, unknown>) {
     const he = orderIsHe(o);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
-    const mail = feedbackEmail(o, he, links, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) });
+    const mail = await feedbackEmail(o, he, links, { recap: orderRecap(o, he), optoutUrl: await optoutUrlFor(to) }, sb);
     // About the brand more broadly than one delivery.
     mail.subject = he ? "מה דעתך על גרמיר? ☕" : "What do you think of Gremier? ☕";
     return mail;
@@ -595,7 +591,7 @@ async function feedbackRequests(sb: Sb, dryRun: boolean) {
     const he = orderIsHe(o);
     const t = await signToken("feedback", o.id);
     const links = [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`);
-    const { subject, text, html } = feedbackEmail(o, he, links, { optoutUrl: await optoutUrlFor(email) });
+    const { subject, text, html } = await feedbackEmail(o, he, links, { optoutUrl: await optoutUrlFor(email) }, sb);
     if (dryRun) { sent.push(`(dry run) #${o.order_number}`); preview = preview || { to: email, subject, text }; continue; }
     const { data: first } = await sb.rpc("claim_order_step", { p_order_id: o.id, p_step: "feedback_asked_at" });
     if (first !== true) { skip("already_asked"); continue; }
@@ -705,7 +701,7 @@ Deno.serve(async (req) => {
           if (!o) return json({ error: "order_not_found" }, 404);
           const he = body.lang ? body.lang === "he" : orderIsHe(o);
           const t = await signToken("feedback", o.id);
-          const mail = feedbackEmail(o, he, [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`));
+          const mail = await feedbackEmail(o, he, [1, 2, 3, 4, 5].map((r) => `${SITE}/?fb=${o.id}.${t}&r=${r}`), {}, sb);
           if (body.send_to) await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: String(body.send_to), customerSubject: "[Test] " + mail.subject, customerText: mail.text, customerHtml: mail.html });
           return json({ subject: mail.subject, text: mail.text, sent_to: body.send_to || null });
         }

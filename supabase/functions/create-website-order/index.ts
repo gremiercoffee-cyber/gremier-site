@@ -423,7 +423,9 @@ Deno.serve(async (req) => {
         const usesCount = Number(coupon.uses_count) || 0;
         const notExhausted = maxUses === null || usesCount < maxUses;
         const notExpired = !coupon.expires_at || new Date(coupon.expires_at) > new Date();
-        if (notExhausted && notExpired) {
+        // A code made for one email (e.g. a birthday code) works only with that email.
+        const forThisEmail = coupon.user_id || !coupon.customer_email || String(coupon.customer_email).toLowerCase() === String(customerEmail || "").toLowerCase();
+        if (notExhausted && notExpired && forThisEmail) {
           const couponDiscount = coupon.discount_type === "percent"
             ? Math.round(subtotal * (Number(coupon.discount_value) / 100))
             : Number(coupon.discount_value) || 0;

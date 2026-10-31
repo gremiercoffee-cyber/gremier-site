@@ -79,6 +79,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    // A code made for one email (e.g. a birthday code) works only with that email.
+    if (!coupon.user_id && coupon.customer_email && coupon.customer_email.toLowerCase() !== String(email || '').trim().toLowerCase()) {
+      return json({ valid: false, error: 'not_yours', message: email ? 'This code is for a different email' : 'Enter your email first: this code is personal' });
+    }
+
     // Referral (friend) codes: first paid order only, and not the person who shared it.
     const refProblem = await referralProblem(sb, cleanCode, email || null);
     if (refProblem) return json({ valid: false, error: 'referral', message: refProblem });

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { emailItems } from "../_shared/email-items.ts";
 import { sendFulfillmentEmail } from "../_shared/order-email.ts";
 import { syncPaymentLinkFromOrder } from "../_shared/sync-payment-link-from-order.ts";
 import { completeOpsDeliveryFromOrder, recordOpsInventoryFromClient } from "../_shared/sync-ops-delivery.ts";
@@ -135,7 +136,7 @@ Deno.serve(async (req) => {
         customer_name: order.customer_name,
         order_number: order.order_number,
         delivery_address: order.delivery_address,
-      });
+      }, await emailItems(supabase, order.items, false).catch(() => []));
 
       emailed = emailResult.emailed;
       emailDetail = emailResult.detail;
