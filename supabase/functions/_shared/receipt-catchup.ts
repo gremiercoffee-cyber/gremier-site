@@ -34,7 +34,8 @@ export async function runReceiptCatchup(db:any) {
         const taxed=websiteDocType(order)==='2',n=order.order_number||job.order_id;
         const title=taxed?`Gremier · Tax invoice/receipt · חשבונית מס/קבלה · #${n}`:`Gremier · Receipt / קבלה · #${n}`;
         const text=taxed?`Your tax invoice/receipt for order #${n} is attached. Thank you!\n\nמצורפת חשבונית מס/קבלה עבור הזמנה #${n}. תודה!`:`Your official receipt for order #${n} is attached. Thank you!\n\nמצורפת הקבלה עבור הזמנה #${n}. תודה!`;
-        const sent=await sendOrderEmails({ownerSubject:title,ownerText:text,ownerAttachments:[attachment],skipOwner:!!order.customer_email,
+        const sent=await sendOrderEmails({ownerSubject:title,ownerText:text,ownerAttachments:[attachment],// An order placed with Gremier's own address: the document goes to the owner.
+          skipOwner:!!order.customer_email&&String(order.customer_email).trim().toLowerCase()!==(Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com').toLowerCase(),
           customerEmail:order.customer_email,customerSubject:title,customerText:text,customerAttachments:[attachment]});
         if(!sent.ok)throw Error('receipt_email_requires_review');
         status='done';

@@ -90,8 +90,8 @@ Deno.serve(async req=>{
 מצורפת חשבונית מס/קבלה עבור הזמנה #${n}. תודה!`:`Your official receipt for order #${n} is attached. Thank you!
 
 מצורפת הקבלה עבור הזמנה #${n}. תודה!`;
-      const sent=await sendOrderEmails({ownerSubject:title,ownerText:text,ownerAttachments:[attachment],skipOwner:true,customerEmail:order.customer_email,customerSubject:title,customerText:text,customerAttachments:[attachment]});
-      return json({sent:!!sent.ok});
+      const sent=await sendOrderEmails({ownerSubject:title,ownerText:text,ownerAttachments:[attachment],skipOwner:String(order.customer_email).trim().toLowerCase()!==(Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com').toLowerCase(),customerEmail:order.customer_email,customerSubject:title,customerText:text,customerAttachments:[attachment]});
+      return json({sent:!!sent.ok,...(sent.ok?{}:{detail:String(sent.detail||'').replace(/[^\s:@]+@[^\s:]+/g,'[customer]').slice(0,300)})});
     }
     if(body.action==='retry_pdf')return json({receipt:await repairReceiptPdf(db,id)});
     if(body.action==='send_test_email')return json(await sendReceiptTest(db,id));
