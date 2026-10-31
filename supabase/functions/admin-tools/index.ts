@@ -1,3 +1,4 @@
+import { subscriptionState } from "../_shared/subscription-status.ts";
 // supabase/functions/admin-tools/index.ts
 // Admin-only helpers for the admin app, plus two cron jobs:
 //   { action: "subscriptions" }            → website subscriptions with live PayMe status
@@ -99,7 +100,8 @@ async function listSubscriptions(sb: Sb) {
       started: base.created_at,
       renewals: renewals.map((r) => ({ order_number: r.order_number, created_at: r.created_at, payment_status: r.payment_status, total: r.total })),
       // Live from PayMe when reachable; otherwise what the webhook last recorded.
-      active: live ? String(live.sub_status) === "0" || live.sub_status === 0 : !/cancel|fail/i.test(String(di.subscription_status || "")),
+      ...subscriptionState(live ? live.sub_status : null, String(di.subscription_status || (di.subscription_first_iteration_key ? "sub-active" : ""))),
+      provider_status: live ? String(live.sub_status ?? "") : null,
       paid_last: live ? live.sub_paid === true || String(live.sub_paid) === "1" || String(live.sub_paid) === "true" : null,
       next_date: live ? String(live.sub_next_date || "") : "",
       prev_date: live ? String(live.sub_prev_date || "") : "",
@@ -472,10 +474,13 @@ async function feedbackEmail(o: Record<string, any>, he: boolean, links: string[
   const text = `${intro}\n\n${recap}\n\n${hint}\n${writeLabel}: ${writeUrl}\n\nGremier Coffee${stop}`;
   // Designed, with photos of what they ordered.
   const items = sb ? await emailItems(sb, o.items, he).catch(() => []) : [];
-  const html = designedEmailHtml({ he, preheader: hint, hello: intro, lead: hint,
-    bodyBlocks: [items.length ? itemsHtml(items, he, he ? "ההזמנה שלכם" : "Your order") : ""],
+  // Rate right in the email: one tap on a star records it (no extra page to wait for first).
+  const stars = `<tr><td style="padding:0 0 22px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:14px;border:1px solid #e7e0d6"><tr><td style="padding:16px 12px 6px;text-align:center;font-size:14px;color:#4a4a4a">${he ? "הקישו על כוכב כדי לדרג" : "Tap a star to rate"}</td></tr>
+    <tr><td style="padding:0 8px 16px;text-align:center"><table role="presentation" cellspacing="0" cellpadding="0" dir="ltr" style="margin:0 auto"><tr>${links.map((u, i) => `<td style="padding:0 4px"><a href="${esc(u)}" style="display:block;width:48px;text-decoration:none;text-align:center"><span style="display:block;font-size:38px;line-height:44px;color:#e0a526">★</span><span style="display:block;font-size:12px;color:#8a7c6e">${i + 1}</span></a></td>`).join("")}</tr></table></td></tr></table></td></tr>`;
+  const html = designedEmailHtml({ he, preheader: hint, hello: intro, lead: he ? "דירוג בהקשה אחת, ממש כאן במייל." : "Rate it with one tap, right here in the email.",
+    bodyBlocks: [stars, items.length ? itemsHtml(items, he, he ? "ההזמנה שלכם" : "Your order") : ""],
     body: items.length ? [] : [recap],
-    cta: { label: writeLabel, url: writeUrl },
+    cta: { label: he ? "רוצים להוסיף כמה מילים?" : "Want to add a few words?", url: writeUrl },
     small: opts.optoutUrl ? [he ? "להסרה מרשימת הדיוור" : "Unsubscribe"] : [], smallLinks: opts.optoutUrl ? [opts.optoutUrl] : [],
     sign: he ? "באהבה, גרמיר קפה" : "With love, Gremier Coffee" });
   return { subject, text, html };

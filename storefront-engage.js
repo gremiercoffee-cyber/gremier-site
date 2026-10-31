@@ -231,7 +231,12 @@
     stripParams('fb', 'r', 'write');
     const [orderId, t] = fb.split('.');
     put('gremier_fb_done:' + orderId, 1);
-    whenLanguageSet(() => writeSheet(orderId, t, r >= 1 && r <= 5 ? r : 0, 'email'));
+    // A star tapped in the email is the rating: save it now; the sheet only offers a comment on top.
+    const saved = r >= 1 && r <= 5 ? engage({ action: 'feedback', order_id: orderId, t, rating: r, source: 'email' }).catch(() => null) : null;
+    whenLanguageSet(() => {
+      writeSheet(orderId, t, r >= 1 && r <= 5 ? r : 0, 'email');
+      if (saved) saved.then((res) => { const h = $('fbTitle'); if (res?.ok && h) h.textContent = T('Thanks! Your rating is saved ✓', 'תודה! הדירוג נשמר ✓'); });
+    });
   }
 
   // Next visit: one small card, once per delivered order, only if the email wasn't answered.
