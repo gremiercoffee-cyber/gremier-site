@@ -7,7 +7,7 @@
  const money=n=>new Intl.NumberFormat('en-IL',{style:'currency',currency:'ILS'}).format(n/100);
  const VAT=0.18,vatOn=n=>Math.round(n*VAT);
  const month=b=>new Date(b.year,b.month-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
- const errors={store_tax_id_required:'Add the store\'s ח.פ. / עוסק number first (Saved customers & store details).',store_customer_missing:'This store has no saved customer details yet.',
+ const errors={store_tax_id_required:'Add the store\'s ח.פ. / עוסק number first (Saved customers & store details).',store_customer_missing:'This store has no saved customer details yet.',store_tax_id_invalid:'The store\'s saved ח.פ. isn\'t a valid number. Fix it in Saved customers & store details.',
   store_email_required:'Add the store\'s email first, or untick "Email it".',no_unpaid_months:'Nothing left to invoice for this store.',billing_changed_refresh_preview:'The months changed. Preview again.',
   month_already_invoiced_refresh:'Some of these months were just invoiced. Refresh.',invoice_number_digits:'Enter the invoice number (digits only).'};
  async function call(body){

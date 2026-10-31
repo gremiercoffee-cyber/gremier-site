@@ -6,13 +6,13 @@ test('one invoice for all unpaid months: a line per month, VAT on top, shares ad
  const plan=m.invoiceBills([bill('b',9,4020),bill('a',7,1430),bill('c',10,2541.5)],'s');
  assert.deepEqual(plan.lines.map(l=>l.month),[7,9,10]);assert.equal(plan.net_minor,799150);assert.equal(plan.vat_minor,143847);assert.equal(plan.gross_minor,942997);
  assert.equal(plan.shares.reduce((n,s)=>n+s.gross_minor,0),plan.gross_minor);
- const p=m.invoicePayload({name:'Good Store Ltd',tax_id:'123456789'},plan.lines,new Date('2026-11-01T10:00:00Z'));
- assert.equal(p.type,'0');assert.equal(p.vatType,true);assert.equal(p.customer.tax,'123456789');assert.deepEqual(p.items.map(i=>i.price),[1430,4020,2541.5]);
+ const p=m.invoicePayload({name:'Good Store Ltd',tax_id:'205853567'},plan.lines,new Date('2026-11-01T10:00:00Z'));
+ assert.equal(p.type,'0');assert.equal(p.vatType,true);assert.equal(p.customer.tax,'205853567');assert.deepEqual(p.items.map(i=>i.price),[1430,4020,2541.5]);
 });
 test('paid, cancelled or already invoiced months are refused; a ח.פ. is required',()=>{
  for(const patch of [{paid_at:'x'},{cancelled_at:'x'},{tax_invoice_id:'i'},{store_id:'other'}])assert.throws(()=>m.invoiceBills([bill('a',7,100,patch)],'s'),/month_not_invoiceable/);
  assert.throws(()=>m.invoiceBills([],'s'),/no_unpaid_months/);
- assert.throws(()=>m.invoiceCustomer({name:'Store'}),/store_tax_id_required/);
+ assert.throws(()=>m.invoiceCustomer({name:'Store'}),/store_tax_id_required/);assert.throws(()=>m.invoiceCustomer({name:'Store',tax_id:'205853568'}),/store_tax_id_invalid/);assert.equal(m.invoiceCustomer({name:'Store',tax_id:'515322758'}).tax_id,'515322758');
 });
 test('the document number is read next to its title, in either text direction',()=>{
  assert.equal(documentNumber(['גרמיר','20278',' / הלבק','212'],'קבלה'),'20278');

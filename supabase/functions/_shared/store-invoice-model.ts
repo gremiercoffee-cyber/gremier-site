@@ -9,6 +9,7 @@ export function invoiceCustomer(raw:any){
  const c=customerFields(raw);
  // A tax invoice to a business carries the buyer's ח.פ. / עוסק number.
  if(!c.tax_id)throw Error('store_tax_id_required');
+ if(c.tax_id.split('').reduce((s,d,i)=>{const v=Number(d)*((i%2)+1);return s+(v>9?v-9:v);},0)%10!==0)throw Error('store_tax_id_invalid');
  return c;
 }
 export function invoiceBills(bills:any[],storeId:string){

@@ -104,6 +104,8 @@
   try{
    const value={name:get('customerName').value.trim(),tax_id:get('customerTax').value.trim(),email:get('customerEmail').value.trim(),phone:get('customerPhone').value.trim(),address:get('customerAddress').value.trim(),store_id:get('customerStore').value||null,updated_at:new Date().toISOString()};
    if(!value.name||value.name.length>100)throw Error('Enter the official customer name (up to 100 characters).');if(value.tax_id&&!/^\d{9}$/.test(value.tax_id))throw Error('ח.פ./עוסק must contain 9 digits.');
+   // Israeli ID / company numbers carry a check digit: catches a mistyped digit before it reaches an invoice.
+   if(value.tax_id&&value.tax_id.split('').reduce((s,d,i)=>{const v=Number(d)*((i%2)+1);return s+(v>9?v-9:v);},0)%10!==0)throw Error('That ח.פ./עוסק number isn\'t valid. Check for a mistyped digit.');
    if(value.email&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email)||value.email.length>50))throw Error('Enter a valid receipt email (up to 50 characters).');
    if(value.phone&&!/^\+?\d{7,15}$/.test(value.phone.replace(/[\s().-]/g,'')))throw Error('Enter a valid phone number, or leave it blank.');
    const id=get('customerEdit').value,r=id?await sbc().from('receipt_customers').update(value).eq('id',id).select('id').single():await sbc().from('receipt_customers').insert(value).select('id').single();
