@@ -33,5 +33,10 @@ export function quotePack(pack: any, chosen: unknown, byId: Map<string, any>) {
     return { product_id: String(p.id), name_en: p.name_en || null, name_he: p.name_he || null, qty, per_product: per, price: Number(p.price) };
   });
   const total = Math.round(full * (1 - discount));
-  return { total, full: Math.round(full * 100) / 100, contents, label_en: contents.map((c) => `${c.qty}× ${c.name_en}`).join(', '), label_he: contents.map((c) => `${c.qty}× ${c.name_he || c.name_en}`).join(', ') };
+  // Minis go in one by one, so the label names single bottles, not their 4-packs.
+  const single = contents.some((c) => c.per_product > 1);
+  const label = (n: string | null) => String(n || '').replace(/\s*\d+\s*-?\s*pack\b/i, '').replace(/\s*רביעייה/, '').trim();
+  return { total, full: Math.round(full * 100) / 100, contents,
+    label_en: contents.map((c) => `${c.qty}× ${label(c.name_en)}`).join(', ') + (single ? ' (single minis)' : ''),
+    label_he: contents.map((c) => `${c.qty}× ${label(c.name_he || c.name_en)}`).join(', ') + (single ? ' (מיני בודדים)' : '') };
 }

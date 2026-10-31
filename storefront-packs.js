@@ -59,7 +59,8 @@
     const { pack } = open, q = quote(pack, open.picks);
     if (q.count !== q.size) return;
     const key = q.chosen.map((x) => `${x.p.id}x${x.n}`).sort().join('-');
-    const label = (lng) => q.chosen.map((x) => `${x.n}× ${lng === 'he' ? (x.p.name_he || x.p.name_en) : x.p.name_en}`).join(', ');
+    const single = q.chosen.some((x) => perProduct(x.p) > 1), clean = (n) => String(n || '').replace(/\s*\d+\s*-?\s*pack\b/i, '').replace(/\s*רביעייה/, '').trim();
+    const label = (lng) => q.chosen.map((x) => `${x.n}× ${clean(lng === 'he' ? (x.p.name_he || x.p.name_en) : x.p.name_en)}`).join(', ') + (single ? (lng === 'he' ? ' (מיני בודדים)' : ' (single minis)') : '');
     const id = `${pack.id}_pack_${key}`, existing = cart.find((i) => i.id === id);
     if (existing) existing.qty++;
     else cart.push({ id, base_product_id: pack.id, name_en: `${pack.name_en} · ${label('en')}`, name_he: `${pack.name_he || pack.name_en} · ${label('he')}`, price: q.total, images: pack.images, category: pack.category, qty: 1, delivery_price: null, pack_items: q.chosen.map((x) => ({ product_id: String(x.p.id), qty: x.n })) });
