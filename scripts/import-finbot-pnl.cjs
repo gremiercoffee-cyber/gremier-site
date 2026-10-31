@@ -23,7 +23,12 @@ function parse(html, year, asOf) {
     const values = r.slice(1, 13).map(shekels), total = shekels(r[13]);
     // Each month is rounded on its own, so a row can differ from its yearly total by up to ₪1 per month.
     if (Math.abs(values.reduce((a, b) => a + b, 0) - total) > 1200) throw Error(`Row "${r[0]}" doesn't add up to its yearly total.`);
-    if (/^סה"כ - /.test(r[0])) { totals[r[0].replace('סה"כ - ', '')] = values; continue; }
+    if (/^סה"כ - /.test(r[0])) {
+      totals[r[0].replace('סה"כ - ', '')] = values;
+      // Some years leave out the general-expenses heading: what follows cost of sales is operating expenses.
+      if (group === 'cost_of_sales') group = 'operating_expenses';
+      continue;
+    }
     if (/^סה"כ$|^הכנסות פחות הוצאות$/.test(r[0])) { totals[r[0]] = values; continue; }
     if (!group) throw Error(`Row "${r[0]}" isn't under a known section.`);
     lines.push({ label: r[0], group, values });
