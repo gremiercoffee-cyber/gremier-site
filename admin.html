@@ -9388,12 +9388,13 @@ window.opsFetch = window.opsFetch || (function () {
       document.getElementById('hubSubKpis').innerHTML = `
         <div class="hub-kpi"><span>Active</span><b>${active.length}</b></div>
         <div class="hub-kpi"><span>Monthly income</span><b>${money(active.reduce((t, s) => t + (Number(s.price) || 0), 0))}</b></div>
-        <div class="hub-kpi"><span>Cancelled</span><b>${subs.length - active.length}</b></div>`;
+        <div class="hub-kpi"><span>Cancelled</span><b>${subs.filter(s => s.cancelled).length}</b></div>
+        <div class="hub-kpi"><span>Needs attention</span><b>${subs.filter(s => s.needs_attention).length}</b></div>`;
       if (!subs.length) { box.innerHTML = '<div class="hub-card"><div class="hub-empty">No website subscriptions yet. When a customer subscribes at checkout it shows up here with its next charge date.</div></div>'; return; }
       box.innerHTML = '<div class="hub-grid">' + subs.map((s) => {
         const next = parseDate(s.next_date);
         const items = (s.items || []).flatMap((i) => i.subscription_items?.length ? i.subscription_items : [i]).map((i) => `${esc(i.name_en || i.name_he)} ×${i.qty || 1}`).join(', ');
-        const status = !s.active ? '<span class="hub-pill bad">Cancelled</span>' : s.paid_last === false ? '<span class="hub-pill bad">Last charge failed</span>' : '<span class="hub-pill ok">Active</span>';
+        const status = `<span class="hub-pill ${s.active ? "ok" : s.cancelled || s.needs_attention ? "bad" : ""}">${esc(s.status_label || (s.active ? "Active" : "Status unavailable"))}</span>`;
         return `<div class="hub-card">
           <h3><span>${esc(s.customer_name || 'Customer')}</span>${status}</h3>
           <div style="font-size:.84rem;line-height:1.7">
@@ -9406,7 +9407,7 @@ window.opsFetch = window.opsFetch || (function () {
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
             <button class="btn btn-outline btn-sm" onclick="hubOpenCustomer(${esc(JSON.stringify(JSON.stringify({ email: s.customer_email, phone: s.customer_phone, name: s.customer_name })))})">Customer</button>
             ${s.customer_phone ? `<a class="btn btn-sm wa-btn" target="_blank" rel="noopener" href="${esc(waLink(s.customer_phone, ''))}">WhatsApp</a>` : ''}
-            ${s.active ? `<button class="btn btn-red btn-sm" onclick="hubCancelSub('${esc(s.sub_payme_id)}', ${esc(JSON.stringify(s.customer_name || ''))})">Cancel subscription</button>` : ''}
+            ${s.can_cancel ? `<button class="btn btn-red btn-sm" onclick="hubCancelSub('${esc(s.sub_payme_id)}', ${esc(JSON.stringify(s.customer_name || ''))})">Cancel subscription</button>` : ''}
           </div></div>`;
       }).join('') + '</div>';
     } catch (e) {
@@ -9506,7 +9507,7 @@ window.opsFetch = window.opsFetch || (function () {
           ${prof ? `👤 Member${prof.coupon_available ? ' · 10% coupon ready' : ''}` : '<span style="color:var(--text2)">Not a signed-in member</span>'}
         </div>
         ${phone ? `<a class="btn btn-sm wa-btn" target="_blank" rel="noopener" href="${esc(waLink(phone, ''))}" style="margin-bottom:14px;display:inline-block">💬 WhatsApp</a>` : ''}
-        ${subs.length ? `<div class="hub-sgroup"><h4>Subscription</h4>${subs.map((s) => `<div class="hub-row" onclick="hubCloseCustomer();showTab('subscriptions')"><div class="t"><b>${money(s.price)} / month</b><small>${s.active ? 'Active' : 'Cancelled'} · next ${esc(s.next_date || '—')}</small></div></div>`).join('')}</div>` : ''}
+        ${subs.length ? `<div class="hub-sgroup"><h4>Subscription</h4>${subs.map((s) => `<div class="hub-row" onclick="hubCloseCustomer();showTab('subscriptions')"><div class="t"><b>${money(s.price)} / month</b><small>${esc(s.status_label || (s.active ? 'Active' : 'Status unavailable'))} · next ${esc(s.next_date || '—')}</small></div></div>`).join('')}</div>` : ''}
         ${(cards || []).length ? `<div class="hub-sgroup"><h4>Gift cards</h4>${cards.map((g) => `<div class="hub-row" onclick="hubCloseCustomer();hubOpenGiftCard('${esc(g.code)}')"><div class="t"><b>${esc(g.code)}</b><small>${String(g.purchased_by_email || '').toLowerCase() === c.email ? 'Bought' : 'Received'} · ${short(g.created_at)}</small></div><div class="r">${money(g.balance)} left</div></div>`).join('')}</div>` : ''}
         <div class="hub-sgroup"><h4>Orders (${list.length})</h4>${list.length ? list.map(orderLine).join('') : '<div class="hub-empty">No orders found.</div>'}</div>`;
     } catch (e) {
