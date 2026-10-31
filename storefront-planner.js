@@ -18,7 +18,7 @@
   const premium = () => all().find((p) => addonsOf(p).some((a) => a.per_liter || a.group)) || all().find((p) => /premium/i.test(p.name_en || ''));
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, lids: false, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {} };
+  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, lids: false, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {}, deliveryMode: 'event', deliveryDate: '', deliveryTime: '' };
   // Everyday products that can ride along with the bar at their full price.
   const extraProduct = (id) => all().find((p) => String(p.id) === String(id) && p.is_active !== false && !p.is_coffee_bar && ['bottles', 'minis', 'bulk'].includes(p.category));
   // The 5L jugs on their own (not the 3-jug pack): an extra jerry can of coffee for the bar.
@@ -27,6 +27,60 @@
   const FLAVOURS = [['house', /house/i, 'House Blend', 'האוס בלנד'], ['colomb', /colomb/i, 'Colombian', 'קולומביה'], ['decaf', /decaf/i, 'Decaf', 'נטול קפאין']];
   const name = (a) => (he() && a.name_he ? a.name_he : a.name);
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
+
+  // A bar's choices as a short link code, and back. Only known fields with sane values are taken.
+  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,d:[state.deliveryMode,state.deliveryDate,state.deliveryTime]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+  function fromCode(code){
+    try{
+      const j=JSON.parse(decodeURIComponent(escape(atob(String(code).replace(/-/g,'+').replace(/_/g,'/')))));
+      const n=(v,max)=>Math.max(0,Math.min(max,Math.round(Number(v)||0)));
+      const counts=(o,keys,max)=>Object.fromEntries(keys.map(k=>[k,n(o?.[k],max)]));
+      return {guests:Math.max(5,n(j.g,500)),milk:['dairy','parve','all_parve'].includes(j.m)?j.m:'dairy',milkMix:j.mm&&typeof j.mm==='object'?j.mm:null,
+       mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,syrups:counts(j.s,['caramel','vanilla','sugar'],20),
+       deliveryMode:j.d?.[0]==='before'?'before':'event',deliveryDate:/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||'')?j.d[1]:'',deliveryTime:/^\d{2}:\d{2}$/.test(j.d?.[2]||'')?j.d[2]:'',
+       extras:Object.fromEntries(Object.entries(j.e&&typeof j.e==='object'?j.e:{}).filter(([k])=>/^[\w-]{1,64}$/.test(k)).map(([k,v])=>[k,n(v,20)]).filter(([,v])=>v>0))};
+    }catch{return null;}
+  }
+  let shared=(()=>{try{const c=new URLSearchParams(location.search).get('bar');return c?fromCode(c):null;}catch{return null;}})(),sharedShown=false;
+  window.plannerShare=async function(){
+    const url=location.origin+'/?bar='+toCode()+'#coffeebars',plan=suggestion();
+    const text=plan?T(`Coffee bar for ${plan.tier.guests} guests · ₪${plan.total}. Open it to check and book:`,`בר קפה ל-${plan.tier.guests} אורחים · ₪${plan.total}. פתחו כדי לבדוק ולהזמין:`):'';
+    try{if(navigator.share){await navigator.share({title:'Gremier coffee bar',text,url});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+    try{await navigator.clipboard.writeText(url);if(typeof showToast==='function')showToast(T('Link copied. Paste it in WhatsApp or anywhere.','הקישור הועתק. הדביקו בוואטסאפ או בכל מקום.'));}
+    catch{window.prompt(T('Copy this link:','העתיקו את הקישור:'),url);}
+  };
+
+  // Delivery: at the event (date + arrival time → event delivery), or before it (a date; within two days
+  // of today that's expedited on that date, otherwise regular on that date). Filled into checkout.
+  const isoDay=(n=0)=>{const d=new Date(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date())+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+  const shipFor=()=>state.deliveryMode==='event'?'event':(state.deliveryDate&&state.deliveryDate<=isoDay(2)?'expedited':'regular');
+  function deliveryHtml(){
+    const before=state.deliveryMode==='before',ship=shipFor();
+    return `<div class="pl-q bb-delivery"><h2>${T('How should we deliver it?','איך להביא את זה?')}</h2>
+      ${chips('deliveryMode',[['event',T('At the event, when it starts','לאירוע, בזמן שהוא מתחיל')],['before',T('Before the event','לפני האירוע')]])}
+      <div class="bb-del-fields">
+        <label>${before?T('Delivery date','תאריך המשלוח'):T('Event date','תאריך האירוע')}<input type="date" class="form-input" id="plDelDate" min="${isoDay(1)}" value="${esc(state.deliveryDate)}"></label>
+        ${before?'':`<label>${T('Arrival time','שעת הגעה')}<input type="time" class="form-input" id="plDelTime" value="${esc(state.deliveryTime)}"></label>`}
+      </div>
+      <small class="bb-q-hint">${!state.deliveryDate?T('Choose a date. The delivery fee for your area is added at checkout.','בחרו תאריך. דמי המשלוח לאזור שלכם יתווספו בקופה.')
+        :ship==='event'?T('Event delivery: we arrive at your event at that time.','משלוח לאירוע: נגיע לאירוע בשעה הזו.')
+        :ship==='expedited'?T('That’s within two days, so it’s expedited delivery on that date.','זה בתוך יומיים, אז זה משלוח מהיר בתאריך הזה.')
+        :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small></div>`;
+  }
+  // When checkout opens for a coffee bar, it starts with the delivery chosen here.
+  function fillCheckoutDelivery(){
+    const d=(()=>{try{return JSON.parse(localStorage.getItem('gremier_bar_delivery')||'null');}catch{return null;}})();
+    if(!d||!d.date||typeof cart==='undefined'||!cart.some(i=>i.is_coffee_bar||all().find(p=>String(p.id)===String(i.base_product_id||i.id))?.is_coffee_bar))return;
+    const set=(id,v)=>{const el=$(id);if(el)el.value=v||'';};
+    const radio=$(d.ship==='event'?'shipEvent':d.ship==='expedited'?'shipExpedited':'shipRegular');if(!radio||radio.disabled)return;
+    radio.checked=true;
+    if(d.ship==='event'){set('coEventDate',d.date);set('coEventTime',d.time);}
+    else if(d.ship==='expedited'){const p=$('priorityDate');if(p)p.checked=true;set('coDeliveryDate',d.date);if(typeof toggleDatePicker==='function')toggleDatePicker();}
+    else set('coRegularDate',d.date);
+    if(typeof toggleExpeditedOptions==='function')toggleExpeditedOptions();
+    if(d.ship==='expedited'&&typeof toggleDatePicker==='function')toggleDatePicker();
+    if(typeof updateDeliveryPrice==='function')updateDeliveryPrice();
+  }
 
   function suggestion() {
     const p = premium();
@@ -245,6 +299,12 @@
   window.plannerOrder = function () {
     const plan = suggestion();
     if (!plan || typeof openProductDrawer !== 'function') return;
+    if(!state.deliveryDate||(state.deliveryMode==='event'&&!state.deliveryTime)){
+      const q=document.querySelector('#planner .bb-delivery');q?.scrollIntoView({behavior:'smooth',block:'center'});q?.classList.add('bb-attention');setTimeout(()=>q?.classList.remove('bb-attention'),1600);
+      if(typeof showToast==='function')showToast(state.deliveryMode==='event'?T('Choose the event date and arrival time first','בחרו קודם תאריך ושעת הגעה'):T('Choose the delivery date first','בחרו קודם תאריך משלוח'));
+      return;
+    }
+    try{localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));}catch{}
     openProductDrawer(plan.product.id);
     setTimeout(() => {
       const sel = document.querySelector('#pdVariationsSection select');
@@ -259,7 +319,11 @@
         plan.checks.forEach((i) => { const cb = document.querySelector(`#pdAddonsSection input[data-addon-idx="${i}"]`); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); } });
         if (typeof pdSetBarExtras === 'function') pdSetBarExtras(plan.extras);
         if (typeof pdUpdateDrawerPrice === 'function') pdUpdateDrawerPrice();
-        if (typeof showToast === 'function') showToast(T('We set it up for you — check and book', 'הכנו לכם הכל — בדקו והזמינו'));
+        const d=$('pdDrawer');if(d){d.classList.add('pd-from-builder');d.querySelector('.pd-bar-summary')?.remove();
+          const box=document.createElement('div');box.className='pd-bar-summary';
+          box.innerHTML=`<div class="pd-bar-summary-title">${T('Your coffee bar','בר הקפה שלכם')} · ${T(`${plan.tier.guests} guests`,`${plan.tier.guests} אורחים`)}</div><ul>${tiles(plan).filter(t=>t.n).map(t=>`<li>${t.n}× ${esc(t.title)}${t.sub?` <small>(${esc(t.sub)})</small>`:''}</li>`).join('')}</ul><button type="button" class="pd-bar-change" onclick="closeProductDrawer()">${T('← Change something','← לשנות משהו')}</button><p class="pd-bar-next">${state.deliveryMode==='event'?T(`Delivery: at the event, ${state.deliveryDate} at ${state.deliveryTime}.`,`משלוח: לאירוע, ${state.deliveryDate} בשעה ${state.deliveryTime}.`):T(`Delivery: ${shipFor()==='expedited'?'expedited':'regular'}, on ${state.deliveryDate}.`,`משלוח: ${shipFor()==='expedited'?'מהיר':'רגיל'}, ב-${state.deliveryDate}.`)} ${T('Next: add it to your cart; at checkout you add the address.','השלב הבא: מוסיפים לעגלה, ובקופה מוסיפים כתובת.')}</p>`;
+          $('pdAddonsSection')?.before(box);
+          const add=$('pdAddBtn');if(add)add.textContent=T(`Add to cart · ₪${plan.total}`,`הוספה לעגלה · ₪${plan.total}`);}
       }, 150);
     }, 700);
   };
@@ -368,6 +432,7 @@
   function render() {
     const box = $('planner');
     if (!box) return;
+    if(shared&&all().length){Object.assign(state,shared);shared=null;sharedShown=true;}
     const previousScene=$('bbScene');
     const plan = suggestion();
     // The page shows once the builder can draw (until then its older content stays hidden, so it
@@ -377,6 +442,7 @@
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
       ${window.CoffeeBarOffers?.builderBanner()||''}
+      ${sharedShown?`<div class="bb-shared">${T('✨ This coffee bar was set up for you. Check the details below, change anything you like, and press <b>Book</b> when it looks right.','✨ בר הקפה הזה הוכן במיוחד בשבילכם. בדקו את הפרטים, שנו מה שתרצו, ולחצו <b>להזמנה</b> כשהכל נראה טוב.')}</div>`:`<ol class="bb-how"><li><b>${T('Choose','בוחרים')}</b> ${T('guests, coffee & milk','אורחים, קפה וחלב')}</li><li><b>${T('Book','מזמינים')}</b> ${T('and pay online','ומשלמים באתר')}</li><li><b>${T('We deliver','אנחנו מביאים')}</b> ${T('everything, ready to pour','הכל, מוכן להגשה')}</li></ol>`}
       <div class="bb-grid">
           <div class="pl-q bb-guest-start"><h2>${T('How many guests are you expecting?', 'כמה אורחים צפויים להגיע?')}</h2>
             <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
@@ -386,30 +452,42 @@
           ${plan ? `<div class="bb-sum">
             <div class="bb-sum-name">${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</div>
             ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
-            <button type="button" class="pl-order" onclick="plannerOrder()">${T('Order', 'להזמנה')} · ₪<span id="bbTotal">${plan.total}</span></button>
-            <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
+            <button type="button" class="pl-order" onclick="plannerOrder()">${T('Book', 'להזמנה')} · ₪<span id="bbTotal">${plan.total}</span></button>
+            <div class="bb-sum-links"><button type="button" class="bb-wa" onclick="plannerShare()">🔗 ${T('Share this bar', 'שיתוף הבר')}</button><button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button></div>
           </div>` : ''}
         </aside>
         <h2 class="bb-build-title">${T('Now let’s build your coffee bar','עכשיו בואו נבנה את בר הקפה שלכם')}</h2>
         <div class="bb-qs">
-          <div class="pl-q"><h2>${T('Which coffee would you like?', 'איזה קפה תרצו לבחור?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${coffeeHtml(plan)}</div>
+          <div class="pl-q"><h2>${T('Which coffee would you like?', 'איזה קפה תרצו לבחור?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${plan?`<small class="bb-q-hint bb-q-lead">${T(`For ${plan.tier.guests} guests you get ${plan.jugs} jerry can${plan.jugs>1?'s':''} of coffee (5 litres each), Classic included. To make a can a different coffee, press + next to it.`,`ל-${plan.tier.guests} אורחים מקבלים ${plan.jugs} ג׳ריקנים של קפה (5 ליטר כל אחד), קלאסיק כלול. כדי להחליף ג׳ריקן לקפה אחר, לחצו + ליד הקפה.`)}</small>`:''}${coffeeHtml(plan)}</div>
           <div class="pl-q"><h2>${T('Which milk would you like?', 'איזה חלב תרצו לבחור?')}</h2>${milkHtml(plan)}</div>
           <div class="pl-q"><h2>${T('How many serving stations would you like?', 'כמה עמדות הגשה תרצו?')}</h2>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
           ${plan?lidsHtml(plan):''}
           <div class="pl-q"><h2>${T('Would you like any extra syrups?','האם תרצו להוסיף עוד סירופים?')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></h2>${syrupHtml(plan)}</div>
+          ${plan?deliveryHtml():''}
         </div>
       </div>
       ${takeHomeHtml()}
       ${plan ? `<section class="bb-booking" aria-label="${T('Order your coffee bar','הזמנת בר הקפה שלכם')}">
         <div><span>${T(`Coffee bar · ${plan.tier.guests} guests`,`בר קפה · ${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>
-        <button type="button" class="pl-order" onclick="plannerOrder()">${T('Order your coffee bar','להזמנת בר הקפה שלכם')}</button>
+        <button type="button" class="pl-order" onclick="plannerOrder()">${T('Book your coffee bar','להזמנת בר הקפה שלכם')}</button>
+        <button type="button" class="bb-wa bb-share-low" onclick="plannerShare()">🔗 ${T('Share this bar (a link that opens it exactly like this)','שיתוף הבר (קישור שפותח אותו בדיוק כך)')}</button>
         ${plan.tooBig?`<small>${T('For a bigger event, message us and we’ll plan it together.','לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</small>`:''}
       </section>` : ''}`;
+    tidyPackages(plan);
     reconcileScene(previousScene,$('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
     mini(plan);
     watch();
+  }
+
+  // The builder is the way to order the bar itself; the list below it keeps only the separate pieces.
+  function tidyPackages(plan){
+    const grid=$('cbpPackages');if(!grid||!plan)return;
+    grid.querySelectorAll('.product-card').forEach(c=>{const p=all().find(x=>String(x.id)===c.dataset.productId);c.hidden=!!p&&(p.is_coffee_bar&&!(p.variations||[]).some(v=>v.type==='serving_pack'))&&String(p.id)===String(plan.product.id);});
+    const title=$('t-cbp-title'),intro=$('t-cbp-intro');
+    if(title)title.textContent=T('Just need some pieces?','צריכים רק חלק?');
+    if(intro)intro.textContent=T('Extra cups, syrups or a dispenser, on their own.','כוסות, סירופים או דיספנסר נוספים, בנפרד.');
   }
 
   // "+" on an extra jerry can asks first: it's a whole extra 5L of coffee at the full price.
@@ -475,6 +553,10 @@
     state[key] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v;
     render();
   });
+  document.addEventListener('change',(e)=>{
+    if(e.target.id==='plDelDate'){state.deliveryDate=e.target.value;render();}
+    else if(e.target.id==='plDelTime'){state.deliveryTime=e.target.value;render();}
+  });
   document.addEventListener('input', (e) => {
     if (e.target.id !== 'plGuests') return;
     const n = parseInt(e.target.value, 10);
@@ -494,6 +576,10 @@
   }
   function hook() {
     mount();
+    const openCo=window.openCheckoutUI;
+    if(typeof openCo==='function')window.openCheckoutUI=function(view){const r=openCo.apply(this,arguments);if(view===undefined||view==='form')setTimeout(fillCheckoutDelivery,80);return r;};
+    const openPd=window.openProductDrawer;
+    if(typeof openPd==='function')window.openProductDrawer=function(){const d=$('pdDrawer');if(d){d.classList.remove('pd-from-builder');d.querySelector('.pd-bar-summary')?.remove();}return openPd.apply(this,arguments);};
     for (const fn of ['showPage', 'applyTranslations', 'renderCoffeeBarsPage', 'renderShop']) {
       const orig = window[fn];
       if (typeof orig === 'function') window[fn] = function () { const r = orig.apply(this, arguments); try { mount(); render(); } catch (_) {} return r; };
@@ -501,4 +587,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();
+  if(shared){let tries=0;const t=setInterval(()=>{if(all().length&&typeof showPage==='function'){clearInterval(t);showPage('coffeebars');render();$('planner')?.scrollIntoView({block:'start'});}else if(++tries>40)clearInterval(t);},250);}
 })();
