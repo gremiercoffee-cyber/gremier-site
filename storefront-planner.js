@@ -42,13 +42,29 @@
     }catch{return null;}
   }
   let shared=(()=>{try{const c=new URLSearchParams(location.search).get('bar');return c?fromCode(c):null;}catch{return null;}})(),sharedShown=false;
-  window.plannerShare=async function(){
-    const url=location.origin+'/?bar='+toCode()+'#coffeebars',plan=suggestion();
-    const text=plan?T(`Coffee bar for ${plan.tier.guests} guests · ₪${plan.total}. Open it to check and book:`,`בר קפה ל-${plan.tier.guests} אורחים · ₪${plan.total}. פתחו כדי לבדוק ולהזמין:`):'';
+  const toCheckout=(()=>{try{return new URLSearchParams(location.search).get('go')==='checkout';}catch{return false;}})();
+  // "Share your coffee bar": choose the kind of link, then share it.
+  window.plannerShare=function(){
+    let el=$('bbShareSheet');
+    if(!el){el=document.createElement('div');el.id='bbShareSheet';el.className='bb-confirm';document.body.appendChild(el);
+      el.addEventListener('click',(ev)=>{if(ev.target===el||ev.target.closest('[data-share-cancel]')){el.classList.remove('open');return;}
+        const pick=ev.target.closest('[data-share-kind]');if(pick){el.classList.remove('open');shareLink(pick.dataset.shareKind==='checkout');}});}
+    el.innerHTML=`<div class="bb-confirm-box bb-share-box" role="dialog" aria-modal="true" aria-labelledby="bbShareTitle">
+      <h3 id="bbShareTitle">${T('Share your coffee bar','שיתוף בר הקפה')}</h3>
+      <button type="button" class="bb-share-opt" data-share-kind="bar"><b>${T('Link to this coffee bar','קישור לבר הקפה')}</b><span>${T('Opens the bar exactly like this. They can still change things, then book.','פותח את הבר בדיוק כך. אפשר עדיין לשנות ואז להזמין.')}</span></button>
+      <button type="button" class="bb-share-opt" data-share-kind="checkout"><b>${T('Link straight to checkout','קישור ישר לקופה')}</b><span>${T('Opens checkout with this bar in the cart. They just choose delivery and pay.','פותח את הקופה עם הבר בעגלה. רק בוחרים משלוח ומשלמים.')}</span></button>
+      <button type="button" class="bb-confirm-cancel" data-share-cancel>${T('Cancel','ביטול')}</button></div>`;
+    el.classList.add('open');el.querySelector('[data-share-kind]')?.focus();
+  };
+  async function shareLink(checkout){
+    // A checkout link leaves delivery to them unless a date was already chosen here.
+    const url=location.origin+'/?bar='+toCode()+(checkout?'&go=checkout':'')+'#coffeebars',plan=suggestion();
+    const text=plan?(checkout?T(`Your coffee bar for ${plan.tier.guests} guests · ₪${plan.total}. Choose delivery and pay here:`,`בר הקפה שלכם ל-${plan.tier.guests} אורחים · ₪${plan.total}. בוחרים משלוח ומשלמים כאן:`)
+      :T(`Coffee bar for ${plan.tier.guests} guests · ₪${plan.total}. Open it to check and book:`,`בר קפה ל-${plan.tier.guests} אורחים · ₪${plan.total}. פתחו כדי לבדוק ולהזמין:`)):'';
     try{if(navigator.share){await navigator.share({title:'Gremier coffee bar',text,url});return;}}catch(e){if(e&&e.name==='AbortError')return;}
     try{await navigator.clipboard.writeText(url);if(typeof showToast==='function')showToast(T('Link copied. Paste it in WhatsApp or anywhere.','הקישור הועתק. הדביקו בוואטסאפ או בכל מקום.'));}
     catch{window.prompt(T('Copy this link:','העתיקו את הקישור:'),url);}
-  };
+  }
 
   // Delivery: at the event (date + arrival time → event delivery), or before it (a date; within two days
   // of today that's expedited on that date, otherwise regular on that date). Filled into checkout.
@@ -296,15 +312,19 @@
   }
 
   // Open the coffee bar with every choice already made, so they only check and book.
-  window.plannerOrder = function () {
+  window.plannerOrder = function (options={}) {
     const plan = suggestion();
     if (!plan || typeof openProductDrawer !== 'function') return;
-    if(!state.deliveryDate||(state.deliveryMode==='event'&&!state.deliveryTime)){
+    const chosen=!!state.deliveryDate&&(state.deliveryMode!=='event'||!!state.deliveryTime);
+    // Opening the same checkout link again: the bar is already in the cart, just go to checkout.
+    if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total))){if(typeof openCheckout==='function')openCheckout();return;}
+    if(!chosen&&options.deliveryAtCheckout){try{localStorage.removeItem('gremier_bar_delivery');}catch{}}
+    else if(!chosen){
       const q=document.querySelector('#planner .bb-delivery');q?.scrollIntoView({behavior:'smooth',block:'center'});q?.classList.add('bb-attention');setTimeout(()=>q?.classList.remove('bb-attention'),1600);
       if(typeof showToast==='function')showToast(state.deliveryMode==='event'?T('Choose the event date and arrival time first','בחרו קודם תאריך ושעת הגעה'):T('Choose the delivery date first','בחרו קודם תאריך משלוח'));
       return;
     }
-    try{localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));}catch{}
+    if(chosen)try{localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));}catch{}
     // The product window does the pricing and the cart line; it works hidden, and is shown only if
     // its price doesn't match the builder's (then the customer checks it there).
     document.body.classList.add('pd-silent');
@@ -460,7 +480,8 @@
             <div class="bb-sum-name">${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</div>
             ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
             <button type="button" class="pl-order" onclick="plannerOrder()">${T('Book', 'להזמנה')} · ₪<span id="bbTotal">${plan.total}</span></button>
-            <div class="bb-sum-links"><button type="button" class="bb-wa" onclick="plannerShare()">🔗 ${T('Share this bar', 'שיתוף הבר')}</button><button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button></div>
+            <button type="button" class="bb-share-btn" onclick="plannerShare()">${T('Share your coffee bar', 'שיתוף בר הקפה')}</button>
+            <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
           </div>` : ''}
         </aside>
         <h2 class="bb-build-title">${T('Now let’s build your coffee bar','עכשיו בואו נבנה את בר הקפה שלכם')}</h2>
@@ -477,7 +498,7 @@
       ${plan ? `<section class="bb-booking" aria-label="${T('Order your coffee bar','הזמנת בר הקפה שלכם')}">
         <div><span>${T(`Coffee bar · ${plan.tier.guests} guests`,`בר קפה · ${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>
         <button type="button" class="pl-order" onclick="plannerOrder()">${T('Book your coffee bar','להזמנת בר הקפה שלכם')}</button>
-        <button type="button" class="bb-wa bb-share-low" onclick="plannerShare()">🔗 ${T('Share this bar (a link that opens it exactly like this)','שיתוף הבר (קישור שפותח אותו בדיוק כך)')}</button>
+        <button type="button" class="bb-share-btn bb-share-low" onclick="plannerShare()">${T('Share your coffee bar','שיתוף בר הקפה')}</button>
         ${plan.tooBig?`<small>${T('For a bigger event, message us and we’ll plan it together.','לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</small>`:''}
       </section>` : ''}`;
     tidyPackages(plan);
@@ -594,5 +615,10 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();
-  if(shared){let tries=0;const t=setInterval(()=>{if(all().length&&typeof showPage==='function'){clearInterval(t);showPage('coffeebars');render();$('planner')?.scrollIntoView({block:'start'});}else if(++tries>40)clearInterval(t);},250);}
+  if(shared){let tries=0;const t=setInterval(()=>{if(all().length&&typeof showPage==='function'){clearInterval(t);showPage('coffeebars');render();$('planner')?.scrollIntoView({block:'start'});
+    if(toCheckout){
+      // Once only: a refresh or going back keeps the bar link but doesn't add it again.
+      try{const u=new URL(location.href);u.searchParams.delete('go');history.replaceState(history.state,'',u.pathname+u.search+u.hash);}catch{}
+      setTimeout(()=>window.plannerOrder({deliveryAtCheckout:true}),300);
+    }}else if(++tries>40)clearInterval(t);},250);}
 })();

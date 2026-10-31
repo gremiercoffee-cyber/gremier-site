@@ -227,3 +227,12 @@ body.bb-mini-on #fabStack { bottom:166px!important; transition:bottom .2s; }
 .planner .bb-delivery.bb-attention { box-shadow:0 0 0 3px #eb6834; border-radius:14px; transition:box-shadow .2s; }
 /* Booking from the builder works in the product window and cart out of sight, straight to checkout. */
 body.pd-silent #pdDrawer, body.pd-silent #pdBackdrop, body.pd-silent #cartDrawer, body.pd-silent #cartOverlay { visibility:hidden !important; transition:none !important; }
+/* Share your coffee bar: a real button, and a choice of link. */
+.planner .bb-share-btn { display:block; width:100%; margin:10px 0 4px; padding:13px 18px; border:1.5px solid #1a1a1a; border-radius:999px; background:#fff; color:#1a1a1a; font:600 15px 'DM Sans',sans-serif; cursor:pointer; }
+.planner .bb-share-btn:hover { background:#f7f5f2; }
+.planner .bb-booking .bb-share-btn.bb-share-low { flex-basis:100%; max-width:420px; margin:0 auto; }
+.bb-share-box { max-width:420px; }
+.bb-share-opt { display:grid; gap:4px; width:100%; text-align:start; margin:8px 0; padding:14px 16px; border:1px solid #e6e4df; border-radius:14px; background:#fff; cursor:pointer; font:inherit; color:#1a1a1a; }
+.bb-share-opt:hover, .bb-share-opt:focus-visible { border-color:#1a1a1a; outline:none; }
+.bb-share-opt b { font-size:15px; }
+.bb-share-opt span { font-size:13px; color:#6b7178; line-height:1.45; }
