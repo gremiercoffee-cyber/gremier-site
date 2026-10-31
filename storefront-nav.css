@@ -470,3 +470,22 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 @media (prefers-reduced-motion: reduce) { #shopGrid.cat-in > * { animation:none; } }
 
 #fbSheet .fb-box{max-height:calc(100dvh - 32px);overflow-y:auto}#fbSheet .fb-order{margin:14px 0;padding:12px 14px;background:#f5f6f7;border-radius:12px;text-align:start;font-size:13px;color:#514b43}#fbSheet .fb-order ul{margin:6px 0 0;padding-inline-start:18px;line-height:1.6}#fbSheet .fb-comment-label{display:block;text-align:start;font-size:13px;margin-bottom:7px}#fbSheet .fb-send:disabled{opacity:.6;cursor:wait}
+
+/* Compare our coffees */
+.cmp-shop, .cmp-drawer { margin:6px 0 16px; border:1px solid var(--border, #e6e4df); border-radius:14px; background:#fff; }
+.cmp-shop > summary, .cmp-drawer > summary { cursor:pointer; padding:12px 16px; font-weight:600; font-size:.88rem; color:#1a1a1a; list-style:none; }
+.cmp-shop > summary::after, .cmp-drawer > summary::after { content:'▾'; float:right; color:#888; }
+[dir="rtl"] .cmp-shop > summary::after, .rtl .cmp-shop > summary::after, .rtl .cmp-drawer > summary::after { float:left; }
+.cmp-wrap { overflow-x:auto; padding:0 8px 10px; }
+.cmp-table { width:100%; border-collapse:collapse; font-size:.82rem; min-width:460px; }
+.cmp-table th, .cmp-table td { padding:9px 8px; text-align:start; border-top:1px solid #f0eeea; white-space:nowrap; }
+.cmp-table thead th { border-top:0; font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; color:#8a8780; font-weight:500; }
+.cmp-table tbody th { font-weight:600; color:#1a1a1a; }
+.cmp-table tbody tr { cursor:pointer; }
+.cmp-table tbody tr:hover { background:#faf8f5; }
+.cmp-table tr.cmp-current { background:#fbf6ee; }
+.cmp-table small { color:#6b7178; }
+.cmp-dots { display:inline-flex; gap:3px; vertical-align:middle; }
+.cmp-dots i { width:7px; height:7px; border-radius:50%; background:#e6e2db; }
+.cmp-dots i.on { background:#3b2a1e; }
+.pd-fresh { display:block; font-size:.74rem; color:#6b7178; margin-top:6px; }

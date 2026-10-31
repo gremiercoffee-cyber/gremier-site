@@ -158,7 +158,7 @@
   // ── Trust line under "Add to cart" ──
   function trustHtml() {
     // (Delivery times are already in the box above the button.)
-    return `<span>🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</span>${kosherChip()}`;
+    return `<span>☕ ${T('Brewed fresh in small batches', 'נחלט טרי באצוות קטנות')}</span><span>🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</span>${kosherChip()}`;
   }
   function placeTrust() {
     const btn = $('pdAddBtn');
