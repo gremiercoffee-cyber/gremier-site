@@ -1,5 +1,6 @@
-/* Cart extras: "add ₪X for free delivery" and suggestions that fit the cart
-   (coffee → syrups, syrup only → coffee). */
+/* Cart extras: "add ₪X for free delivery" (also before we know the city), picks that close that gap,
+   and suggestions that fit the cart (coffee → syrups, liters → minis, one flavour → another,
+   syrup only → coffee). Simple products are added in one tap. */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -23,28 +24,103 @@
     if (typeof shabbatPromoActive === 'function' && shabbatPromoActive() && cart.length && !cart.some((i) => i.is_subscription)) {
       return `<div class="cx-free done">${T('✓ Free delivery today, before Shabbat*', '✓ משלוח חינם היום, לפני שבת*')}</div>`;
     }
-    const city = knownCity();
-    if (!city || typeof resolveDeliveryPricing !== 'function') return '';
-    if (cart.some((i) => i.is_subscription || (i.delivery_price != null && !isNaN(i.delivery_price)))) return '';
-    const freeAbove = Number(resolveDeliveryPricing(city).freeAbove) || 0;
-    if (!freeAbove) return '';
-    const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-    if (subtotal >= freeAbove) return `<div class="cx-free done">${T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}</div>`;
-    const left = Math.ceil(freeAbove - subtotal);
-    return `<div class="cx-free"><span>${T(`Add ₪${left} more for free delivery`, `עוד ₪${left} ומשלוח חינם`)}</span>
-      <div class="cx-bar"><i style="width:${Math.min(100, Math.round((subtotal / freeAbove) * 100))}%"></i></div></div>`;
+    const g = gap();
+    if (!g) return '';
+    if (g.left <= 0) return `<div class="cx-free done">${T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>`;
+    return `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם ב${g.where}`) : T(`Add ₪${g.left} more for free delivery`, `עוד ₪${g.left} ומשלוח חינם`)}</span>
+      <div class="cx-bar"><i style="width:${Math.min(100, Math.round((g.subtotal / g.freeAbove) * 100))}%"></i></div></div>`;
   }
+  // How far the cart is from free delivery. With the city known, its own threshold; before that, the
+  // lowest threshold of the areas that have one, naming them.
+  function gap() {
+    if (cart.some((i) => i.is_subscription || (i.delivery_price != null && !isNaN(i.delivery_price)))) return null;
+    const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0), city = knownCity();
+    let freeAbove = 0, where = '';
+    if (city && typeof resolveDeliveryPricing === 'function') freeAbove = Number(resolveDeliveryPricing(city).freeAbove) || 0;
+    else if (typeof deliveryZones !== 'undefined' && Array.isArray(deliveryZones)) {
+      const zones = deliveryZones.filter((z) => Number(z.free_above) > 0).sort((a, b) => Number(a.free_above) - Number(b.free_above));
+      if (zones.length) {
+        freeAbove = Math.min(...zones.map((z) => Number(z.free_above)));
+        const named = zones.filter((z) => Number(z.free_above) <= freeAbove + 10).map((z) => (he() ? z.name_he : z.name_en) || '').filter(Boolean)
+          .map((n) => n === n.toUpperCase() ? n.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : n);
+        where = named.slice(0, 2).join(he() ? ' ו' : ' & ');
+      }
+    }
+    if (!freeAbove) return null;
+    return { subtotal, freeAbove, left: Math.ceil(freeAbove - subtotal), where };
+  }
+  // Up to three ways to reach free delivery with one or two simple items (coffee and syrups), each
+  // landing as little over the line as possible. Favourites and coffee come first; one of each kind.
+  function freeDeliveryOptions(left) {
+    if (left > 160) return [];
+    const rank = (p) => (window.GremierTaste ? window.GremierTaste.rank(p.id) : 0);
+    const pool = all().filter((p) => p.is_active !== false && Number(p.price) > 0 && simple(p) && (isCoffee(p) || isSyrup(p)));
+    const combos = [];
+    pool.forEach((a, i) => {
+      combos.push([a]);
+      pool.slice(i).forEach((b) => combos.push([a, b]));   // includes two of the same
+    });
+    const scored = combos.map((items) => ({ items, total: items.reduce((n, p) => n + Number(p.price), 0) }))
+      .filter((o) => o.total >= left && o.total - left <= 70)
+      .map((o) => ({ ...o, score: (o.total - left) + (o.items.length - 1) * 6 + o.items.filter((p) => !isCoffee(p)).length * 8, fav: o.items.reduce((n, p) => n + rank(p), 0) / o.items.length }))
+      .sort((a, b) => a.score - b.score || a.fav - b.fav);
+    const out = [], seen = new Set();
+    for (const o of scored) {
+      const kind = o.items.map((p) => p.category + (isSyrup(p) ? ':syrup' : '')).sort().join('+');
+      if (seen.has(kind)) continue;
+      seen.add(kind);
+      const same = o.items.length === 2 && o.items[0].id === o.items[1].id;
+      o.label = same ? `2 × ${name(o.items[0])}` : o.items.map(name).join(' + ');
+      out.push(o);
+      if (out.length === 3) break;
+    }
+    return out;
+  }
+  window.cxAddAll = function (ids) {
+    for (const id of String(ids).split(',')) { const p = all().find((x) => String(x.id) === id); if (p && simple(p)) addToCart(p.id); }
+    if (typeof renderCartDrawer === 'function') renderCartDrawer();
+  };
+  // Products that need choices (flavours, guests, add-ons) open their page; the rest go straight in.
+  const simple = (p) => !p.is_coffee_bar && p.category !== 'subscriptions' && !(p.variations || []).some((v) => Array.isArray(v.options) && v.options.length);
+  window.cxAdd = function (id) {
+    const p = all().find((x) => String(x.id) === String(id));
+    if (!p) return;
+    if (!simple(p)) { closeCart(); openProductDrawer(id); return; }
+    addToCart(p.id);
+    if (typeof renderCartDrawer === 'function') renderCartDrawer();
+  };
 
   function suggestionsHtml() {
     const inCart = new Set(cart.map(baseId));
     const items = cart.map(productOf).filter(Boolean);
-    if(items.some(p=>p.is_coffee_bar||(p.variations||[]).some(v=>v.type==='serving_pack'))||window.CoffeeBarOffers?.accessoryOffers(cart,all()).length)return '';
+    if(items.some(p=>p.is_coffee_bar||(p.variations||[]).some(v=>v.type==='serving_pack')))return '';
+    const servingOffers=!!window.CoffeeBarOffers?.accessoryOffers(cart,all()).length;
 
     const hasCoffee = items.some(isCoffee), hasSyrup = items.some(isSyrup);
+    const fresh = (p) => !inCart.has(String(p.id)) && p.is_active !== false && Number(p.price) > 0;
     let picks = [], title = '';
-    if (hasCoffee && !hasSyrup) {
-      picks = all().filter((p) => isSyrup(p) && !inCart.has(String(p.id)));
+    const g = gap();
+    // A little more for free delivery: simple items that get there without overshooting much, coffee first.
+    const options = g && g.left > 0 ? freeDeliveryOptions(g.left) : [];
+    const liters = items.filter((p) => isCoffee(p) && p.category === 'bottles');
+    if (options.length) {
+      return `<div class="pv-suggest"><div class="pv-suggest-title">${T(`₪${g.left} to free delivery: add one of these`, `עוד ₪${g.left} למשלוח חינם: הוסיפו אחד מאלה`)}</div>${options.map((o) => `<div class="pv-suggest-row">
+        ${o.items[0].images && o.items[0].images[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(o.items[0].images[0], 80) : o.items[0].images[0])}" alt="">` : ''}
+        <span class="n">${esc(o.label)} · ₪${o.total}</span>
+        <button type="button" onclick="cxAddAll('${o.items.map((p) => esc(p.id)).join(',')}')">${o.items.length > 1 ? T('+ Add both', '+ הוספת שניהם') : T('+ Add', '+ הוספה')}</button>
+      </div>`).join('')}</div>`;
+    } else if (servingOffers) {
+      return '';   // the cups & straws offer is already showing
+    } else if (hasCoffee && !hasSyrup) {
+      picks = all().filter((p) => isSyrup(p) && fresh(p));
       title = T('Goes great with your coffee', 'מתאים לקפה שלכם');
+    } else if (liters.length && !items.some((p) => p.category === 'minis')) {
+      picks = all().filter((p) => p.category === 'minis' && fresh(p) && simple(p));
+      title = T('Minis for on the go', 'מיני לדרך');
+    } else if (liters.length === 1 && items.filter(isCoffee).length === 1) {
+      const rank = (p) => (window.GremierTaste ? window.GremierTaste.rank(p.id) : 0);
+      picks = all().filter((p) => p.category === 'bottles' && isCoffee(p) && fresh(p)).sort((a, b) => rank(a) - rank(b));
+      title = T('Try another flavour', 'נסו טעם נוסף');
     } else if (hasSyrup && !hasCoffee) {
       const rank = (p) => (window.GremierTaste ? window.GremierTaste.rank(p.id) : 0);
       picks = all().filter((p) => isCoffee(p) && p.category === 'bottles' && !inCart.has(String(p.id))).sort((a, b) => rank(a) - rank(b));
@@ -54,7 +130,7 @@
     return `<div class="pv-suggest"><div class="pv-suggest-title">${title}</div>${picks.slice(0, 2).map((p) => `<div class="pv-suggest-row">
         ${p.images && p.images[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(p.images[0], 80) : p.images[0])}" alt="">` : ''}
         <span class="n">${esc(name(p))} · ₪${p.price}</span>
-        <button type="button" onclick="closeCart();openProductDrawer('${esc(p.id)}')">${T('+ Add', '+ הוספה')}</button>
+        <button type="button" onclick="cxAdd('${esc(p.id)}')">${T('+ Add', '+ הוספה')}</button>
       </div>`).join('')}</div>`;
   }
 
