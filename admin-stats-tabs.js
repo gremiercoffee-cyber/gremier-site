@@ -152,15 +152,16 @@
  }
  const finbotYear=y=>data.snaps.find(s=>s.report_year===y);
  const finbotMonth=(y,m)=>finbotYear(y)?.payload?.monthly?.find(x=>x.month===m);
+ // From 2026 the site knows every sale (receipts, paid orders without one yet, store deliveries, events);
+ // earlier years only exist in FinBot. Months still to come are empty.
+ const APP_FROM=2026;
+ const yearByMonth=y=>y>=APP_FROM?upToNow(salesByMonth(y).map(r=>r.stores+r.online+r.other),months(y)):Array.from({length:12},(_,i)=>finbotMonth(y,y+'-'+String(i+1).padStart(2,'0'))?.income_minor??null);
 
  function drawOverview(){
   const t=today(),cur=t.slice(0,7),rows=salesByMonth(year),sum=r=>r.stores+r.online+r.other;
   const thisMonth=rows.find(r=>r.month===cur),prevKey=months(year)[Math.max(0,+cur.slice(5)-2)];
   const lastYearSame=finbotMonth(year-1,(year-1)+cur.slice(4));
   const ytd=rows.filter(r=>r.month<=cur).reduce((s,r)=>s+sum(r),0);
-  const fbThis=finbotYear(year),fbPrev=finbotYear(year-1);
-  const ytdPrev=fbPrev?fbPrev.payload.monthly.filter(m=>m.month.slice(5)<=cur.slice(5)).reduce((s,m)=>s+m.income_minor,0):null;
-  const ytdThisFb=fbThis?fbThis.payload.monthly.filter(m=>m.month.slice(5)<=cur.slice(5)).reduce((s,m)=>s+m.income_minor,0):null;
   const pct=(a,b)=>b?`${a>=b?'▲':'▼'} ${Math.abs(Math.round((a-b)/b*100))}%`:'';
   const owed=data.stores.map(s=>({s,x:storeStats(s,data.bills,data.deliveries,t)})).filter(({x})=>x.oldestBilled&&dayDiff(x.oldestBilled,t)>45).sort((a,b)=>b.x.owed-a.x.owed);
   const isNow=year===+t.slice(0,4);
@@ -168,13 +169,16 @@
    ${isNow&&thisMonth?tile(monthLong(cur)+' so far',money(sum(thisMonth)),prevKey!==cur?`${monthShort(prevKey)}: ${money(sum(rows.find(r=>r.month===prevKey)))}`:''):''}
    ${isNow&&lastYearSame?tile('Same month last year',money(lastYearSame.income_minor),'FinBot income'):''}
    ${tile((isNow?'This year so far':'Year '+year),money(ytd),'Stores delivered + website + events')}
-   ${ytdPrev!==null&&ytdThisFb!==null?tile('vs last year (FinBot)',pct(ytdThisFb,ytdPrev)||'—',`${money(ytdThisFb)} vs ${money(ytdPrev)}, same months`):''}
+   ${(()=>{const a=yearByMonth(year),b=yearByMonth(year-1),upTo=+cur.slice(5)-(isNow?1:0),through=isNow?upTo:12;if(!b.some(v=>v)||through<1)return '';
+    const now=a.slice(0,through).reduce((s,v)=>s+(v||0),0),then=b.slice(0,through).reduce((s,v)=>s+(v||0),0);
+    return tile('vs last year',pct(now,then)||'—',`${money(now)} vs ${money(then)}, Jan–${monthShort(year+'-'+String(through).padStart(2,'0'))}`);})()}
   </div>
   ${line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
    note:'Stores: the month\'s statement (what was delivered); before June 2026, store payments. Website and events: payments, each counted once.'})}
-  ${(()=>{const ys=[year-2,year-1,year].filter(y=>finbotYear(y));if(ys.length<2)return `<section class="st-card"><h3>Year over year</h3><p class="sales-note">${ys.length?`Only ${ys[0]} is imported from FinBot so far. 2024 and 2025 appear here once their FinBot reports are imported.`:'No FinBot years imported yet.'}</p></section>`;
-   return line({title:'Year over year · FinBot income by month',labels:Array.from({length:12},(_,i)=>({label:monthShort('2000-'+String(i+1).padStart(2,'0'))})),series:ys.map((y,j)=>({name:String(y),color:j===ys.length-1?C[0]:j===ys.length-2?C[1]:C[2],values:Array.from({length:12},(_,i)=>finbotMonth(y,y+'-'+String(i+1).padStart(2,'0'))?.income_minor??null)})),
-    note:'Income as recorded in FinBot (by document date). '+ys.map(y=>`${y}: ${money(finbotYear(y).payload.monthly.reduce((s,m)=>s+m.income_minor,0))}${finbotYear(y).as_of_date<y+'-12-31'?' through '+finbotYear(y).as_of_date:''}`).join(' · ')});})()}
+  ${(()=>{const ys=[year-2,year-1,year].filter(y=>y>=APP_FROM||finbotYear(y));if(ys.length<2)return `<section class="st-card"><h3>Year over year</h3><p class="sales-note">Earlier years appear here once their FinBot reports are imported.</p></section>`;
+   const total=y=>yearByMonth(y).reduce((s,v)=>s+(v||0),0);
+   return line({title:'Year over year · income by month',labels:Array.from({length:12},(_,i)=>({label:monthShort('2000-'+String(i+1).padStart(2,'0'))})),series:ys.map((y,j)=>({name:String(y),color:j===ys.length-1?C[0]:j===ys.length-2?C[1]:C[2],values:yearByMonth(y)})),
+    note:`From ${APP_FROM}: every sale we know of, as in Sales by month above. Earlier years: income as recorded in FinBot. `+ys.map(y=>`${y}: ${money(total(y))}`).join(' · ')});})()}
   ${owed.length?`<section class="st-card"><h3>Stores owing for over 45 days</h3>${owed.map(({s,x})=>`<div class="fin-row"><span>${esc(s.name)}<small> · oldest statement ${esc(x.oldestBilled.slice(0,10))}</small></span><strong>${money(x.owed)}</strong></div>`).join('')}</section>`:''}`;
  }
 

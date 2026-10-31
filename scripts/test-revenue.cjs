@@ -168,3 +168,10 @@ test('stores owe each unpaid month once; a paid month counts by its receipt, eve
  assert.equal(m.owed(bills,'2026-01-01','2026-12-31',[{billing_id:'a',receipt_id:'p'}],new Map([['p',{status:'issuing'}]])).total_minor,150000);
  assert.equal(m.owed(bills,'2026-10-01','2026-10-31').total_minor,50000);
 });
+test('a FinBot copy of a website receipt counts on the payment date, not its later issue date',()=>{
+ const d=base();d.orderReceipts=[{order_id:'o',status:'issued',amount_minor:45000,payment_date:'2026-08-03'}];
+ d.imported=[{document_reference:'20188',website_order_number:42,customer_name:'לקוחות מזדמנים',amount_minor:45000,document_date:'2026-10-20'}];
+ assert.equal(m.income(d,'2026-10-01','2026-10-31',s=>s.slice(0,10)).total_minor,0);
+ const aug=m.income(d,'2026-08-01','2026-08-31',s=>s.slice(0,10));assert.equal(aug.total_minor,45000);assert.equal(aug.rows.length,1);
+ d.orderReceipts=[];assert.equal(m.income(d,'2026-10-15','2026-10-31',s=>s.slice(0,10)).total_minor,0,'no app receipt: the order date (2 Oct), not the issue date (20 Oct)');assert.equal(m.income(d,'2026-10-01','2026-10-14',s=>s.slice(0,10)).total_minor,45000);
+});

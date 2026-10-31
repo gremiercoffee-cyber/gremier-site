@@ -38,6 +38,7 @@
   const byNumber=new Map(data.orders.map(o=>[String(o.order_number),o])),byId=new Map(data.orders.map(o=>[String(o.id),o]));
   const webByRef=new Map(data.orderReceipts.filter(r=>r.document_reference).map(r=>[ref(r.document_reference),r]));
   const manualByRef=new Map(data.businessReceipts.filter(r=>r.document_reference).map(r=>[ref(r.document_reference),r]));
+  const appReceiptByOrder=new Map(data.orderReceipts.filter(r=>['issued','external'].includes(r.status)&&!r.is_test).map(r=>[String(r.order_id),r]));
   const aliases=new Map();data.stores.forEach(s=>aliases.set(normalize(s.name),s.id));data.customers.filter(c=>c.store_id).forEach(c=>aliases.set(normalize(c.name),c.store_id));
   // These transliterations appear in the imported ledger; retain the store exclusion.
   const translated={'goodstore':['גוד סטור'],'birkatsanhedriya':['ברכת סנהדרייה','חסן מאיר ברכת סנהדרייה'],'minimachaneyehudarbs':['מיני מחניודה']};
@@ -59,8 +60,10 @@
    rows.push({...r,parts,basis,estimated});
   }
   data.imported.filter(r=>r.source_kind!=='legacy_website_summary').forEach(r=>{
-   const id=ref(r.document_reference),w=webByRef.get(id),b=manualByRef.get(id);
-   add({key:'finbot:'+id,reference:r.document_reference,name:r.customer_name,description:b?.description||r.description||'',date:w?.payment_date||b?.payment_date||r.document_date,amount_minor:w?.amount_minor??b?.amount_minor??Number(r.amount_minor),store_id:b?.store_id,order:w?byId.get(String(w.order_id)):byNumber.get(String(r.website_order_number)),website_order_number:r.website_order_number??(w?'missing':null),imported:true});
+   const id=ref(r.document_reference),w=webByRef.get(id),b=manualByRef.get(id),order=w?byId.get(String(w.order_id)):byNumber.get(String(r.website_order_number));
+   // A website order's receipt counts when the order was paid, not when FinBot issued it (many were caught up in October).
+   const paid=w?.payment_date||b?.payment_date||(order&&appReceiptByOrder.get(String(order.id))?.payment_date)||(order?.created_at?String(order.created_at).slice(0,10):null)||r.document_date;
+   add({key:'finbot:'+id,reference:r.document_reference,name:r.customer_name,description:b?.description||r.description||'',date:paid,amount_minor:w?.amount_minor??b?.amount_minor??Number(r.amount_minor),store_id:b?.store_id,order,website_order_number:r.website_order_number??(w?'missing':null),imported:true});
   });
   data.orderReceipts.filter(r=>['issued','external'].includes(r.status)&&!r.is_test).forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'order:'+r.order_id,reference:r.document_reference||'',name:byId.get(String(r.order_id))?.customer_name||'Online order',date:r.payment_date,amount_minor:Number(r.amount_minor),order:byId.get(String(r.order_id)),website_order_number:byId.get(String(r.order_id))?.order_number??'missing'}));
   data.businessReceipts.filter(r=>r.status==='issued').forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'business:'+r.id,reference:r.document_reference||'',name:r.customer_snapshot?.name||'',description:r.description||'',date:r.payment_date,amount_minor:Number(r.amount_minor),store_id:r.store_id}));
