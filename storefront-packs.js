@@ -16,14 +16,35 @@
   const unitPrice = (p) => Number(p.price) / perProduct(p);
   const packFor = (pool) => all().find((p) => packOf(p)?.pool === pool && p.is_active !== false);
   let open = null;   // { pack, picks: {id: n} }
-  // The minis' photos show their 4-pack carton; in the picker each mini is one bottle, so it's drawn as
-  // a single bottle in its label colour (until single-bottle photos exist).
-  function miniBottle(p) {
-    const n = String(p.name_en || ''), dark = /classic/i.test(n);
-    const label = /vanilla/i.test(n) ? '#f3efe6' : /caramel/i.test(n) ? '#e08a2c' : dark ? '#f2c418' : '#c79a68';
-    return `<svg class="pack-img" viewBox="0 0 46 46" aria-hidden="true"><rect x="0" y="0" width="46" height="46" rx="10" fill="#f3f0eb"/>
-      <rect x="18" y="5" width="10" height="5" rx="1.5" fill="#c9a24a"/><path d="M19 10h8v5c0 2 4 4 4 8v15a3 3 0 0 1-3 3H18a3 3 0 0 1-3-3V23c0-4 4-6 4-8z" fill="${dark ? '#2b1a12' : '#c9a987'}" stroke="#d8d2c8" stroke-width="1"/>
-      <rect x="15" y="26" width="16" height="8" fill="${label}" stroke="${label === '#f3efe6' ? '#cfc8bb' : 'none'}" stroke-width=".8"/></svg>`;
+  let returnFocus = null, previousOverflow = '';
+  const art = (pool, flavour) => `/packs/studio/${pool}-${flavour}-${pool === 'bottles' ? 'v2' : 'v1'}.webp`;
+  function flavour(p, pool) {
+    const name = String(p?.name_en || '').toLowerCase();
+    if (pool === 'minis') return /classic/.test(name) ? 'classic' : /vanilla/.test(name) ? 'vanilla' : /caramel/.test(name) ? 'caramel' : 'original';
+    return /decaf/.test(name) ? 'decaf' : /sweetened/.test(name) ? 'sweetened' : /house/.test(name) ? 'house' : /colombia/.test(name) ? 'colombia' : 'classic';
+  }
+  const warmed = new Set();
+  function warmScene(pool) {
+    if (warmed.has(pool)) return;
+    warmed.add(pool);
+    for (const kind of pool === 'minis' ? ['carrier','original','vanilla','caramel','classic'] : ['carrier','classic','house','colombia','sweetened','decaf']) {
+      const image = new Image(); image.src = art(pool, kind);
+    }
+  }
+  function updateScene(scene, pool) {
+    open.slots = PackSceneSlots.reconcile(open.slots, open.picks);
+    open.slots.forEach((id, slot) => {
+      const old = scene.querySelector(`[data-slot="${slot}"]:not(.leaving)`);
+      if (old?.dataset.product === id) return;
+      if (old) { old.classList.remove('entering'); old.classList.add('leaving'); setTimeout(() => old.remove(), 240); }
+      if (!id) return;
+      const p = all().find(p => String(p.id) === id), node = document.createElement('div');
+      const back = slot < 3, col = slot % 3, width = pool === 'minis' ? (back ? 19 : 21) : (back ? 13 : 14.5);
+      node.className = 'pack-scene-bottle entering'; node.dataset.slot = slot; node.dataset.product = id;
+      node.style.cssText = `--left:${(back ? 33 : 28) + col * 21 - width/2}%;--bottom:${back ? 29 : 12}%;--width:${width}%;--height:${back ? 63 : 67}%;--z:${back ? 5 : 15};`;
+      const img = document.createElement('img'); img.src = art(pool, flavour(p,pool)); img.alt = nameOf(p); img.draggable = false;
+      node.appendChild(img); scene.appendChild(node);
+    });
   }
 
   function quote(pack, picks) {
@@ -39,30 +60,55 @@
     if (!el || !open) return;
     const { pack } = open, cfg = packOf(pack), q = quote(pack, open.picks), pool = all().filter((p) => inPool(p, cfg.pool));
     const left = q.size - q.count;
+    const prior = el.querySelector('.pack-scene'), scroll = el.querySelector('.pack-box')?.scrollTop || 0;
+    const focused = document.activeElement?.closest('[data-pack-step]');
+    const focusId = focused?.dataset.packStep, focusDelta = focused?.dataset.d;
+    if (prior) {
+      // Reattaching the scene must not replay the drop on bottles already in place.
+      prior.querySelectorAll('.entering').forEach(node => node.classList.remove('entering'));
+      prior.remove();
+    }
     el.innerHTML = `<div class="pack-box" role="dialog" aria-modal="true" aria-labelledby="packTitle">
       <button type="button" class="pack-close" data-pack-close aria-label="${T('Close', 'סגירה')}">×</button>
       <h3 id="packTitle">${esc(nameOf(pack))}</h3>
       <p class="pack-sub">${T(`Pick any ${q.size}, mix the flavours. <b>5% cheaper</b> than buying them one by one.`, `בחרו ${q.size}, שלבו טעמים. <b>זול ב-5%</b> מקנייה אחד אחד.`)}</p>
+      <div class="pack-scene-mount"></div>
+      <p class="pack-scene-caption">${T('Your 6-pack · made by you', 'השישייה שלכם · בדיוק לטעמכם')}</p>
       <div class="pack-slots" aria-label="${T(`${q.count} of ${q.size} chosen`, `${q.count} מתוך ${q.size} נבחרו`)}">${Array.from({ length: q.size }, (_, i) => `<i class="${i < q.count ? 'on' : ''}"></i>`).join('')}<span>${T(`${q.count} of ${q.size}`, `${q.count} מתוך ${q.size}`)}</span></div>
       <div class="pack-list">${pool.map((p) => { const n = open.picks[p.id] || 0; return `<div class="pack-row${n ? ' on' : ''}">
-        ${perProduct(p) > 1 ? miniBottle(p) : p.images?.[0] ? `<img src="${esc(typeof cloudinaryOptimize === 'function' ? cloudinaryOptimize(p.images[0], 120) : p.images[0])}" alt="" loading="lazy">` : '<span class="pack-img"></span>'}
+        <img class="pack-rendered-thumb" src="${art(cfg.pool, flavour(p,cfg.pool))}" alt="" width="42" height="54">
         <span class="pack-name">${esc(nameOf(p).replace(/\s*(4[\s-]*pack|רביעייה)\s*/i, ' ').trim())}<small>${money(unitPrice(p))}</small></span>
         <span class="pack-step"><button type="button" data-pack-step="${esc(p.id)}" data-d="-1" ${n ? '' : 'disabled'} aria-label="${T('One less', 'אחד פחות')}">−</button><b>${n}</b><button type="button" data-pack-step="${esc(p.id)}" data-d="1" ${left ? '' : 'disabled'} aria-label="${T('One more', 'עוד אחד')}">+</button></span></div>`; }).join('')}</div>
       <div class="pack-total">${q.count && !left ? `<span><s>${money(q.full)}</s> <b>${money(q.total)}</b></span><small>${T(`You save ${money(q.full - q.total)}`, `חוסכים ${money(q.full - q.total)}`)}</small>` : `<span>${q.count ? money(q.full) + ' ' + T('so far', 'עד עכשיו') : ''}</span><small>${T('5% off when you reach 6', '5% הנחה כשמגיעים ל-6')}</small>`}</div>
       <button type="button" class="pack-add" data-pack-add ${left ? 'disabled' : ''}>${left ? T(`Pick ${left} more`, `בחרו עוד ${left}`) : T(`Add 6-pack to cart · ${money(q.total)}`, `הוספת השישייה לעגלה · ${money(q.total)}`)}</button>
     </div>`;
+    const scene = prior || document.createElement('div');
+    if (!prior) {
+      scene.className = 'pack-scene'; scene.setAttribute('role','img');
+      scene.innerHTML = `<img class="pack-scene-carrier" src="${art(cfg.pool,'carrier')}" alt=""><div class="pack-scene-lip"><img class="pack-scene-carrier" src="${art(cfg.pool,'carrier')}" alt=""></div>`;
+    }
+    scene.setAttribute('aria-label', T(`Your pack: ${q.count} of ${q.size} bottles selected`, `השישייה שלכם: ${q.count} מתוך ${q.size} בקבוקים נבחרו`));
+    el.querySelector('.pack-scene-mount').replaceWith(scene);
+    updateScene(scene,cfg.pool);
+    el.querySelector('.pack-box').scrollTop = scroll;
+    if (focusId) Array.from(el.querySelectorAll('[data-pack-step]')).find(b => b.dataset.packStep === focusId && b.dataset.d === focusDelta)?.focus({preventScroll:true});
   }
   window.openPackBuilder = function (packId, start) {
     const pack = all().find((p) => String(p.id) === String(packId));
     if (!pack || !packOf(pack)) return false;
     let el = $('packSheet');
     if (!el) { el = document.createElement('div'); el.id = 'packSheet'; el.className = 'pack-sheet'; document.body.appendChild(el); }
-    open = { pack, picks: start && inPool(all().find((p) => String(p.id) === String(start)), packOf(pack).pool) ? { [start]: 1 } : {} };
+    if (!open) { returnFocus = document.activeElement; previousOverflow = document.body.style.overflow; }
+    document.body.style.overflow = 'hidden';
+    el.innerHTML = '';
+    warmScene(packOf(pack).pool);
+    open = { pack, slots: [], picks: start && inPool(all().find((p) => String(p.id) === String(start)), packOf(pack).pool) ? { [start]: 1 } : {} };
     render();
     el.classList.add('open');
+    el.querySelector('[data-pack-close]')?.focus({preventScroll:true});
     return true;
   };
-  function close() { $('packSheet')?.classList.remove('open'); open = null; }
+  function close() { $('packSheet')?.classList.remove('open'); document.body.style.overflow = previousOverflow; open = null; returnFocus?.focus?.({preventScroll:true}); }
   function add() {
     if (!open) return;
     const { pack } = open, q = quote(pack, open.picks);
@@ -106,7 +152,16 @@
     }
     const ui = window.openProductDrawerUI;
     if (typeof ui === 'function') window.openProductDrawerUI = function () { const r = ui.apply(this, arguments); try { const p = typeof pdCurrentProduct !== 'undefined' ? pdCurrentProduct : null; if (p && packOf(p)) { if (typeof closeProductDrawer === 'function') closeProductDrawer(true); window.openPackBuilder(p.id); } else hintInDrawer(); } catch (_) {} return r; };
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) close(); });
+    document.addEventListener('keydown', (e) => {
+      if (!open) return;
+      if (e.key === 'Escape') close();
+      if (e.key === 'Tab') {
+        const buttons = Array.from($('packSheet').querySelectorAll('button:not(:disabled)'));
+        const first = buttons[0], last = buttons[buttons.length-1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook); else hook();
 })();
