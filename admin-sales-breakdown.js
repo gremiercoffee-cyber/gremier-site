@@ -63,7 +63,8 @@
       for (const item of (o.items || [])) {
         const qty = Number(item.qty) || 1;
         const lineRevenue = (Number(item.price) || 0) * qty;
-        const contents = Array.isArray(item.subscription_items) ? item.subscription_items : [];
+        // Subscription boxes and build-your-own packs count as what's inside them.
+        const contents = Array.isArray(item.pack_items) && item.pack_items.length ? item.pack_items.map(c => ({ ...c, qty: c.qty / (Number(c.per_product) || 1) })) : Array.isArray(item.subscription_items) ? item.subscription_items : [];
         if (contents.length) {
           // Subscription box: split its price across what's inside, by the contents' own prices.
           const weights = contents.map(c => (Number(c.price) || 0) * (Number(c.qty) || 1));

@@ -1,4 +1,5 @@
 import { buildCoffeeBarConfiguration, resolveCoffeeBarGuests } from "../_shared/coffee-bar-order.ts";
+import { packConfig, quotePack } from "../_shared/pack-model.ts";
 import { subscriptionDeliveryRule } from "../_shared/subscription-delivery.ts";
 import "../_shared/subscription-model.js";
 const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
@@ -273,10 +274,14 @@ Deno.serve(async (req) => {
         ? (item.subscription_items as Record<string, unknown>[]).map((c) => String(c?.product_id || "").trim())
         : []
     ).filter(Boolean);
+    // Bottles chosen inside a build-your-own pack, for their real prices.
+    const packIds = items.flatMap((item: Record<string, unknown>) =>
+      Array.isArray(item.pack_items) ? (item.pack_items as Record<string, unknown>[]).map((c) => String(c?.product_id || "").trim()) : []
+    ).filter(Boolean);
     const { data: fetchedRows, error: productErr } = await admin
       .from("products")
       .select("id,name_en,name_he,price,is_active,variations,delivery_price,is_subscription,is_coffee_bar,category")
-      .in("id", [...new Set([...productIds, ...boxIds, ...extraIds])]);
+      .in("id", [...new Set([...productIds, ...boxIds, ...extraIds, ...packIds])]);
     if (productErr) throw productErr;
 
     const productsById = new Map((fetchedRows || []).map((product: Record<string, unknown>) => [String(product.id), product]));
@@ -320,7 +325,9 @@ Deno.serve(async (req) => {
         }
       }
       const extrasTotal = barExtras.reduce((sum, x) => sum + Number(x.price) * Number(x.qty), 0);
-      const unitPrice = (sub ? sub.unitPrice : computeUnitPrice(product, item)) + extrasTotal;
+      // A build-your-own pack is priced from the bottles chosen, less its discount.
+      const pack = !isSub && packConfig(product) ? quotePack(product, item.pack_items, productsById) : null;
+      const unitPrice = pack ? pack.total : (sub ? sub.unitPrice : computeUnitPrice(product, item)) + extrasTotal;
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
       const guest = resolveGuestSelection(product, item);
       const coffeeBarConfiguration = isSub ? null : buildCoffeeBarConfiguration(product, { ...item, bar_extras: barExtras });
@@ -328,8 +335,8 @@ Deno.serve(async (req) => {
       const interval = String(item.subscription_interval || "monthly").toLowerCase() === "weekly" ? "weekly" : "monthly";
       return {
         product_id: productId,
-        name_en: isSub ? "Coffee subscription" : product.name_en || null,
-        name_he: isSub ? "מנוי קפה" : product.name_he || null,
+        name_en: isSub ? "Coffee subscription" : pack ? `${product.name_en} · ${pack.label_en}` : product.name_en || null,
+        name_he: isSub ? "מנוי קפה" : pack ? `${product.name_he || product.name_en} · ${pack.label_he}` : product.name_he || null,
         price: unitPrice,
         qty,
         coffee_bar_configuration: coffeeBarConfiguration,
@@ -345,6 +352,7 @@ Deno.serve(async (req) => {
         is_subscription: isSub,
         subscription_interval: isSub ? interval : null,
         subscription_items: sub?.contents ?? null,
+        pack_items: pack?.contents ?? null,
         category: product.category || null,
       };
     });

@@ -137,18 +137,20 @@ function resolveStockKeyByText(text: string): string {
  */
 async function resolveOpsQuantities(
   supabase: SupabaseClient,
-  rawItems: Array<{ product_id?: string; name_en?: string; name_he?: string; qty?: number; subscription_items?: unknown }>,
+  rawItems: Array<{ product_id?: string; name_en?: string; name_he?: string; qty?: number; subscription_items?: unknown; pack_items?: unknown }>,
 ): Promise<Record<string, number>> {
-  // A subscription box is delivered as its contents, not as "1× Combo Subscription".
+  // A subscription box is delivered as its contents, not as "1× Combo Subscription"; so is a
+  // build-your-own pack (its minis are single bottles of a 4-pack product, so a quarter each).
   const items = rawItems.flatMap((i) => {
-    const box = Array.isArray(i.subscription_items) ? i.subscription_items as Array<Record<string, unknown>> : [];
+    const pack = Array.isArray(i.pack_items) ? i.pack_items as Array<Record<string, unknown>> : [];
+    const box = pack.length ? pack : Array.isArray(i.subscription_items) ? i.subscription_items as Array<Record<string, unknown>> : [];
     if (!box.length) return [i];
     const mult = Number(i.qty) || 1;
     return box.map((c) => ({
       product_id: String(c?.product_id || ""),
       name_en: String(c?.name_en || ""),
       name_he: String(c?.name_he || ""),
-      qty: (Number(c?.qty) || 1) * mult,
+      qty: ((Number(c?.qty) || 1) / (pack.length ? Number(c?.per_product) || 1 : 1)) * mult,
     }));
   });
   const ids = [...new Set(items.map((i) => String(i.product_id || "").trim()).filter(Boolean))];

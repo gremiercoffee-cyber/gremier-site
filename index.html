@@ -780,7 +780,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261102-1"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261102-2"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261101-3"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
@@ -839,7 +839,7 @@
     <button class="btn btn-outline btn-full btn-sm" onclick="closePointsModal(); showPage('shop')">Shop Now</button>
   </div>
 </div>
-<script src="/subscription-model.js?v=20261021-1"></script>
+<script src="/subscription-model.js?v=20261102-1"></script>
 <script>
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
@@ -2926,6 +2926,7 @@ const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expe
         is_subscription: !!i.is_subscription,
         subscription_interval: i.subscription_interval || null,
         subscription_items: i.subscription_items || null,
+        pack_items: i.pack_items || null,
       })),
       subtotal: cartTotal,
       discount: couponDiscount + giftCardDiscount,
@@ -5318,9 +5319,10 @@ async function sendChatMessageText(text) {
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
-<script src="/storefront-cart.js?v=20261031-1"></script>
+<script src="/storefront-cart.js?v=20261102-1"></script>
 <script src="/storefront-engage.js?v=20261102-1"></script>
 <script src="/storefront-compare.js?v=20261102-1"></script>
+<script src="/storefront-packs.js?v=20261102-2"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>
 <script src="/storefront-planner.js?v=20261101-4"></script>

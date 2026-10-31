@@ -489,3 +489,31 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .cmp-dots i { width:7px; height:7px; border-radius:50%; background:#e6e2db; }
 .cmp-dots i.on { background:#3b2a1e; }
 .pd-fresh { display:block; font-size:.74rem; color:#6b7178; margin-top:6px; }
+
+/* Build-your-own 6-pack */
+.pack-sheet { position:fixed; inset:0; z-index:430; display:none; align-items:flex-end; justify-content:center; background:rgba(20,16,12,.45); }
+.pack-sheet.open { display:flex; }
+.pack-box { position:relative; width:100%; max-width:480px; max-height:92vh; overflow:auto; background:#fff; border-radius:22px 22px 0 0; padding:22px 18px calc(18px + env(safe-area-inset-bottom)); }
+@media(min-width:700px){ .pack-sheet { align-items:center; } .pack-box { border-radius:22px; } }
+.pack-close { position:absolute; top:12px; inset-inline-end:12px; width:34px; height:34px; border-radius:50%; border:1px solid #e6e4df; background:#fff; font-size:18px; cursor:pointer; }
+.pack-box h3 { margin:0 0 6px; font-size:1.15rem; padding-inline-end:40px; }
+.pack-sub { margin:0 0 12px; font-size:.86rem; color:#555; line-height:1.5; }
+.pack-slots { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+.pack-slots i { width:22px; height:22px; border-radius:50%; border:2px dashed #d6d1c8; }
+.pack-slots i.on { border:0; background:#3b2a1e; }
+.pack-slots span { margin-inline-start:6px; font-size:.82rem; color:#6b7178; }
+.pack-list { display:grid; gap:8px; }
+.pack-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #eee9e2; border-radius:14px; }
+.pack-row.on { border-color:#3b2a1e; background:#fbf8f4; }
+.pack-row img, .pack-img { width:46px; height:46px; object-fit:cover; border-radius:10px; background:#f3f0eb; }
+.pack-name { flex:1; font-size:.9rem; font-weight:600; display:grid; }
+.pack-name small { font-weight:400; color:#6b7178; }
+.pack-step { display:flex; align-items:center; gap:8px; }
+.pack-step button { width:32px; height:32px; border-radius:50%; border:1px solid #d9d4cc; background:#fff; font-size:17px; cursor:pointer; }
+.pack-step button:disabled { opacity:.35; cursor:default; }
+.pack-step b { min-width:16px; text-align:center; }
+.pack-total { display:flex; justify-content:space-between; align-items:baseline; margin:14px 2px 10px; }
+.pack-total s { color:#999; } .pack-total b { font-size:1.2rem; } .pack-total small { color:#2c6e49; font-weight:600; }
+.pack-add { width:100%; padding:14px; border:0; border-radius:999px; background:#1a1a1a; color:#fff; font-weight:600; font-size:.95rem; cursor:pointer; }
+.pack-add:disabled { background:#bdb8b0; cursor:default; }
+.pack-hint { display:block; width:100%; margin:4px 0 14px; padding:10px 14px; border:1px dashed #c8873a; border-radius:12px; background:#fbf6ee; color:#8a5a1c; font:inherit; font-size:.84rem; text-align:start; cursor:pointer; }

@@ -81,7 +81,7 @@
     if (typeof renderCartDrawer === 'function') renderCartDrawer();
   };
   // Products that need choices (flavours, guests, add-ons) open their page; the rest go straight in.
-  const simple = (p) => !p.is_coffee_bar && p.category !== 'subscriptions' && !(p.variations || []).some((v) => Array.isArray(v.options) && v.options.length);
+  const simple = (p) => !p.is_coffee_bar && p.category !== 'subscriptions' && !(p.variations || []).some((v) => v && v.type === 'pack') && !(p.variations || []).some((v) => Array.isArray(v.options) && v.options.length);
   window.cxAdd = function (id) {
     const p = all().find((x) => String(x.id) === String(id));
     if (!p) return;

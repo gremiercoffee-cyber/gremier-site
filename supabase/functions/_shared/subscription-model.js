@@ -1,7 +1,7 @@
 (function(root){
  'use strict';
  const syrup=p=>p.category==='syrups'||/syrup|סירופ/i.test((p.name_en||'')+' '+(p.name_he||''));
- const eligible=p=>!!p&&p.is_active!==false&&!p.is_subscription&&p.category!=='subscriptions'&&!p.is_coffee_bar&&['bottles','minis','bulk','syrups'].includes(p.category);
+ const eligible=p=>!!p&&p.is_active!==false&&!p.is_subscription&&p.category!=='subscriptions'&&!p.is_coffee_bar&&!(p.variations||[]).some(v=>v&&v.type==='pack')&&['bottles','minis','bulk','syrups'].includes(p.category);
  const large=p=>p.category==='bulk'||/\b5\s*(?:l\b|lit[er]+)|5\s*ליטר|ג.?ריקן/i.test((p.name_en||'')+' '+(p.name_he||''));
  function quote(chosen,products){
   const byId=new Map(products.map(p=>[String(p.id),p])),seen=new Set(),contents=[];let regular=0,total=0,coffeeCount=0,hasLarge=false;
