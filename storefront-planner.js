@@ -37,7 +37,7 @@
       const counts=(o,keys,max)=>Object.fromEntries(keys.map(k=>[k,n(o?.[k],max)]));
       return {guests:Math.max(5,n(j.g,500)),milk:['dairy','parve','all_parve'].includes(j.m)?j.m:'dairy',milkMix:j.mm&&typeof j.mm==='object'?j.mm:null,
        mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,syrups:counts(j.s,['caramel','vanilla','sugar'],20),
-       deliveryMode:j.d?.[0]==='before'?'before':'event',deliveryDate:/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||'')?j.d[1]:'',deliveryTime:/^\d{2}:\d{2}$/.test(j.d?.[2]||'')?j.d[2]:'',
+       deliveryMode:['before','pickup'].includes(j.d?.[0])?j.d[0]:'event',deliveryDate:/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||'')?j.d[1]:'',deliveryTime:/^\d{2}:\d{2}$/.test(j.d?.[2]||'')?j.d[2]:'',
        extras:Object.fromEntries(Object.entries(j.e&&typeof j.e==='object'?j.e:{}).filter(([k])=>/^[\w-]{1,64}$/.test(k)).map(([k,v])=>[k,n(v,20)]).filter(([,v])=>v>0))};
     }catch{return null;}
   }
@@ -66,19 +66,21 @@
     catch{window.prompt(T('Copy this link:','העתיקו את הקישור:'),url);}
   }
 
-  // Delivery: at the event (date + arrival time → event delivery), or before it (a date; within two days
-  // of today that's expedited on that date, otherwise regular on that date). Filled into checkout.
+  // Delivery: at the event (date + arrival time → event delivery), before it (a date; within two days
+  // of today that's expedited on that date, otherwise regular on that date), or pickup (free, a date).
+  // Filled into checkout.
   const isoDay=(n=0)=>{const d=new Date(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date())+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
-  const shipFor=()=>state.deliveryMode==='event'?'event':(state.deliveryDate&&state.deliveryDate<=isoDay(2)?'expedited':'regular');
+  const shipFor=()=>state.deliveryMode==='event'?'event':state.deliveryMode==='pickup'?'pickup':(state.deliveryDate&&state.deliveryDate<=isoDay(2)?'expedited':'regular');
   function deliveryHtml(){
-    const before=state.deliveryMode==='before',ship=shipFor();
+    const before=state.deliveryMode==='before',pickup=state.deliveryMode==='pickup',ship=shipFor();
     return `<div class="pl-q bb-delivery"><h2>${T('How should we deliver it?','איך להביא את זה?')}</h2>
-      ${chips('deliveryMode',[['event',T('At the event, when it starts','לאירוע, בזמן שהוא מתחיל')],['before',T('Before the event','לפני האירוע')]])}
+      ${chips('deliveryMode',[['event',T('At the event, when it starts','לאירוע, בזמן שהוא מתחיל')],['before',T('Before the event','לפני האירוע')],['pickup',T('I’ll pick it up (free)','איסוף עצמי (חינם)')]])}
       <div class="bb-del-fields">
-        <label>${before?T('Delivery date','תאריך המשלוח'):T('Event date','תאריך האירוע')}<input type="date" class="form-input" id="plDelDate" min="${isoDay(1)}" value="${esc(state.deliveryDate)}"></label>
-        ${before?'':`<label>${T('Arrival time','שעת הגעה')}<input type="time" class="form-input" id="plDelTime" value="${esc(state.deliveryTime)}"></label>`}
+        <label>${pickup?T('Pickup date','תאריך האיסוף'):before?T('Delivery date','תאריך המשלוח'):T('Event date','תאריך האירוע')}<input type="date" class="form-input" id="plDelDate" min="${isoDay(1)}" value="${esc(state.deliveryDate)}"></label>
+        ${before||pickup?'':`<label>${T('Arrival time','שעת הגעה')}<input type="time" class="form-input" id="plDelTime" value="${esc(state.deliveryTime)}"></label>`}
       </div>
-      <small class="bb-q-hint">${!state.deliveryDate?T('Choose a date. The delivery fee for your area is added at checkout.','בחרו תאריך. דמי המשלוח לאזור שלכם יתווספו בקופה.')
+      <small class="bb-q-hint">${pickup?T('Free: you collect it from us. We’ll be in touch to set the pickup time and place.','חינם: אוספים מאיתנו. ניצור קשר כדי לתאם שעה ומקום לאיסוף.')
+        :!state.deliveryDate?T('Choose a date. The delivery fee for your area is added at checkout.','בחרו תאריך. דמי המשלוח לאזור שלכם יתווספו בקופה.')
         :ship==='event'?T('Event delivery: we arrive at your event at that time.','משלוח לאירוע: נגיע לאירוע בשעה הזו.')
         :ship==='expedited'?T('That’s within two days, so it’s expedited delivery on that date.','זה בתוך יומיים, אז זה משלוח מהיר בתאריך הזה.')
         :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small></div>`;
@@ -88,9 +90,12 @@
     const d=(()=>{try{return JSON.parse(localStorage.getItem('gremier_bar_delivery')||'null');}catch{return null;}})();
     if(!d||!d.date||typeof cart==='undefined'||!cart.some(i=>i.is_coffee_bar||all().find(p=>String(p.id)===String(i.base_product_id||i.id))?.is_coffee_bar))return;
     const set=(id,v)=>{const el=$(id);if(el)el.value=v||'';};
-    const radio=$(d.ship==='event'?'shipEvent':d.ship==='expedited'?'shipExpedited':'shipRegular');if(!radio||radio.disabled)return;
+    const radio=$(d.ship==='event'?'shipEvent':d.ship==='pickup'?'shipPickup':d.ship==='expedited'?'shipExpedited':'shipRegular');if(!radio||radio.disabled)return;
     radio.checked=true;
-    if(d.ship==='event'){set('coEventDate',d.date);set('coEventTime',d.time);}
+    // Pickup has no date field at checkout: the date goes in the order notes.
+    if(d.ship==='pickup'){const n=$('coNotes'),line=T(`Pickup on ${d.date}`,`איסוף ב-${d.date}`);if(n&&!n.value.includes(line))n.value=n.value?`${line}
+${n.value}`:line;}
+    else if(d.ship==='event'){set('coEventDate',d.date);set('coEventTime',d.time);}
     else if(d.ship==='expedited'){const p=$('priorityDate');if(p)p.checked=true;set('coDeliveryDate',d.date);if(typeof toggleDatePicker==='function')toggleDatePicker();}
     else set('coRegularDate',d.date);
     if(typeof toggleExpeditedOptions==='function')toggleExpeditedOptions();
@@ -321,7 +326,7 @@
     if(!chosen&&options.deliveryAtCheckout){try{localStorage.removeItem('gremier_bar_delivery');}catch{}}
     else if(!chosen){
       const q=document.querySelector('#planner .bb-delivery');q?.scrollIntoView({behavior:'smooth',block:'center'});q?.classList.add('bb-attention');setTimeout(()=>q?.classList.remove('bb-attention'),1600);
-      if(typeof showToast==='function')showToast(state.deliveryMode==='event'?T('Choose the event date and arrival time first','בחרו קודם תאריך ושעת הגעה'):T('Choose the delivery date first','בחרו קודם תאריך משלוח'));
+      if(typeof showToast==='function')showToast(state.deliveryMode==='event'?T('Choose the event date and arrival time first','בחרו קודם תאריך ושעת הגעה'):state.deliveryMode==='pickup'?T('Choose the pickup date first','בחרו קודם תאריך איסוף'):T('Choose the delivery date first','בחרו קודם תאריך משלוח'));
       return;
     }
     if(chosen)try{localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));}catch{}
