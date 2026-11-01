@@ -414,18 +414,22 @@ ${n.value}`:line;}
   function milkOptions(p) {
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.milk_type||'parve'})).filter(x=>x.addon.per_liter&&!x.addon.legacy_milk);
   }
+  // Milk as photo tiles: dairy holds all the litres to start; + on oat, almond or soy swaps a litre over.
+  const THUMB=(k)=>`/bar/studio/thumbs/${k}.webp?v=1`;
+  function photoTile(img,label,note,n,stepper,on,badge){
+    return `<div class="bb-jug-tile${on?' on':''}"><div class="bb-jug-pic">${img?`<img src="${img}" alt="" loading="lazy">`:''}${badge?`<i>${badge}</i>`:''}</div><b>${label}</b><small>${note}</small><span class="bb-jug-step">${stepper}</span></div>`;
+  }
   function milkHtml(plan) {
-    const options=plan?milkOptions(plan.product):[];
-    const summary=plan?[(plan.milkLiters>plan.liters?T(`${plan.milkLiters-plan.liters}L dairy`,`${plan.milkLiters-plan.liters} ל׳ חלב רגיל`):null),...plan.milk.map(m=>T(`${m.liters}L ${m.label}`,`${m.liters} ל׳ ${m.label}`))].filter(Boolean).join(' + '):'';
-    return chips('milk',[['dairy',T('Dairy','חלב רגיל')],['parve',T('Some parve','גם פרווה')],['all_parve',T('Parve','פרווה')]])+(state.milk==='dairy'?'':`
-      <div class="bb-milk-options">${options.map(option=>{
-        const liters=plan.milk.find(m=>m.key===option.key)?.liters||0;
-        return `<div class="bb-milk-amount"><span>${esc(name(option.addon))}<small>+₪${Number(option.addon.price)||0}/${T('litre','ליטר')}</small></span>
-        <div class="pd-l-step"><button type="button" data-milk-kind="${esc(option.key)}" data-milk-step="-1" aria-label="${esc(T('Less '+name(option.addon),'פחות '+name(option.addon)))}" ${!liters?'disabled':''}>−</button><b>${liters}</b><button type="button" data-milk-kind="${esc(option.key)}" data-milk-step="1" aria-label="${esc(T('More '+name(option.addon),'עוד '+name(option.addon)))}" ${(state.milk==='all_parve'?liters>=plan.milkLiters:plan.liters>=plan.milkLiters)?'disabled':''}>+</button></div></div>`;
-      }).join('')}
-      <small class="bb-q-hint">${esc(summary)}</small>${state.milk==='all_parve'?`<small class="bb-q-hint">${T('All milk is non-dairy. Adjusting a type swaps one litre.','כל החלב צמחי. שינוי סוג מחליף ליטר אחד.')}</small>`:''}</div>`);
+    const options=plan?milkOptions(plan.product):[];if(!plan)return '';
+    const dairy=Math.max(0,plan.milkLiters-plan.liters);
+    const tiles=[photoTile(THUMB('dairy'),T('Dairy','חלב רגיל'),T('included','כלול'),dairy,`<b>${dairy} ${T('L','ל׳')}</b>`,dairy>0,dairy?dairy+T('L','ל׳'):''),
+      ...options.map(o=>{const liters=plan.milk.find(m=>m.key===o.key)?.liters||0,label=name(o.addon).replace(/\s*milk$/i,'').replace(/^חלב\s*/,'');
+        return photoTile(['oat','almond','soy'].includes(o.key)?THUMB(o.key):'',esc(label),`+₪${Number(o.addon.price)||0}/${T('litre','ליטר')}`,liters,
+          `<button type="button" data-milk-kind="${esc(o.key)}" data-milk-step="-1" ${liters?'':'disabled'} aria-label="${esc(T('Less '+name(o.addon),'פחות '+name(o.addon)))}">−</button><b>${liters}</b><button type="button" data-milk-kind="${esc(o.key)}" data-milk-step="1" ${dairy?'':'disabled'} aria-label="${esc(T('More '+name(o.addon),'עוד '+name(o.addon)))}">+</button>`,liters>0,liters?liters+T('L','ל׳'):'');})];
+    return `<div class="bb-jug-grid bb-milk-grid">${tiles.join('')}</div>`;
   }
   function adjustMilk(kind,delta){
+    if(state.milk==='dairy'){state.milk='parve';state.milkMix={};}   // the first plant-milk litre switches off all-dairy
     const plan=suggestion();if(!plan||!milkOptions(plan.product).some(m=>m.key===kind))return;
     const current=plan.milk.find(m=>m.key===kind)?.liters||0;
     if(state.milk==='all_parve'){
@@ -471,13 +475,15 @@ ${n.value}`:line;}
   function lidsHtml(plan){
     const addon=addonsOf(plan.product).find(a=>Number(a.bar_lids)>0);if(!addon)return '';
     const packs=Math.ceil(plan.tier.guests/Number(addon.bar_lids)),price=packs*Number(addon.price);
-    return `<div class="pl-q"><h2>${T('Would you like domed lids for your cups?','האם תרצו מכסים קמורים לכוסות?')}</h2><label class="bb-lids-choice"><input type="checkbox" data-bar-lids ${state.lids?'checked':''}><img src="/bar/studio/domed-lids-stack-v1.webp" alt="" loading="lazy"><span>${T(`Add ${packs*Number(addon.bar_lids)} clear domed lids`,`הוסיפו ${packs*Number(addon.bar_lids)} מכסים קמורים שקופים`)}<small>${T('Optional · ₪10 per 25 guests','תוספת לבחירה · ₪10 לכל 25 אורחים')}</small></span><b>+₪${price}</b></label></div>`;
+    return photoTile('/bar/studio/domed-lids-stack-v1.webp',T('Domed lids','מכסים קמורים'),T(`${packs*Number(addon.bar_lids)} lids · ₪${price}`,`${packs*Number(addon.bar_lids)} מכסים · ₪${price}`),state.lids?1:0,
+      `<button type="button" class="bb-tile-toggle${state.lids?' on':''}" data-lids-toggle>${state.lids?T('Added ✓','נוסף ✓'):T('Add','הוספה')}</button>`,state.lids,state.lids?'✓':'');
   }
   function syrupHtml(plan) {
     if(!plan)return '';
     return syrupOptions(plan.product).map(x=>{
-      const n=Number(state.syrups[x.key])||0;
-      return `<div class="bb-jug"><span class="bb-jug-name">${esc(name(x.addon))} <small>+₪${Number(x.addon.price)}</small></span><span class="bb-jug-step"><button type="button" data-syrup="${x.key}" data-syrup-step="-1" aria-label="${esc(T('Less '+name(x.addon),'פחות '+name(x.addon)))}" ${n?'':'disabled'}>−</button><b>${n}</b><button type="button" data-syrup="${x.key}" data-syrup-step="1" aria-label="${esc(T('More '+name(x.addon),'עוד '+name(x.addon)))}" ${n>=Number(x.addon.max)?'disabled':''}>+</button></span></div>`;
+      const n=Number(state.syrups[x.key])||0,total=plan.syrupCounts[x.key];
+      return photoTile(THUMB(x.key),esc(name(x.addon).replace(/\s*syrup$/i,'').replace(/^סירופ\s*/,'')),T(`1 included · +₪${Number(x.addon.price)}`,`1 כלול · +₪${Number(x.addon.price)}`),n,
+        `<button type="button" data-syrup="${x.key}" data-syrup-step="-1" ${n?'':'disabled'} aria-label="${esc(T('Less '+name(x.addon),'פחות '+name(x.addon)))}">−</button><b>${total}</b><button type="button" data-syrup="${x.key}" data-syrup-step="1" aria-label="${esc(T('More '+name(x.addon),'עוד '+name(x.addon)))}">+</button>`,n>0,total);
     }).join('');
   }
   function renderHero(plan){
@@ -500,7 +506,7 @@ ${n.value}`:line;}
     render(); scrollTo({ top: 0, behavior: 'auto' });
   };
   addEventListener('popstate', () => { building = !!history.state?.bbBuild; if (!building) shownStep = null; setTimeout(render, 0); });
-  function goStep(to) { if (to === bstep) return; if (to === 'delivery') prevStep = bstep; openUp = null; bstep = to; render(); const panel = document.querySelector('#planner .bbx-panel'); if (panel && panel.getBoundingClientRect().top < 60) panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function goStep(to) { if (to === bstep) return; if (to === 'delivery') prevStep = bstep; openUp = null; bstep = to; render(); scrollTo({ top: 0, behavior: 'auto' }); }   // each new step starts at the top
 
   function introHtml(plan) {
     const from = plan ? Math.min(...tiersOf(plan.product).map((t) => t.price)) : null;
@@ -545,10 +551,10 @@ ${n.value}`:line;}
           ${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan.stations)}
           <small class="bb-q-hint">${plan.flavours > 1 ? T(`Each coffee has its own dispenser, so your ${plan.flavours} coffees come with ${plan.flavours} stations (added for you).`, `לכל קפה מתקן משלו, אז ${plan.flavours} הקפה שלכם מגיעים עם ${plan.flavours} עמדות (נוספו אוטומטית).`) : T('Expecting a big crowd? Add stations so guests don’t queue.', 'מצפים לקהל גדול? הוסיפו עמדות כדי שלא יהיו תורים.')}</small>`
         : oi === 1 ? `<h2>${T('Which milk?', 'איזה חלב?')}</h2>
-          <p class="bbx-lead">${T(`${plan.milkLiters} litres of milk come with your bar. Choose dairy, parve, or a mix.`, `${plan.milkLiters} ליטר חלב מגיעים עם הבר. בחרו חלב רגיל, פרווה, או שילוב.`)}</p>${milkHtml(plan)}`
+          <p class="bbx-lead">${T(`${plan.milkLiters} litres of milk come with your bar. Tap + on a plant milk to swap litres to it.`, `${plan.milkLiters} ליטר חלב מגיעים עם הבר. לחצו + על חלב צמחי כדי להחליף אליו ליטרים.`)}</p>${milkHtml(plan)}`
         : `<h2>${T('Syrups & lids', 'סירופים ומכסים')}</h2>
           <p class="bbx-lead">${T('One caramel, one vanilla and one sugar syrup are included. Add more if you like.', 'סירופ קרמל, וניל וסוכר אחד מכל סוג כלולים. אפשר להוסיף עוד.')}</p>
-          ${syrups}${lids ? `<h3 class="bbx-sub">${T('Domed lids', 'מכסים קמורים')}</h3>${lids}` : ''}`;
+          <div class="bb-jug-grid">${syrups}${lids}</div>`;
       const last = oi === OPTS.length - 1;
       return `<div class="bbx-step" data-step="${bstep}">
         <div class="bbx-dots" aria-label="${T(`Option ${oi + 1} of 3`, `אפשרות ${oi + 1} מתוך 3`)}">${OPTS.map((_, j) => `<i class="${j <= oi ? 'on' : ''}"></i>`).join('')}</div>
@@ -676,6 +682,7 @@ ${n.value}`:line;}
       return;
     }
     if(e.target.matches('[data-bar-lids]')){state.lids=e.target.checked;render();return;}
+    if(e.target.closest('[data-lids-toggle]')){state.lids=!state.lids;render();return;}
     const syrup=e.target.closest('[data-syrup-step]');
     if(syrup){state.syrups[syrup.dataset.syrup]=Math.max(0,(Number(state.syrups[syrup.dataset.syrup])||0)+Number(syrup.dataset.syrupStep));render();return;}
     const swap=e.target.closest('[data-classic-swap]');
