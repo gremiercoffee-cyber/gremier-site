@@ -1,4 +1,4 @@
-/* Home hero "film": nine product stills, each with a slow camera move (pan / push in), crossfading
+/* Home hero "film": eight product stills, each with a slow camera move (pan / push in), crossfading
    into the next. Under the headline, the width of the two discovery cards. A tap opens the shop (or
    coffee bars on the last shot). Reduced motion: no camera moves, just a slow crossfade.
    Not live yet: shown only with ?hero=preview (remembered for the visit) until LIVE is true. */
@@ -19,7 +19,6 @@
   const SHOTS = [
     ['01-lineup', 'Five cold brews, one favourite', 'חמישה קולד ברו, אחד אהוב', 'shop', [1.06, 3, 2], [1.16, -5, -3]],
     ['02-classic', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.06, -3, 2], [1.16, 4, -3]],
-    ['03-pour', 'House Blend · just pour over ice', 'האוס בלנד · פשוט מוזגים על קרח', 'shop', [1.06, 2, 3], [1.16, -3, -5]],
     ['04-colombia', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.06, 3, -2], [1.16, -5, 3]],
     ['05-sweetened', 'Sweetened Classic · add milk if you like', 'קלאסיק ממותק · עם חלב, אם בא לכם', 'shop', [1.06, -3, -2], [1.16, 5, 3]],
     ['06-syrups', 'Vanilla Bean & Caramel syrups', 'סירופ וניל ושל קרמל', 'shop', [1.06, -3, 2], [1.16, 5, -3]],
