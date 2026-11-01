@@ -495,7 +495,8 @@ ${n.value}`:line;}
       <h2>${T('How many guests do you have?', 'כמה אורחים יהיו?')}</h2>
       <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div>
       <small class="bb-q-hint">${T('Pick the closest number, or type your own.', 'בחרו את המספר הקרוב, או הקלידו.')}</small>
-      ${plan ? `<div class="bbx-actions"><span></span><button type="button" class="bbx-next" data-go="bar">${T('See my coffee bar ›', 'לבר הקפה שלי ›')}</button></div>` : ''}</div>`;
+      ${plan ? `<button type="button" class="bbx-cta" data-go="bar"><span>${T('See my coffee bar', 'לבר הקפה שלי')}</span><b>₪${plan.total} ›</b></button>
+      <button type="button" class="bbx-options" data-go="opt-coffee"><span class="bbx-spark" aria-hidden="true">✨</span><span><strong>${T('Show me more options', 'הראו לי עוד אפשרויות')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><i aria-hidden="true">›</i></button>` : ''}</div>`;
     const total = `₪<span id="bbTotal">${plan.total}</span>`;
     const back = (to, label) => `<button type="button" class="bbx-back" data-go="${to}">‹ ${label}</button>`;
     if (bstep === 'bar') return `<div class="bbx-step" data-step="bar">
