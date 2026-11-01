@@ -1,6 +1,6 @@
 # Immersive coffee-bar builder
 
-The existing planner is presented in a calm cream-and-white overlay. A floating desktop/tablet frame separates it from the storefront, and phones use a full-screen layout with safe-area spacing. The overlay owns its scroll position, keyboard focus, close/back behaviour and chat placement. Existing planner choices and booking/pricing code remain in place.
+The existing planner is presented in a calm cream-and-white overlay. A compact, content-sized desktop/tablet frame with a blurred backdrop and deeper shadow separates it from the storefront, and phones use a full-screen layout with safe-area spacing. The overlay owns its scroll position, keyboard focus, close/back behaviour and chat placement. Existing planner choices and booking/pricing code remain in place.
 
 The header holds close, progress and the live price. Question cards and product tiles use the app's light palette, with consistent backgrounds for extra-can tiles. Entry uses only a short opacity fade; exit is immediate. There is no expanding circle, page zoom, moving ambient light, price glow or bouncing entrance. Reduced motion is respected. Closing restores the Coffee Bars introduction and preserves choices. Checkout/product drawers and Share stay above the builder; checkout history keeps it underneath them.
 
@@ -17,4 +17,4 @@ Screenshots of entrance, a step and exit at both sizes are in `docs/screenshots/
 
 ## Additional requested gallery change
 
-The Coffee Bars introduction now exposes its existing “In Action” gallery with six curated illustrative coffee-bar setups, responsive images and full-size links. The six curated views appear first; existing admin-configured gallery images follow them, preserving those controls. The hero is unchanged. The gallery stays outside the immersive builder.
+The Coffee Bars introduction now exposes its existing “In Action” gallery with six curated illustrative coffee-bar setups, responsive images and full-size links. The six curated views are the only displayed images; the three older configured pictures were removed at the owner’s request. The hero is unchanged. The gallery stays outside the immersive builder.

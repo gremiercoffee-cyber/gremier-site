@@ -529,3 +529,21 @@ body.bb-world-on .bb-confirm { z-index:3200; color-scheme:light; }
 
 .cbp-action-gallery .cbp-gallery-item[hidden] { display:none; }
 .bb-world .bbx-step .pl-chips[data-key=deliveryMode] button.on { color:#fff; }
+
+/* Keep the configurator close to its content, with a distinct modal backdrop. */
+.bb-world-backdrop { position:fixed; inset:0; z-index:1190; background:#21180f38; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); }
+.bb-world-background { filter:brightness(.95); }
+@media(min-width:641px) {
+ .bb-world { inset:auto; top:50%; left:50%; width:calc(100% - 64px); max-width:1200px; height:auto; max-height:calc(100dvh - 64px); transform:translate(-50%,-50%); border:1px solid #ffffffcc; box-shadow:0 32px 90px #0005,0 6px 24px #21180f33; }
+ .bb-world #planner { min-height:0; }
+ .bb-world .bbx { padding:18px 22px 24px; }
+ .bb-world .bbx-panel.bb-qs { max-height:min(62dvh,580px); overflow-y:auto; scrollbar-gutter:stable; }
+ .bb-world #barChat { position:absolute; bottom:18px; inset-inline-end:18px; }
+ .bb-world .bbx-sheet { position:absolute; }
+ .bb-world .bbx-sheet-box { max-height:calc(100% - 32px); }
+ .bb-world .bbx-home .bb-home-products { justify-content:flex-start; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:thin; padding-bottom:12px; }
+ .bb-world .bbx-home .bb-home-products::-webkit-scrollbar { display:block; height:5px; }
+ .bb-world .bbx-home .bb-home-products::-webkit-scrollbar-thumb { background:#c8bba9; border-radius:8px; }
+}
+@media(min-width:861px) { .bb-world .bbx { align-items:center; } .bb-world .bbx-scene.bb-tray { position:relative; top:auto; align-self:center; } }
+@media(min-width:861px) { .bb-world .bbx-panel .bbx-book { position:sticky; bottom:0; z-index:2; } }

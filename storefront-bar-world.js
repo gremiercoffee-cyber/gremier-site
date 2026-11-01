@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id), reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let world, slot, savedY = 0, savedTop = '', closing = false, lastFocus;
+  let world, backdrop, slot, savedY = 0, savedTop = '', closing = false, lastFocus;
   const backgrounds = new Map();
   // The site's checkout router creates fresh state objects; keep the room underneath its layers.
   for(const method of ['pushState','replaceState']){
@@ -17,16 +17,16 @@
     const planner=$('planner');if(slot?.parentNode&&planner)slot.replaceWith(planner);slot=null;
     const chat=$('barChat');if(chat&&world?.contains(chat))document.body.append(chat);
     backgrounds.forEach((old,el)=>{el.classList.remove('bb-world-background');el.inert=old;});backgrounds.clear();
-    world?.remove();world=null;document.body.classList.remove('bb-world-on','bbx-sheet-on');document.querySelectorAll('.bb-confirm.open').forEach(el=>el.classList.remove('open'));document.body.style.top=savedTop;window.scrollTo(0,savedY);
+    backdrop?.remove();backdrop=null;world?.remove();world=null;document.body.classList.remove('bb-world-on','bbx-sheet-on');document.querySelectorAll('.bb-confirm.open').forEach(el=>el.classList.remove('open'));document.body.style.top=savedTop;window.scrollTo(0,savedY);
   }
   function sync(on, step) {
     if(!on)return;
     if(!world){
       closing=false;savedY=scrollY;savedTop=document.body.style.top;lastFocus=document.activeElement;
       const planner=$('planner');slot=document.createComment('coffee-bar-builder');planner.before(slot);
-      world=document.createElement('section');world.id='bbWorld';world.className='bb-world';world.setAttribute('role','dialog');world.setAttribute('aria-modal','true');world.tabIndex=-1;document.body.append(world);world.append(planner);
+      world=document.createElement('section');world.id='bbWorld';world.className='bb-world';world.setAttribute('role','dialog');world.setAttribute('aria-modal','true');world.tabIndex=-1;backdrop=document.createElement('div');backdrop.id='bbWorldBackdrop';backdrop.className='bb-world-backdrop';backdrop.setAttribute('aria-hidden','true');document.body.append(backdrop,world);world.append(planner);
       [...document.body.children].forEach(el=>{
-        if(el===world||el.matches('script,style,link,#barChat,.modal-overlay,.drawer,.drawer-overlay,.bb-confirm,#pdDrawer,#pdBackdrop,#drawerBackdrop,.drawer-backdrop,#cartOverlay,#toast,.toast'))return;
+        if(el===world||el===backdrop||el.matches('script,style,link,#barChat,.modal-overlay,.drawer,.drawer-overlay,.bb-confirm,#pdDrawer,#pdBackdrop,#drawerBackdrop,.drawer-backdrop,#cartOverlay,#toast,.toast'))return;
         backgrounds.set(el,el.inert);el.classList.add('bb-world-background');el.inert=true;
       });
       document.body.style.top=`-${savedY}px`;document.body.classList.add('bb-world-on');
