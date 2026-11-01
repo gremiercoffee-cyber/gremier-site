@@ -434,12 +434,31 @@ ${n.value}`:line;}
     const next=Math.max(0,Math.min(current+Number(delta),current+plan.milkLiters-plan.liters));
     state.milkMix={...(state.milkMix||{}),[kind]:next};
   }
+  // Coffee for home: a strip of a few products, and "See all our coffee" opens a picker of everything we
+  // sell (photo, price, + / stepper). Ready-made products only (not the build-your-own 6-packs).
+  const homeProducts=()=>all().filter(p=>extraProduct(p.id)&&!(p.variations||[]).some(v=>v.type==='pack'));
+  function homeCard(p){
+    const n=Number(state.extras[p.id])||0;
+    return `<div class="bb-home-product${n?' on':''}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span>${n?`<span class="bb-home-step"><button type="button" data-take-home="${esc(p.id)}" data-d="-1" aria-label="${esc(T('One less','אחד פחות'))}">−</button><b>${n}</b><button type="button" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('One more','עוד אחד'))}">+</button></span>`:`<button type="button" class="bb-home-add" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('Add to my coffee bar','הוספה לבר הקפה'))}">+</button>`}</div>`;
+  }
   function takeHomeHtml() {
-    // Ready-made products only (not the build-your-own 6-packs, which need choosing).
-    const available=all().filter(p=>!p.is_coffee_bar&&p.is_active!==false&&!/syrup|סירופ/i.test(p.name_en||p.name_he||'')&&!(p.variations||[]).some(v=>v.type==='pack'));
+    const available=homeProducts().filter(p=>!/syrup|סירופ/i.test(p.name_en||p.name_he||''));
     const picks=[...available.filter(p=>p.category==='minis').slice(0,3),...available.filter(p=>p.category==='bottles').slice(0,3)];
     if(!picks.length)return '';
-    return `<section class="bb-take-home"><h3>${T('Coffee for home, too?','קפה גם לבית?')}</h3><p>${T('Added to your coffee bar order and delivered with it.','נוסף להזמנת בר הקפה ומגיע איתו.')}</p><div class="bb-home-products">${picks.map(p=>{const n=Number(state.extras[p.id])||0;return `<div class="bb-home-product${n?' on':''}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span>${n?`<span class="bb-home-step"><button type="button" data-take-home="${esc(p.id)}" data-d="-1" aria-label="${esc(T('One less','אחד פחות'))}">−</button><b>${n}</b><button type="button" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('One more','עוד אחד'))}">+</button></span>`:`<button type="button" class="bb-home-add" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('Add to my coffee bar','הוספה לבר הקפה'))}">+</button>`}</div>`;}).join('')}</div></section>`;
+    const more=homeProducts().filter(p=>!picks.includes(p)&&Number(state.extras[p.id])>0).length;
+    return `<section class="bb-take-home"><h3>${T('Want some coffee for home?','רוצים גם קפה לבית?')}</h3><p>${T('Added to your coffee bar order and delivered with it.','נוסף להזמנת בר הקפה ומגיע איתו.')}</p><div class="bb-home-products">${picks.map(homeCard).join('')}
+      <button type="button" class="bb-home-more" data-picker="open"><span aria-hidden="true">☕</span><b>${T('See all our coffee','לכל הקפה שלנו')}</b><small>${more?T(`${more} more added`,`עוד ${more} נוספו`):T('Bottles, minis, 5L, syrups','בקבוקים, מיני, 5 ל׳, סירופים')}</small></button></div></section>`;
+  }
+  let pickerOpen=false;
+  function pickerHtml(){
+    if(!pickerOpen)return '';
+    const list=homeProducts(),syrup=p=>/syrup|סירופ/i.test(p.name_en||p.name_he||'');
+    const groups=[[T('Liter bottles','בקבוקי ליטר'),list.filter(p=>p.category==='bottles'&&!syrup(p))],[T('Minis','מיני'),list.filter(p=>p.category==='minis')],
+      [T('5 litres','5 ליטר'),list.filter(p=>p.category==='bulk')],[T('Syrups','סירופים'),list.filter(syrup)]].filter(g=>g[1].length);
+    return `<div class="bbx-sheet" data-picker="close"><div class="bbx-sheet-box" role="dialog" aria-modal="true" aria-label="${T('All our coffee','כל הקפה שלנו')}">
+      <div class="bbx-sheet-head"><b>${T('All our coffee','כל הקפה שלנו')}</b><button type="button" class="bbx-sheet-x" data-picker="close" aria-label="${T('Close','סגירה')}">×</button></div>
+      <div class="bbx-sheet-body">${groups.map(([title,items])=>`<h4>${title}</h4><div class="bbx-sheet-grid">${items.map(homeCard).join('')}</div>`).join('')}</div>
+      <button type="button" class="bbx-cta" data-picker="close"><span>${T('Done','סיום')}</span><b>₪${suggestion()?.total||''}</b></button></div></div>`;
   }
   function syrupOptions(p) {
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.bar_syrup})).filter(x=>['caramel','vanilla','sugar'].includes(x.key)&&Number(x.addon.max)>1);
@@ -539,7 +558,7 @@ ${n.value}`:line;}
       ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
       <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
-      <button type="button" class="bbx-link" onclick="plannerShare()">${T('Share this bar', 'שיתוף הבר')}</button></div>`;
+      <button type="button" class="bbx-share" onclick="plannerShare()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>${T('Share this bar', 'שיתוף הבר')}</button></div>`;
   }
 
   function render() {
@@ -557,6 +576,7 @@ ${n.value}`:line;}
     if (!on) { box.innerHTML = introHtml(plan); mini(null); syncMini(); return; }
     if (!plan) bstep = 'guests';
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
+    const sheetWasOpen = !!box.querySelector('.bbx-sheet'), sheetScroll = box.querySelector('.bbx-sheet-body')?.scrollTop || 0;
     box.innerHTML = `
       ${window.CoffeeBarOffers?.builderBanner() || ''}
       <div class="bbx-top"><button type="button" class="bbx-exit" data-bb-exit>${T('‹ Coffee bars', '‹ ברי קפה')}</button><span>${T('Build your coffee bar', 'בונים בר קפה')}</span></div>
@@ -567,7 +587,11 @@ ${n.value}`:line;}
           ${plan ? `<div class="bbx-price"><span>${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>` : ''}
         </aside>
         <div class="bbx-panel bb-qs">${stepHtml(plan, tierChips)}</div>
-      </div>`;
+      </div>${plan && bstep === 'delivery' ? pickerHtml() : ''}`;
+    // The picker keeps its place while items are added (and only animates when it opens).
+    const sheet = box.querySelector('.bbx-sheet');
+    if (sheet) { if (sheetWasOpen) sheet.classList.add('stay'); sheet.querySelector('.bbx-sheet-body').scrollTop = sheetScroll; }
+    else document.body.classList.remove('bbx-sheet-on');
     reconcileScene(previousScene, $('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
@@ -624,6 +648,8 @@ ${n.value}`:line;}
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
     if(e.target.closest('[data-bb-start]')){window.plannerStart('guests');return;}
+    const pk=e.target.closest('[data-picker]');
+    if(pk&&(pk.dataset.picker==='open'||e.target===pk||pk.tagName==='BUTTON')){pickerOpen=pk.dataset.picker==='open';document.body.classList.toggle('bbx-sheet-on',pickerOpen);render();return;}
     if(e.target.closest('[data-bb-exit]')){if(history.state?.bbBuild)history.back();else{building=false;render();}return;}
     const go=e.target.closest('[data-go]');
     if(go){goStep(go.dataset.go);return;}
