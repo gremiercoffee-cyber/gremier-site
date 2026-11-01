@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
   try {
-    const { code, cart_total, items, user_id, email } = await req.json();
+    const { code, cart_total, items, user_id, email, subscription } = await req.json();
     const cleanCode = String(code || '').trim().toUpperCase();
     if (!cleanCode) return json({ valid: false, error: 'no_code' });
     // Codes are letters/digits/dashes/underscores only — no LIKE wildcards.
@@ -57,6 +57,11 @@ Deno.serve(async (req) => {
 
     if (!coupon) return json({ valid: false, error: 'not_found', message: 'Coupon not found' });
     if (!coupon.is_active) return json({ valid: false, error: 'inactive', message: 'This coupon is no longer active' });
+
+    // On a subscription only codes allowed for subscriptions work (their discount is on every charge).
+    if (subscription && !coupon.for_subscriptions) {
+      return json({ valid: false, error: 'not_for_subscriptions', message: "This code can't be used on a subscription" });
+    }
 
     // Expiry
     if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
@@ -141,9 +146,10 @@ Deno.serve(async (req) => {
       discount_type: coupon.discount_type,
       discount_value: coupon.discount_value,
       applies_to: coupon.applies_to,
-      message: coupon.discount_type === 'percent'
+      subscription: !!subscription,
+      message: (coupon.discount_type === 'percent'
         ? `${coupon.discount_value}% off applied`
-        : `₪${coupon.discount_value} off applied`,
+        : `₪${coupon.discount_value} off applied`) + (subscription ? ' to every charge' : ''),
     });
   } catch (err) {
     return json({ valid: false, error: 'server_error', message: String(err) }, 500);

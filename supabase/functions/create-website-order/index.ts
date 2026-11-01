@@ -383,11 +383,11 @@ Deno.serve(async (req) => {
 
     let discount = 0;
 
-    // Subscriptions already carry the subscription discount, and the order total becomes
-    // the recurring PayMe price — a one-off coupon / gift card would recur forever (and a
-    // fully covered order would never create the subscription at all). So none apply.
-    if (isSubscriptionOrder && (String(body.coupon_code || "").trim() || String(body.gift_card_code || "").trim())) {
-      return json({ error: "Coupons and gift cards can't be used on a subscription." }, 400);
+    // The subscription order's total becomes the recurring PayMe price. So a gift card never
+    // applies (it would recur forever), and only coupons allowed for subscriptions do: their
+    // discount is meant to be taken off every charge.
+    if (isSubscriptionOrder && String(body.gift_card_code || "").trim()) {
+      return json({ error: "Gift cards can't be used on a subscription." }, 400);
     }
 
     // Check loyalty coupon (profile-based) — kept for their next regular order
@@ -425,6 +425,9 @@ Deno.serve(async (req) => {
         const notExpired = !coupon.expires_at || new Date(coupon.expires_at) > new Date();
         // A code made for one email (e.g. a birthday code) works only with that email.
         const forThisEmail = coupon.user_id || !coupon.customer_email || String(coupon.customer_email).toLowerCase() === String(customerEmail || "").toLowerCase();
+        if (isSubscriptionOrder && !coupon.for_subscriptions) {
+          return json({ error: "This code can't be used on a subscription." }, 400);
+        }
         if (notExhausted && notExpired && forThisEmail) {
           const couponDiscount = coupon.discount_type === "percent"
             ? Math.round(subtotal * (Number(coupon.discount_value) / 100))
@@ -461,6 +464,8 @@ Deno.serve(async (req) => {
     const total = Math.max(0, subtotal + delivery.fee - discount);
 
     const fullyCovered = total === 0 && discount > 0;
+    // A subscription needs something to charge each month.
+    if (isSubscriptionOrder && total <= 0) return json({ error: "A subscription can't be fully covered by a code." }, 400);
     if (total < 0 || (total === 0 && !fullyCovered)) {
       return json({ error: "Invalid order total" }, 400);
     }

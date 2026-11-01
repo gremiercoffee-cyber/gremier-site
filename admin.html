@@ -1908,6 +1908,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <label class="toggle"><input type="checkbox" id="cpOnePerUser"/><span class="toggle-slider"></span></label>
     </div>
     <div class="toggle-row">
+      <span class="toggle-label">Usable on a subscription<br><small style="color:var(--silver-dim);font-weight:400">The discount is taken off every monthly charge, for as long as the subscription runs.</small></span>
+      <label class="toggle"><input type="checkbox" id="cpForSubs"/><span class="toggle-slider"></span></label>
+    </div>
+    <div class="toggle-row">
       <span class="toggle-label">Active</span>
       <label class="toggle"><input type="checkbox" id="cpActive" checked/><span class="toggle-slider"></span></label>
     </div>
@@ -8685,7 +8689,7 @@ function renderCouponsTable() {
     const exp = c.expires_at ? new Date(c.expires_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' }) : '—';
     const loyalty = c.user_id ? ' <span class="status-pill s-confirmed" style="font-size:.5rem">loyalty</span>' : '';
     return `<tr>
-      <td style="color:var(--cream)"><strong>${escHtml(c.code)}</strong>${loyalty}${c.one_time_per_user?' <span class="status-pill s-pending" style="font-size:.5rem">1×/user</span>':''}${c.description?`<br><small style="color:var(--text2)">${escHtml(c.description)}</small>`:''}</td>
+      <td style="color:var(--cream)"><strong>${escHtml(c.code)}</strong>${loyalty}${c.one_time_per_user?' <span class="status-pill s-pending" style="font-size:.5rem">1×/user</span>':''}${c.for_subscriptions?' <span class="status-pill s-pending" style="font-size:.5rem">subscriptions</span>':''}${c.description?`<br><small style="color:var(--text2)">${escHtml(c.description)}</small>`:''}</td>
       <td style="color:var(--cream)">${val}</td>
       <td class="hide-mobile">${scope}</td>
       <td class="cell-num">${uses}</td>
@@ -8769,6 +8773,7 @@ async function openCouponModal(id) {
     document.getElementById('cpMaxUses').value = c.max_uses || '';
     document.getElementById('cpExpires').value = c.expires_at ? c.expires_at.slice(0,10) : '';
     document.getElementById('cpOnePerUser').checked = !!c.one_time_per_user;
+    document.getElementById('cpForSubs').checked = !!c.for_subscriptions;
     document.getElementById('cpActive').checked = c.is_active;
     cpOnScopeChange();
     if (c.applies_to === 'specific_products') renderCpProductPicker(c.product_ids);
@@ -8776,7 +8781,7 @@ async function openCouponModal(id) {
     ['cpCode','cpDescription','cpValue','cpMinOrder','cpMaxUses','cpExpires'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('cpType').value='percent';
     document.getElementById('cpAppliesTo').value='all';
-    document.getElementById('cpOnePerUser').checked=false;
+    document.getElementById('cpOnePerUser').checked=false;document.getElementById('cpForSubs').checked=false;
     document.getElementById('cpActive').checked=true;
     cpOnScopeChange();
   }
@@ -8807,6 +8812,7 @@ async function saveCoupon() {
     max_uses: parseInt(document.getElementById('cpMaxUses').value, 10) || null,
     expires_at: document.getElementById('cpExpires').value || null,
     one_time_per_user: document.getElementById('cpOnePerUser').checked,
+    for_subscriptions: document.getElementById('cpForSubs').checked,
     is_active: document.getElementById('cpActive').checked,
     updated_at: new Date().toISOString(),
   };

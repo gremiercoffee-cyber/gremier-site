@@ -2874,10 +2874,11 @@ async function submitOrder() {
         : 'A subscription has to be ordered on its own — please remove the other items and order them separately');
       return;
     }
-    if (appliedRedeem) {
+    // Only subscription coupons (their discount is on every charge); never a gift card.
+    if (appliedRedeem && (appliedRedeem.kind !== 'coupon' || !appliedRedeem.subscription)) {
       alert(lang==='he'
-        ? 'לא ניתן להשתמש בקופון או כרטיס מתנה על מנוי — הנחת המנוי כבר כלולה במחיר'
-        : "Coupons and gift cards can't be used on a subscription — the subscription discount is already included");
+        ? 'לא ניתן להשתמש בקוד הזה על מנוי — הסירו אותו כדי להמשיך'
+        : "This code can't be used on a subscription. Remove it to continue.");
       return;
     }
   }
@@ -3984,12 +3985,8 @@ function clearRedeemCode() {
 async function applyRedeemCode() {
   const code = document.getElementById('coRedeemCode').value.trim().toUpperCase();
   if (!code) { setRedeemMsg(lang==='he'?'הזינו קוד':'Enter a code', false); return; }
-  if (cart.some(i => i.is_subscription)) {
-    setRedeemMsg(lang==='he'
-      ? 'לא ניתן להשתמש בקופון או כרטיס מתנה על מנוי — הנחת המנוי כבר כלולה'
-      : "Coupons and gift cards can't be used on a subscription — its discount is already included", false);
-    return;
-  }
+  // On a subscription only coupons made for subscriptions work (no gift cards).
+  const subscriptionCart = cart.some(i => i.is_subscription);
   const btn = document.getElementById('coRedeemBtn');
   btn.disabled = true; btn.textContent = '…';
   const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
@@ -4002,12 +3999,18 @@ async function applyRedeemCode() {
     let res = await fetch(`${SUPABASE_URL}/functions/v1/validate-coupon`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-      body: JSON.stringify({ code, cart_total: cartTotal, items, user_id: currentUser?.id || null, email: document.getElementById('coEmail').value.trim() || currentUser?.email || null }),
+      body: JSON.stringify({ code, cart_total: cartTotal, items, subscription: subscriptionCart, user_id: currentUser?.id || null, email: document.getElementById('coEmail').value.trim() || currentUser?.email || null }),
     });
     let data = await res.json().catch(() => ({}));
     if (data.valid) {
-      appliedRedeem = { kind: 'coupon', code: data.code, discount: data.discount, message: data.message };
+      appliedRedeem = { kind: 'coupon', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart };
       showRedeemApplied(data.message, data.discount);
+      return;
+    }
+    if (subscriptionCart) {
+      setRedeemMsg(data.error === 'not_for_subscriptions' || data.error === 'not_found'
+        ? (lang==='he' ? 'לא ניתן להשתמש בקוד הזה על מנוי' : "This code can't be used on a subscription")
+        : (data.message || (lang==='he'?'קוד לא תקין':'Invalid code')), false);
       return;
     }
     // Not a valid coupon — try gift card
@@ -4036,7 +4039,7 @@ function showRedeemApplied(message, discount) {
   wrap.style.display = 'flex';
   const label = appliedRedeem.kind === 'gift_card'
     ? (lang==='he'?`כרטיס מתנה: -₪${discount}`:`Gift card: -₪${discount}`)
-    : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`);
+    : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
   document.getElementById('coRedeemAppliedText').textContent = '✓ ' + label;
   prepareCheckoutContent();
 }
