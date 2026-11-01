@@ -782,7 +782,7 @@
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261103-4"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261101-immersive3"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261101-immersive4"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -1143,12 +1143,16 @@
       <h2 class="section-title">In Action</h2>
     </div>
     <div class="cbp-gallery">
-      <a class="cbp-gallery-item" id="cbpGal1" href="/bar/gallery/01-sunlit-closeup-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/01-sunlit-closeup-v3.webp" alt="A compact Gremier coffee bar with our syrups in a bright event room" width="1200" height="800" loading="lazy" decoding="async"></a>
-      <a class="cbp-gallery-item" id="cbpGal2" href="/bar/gallery/02-garden-reception-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/02-garden-reception-v3.webp" alt="Two Gremier dispensers and our syrups in a limestone courtyard" width="1200" height="800" loading="lazy" decoding="async"></a>
-      <a class="cbp-gallery-item" id="cbpGal3" href="/bar/gallery/06-home-celebration-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/06-home-celebration-v3.webp" alt="A small Gremier coffee bar for a home celebration" width="1200" height="800" loading="lazy" decoding="async"></a>
-      <a class="cbp-gallery-item" id="cbpGal4" href="/bar/gallery/09-terrace-two-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/09-terrace-two-v3.webp" alt="A two-dispenser Gremier coffee bar on a terrace at dusk" width="1200" height="800" loading="lazy" decoding="async"></a>
+      <a class="cbp-gallery-item" id="cbpView1" href="/bar/gallery/01-sunlit-closeup-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/01-sunlit-closeup-v3.webp" alt="A compact Gremier coffee bar with our syrups in a bright event room" width="1200" height="800" loading="lazy" decoding="async"></a>
+      <a class="cbp-gallery-item" id="cbpView2" href="/bar/gallery/02-garden-reception-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/02-garden-reception-v3.webp" alt="Two Gremier dispensers and our syrups in a limestone courtyard" width="1200" height="800" loading="lazy" decoding="async"></a>
+      <a class="cbp-gallery-item" id="cbpView3" href="/bar/gallery/06-home-celebration-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/06-home-celebration-v3.webp" alt="A small Gremier coffee bar for a home celebration" width="1200" height="800" loading="lazy" decoding="async"></a>
+      <a class="cbp-gallery-item" id="cbpView4" href="/bar/gallery/09-terrace-two-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/09-terrace-two-v3.webp" alt="A two-dispenser Gremier coffee bar on a terrace at dusk" width="1200" height="800" loading="lazy" decoding="async"></a>
       <a class="cbp-gallery-item" href="/bar/gallery/03-modern-meeting-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/03-modern-meeting-v3.webp" alt="Gremier cold brew and syrups at a modern meeting venue" width="1200" height="800" loading="lazy" decoding="async"></a>
       <a class="cbp-gallery-item" href="/bar/gallery/10-bright-minimal-v3.webp" target="_blank" rel="noopener"><img src="/bar/gallery/10-bright-minimal-v3.webp" alt="A simple Gremier coffee station for a daytime event" width="1200" height="800" loading="lazy" decoding="async"></a>
+      <a class="cbp-gallery-item" id="cbpGal1" hidden target="_blank" rel="noopener"></a>
+      <a class="cbp-gallery-item" id="cbpGal2" hidden target="_blank" rel="noopener"></a>
+      <a class="cbp-gallery-item" id="cbpGal3" hidden target="_blank" rel="noopener"></a>
+      <a class="cbp-gallery-item" id="cbpGal4" hidden target="_blank" rel="noopener"></a>
     </div>
     <p class="cbp-gallery-note" data-en="Illustrative coffee-bar setups. Tap a picture to view it full size." data-he="הדמיות של עמדות קפה. לחצו על תמונה לצפייה בגודל מלא.">Illustrative coffee-bar setups. Tap a picture to view it full size.</p>
   </div>
@@ -3141,6 +3145,7 @@ function applySiteImages() {
   // Gallery images
   ['cb_gallery_1','cb_gallery_2','cb_gallery_3','cb_gallery_4'].forEach((key,i) => {
     const el = document.getElementById('cbpGal'+(i+1));
+    if (el) el.hidden=!siteSettings[key];
     if (el && siteSettings[key]) { const url=cloudinaryOptimize(siteSettings[key],900);el.href=url;el.innerHTML = `<img src="${escAttr(url)}" alt="Coffee bar event photo" loading="lazy"/>`; }
   });
   // How It Works steps
@@ -5348,9 +5353,9 @@ async function sendChatMessageText(text) {
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>
-<script src="/storefront-bar-world.js?v=20261101-immersive3"></script>
-<script src="/storefront-planner.js?v=20261101-immersive3"></script>
-<script src="/storefront-bar-chat.js?v=20261101-immersive3"></script>
+<script src="/storefront-bar-world.js?v=20261101-immersive4"></script>
+<script src="/storefront-planner.js?v=20261101-immersive4"></script>
+<script src="/storefront-bar-chat.js?v=20261101-immersive4"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>

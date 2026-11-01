@@ -17,4 +17,4 @@ Screenshots of entrance, a step and exit at both sizes are in `docs/screenshots/
 
 ## Additional requested gallery change
 
-The Coffee Bars introduction now exposes its existing “In Action” gallery with six curated illustrative coffee-bar setups, responsive images and full-size links. Existing admin-configured gallery images can still override the first four slots. The hero is unchanged. The gallery stays outside the immersive builder.
+The Coffee Bars introduction now exposes its existing “In Action” gallery with six curated illustrative coffee-bar setups, responsive images and full-size links. The six curated views appear first; existing admin-configured gallery images follow them, preserving those controls. The hero is unchanged. The gallery stays outside the immersive builder.

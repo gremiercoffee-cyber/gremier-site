@@ -526,3 +526,5 @@ body.bb-world-on .bb-confirm { z-index:3200; color-scheme:light; }
  .bb-world-background { visibility:hidden; }
  .bb-world #barChat,body.rtl .bb-world #barChat { bottom:calc(16px + env(safe-area-inset-bottom)); inset-inline-end:unset; inset-inline-start:unset; left:14px; right:auto; margin:0; align-items:flex-start; }
 }
+
+.cbp-action-gallery .cbp-gallery-item[hidden] { display:none; }
