@@ -1,4 +1,4 @@
-/* Home hero "film": an animated brand opening, then seven product stills, each with a slow camera move (pan / push in), crossfading
+/* Home hero "film": an animated brand opening, seven product stills and a closing tilt shot, each with a slow camera move (pan / push in), crossfading
    into the next. Under the headline, the width of the two discovery cards. A tap opens the shop (or
    coffee bars on the last shot). Reduced motion: no camera moves, just a slow crossfade.
    LIVE turns it on for everyone; with LIVE false it shows only with ?hero=preview. */
@@ -27,10 +27,14 @@
     ['07-minis', 'Cremier minis · grab and go', 'קרמייר מיני · לוקחים והולכים', 'shop', [1.03, -1.5, 1], [1.1, 4, -3]],
     ['08-five-liter', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['09-coffee-bar', 'Coffee bars for your event', 'עמדות קפה לאירוע שלכם', 'coffeebars', [1.03, -1.5, -1], [1.1, 4, 3]],
+    // The closing shot is a tall photo with its own words: the camera tilts down it (TILT below). No caption.
+    ['10-elevate', '', '', 'shop', [1.02, 0, 0], [1.08, 0, 0], '50% 0%'],
   ];
   // Bump when a photo is replaced, so browsers fetch the new one instead of a cached copy.
-  const IMG_V = '20261103b';
+  const IMG_V = '20261103c';
   const HOLD = 5600, FADE = 1200, INTRO_HOLD = 7400;
+  // Photos whose files aren't the usual 900 / 1536 wide. TILT: tall photos the camera tilts down (top to bottom).
+  const SIZES = { '10-elevate': [720, 1024] }, TILT = { '10-elevate': 7200 };
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const css = document.createElement('style');
@@ -68,7 +72,7 @@
     if (!hero || document.querySelector('.hero-film')) return;
     const film = document.createElement('div');
     film.className = 'hero-film'; film.setAttribute('role', 'region'); film.setAttribute('aria-roledescription', 'carousel');
-    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><div class="hi-stage"><div class="hi-art"><picture><source media="(max-width:640px)" srcset="/hero/00-intro-720.webp?v=${IMG_V} 720w, /hero/00-intro.webp?v=${IMG_V} 1024w" sizes="100vw"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:948px) 100vw, 900px" srcset="/hero/00-intro-wide-900.webp?v=${IMG_V} 900w, /hero/00-intro-wide.webp?v=${IMG_V} 1536w" src="/hero/00-intro-wide.webp?v=${IMG_V}"></picture><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-900.webp?v=${IMG_V} 900w, /hero/${f}.webp?v=${IMG_V} 1536w" src="/hero/${f}.webp?v=${IMG_V}"></div>`).join('')
+    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><div class="hi-stage"><div class="hi-art"><picture><source media="(max-width:640px)" srcset="/hero/00-intro-720.webp?v=${IMG_V} 720w, /hero/00-intro.webp?v=${IMG_V} 1024w" sizes="100vw"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:948px) 100vw, 900px" srcset="/hero/00-intro-wide-900.webp?v=${IMG_V} 900w, /hero/00-intro-wide.webp?v=${IMG_V} 1536w" src="/hero/00-intro-wide.webp?v=${IMG_V}"></picture><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-${(SIZES[f] || [900])[0]}.webp?v=${IMG_V} ${(SIZES[f] || [900])[0]}w, /hero/${f}.webp?v=${IMG_V} ${(SIZES[f] || [0, 1536])[1]}w" src="/hero/${f}.webp?v=${IMG_V}"></div>`).join('')
       + `<div class="hero-film-cap" aria-live="polite"></div><div class="hero-film-dots">${SHOTS.map((_, i) => `<button type="button" aria-label="${i + 1}"></button>`).join('')}</div>`;
     hero.insertAdjacentElement('afterend', film);
     const shots = [...film.querySelectorAll('.hero-film-shot')], cap = film.querySelector('.hero-film-cap'), dots = [...film.querySelectorAll('.hero-film-dots button')];
@@ -86,8 +90,13 @@
       cap.textContent = he() ? hebrew : en; cap.style.opacity = cap.textContent ? '1' : '0';
       dots.forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
       film.setAttribute('aria-label', (he() ? hebrew : en) || 'Gremier Coffee Co.');
-      if (!still && img.animate) { anim = img.animate([{ transform: t(from) }, { transform: t(to) }], { duration: (intro ? INTRO_HOLD : HOLD) + FADE * 2, easing: 'ease-in-out', fill: 'both' }); }
-      clearTimeout(timer); timer = setTimeout(() => show(i + 1), (intro ? INTRO_HOLD : HOLD) + (still ? 1500 : 0));
+      const hold = intro ? INTRO_HOLD : TILT[file] || HOLD;
+      if (!still && img.animate) {
+        anim = TILT[file]
+          ? img.animate([{ objectPosition: '46% 0%', transform: `scale(${from[0]})` }, { objectPosition: '54% 100%', transform: `scale(${to[0]})` }], { duration: hold + FADE * 2, easing: 'ease-in-out', fill: 'both' })
+          : img.animate([{ transform: t(from) }, { transform: t(to) }], { duration: hold + FADE * 2, easing: 'ease-in-out', fill: 'both' });
+      }
+      clearTimeout(timer); timer = setTimeout(() => show(i + 1), hold + (still ? 1500 : 0));
     }
     dots.forEach((d, k) => d.onclick = (e) => { e.stopPropagation(); show(k); });
     film.onclick = () => { if (typeof showPage === 'function') showPage(SHOTS[i][3]); };
