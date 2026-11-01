@@ -81,6 +81,20 @@
    <details class="st-table"><summary>Show as table</summary><div class="table-wrap"><table><thead><tr><th></th>${series.map(x=>`<th>${esc(x.name)}</th>`).join('')}</tr></thead><tbody>${labels.map((l,i)=>series.some(x=>x.values[i]!==null&&x.values[i]!==undefined)?`<tr><th>${esc(l.tip||l.label)}</th>${series.map(x=>`<td>${x.values[i]===null||x.values[i]===undefined?'—':esc(format(x.values[i]))}</td>`).join('')}</tr>`:'').join('')}</tbody></table></div></details></section>`;
  }
  // Months after this one have no data yet.
+ // Several charts in one card: chips on top switch between them, and the choice is remembered.
+ // A chart can itself be a switcher (e.g. the running total's year filter); it nests without a second card.
+ const inner=h=>String(h).replace(/^\s*<section class="st-card([^"]*)"/,'<div class="st-inner$1"').replace(/<\/section>\s*$/,'</div>');
+ function multi(id,charts,sub=false){
+  charts=charts.filter(c=>c&&c.html);if(!charts.length)return '';if(charts.length===1&&!sub)return charts[0].html;
+  let pick=charts[0].key;try{const v=localStorage.getItem('gremier_stats_multi_'+id);if(charts.some(c=>c.key===v))pick=v;}catch{}
+  return `<section class="st-card st-multi${sub?' st-sub':''}" data-multi="${esc(id)}"><div class="st-chips" role="tablist">${charts.map(c=>`<button type="button" role="tab" data-multi-key="${esc(c.key)}" aria-selected="${c.key===pick}">${esc(c.label)}</button>`).join('')}</div>${charts.map(c=>`<div class="st-multi-pane" data-multi-pane="${esc(c.key)}"${c.key===pick?'':' hidden'}>${inner(c.html)}</div>`).join('')}</section>`;
+ }
+ if(root.document)document.addEventListener('click',e=>{
+  const b=e.target.closest?.('[data-multi-key]');if(!b)return;const box=b.closest('[data-multi]'),key=b.dataset.multiKey;
+  box.querySelectorAll(':scope>.st-chips>[data-multi-key]').forEach(x=>x.setAttribute('aria-selected',String(x===b)));
+  box.querySelectorAll(':scope>[data-multi-pane]').forEach(x=>x.hidden=x.dataset.multiPane!==key);
+  try{localStorage.setItem('gremier_stats_multi_'+box.dataset.multi,key);}catch{}
+ });
  const upToNow=(list,keys)=>list.map((v,i)=>keys[i]>today().slice(0,7)?null:v);
  const tile=(label,value,note='',cls='')=>`<div class="st-tile ${cls}"><span>${esc(label)}</span><strong>${esc(value)}</strong>${note?`<small>${esc(note)}</small>`:''}</div>`;
 
@@ -182,21 +196,25 @@
     const now=a.slice(0,through).reduce((s,v)=>s+(v||0),0)+oldWebsite(year),then=b.slice(0,through).reduce((s,v)=>s+(v||0),0);
     return tile('vs last year',pct(now,then)||'—',`${money(now)} vs ${money(then)}, Jan–${monthShort(year+'-'+String(through).padStart(2,'0'))}`);})()}
   </div>
-  ${line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
-   note:'Stores: what was delivered each month (paid or not); before June 2026, store payments. Website and events: payments, each counted once.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})}
-  ${(()=>{
-   // Running total of every sale since the first year we have, month by month: always going up.
-   // An old-website lump sum (no months) is added in the month its period ended.
-   const first=Math.min(...data.snaps.map(s=>s.report_year),APP_FROM),now=+today().slice(0,4),keys=[],vals=[];let run=0;
-   for(let y=first;y<=now;y++){const m=yearByMonth(y),lumps=(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary);
-    m.forEach((v,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');if(k>today().slice(0,7))return;run+=(v||0)+(y>=APP_FROM?lumps.filter(r=>String(r.date).slice(0,7)===k).reduce((t,r)=>t+r.amount_minor,0):0);keys.push(k);vals.push(run);});}
-   if(keys.length<2)return '';
-   return line({title:`Total sales over time · since ${first}`,dots:keys.length<=18,labels:keys.map(k=>({label:k.endsWith('-01')?k.slice(0,4):'',tip:monthLong(k)})),series:[{name:'Running total',color:C[0],values:vals}],
-    note:`Every sale added up from January ${first}: ${money(run)} so far. Same figures as the charts on this page: FinBot income for earlier years, every sale we know of from ${APP_FROM}.`});})()}
-  ${(()=>{const ys=[year-2,year-1,year].filter(y=>y>=APP_FROM||finbotYear(y));if(ys.length<2)return `<section class="st-card"><h3>Year over year</h3><p class="sales-note">Earlier years appear here once their FinBot reports are imported.</p></section>`;
+  ${multi('overview',[{key:'month',label:'By month',html:line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
+   note:'Stores: what was delivered each month (paid or not); before June 2026, store payments. Website and events: payments, each counted once.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})},
+  {key:'total',label:'Running total',html:(()=>{
+   // Running total of every sale, month by month: always going up. Filter: all time, one year, or the
+   // last two years; each starts from zero. An old-website lump sum (no months) is added in the month its period ended.
+   const first=Math.min(...data.snaps.map(s=>s.report_year),APP_FROM),now=+today().slice(0,4);
+   const run=(from,to)=>{const keys=[],vals=[];let t=0;
+    for(let y=from;y<=to;y++){const m=yearByMonth(y),lumps=(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary);
+     m.forEach((v,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');if(k>today().slice(0,7))return;t+=(v||0)+(y>=APP_FROM?lumps.filter(r=>String(r.date).slice(0,7)===k).reduce((n,r)=>n+r.amount_minor,0):0);keys.push(k);vals.push(t);});}
+    if(!keys.length)return '';
+    const many=to>from;
+    return line({title:many?`Total sales over time · ${from}–${to}`:`Total sales · ${from}`,dots:keys.length<=18,labels:keys.map(k=>({label:many?(k.endsWith('-01')?k.slice(0,4):''):monthShort(k),tip:monthLong(k)})),series:[{name:'Running total',color:C[0],values:vals}],
+     note:`Every sale added up from January ${from}: ${money(t)}${to>=now?' so far':''}. FinBot income for years before ${APP_FROM}; every sale we know of from ${APP_FROM}.`});};
+   const years=[];for(let y=now;y>=first;y--)years.push(y);
+   return multi('running',[{key:'all',label:'All time',html:run(first,now)},...(now-first>=2?[{key:'last2',label:`${now-1}–${now}`,html:run(now-1,now)}]:[]),...years.map(y=>({key:String(y),label:String(y),html:run(y,y)}))],true);})()},
+  {key:'yoy',label:'Year over year',html:(()=>{const ys=[year-2,year-1,year].filter(y=>y>=APP_FROM||finbotYear(y));if(ys.length<2)return `<section class="st-card"><h3>Year over year</h3><p class="sales-note">Earlier years appear here once their FinBot reports are imported.</p></section>`;
    const total=y=>yearByMonth(y).reduce((s,v)=>s+(v||0),0)+(y>=APP_FROM?oldWebsite(y):0);
    return line({title:'Year over year · income by month',labels:Array.from({length:12},(_,i)=>({label:monthShort('2000-'+String(i+1).padStart(2,'0'))})),series:ys.map((y,j)=>({name:String(y),color:j===ys.length-1?C[0]:j===ys.length-2?C[1]:C[2],values:yearByMonth(y)})),
-    note:`From ${APP_FROM}: every sale we know of, as in Sales by month above (old-website sales are in the year total only; they have no months). Earlier years: income as recorded in FinBot. `+ys.map(y=>`${y}: ${money(total(y))}`).join(' · ')});})()}
+    note:`From ${APP_FROM}: every sale we know of, as in Sales by month above (old-website sales are in the year total only; they have no months). Earlier years: income as recorded in FinBot. `+ys.map(y=>`${y}: ${money(total(y))}`).join(' · ')});})()}])}
   ${owed.length?`<section class="st-card"><h3>Stores owing for over 45 days</h3>${owed.map(({s,x})=>`<div class="fin-row"><span>${esc(s.name)}<small> · oldest statement ${esc(x.oldestBilled.slice(0,10))}</small></span><strong>${money(x.owed)}</strong></div>`).join('')}</section>`:''}`;
  }
 
@@ -208,9 +226,9 @@
   const flavours=[['large:classic','Classic'],['large:house','House Blend'],['large:colombia','Colombia'],['large:sweetened','Sweetened'],['large:decaf','Decaf'],['large:unfiltered','Unfiltered']];
   const dow=[0,0,0,0,0,0,0];for(const o of data.orders.filter(o=>paidOrder(o)&&String(o.created_at).startsWith(String(year))))dow[new Date(o.created_at).getDay()]++;
   const keys=per.map(r=>r.m);
-  get('statsNew-sales').innerHTML=line({title:`Bottles per month · ${year}`,format:num,labels,series:[{name:'Liter bottles',color:C[0],values:upToNow(per.map(r=>units(r,'large')),keys)},{name:'Minis',color:C[1],values:upToNow(per.map(r=>units(r,'mini')),keys)},{name:'5L jerry cans',color:C[2],values:upToNow(per.map(r=>units(r,'jerry')),keys)}],note:'Website orders and store deliveries (stores from June 2026).'})
-   +line({title:`Liter bottles by flavour · ${year}`,format:num,labels,series:[...flavours.map(([k,n],i)=>({name:n,color:C[i],values:upToNow(per.map(r=>prod(r,k)),keys)})),{name:'Not recorded',color:GRAY,dash:true,values:upToNow(per.map(r=>prod(r,'large:unknown')),keys)}],note:'Store deliveries count by the flavours logged on each delivery.'})
-   +chart({title:`Website orders by day of the week · ${year}`,format:num,labels:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(l=>({label:l})),series:[{name:'Orders',color:C[0],values:dow}]});
+  get('statsNew-sales').innerHTML=multi('sales',[{key:'bottles',label:'Bottles',html:line({title:`Bottles per month · ${year}`,format:num,labels,series:[{name:'Liter bottles',color:C[0],values:upToNow(per.map(r=>units(r,'large')),keys)},{name:'Minis',color:C[1],values:upToNow(per.map(r=>units(r,'mini')),keys)},{name:'5L jerry cans',color:C[2],values:upToNow(per.map(r=>units(r,'jerry')),keys)}],note:'Website orders and store deliveries (stores from June 2026).'})
+   },{key:'flavour',label:'By flavour',html:line({title:`Liter bottles by flavour · ${year}`,format:num,labels,series:[...flavours.map(([k,n],i)=>({name:n,color:C[i],values:upToNow(per.map(r=>prod(r,k)),keys)})),{name:'Not recorded',color:GRAY,dash:true,values:upToNow(per.map(r=>prod(r,'large:unknown')),keys)}],note:'Store deliveries count by the flavours logged on each delivery.'})
+   },{key:'dow',label:'Day of week',html:chart({title:`Website orders by day of the week · ${year}`,format:num,labels:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(l=>({label:l})),series:[{name:'Orders',color:C[0],values:dow}]})}]);
  }
 
  function drawStores(){
@@ -236,8 +254,8 @@
   const spend=new Map();for(const o of yearOrders){const k=who(o)||o.id;const r=spend.get(k)||{name:o.customer_name||'Customer',orders:0,total:0};r.orders++;r.total+=Math.round(Number(o.total||0)*100);spend.set(k,r);}
   const rated=data.feedback.filter(f=>String(f.created_at).startsWith(String(year))),avg=rated.length?rated.reduce((s,f)=>s+f.rating,0)/rated.length:null;
   get('statsNew-web').innerHTML=`<div class="st-tiles">${tile('Paid orders · '+year,num(yearOrders.length))}${tile('Average order',yearOrders.length?money(revenue/yearOrders.length):'—')}${tile('Customers',num(buyers.size),buyers.size?`${Math.round(repeat/buyers.size*100)}% ordered more than once`:'')}${tile('Reviews',avg===null?'—':avg.toFixed(1)+' ★',rated.length?rated.length+' this year':'')}</div>
-   ${line({title:`Website orders by month · ${year}`,format:num,labels,series:[{name:'All orders',color:'#52514e',dash:true,values:upToNow(cm.map(r=>r.orders),cm.map(r=>r.month))},{name:'New customers',color:C[0],values:upToNow(cm.map(r=>r.new),cm.map(r=>r.month))},{name:'Returning',color:C[1],values:upToNow(cm.map(r=>r.returning),cm.map(r=>r.month))}]})}
-   ${line({title:`Average order value · ${year}`,labels,series:[{name:'Average order',color:C[0],values:upToNow(cm.map(r=>r.orders?r.aov:null),cm.map(r=>r.month))}]})}
+   ${multi('web',[{key:'orders',label:'Orders',html:line({title:`Website orders by month · ${year}`,format:num,labels,series:[{name:'All orders',color:'#52514e',dash:true,values:upToNow(cm.map(r=>r.orders),cm.map(r=>r.month))},{name:'New customers',color:C[0],values:upToNow(cm.map(r=>r.new),cm.map(r=>r.month))},{name:'Returning',color:C[1],values:upToNow(cm.map(r=>r.returning),cm.map(r=>r.month))}]})}
+   ,{key:'aov',label:'Average order',html:line({title:`Average order value · ${year}`,labels,series:[{name:'Average order',color:C[0],values:upToNow(cm.map(r=>r.orders?r.aov:null),cm.map(r=>r.month))}]})}])}
    <section class="st-card"><h3>Checkout funnel · last 30 days</h3>${steps.map(([l,n],i)=>`<div class="st-funnel"><span>${esc(l)}</span><b style="width:${steps[0][1]?Math.min(100,Math.max(2,n/steps[0][1]*100)):0}%"></b><strong>${num(n)}${i&&steps[i-1][1]?` <small>${Math.round(n/steps[i-1][1]*100)}%</small>`:''}</strong></div>`).join('')}<p class="sales-note">Browsers that added to cart, opened checkout and pressed pay (counted from 24 Oct 2026), and paid orders.</p></section>
    <section class="st-card st-two"><div><h3>How orders arrive · ${year}</h3>${Object.entries(types).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<div class="fin-row"><span>${esc(k)}</span><strong>${num(n)} · ${Math.round(n/yearOrders.length*100)}%</strong></div>`).join('')||'<p class="sales-note">No orders yet.</p>'}</div>
    <div><h3>Top customers · ${year}</h3>${[...spend.values()].sort((a,b)=>b.total-a.total).slice(0,8).map(r=>`<div class="fin-row"><span>${esc(r.name)}<small> · ${r.orders} order${r.orders>1?'s':''}</small></span><strong>${money(r.total)}</strong></div>`).join('')||'<p class="sales-note">No orders yet.</p>'}</div></section>`;
@@ -276,6 +294,13 @@
   .st-tab-list button[aria-selected="true"]{color:var(--cream);border-bottom-color:var(--cream);font-weight:600}
   .st-year{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--silver-dim)}.st-year select{width:auto}
   .st-pane[hidden]{display:none!important}
+  .st-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 14px;padding:4px;background:var(--bg,#f1f2f4);border-radius:12px;width:fit-content;max-width:100%}
+  .st-chips button{border:0;background:transparent;font:inherit;font-size:.85rem;font-weight:600;color:var(--silver-dim);padding:8px 14px;border-radius:9px;cursor:pointer;white-space:nowrap}
+  .st-chips button[aria-selected="true"]{background:var(--card);color:var(--cream);box-shadow:0 1px 6px #0000001a}
+  .st-sub{background:none;border:0;padding:0;border-radius:0}.st-sub>.st-chips{background:none;padding:0;gap:4px;margin:0 0 10px}
+  .st-sub>.st-chips button{border:1px solid var(--border);padding:5px 11px;font-size:.78rem;border-radius:999px}
+  .st-sub>.st-chips button[aria-selected="true"]{background:var(--cream);color:var(--card);border-color:var(--cream);box-shadow:none}
+  .st-multi-pane[hidden]{display:none!important}
   .st-new{display:grid;gap:16px;margin-bottom:16px}
   .st-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;min-width:0}
   .st-card h3{margin:0 0 10px;font-size:1rem;color:var(--cream)}
