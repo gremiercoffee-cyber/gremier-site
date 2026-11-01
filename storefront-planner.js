@@ -391,20 +391,25 @@ ${n.value}`:line;}
     if(mode==='upgrade'&&plan.classic>0)state.mix[key]=(state.mix[key]||0)+1;
     classicSwap=null;
   }
+  // Coffee as a grid of jerry cans: a photo, the name, the price note and − count +. It starts with all
+  // the cans as Classic (2 for 50 guests); + on another coffee swaps a Classic can over. Last tile: an extra can.
   function coffeeHtml(plan) {
     if (!plan) return '';
-    const options=coffeeOptions(plan);
-    const row=(label,n,key,price)=>{
-      const classic=key==='classic';
-      const canAdd=classic?plan.classic<plan.jugs:plan.classic>0;
-      const canRemove=n>0&&(!classic||options.length>0);
-      return `<div class="bb-jug"><span class="bb-jug-name">${label} <small>${classic?T('included','כלול'):`+₪${price} ${T('per jug',"לג'ריקן")}`}</small></span><span class="bb-jug-step"><button type="button" data-jug="${key}" data-d="-1" ${canRemove?'':'disabled'} aria-label="${T('Fewer '+label,'פחות '+label)}">−</button><b>${n}</b><button type="button" data-jug="${key}" data-d="1" ${canAdd?'':'disabled'} aria-label="${T('More '+label,'עוד '+label)}">+</button></span></div>`;
+    const options=coffeeOptions(plan),jugs=jugProducts();
+    const pic=(key)=>{const p=jugs.find(j=>jugVariant(j)===key)||jugs.find(j=>jugVariant(j)==='classic');return p?.images?.[0]||'';};
+    const tile=(label,n,key,note,attrs,extra)=>{
+      const img=pic(key);
+      return `<div class="bb-jug-tile${n?' on':''}${extra?' extra':''}"><div class="bb-jug-pic">${img?`<img src="${esc(img)}" alt="" loading="lazy">`:''}${key==='decaf'&&!jugs.some(j=>jugVariant(j)==='decaf')?`<em>${T('Decaf','נטול')}</em>`:''}${n?`<i>${n}</i>`:''}</div>
+        <b>${label}</b><small>${note}</small><span class="bb-jug-step">${attrs}</span></div>`;
     };
+    const step=(key,n,canRemove,canAdd,label)=>`<button type="button" data-jug="${key}" data-d="-1" ${canRemove?'':'disabled'} aria-label="${T('Fewer '+label,'פחות '+label)}">−</button><b>${n}</b><button type="button" data-jug="${key}" data-d="1" ${canAdd?'':'disabled'} aria-label="${T('More '+label,'עוד '+label)}">+</button>`;
     const choices=classicSwap?options.filter(x=>classicSwap==='upgrade'||(plan.mix[x.key]||0)>0):[];
     const picker=choices.length?`<div class="bb-classic-picker" role="group" aria-label="${T('Swap coffee','החלפת קפה')}"><button type="button" class="bb-swap-close" data-close-swap aria-label="${T('Close coffee choices','סגירת אפשרויות הקפה')}">×</button>${choices.map(x=>`<button type="button" data-classic-swap="${x.key}" data-swap-mode="${classicSwap}">${classicSwap==='restore'?`${x.label} → ${T('Classic','קלאסיק')}`:`${T('Classic','קלאסיק')} → ${x.label} <small>+₪${Number(x.addon.price)||0}</small>`}</button>`).join('')}</div>`:'';
-    const jugs=jugProducts(),extraJugs=(plan.extras||[]).filter(x=>x.jug);
-    const extraRow=jugs.length?`<div class="bb-jug bb-jug-extra"><span class="bb-jug-name">${T('Extra 5L jerry can','ג׳ריקן 5 ל׳ נוסף')} <small>${T('more coffee, full price','עוד קפה, במחיר מלא')}</small></span><span class="bb-jug-step"><button type="button" data-extra-jug-remove ${extraJugs.length?'':'disabled'} aria-label="${T('Remove an extra jerry can','הסרת ג׳ריקן נוסף')}">−</button><b>${extraJugs.reduce((n,x)=>n+x.qty,0)}</b><button type="button" data-extra-jug aria-label="${T('Add an extra jerry can','הוספת ג׳ריקן נוסף')}">+</button></span></div>`:'';
-    return `<div class="bb-jugs">${row(T('Classic','קלאסיק'),plan.classic,'classic',0)}${picker}${options.map(x=>row(x.label,plan.mix[x.key]||0,x.key,Number(x.addon.price)||0)).join('')}${extraRow}</div>`;
+    const extraN=(plan.extras||[]).filter(x=>x.jug).reduce((n,x)=>n+x.qty,0);
+    const tiles=[tile(T('Classic','קלאסיק'),plan.classic,'classic',T('included','כלול'),step('classic',plan.classic,plan.classic>0&&options.length>0,plan.classic<plan.jugs,T('Classic','קלאסיק'))),
+      ...options.map(x=>{const n=plan.mix[x.key]||0;return tile(x.label,n,x.key,`+₪${Number(x.addon.price)||0} ${T('a can','לג׳ריקן')}`,step(x.key,n,n>0,plan.classic>0,x.label));}),
+      jugs.length?tile(T('Extra can','ג׳ריקן נוסף'),extraN,'classic',T('more coffee, full price','עוד קפה, מחיר מלא'),`<button type="button" data-extra-jug-remove ${extraN?'':'disabled'} aria-label="${T('Remove an extra jerry can','הסרת ג׳ריקן נוסף')}">−</button><b>${extraN}</b><button type="button" data-extra-jug aria-label="${T('Add an extra jerry can','הוספת ג׳ריקן נוסף')}">+</button>`,true):''];
+    return `<div class="bb-jug-grid">${tiles.join('')}</div>${picker}`;
   }
   function milkOptions(p) {
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.milk_type||'parve'})).filter(x=>x.addon.per_liter&&!x.addon.legacy_milk);
@@ -534,7 +539,7 @@ ${n.value}`:line;}
     if (oi >= 0) {
       const lids = lidsHtml(plan), syrups = syrupHtml(plan);
       const body = oi === 0 ? `<h2>${T('Coffee & serving stations', 'קפה ועמדות הגשה')}</h2>
-          <p class="bbx-lead">${T(`Your ${plan.jugs} jerry can${plan.jugs > 1 ? 's' : ''} (5 litres each) come as Classic. Press + to make a can a different coffee.`, `${plan.jugs} הג׳ריקנים שלכם (5 ליטר כל אחד) מגיעים כקלאסיק. לחצו + כדי להחליף ג׳ריקן לקפה אחר.`)}</p>
+          <p class="bbx-lead">${T(`You have ${plan.jugs} jerry can${plan.jugs > 1 ? 's' : ''} of 5 litres. Tap + on a coffee to swap a can to it.`, `יש לכם ${plan.jugs} ג׳ריקנים של 5 ליטר. לחצו + על קפה כדי להחליף ג׳ריקן אליו.`)}</p>
           ${coffeeHtml(plan)}
           <h3 class="bbx-sub">${T('Serving stations', 'עמדות הגשה')}</h3>
           ${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan.stations)}
