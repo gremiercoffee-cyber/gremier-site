@@ -583,3 +583,9 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 #pdDrawer .subscription-modes label:has(input:checked) { background:var(--gremier-grad); color:#fff; box-shadow:0 3px 10px rgba(0,0,0,.18); }
 #pdDrawer .pd-add-btn, .add-btn { background: var(--gremier-grad) !important; color:#fff !important; border-color:transparent !important; }
 #pdDrawer .pd-add-btn:hover { background: var(--gremier-grad-hover) !important; }
+
+/* The top menu never wraps: a little tighter on medium screens, and the ☰ menu once it can't fit
+   (e.g. a half-screen window), instead of tall, cut-off stacks of links. */
+.nav-links a { white-space:nowrap; }
+@media (max-width:1320px) { .nav-links { gap:18px; } .nav-links a { letter-spacing:.06em; font-size:.76rem; } }
+@media (max-width:1120px) { .nav-links { display:none !important; } .hamburger { display:flex !important; align-items:center; } }
