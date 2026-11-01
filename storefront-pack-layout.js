@@ -20,8 +20,8 @@
     }
     return slots;
   }
-  // Coordinates measured from the generated shallow tray. Bases land on the
-  // visible floors, not on the front edge or on a guessed two-row grid.
+  // Coordinates measured from the generated shallow tray. Bottle bases sit
+  // below the compartment rim so the foreground walls hide the bare glass.
   function geometry(slot, pool) {
     const back = slot < 3, col = slot % 3;
     const tray = {left:15,width:70,bottom:5,ratio:pool === 'minis' ? 5.7 : 5.2};
@@ -29,7 +29,8 @@
     const floor = back ? .30 : .72;
     const center = back ? [.24,.50,.76][col] : [.17,.50,.83][col];
     const width = pool === 'minis' ? (back ? 20 : 21.5) : (back ? 13 : 14);
-    return {left:tray.left+tray.width*center-width/2, bottom:tray.bottom+trayHeight*(1-floor),width,height:back?76:80,z:back?5:15};
+    const insertionDepth = 3.2;
+    return {left:tray.left+tray.width*center-width/2, bottom:tray.bottom+trayHeight*(1-floor)-insertionDepth,width,height:back?76:80,z:back?5:15};
   }
   return {reconcile,geometry};
 });

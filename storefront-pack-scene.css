@@ -1,7 +1,8 @@
 .pack-box {box-sizing:border-box;max-width:580px;max-height:92dvh;overscroll-behavior:contain;}
 .pack-scene {position:relative;isolation:isolate;aspect-ratio:1.65;margin:12px 0 16px;border-radius:16px;background:radial-gradient(ellipse at 50% 80%,#e9e3da, #f8f7f4 72%);overflow:hidden;direction:ltr;}
 .pack-scene-carrier {position:absolute!important;left:15%!important;bottom:5%!important;width:70%!important;height:auto!important;max-width:none!important;z-index:1;pointer-events:none;}
-.pack-scene-lip {z-index:30;position:absolute;inset:0;pointer-events:none;clip-path:polygon(0 87%,100% 87%,100% 100%,0 100%);}
+.pack-scene-lip {z-index:30;position:absolute;inset:0;pointer-events:none;clip-path:polygon(0 88.7%,100% 88.7%,100% 100%,0 100%);}
+.pack-scene[data-pool="minis"] .pack-scene-lip {clip-path:polygon(0 89.1%,100% 89.1%,100% 100%,0 100%);}
 .pack-scene-lip .pack-scene-carrier {z-index:30;}
 .pack-scene-middle {z-index:10;position:absolute;inset:0;pointer-events:none;clip-path:polygon(15% 80.3%,85% 80.3%,85% 87%,15% 87%);}
 .pack-scene[data-pool="minis"] .pack-scene-middle {clip-path:polygon(15% 81.8%,85% 81.8%,85% 87%,15% 87%);}

@@ -1,4 +1,4 @@
-const CACHE = 'gremier-v47';
+const CACHE = 'gremier-v48';
 const SUPABASE_FN = 'https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1';
 const PRECACHE = [
   '/index.html',

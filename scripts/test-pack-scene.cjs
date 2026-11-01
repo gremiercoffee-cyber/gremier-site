@@ -25,8 +25,12 @@ test('bottle bases land within their tray compartments, with correct depth', () 
       assert.ok(g.left+g.width/2>bounds[0]&&g.left+g.width/2<bounds[1]);
       assert.ok(g.bottom+g.height<=100,'bottle stays inside scene');
     }
-    assert.ok(back.bottom>=18&&back.bottom<=22,'back floor');
-    assert.ok(front.bottom>=10&&front.bottom<=12,'front floor');
+    assert.ok(back.bottom>=15&&back.bottom<=19,'base inserted below back rim');
+    assert.ok(front.bottom>=7&&front.bottom<=9,'base inserted below front rim');
+    const backWall=pool==='minis'?81.8:80.3;
+    assert.ok(100-back.bottom>backWall,'back wall covers the bottle base');
+    assert.ok(100-front.bottom>88.7,'front wall covers the bottle base');
+    assert.ok(100-front.bottom-88.7<5,'front wall stays below the label');
     assert.ok(back.z<front.z,'front row occludes back row');
   }
 });

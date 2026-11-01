@@ -16,4 +16,6 @@ Browser validation: empty carriers in both pools; 3 Original + 3 Vanilla; 5 Clas
 
 Shallow-tray revision: rechecked both direct shelf buttons, a six-liter mix, 5 Classic minis + 1 Caramel, a six-Classic liter pack and removal without shifting other slots. Phone and desktop had no picker overflow or missing images. Eight combined pricing/slot/compartment-geometry tests passed.
 
+Insertion-depth refinement: bottle bases sit 3.2 scene-percentage points below the compartment floors, and the foreground mask starts at the actual front wall (88.7% liters / 89.1% minis), rather than covering the tray floor. This hides only the bare glass below the labels. Checked a six-liter mix at 700 px and a mixed six-mini pack at 390 px. Geometry tests verify base occlusion and label clearance.
+
 References live in `refs/`. Liter references were downloaded from the existing public Cloudinary catalog images for Classic, House Blend, Colombia, Sweetened Classic and Decaf. Mini Classic uses the customer's supplied black-coffee mini photograph; the other minis use the supplied black-label creamy-coffee photographs.
