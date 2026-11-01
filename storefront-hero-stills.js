@@ -69,6 +69,16 @@
       ['09-coffee-bar', 'COFFEE BARS.', 'עמדות קפה.', 'coffeebars'],
     ] },
   };
+  // The product words' letters: [in, out] keyframes per letter (j of n), one style per beat.
+  const mid = (j, n) => j - (n - 1) / 2;
+  const LETTERS = [
+    [() => [{ transform: 'translateY(70%)', opacity: 0 }, { transform: 'none', opacity: 1 }], () => [{ opacity: 1 }, { transform: 'translateY(-60%)', opacity: 0 }]],
+    [() => [{ transform: 'translateY(-80%) rotate(-8deg)', opacity: 0 }, { transform: 'none', opacity: 1 }], () => [{ opacity: 1 }, { transform: 'translateY(70%)', opacity: 0 }]],
+    [() => [{ transform: 'scale(1.6)', filter: 'blur(10px)', opacity: 0 }, { transform: 'none', filter: 'blur(0)', opacity: 1 }], () => [{ opacity: 1 }, { filter: 'blur(8px)', opacity: 0 }]],
+    [() => [{ transform: 'perspective(500px) rotateX(90deg)', opacity: 0 }, { transform: 'none', opacity: 1 }], () => [{ opacity: 1 }, { transform: 'perspective(500px) rotateX(-90deg)', opacity: 0 }]],
+    [(j, n) => [{ transform: `translateX(${mid(j, n) * 18}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], (j, n) => [{ opacity: 1 }, { transform: `translateX(${mid(j, n) * 22}px) scale(.8)`, opacity: 0 }]],
+    [() => [{ transform: 'scale(0)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }], () => [{ opacity: 1 }, { transform: 'scale(0)', opacity: 0 }]],
+  ];
   // Burst film for preview (or when BURST_LIVE); the slow film otherwise and for reduced motion.
   if (!still && (BURST_LIVE || burstPreview)) SHOTS.splice(0, SHOTS.length, ...BURST_SHOTS);
 
@@ -143,11 +153,16 @@
           if (k) moving.push(imgs[k].animate([{ clipPath: wipe[0] }, { clipPath: wipe[1] }], { duration: 560, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'both' }));
           moving.push(imgs[k].animate([{ transform: `translateX(${dir * 2}%) scale(1.14)` }, { transform: 'translateX(0) scale(1.02)' }], { duration: BEAT + 600, easing: 'cubic-bezier(.2,.6,.2,1)', fill: 'both' }));
           if (prev) beats.push(setTimeout(() => moving.filter((a) => a.effect.target === prev).forEach((a) => a.cancel()), 600));
-          moving.push(word.animate([
-            { transform: 'translateY(45%)', opacity: 0, letterSpacing: '.14em' },
-            { transform: 'translateY(0)', opacity: 1, letterSpacing: '.02em', offset: 0.32 },
-            { transform: 'translateY(0)', opacity: 1, offset: 0.8 },
-            { transform: 'translateY(-25%)', opacity: 0 }], { duration: BEAT, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' }));
+          // Each word letter by letter, with its own way in and out (LETTERS), so no two beats look alike.
+          const [inF, outF] = LETTERS[k % LETTERS.length];
+          const chars = [...word.textContent];
+          word.innerHTML = chars.map((c) => `<span style="display:inline-block;white-space:pre">${c === ' ' ? ' ' : c.replace(/[&<>]/g, (x) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[x]))}</span>`).join('');
+          const spans = [...word.children], n = spans.length, gap = Math.min(45, 360 / n);
+          word.style.opacity = '1'; word.style.transform = 'none';
+          spans.forEach((sp, j) => {
+            moving.push(sp.animate(inF(j, n), { duration: 460, delay: j * gap, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
+            moving.push(sp.animate(outF(j, n), { duration: 260, delay: BEAT - 300 + j * Math.min(18, 140 / n), easing: 'ease-in', fill: 'forwards' }));
+          });
           return;
         }
         settle();
