@@ -50,7 +50,8 @@
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   // BURSTS: each beat flashes white, the photo punches in (zoomed, a little blurred, alternating sides)
   // and settles, and a big word slams in, then snaps out before the next flash. [photo, English, Hebrew].
-  // Minis: quick beats, one flavour each. Products: a little longer, so the bigger products register.
+  // Minis: quick beats, one flavour each, with the flash. Products: a little longer, so the bigger products
+  // register, in a calmer GLIDE: each photo sweeps in on a slanted wipe and settles, the word rises in.
   const BURSTS = {
     'burst-minis': { beat: 850, frames: [
       ['11-burst-classic', 'CLASSIC.', 'קלאסיק.'],
@@ -59,7 +60,7 @@
       ['13-burst-caramel', 'CARAMEL.', 'קרמל.'],
       ['14-burst-unfiltered', 'UNFILTERED.', 'לא מסונן.'],
     ] },
-    'burst-products': { beat: 1300, frames: [
+    'burst-products': { beat: 1300, glide: true, frames: [
       ['02-classic', 'DARK ROAST.', 'קלייה כהה.'],
       ['04-colombia', 'COLOMBIA.', 'קולומביה.'],
       ['05-sweetened', 'SWEETENED.', 'ממותק.'],
@@ -122,12 +123,33 @@
     const settle = () => { moving.forEach((a) => a.cancel()); moving = []; };
     const stopBurst = () => { beats.forEach(clearTimeout); beats = []; settle(); };
     let page = null;   // a burst beat can send the tap elsewhere (coffee bars)
-    function burst(el, { beat: BEAT, frames: BURST }) {
+    function burst(el, { beat: BEAT, frames: BURST, glide }) {
       const imgs = [...el.querySelectorAll('.hb-img')], word = el.querySelector('.hb-word'), flash = el.querySelector('.hb-flash');
       const pop = () => flash.animate([{ opacity: 0 }, { opacity: 0.9, offset: 0.25 }, { opacity: 0 }], { duration: 240, easing: 'ease-out' });
       BURST.forEach(([, en, hebrew, to], k) => beats.push(setTimeout(() => {
         const dir = k % 2 ? -1 : 1;
         page = to || null;
+        word.textContent = he() ? hebrew : en;
+        // Long words (UNFILTERED.) shrink to fit the frame's width.
+        word.style.fontSize = `min(15cqw, ${(135 / word.textContent.length).toFixed(1)}cqw)`;
+        if (glide) {
+          // The new photo wipes in over the previous one (which keeps moving until it's covered).
+          const prev = k ? imgs[k - 1] : null;
+          moving.filter((a) => a.effect.target !== prev).forEach((a) => a.cancel());
+          moving = moving.filter((a) => a.effect.target === prev);
+          imgs.forEach((im, j) => { im.classList.toggle('on', j === k || im === prev); im.style.zIndex = j === k ? 2 : im === prev ? 1 : 0; });
+          const wipe = dir > 0 ? ['polygon(120% 0, 100% 0, 100% 100%, 100% 100%)', 'polygon(0% 0, 100% 0, 100% 100%, -20% 100%)']
+            : ['polygon(0 0, 0% 0, -20% 100%, 0 100%)', 'polygon(0 0, 120% 0, 100% 100%, 0 100%)'];
+          if (k) moving.push(imgs[k].animate([{ clipPath: wipe[0] }, { clipPath: wipe[1] }], { duration: 560, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'both' }));
+          moving.push(imgs[k].animate([{ transform: `translateX(${dir * 2}%) scale(1.14)` }, { transform: 'translateX(0) scale(1.02)' }], { duration: BEAT + 600, easing: 'cubic-bezier(.2,.6,.2,1)', fill: 'both' }));
+          if (prev) beats.push(setTimeout(() => moving.filter((a) => a.effect.target === prev).forEach((a) => a.cancel()), 600));
+          moving.push(word.animate([
+            { transform: 'translateY(45%)', opacity: 0, letterSpacing: '.14em' },
+            { transform: 'translateY(0)', opacity: 1, letterSpacing: '.02em', offset: 0.32 },
+            { transform: 'translateY(0)', opacity: 1, offset: 0.8 },
+            { transform: 'translateY(-25%)', opacity: 0 }], { duration: BEAT, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' }));
+          return;
+        }
         settle();
         pop();
         imgs.forEach((im, j) => im.classList.toggle('on', j === k));
@@ -135,16 +157,13 @@
           { transform: `translateX(${dir * 3}%) scale(1.24)`, filter: 'blur(5px)' },
           { transform: 'translateX(0) scale(1.07)', filter: 'blur(0)', offset: 0.22 },
           { transform: `translateX(${-dir * 1.5}%) scale(1.03)`, filter: 'blur(0)' }], { duration: BEAT + 160, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'both' }));
-        word.textContent = he() ? hebrew : en;
-        // Long words (UNFILTERED.) shrink to fit the frame's width.
-        word.style.fontSize = `min(15cqw, ${(135 / word.textContent.length).toFixed(1)}cqw)`;
         moving.push(word.animate([
           { transform: 'scale(1.8)', opacity: 0, letterSpacing: '.3em' },
           { transform: 'scale(.95)', opacity: 1, letterSpacing: '.02em', offset: 0.2 },
           { transform: 'scale(1)', opacity: 1, offset: 0.78 },
           { transform: 'scale(1.08)', opacity: 0 }], { duration: BEAT, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' }));
       }, k * BEAT)));
-      beats.push(setTimeout(pop, BURST.length * BEAT - 120));   // a last flash into the closing shot
+      if (!glide) beats.push(setTimeout(pop, BURST.length * BEAT - 120));   // a last flash into what follows
     }
     const t = ([s, x, y]) => `translate(${x}%, ${y}%) scale(${s})`;
     function show(n) {
