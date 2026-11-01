@@ -185,6 +185,8 @@ serve(async (req) => {
       products?: ChatProduct[];
       lang?: string;
       catalog_version?: number;
+      mode?: string;
+      context?: string;
     };
 
     // Only normal user/assistant turns, length-capped (no client-injected "system" turns).
@@ -209,6 +211,9 @@ serve(async (req) => {
     }
 
     const catalog = buildCatalogPrompt(products, lang, fetchedAt);
+    // The coffee bar builder's helper: knows the customer's bar so far, answers and advises only.
+    const barMode = body.mode === "coffee_bar";
+    const barContext = String(body.context || "").slice(0, 1500);
     const language = lang === "he" ? "Hebrew" : "English";
     const productNames = products.map((p) => p.name_en).join(", ");
 
@@ -239,8 +244,35 @@ RESPONSE FORMAT — valid JSON only, no markdown:
 cart_items format when confirmed: [{"id":"exact-uuid-from-catalog","qty":2}]
 Use cart_items:[] when not adding anything yet.`;
 
+    const barPrompt = `You are the friendly coffee bar helper on Gremier Coffee Co.'s website. The customer is building a cold brew coffee bar for an event in the builder on this page, one question at a time, and you sit under it to help.
+
+HOW THE BUILDER WORKS (explain in these terms):
+- Guests: they choose how many guests; the package is priced by guest tier (see the coffee bar product's guest tiers in the catalog).
+- Coffee: the bar comes with 5-litre jerry cans of cold brew, about one per 25 guests, Classic Dark Roast included. They can swap cans to House Blend, Colombia or Decaf (small extra per can), or add an extra can at full price.
+- Milk: dairy milk included; parve (non-dairy) options can be chosen instead or mixed.
+- Serving stations: each coffee type is served from its own dispenser, so 2 coffee types means at least 2 stations; more stations help with big crowds.
+- Domed lids: optional, for cups with whipped toppings or carrying around.
+- Syrups: one caramel, one vanilla and one sugar syrup are included; they can add more.
+- Delivery: delivered to the event at a chosen time, delivered before the event (a date; within two days it's expedited), or free pickup.
+- At the end they review the bar and book; the builder shows the exact total.
+
+RULES:
+- Be warm and brief: 1–3 short sentences. Answer the question, then if useful suggest what to choose and why.
+- Use the customer's bar below. Recommend concrete choices (e.g. "For 80 guests with half coffee drinkers, 3 jerry cans is plenty").
+- Never invent prices: say the builder shows the price as they choose, or quote prices only from the catalog.
+- If they want something the builder can't do (a custom event, a very large crowd), suggest messaging us on WhatsApp.
+- Respond in ${language}.
+
+THE CUSTOMER'S BAR SO FAR:
+${barContext || "(not started)"}
+
+${catalog}
+
+RESPONSE FORMAT — valid JSON only, no markdown:
+{"reply":"your message","cart_items":[]}`;
+
     const openaiMessages = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: barMode ? barPrompt : systemPrompt },
       ...messages.slice(-12).map((m) => ({ role: m.role, content: m.content })),
     ];
 
@@ -266,7 +298,8 @@ Use cart_items:[] when not adding anything yet.`;
 
     const aiData = await aiRes.json();
     const raw = aiData.choices?.[0]?.message?.content || "";
-    const { reply, cart_items } = parseAssistantResponse(raw);
+    const parsed = parseAssistantResponse(raw);
+    const reply = parsed.reply, cart_items = barMode ? [] : parsed.cart_items;
 
     return new Response(JSON.stringify({
       reply,

@@ -512,7 +512,57 @@ ${n.value}`:line;}
     layoutScene();
     mini(plan);
     watch();
+    applySteps();
   }
+
+  // ── One question at a time ──
+  // The scene stays on top; below it one question shows, and moving on slides it out and the next in.
+  // Single-choice questions (guests, stations) move on by themselves; the last step is review & book.
+  let step=0, shownStep=-1, stepDir=1;
+  const AUTO=['guests','points'];
+  function stepNodes(){
+    const box=$('planner');if(!box)return[];
+    const review=[box.querySelector('.bb-take-home'),box.querySelector('.bb-booking')].filter(Boolean);
+    return [box.querySelector('.bb-guest-start'),...box.querySelectorAll('.bb-qs > .pl-q'),review.length?review:null].filter(Boolean).map(n=>Array.isArray(n)?n:[n]);
+  }
+  function applySteps(){
+    const box=$('planner');if(!box)return;
+    const nodes=stepNodes();if(!nodes.length)return;
+    box.classList.add('bb-stepped');
+    if(sharedShown&&shownStep<0)step=nodes.length-1;   // a shared bar opens on its review
+    step=Math.max(0,Math.min(step,nodes.length-1));
+    nodes.forEach((group,k)=>group.forEach(n=>{n.hidden=k!==step;n.classList.add('bb-step');}));
+    const last=step===nodes.length-1;
+    const nav=document.createElement('div');nav.className='bb-stepnav';
+    nav.innerHTML=`<button type="button" class="bb-step-back" data-step="-1" ${step?'':'disabled'}>${T('‹ Back','‹ חזרה')}</button>
+      <span class="bb-step-count">${last?T('Review & book','סיכום והזמנה'):T(`Step ${step+1} of ${nodes.length-1}`,`שלב ${step+1} מתוך ${nodes.length-1}`)}</span>
+      ${last?'<span></span>':`<button type="button" class="bb-step-next" data-step="1">${step===nodes.length-2?T('Review my bar ›','לסיכום ›'):T('Next ›','הבא ›')}</button>`}`;
+    nodes[step][nodes[step].length-1].after(nav);
+    const bar=document.createElement('div');bar.className='bb-step-progress';bar.innerHTML=`<i style="width:${Math.round((step+1)/nodes.length*100)}%"></i>`;
+    nodes[step][0].before(bar);
+    if(step!==shownStep){
+      const dir=shownStep<0?0:stepDir;shownStep=step;
+      if(dir)nodes[step].forEach(n=>n.animate([{opacity:0,transform:`translateX(${dir*48}px)`},{opacity:1,transform:'none'}],{duration:340,easing:'cubic-bezier(.2,.7,.2,1)'}));
+    }
+  }
+  function goStep(d){
+    const nodes=stepNodes();if(!nodes.length)return;
+    const to=Math.max(0,Math.min(nodes.length-1,step+d));if(to===step)return;
+    const out=nodes[step];stepDir=d>0?1:-1;
+    const done=()=>{step=to;render();const q=stepNodes()[step]?.[0];if(q&&q.getBoundingClientRect().top>innerHeight-120)q.scrollIntoView({behavior:'smooth',block:'center'});};
+    if(out[0]?.animate){const a=out[0].animate([{opacity:1,transform:'none'},{opacity:0,transform:`translateX(${-stepDir*48}px)`}],{duration:200,easing:'ease-in'});a.onfinish=done;}else done();
+  }
+  window.plannerGoStep=(n)=>{step=Math.max(0,n);shownStep=-1;render();};
+  // The current bar in a few lines, for the assistant.
+  window.plannerSummary=()=>{
+    const plan=suggestion();if(!plan)return '';
+    const milk=state.milk==='dairy'?'dairy milk':plan.milk.map(m=>`${m.liters}L ${m.addon?.name||m.key}`).join(', ')||state.milk;
+    const del=state.deliveryMode==='event'?`delivered to the event${state.deliveryDate?` on ${state.deliveryDate}${state.deliveryTime?' at '+state.deliveryTime:''}`:''}`:state.deliveryMode==='pickup'?`pickup${state.deliveryDate?' on '+state.deliveryDate:''} (free)`:`delivered before the event${state.deliveryDate?' on '+state.deliveryDate:''}`;
+    const q=stepNodes()[step]?.[0]?.querySelector('h2')?.textContent?.trim()||'';
+    return [`Guests: ${state.guests} (package tier ${plan.tier.guests})`,`Coffee: ${plan.jugs} × 5L jerry cans (${plan.classic} Classic${Object.entries(plan.mix).map(([k,n])=>`, ${n} ${k}`).join('')})`,
+      `Milk: ${milk} (${plan.milkLiters}L)`,`Serving stations: ${plan.stations}`,`Domed lids: ${state.lids?'yes':'no'}`,`Syrups: caramel ${plan.syrupCounts.caramel}, vanilla ${plan.syrupCounts.vanilla}, sugar ${plan.syrupCounts.sugar} (one of each included)`,
+      `Delivery: ${del}`,`Total so far: ₪${plan.total}`,q?`The customer is on the question: "${q}"`:''].filter(Boolean).join('\n');
+  };
 
   // The builder is the way to order the bar itself; the list below it keeps only the separate pieces.
   function tidyPackages(plan){
@@ -548,6 +598,8 @@ ${n.value}`:line;}
   document.addEventListener('click', (e) => {
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
+    const nav=e.target.closest('[data-step]');
+    if(nav){goStep(Number(nav.dataset.step));return;}
     const milkStep=e.target.closest('[data-milk-step]');
     if(milkStep){adjustMilk(milkStep.dataset.milkKind,Number(milkStep.dataset.milkStep));render();return;}
     const take=e.target.closest('[data-take-home]');
@@ -585,6 +637,7 @@ ${n.value}`:line;}
     const key = b.parentElement.dataset.key, v = b.dataset.v;
     state[key] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v;
     render();
+    if(AUTO.includes(key)){clearTimeout(goStep.t);goStep.t=setTimeout(()=>goStep(1),450);}
   });
   document.addEventListener('change',(e)=>{
     if(e.target.id==='plDelDate'){state.deliveryDate=e.target.value;render();}
