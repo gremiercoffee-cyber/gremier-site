@@ -12,9 +12,9 @@
     preview = sessionStorage.getItem('gremier_hero_preview') === '1';
   } catch (_) {}
   if (!LIVE && !preview) return;
-  // The burst film (logo, minis burst, product burst, closing shot) is shown only with ?burst=preview
-  // until BURST_LIVE is true.
-  const BURST_LIVE = false;
+  // The burst film (logo, minis burst, product burst, closing shot): for everyone while BURST_LIVE; otherwise only with ?burst=preview
+  // (BURST_LIVE false brings back the slow film).
+  const BURST_LIVE = true;
   let burstPreview = false;
   try {
     if (new URLSearchParams(location.search).get('burst') === 'preview') sessionStorage.setItem('gremier_burst_preview', '1');
