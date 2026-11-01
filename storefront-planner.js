@@ -74,7 +74,7 @@
   function deliveryHtml(){
     const before=state.deliveryMode==='before',pickup=state.deliveryMode==='pickup',ship=shipFor();
     return `<div class="pl-q bb-delivery"><h2>${T('How do you want us to deliver it?','איך תרצו שנביא את זה?')}</h2>
-      ${chips('deliveryMode',[['event',T('At the event, when it starts','לאירוע, בזמן שהוא מתחיל')],['before',T('Before the event','לפני האירוע')],['pickup',T('I’ll pick it up (free)','איסוף עצמי (חינם)')]])}
+      ${chips('deliveryMode',[['event',T('At the event','לאירוע')],['before',T('Before it','לפני האירוע')],['pickup',T('Pickup · free','איסוף · חינם')]])}
       <div class="bb-del-fields">
         <label>${pickup?T('Pickup date','תאריך האיסוף'):before?T('Delivery date','תאריך המשלוח'):T('Event date','תאריך האירוע')}<input type="date" class="form-input" id="plDelDate" min="${isoDay(1)}" value="${esc(state.deliveryDate)}"></label>
         ${before||pickup?'':`<label>${T('Arrival time','שעת הגעה')}<input type="time" class="form-input" id="plDelTime" value="${esc(state.deliveryTime)}"></label>`}
@@ -299,7 +299,8 @@ ${n.value}`:line;}
   function syncMini(){
     const el=$('bbMini'),box=$('planner');if(!el)return;
     const scene=$('bbScene'),qs=box?.querySelector('.bb-qs'),onPage=$('coffeebarsPage')?.classList.contains('active');
-    if(!onPage||!scene||!qs){el.classList.remove('on');document.body.classList.remove('bb-mini-on');return;}
+    // The builder keeps the scene pinned in view, so no floating thumbnail there.
+    if(!onPage||!scene||!qs||building_()){el.classList.remove('on');document.body.classList.remove('bb-mini-on');return;}
     const q=qs.getBoundingClientRect(),t=box.querySelector('.bb-tray').getBoundingClientRect(),vh=innerHeight;
     const choosing=q.bottom>90&&q.top<vh-100,pastPreview=t.bottom<=96;
     const covered=!!document.querySelector('#pdDrawer.open,#cartDrawer.open,.modal-overlay.open');
@@ -434,7 +435,8 @@ ${n.value}`:line;}
     state.milkMix={...(state.milkMix||{}),[kind]:next};
   }
   function takeHomeHtml() {
-    const available=all().filter(p=>!p.is_coffee_bar&&p.is_active!==false&&!/syrup|סירופ/i.test(p.name_en||p.name_he||''));
+    // Ready-made products only (not the build-your-own 6-packs, which need choosing).
+    const available=all().filter(p=>!p.is_coffee_bar&&p.is_active!==false&&!/syrup|סירופ/i.test(p.name_en||p.name_he||'')&&!(p.variations||[]).some(v=>v.type==='pack'));
     const picks=[...available.filter(p=>p.category==='minis').slice(0,3),...available.filter(p=>p.category==='bottles').slice(0,3)];
     if(!picks.length)return '';
     return `<section class="bb-take-home"><h3>${T('Coffee for home, too?','קפה גם לבית?')}</h3><p>${T('Added to your coffee bar order and delivered with it.','נוסף להזמנת בר הקפה ומגיע איתו.')}</p><div class="bb-home-products">${picks.map(p=>{const n=Number(state.extras[p.id])||0;return `<div class="bb-home-product${n?' on':''}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span>${n?`<span class="bb-home-step"><button type="button" data-take-home="${esc(p.id)}" data-d="-1" aria-label="${esc(T('One less','אחד פחות'))}">−</button><b>${n}</b><button type="button" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('One more','עוד אחד'))}">+</button></span>`:`<button type="button" class="bb-home-add" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('Add to my coffee bar','הוספה לבר הקפה'))}">+</button>`}</div>`;}).join('')}</div></section>`;
@@ -531,13 +533,13 @@ ${n.value}`:line;}
         <div class="bbx-actions bbx-only-back">${back(oi ? OPTS[oi - 1] : 'bar', oi ? T('Back', 'חזרה') : T('My bar', 'הבר שלי'))}${last ? '' : `<button type="button" class="bbx-link" data-go="delivery">${T('Skip to delivery', 'דלגו למשלוח')}</button>`}</div></div>`;
     }
     // Delivery, then one gentle "anything else?" (coffee for home), then Book.
-    const home = takeHomeHtml(), homeCount = (plan.extras || []).filter((x) => !x.jug).length;
+    const home = takeHomeHtml();
     return `<div class="bbx-step" data-step="delivery">
       ${deliveryHtml()}
-      ${home ? `<div class="bbx-extra"><p>${T('Anything else you’d like to add?', 'רוצים להוסיף עוד משהו?')}</p>
-        ${openUp === 'home' ? `<div class="bbx-home">${home}</div>` : `<button type="button" class="bbx-add" data-up="home">＋ ${homeCount ? T(`Coffee to take home (${homeCount} added)`, `קפה לבית (${homeCount} נוספו)`) : T('Add coffee to take home', 'הוסיפו קפה לבית')}</button>`}</div>` : ''}
+      ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
-      <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}<button type="button" class="bbx-link" onclick="plannerShare()">${T('Share this bar', 'שיתוף הבר')}</button></div></div>`;
+      <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
+      <button type="button" class="bbx-link" onclick="plannerShare()">${T('Share this bar', 'שיתוף הבר')}</button></div>`;
   }
 
   function render() {
