@@ -1,10 +1,10 @@
 # Immersive coffee-bar builder
 
-The existing planner is presented in a separate warm espresso-coloured room. An expanding circle opens from the start button, the storefront dims and shrinks behind a floating desktop/tablet frame, and phones use a full-screen room with safe-area spacing. The room owns its scroll position, keyboard focus, close/back behaviour and chat placement. Existing planner choices and the booking/pricing code remain in place.
+The existing planner is presented in a calm cream-and-white overlay. A floating desktop/tablet frame separates it from the storefront, and phones use a full-screen layout with safe-area spacing. The overlay owns its scroll position, keyboard focus, close/back behaviour and chat placement. Existing planner choices and booking/pricing code remain in place.
 
-The room has a compact close/progress/live-price header, dark translucent question cards and tiles, gentle scene settling, amber price feedback and a small background-light change between steps. Reduced motion uses short fades. Closing restores the Coffee Bars introduction and preserves choices. Checkout/product drawers and Share remain above the room; checkout history keeps the builder underneath it.
+The header holds close, progress and the live price. Question cards and product tiles use the app's light palette, with consistent backgrounds for extra-can tiles. Entry uses only a short opacity fade; exit is immediate. There is no expanding circle, page zoom, moving ambient light, price glow or bouncing entrance. Reduced motion is respected. Closing restores the Coffee Bars introduction and preserves choices. Checkout/product drawers and Share stay above the builder; checkout history keeps it underneath them.
 
-Optional dust particles and grain were skipped to keep the room quiet and avoid background animation work.
+Optional dust particles and grain were skipped.
 
 ## Validation
 
