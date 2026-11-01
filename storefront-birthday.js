@@ -42,6 +42,9 @@
   async function placeAccount() {
     const anchor = document.querySelector('#accountSignedIn .account-profile-card');
     if (!anchor || $('acctBirthday')) return;
+    // Only for a signed-in customer (the page keeps the account card hidden, not removed, when signed out).
+    const { data: { session } } = typeof getSessionSafe === 'function' ? await getSessionSafe() : { data: {} };
+    if (!session?.access_token || $('acctBirthday')) return;
     const el = document.createElement('div');
     el.id = 'acctBirthday'; el.className = 'bday-account';
     anchor.insertAdjacentElement('afterend', el);
