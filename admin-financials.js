@@ -216,7 +216,7 @@
       const all=[];
       for(const table of ['business_receipts','order_receipts']){
         for(let offset=0;offset<100000;offset+=1000){
-          const r=await client().from(table).select('amount_minor,issued_at').eq('status','issued').gt('issued_at',record.captured_at).order('issued_at').order(table==='order_receipts'?'order_id':'id').range(offset,offset+999);
+          let q=client().from(table).select('amount_minor,issued_at').eq('status','issued');if(table==='business_receipts')q=q.neq('document_type','tax_invoice');const r=await q.gt('issued_at',record.captured_at).order('issued_at').order(table==='order_receipts'?'order_id':'id').range(offset,offset+999);
           if(r.error)throw r.error;all.push(...r.data);if(r.data.length<1000)break;if(offset===99000)throw Error('Receipt register too large');
         }
       }

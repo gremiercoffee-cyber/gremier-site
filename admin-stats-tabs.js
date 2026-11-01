@@ -149,7 +149,7 @@
     pages(()=>c.from('site_events').select('kind,sid,created_at').gte('created_at',since).order('created_at')).catch(()=>[]),
     pages(()=>c.from('feedback').select('rating,created_at').order('created_at')).catch(()=>[]),
     pages(()=>c.from('store_tax_invoices').select('vat_minor,issued_at,status').order('id')).catch(()=>[]),
-    pages(()=>c.from('business_receipts').select('id,store_id,amount_minor,payment_date,status').order('id')).catch(()=>[])]);
+    pages(()=>c.from('business_receipts').select('id,store_id,amount_minor,payment_date,status,document_type').order('id')).catch(()=>[])]);
    if(seq!==serial)return;
    data={orders,products,stores,bills,deliveries,snaps,events,feedback,invoices,receipts};draw();
   }catch(e){if(seq!==serial)return;for(const [k] of TABS)if(get('statsNew-'+k))get('statsNew-'+k).innerHTML=`<p class="sales-note">${esc(e.message)}</p>`;}
@@ -269,7 +269,7 @@
   const inside=n=>Math.round(n*18/118);
   const byMonth=months(year).map(m=>({m,web:web.filter(o=>String(o.payment_confirmed_at||o.created_at).slice(0,7)===m).reduce((s,o)=>s+inside(Math.round(Number(o.total)*100)),0),
    stores:data.invoices.filter(i=>i.status==='issued'&&String(i.issued_at).slice(0,7)===m).reduce((s,i)=>s+Number(i.vat_minor||0),0),
-   other:data.receipts.filter(r=>r.status==='issued'&&!r.store_id&&r.payment_date>='2026-10-22'&&r.payment_date.slice(0,7)===m).reduce((s,r)=>s+inside(Number(r.amount_minor)),0)})).filter(r=>r.m>='2026-10'&&r.m<=today().slice(0,7));
+   other:data.receipts.filter(r=>r.status==='issued'&&r.document_type!=='receipt'&&r.payment_date>='2026-10-22'&&r.payment_date.slice(0,7)===m).reduce((s,r)=>s+inside(Number(r.amount_minor)),0)})).filter(r=>r.m>='2026-10'&&r.m<=today().slice(0,7));
   const total=byMonth.reduce((s,r)=>s+r.web+r.stores+r.other,0);
   get('statsNew-accounting').innerHTML=`<section class="st-card"><h3>VAT collected · since 22 Oct 2026</h3><div class="st-tiles">${tile('VAT on sales so far',money(total),'Estimate before expenses')}</div>${byMonth.map(r=>`<div class="fin-row"><span>${esc(monthLong(r.m))}<small> · website ${money(r.web)} · store invoices ${money(r.stores)} · other ${money(r.other)}</small></span><strong>${money(r.web+r.stores+r.other)}</strong></div>`).join('')}<p class="sales-note">18% inside website prices and taxed receipts; on top of store prices once their tax invoice is issued. VAT you can deduct on expenses isn't included, so this is more than you'll actually owe.</p></section>`;
  }

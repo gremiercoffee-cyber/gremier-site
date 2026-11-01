@@ -8,7 +8,7 @@
  async function call(name,body){const r=await sbc().functions.invoke(name,{body});if(r.error||r.data?.error){const detail=r.data||await r.error?.context?.json?.().catch(()=>null);throw Error(receiptErrors[detail?.error]||detail?.error||'Request failed; refresh before retrying.');}return r.data;}
  async function pages(table,columns,order){const out=[],primary=table==='order_receipts'?'order_id':'id';for(let n=0;n<100000;n+=1000){let query=sbc().from(table).select(columns).order(order);if(order!==primary)query=query.order(primary);const r=await query.range(n,n+999);if(r.error)throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Report is too large');}
  const status=(id,message)=>{if(get(id))get(id).textContent=message;};
- let customers=[],allCustomers=[],stores=[],bills=[],preview=null,requestId=crypto.randomUUID(),preparedReceipt=null,expenseFiles=[],expenseSettings=null,batch=null,allReceipts=[];
+ let customers=[],allCustomers=[],stores=[],bills=[],preview=null,requestId=crypto.randomUUID(),preparedReceipt=null,docType='receipt',openInvoices=[],expenseFiles=[],expenseSettings=null,batch=null,allReceipts=[];
  let financeSeq=0,expenseSeq=0,expenseOwner='',expenseShareRequested=false,expensePollBusy=false;
  const expenseBatchKey=selected=>JSON.stringify(selected.map(f=>[f.id,f.created_at]));
  function showPreparedExpenseBatch(){get('expensePrepared').scrollIntoView?.({behavior:'smooth',block:'start'});get('expensePrepared').focus?.({preventScroll:true});}
@@ -39,14 +39,14 @@
    const nav=document.createElement('div');nav.id='nav-'+id;nav.className='nav-item';nav.innerHTML=`<span class="icon">${icon}</span><span>${label}</span>`;nav.onclick=()=>root.showTab(id);get('nav-reports')?.insertAdjacentElement('afterend',nav);
    const drawer=document.querySelector('.nav-drawer-item[onclick*="reports"]');if(drawer){const b=document.createElement('button');b.className='nav-drawer-item';b.textContent=icon+' '+label;b.onclick=()=>{root.showTab(id);root.closeNavDrawer?.();};drawer.insertAdjacentElement('afterend',b);}
   }
-  get('tab-finance').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Receipts · קבלות</h1></div><span data-action-menu="Receipt tools"><button class="btn btn-outline" id="financeReload">Refresh</button></span></div></header><p class="fw-note" id="financeStatus" role="status"></p>
-   <section class="fw-panel"><h2>New receipt</h2>
-   <div id="manualReceiptForm"><div class="fw-form"><label>Search<input class="form-input" id="receiptCustomerSearch" placeholder="Name, store or ח.פ."></label><label>Customer<select class="form-input" id="manualCustomer"></select></label></div><div class="fw-actions fw-customer-actions"><button class="btn btn-outline" id="receiptAddCustomer">+ Add new customer</button><button class="btn btn-outline" id="receiptEditCustomer" hidden disabled>Edit details</button></div><div id="manualCustomerDetails" class="fw-note"></div><div id="manualPaymentFields" hidden><div id="manualBills"></div><div id="manualSettlement" class="fw-settlement" hidden></div>
-   <div class="fw-form fw-primary">${field('Amount received · ₪','manualAmount','number','min="0.01" max="9999999" step="0.01"')}${field('Date received','manualDate','date')}<label>Payment method<select class="form-input" id="manualMethod"><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="check">Check · צ׳ק</option><option value="bit">Bit · ביט</option></select></label></div>
+  get('tab-finance').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Receipts &amp; invoices · קבלות וחשבוניות</h1></div><span data-action-menu="Receipt tools"><button class="btn btn-outline" id="financeReload">Refresh</button></span></div></header><p class="fw-note" id="financeStatus" role="status"></p>
+   <section class="fw-panel"><h2>New document</h2>
+   <div id="manualReceiptForm"><div class="fw-form"><label>Search<input class="form-input" id="receiptCustomerSearch" placeholder="Name, store or ח.פ."></label><label>Customer<select class="form-input" id="manualCustomer"></select></label></div><div class="fw-actions fw-customer-actions"><button class="btn btn-outline" id="receiptAddCustomer">+ Add new customer</button><button class="btn btn-outline" id="receiptEditCustomer" hidden disabled>Edit details</button></div><div id="manualCustomerDetails" class="fw-note"></div><div id="manualPaymentFields" hidden><div class="fw-doc-types" role="radiogroup" aria-label="Document type"><button type="button" role="radio" data-doc="tax_invoice"><b>חשבונית מס</b><small>Tax invoice · before payment</small></button><button type="button" role="radio" data-doc="receipt"><b>קבלה</b><small>Receipt · payment received</small></button><button type="button" role="radio" data-doc="invoice_receipt"><b>חשבונית מס/קבלה</b><small>Both · paid now</small></button></div><p class="fw-note" id="manualDocNote"></p><label id="manualLinkedGroup" hidden>For tax invoice<select class="form-input" id="manualLinkedInvoice"></select></label><div id="manualBills"></div><div id="manualSettlement" class="fw-settlement" hidden></div>
+   <div class="fw-form fw-primary">${field('Amount received · ₪','manualAmount','number','min="0.01" max="9999999" step="0.01"')}${field('Date received','manualDate','date')}<label id="manualMethodGroup">Payment method<select class="form-input" id="manualMethod"><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="check">Check · צ׳ק</option><option value="bit">Bit · ביט</option></select></label></div>
    <div id="manualAdjustmentGroup" hidden>${field('Reason for the different amount','manualAdjustment','text','maxlength="500" placeholder="e.g. spoiled stock or agreed adjustment"')}</div>
-   <details class="fw-help" id="manualReceiptExtras"><summary>Reference & description</summary><div class="fw-form">${field('Payment reference · optional','manualReference','text','maxlength="40"')}${field('Description','manualDescription','text','maxlength="200"')}</div></details>
+   <details class="fw-help" id="manualReceiptExtras"><summary>Reference & description</summary><div class="fw-form"><span id="manualReferenceGroup">${field('Payment reference · optional','manualReference','text','maxlength="40"')}</span>${field('Description','manualDescription','text','maxlength="200"')}</div></details>
    <div id="manualCheckFields" hidden><h3>Check details</h3><div class="fw-form">${field('Bank number · מספר בנק','manualCheckBank','text','inputmode="numeric" maxlength="3"')}${field('Branch · סניף','manualCheckBranch','text','inputmode="numeric" maxlength="4"')}${field('Account number · מספר חשבון','manualCheckAccount','text','inputmode="numeric" maxlength="15"')}${field('Check number · מספר צ׳ק','manualCheckNumber','text','inputmode="numeric" maxlength="15"')}${field('Date printed on check · תאריך פירעון','manualCheckDate','date')}</div></div>
-   <label class="fw-check"><input type="checkbox" id="manualEmail"> Email receipt PDF</label><button class="btn btn-amber" id="manualPreview">Review receipt</button></div></div><div id="manualReceiptReview"></div><p class="fw-note" id="manualReceiptStatus" role="status"></p></section>
+   <label class="fw-check"><input type="checkbox" id="manualEmail"> Email PDF to the customer</label><button class="btn btn-amber" id="manualPreview">Review</button></div></div><div id="manualReceiptReview"></div><p class="fw-note" id="manualReceiptStatus" role="status"></p></section>
    <section class="fw-panel"><details id="financeCustomerEditor"><summary>Saved customers & store details</summary><div class="fw-form"><label>Edit customer<select class="form-input" id="customerEdit"></select></label><label>Linked store<select class="form-input" id="customerStore"></select></label>${field('Official name','customerName','text','maxlength="100"')}${field('ח.פ. / עוסק · 9 digits','customerTax','text','inputmode="numeric" maxlength="9"')}${field('Email for receipts','customerEmail','email','maxlength="50"')}${field('Phone · optional','customerPhone','tel')}${field('Address · optional','customerAddress','text','maxlength="100"')}</div><div class="fw-actions"><button class="btn btn-outline" id="customerSave">Save customer</button><button class="btn btn-outline" id="customerNew">New customer</button><span data-action-menu="Customer actions"><button class="btn btn-red" id="customerArchive">Archive customer</button></span></div><p id="customerStatus" class="fw-note" role="status"></p></details></section>
    <section class="fw-panel"><details id="financeReceiptHistory"><summary>Receipt history</summary><div class="fw-form">${field('Filter customer / order','financeReceiptSearch')}${field('Payment year','financeReceiptYear','number','min="2020" max="2100"')}</div><p class="fw-note" id="financeReceiptTotal"></p><div class="table-wrap" id="financeReceiptList"></div><details class="fw-help"><summary>About this history</summary><p class="fw-note">Online and manually issued receipts, by payment date. Invoices and delivery estimates are excluded. Older FinBot-only receipts remain in the Stats snapshot; their PDFs are not synced here.</p></details></details></section>`;
   get('financeReload').onclick=loadFinance;
@@ -57,6 +57,9 @@
   get('receiptEditCustomer').onclick=()=>startCustomer(get('manualCustomer').value);
   get('manualMethod').onchange=()=>{get('manualCheckFields').hidden=get('manualMethod').value!=='check';if(!get('manualCheckDate').value)get('manualCheckDate').value=get('manualDate').value||today();};
   get('manualPreview').onclick=review;
+  get('tab-finance').querySelectorAll('[data-doc]').forEach(b=>b.onclick=()=>setDocType(b.dataset.doc));
+  get('manualLinkedInvoice').onchange=()=>{const inv=openInvoices.find(i=>i.id===get('manualLinkedInvoice').value);if(inv){get('manualAmount').value=(inv.amount_minor/100).toFixed(2);get('manualDescription').value=('Payment for tax invoice '+inv.document_number).slice(0,200);}updateSettlement();};
+  get('manualDate').addEventListener('change',()=>setDocType(docType));
   get('manualAmount').oninput=updateSettlement;
   get('customerEdit').onchange=editCustomer;
   get('customerNew').onclick=()=>startCustomer();
@@ -88,7 +91,7 @@
   setup();const token=++financeSeq;status('financeStatus','Loading customers and receipt history…');
   try{
    const results=await Promise.all([pages('receipt_customers','*','name'),pages('stores','id,name,phone','name'),
-    pages('business_receipts','id,customer_snapshot,amount_minor,payment_date,payment_method,status,pdf_path,email_requested,email_sent_at,email_error,error_code,issued_at,created_at','created_at'),
+    pages('business_receipts','id,customer_snapshot,amount_minor,payment_date,payment_method,status,document_type,document_number,linked_invoice_id,pdf_path,email_requested,email_sent_at,email_error,error_code,issued_at,created_at','created_at'),
     pages('order_receipts','order_id,status,amount_minor,payment_date,pdf_path,document_reference,issued_at,orders(customer_name,order_number)','order_id')]);
    if(token!==financeSeq)return;
    allCustomers=results[0];customers=allCustomers.filter(c=>!c.archived_at);stores=results[1];
@@ -120,23 +123,52 @@
   showCustomerDetails();get('manualReference').value='';get('manualAdjustment').value='';
   for(const id of ['manualCheckBank','manualCheckBranch','manualCheckAccount','manualCheckNumber'])get(id).value='';get('manualCheckDate').value=get('manualDate').value||today();
   status('manualReceiptStatus','');updateSettlement();
+  // Stores pay monthly bills with a קבלה; others are invoiced and paid at once once VAT applies.
+  openInvoices=[];setDocType(c?.store_id||!vatDay()?'receipt':'invoice_receipt');
+  if(c)loadOpenInvoices(c.id);
   if(!c?.store_id)return;
   status('manualReceiptStatus','Loading outstanding months…');
   try{
    const [r,claimed]=await Promise.all([sbc().from('store_billing').select('id,year,month,total,tax_invoice_id,invoiced_gross_minor').eq('store_id',c.store_id).is('paid_at',null).is('cancelled_at',null).order('year').order('month'),sbc().from('business_receipt_bills').select('billing_id')]);
    if(c.id!==get('manualCustomer').value)return;if(r.error||claimed.error)throw Error('Could not load outstanding bills.');
    const ids=new Set(claimed.data.map(x=>x.billing_id));bills=r.data.filter(b=>!ids.has(b.id));
-   get('manualBills').innerHTML=bills.length?'<h3>Months paid for</h3><p class="fw-note">Selected months are marked paid when the receipt is issued.</p><div class="fw-months">'+bills.map(b=>`<label class="fw-month"><input type="checkbox" value="${esc(b.id)}" class="manual-bill"><span>${b.year}-${String(b.month).padStart(2,'0')}${b.tax_invoice_id?' · incl. VAT':''}</span><strong>${money(owed(b))}</strong></label>`).join('')+'</div>':'';
+   get('manualBills').dataset.has=bills.length?'1':'';get('manualBills').innerHTML=bills.length?'<h3>Months paid for</h3><p class="fw-note">Selected months are marked paid when the receipt is issued.</p><div class="fw-months">'+bills.map(b=>`<label class="fw-month"><input type="checkbox" value="${esc(b.id)}" class="manual-bill"><span>${b.year}-${String(b.month).padStart(2,'0')}${b.tax_invoice_id?' · incl. VAT':''}</span><strong>${money(owed(b))}</strong></label>`).join('')+'</div>':'';
    get('manualBills').querySelectorAll('input').forEach(i=>i.onchange=()=>{const selected=selectedBills();get('manualAmount').value=(selected.reduce((s,b)=>s+owed(b),0)/100).toFixed(2);get('manualDescription').value=('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);updateSettlement();});
    status('manualReceiptStatus',bills.length?'':'No outstanding months available.');
   }catch(e){status('manualReceiptStatus',e.message);}
+ }
+ // The three documents: a tax invoice records a sale (no payment); a receipt records a payment
+ // (a store's months, or one of this customer's tax invoices); both together for a sale paid now.
+ const vatDay=()=>(get('manualDate').value||today())>='2026-10-22';
+ function setDocType(type){
+  if(type!=='receipt'&&!vatDay()){status('manualReceiptStatus','Tax invoices start on 22 Oct 2026 (Osek Morshe). Before that, issue a קבלה.');type='receipt';}else if(get('manualReceiptStatus').textContent.startsWith('Tax invoices start'))status('manualReceiptStatus','');
+  docType=type;const invoice=type==='tax_invoice',receipt=type==='receipt',store=!!customers.find(c=>c.id===get('manualCustomer').value)?.store_id;
+  get('tab-finance').querySelectorAll('[data-doc]').forEach(b=>{b.classList.toggle('on',b.dataset.doc===type);b.setAttribute('aria-checked',String(b.dataset.doc===type));});
+  get('manualMethodGroup').hidden=invoice;get('manualReferenceGroup').hidden=invoice;get('manualCheckFields').hidden=invoice||get('manualMethod').value!=='check';
+  get('manualBills').hidden=!receipt;if(!receipt)get('manualBills').querySelectorAll('input:checked').forEach(i=>{i.checked=false;});
+  get('manualLinkedGroup').hidden=!receipt||!openInvoices.length;if(!receipt)get('manualLinkedInvoice').value='';
+  get('manualAmount').previousSibling.textContent=invoice?'Amount incl. VAT · ₪':type==='invoice_receipt'?'Amount received incl. VAT · ₪':'Amount received · ₪';
+  get('manualDate').previousSibling.textContent=invoice?'Sale date':'Date received';
+  get('manualDocNote').textContent=invoice?'Issue now, before the customer pays. When they pay, issue a קבלה and pick this invoice.':type==='invoice_receipt'?'For a sale paid now: one document, VAT included in the amount.':store?'Pick the months being paid, or a tax invoice.':openInvoices.length?'Pick the tax invoice being paid.':vatDay()?'A plain receipt adds no VAT. For a sale, use חשבונית מס/קבלה, or pay a tax invoice.':'';
+  updateSettlement();
+ }
+ async function loadOpenInvoices(customerId){
+  try{
+   const [inv,paid]=await Promise.all([sbc().from('business_receipts').select('id,amount_minor,payment_date,document_number,description').eq('customer_id',customerId).eq('document_type','tax_invoice').eq('status','issued').order('payment_date'),
+    sbc().from('business_receipts').select('linked_invoice_id').eq('customer_id',customerId).not('linked_invoice_id','is',null).neq('status','needs_review')]);
+   if(customerId!==get('manualCustomer').value||inv.error||paid.error)return;
+   const done=new Set(paid.data.map(r=>r.linked_invoice_id));openInvoices=inv.data.filter(i=>!done.has(i.id));
+   get('manualLinkedInvoice').innerHTML='<option value="">Not for a tax invoice</option>'+openInvoices.map(i=>`<option value="${esc(i.id)}"${i.document_number?'':' disabled'}>${esc(i.document_number?'#'+i.document_number:'Number missing')} · ${esc(i.payment_date)} · ${esc(money(Number(i.amount_minor)))}</option>`).join('');
+   setDocType(docType);
+  }catch(_){}
  }
  // A month on a VAT invoice is owed its invoiced amount (VAT included); its receipt links to that invoice.
  const owed=b=>b.invoiced_gross_minor??Math.round(Number(b.total)*100);
  const selectedBills=()=>bills.filter(b=>[...document.querySelectorAll('.manual-bill:checked')].some(i=>i.value===b.id));
  function updateSettlement(){
   const selected=selectedBills(),billed=selected.reduce((sum,b)=>sum+owed(b),0),actual=Math.round(Number(get('manualAmount').value)*100);
-  const differs=selected.length>0&&Number.isFinite(actual)&&actual>0&&actual!==billed;
+  const inv=docType==='receipt'&&openInvoices.find(i=>i.id===get('manualLinkedInvoice')?.value);
+  const differs=(selected.length>0&&Number.isFinite(actual)&&actual>0&&actual!==billed)||(!!inv&&actual>0&&actual!==Number(inv.amount_minor));
   get('manualAdjustmentGroup').hidden=!differs;
   get('manualAdjustment').required=differs;
   get('manualSettlement').hidden=!selected.length;
@@ -144,7 +176,7 @@
  }
  function receiptReviewDetails(p){
   const c=p.customer,check=p.payment_details||{},method=({cash:'Cash',bank_transfer:'Bank transfer',check:'Check · צ׳ק',bit:'Bit · ביט'})[p.payment_method];
-  const rows=[['Document',p.payload?.type==='2'?'חשבונית מס/קבלה · VAT included · ILS':p.invoices?.length?'קבלה for tax invoice'+(p.invoices.length>1?'s ':' ')+p.invoices.map(i=>i.document_number).join(', ')+' · ILS':'קבלה · ILS'],['Issue date',p.payload?.date||today()],['Date received',p.payment_date],['Method',method],
+  const rows=[['Document',p.payload?.type==='0'?'חשבונית מס · VAT included · ILS':p.payload?.type==='2'?'חשבונית מס/קבלה · VAT included · ILS':p.linked?'קבלה for tax invoice '+p.linked.document_number+' · ILS':p.invoices?.length?'קבלה for tax invoice'+(p.invoices.length>1?'s ':' ')+p.invoices.map(i=>i.document_number).join(', ')+' · ILS':'קבלה · ILS'],['Issue date',p.payload?.date||today()],[p.payload?.type==='0'?'Sale date':'Date received',p.payment_date],['Method',p.payload?.type==='0'?'':method],
    ['ח.פ./עוסק',c.tax_id],['Address',c.address],['Phone',c.phone],['Reference',p.payment_reference],['Description',p.description],
    ...(p.payment_method==='check'?[['Bank',check.bank_code],['Branch',check.branch],['Account',check.account],['Check number',check.check_number],['Check date',check.check_date]]:[]),
    ...(p.bills.length?[['Months paid for',p.bills.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')],['Original bills',money(p.billed_total_minor)],['Settlement','Selected months will be marked paid in full']]:[]),
@@ -154,23 +186,26 @@
  async function review(){
   get('manualPreview').disabled=true;status('manualReceiptStatus','Preparing review…');
   try{
-   const selected=selectedBills(),input={id:requestId,customer_id:get('manualCustomer').value,customer_version:customers.find(c=>c.id===get('manualCustomer').value)?.updated_at||'',amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,adjustment_reason:get('manualAdjustmentGroup').hidden?'':get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+owed(b),0):null,email_requested:get('manualEmail').checked};
-   input.payment_details=get('manualMethod').value==='check'?{bank_code:get('manualCheckBank').value,branch:get('manualCheckBranch').value,account:get('manualCheckAccount').value,check_number:get('manualCheckNumber').value,check_date:get('manualCheckDate').value}:{};
+   const selected=docType==='receipt'?selectedBills():[],input={id:requestId,document_type:docType,linked_invoice_id:docType==='receipt'?get('manualLinkedInvoice').value||null:null,customer_id:get('manualCustomer').value,customer_version:customers.find(c=>c.id===get('manualCustomer').value)?.updated_at||'',amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,adjustment_reason:get('manualAdjustmentGroup').hidden?'':get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+owed(b),0):null,email_requested:get('manualEmail').checked};
+   input.payment_details=docType!=='tax_invoice'&&get('manualMethod').value==='check'?{bank_code:get('manualCheckBank').value,branch:get('manualCheckBranch').value,account:get('manualCheckAccount').value,check_number:get('manualCheckNumber').value,check_date:get('manualCheckDate').value}:{};
    const r=await call('business-receipts',{action:'preview',...input});if(r.already_claimed)throw Error('This request already has a receipt or needs review. Check the receipt history.');
    preview=input;get('manualReceiptForm').hidden=true;const p=r.preview;
-   get('manualReceiptReview').innerHTML=`<h3>Review receipt · קבלה</h3>${receiptReviewDetails(p)}<label class="fw-check"><input type="checkbox" id="receiptReceived"> I confirm this ${p.payment_method==='check'?'check':'payment'} has already been received${p.bills.length?' and fully settles the selected months':''}.</label><label class="fw-check"><input type="checkbox" id="receiptNoPrior"> No official receipt has already been issued for this payment.</label><div class="fw-actions"><button class="btn btn-outline" id="receiptEditPreview">Edit</button><button class="btn btn-green" id="receiptIssueOfficial">Issue official receipt</button></div>`;
+   const name=DOC_NAMES[p.document_type],invoice=p.document_type==='tax_invoice';
+   get('manualReceiptReview').innerHTML=`<h3>Review · ${name}</h3>${receiptReviewDetails(p)}${invoice?'':`<label class="fw-check"><input type="checkbox" id="receiptReceived"> I confirm this ${p.payment_method==='check'?'check':'payment'} has already been received${p.bills.length?' and fully settles the selected months':''}.</label>`}<label class="fw-check"><input type="checkbox" id="receiptNoPrior"> No ${invoice?'tax invoice has':'official receipt has'} already been issued for this ${invoice?'sale':'payment'}.</label><div class="fw-actions"><button class="btn btn-outline" id="receiptEditPreview">Edit</button><button class="btn btn-green" id="receiptIssueOfficial">Issue ${name}</button></div>`;
    get('receiptEditPreview').onclick=()=>{get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;preview=null;};get('receiptIssueOfficial').onclick=issue;
    status('manualReceiptStatus','');
   }catch(e){status('manualReceiptStatus',e.message);}finally{get('manualPreview').disabled=false;}
  }
+ const DOC_NAMES={tax_invoice:'חשבונית מס',receipt:'קבלה',invoice_receipt:'חשבונית מס/קבלה'};
  async function issue(){
-  if(!get('receiptReceived').checked||!get('receiptNoPrior').checked){status('manualReceiptStatus','Confirm payment received and no existing receipt first.');return;}
-  get('receiptIssueOfficial').disabled=true;get('receiptEditPreview').disabled=true;status('manualReceiptStatus','Issuing official receipt… Do not submit another request.');
+  const invoice=preview?.document_type==='tax_invoice';
+  if((!invoice&&!get('receiptReceived')?.checked)||!get('receiptNoPrior').checked){status('manualReceiptStatus',invoice?'Confirm no tax invoice was already issued for this sale.':'Confirm payment received and no existing receipt first.');return;}
+  get('receiptIssueOfficial').disabled=true;get('receiptEditPreview').disabled=true;status('manualReceiptStatus','Issuing '+DOC_NAMES[preview.document_type]+'… Do not submit another request.');
   try{
-   const r=await call('business-receipts',{action:'issue',...preview,payment_received:true,not_already_receipted:true});
+   const r=await call('business-receipts',{action:'issue',...preview,payment_received:!invoice,not_already_receipted:true});
    if(r.receipt?.status!=='issued')throw Error('Issuance is pending or needs review. Do not issue again; check receipt history.');
    const receipt=r.receipt,c=receipt.customer_snapshot,settledMonths=preview?.billing_ids?.length||0;requestId=crypto.randomUUID();preview=null;
-   get('manualReceiptReview').innerHTML=`<h3>Receipt issued · ${esc(money(receipt.amount_minor))}</h3><p class="fw-note">${settledMonths?settledMonths+' month'+(settledMonths===1?'':'s')+' marked paid. ':'Saved in FinBot. '}${receipt.email_sent_at?'PDF email accepted for delivery to '+esc(c.email):receipt.email_requested?'Email pending; use Retry email in the receipt history.':'No email requested.'}</p><div class="fw-actions"><button class="btn btn-outline" id="issuedReceiptOpen">Open official PDF</button><button class="btn btn-outline" id="issuedReceiptShare">Prepare WhatsApp PDF</button><button class="btn btn-outline" id="issuedReceiptNew">New receipt</button></div>`;
+   get('manualReceiptReview').innerHTML=`<h3>${DOC_NAMES[receipt.document_type]||'קבלה'}${receipt.document_number?' #'+esc(receipt.document_number):''} issued · ${esc(money(receipt.amount_minor))}</h3>${receipt.document_type==='tax_invoice'&&!receipt.document_number?'<p class="fw-note">The invoice number couldn\'t be read from the PDF. Add it in the history (Set number) so a קבלה can link to it.</p>':''}<p class="fw-note">${settledMonths?settledMonths+' month'+(settledMonths===1?'':'s')+' marked paid. ':'Saved in FinBot. '}${receipt.email_sent_at?'PDF email accepted for delivery to '+esc(c.email):receipt.email_requested?'Email pending; use Retry email in the receipt history.':'No email requested.'}</p><div class="fw-actions"><button class="btn btn-outline" id="issuedReceiptOpen">Open official PDF</button><button class="btn btn-outline" id="issuedReceiptShare">Prepare WhatsApp PDF</button><button class="btn btn-outline" id="issuedReceiptNew">New receipt</button></div>`;
    get('issuedReceiptOpen').onclick=()=>openReceipt('business',receipt.id);get('issuedReceiptShare').onclick=()=>prepareReceiptShare(receipt,'issuedReceiptShare');get('issuedReceiptNew').onclick=()=>{get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualAmount').value='';get('manualAdjustment').value='';get('manualReference').value='';loadCustomerBills();};
    status('manualReceiptStatus','');await loadFinance();
   }catch(e){status('manualReceiptStatus',e.message+' Check the receipt history before starting another request.');}
@@ -184,10 +219,13 @@
  function renderReceipts(){
   const q=get('financeReceiptSearch').value.toLowerCase(),year=get('financeReceiptYear').value;
   const filtered=allReceipts.filter(r=>(r.payment_date||'').startsWith(year)&&(r.name+' '+r.reference).toLowerCase().includes(q)).sort((a,b)=>(b.payment_date||'').localeCompare(a.payment_date||''));
-  const issued=filtered.filter(r=>['issued','external'].includes(r.status));status('financeReceiptTotal',`${issued.length} issued / linked receipts · ${money(issued.reduce((s,r)=>s+Number(r.amount_minor),0))} received by payment date. Pending/review items are excluded.`);
-  get('financeReceiptList').innerHTML=`<table><thead><tr><th>Customer / reference</th><th>Payment date</th><th>Received</th><th>Method / status</th><th>Documents</th></tr></thead><tbody>${filtered.map(r=>`<tr><td>${esc(r.name)}<small>${esc(r.reference)}</small></td><td>${esc(r.payment_date)}</td><td>${esc(money(Number(r.amount_minor)))}</td><td>${esc(r.payment_method||'Online card')} · ${esc(r.status)}${r.error_code?'<small>'+esc(r.error_code)+'</small>':''}${r.email_error?'<small>Email pending</small>':''}</td><td>${r.status==='issued'?`<button class="btn btn-outline btn-sm" data-open-receipt="${esc(r.id)}" data-kind="${r.kind}">Open PDF</button>${r.kind==='business'?`<button class="btn btn-outline btn-sm" data-share-receipt="${esc(r.id)}" id="share-${esc(r.id)}">Prepare WhatsApp PDF</button>${r.email_requested&&!r.email_sent_at?`<button class="btn btn-outline btn-sm" data-email-receipt="${esc(r.id)}">Retry email</button>`:''}`:''}`:''}</td></tr>`).join('')||'<tr><td colspan="5">No receipts in this view.</td></tr>'}</tbody></table>`;
+  const paidInvoices=new Set(allReceipts.filter(r=>r.linked_invoice_id&&r.status!=='needs_review').map(r=>r.linked_invoice_id));
+  const issued=filtered.filter(r=>['issued','external'].includes(r.status)&&r.document_type!=='tax_invoice');status('financeReceiptTotal',`${issued.length} issued / linked receipts · ${money(issued.reduce((s,r)=>s+Number(r.amount_minor),0))} received by payment date. Pending/review items are excluded.`);
+  get('financeReceiptList').innerHTML=`<table><thead><tr><th>Customer / reference</th><th>Payment date</th><th>Received</th><th>Method / status</th><th>Documents</th></tr></thead><tbody>${filtered.map(r=>`<tr><td>${esc(r.name)}<small>${r.kind==='business'?esc(DOC_NAMES[r.document_type]||'קבלה')+(r.document_number?' #'+esc(r.document_number):'')+' · ':''}${esc(r.reference)}${r.document_type==='tax_invoice'&&r.status==='issued'?(paidInvoices.has(r.id)?' · paid':' · <b>awaiting payment</b>'):''}</small></td><td>${esc(r.payment_date)}</td><td>${esc(money(Number(r.amount_minor)))}</td><td>${esc(r.payment_method||'Online card')} · ${esc(r.status)}${r.error_code?'<small>'+esc(r.error_code)+'</small>':''}${r.email_error?'<small>Email pending</small>':''}</td><td>${r.status==='issued'?`<button class="btn btn-outline btn-sm" data-open-receipt="${esc(r.id)}" data-kind="${r.kind}">Open PDF</button>${r.kind==='business'?`<button class="btn btn-outline btn-sm" data-share-receipt="${esc(r.id)}" id="share-${esc(r.id)}">Prepare WhatsApp PDF</button>${r.email_requested&&!r.email_sent_at?`<button class="btn btn-outline btn-sm" data-email-receipt="${esc(r.id)}">Retry email</button>`:''}${r.document_type==='tax_invoice'&&!r.document_number?`<button class="btn btn-outline btn-sm" data-set-number="${esc(r.id)}">Set number</button>`:''}`:''}`:''}</td></tr>`).join('')||'<tr><td colspan="5">No receipts in this view.</td></tr>'}</tbody></table>`;
   get('financeReceiptList').querySelectorAll('[data-open-receipt]').forEach(b=>b.onclick=()=>openReceipt(b.dataset.kind,b.dataset.openReceipt));
   get('financeReceiptList').querySelectorAll('[data-share-receipt]').forEach(b=>b.onclick=()=>prepareReceiptShare(allReceipts.find(r=>r.id===b.dataset.shareReceipt),b.id));
+  // A tax invoice whose number couldn't be read from its PDF: a קבלה links to it by number.
+  get('financeReceiptList').querySelectorAll('[data-set-number]').forEach(b=>b.onclick=async()=>{const n=(root.prompt('Tax invoice number, as printed on the PDF')||'').trim();if(!n)return;try{await call('business-receipts',{action:'set_number',id:b.dataset.setNumber,number:n});await loadFinance();}catch(e){status('financeStatus',e.message);}});
   get('financeReceiptList').querySelectorAll('[data-email-receipt]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await call('business-receipts',{action:'retry_email',id:b.dataset.emailReceipt});await loadFinance();}catch(e){status('financeStatus',e.message);b.disabled=false;}});
  }
  function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}

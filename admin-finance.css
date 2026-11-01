@@ -67,3 +67,9 @@
 #tab-expenses .ex-quiet summary{font-weight:600;cursor:pointer;color:#3a3f45}
 @media(max-width:650px){#tab-expenses .ex-card{padding:16px}#tab-expenses .fw-expense-row{flex-direction:row;align-items:center}#tab-expenses .fw-expense-row .fw-check{flex:1;margin:4px 0}#tab-expenses .ex-row-actions .btn{padding:6px 10px;font-size:.72rem}#tab-expenses .ex-share{width:100%}#tab-expenses .ex-batch-actions .btn{flex:1;min-width:0}}
 .ex-amount{display:inline-block;margin:4px 0 0;padding:3px 10px;border:1px solid var(--border,#e2e0db);border-radius:999px;background:#fff;font-size:.78rem;color:#3a3a3a;cursor:pointer;text-align:start;max-width:100%}
+/* Document type: three side-by-side choices (stack on phones). */
+.fw-doc-types{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:4px 0 6px}
+.fw-doc-types button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 12px;border:1px solid var(--border,#e2e0db);border-radius:10px;background:#fafbfc;cursor:pointer;text-align:start;font:inherit;color:#1f2328}
+.fw-doc-types button b{font-size:.92rem}.fw-doc-types button small{font-size:.72rem;color:#6a7078}
+.fw-doc-types button.on{border-color:#34755a;background:#eef6f1;box-shadow:0 0 0 1px #34755a inset}
+@media(max-width:650px){.fw-doc-types{grid-template-columns:1fr}}

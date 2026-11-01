@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const {stripTypeScriptTypes}=require('node:module');
-const {customerFields,normalizeManualInput,manualPayload}=require('../supabase/functions/_shared/manual-receipt-model.ts');
+const {customerFields,normalizeManualInput,manualPayload,DOC_NAME}=require('../supabase/functions/_shared/manual-receipt-model.ts');
 const {resultDocument}=require('../supabase/functions/_shared/finbot-receipt-model.ts');
 const id='12345678-1234-1234-1234-123456789abc',cid='22345678-1234-1234-1234-123456789abc',bid='32345678-1234-1234-1234-123456789abc',sid='42345678-1234-1234-1234-123456789abc';
 const base=()=>({id,customer_id:cid,amount:'123.45',payment_date:'2026-10-20',payment_method:'bank_transfer',description:'Fixture payment',email_requested:false,billing_ids:[],billed_total_minor:null});
@@ -41,7 +41,7 @@ function service(mode='ok',store=false){
   storage:{from(){return {upload:async()=>({error:null})}}}};
  const context={Request,Response,File,TextEncoder,Uint8Array,URL,AbortSignal,crypto,btoa,console,Date,
   Deno:{env:{get:k=>({FINBOT_API_KEY:'fixture',SUPABASE_URL:'https://fixture.test',SUPABASE_SERVICE_ROLE_KEY:'fixture'})[k]},serve:fn=>handler=fn},
-  createClient:()=>db,isServiceOrAdmin:async()=>mode!=='denied',forbidden:()=>Response.json({error:'admin_only'},{status:403}),customerFields,normalizeManualInput,manualPayload,resultDocument,vatApplies:require('../supabase/functions/_shared/vat.ts').vatApplies,
+  createClient:()=>db,isServiceOrAdmin:async()=>mode!=='denied',forbidden:()=>Response.json({error:'admin_only'},{status:403}),customerFields,normalizeManualInput,manualPayload,DOC_NAME,pdfLines:async()=>[],documentNumber:()=>null,resultDocument,vatApplies:require('../supabase/functions/_shared/vat.ts').vatApplies,
   originalPdf:async()=>new TextEncoder().encode('%PDF-1.7 fixture'),
   fetch:async(url,options)=>{calls.push({url,options});if(mode==='timeout')throw Error('network timeout');return Response.json({status:1,data:'https://api.finbotai.co.il/fixture.pdf'});}};
  const code=fs.readFileSync('supabase/functions/business-receipts/index.ts','utf8').replace(/^import .*;\r?\n/gm,'');
@@ -64,7 +64,7 @@ test('receipt review shows all customer and payment details and escapes untruste
 });
 test('store amount overrides reveal the adjustment reason only when needed',()=>{
  const source=fs.readFileSync('admin-finance.js','utf8'),nodes={manualAmount:{value:''},manualAdjustmentGroup:{hidden:true},manualAdjustment:{required:false},manualSettlement:{hidden:true,textContent:''}};
- let selection=[];const ctx={selectedBills:()=>selection,owed:b=>b.invoiced_gross_minor??Math.round(Number(b.total)*100),money:n=>'ILS '+n/100,get:id=>nodes[id]};
+ let selection=[];const ctx={selectedBills:()=>selection,owed:b=>b.invoiced_gross_minor??Math.round(Number(b.total)*100),money:n=>'ILS '+n/100,get:id=>nodes[id],docType:'receipt',openInvoices:[]};
  vm.runInNewContext(source.slice(source.indexOf('function updateSettlement('),source.indexOf('function receiptReviewDetails(')),ctx);
  ctx.updateSettlement();assert.equal(nodes.manualSettlement.hidden,true);assert.equal(nodes.manualAdjustmentGroup.hidden,true);
  selection=[{total:100},{total:150}];nodes.manualAmount.value='250';ctx.updateSettlement();assert.equal(nodes.manualAdjustmentGroup.hidden,true);assert.match(nodes.manualSettlement.textContent,/2 months.*250/);
@@ -77,3 +77,22 @@ test('a customer edited after review must be previewed again before any issuance
 test('successful issuance stores original PDF and replays cannot create another receipt',async()=>{const s=service(),body={...base(),action:'issue',payment_received:true,not_already_receipted:true};const first=await s.request(body);assert.equal(first.body.receipt.status,'issued');assert.equal(first.body.receipt.pdf_path,`business/${id}/receipt.pdf`);assert.equal(s.calls.length,1);assert.equal((await s.request(body)).body.already_claimed,true);assert.equal(s.calls.length,1);assert.equal((await s.request({...body,amount:150})).status,400);});
 test('uncertain provider outcome stays blocked, never retried',async()=>{const s=service('timeout'),body={...base(),action:'issue',payment_received:true,not_already_receipted:true};assert.equal((await s.request(body)).body.do_not_reissue,true);assert.equal(s.rows.get(id).status,'needs_review');await s.request(body);assert.equal(s.calls.length,1);});
 test('store settlement rejects paid months and undocumented amount overrides',async()=>{const input={...base(),action:'preview',billing_ids:[bid],billed_total_minor:20000};assert.equal((await service('paid',true).request(input)).status,400);const s=service('ok',true);assert.equal((await s.request(input)).body.error,'adjustment_reason_required');assert.equal((await s.request({...input,adjustment_reason:'Spoiled goods adjustment'})).body.creates_document,false);assert.equal(s.calls.length,0);});
+test('three document types: tax invoice (no payment), receipt, tax invoice/receipt',()=>{
+ const now=new Date('2026-11-01T10:00Z'),c={name:'Fixture'};
+ const inv=normalizeManualInput({...base(),payment_date:'2026-11-01',amount:'118',document_type:'tax_invoice',payment_method:'',payment_details:checkDetails()},now);
+ assert.equal(inv.payment_method,null);assert.deepEqual(inv.payment_details,{});
+ const pi=manualPayload(inv,c,now);assert.equal(pi.type,'0');assert.equal(pi.vatType,true);assert.equal(pi.payments,undefined);assert.equal(pi.items[0].price,100);
+ const both=manualPayload(normalizeManualInput({...base(),payment_date:'2026-11-01',amount:'118',document_type:'invoice_receipt'},now),c,now);
+ assert.equal(both.type,'2');assert.equal(both.vatType,true);assert.equal(both.items[0].price,100);assert.equal(both.payments[0].sum,118);
+ const rec=manualPayload(normalizeManualInput({...base(),payment_date:'2026-11-01',amount:'118',document_type:'receipt',linked_invoice_id:sid},now),c,now);
+ assert.equal(rec.type,'1');assert.equal(rec.vatType,false);assert.equal(rec.items[0].price,118);
+ assert.throws(()=>normalizeManualInput({...base(),document_type:'quote'},now));
+ assert.throws(()=>normalizeManualInput({...base(),document_type:'tax_invoice',billing_ids:[bid],billed_total_minor:100},now));
+ assert.equal(DOC_NAME.invoice_receipt,'חשבונית מס/קבלה');
+});
+test('VAT documents are refused before becoming Osek Morshe; a tax invoice needs no payment confirmation',async()=>{
+ const s=service();assert.equal((await s.request({...base(),action:'preview',document_type:'tax_invoice'})).body.error,'tax_invoices_start_2026_10_22');
+ const t=service(),body={...base(),payment_date:'2026-10-25',action:'issue',document_type:'tax_invoice',not_already_receipted:true};
+ const r=await t.request(body);assert.equal(r.body.receipt.status,'issued');assert.equal(t.rows.get(id).document_type,'tax_invoice');
+ const sent=JSON.parse(t.calls[0].options.body);assert.equal(sent.type,'0');assert.equal(sent.payments,undefined);
+});

@@ -1,7 +1,8 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {designedEmailHtml} from '../_shared/email-design.ts';
 import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
-import {customerFields,normalizeManualInput,manualPayload} from '../_shared/manual-receipt-model.ts';
+import {customerFields,normalizeManualInput,manualPayload,DOC_NAME} from '../_shared/manual-receipt-model.ts';
+import {pdfLines,documentNumber} from '../_shared/finbot-pdf-text.ts';
 import {resultDocument} from '../_shared/finbot-receipt-model.ts';
 import {vatApplies} from '../_shared/vat.ts';
 import {originalPdf} from '../_shared/finbot-receipts.ts';
@@ -13,9 +14,11 @@ async function pdf(db:any,row:any) {
  if(row.pdf_path)return row;
  const bytes=await originalPdf(row.document_url),path=`business/${row.id}/receipt.pdf`;
  const {error}=await db.storage.from('order-receipts').upload(path,bytes,{contentType:'application/pdf',upsert:true});if(error)throw Error('pdf_storage_failed');
- const r=await db.from('business_receipts').update({pdf_path:path,error_code:null}).eq('id',row.id).select('*').single();if(r.error)throw Error('pdf_status_failed');return r.data;
+ // The PDF carries the document number; a קבלה paying a tax invoice links to it by number.
+ const number=row.document_number||documentNumber(await pdfLines(bytes).catch(()=>[] as string[]),docName(row));
+ const r=await db.from('business_receipts').update({pdf_path:path,document_number:number,error_code:null}).eq('id',row.id).select('*').single();if(r.error)throw Error('pdf_status_failed');return r.data;
 }
-const docName=(row:any)=>!row.store_id&&vatApplies(row.payment_date+'T23:59:00+03:00')?'חשבונית מס/קבלה':'קבלה';
+const docName=(row:any)=>DOC_NAME[row.document_type]||'קבלה';
 async function email(db:any,row:any){
  if(!row.email_requested||row.email_sent_at)return row;
  try{
@@ -25,10 +28,10 @@ async function email(db:any,row:any){
   const bytes=new Uint8Array(await file.data.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.slice(i,i+8192));
   const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':`business-receipt/${row.id}`},
    body:JSON.stringify({from:Deno.env.get('ORDER_EMAIL_FROM')||'Gremier Coffee <onboarding@resend.dev>',to:[row.customer_snapshot.email],
-    reply_to:Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com',subject:`Gremier Coffee — ${docName(row)}`,text:`שלום ${row.customer_snapshot.name},\nמצורפת ${docName(row)} על תשלום בסך ₪${(row.amount_minor/100).toFixed(2)}.\nתודה, גרמיר קפה`,
-    html:designedEmailHtml({he:true,preheader:`${docName(row)} · ₪${(row.amount_minor/100).toFixed(2)}`,hello:`שלום ${row.customer_snapshot.name}`,lead:`מצורפת ${docName(row)} על התשלום שלכם.`,
+    reply_to:Deno.env.get('NOTIFY_EMAIL')||'gremiercoffee@gmail.com',subject:`Gremier Coffee — ${docName(row)}`,text:`שלום ${row.customer_snapshot.name},\nמצורפת ${docName(row)} ${row.document_type==='tax_invoice'?'על סך':'על תשלום בסך'} ₪${(row.amount_minor/100).toFixed(2)}.\nתודה, גרמיר קפה`,
+    html:designedEmailHtml({he:true,preheader:`${docName(row)} · ₪${(row.amount_minor/100).toFixed(2)}`,hello:`שלום ${row.customer_snapshot.name}`,lead:`מצורפת ${docName(row)}${row.document_type==='tax_invoice'?'.':' על התשלום שלכם.'}`,
      body:[`סכום: ₪${(row.amount_minor/100).toFixed(2)}`,'המסמך המקורי מצורף למייל הזה כקובץ PDF.'],sign:'תודה, גרמיר קפה'}),
-    attachments:[{filename:`Gremier-receipt-${row.id.slice(0,8)}.pdf`,content:btoa(binary)}]}),signal:AbortSignal.timeout(20000)});
+    attachments:[{filename:`Gremier-${row.document_type==='tax_invoice'?'invoice':'receipt'}-${row.document_number||row.id.slice(0,8)}.pdf`,content:btoa(binary)}]}),signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw Error('email_delivery_failed');
   const saved=await db.from('business_receipts').update({email_sent_at:new Date().toISOString(),email_error:null}).eq('id',row.id).select('*').single();return saved.data||row;
  }catch(e){const code=e instanceof Error?e.message:'email_delivery_failed';await db.from('business_receipts').update({email_error:code}).eq('id',row.id);return {...row,email_error:code};}
@@ -39,6 +42,11 @@ Deno.serve(async req=>{
  const db=createClient(Deno.env.get('SUPABASE_URL')!,serviceKey(),{auth:{persistSession:false}});
  try{
   const raw=await req.json();
+  if(raw.action==='set_number'){
+   const n=String(raw.number||'').trim();if(!/^\d{1,9}$/.test(n))throw Error('document_number_digits');
+   const r=await db.from('business_receipts').update({document_number:n}).eq('id',raw.id).eq('status','issued').select('*').single();if(r.error)throw Error('save_failed');
+   return json({receipt:clean(r.data)});
+  }
   if(['pdf','repair_pdf','retry_email'].includes(raw.action)){
    const r=await db.from('business_receipts').select('*').eq('id',raw.id).single();if(r.error||r.data.status!=='issued')throw Error('issued_receipt_required');
    let row=await pdf(db,r.data);if(raw.action==='retry_email')row=await email(db,row);
@@ -53,8 +61,23 @@ Deno.serve(async req=>{
   const c=await db.from('receipt_customers').select('*').eq('id',input.customer_id).is('archived_at',null).single();if(c.error)throw Error('customer_not_available');
   if((raw.action==='issue'||input.customer_version)&&input.customer_version!==String(c.data.updated_at||''))throw Error('customer_changed_refresh_preview');
   const customer=customerFields(c.data),store_id=c.data.store_id||null;
+  const type=input.document_type,date=input.payment_date+'T23:59:00+03:00';
+  // VAT documents start the day the business became Osek Morshe.
+  if(type!=='receipt'&&!vatApplies(date))throw Error('tax_invoices_start_2026_10_22');
+  if(type!=='receipt'&&input.billing_ids.length)throw Error('months_take_a_receipt');
+  // A קבלה can pay one of this customer's manual tax invoices.
+  let linked:any=null;
+  if(input.linked_invoice_id){
+   const r=await db.from('business_receipts').select('id,customer_id,document_type,status,document_number,amount_minor,payment_date,description').eq('id',input.linked_invoice_id).maybeSingle();
+   if(r.error||!r.data||r.data.document_type!=='tax_invoice'||r.data.status!=='issued'||r.data.customer_id!==input.customer_id)throw Error('invoice_not_available');
+   if(!r.data.document_number)throw Error('invoice_number_missing');
+   const paid=await db.from('business_receipts').select('id').eq('linked_invoice_id',r.data.id).neq('status','needs_review');if((paid.data||[]).length)throw Error('invoice_already_paid');
+   if(input.billing_ids.length)throw Error('choose_months_or_invoice');
+   if(Number(r.data.amount_minor)!==input.amount_minor&&input.adjustment_reason.length<3)throw Error('adjustment_reason_required');
+   linked=r.data;
+  }
   let bills:any[]=[],invoices:any[]=[];
-  if(store_id){
+  if(store_id&&type==='receipt'&&!linked){
    if(!input.billing_ids.length)throw Error('choose_paid_months');
    const r=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at,tax_invoice_id,invoiced_gross_minor').in('id',input.billing_ids);if(r.error)throw Error('billing_unavailable');bills=r.data;
    if(bills.length!==input.billing_ids.length||bills.some(b=>b.store_id!==store_id||b.paid_at||b.cancelled_at))throw Error('month_not_outstanding');
@@ -74,13 +97,11 @@ Deno.serve(async req=>{
    invoices.sort((x,y)=>Number(x.document_number)-Number(y.document_number));
    if(total!==input.amount_minor&&input.adjustment_reason.length<3)throw Error('adjustment_reason_required');
   }else if(input.billing_ids.length)throw Error('customer_not_linked_to_store');
-  // Not a store month: paid on or after the switch day → tax invoice/receipt.
-  const taxed=!store_id&&vatApplies(input.payment_date+'T23:59:00+03:00');
   // One invoice: FinBot links the receipt to it. Several: the receipt names them all (FinBot links only one).
-  const base=manualPayload(input,customer,new Date(),taxed),numbers=invoices.map(i=>String(i.document_number));
+  const base=manualPayload(input,customer,new Date()),numbers=linked?[String(linked.document_number)]:invoices.map(i=>String(i.document_number));
   const payload={...base,...(numbers.length===1?{linkedDocument:numbers[0]}:{}),...(numbers.length>1?{remark:[base.remark,'עבור חשבוניות מס '+numbers.join(', ')].filter(Boolean).join(' · ').slice(0,500)}:{})};
-  if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,invoices,payload},creates_document:false});
-  if(raw.payment_received!==true||raw.not_already_receipted!==true)return json({error:'confirm_received_and_no_existing_receipt'},400);
+  if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,invoices,linked,payload},creates_document:false});
+  if((type!=='tax_invoice'&&raw.payment_received!==true)||raw.not_already_receipted!==true)return json({error:'confirm_received_and_no_existing_receipt'},400);
   if(input.email_requested&&!Deno.env.get('RESEND_API_KEY'))throw Error('email_not_configured');
   const key=Deno.env.get('FINBOT_API_KEY');if(!key)throw Error('finbot_not_configured');
   const claim=await db.rpc('claim_business_receipt',{d:{...input,request_hash,store_id,customer_snapshot:customer,tax_invoice_id:invoices.length===1?invoices[0].id:null},bill_ids:input.billing_ids});
