@@ -75,9 +75,13 @@ Deno.serve(async req=>{
    if(input.billing_ids.length)throw Error('choose_months_or_invoice');
    if(Number(r.data.amount_minor)!==input.amount_minor&&input.adjustment_reason.length<3)throw Error('adjustment_reason_required');
    linked=r.data;
+  }else if(input.linked_document_number){
+   // A FinBot invoice made here must be picked from the list (it carries its customer and amount).
+   const here=await db.from('business_receipts').select('id').eq('document_type','tax_invoice').eq('document_number',input.linked_document_number);if((here.data||[]).length)throw Error('pick_invoice_from_list');
+   const paid=await db.from('business_receipts').select('id').eq('linked_document_number',input.linked_document_number).neq('status','needs_review');if((paid.data||[]).length)throw Error('invoice_already_paid');
   }
   let bills:any[]=[],invoices:any[]=[];
-  if(store_id&&type==='receipt'&&!linked){
+  if(store_id&&type==='receipt'&&!linked&&(input.billing_ids.length||!input.linked_document_number)){
    if(!input.billing_ids.length)throw Error('choose_paid_months');
    const r=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at,tax_invoice_id,invoiced_gross_minor').in('id',input.billing_ids);if(r.error)throw Error('billing_unavailable');bills=r.data;
    if(bills.length!==input.billing_ids.length||bills.some(b=>b.store_id!==store_id||b.paid_at||b.cancelled_at))throw Error('month_not_outstanding');
@@ -95,16 +99,17 @@ Deno.serve(async req=>{
     invoices.push(inv.data);
    }
    invoices.sort((x,y)=>Number(x.document_number)-Number(y.document_number));
+   if(invoices.length&&input.linked_document_number)throw Error('months_already_invoiced');
    if(total!==input.amount_minor&&input.adjustment_reason.length<3)throw Error('adjustment_reason_required');
   }else if(input.billing_ids.length)throw Error('customer_not_linked_to_store');
   // One invoice: FinBot links the receipt to it. Several: the receipt names them all (FinBot links only one).
-  const base=manualPayload(input,customer,new Date()),numbers=linked?[String(linked.document_number)]:invoices.map(i=>String(i.document_number));
+  const base=manualPayload(input,customer,new Date()),numbers=linked?[String(linked.document_number)]:input.linked_document_number?[input.linked_document_number]:invoices.map(i=>String(i.document_number));
   const payload={...base,...(numbers.length===1?{linkedDocument:numbers[0]}:{}),...(numbers.length>1?{remark:[base.remark,'עבור חשבוניות מס '+numbers.join(', ')].filter(Boolean).join(' · ').slice(0,500)}:{})};
   if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,invoices,linked,payload},creates_document:false});
   if((type!=='tax_invoice'&&raw.payment_received!==true)||raw.not_already_receipted!==true)return json({error:'confirm_received_and_no_existing_receipt'},400);
   if(input.email_requested&&!Deno.env.get('RESEND_API_KEY'))throw Error('email_not_configured');
   const key=Deno.env.get('FINBOT_API_KEY');if(!key)throw Error('finbot_not_configured');
-  const claim=await db.rpc('claim_business_receipt',{d:{...input,request_hash,store_id,customer_snapshot:customer,tax_invoice_id:invoices.length===1?invoices[0].id:null},bill_ids:input.billing_ids});
+  const claim=await db.rpc('claim_business_receipt',{d:{...input,linked_document_number:linked?String(linked.document_number):input.linked_document_number,request_hash,store_id,customer_snapshot:customer,tax_invoice_id:invoices.length===1?invoices[0].id:null},bill_ids:input.billing_ids});
   if(claim.error)throw Error('payment_or_month_already_claimed_refresh');
   if(!claim.data.created)return json({receipt:clean(claim.data.receipt),already_claimed:true});
   let issued=false;

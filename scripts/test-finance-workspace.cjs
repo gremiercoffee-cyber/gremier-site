@@ -33,7 +33,7 @@ test('missing or invalid check information, oversize amounts and silent truncati
 });
 function service(mode='ok',store=false){
  const rows=new Map(),calls=[],customer={id:cid,name:'Fixture customer',email:'',phone:'',tax_id:'',store_id:store?sid:null,updated_at:mode==='customer_changed'?'2026-10-20T12:00:00Z':''};let handler;
- const db={from(table){let filters=[],changes;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},is(){return q},in(){return q},update(v){changes=v;return q},
+ const db={from(table){let filters=[],changes;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},neq(){return q},is(){return q},in(){return q},update(v){changes=v;return q},
   async maybeSingle(){return {data:table==='business_receipts'?rows.get(id)||null:null,error:null}},
   async single(){if(table==='receipt_customers')return {data:customer};const r=rows.get(id);if(changes)Object.assign(r,changes);return {data:r}},
   then(resolve){if(table==='store_billing')return Promise.resolve({data:[{id:bid,store_id:sid,year:2026,month:10,total:200,paid_at:mode==='paid'?'2026-10-20':null,cancelled_at:null}]}).then(resolve);if(changes&&rows.has(id))Object.assign(rows.get(id),changes);return Promise.resolve({error:null}).then(resolve);}};return q;},
@@ -95,4 +95,13 @@ test('VAT documents are refused before becoming Osek Morshe; a tax invoice needs
  const t=service(),body={...base(),payment_date:'2026-10-25',action:'issue',document_type:'tax_invoice',not_already_receipted:true};
  const r=await t.request(body);assert.equal(r.body.receipt.status,'issued');assert.equal(t.rows.get(id).document_type,'tax_invoice');
  const sent=JSON.parse(t.calls[0].options.body);assert.equal(sent.type,'0');assert.equal(sent.payments,undefined);
+});
+test('a receipt can pay a tax invoice issued in FinBot, linked by its number',async()=>{
+ const now=new Date('2026-11-01T10:00Z');
+ assert.equal(normalizeManualInput({...base(),document_type:'receipt',linked_document_number:' 20321 '},now).linked_document_number,'20321');
+ assert.equal(normalizeManualInput({...base(),document_type:'invoice_receipt',linked_document_number:'20321'},now).linked_document_number,null);
+ assert.throws(()=>normalizeManualInput({...base(),document_type:'receipt',linked_document_number:'INV-1'},now));
+ const s=service(),r=await s.request({...base(),payment_date:'2026-10-30',action:'issue',document_type:'receipt',linked_document_number:'20321',payment_received:true,not_already_receipted:true});
+ assert.equal(r.body.receipt.status,'issued');assert.equal(s.rows.get(id).linked_document_number,'20321');
+ const sent=JSON.parse(s.calls[0].options.body);assert.equal(sent.type,'1');assert.equal(sent.linkedDocument,'20321');
 });

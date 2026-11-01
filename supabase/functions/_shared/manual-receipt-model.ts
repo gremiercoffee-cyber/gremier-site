@@ -17,6 +17,9 @@ export function normalizeManualInput(raw:any,now=new Date()) {
  if(!invoice&&!['cash','bank_transfer','check','bit'].includes(raw.payment_method))throw Error('choose_supported_payment_method');
  const linked_invoice_id=document_type==='receipt'&&raw.linked_invoice_id?String(raw.linked_invoice_id).toLowerCase():null;
  if(linked_invoice_id&&!/^[0-9a-f-]{36}$/.test(linked_invoice_id))throw Error('invalid_linked_invoice');
+ // Or a tax invoice issued directly in FinBot, by its number.
+ const linked_document_number=document_type==='receipt'&&!linked_invoice_id&&raw.linked_document_number?String(raw.linked_document_number).trim():null;
+ if(linked_document_number&&!/^\d{1,9}$/.test(linked_document_number))throw Error('invoice_number_digits');
  const payment_date=String(raw.payment_date||''),d=new Date(payment_date+'T12:00:00Z');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(payment_date)||!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==payment_date||payment_date>israelDate(now))throw Error('invalid_payment_date');
  const ids=Array.isArray(raw.billing_ids)?raw.billing_ids.map(String).sort():[];
@@ -42,7 +45,7 @@ export function normalizeManualInput(raw:any,now=new Date()) {
  const amount_minor=amountMinor(raw.amount);if(amount_minor>999999900)throw Error('amount_exceeds_finbot_limit');
  const billed=raw.billed_total_minor===null?null:Number(raw.billed_total_minor);
  if(ids.length&&(!Number.isSafeInteger(billed)||billed!<=0))throw Error('billing_preview_required');
- return {id:String(raw.id).toLowerCase(),document_type,linked_invoice_id,customer_id,customer_version:String(raw.customer_version||'').slice(0,80),payment_method:invoice?null:raw.payment_method,payment_date,amount_minor,payment_details,
+ return {id:String(raw.id).toLowerCase(),document_type,linked_invoice_id,linked_document_number,customer_id,customer_version:String(raw.customer_version||'').slice(0,80),payment_method:invoice?null:raw.payment_method,payment_date,amount_minor,payment_details,
   payment_reference,description,billing_ids:ids,
   adjustment_reason,billed_total_minor:ids.length?billed:null,email_requested:raw.email_requested===true};
 }
