@@ -1,10 +1,10 @@
 /* Home hero "film": an animated brand opening, then seven product stills, each with a slow camera move (pan / push in), crossfading
    into the next. Under the headline, the width of the two discovery cards. A tap opens the shop (or
    coffee bars on the last shot). Reduced motion: no camera moves, just a slow crossfade.
-   Not live yet: shown only with ?hero=preview (remembered for the visit) until LIVE is true. */
+   LIVE turns it on for everyone; with LIVE false it shows only with ?hero=preview. */
 (function () {
   'use strict';
-  const LIVE = false;
+  const LIVE = true;
   const he = () => typeof lang !== 'undefined' && lang === 'he';
   let preview = false;
   try {
