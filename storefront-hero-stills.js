@@ -41,20 +41,21 @@
     ['10-elevate', '', '', 'shop', [1.02, 0, 0], [1.08, 0, 0], '50% 0%'],
   ];
   // Bump when a photo is replaced, so browsers fetch the new one instead of a cached copy.
-  const IMG_V = '20261103c';
+  const IMG_V = '20261103d';
   const HOLD = 5600, FADE = 1200, INTRO_HOLD = 7400;
   // Photos whose files aren't the usual 900 / 1536 wide. TILT: tall photos the camera tilts down (top to bottom).
   const SIZES = { '10-elevate': [720, 1024] }, TILT = { '10-elevate': 7200 };
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   // BURST: each beat flashes white, the photo punches in (zoomed, a little blurred, alternating sides)
   // and settles, and a big word slams in, then snaps out before the next flash.
-  // The photos are stand-ins until the single minis shots are made.
+  // The minis (and Unfiltered), one flavour per beat, each named as it lands.
   const BEAT = 850;
   const BURST = [
-    ['07-minis', 'GRAB.', 'חוטפים.'],
-    ['06-syrups', 'CHILL.', 'מצננים.'],
-    ['02-classic', 'SIP.', 'לוגמים.'],
-    ['05-sweetened', 'REPEAT.', 'שוב.'],
+    ['11-burst-classic', 'CLASSIC.', 'קלאסיק.'],
+    ['07-minis', 'ORIGINAL.', 'אוריג׳ינל.'],
+    ['12-burst-vanilla', 'VANILLA.', 'וניל.'],
+    ['13-burst-caramel', 'CARAMEL.', 'קרמל.'],
+    ['14-burst-unfiltered', 'UNFILTERED.', 'לא מסונן.'],
   ];
   if (still || !(BURST_LIVE || burstPreview)) SHOTS.splice(SHOTS.findIndex((x) => x[0] === 'burst'), 1);
 
@@ -121,6 +122,8 @@
           { transform: 'translateX(0) scale(1.07)', filter: 'blur(0)', offset: 0.22 },
           { transform: `translateX(${-dir * 1.5}%) scale(1.03)`, filter: 'blur(0)' }], { duration: BEAT + 160, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'both' }));
         word.textContent = he() ? hebrew : en;
+        // Long words (UNFILTERED.) shrink to fit the frame's width.
+        word.style.fontSize = `min(15cqw, ${(145 / word.textContent.length).toFixed(1)}cqw)`;
         moving.push(word.animate([
           { transform: 'scale(1.8)', opacity: 0, letterSpacing: '.3em' },
           { transform: 'scale(.95)', opacity: 1, letterSpacing: '.02em', offset: 0.2 },
