@@ -23,3 +23,6 @@ from (values
 ) v(name,pn,addr,city,lat,lng)
 where s.name=v.name;
 commit;
+-- Added after confirmation: Nemirovs. Rova Market stays off the map until it has stock again.
+update public.stores set public_name='Nemirovs · נמירוב', public_address='שערי חסד 15', public_city='ירושלים', lat=31.7778026, lng=35.2116681, show_on_map=true where name='Nemirovs';
+update public.stores set show_on_map=false where name='Rova Market';
