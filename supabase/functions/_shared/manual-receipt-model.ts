@@ -47,6 +47,8 @@ export function normalizeManualInput(raw:any,now=new Date()) {
  if(ids.length&&(!Number.isSafeInteger(billed)||billed!<=0))throw Error('billing_preview_required');
  return {id:String(raw.id).toLowerCase(),document_type,linked_invoice_id,linked_document_number,customer_id,customer_version:String(raw.customer_version||'').slice(0,80),payment_method:invoice?null:raw.payment_method,payment_date,amount_minor,payment_details,
   payment_reference,description,billing_ids:ids,
+  // The address printed on this document; undefined (older screens) keeps the saved one.
+  customer_address:raw.customer_address===undefined?null:String(raw.customer_address||'').trim().slice(0,100),
   adjustment_reason,billed_total_minor:ids.length?billed:null,email_requested:raw.email_requested===true};
 }
 // FinBot types: 0 חשבונית מס (sale, no payment), 1 קבלה (payment only), 2 חשבונית מס/קבלה (both).

@@ -60,7 +60,7 @@ Deno.serve(async req=>{
   if(prior.data){if(prior.data.request_hash!==request_hash)throw Error('request_changed_start_new_receipt');return json({receipt:clean(prior.data),already_claimed:true});}
   const c=await db.from('receipt_customers').select('*').eq('id',input.customer_id).is('archived_at',null).single();if(c.error)throw Error('customer_not_available');
   if((raw.action==='issue'||input.customer_version)&&input.customer_version!==String(c.data.updated_at||''))throw Error('customer_changed_refresh_preview');
-  const customer=customerFields(c.data),store_id=c.data.store_id||null;
+  const customer=customerFields({...c.data,...(input.customer_address===null?{}:{address:input.customer_address})}),store_id=c.data.store_id||null;
   const type=input.document_type,date=input.payment_date+'T23:59:00+03:00';
   // VAT documents start the day the business became Osek Morshe.
   if(type!=='receipt'&&!vatApplies(date))throw Error('tax_invoices_start_2026_10_22');

@@ -105,3 +105,10 @@ test('a receipt can pay a tax invoice issued in FinBot, linked by its number',as
  assert.equal(r.body.receipt.status,'issued');assert.equal(s.rows.get(id).linked_document_number,'20321');
  const sent=JSON.parse(s.calls[0].options.body);assert.equal(sent.type,'1');assert.equal(sent.linkedDocument,'20321');
 });
+test('the document address is the one typed on the form; empty means none',()=>{
+ const now=new Date('2026-11-01T10:00Z'),saved={name:'Fixture',address:'Saved street 1'};
+ const empty=normalizeManualInput({...base(),customer_address:''},now);assert.equal(empty.customer_address,'');
+ assert.equal(manualPayload(empty,customerFields({...saved,address:empty.customer_address}),now).customer.address,undefined);
+ assert.equal(normalizeManualInput(base(),now).customer_address,null);
+ assert.equal(normalizeManualInput({...base(),customer_address:' Other 2 '},now).customer_address,'Other 2');
+});
