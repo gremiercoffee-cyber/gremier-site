@@ -536,3 +536,13 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .bday-day .bday-selects span { font-weight:600; }
 .bday-day .bday-selects select { flex:0 1 110px; }
 .bday-shop { width:100%; }
+.subm-card { background:#fff; border:1px solid var(--border, #e6e4df); border-radius:6px; padding:16px 20px; margin-bottom:22px; }
+.subm-top { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px; }
+.subm-pill { font-size:.72rem; padding:3px 10px; border-radius:999px; background:#eef5ef; color:#2c6e49; font-weight:600; }
+.subm-paused { background:#fdf3e3; color:#8a5a1c; } .subm-cancelled { background:#f1f1f1; color:#6b7178; }
+.subm-line { font-size:.85rem; color:#4a4a4a; margin-top:2px; }
+.subm-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
+.subm-pause { display:flex; align-items:center; gap:6px; font-size:.82rem; color:#4a4a4a; }
+.subm-pause select { width:auto; padding:6px 8px; }
+.subm-cancel { background:none; border:0; color:#9a3a2a; font-size:.8rem; text-decoration:underline; cursor:pointer; margin-inline-start:auto; }
+.subm-status { font-size:.8rem; color:#2c6e49; margin-top:8px; }

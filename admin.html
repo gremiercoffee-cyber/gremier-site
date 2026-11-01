@@ -1912,6 +1912,10 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <label class="toggle"><input type="checkbox" id="cpForSubs"/><span class="toggle-slider"></span></label>
     </div>
     <div class="toggle-row">
+      <span class="toggle-label">Free delivery<br><small style="color:var(--silver-dim);font-weight:400">Regular delivery is free with this code (on a subscription, every month).</small></span>
+      <label class="toggle"><input type="checkbox" id="cpFreeDelivery"/><span class="toggle-slider"></span></label>
+    </div>
+    <div class="toggle-row">
       <span class="toggle-label">Active</span>
       <label class="toggle"><input type="checkbox" id="cpActive" checked/><span class="toggle-slider"></span></label>
     </div>
@@ -8689,7 +8693,7 @@ function renderCouponsTable() {
     const exp = c.expires_at ? new Date(c.expires_at).toLocaleDateString('en-IL', { day:'numeric', month:'short' }) : '—';
     const loyalty = c.user_id ? ' <span class="status-pill s-confirmed" style="font-size:.5rem">loyalty</span>' : '';
     return `<tr>
-      <td style="color:var(--cream)"><strong>${escHtml(c.code)}</strong>${loyalty}${c.one_time_per_user?' <span class="status-pill s-pending" style="font-size:.5rem">1×/user</span>':''}${c.for_subscriptions?' <span class="status-pill s-pending" style="font-size:.5rem">subscriptions</span>':''}${c.description?`<br><small style="color:var(--text2)">${escHtml(c.description)}</small>`:''}</td>
+      <td style="color:var(--cream)"><strong>${escHtml(c.code)}</strong>${loyalty}${c.one_time_per_user?' <span class="status-pill s-pending" style="font-size:.5rem">1×/user</span>':''}${c.for_subscriptions?' <span class="status-pill s-pending" style="font-size:.5rem">subscriptions</span>':''}${c.free_delivery?' <span class="status-pill s-pending" style="font-size:.5rem">free delivery</span>':''}${c.description?`<br><small style="color:var(--text2)">${escHtml(c.description)}</small>`:''}</td>
       <td style="color:var(--cream)">${val}</td>
       <td class="hide-mobile">${scope}</td>
       <td class="cell-num">${uses}</td>
@@ -8774,6 +8778,7 @@ async function openCouponModal(id) {
     document.getElementById('cpExpires').value = c.expires_at ? c.expires_at.slice(0,10) : '';
     document.getElementById('cpOnePerUser').checked = !!c.one_time_per_user;
     document.getElementById('cpForSubs').checked = !!c.for_subscriptions;
+    document.getElementById('cpFreeDelivery').checked = !!c.free_delivery;
     document.getElementById('cpActive').checked = c.is_active;
     cpOnScopeChange();
     if (c.applies_to === 'specific_products') renderCpProductPicker(c.product_ids);
@@ -8781,7 +8786,7 @@ async function openCouponModal(id) {
     ['cpCode','cpDescription','cpValue','cpMinOrder','cpMaxUses','cpExpires'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('cpType').value='percent';
     document.getElementById('cpAppliesTo').value='all';
-    document.getElementById('cpOnePerUser').checked=false;document.getElementById('cpForSubs').checked=false;
+    document.getElementById('cpOnePerUser').checked=false;document.getElementById('cpForSubs').checked=false;document.getElementById('cpFreeDelivery').checked=false;
     document.getElementById('cpActive').checked=true;
     cpOnScopeChange();
   }
@@ -8813,6 +8818,7 @@ async function saveCoupon() {
     expires_at: document.getElementById('cpExpires').value || null,
     one_time_per_user: document.getElementById('cpOnePerUser').checked,
     for_subscriptions: document.getElementById('cpForSubs').checked,
+    free_delivery: document.getElementById('cpFreeDelivery').checked,
     is_active: document.getElementById('cpActive').checked,
     updated_at: new Date().toISOString(),
   };
@@ -9405,7 +9411,8 @@ window.opsFetch = window.opsFetch || (function () {
           <h3><span>${esc(s.customer_name || 'Customer')}</span>${status}</h3>
           <div style="font-size:.84rem;line-height:1.7">
             <div><b style="color:var(--cream)">${money(s.price)}</b> / month · ${items || '—'}</div>
-            <div>Next charge: <b style="color:var(--cream)">${s.active && next ? next.toLocaleDateString('en-IL', { weekday: 'short', day: 'numeric', month: 'short' }) : '—'}</b></div>
+            <div>Next charge: <b style="color:var(--cream)">${s.active && next ? next.toLocaleDateString('en-IL', { weekday: 'short', day: 'numeric', month: 'short' }) : s.paused_until ? new Date(s.paused_until + 'T12:00:00').toLocaleDateString('en-IL', { weekday: 'short', day: 'numeric', month: 'short' }) + ' (after the pause)' : '—'}</b></div>
+            ${s.status === 'paused' ? `<div>Paused${s.pause_months ? ` for ${s.pause_months} month${s.pause_months > 1 ? 's' : ''}` : ''}${s.paused_by ? ` by ${s.paused_by === 'customer' ? 'the customer' : 'you'}` : ''}${s.paused_until ? ` · resumes automatically` : ' · resume it by hand'}</div>` : ''}
             <div>Charges so far: ${s.iterations_completed || 0} · Started ${short(s.started)} (order #${esc(s.order_number)})</div>
             ${s.error_text ? `<div style="color:var(--red)">PayMe: ${esc(s.error_text)}</div>` : ''}
             ${s.live ? '' : '<div style="color:var(--text2);font-size:.75rem">Couldn\'t reach PayMe — showing last known status.</div>'}
@@ -9413,12 +9420,33 @@ window.opsFetch = window.opsFetch || (function () {
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
             <button class="btn btn-outline btn-sm" onclick="hubOpenCustomer(${esc(JSON.stringify(JSON.stringify({ email: s.customer_email, phone: s.customer_phone, name: s.customer_name })))})">Customer</button>
             ${s.customer_phone ? `<a class="btn btn-sm wa-btn" target="_blank" rel="noopener" href="${esc(waLink(s.customer_phone, ''))}">WhatsApp</a>` : ''}
+            ${s.active ? `<button class="btn btn-outline btn-sm" onclick="hubPauseSub('${esc(s.sub_payme_id)}', ${esc(JSON.stringify(s.customer_name || ''))})">Pause</button>` : ''}
+            ${s.status === 'paused' ? `<button class="btn btn-green btn-sm" onclick="hubResumeSub('${esc(s.sub_payme_id)}', ${esc(JSON.stringify(s.customer_name || ''))})">Resume now</button>` : ''}
             ${s.can_cancel ? `<button class="btn btn-red btn-sm" onclick="hubCancelSub('${esc(s.sub_payme_id)}', ${esc(JSON.stringify(s.customer_name || ''))})">Cancel subscription</button>` : ''}
           </div></div>`;
       }).join('') + '</div>';
     } catch (e) {
       box.innerHTML = `<div class="hub-card"><div class="hub-empty">⚠️ ${esc(e.message)}</div></div>`;
     }
+  };
+  // Pause for 1–6 months: PayMe skips those charges (and so those deliveries), then resumes by itself.
+  window.hubPauseSub = async function (subId, name) {
+    const months = Number(prompt(`Pause ${name}'s subscription for how many months? (1–6)
+
+Those months aren't charged or delivered; it resumes by itself afterwards.`, '1'));
+    if (!months) return;
+    if (!Number.isInteger(months) || months < 1 || months > 6) { alert('Choose 1 to 6 months.'); return; }
+    const { res, data } = await callAdminFunction('admin-tools', { action: 'pause_subscription', sub_payme_id: subId, months });
+    if (res.ok && data.ok) { showToast(`Paused ✓ Next charge ${new Date(data.next_charge + 'T12:00:00').toLocaleDateString('en-IL', { day: 'numeric', month: 'short', year: 'numeric' })}`); hubLoadSubs(true); }
+    else alert('Could not pause: ' + (data.error || res.status));
+  };
+  window.hubResumeSub = async function (subId, name) {
+    if (!confirm(`Resume ${name}'s subscription now?
+
+PayMe goes back to charging on the regular billing day.`)) return;
+    const { res, data } = await callAdminFunction('admin-tools', { action: 'resume_subscription', sub_payme_id: subId });
+    if (res.ok && data.ok) { showToast('Subscription resumed ✓'); hubLoadSubs(true); }
+    else alert('Could not resume: ' + (data.error || res.status));
   };
   window.hubCancelSub = async function (subId, name) {
     if (!confirm(`Cancel ${name}'s subscription?\n\nPayMe stops all future charges. This can't be undone — they'd need to subscribe again.`)) return;

@@ -780,7 +780,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261103-1"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261103-2"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261101-3"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
@@ -3906,14 +3906,15 @@ function updateDeliveryPrice() {
   const zoneRegular = isFree ? 0 : pricing.regular;
   const zoneExpedited = pricing.expedited;
   const shabbatPromo = !subscriptionCart && shabbatPromoActive();
-  const regularFee = shabbatPromo ? 0 : (hasProductFee ? productFee : zoneRegular);
+  const couponFreeDelivery = appliedRedeem?.kind === 'coupon' && !!appliedRedeem.free_delivery;
+  const regularFee = shabbatPromo || couponFreeDelivery ? 0 : (hasProductFee ? productFee : zoneRegular);
   const expeditedSurcharge = Math.max(0, zoneExpedited - pricing.regular);
   const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
   const isEvent = document.getElementById('shipEvent')?.checked;
   const eventFee = hasProductFee ? (productFee + expeditedSurcharge) : (pricing.event || pricing.expedited);
   const fee = isEvent ? eventFee : (isExpedited ? expeditedFee : regularFee);
-  if(subscriptionCart){const notice=document.getElementById('coSubNotice'),period=subscriptionIntervalLabel(subscriptionCart.subscription_interval),extra=!isEvent&&!isExpedited&&pricing.freeAbove?Math.max(0,pricing.freeAbove-qualifyingTotal):0;
-   if(notice)notice.textContent=lang==='he'?`חיוב ${period}: ₪${(cartTotal+fee).toFixed(2)}, כולל משלוח ₪${fee}, עד לביטול.${extra?` הוסיפו ₪${extra.toFixed(2)} לפני ההנחה למשלוח רגיל חינם.`:''}`:`Billed ${period}: ₪${(cartTotal+fee).toFixed(2)}, including ₪${fee} delivery, until cancelled.${extra?` Add ₪${extra.toFixed(2)} before discount for free regular delivery.`:''}`;
+  if(subscriptionCart){const notice=document.getElementById('coSubNotice'),period=subscriptionIntervalLabel(subscriptionCart.subscription_interval),extra=!isEvent&&!isExpedited&&!couponFreeDelivery&&pricing.freeAbove?Math.max(0,pricing.freeAbove-qualifyingTotal):0,billed=Math.max(0,cartTotal+fee-(appliedRedeem?.kind==='coupon'?Number(appliedRedeem.discount)||0:0));
+   if(notice)notice.textContent=lang==='he'?`חיוב ${period}: ₪${billed.toFixed(2)}, ${fee?`כולל משלוח ₪${fee}`:'משלוח חינם'}, עד לביטול.${extra?` הוסיפו ₪${extra.toFixed(2)} לפני ההנחה למשלוח רגיל חינם.`:''}`:`Billed ${period}: ₪${billed.toFixed(2)}, ${fee?`including ₪${fee} delivery`:'free delivery'}, until cancelled.${extra?` Add ₪${extra.toFixed(2)} before discount for free regular delivery.`:''}`;
   }
 
 
@@ -3993,6 +3994,8 @@ async function applyRedeemCode() {
   const items = cart.map(i => ({
     product_id: i.base_product_id || String(i.id).split('_')[0],
     price: i.price, qty: i.qty, category: i.category,
+    // A subscription is one cart line holding several products: send them, so product coupons match.
+    component_ids: (i.subscription_items || []).map(c => String(c.product_id)),
   }));
   try {
     // Try coupon first, then gift card
@@ -4003,7 +4006,7 @@ async function applyRedeemCode() {
     });
     let data = await res.json().catch(() => ({}));
     if (data.valid) {
-      appliedRedeem = { kind: 'coupon', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart };
+      appliedRedeem = { kind: 'coupon', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery };
       showRedeemApplied(data.message, data.discount);
       return;
     }
@@ -4039,7 +4042,7 @@ function showRedeemApplied(message, discount) {
   wrap.style.display = 'flex';
   const label = appliedRedeem.kind === 'gift_card'
     ? (lang==='he'?`כרטיס מתנה: -₪${discount}`:`Gift card: -₪${discount}`)
-    : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
+    : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.free_delivery ? (lang==='he'?' + משלוח חינם':' + free delivery') : '') + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
   document.getElementById('coRedeemAppliedText').textContent = '✓ ' + label;
   prepareCheckoutContent();
 }
@@ -5336,6 +5339,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261102-6"></script>
 <script src="/storefront-birthday.js?v=20261103-1"></script>
+<script src="/storefront-subscriptions.js?v=20261103-1"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>
 <script src="/storefront-planner.js?v=20261101-4"></script>

@@ -117,7 +117,8 @@ Deno.serve(async (req) => {
     let eligibleTotal = cartTotal;
     if (coupon.applies_to === 'specific_products' && Array.isArray(coupon.product_ids)) {
       eligibleTotal = (items || [])
-        .filter((i: any) => coupon.product_ids.includes(i.product_id || i.base_product_id || i.id))
+        // A subscription line counts when any product inside it is one of the coupon's products.
+        .filter((i: any) => coupon.product_ids.includes(i.product_id || i.base_product_id || i.id) || (Array.isArray(i.component_ids) && i.component_ids.some((id: string) => coupon.product_ids.includes(id))))
         .reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
     } else if (coupon.applies_to === 'category' && coupon.category) {
       eligibleTotal = (items || [])
@@ -147,9 +148,10 @@ Deno.serve(async (req) => {
       discount_value: coupon.discount_value,
       applies_to: coupon.applies_to,
       subscription: !!subscription,
+      free_delivery: !!coupon.free_delivery,
       message: (coupon.discount_type === 'percent'
         ? `${coupon.discount_value}% off applied`
-        : `₪${coupon.discount_value} off applied`) + (subscription ? ' to every charge' : ''),
+        : `₪${coupon.discount_value} off applied`) + (coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
     });
   } catch (err) {
     return json({ valid: false, error: 'server_error', message: String(err) }, 500);

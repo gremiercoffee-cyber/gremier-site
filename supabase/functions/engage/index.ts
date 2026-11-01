@@ -6,9 +6,12 @@
 //   { action: "track", sid, kind }               → anonymous funnel step (cart_add | checkout_open | pay_click)
 //   { action: "push_subscribe", subscription, lang, order_id? } → shop-app notifications on this device
 //   { action: "push_unsubscribe", endpoint }     → turn them off
+//   { action: "my_subscriptions" }                → the signed-in customer's subscriptions
+//   { action: "subscription_pause", sub_payme_id, months } | "subscription_resume" | "subscription_cancel"
 //   { action: "birthday_save" | "birthday_get", month, day?, order_id? | invite? } → the birthday-month gift
 // Deploy with --no-verify-jwt.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cancelSubscription, describe, MAX_PAUSE_MONTHS, ownsSubscription, pauseSubscription, resumeSubscription } from "../_shared/subscription-control.ts";
 import { ensureReferralCode, logReferralEvent, notifyOwner, REFERRAL_AMOUNT, referralByCode, signToken, SITE } from "../_shared/engage.ts";
 
 const cors = {
@@ -189,6 +192,45 @@ Deno.serve(async (req) => {
         const { error } = await sb.from("customer_birthdays").upsert(row, { onConflict: "email" });
         if (error) { console.error("birthday_save:", error.message); return json({ error: "save_failed" }, 500); }
         return json({ ok: true, month, day });
+      }
+
+      case "my_subscriptions":
+      case "subscription_pause":
+      case "subscription_resume":
+      case "subscription_cancel": {
+        // The customer's own subscriptions, from their login only.
+        const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        const { data: auth } = jwt && jwt !== Deno.env.get("SUPABASE_ANON_KEY") ? await sb.auth.getUser(jwt).catch(() => ({ data: { user: null } })) : { data: { user: null } };
+        const user = auth?.user?.email ? { id: auth.user.id, email: auth.user.email.toLowerCase() } : null;
+        if (!user) return json({ error: "sign_in_required" }, 401);
+        if (body.action === "my_subscriptions") {
+          // Their orders by login, and by email (exact, case-insensitive: "_" and "%" are not wildcards).
+          const q = () => sb.from("orders").select("id, delivery_info, items, created_at").not("delivery_info->>payme_subscription_id", "is", null)
+            .is("delivery_info->>subscription_parent_order_id", null).order("created_at", { ascending: false }).limit(20);
+          const [a, b] = await Promise.all([q().eq("user_id", user.id), q().ilike("customer_email", user.email.replace(/[\%_]/g, (c) => "\\" + c))]);
+          const rows = [...new Map([...(a.data || []), ...(b.data || [])].map((r: any) => [r.id, r])).values()];
+          const out = [];
+          for (const r of rows) {
+            const d = await describe(sb, String(r.delivery_info.payme_subscription_id));
+            if (!d || d.status === "pending" && !r.delivery_info.subscription_first_iteration_key) continue;
+            const items = (r.items || []).flatMap((i: any) => i.subscription_items?.length ? i.subscription_items : [i]).map((i: any) => ({ name_en: i.name_en, name_he: i.name_he, qty: i.qty || 1 }));
+            out.push({ ...d, items, started: r.created_at, interval: r.delivery_info.subscription?.interval || "monthly" });
+          }
+          return json({ subscriptions: out, max_pause_months: MAX_PAUSE_MONTHS });
+        }
+        const subId = String(body.sub_payme_id || "");
+        if (!await ownsSubscription(sb, subId, user)) return json({ error: "not_found" }, 404);
+        const r = body.action === "subscription_pause" ? await pauseSubscription(sb, subId, Number(body.months), "customer")
+          : body.action === "subscription_resume" ? await resumeSubscription(sb, subId, "customer")
+          : await cancelSubscription(sb, subId, "customer");
+        if (r.ok) {
+          const what = body.action === "subscription_pause" ? `paused their subscription for ${body.months} month${Number(body.months) === 1 ? "" : "s"} (next charge ${(r as any).next_charge})`
+            : body.action === "subscription_resume" ? "resumed their subscription" : "cancelled their subscription";
+          await notifyOwner(`🔁 ${user.email} ${what}`, `${user.email} ${what} from their account on the website.
+
+PayMe subscription: ${subId}`).catch(() => {});
+        }
+        return json(r, r.ok ? 200 : 400);
       }
 
       case "push_unsubscribe": {

@@ -1,8 +1,11 @@
 import { subscriptionState } from "../_shared/subscription-status.ts";
+import { cancelSubscription as cancelSub, pauseSubscription, resumeDue, resumeSubscription } from "../_shared/subscription-control.ts";
 // supabase/functions/admin-tools/index.ts
 // Admin-only helpers for the admin app, plus two cron jobs:
 //   { action: "subscriptions" }            → website subscriptions with live PayMe status
 //   { action: "cancel_subscription", sub_payme_id }
+//   { action: "pause_subscription", sub_payme_id, months } / { action: "resume_subscription", sub_payme_id }
+//   { action: "subscription_resume_due" } → cron (daily): resume subscriptions whose pause ends
 //   { action: "unpaid_alerts" }            → cron (every 15 min): push once per order unpaid > 1h
 //   { action: "weekly_summary" }           → cron (Sunday morning): last 7 days in one push
 //   { action: "feedback_requests", dry_run } → cron (hourly): "How was it?" emails after delivery
@@ -108,35 +111,17 @@ async function listSubscriptions(sb: Sb) {
       iterations_completed: live ? Number(live.sub_iterations_completed) || 0 : renewals.length + (base.payment_status === "paid" ? 1 : 0),
       error_text: live ? String(live.sub_error_text || "") : "",
       recorded_status: String(di.subscription_status || ""),
+      paused_until: di.subscription_resume_charge || null,
+      pause_months: di.subscription_pause_months || null,
+      paused_by: di.subscription_paused_by || null,
       live: !!live,
     });
   }
   return out;
 }
 
-async function cancelSubscription(sb: Sb, subId: string) {
-  if (!/^SUB[\w-]{6,80}$/.test(subId)) return { ok: false, error: "bad_id" };
-  // Only subscriptions that belong to one of our orders.
-  const { data: rows } = await sb.from("orders").select("id, delivery_info")
-    .eq("delivery_info->>payme_subscription_id", subId).limit(50);
-  if (!rows || !rows.length) return { ok: false, error: "not_found" };
-  const res = await fetch(`${PAYME_BASE}api/cancel-subscription`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seller_payme_id: SELLER, sub_payme_id: subId }),
-  });
-  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-  const failed = !res.ok || (data.status_code !== undefined && Number(data.status_code) !== 0);
-  if (failed) {
-    console.error("cancel-subscription failed:", res.status, JSON.stringify({ status_code: data.status_code, status_error_details: data.status_error_details }));
-    return { ok: false, error: String(data.status_error_details || `PayMe returned ${res.status}`) };
-  }
-  for (const r of rows) {
-    const di = { ...(r.delivery_info || {}), subscription_status: "sub-cancel", subscription_cancelled_at: new Date().toISOString(), subscription_cancelled_by: "admin" };
-    await sb.from("orders").update({ delivery_info: di }).eq("id", r.id);
-  }
-  return { ok: true };
-}
+// Cancel, pause and resume live in _shared/subscription-control.ts (shared with the customer's account).
+const cancelSubscription = (sb: Sb, subId: string) => cancelSub(sb, subId, "admin");
 
 async function alertAdmins(sb: Sb, title: string, body: string, tag: string) {
   try { await sb.from("notification_log").insert({ title, body, kind: "order", url: "/admin.html" }); } catch (e) { console.error(e); }
@@ -772,6 +757,9 @@ Deno.serve(async (req) => {
     switch (body.action) {
       case "subscriptions": return json({ subscriptions: await listSubscriptions(sb) });
       case "cancel_subscription": return json(await cancelSubscription(sb, String(body.sub_payme_id || "")));
+      case "pause_subscription": return json(await pauseSubscription(sb, String(body.sub_payme_id || ""), Number(body.months), "admin"));
+      case "resume_subscription": return json(await resumeSubscription(sb, String(body.sub_payme_id || ""), "admin"));
+      case "subscription_resume_due": return json(await resumeDue(sb));
       case "unpaid_alerts": return json(await unpaidAlerts(sb));
       case "create_api_key": {
         // A connected-app key: shown once, only its hash is stored.
