@@ -47,7 +47,7 @@
     document.querySelector('#pdDrawer .cmp-drawer')?.remove();
     if (!p || p.category !== 'bottles' || isSyrup(p) || !COFFEES.some((c) => c.re.test(p.name_en || ''))) return;
     const html = table(p);
-    if (html) $('pdDesc')?.insertAdjacentHTML('afterend', `<details class="cmp-drawer"><summary>${T('Compare with our other coffees', 'השוואה לשאר הקפה שלנו')}</summary>${html}</details>`);
+    if (html) $('pdDesc')?.insertAdjacentHTML('afterend', `<details class="cmp-drawer"><summary><span aria-hidden="true">⚖</span>${T('Compare our coffees', 'השוואת הקפה שלנו')}</summary>${html}</details>`);
   }
   document.addEventListener('click', (e) => {
     const row = e.target.closest('[data-cmp-open]');

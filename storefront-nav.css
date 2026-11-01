@@ -562,3 +562,24 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .btn-primary:hover, .planner .pl-order:hover, .planner .bbx-start:hover, .planner .bbx-cta:hover, .planner .bbx-next:hover,
 .bc-bubble:hover, .bc-form button:hover, .shop-bar-route a:hover { background: var(--gremier-grad-hover) !important; box-shadow: 0 8px 22px rgba(90,52,24,.25); }
 .btn-primary:disabled, .planner .pl-order:disabled { filter: grayscale(.4) opacity(.7); }
+
+/* Product window: the extras as small pills in one row, a one-line delivery note, and a segmented
+   one-time / subscribe switch, matching the rest of the site. */
+#pdDrawer .pack-hint, #pdDrawer .cmp-drawer > summary { display:inline-flex; align-items:center; gap:7px; width:auto; margin:0; padding:9px 15px; border-radius:999px; background:#fff; border:1px solid #e6dfd4; box-shadow:0 3px 12px rgba(40,28,16,.09); font:600 13.5px 'DM Sans',sans-serif; color:#1a1a1a; cursor:pointer; list-style:none; text-align:start; transition:transform .15s, box-shadow .15s; }
+#pdDrawer .pack-hint:hover, #pdDrawer .cmp-drawer > summary:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(40,28,16,.13); }
+#pdDrawer .pack-hint span, #pdDrawer .cmp-drawer > summary span { color:#b9742f; }
+#pdDrawer .pack-hint { margin:4px 8px 12px 0; vertical-align:top; }
+[dir="rtl"] #pdDrawer .pack-hint, .rtl #pdDrawer .pack-hint { margin:4px 0 12px 8px; }
+#pdDrawer .cmp-drawer { display:inline-block; margin:4px 0 12px; border:0; background:none; border-radius:0; vertical-align:top; }
+#pdDrawer .cmp-drawer > summary::-webkit-details-marker { display:none; }
+#pdDrawer .cmp-drawer > summary::after { content:'▾'; float:none; margin-inline-start:2px; color:#9a948c; }
+#pdDrawer .cmp-drawer[open] { display:block; }
+#pdDrawer .cmp-drawer[open] > summary { margin-bottom:10px; }
+#pdDrawer .cmp-drawer[open] > summary::after { content:'▴'; }
+#pdDrawer .pv-pd-info { background:none; border:0; padding:0; margin:2px 0 14px; font-size:12.5px; color:#8a8f96; }
+#pdDrawer .subscription-modes { grid-template-columns:1fr 1fr; gap:4px; padding:4px; margin:6px 0 14px; background:#f3efe8; border-radius:14px; }
+#pdDrawer .subscription-modes label { position:relative; justify-content:center; text-align:center; padding:11px 8px; margin:0; border:0 !important; border-radius:10px; background:transparent; box-shadow:none; font:600 13.5px 'DM Sans',sans-serif; color:#5b5650; }
+#pdDrawer .subscription-modes label input { position:absolute; opacity:0; pointer-events:none; }
+#pdDrawer .subscription-modes label:has(input:checked) { background:var(--gremier-grad); color:#fff; box-shadow:0 3px 10px rgba(0,0,0,.18); }
+#pdDrawer .pd-add-btn, .add-btn { background: var(--gremier-grad) !important; color:#fff !important; border-color:transparent !important; }
+#pdDrawer .pd-add-btn:hover { background: var(--gremier-grad-hover) !important; }

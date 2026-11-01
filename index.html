@@ -780,7 +780,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261103-4"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261103-6"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261101-calm1"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
@@ -4464,8 +4464,8 @@ async function sendChatMessageText(text) {
       box.innerHTML = isBar
         ? (he() ? '<span>📅 בחרו תאריך ושעה לאירוע בקופה — אנחנו מגיעים עם הכל מוכן.</span><span>💬 שאלות? כתבו לנו בוואטסאפ ונעזור לתכנן כמויות.</span>'
                 : "<span>📅 Pick your event date &amp; time at checkout — we arrive with everything ready.</span><span>💬 Questions? WhatsApp us and we'll help plan quantities.</span>")
-        : (he() ? '<span>🚚 משלוח רגיל תוך 2–5 ימים, או מהיר תוך 1–2 ימים.</span><span>📅 צריכים ביום מסוים? אפשר לבחור תאריך בקופה.</span>'
-                : '<span>🚚 Regular delivery in 2–5 days, or expedited in 1–2 days.</span><span>📅 Need it on a specific day? Pick a date at checkout.</span>');
+        : (he() ? '<span>🚚 משלוח תוך 2–5 ימים (1–2 ימים במהיר) · אפשר לבחור תאריך בקופה</span>'
+                : '<span>🚚 Delivered in 2–5 days (1–2 days expedited) · pick a date at checkout</span>');
       desc.insertAdjacentElement('afterend', box);
     }
     return r;
@@ -5345,9 +5345,9 @@ async function sendChatMessageText(text) {
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261102-1"></script>
 <script src="/storefront-engage.js?v=20261102-2"></script>
-<script src="/storefront-compare.js?v=20261103-1"></script>
+<script src="/storefront-compare.js?v=20261103-2"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
-<script src="/storefront-packs.js?v=20261102-6"></script>
+<script src="/storefront-packs.js?v=20261103-1"></script>
 <script src="/storefront-birthday.js?v=20261103-2"></script>
 <script src="/storefront-subscriptions.js?v=20261103-1"></script>
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>

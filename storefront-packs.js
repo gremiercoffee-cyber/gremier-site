@@ -143,7 +143,7 @@
     if (!p || packOf(p)) return;
     const pool = inPool(p, 'bottles') ? 'bottles' : inPool(p, 'minis') ? 'minis' : null, pack = pool && packFor(pool);
     if (!pack) return;
-    $('pdDesc')?.insertAdjacentHTML('afterend', `<button type="button" class="pack-hint" data-pack-hint="${esc(pack.id)}" data-from="${esc(p.id)}">${pool === 'minis' ? T('Taking 6 minis? Build your own 6-pack and save 5% →', 'לוקחים 6 מיני? בנו שישייה וחסכו 5% ←') : T('Taking 6 bottles? Build your own 6-pack and save 5% →', 'לוקחים 6 בקבוקים? בנו שישייה וחסכו 5% ←')}</button>`);
+    $('pdDesc')?.insertAdjacentHTML('afterend', `<button type="button" class="pack-hint" data-pack-hint="${esc(pack.id)}" data-from="${esc(p.id)}"><span aria-hidden="true">＋</span>${pool === 'minis' ? T('Build a 6-pack of minis · save 5%', 'שישיית מיני · חסכו 5%') : T('Build a 6-pack · save 5%', 'בנו שישייה · חסכו 5%')}</button>`);
   }
   function hook() {
     // A pack product opens the picker instead of its product window or a plain add-to-cart.
