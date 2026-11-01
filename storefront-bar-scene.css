@@ -294,3 +294,26 @@ body.pd-silent #pdDrawer, body.pd-silent #pdBackdrop, body.pd-silent #cartDrawer
   .planner .bbx-intro { margin:-28px 14px 24px; }
 }
 @media (max-width:420px) { .planner .bbx-included { grid-template-columns:1fr; } }
+/* The two choices after "your coffee bar": book it (main), or the eye-catching "show me more options" card. */
+.planner .bbx-cta { width:100%; display:flex; justify-content:space-between; align-items:center; gap:12px; border:0; border-radius:16px; background:#1a1a1a; color:#fff; padding:17px 20px; margin:6px 0 10px; cursor:pointer; font:700 16px 'DM Sans',sans-serif; box-shadow:0 8px 22px rgba(0,0,0,.18); transition:transform .15s, box-shadow .15s; }
+.planner .bbx-cta:hover { transform:translateY(-1px); box-shadow:0 10px 26px rgba(0,0,0,.22); }
+.planner .bbx-cta b { font-weight:800; white-space:nowrap; }
+.planner .bbx-options { position:relative; width:100%; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:12px; text-align:start; border:0; border-radius:16px; padding:15px 18px; cursor:pointer; color:#3a2410; overflow:hidden;
+  background:linear-gradient(120deg,#fbe9cf,#f6d9ad 45%,#fbe9cf); background-size:220% 100%; animation:bbxShine 5s ease-in-out infinite; box-shadow:inset 0 0 0 1px rgba(180,122,44,.35); }
+.planner .bbx-options strong { display:block; font:700 16px 'DM Sans',sans-serif; color:#1a1a1a; }
+.planner .bbx-options small { display:block; font-size:12.5px; color:#7a5424; margin-top:2px; line-height:1.4; }
+.planner .bbx-spark { font-size:22px; }
+.planner .bbx-options i { font-style:normal; font-size:22px; color:#7a5424; }
+@keyframes bbxShine { 0%,100% { background-position:0% 0; } 50% { background-position:100% 0; } }
+.planner .bbx-only-back { justify-content:space-between; margin-top:8px; }
+.planner .bbx-link { background:none; border:0; color:#8a8f96; font:500 13px 'DM Sans',sans-serif; text-decoration:underline; cursor:pointer; }
+.planner .bbx-extra { margin:16px 0 4px; padding-top:14px; border-top:1px solid #f1ede7; }
+.planner .bbx-extra p { margin:0 0 8px; font:600 15px 'DM Sans',sans-serif; color:#1a1a1a; }
+.planner .bbx-add { border:1px dashed #cbbfae; background:#fdfbf8; border-radius:999px; padding:10px 16px; font:600 14px 'DM Sans',sans-serif; color:#5b4a36; cursor:pointer; }
+.planner .bbx-home .bb-take-home { margin:0; padding:0; background:none; border:0; }
+.planner .bbx-home .bb-take-home > h3 { display:none; }
+.planner .bbx-step .bb-delivery > h2 { font:700 20px/1.3 'DM Sans',sans-serif; margin:0 0 12px; }
+@media (prefers-reduced-motion: reduce) { .planner .bbx-options { animation:none; } }
+/* In the builder the card lists what's included, so the scene drops its own list (no repeat). */
+.planner .bbx-scene .bs-legend { display:none; }
+@media (max-width:420px) { .planner .bbx-included { grid-template-columns:1fr 1fr; gap:6px 10px; } .planner .bbx-included li { font-size:13px; } }

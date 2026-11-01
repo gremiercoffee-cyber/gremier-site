@@ -73,7 +73,7 @@
   const shipFor=()=>state.deliveryMode==='event'?'event':state.deliveryMode==='pickup'?'pickup':(state.deliveryDate&&state.deliveryDate<=isoDay(2)?'expedited':'regular');
   function deliveryHtml(){
     const before=state.deliveryMode==='before',pickup=state.deliveryMode==='pickup',ship=shipFor();
-    return `<div class="pl-q bb-delivery"><h2>${T('How should we deliver it?','איך להביא את זה?')}</h2>
+    return `<div class="pl-q bb-delivery"><h2>${T('How do you want us to deliver it?','איך תרצו שנביא את זה?')}</h2>
       ${chips('deliveryMode',[['event',T('At the event, when it starts','לאירוע, בזמן שהוא מתחיל')],['before',T('Before the event','לפני האירוע')],['pickup',T('I’ll pick it up (free)','איסוף עצמי (חינם)')]])}
       <div class="bb-del-fields">
         <label>${pickup?T('Pickup date','תאריך האיסוף'):before?T('Delivery date','תאריך המשלוח'):T('Event date','תאריך האירוע')}<input type="date" class="form-input" id="plDelDate" min="${isoDay(1)}" value="${esc(state.deliveryDate)}"></label>
@@ -325,7 +325,7 @@ ${n.value}`:line;}
     if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total))){if(typeof openCheckout==='function')openCheckout();return;}
     if(!chosen&&options.deliveryAtCheckout){try{localStorage.removeItem('gremier_bar_delivery');}catch{}}
     else if(!chosen){
-      if(!document.querySelector('#planner .bb-delivery')){bstep='bar';render();}
+      if(!document.querySelector('#planner .bb-delivery')){bstep='delivery';render();}
       const q=document.querySelector('#planner .bb-delivery');q?.scrollIntoView({behavior:'smooth',block:'center'});q?.classList.add('bb-attention');setTimeout(()=>q?.classList.remove('bb-attention'),1600);
       if(typeof showToast==='function')showToast(state.deliveryMode==='event'?T('Choose the event date and arrival time first','בחרו קודם תאריך ושעת הגעה'):state.deliveryMode==='pickup'?T('Choose the pickup date first','בחרו קודם תאריך איסוף'):T('Choose the delivery date first','בחרו קודם תאריך משלוח'));
       return;
@@ -466,7 +466,7 @@ ${n.value}`:line;}
   // as its own page (a history entry, so Back returns): the scene (large) with the questions beside it on
   // desktop and under it on phones. Three steps, fading between them: guests → your coffee bar (what's
   // included, delivery, Book) → upgrades (optional questions, one open at a time).
-  let building = false, bstep = 'guests', openUp = null, shownStep = null;
+  let building = false, bstep = 'guests', prevStep = null, openUp = null, shownStep = null;
   const building_ = () => building || !!history.state?.bbBuild;
   window.plannerStart = function (to = 'guests') {
     building = true; bstep = to; openUp = null;
@@ -474,7 +474,7 @@ ${n.value}`:line;}
     render(); scrollTo({ top: 0, behavior: 'auto' });
   };
   addEventListener('popstate', () => { building = !!history.state?.bbBuild; if (!building) shownStep = null; setTimeout(render, 0); });
-  function goStep(to) { if (to === bstep) return; bstep = to; render(); const panel = document.querySelector('#planner .bbx-panel'); if (panel && panel.getBoundingClientRect().top < 60) panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function goStep(to) { if (to === bstep) return; if (to === 'delivery') prevStep = bstep; openUp = null; bstep = to; render(); const panel = document.querySelector('#planner .bbx-panel'); if (panel && panel.getBoundingClientRect().top < 60) panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
   function introHtml(plan) {
     const from = plan ? Math.min(...tiersOf(plan.product).map((t) => t.price)) : null;
@@ -497,7 +497,6 @@ ${n.value}`:line;}
       chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan.stations) + (plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee has its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `לכל קפה מתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : '')],
     ['lids', T('Domed lids for the cups?', 'מכסים קמורים לכוסות?'), state.lids ? T('Yes', 'כן') : T('No', 'לא'), lidsHtml(plan)],
     ['syrups', T('Extra syrups?', 'עוד סירופים?'), T('One of each included', 'אחד מכל סוג כלול'), syrupHtml(plan)],
-    ['home', T('Coffee to take home?', 'קפה גם לבית?'), (plan.extras || []).filter((x) => !x.jug).length ? T(`${plan.extras.filter((x) => !x.jug).length} added`, `${plan.extras.filter((x) => !x.jug).length} נוספו`) : T('Optional', 'לא חובה'), takeHomeHtml()],
   ].filter((u) => u[3]);
   function stepHtml(plan, tierChips) {
     if (bstep === 'guests' || !plan) return `<div class="bbx-step" data-step="guests">
@@ -505,22 +504,33 @@ ${n.value}`:line;}
       <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div>
       <small class="bb-q-hint">${T('Pick the closest number, or type your own.', 'בחרו את המספר הקרוב, או הקלידו.')}</small>
       ${plan ? `<div class="bbx-actions"><span></span><button type="button" class="bbx-next" data-go="bar">${T('See my coffee bar ›', 'לבר הקפה שלי ›')}</button></div>` : ''}</div>`;
-    const book = `<button type="button" class="pl-order bbx-book" onclick="plannerOrder()">${T('Book', 'להזמנה')} · ₪<span id="bbTotal">${plan.total}</span></button>`;
+    const total = `₪<span id="bbTotal">${plan.total}</span>`;
+    const back = (to, label) => `<button type="button" class="bbx-back" data-go="${to}">‹ ${label}</button>`;
     if (bstep === 'bar') return `<div class="bbx-step" data-step="bar">
       <h2>${T(`Your coffee bar for ${plan.tier.guests} guests`, `בר הקפה שלכם ל-${plan.tier.guests} אורחים`)}</h2>
       <p class="bbx-lead">${T('Everything you need, ready to pour:', 'כל מה שצריך, מוכן למזיגה:')}</p>
       ${includedHtml(plan)}
       ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
-      <button type="button" class="bbx-more" data-go="upgrades"><span>${T('Want to make it yours?', 'רוצים להתאים אישית?')}</span><b>${T('Different coffee, parve milk, more stations and more ›', 'קפה אחר, חלב פרווה, עוד עמדות ועוד ›')}</b></button>
-      ${deliveryHtml()}
-      <div class="bbx-actions"><button type="button" class="bbx-back" data-go="guests">${T('‹ Guests', '‹ אורחים')}</button>${book}</div>
-      <div class="bbx-small"><button type="button" class="bb-share-btn" onclick="plannerShare()">${T('Share your coffee bar', 'שיתוף בר הקפה')}</button></div></div>`;
-    const list = upgrades(plan);
-    return `<div class="bbx-step" data-step="upgrades">
-      <h2>${T('Make it yours', 'התאימו אישית')}</h2>
-      <p class="bbx-lead">${T('All optional. Open any to change it; your bar and price update as you go.', 'הכל לא חובה. פתחו כל אחד כדי לשנות; הבר והמחיר מתעדכנים תוך כדי.')}</p>
+      <button type="button" class="bbx-cta" data-go="delivery"><span>${T('Looks perfect, let’s book it', 'נראה מושלם, בואו נזמין')}</span><b>${total} ›</b></button>
+      <button type="button" class="bbx-options" data-go="upgrades"><span class="bbx-spark" aria-hidden="true">✨</span><span><strong>${T('Show me more options', 'הראו לי עוד אפשרויות')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><i aria-hidden="true">›</i></button>
+      <div class="bbx-actions bbx-only-back">${back('guests', T('Guests', 'אורחים'))}</div></div>`;
+    if (bstep === 'upgrades') {
+      const list = upgrades(plan);
+      return `<div class="bbx-step" data-step="upgrades">
+      <h2>${T('More options', 'עוד אפשרויות')}</h2>
+      <p class="bbx-lead">${T('Tap any to change it. Your bar and price update as you go.', 'הקישו על כל אחד כדי לשנות. הבר והמחיר מתעדכנים תוך כדי.')}</p>
       <div class="bbx-ups">${list.map(([key, q, now, body]) => `<div class="bbx-up${openUp === key ? ' open' : ''}"><button type="button" class="bbx-up-head" data-up="${key}" aria-expanded="${openUp === key}"><span>${q}</span><small>${esc(now)}</small><i aria-hidden="true">${openUp === key ? '−' : '+'}</i></button>${openUp === key ? `<div class="bbx-up-body">${body}</div>` : ''}</div>`).join('')}</div>
-      <div class="bbx-actions"><button type="button" class="bbx-back" data-go="bar">${T('‹ My bar', '‹ הבר שלי')}</button>${book}</div></div>`;
+      <button type="button" class="bbx-cta" data-go="delivery"><span>${T('Done, now delivery', 'סיימתי, למשלוח')}</span><b>${total} ›</b></button>
+      <div class="bbx-actions bbx-only-back">${back('bar', T('My bar', 'הבר שלי'))}</div></div>`;
+    }
+    // Delivery, then one gentle "anything else?" (coffee for home), then Book.
+    const home = takeHomeHtml(), homeCount = (plan.extras || []).filter((x) => !x.jug).length;
+    return `<div class="bbx-step" data-step="delivery">
+      ${deliveryHtml()}
+      ${home ? `<div class="bbx-extra"><p>${T('Anything else you’d like to add?', 'רוצים להוסיף עוד משהו?')}</p>
+        ${openUp === 'home' ? `<div class="bbx-home">${home}</div>` : `<button type="button" class="bbx-add" data-up="home">＋ ${homeCount ? T(`Coffee to take home (${homeCount} added)`, `קפה לבית (${homeCount} נוספו)`) : T('Add coffee to take home', 'הוסיפו קפה לבית')}</button>`}</div>` : ''}
+      <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
+      <div class="bbx-actions bbx-only-back">${back(prevStep === 'upgrades' ? 'upgrades' : 'bar', prevStep === 'upgrades' ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}<button type="button" class="bbx-link" onclick="plannerShare()">${T('Share this bar', 'שיתוף הבר')}</button></div></div>`;
   }
 
   function render() {
@@ -564,7 +574,7 @@ ${n.value}`:line;}
     const plan = suggestion(); if (!plan) return '';
     const milk = state.milk === 'dairy' ? 'dairy milk' : plan.milk.map((m) => `${m.liters}L ${m.addon?.name || m.key}`).join(', ') || state.milk;
     const del = state.deliveryMode === 'event' ? `delivered to the event${state.deliveryDate ? ` on ${state.deliveryDate}${state.deliveryTime ? ' at ' + state.deliveryTime : ''}` : ''}` : state.deliveryMode === 'pickup' ? `pickup${state.deliveryDate ? ' on ' + state.deliveryDate : ''} (free)` : `delivered before the event${state.deliveryDate ? ' on ' + state.deliveryDate : ''}`;
-    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included, delivery, Book)' : `on the optional upgrades${openUp ? ` (open: ${openUp})` : ''}`;
+    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included), choosing between booking it and seeing more options' : bstep === 'delivery' ? 'choosing delivery, then booking (with an optional take-home coffee add-on)' : `on the extra options${openUp ? ` (open: ${openUp})` : ''}`;
     return [`Guests: ${state.guests} (package tier ${plan.tier.guests})`, `Coffee: ${plan.jugs} × 5L jerry cans (${plan.classic} Classic${Object.entries(plan.mix).map(([k, n]) => `, ${n} ${k}`).join('')})`,
       `Milk: ${milk} (${plan.milkLiters}L)`, `Serving stations: ${plan.stations}`, `Domed lids: ${state.lids ? 'yes' : 'no'}`, `Syrups: caramel ${plan.syrupCounts.caramel}, vanilla ${plan.syrupCounts.vanilla}, sugar ${plan.syrupCounts.sugar} (one of each included)`,
       `Delivery: ${del}`, `Total so far: ₪${plan.total}`, `The customer is ${where}.`].join('\n');
