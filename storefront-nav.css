@@ -547,13 +547,18 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .subm-cancel { background:none; border:0; color:#9a3a2a; font-size:.8rem; text-decoration:underline; cursor:pointer; margin-inline-start:auto; }
 .subm-status { font-size:.8rem; color:#2c6e49; margin-top:8px; }
 
-/* Gremier's button colour: the warm amber-to-black of the opening logo graphic, with a soft shift on hover. */
-:root { --gremier-grad: linear-gradient(120deg, #b9742f 0%, #7c4621 28%, #2b1d14 62%, #0f0c0a 100%); }
+/* Gremier's button colour: mostly black, with a soft warm glow at one edge, like the light on the opening
+   logo graphic's paper. On hover the glow grows a little. */
+:root {
+  --gremier-grad: radial-gradient(130% 160% at 0% 40%, rgba(176,104,44,.55) 0%, rgba(110,62,28,.32) 16%, rgba(40,26,18,0) 42%), linear-gradient(90deg, #1b1410 0%, #0f0c0a 60%, #0c0a09 100%);
+  --gremier-grad-hover: radial-gradient(130% 160% at 0% 40%, rgba(196,120,52,.7) 0%, rgba(120,70,32,.4) 20%, rgba(40,26,18,0) 50%), linear-gradient(90deg, #1d1611 0%, #100d0b 60%, #0c0a09 100%);
+}
+[dir=rtl] { --gremier-grad: radial-gradient(130% 160% at 100% 40%, rgba(176,104,44,.55) 0%, rgba(110,62,28,.32) 16%, rgba(40,26,18,0) 42%), linear-gradient(270deg, #1b1410 0%, #0f0c0a 60%, #0c0a09 100%);
+  --gremier-grad-hover: radial-gradient(130% 160% at 100% 40%, rgba(196,120,52,.7) 0%, rgba(120,70,32,.4) 20%, rgba(40,26,18,0) 50%), linear-gradient(270deg, #1d1611 0%, #100d0b 60%, #0c0a09 100%); }
 .btn-primary, .planner .pl-order, .planner .bbx-start, .planner .bbx-cta, .planner .bbx-next,
 .planner .pl-chips button.on, .bc-bubble, .bc-form button, .shop-bar-route a, .bb-mini-go {
-  background: var(--gremier-grad) !important; background-size: 160% 100% !important; background-position: 0% 0 !important;
-  color: #fff !important; border-color: transparent !important; transition: background-position .5s ease, transform .15s, box-shadow .15s;
+  background: var(--gremier-grad) !important; color: #fff !important; border-color: transparent !important; transition: transform .15s, box-shadow .2s;
 }
 .btn-primary:hover, .planner .pl-order:hover, .planner .bbx-start:hover, .planner .bbx-cta:hover, .planner .bbx-next:hover,
-.bc-bubble:hover, .bc-form button:hover, .shop-bar-route a:hover { background-position: 100% 0 !important; box-shadow: 0 8px 22px rgba(120,70,30,.28); }
+.bc-bubble:hover, .bc-form button:hover, .shop-bar-route a:hover { background: var(--gremier-grad-hover) !important; box-shadow: 0 8px 22px rgba(90,52,24,.25); }
 .btn-primary:disabled, .planner .pl-order:disabled { filter: grayscale(.4) opacity(.7); }
