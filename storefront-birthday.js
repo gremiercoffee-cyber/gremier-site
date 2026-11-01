@@ -1,5 +1,6 @@
 /* Birthdays: an optional day + month at checkout and in My Account, for a 5% code in the customer's
-   birthday month (sent by the daily birthday-codes job). Saved with proof: the login, or the order. */
+   birthday month (sent by the daily birthday-codes job). Saved with proof: the login, the order, or the
+   invite email's link. */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -17,7 +18,7 @@
   }
   const selects = (prefix, b) => `<select class="form-input" id="${prefix}Day" aria-label="${T('Day', 'יום')}"><option value="">${T('Day', 'יום')}</option>${Array.from({ length: 31 }, (_, i) => `<option ${b?.d === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select>
     <select class="form-input" id="${prefix}Month" aria-label="${T('Month', 'חודש')}"><option value="">${T('Month', 'חודש')}</option>${(he() ? MONTHS_HE : MONTHS_EN).map((m, i) => `<option value="${i + 1}" ${b?.m === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select>`;
-  const read = (prefix) => { const d = Number($(prefix + 'Day')?.value), m = Number($(prefix + 'Month')?.value); return d && m ? { d, m } : null; };
+  const read = (prefix) => { const d = Number($(prefix + 'Day')?.value) || null, m = Number($(prefix + 'Month')?.value); return m ? { d, m } : null; };   // the day is optional
 
   // Checkout: under the email, optional.
   function placeCheckout() {
@@ -50,13 +51,53 @@
       <div class="bday-selects">${selects('acBday', b)}<button type="button" class="btn btn-outline btn-sm" id="acBdaySave">${T('Save', 'שמירה')}</button></div><span class="bday-status" id="acBdayStatus" role="status"></span>`;
     $('acBdaySave').onclick = async () => {
       const v = read('acBday');
-      if (!v) { $('acBdayStatus').textContent = T('Choose a day and month.', 'בחרו יום וחודש.'); return; }
+      if (!v) { $('acBdayStatus').textContent = T('Choose your birthday month.', 'בחרו את חודש יום ההולדת.'); return; }
       const r = await engage({ action: 'birthday_save', month: v.m, day: v.d, lang: he() ? 'he' : 'en' });
       $('acBdayStatus').textContent = r?.ok ? T('Saved ✓', 'נשמר ✓') : T('Couldn’t save. Try again.', 'לא נשמר. נסו שוב.');
       if (r?.ok) put(v);
     };
   }
+  // From the birthday invite email: ?bday=<month>&inv=<invite id>. Save the month straight away,
+  // then say thanks and offer to add the day (optional).
+  async function fromInvite() {
+    const q = new URLSearchParams(location.search), m = Number(q.get('bday')), inv = q.get('inv') || '';
+    if (!(m >= 1 && m <= 12) || !/^[0-9a-f-]{36}$/i.test(inv)) return;
+    const want = q.get('l');
+    ['bday', 'inv', 'l'].forEach((k) => q.delete(k));
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    if ((want === 'he' || want === 'en') && typeof lang !== 'undefined' && lang !== want && typeof window.toggleLang === 'function') window.toggleLang();
+    const r = await engage({ action: 'birthday_save', invite: inv, month: m, keep_day: true, lang: he() ? 'he' : 'en' }).catch(() => null);
+    const month = (he() ? MONTHS_HE : MONTHS_EN)[m - 1];
+    const now = new Date().getMonth() + 1;
+    const wrap = document.createElement('div');
+    wrap.className = 'bday-invite'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = r?.ok
+      ? `<div class="bday-card"><button type="button" class="bday-x" aria-label="${T('Close', 'סגירה')}">×</button>
+          <div class="bday-big">🎁</div><h3>${T('Your gift is set!', 'המתנה שמורה!')}</h3>
+          <p>${m === now ? T('Your birthday is this month! Your 5% code is on its way to your email within a day.', 'יום ההולדת שלכם החודש! קוד ה-5% יגיע אליכם במייל תוך יום.')
+            : T(`We’ll email you 5% off at the start of ${month}, good all month.`, `נשלח לכם 5% הנחה במייל בתחילת ${month}, בתוקף כל החודש.`)}</p>
+          <div class="bday-day"><label>${T('Want to add the day too? (optional)', 'רוצים להוסיף גם את היום? (לא חובה)')}</label>
+            <div class="bday-selects"><select class="form-input" id="invDay"><option value="">${T('Day', 'יום')}</option>${Array.from({ length: [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1] }, (_, i) => `<option ${r.day === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>${month}</span></div>
+            <span class="bday-status" id="invStatus" role="status"></span></div>
+          <button type="button" class="btn btn-primary bday-shop">${T('Browse the shop', 'לחנות')}</button></div>`
+      : `<div class="bday-card"><button type="button" class="bday-x" aria-label="${T('Close', 'סגירה')}">×</button>
+          <div class="bday-big">🎂</div><h3>${T('That link didn’t work', 'הקישור לא עבד')}</h3>
+          <p>${T('You can add your birthday in My Account, or at checkout.', 'אפשר להוסיף את יום ההולדת בחשבון שלי, או בקופה.')}</p>
+          <button type="button" class="btn btn-primary bday-shop">${T('Browse the shop', 'לחנות')}</button></div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('.bday-x')) close(); });
+    wrap.querySelector('.bday-shop').onclick = () => { close(); const s = document.getElementById('shop'); if (s) s.scrollIntoView({ behavior: 'smooth' }); };
+    if (r?.ok) put({ d: r.day || null, m });
+    $('invDay')?.addEventListener('change', async (e) => {
+      const d = Number(e.target.value); if (!d) return;
+      const s = await engage({ action: 'birthday_save', invite: inv, month: m, day: d, lang: he() ? 'he' : 'en' }).catch(() => null);
+      $('invStatus').textContent = s?.ok ? T('Saved ✓', 'נשמר ✓') : T('Couldn’t save. Try again.', 'לא נשמר. נסו שוב.');
+      if (s?.ok) put({ d, m });
+    });
+  }
   function hook() {
+    if (document.readyState === 'complete') setTimeout(fromInvite, 700); else window.addEventListener('load', () => setTimeout(fromInvite, 700));
     const wrap = (fn, after) => { const orig = window[fn]; if (typeof orig === 'function') window[fn] = function () { const r = orig.apply(this, arguments); try { after(...arguments); } catch (_) {} return r; }; };
     wrap('openCheckoutUI', (view) => { if (view === undefined || view === 'form') setTimeout(placeCheckout, 60); });
     wrap('showCheckoutResultUI', (kind) => { if (!kind || kind === 'paid') afterPaid(); });

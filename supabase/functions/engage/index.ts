@@ -6,6 +6,7 @@
 //   { action: "track", sid, kind }               → anonymous funnel step (cart_add | checkout_open | pay_click)
 //   { action: "push_subscribe", subscription, lang, order_id? } → shop-app notifications on this device
 //   { action: "push_unsubscribe", endpoint }     → turn them off
+//   { action: "birthday_save" | "birthday_get", month, day?, order_id? | invite? } → the birthday-month gift
 // Deploy with --no-verify-jwt.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensureReferralCode, logReferralEvent, notifyOwner, REFERRAL_AMOUNT, referralByCode, signToken, SITE } from "../_shared/engage.ts";
@@ -165,19 +166,29 @@ Deno.serve(async (req) => {
           const { data: o } = await sb.from("orders").select("customer_email, created_at").eq("id", body.order_id).maybeSingle();
           if (o?.customer_email && Date.now() - new Date(o.created_at).getTime() < 864e5) email = String(o.customer_email).toLowerCase();
         }
+        // Or the link in the birthday invite email (its own random id, so no email in the link).
+        if (!email && isUuid(body.invite)) {
+          const { data: inv } = await sb.from("birthday_invites").select("email").eq("id", body.invite).maybeSingle();
+          if (inv?.email) email = String(inv.email).toLowerCase();
+        }
         if (!email) return json({ error: "not_allowed" }, 403);
         if (body.action === "birthday_get") {
           const { data } = await sb.from("customer_birthdays").select("month, day").eq("email", email).maybeSingle();
           return json({ birthday: data || null });
         }
-        const month = Number(body.month), day = Number(body.day);
+        // The month is what matters (the gift comes for the whole month); the day is optional.
+        const month = Number(body.month), day = body.day == null || body.day === "" ? null : Number(body.day);
         const maxDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-        if (!Number.isInteger(month) || !maxDay || !Number.isInteger(day) || day < 1 || day > maxDay) return json({ error: "bad_date" }, 400);
+        if (!Number.isInteger(month) || !maxDay || (day !== null && (!Number.isInteger(day) || day < 1 || day > maxDay))) return json({ error: "bad_date" }, 400);
+        if (body.action === "birthday_save" && day === null && body.keep_day) {
+          const { data: cur } = await sb.from("customer_birthdays").select("month, day").eq("email", email).maybeSingle();
+          if (cur?.month === month && cur.day) return json({ ok: true, month, day: cur.day });
+        }
         const row: Record<string, unknown> = { email, month, day, lang: body.lang === "en" ? "en" : "he", updated_at: new Date().toISOString() };
         if (userId) row.user_id = userId;
         const { error } = await sb.from("customer_birthdays").upsert(row, { onConflict: "email" });
         if (error) { console.error("birthday_save:", error.message); return json({ error: "save_failed" }, 500); }
-        return json({ ok: true });
+        return json({ ok: true, month, day });
       }
 
       case "push_unsubscribe": {

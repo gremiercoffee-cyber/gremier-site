@@ -5,7 +5,7 @@ const LOGO = Deno.env.get("GIFT_CARD_LOGO_URL") || `${SITE}/logo.png`;
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 const photo = (url: string, w = 1040) => (url.includes("/upload/") ? url.replace("/upload/", `/upload/f_auto,q_auto,w_${w}/`) : url);
 
-export type CodeCard = { label: string; big: string; codeLabel: string; code: string; note?: string };
+export type CodeCard = { label: string; big: string; codeLabel: string; code?: string; note?: string };   // no code: just the label + note
 export type DesignedEmail = {
   he: boolean;
   preheader: string;
@@ -35,7 +35,7 @@ export function designedEmailHtml(o: DesignedEmail): string {
         <tr><td style="padding:0 16px 16px">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4efe8;border-radius:12px"><tr><td style="padding:12px 14px;text-align:center">
             <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8a7c6e;margin-bottom:4px">${esc(o.card.codeLabel)}</div>
-            <div dir="ltr" style="font-family:'Courier New',Courier,monospace;font-size:22px;letter-spacing:3px;font-weight:bold;color:#1a1a1a">${esc(o.card.code)}</div>
+            ${o.card.code ? `<div dir="ltr" style="font-family:'Courier New',Courier,monospace;font-size:22px;letter-spacing:3px;font-weight:bold;color:#1a1a1a">${esc(o.card.code)}</div>` : ""}
             ${o.card.note ? `<div style="font-size:12px;color:#8a7c6e;margin-top:6px">${esc(o.card.note)}</div>` : ""}
           </td></tr></table></td></tr>
       </table></td></tr>` : "";

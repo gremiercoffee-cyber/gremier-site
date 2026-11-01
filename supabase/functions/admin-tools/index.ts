@@ -457,6 +457,102 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
   return { week, sent: sent.length, skipped };
 }
 
+// ── "Get a birthday gift" invite (one time, to existing customers) ──
+// Everyone who has paid for an order and hasn't told us their birthday: tap your month in the email
+// and you get 5% off all through it. Each person gets it once (birthday_invites); same opt-outs as promos.
+const BDAY_MONTHS = { he: ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"], en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] };
+
+function birthdayInviteEmail(name: string, he: boolean, inviteId: string, optoutUrl: string) {
+  const first = String(name || "").trim().split(/\s+/)[0] || "";
+  const link = (m: number) => `${SITE}/?bday=${m}&inv=${inviteId}&l=${he ? "he" : "en"}&utm_source=birthday_invite`;
+  const subject = he ? "🎁 מתנה ליום ההולדת שלכם, מגרמיר" : "🎁 A birthday gift from Gremier";
+  const lead = he
+    ? `היי${first ? " " + first : ""}! נשמח לחגוג איתכם. ספרו לנו באיזה חודש יום ההולדת שלכם, ונשלח לכם מתנה: 5% הנחה על ההזמנה, כל החודש.`
+    : `Hi${first ? " " + first : ""}! We'd love to celebrate with you. Tell us which month your birthday is in, and we'll send you a gift: 5% off your order, all month long.`;
+  const pick = he ? "מתי יום ההולדת? לחצו על החודש:" : "When's your birthday? Tap your month:";
+  const easy = he ? "לחיצה אחת וזהו. נשתמש בזה רק כדי לשלוח לכם את המתנה." : "One tap and you're done. We only use it to send you your gift.";
+  const stop = he ? "להסרה מרשימת הדיוור" : "Unsubscribe";
+  const sign = he ? "באהבה, גרמיר קפה" : "With love, Gremier Coffee";
+  const names = he ? BDAY_MONTHS.he : BDAY_MONTHS.en;
+  const text = `${lead}\n\n${pick}\n${names.map((n, i) => `${n}: ${link(i + 1)}`).join("\n")}\n\n${easy}\n\n${sign}\n\n—\n${stop}: ${optoutUrl}`;
+  // 12 month buttons, 3 per row.
+  const cell = (i: number) => `<td width="33%" style="padding:4px"><a href="${link(i + 1)}" style="display:block;text-align:center;background:#ffffff;border:1.5px solid #1a1a1a;border-radius:999px;padding:11px 4px;font-size:15px;font-weight:bold;color:#1a1a1a;text-decoration:none">${names[i]}</a></td>`;
+  const rows = [0, 1, 2, 3].map((r) => `<tr>${[0, 1, 2].map((c) => cell(r * 3 + c)).join("")}</tr>`).join("");
+  const grid = `<tr><td style="padding:0 0 18px">
+      <div style="text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:bold;padding:0 0 10px">${pick}</div>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="${he ? "rtl" : "ltr"}">${rows}</table></td></tr>`;
+  const html = designedEmailHtml({ he, preheader: he ? "ספרו לנו באיזה חודש, ותקבלו 5% הנחה כל החודש" : "Tell us your birthday month and get 5% off all month",
+    hello: he ? "מתנה ליום ההולדת, עלינו 🎁" : "A birthday gift, on us 🎁", lead,
+    card: { label: he ? "מתנת יום הולדת" : "Your birthday gift", big: he ? "5% הנחה" : "5% off", codeLabel: he ? "על כל הזמנה בחודש יום ההולדת" : "Your order, all through your birthday month", note: he ? "הקוד יגיע אליכם במייל כשהחודש מתחיל" : "We'll email you the code when your month begins" },
+    bodyBlocks: [grid], small: [easy, stop], smallLinks: ["", optoutUrl], sign });
+  return { subject, text, html };
+}
+
+async function birthdayInvite(sb: Sb, body: Record<string, unknown>) {
+  const testTo = body.send_test_to ? String(body.send_test_to).trim().toLowerCase() : "";
+  const dryRun = body.dry_run === true || !!testTo;
+  const own = (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase();
+  const skipped: Record<string, number> = {};
+  const skip = (why: string) => { skipped[why] = (skipped[why] || 0) + 1; };
+  // Latest paid order per email (name + language).
+  const { data: orders } = await sb.from("orders").select("customer_email, customer_name, delivery_address, delivery_info, items, created_at")
+    .eq("payment_status", "paid").not("customer_email", "is", null).order("created_at", { ascending: false }).limit(5000);
+  const people = new Map<string, { email: string; name: string; he: boolean }>();
+  for (const o of orders || []) {
+    const email = String(o.customer_email || "").trim().toLowerCase();
+    if (!email.includes("@") || people.has(email)) continue;
+    if (/^test\b/i.test(o.customer_name || "") || (o.items || []).some((i: any) => /^test$/i.test(i.name_en || ""))) continue;
+    const name = String(o.customer_name || "").replace(/\s+/g, " ").trim();
+    // Schools and organizations don't have birthdays; "Gremier" is us.
+    if (/seminar|michlalah|college|school|yeshiva|ltd|בע"?מ|^gremier$/i.test(name)) { skip("not_a_person"); people.set(email, { email: "", name: "", he: false }); continue; }
+    people.set(email, { email, name: /payment link customer/i.test(name) ? "" : name, he: orderIsHe(o) });
+  }
+  const [{ data: bdays }, { data: optouts }, { data: invited }] = await Promise.all([
+    sb.from("customer_birthdays").select("email"), sb.from("cart_reminder_optouts").select("email"), sb.from("birthday_invites").select("email, sent_at")]);
+  const has = new Set((bdays || []).map((r: any) => String(r.email).toLowerCase()));
+  const out = new Set((optouts || []).map((r: any) => String(r.email).toLowerCase()));
+  const done = new Set((invited || []).filter((r: any) => r.sent_at).map((r: any) => String(r.email).toLowerCase()));
+  const recipients = [...people.values()].filter((p) => {
+    if (!p.email) return false;
+    if (p.email === own || /^gremiercoffee\+/.test(p.email)) { skip("own_address"); return false; }
+    if (has.has(p.email)) { skip("birthday_saved"); return false; }
+    if (out.has(p.email)) { skip("opted_out"); return false; }
+    if (done.has(p.email)) { skip("already_invited"); return false; }
+    return true;
+  });
+  const invite = async (email: string, he: boolean) => {
+    const { data } = await sb.from("birthday_invites").upsert({ email, lang: he ? "he" : "en" }, { onConflict: "email" }).select("id").single();
+    return data?.id as string;
+  };
+  if (dryRun) {
+    const res: Record<string, unknown> = { would_send: recipients.length, hebrew: recipients.filter((r) => r.he).length, recipients: recipients.map((r) => `${r.he ? "he" : "en"} ${r.name} ${r.email.replace(/^(.).*@/, "$1…@")}`), skipped };
+    if (testTo) {
+      const id = await invite(testTo, true);
+      for (const [i, he] of [true, false].entries()) {
+        const mail = birthdayInviteEmail(he ? "יוני" : "Yoni", he, id, await optoutUrlFor(testTo));
+        await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: testTo, customerSubject: `[Test ${i + 1}] ${mail.subject}`, customerText: mail.text, customerHtml: mail.html });
+      }
+      res.test_sent_to = testTo;
+    }
+    return res;
+  }
+  let sent = 0;
+  for (const r of recipients) {
+    const id = await invite(r.email, r.he);
+    if (!id) { skip("invite_failed"); continue; }
+    // Claim first, so a second run can't send twice.
+    const { data: claimed } = await sb.from("birthday_invites").update({ sent_at: new Date().toISOString() }).eq("id", id).is("sent_at", null).select("id");
+    if (!claimed?.length) { skip("already_invited"); continue; }
+    const mail = birthdayInviteEmail(r.name, r.he, id, await optoutUrlFor(r.email));
+    const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: r.email, customerName: r.name, customerSubject: mail.subject, customerText: mail.text, customerHtml: mail.html });
+    if (res.ok) sent++; else { skip("email_failed"); await sb.from("birthday_invites").update({ sent_at: null }).eq("id", id); }
+    await new Promise((done) => setTimeout(done, 600));   // stay under the email provider's rate limit
+  }
+  await sendOrderEmails({ ownerSubject: `🎁 Birthday-gift invite sent to ${sent}`,
+    ownerText: `The "tell us your birthday month and get a gift" email went to ${sent} ${sent === 1 ? "customer" : "customers"}.${Object.keys(skipped).length ? `\n\nSkipped: ${Object.entries(skipped).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}` });
+  return { sent, skipped };
+}
+
 // ── "How was it?" emails ──
 // 2–7 days after delivery (enough time to taste it), once per order, at most once a month per
 // person (subscribers aren't asked every delivery), daytime only. One link opens a combined rating and comment form.
@@ -726,6 +822,7 @@ Deno.serve(async (req) => {
         return json(await cartReminders(sb, body.dry_run === true));
       }
       case "shabbat_promo_email": return json(await shabbatPromoEmail(sb, body));
+      case "birthday_invite": return json(await birthdayInvite(sb, body));
       case "site_analytics": {
         const period=siteAnalyticsPeriod(body.days);
         const [traffic,funnel]=await Promise.all([siteAnalytics(period),siteShoppingActivity(sb,period)]);

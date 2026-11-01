@@ -525,3 +525,14 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .bday-account { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; background:#fff; border:1px solid var(--border, #e6e4df); border-radius:6px; padding:16px 20px; margin-bottom:22px; }
 .bday-account small { display:block; color:#6b7178; font-size:.8rem; margin-top:2px; }
 .bday-status { flex-basis:100%; font-size:.8rem; color:#2c6e49; }
+.bday-invite { position:fixed; inset:0; z-index:10050; background:rgba(20,16,12,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+.bday-card { position:relative; background:#faf8f5; border-radius:20px; max-width:400px; width:100%; padding:28px 24px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.bday-card h3 { font-family:Georgia,'Times New Roman',serif; font-size:1.5rem; margin:4px 0 8px; }
+.bday-card p { color:#4a4a4a; line-height:1.55; margin:0 0 16px; }
+.bday-big { font-size:2.6rem; line-height:1; }
+.bday-x { position:absolute; top:10px; inset-inline-end:12px; background:none; border:0; font-size:1.6rem; line-height:1; cursor:pointer; color:#6b7178; }
+.bday-day { background:#fff; border:1px solid var(--border, #e6e4df); border-radius:12px; padding:12px 14px; margin-bottom:16px; text-align:start; }
+.bday-day label { display:block; font-size:.85rem; color:#4a4a4a; margin-bottom:8px; }
+.bday-day .bday-selects span { font-weight:600; }
+.bday-day .bday-selects select { flex:0 1 110px; }
+.bday-shop { width:100%; }
