@@ -62,7 +62,7 @@
  }
  // A line chart over time: one 2px line per series, dots on each point, hover/focus a month for its values.
  // Months still to come are left empty (null), so lines stop at today.
- function line({title,labels,series,format=money,note=''}){
+ function line({title,labels,series,format=money,note='',dots=true}){
   const W=640,H=220,L=56,Rm=12,T=12,B=26,pw=W-L-Rm,ph=H-T-B,n=labels.length;
   const vals=series.flatMap(x=>x.values.filter(v=>v!==null&&v!==undefined));
   const max=Math.max(1,...vals),nice=(()=>{const p=10**Math.floor(Math.log10(max)),f=max/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p;})();
@@ -70,7 +70,7 @@
   const path=x=>{let d='',pen=false;x.values.forEach((v,i)=>{if(v===null||v===undefined){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1);pen=true;});return d;};
   const grid=[0,.5,1].map(f=>`<line x1="${L}" x2="${W-Rm}" y1="${Y(nice*f)}" y2="${Y(nice*f)}" class="st-grid"/><text x="${L-8}" y="${Y(nice*f)+4}" text-anchor="end" class="st-ax">${esc(format(nice*f))}</text>`).join('');
   const xl=labels.map((l,i)=>`<text x="${X(i)}" y="${H-8}" text-anchor="middle" class="st-ax">${esc(l.label)}</text>`).join('');
-  const lines=series.map(x=>`<path d="${path(x)}" fill="none" stroke="${x.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${x.dash?' stroke-dasharray="5 4"':''}/>`+x.values.map((v,i)=>v===null||v===undefined?'':`<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="${x.color}" stroke="var(--card)" stroke-width="2"/>`).join('')).join('');
+  const lines=series.map(x=>`<path d="${path(x)}" fill="none" stroke="${x.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${x.dash?' stroke-dasharray="5 4"':''}/>`+x.values.map((v,i)=>v===null||v===undefined||!dots?'':`<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="${x.color}" stroke="var(--card)" stroke-width="2"/>`).join('')).join('');
   const step=n>1?pw/(n-1):pw;
   const hits=labels.map((l,i)=>{const parts=series.filter(x=>x.values[i]!==null&&x.values[i]!==undefined);if(!parts.length)return '';
    const tip=`${l.tip||l.label}: `+parts.map(x=>series.length>1?`${x.name} ${format(x.values[i])}`:format(x.values[i])).join(' · ');
@@ -184,6 +184,15 @@
   </div>
   ${line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
    note:'Stores: what was delivered each month (paid or not); before June 2026, store payments. Website and events: payments, each counted once.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})}
+  ${(()=>{
+   // Running total of every sale since the first year we have, month by month: always going up.
+   // An old-website lump sum (no months) is added in the month its period ended.
+   const first=Math.min(...data.snaps.map(s=>s.report_year),APP_FROM),now=+today().slice(0,4),keys=[],vals=[];let run=0;
+   for(let y=first;y<=now;y++){const m=yearByMonth(y),lumps=(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary);
+    m.forEach((v,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');if(k>today().slice(0,7))return;run+=(v||0)+(y>=APP_FROM?lumps.filter(r=>String(r.date).slice(0,7)===k).reduce((t,r)=>t+r.amount_minor,0):0);keys.push(k);vals.push(run);});}
+   if(keys.length<2)return '';
+   return line({title:`Total sales over time · since ${first}`,dots:keys.length<=18,labels:keys.map(k=>({label:k.endsWith('-01')?k.slice(0,4):'',tip:monthLong(k)})),series:[{name:'Running total',color:C[0],values:vals}],
+    note:`Every sale added up from January ${first}: ${money(run)} so far. Same figures as the charts on this page: FinBot income for earlier years, every sale we know of from ${APP_FROM}.`});})()}
   ${(()=>{const ys=[year-2,year-1,year].filter(y=>y>=APP_FROM||finbotYear(y));if(ys.length<2)return `<section class="st-card"><h3>Year over year</h3><p class="sales-note">Earlier years appear here once their FinBot reports are imported.</p></section>`;
    const total=y=>yearByMonth(y).reduce((s,v)=>s+(v||0),0)+(y>=APP_FROM?oldWebsite(y):0);
    return line({title:'Year over year · income by month',labels:Array.from({length:12},(_,i)=>({label:monthShort('2000-'+String(i+1).padStart(2,'0'))})),series:ys.map((y,j)=>({name:String(y),color:j===ys.length-1?C[0]:j===ys.length-2?C[1]:C[2],values:yearByMonth(y)})),
