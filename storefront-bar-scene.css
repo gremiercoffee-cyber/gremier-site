@@ -3,7 +3,7 @@
 .planner .bb-qs { width:100%; max-width:760px; margin:auto; }
 .planner .bb-tray, body.has-banner .planner .bb-tray { position:relative; top:auto; width:100%; min-width:0; scroll-margin-top:100px; }
 .planner .bs.bs-live { container-type:inline-size; --tt:2.5cqw; --te:1cqw; --tp:10cqw; height:auto; aspect-ratio:var(--scene-ratio,1.68); background:linear-gradient(180deg,#f8f6f2,#eee9df); box-shadow:inset 0 1px 0 #fff; isolation:isolate; }
-.planner .bs-live .bs-wall { background:radial-gradient(ellipse at 45% 20%,#fff8 0,transparent 75%); filter:none; transform:none; }
+.planner .bs-live .bs-wall { background:linear-gradient(#fff1,#fff0),url('/bar/studio/venue-room-v1.webp') center 48%/cover no-repeat; filter:none; transform:none; }
 .planner .bs.bs-live::after { background:none; }
 .planner .bs-live .bs-stage, body.rtl .planner .bs-live .bs-stage { display:block; width:800px; height:352px; left:50%; right:auto; direction:ltr; transform:translateX(-50%) scale(var(--z,1)); transform-origin:50% 100%; transition:transform .4s cubic-bezier(.22,1,.36,1); white-space:normal; bottom:calc(var(--te) + var(--tp) + var(--tt) * .45); }
 .planner .bs-object { position:absolute; transform-origin:0 100%; pointer-events:none; }
