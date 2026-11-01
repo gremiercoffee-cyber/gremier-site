@@ -1,4 +1,4 @@
-/* Home hero "film": eight product stills, each with a slow camera move (pan / push in), crossfading
+/* Home hero "film": an animated brand opening, then eight product stills, each with a slow camera move (pan / push in), crossfading
    into the next. Under the headline, the width of the two discovery cards. A tap opens the shop (or
    coffee bars on the last shot). Reduced motion: no camera moves, just a slow crossfade.
    Not live yet: shown only with ?hero=preview (remembered for the visit) until LIVE is true. */
@@ -18,6 +18,8 @@
   // on the tall bottle shots the drift rises toward the cap, so caps and labels stay in the frame.
   // The image can move (scale − 1) / 2 of its size each way before an edge shows; every move stays inside that.
   const SHOTS = [
+    // The opening: the brand graphic, animated (see INTRO below). No caption.
+    ['00-intro', '', '', 'shop', [1, 0, 0], [1.06, 0, 0]],
     ['01-lineup', 'Five cold brews, one favourite', 'חמישה קולד ברו, אחד אהוב', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['02-classic', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
     ['04-colombia', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
@@ -27,12 +29,28 @@
     ['08-five-liter', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['09-coffee-bar', 'Coffee bars for your event', 'עמדות קפה לאירוע שלכם', 'coffeebars', [1.03, -1.5, -1], [1.1, 4, 3]],
   ];
-  const HOLD = 5600, FADE = 1200;
+  const HOLD = 5600, FADE = 1200, INTRO_HOLD = 7400;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const css = document.createElement('style');
   css.textContent = `
-  .hero-film{position:relative;max-width:900px;margin:4px auto 26px;aspect-ratio:3/2;border-radius:22px;overflow:hidden;background:#ece6dd;cursor:pointer;isolation:isolate}
+  .hero-film{position:relative;max-width:900px;margin:4px auto 26px;aspect-ratio:3/2;border-radius:22px;overflow:hidden;background:#ece6dd;cursor:pointer;isolation:isolate;container-type:size}
+  /* INTRO: the square brand graphic, centred over a blurred copy of itself so the dark paper fills the
+     frame; it reveals top to bottom, a warm glint sweeps across the logo, and the side light breathes. */
+  .hero-film-intro{background:#0f0c0a}
+  .hero-film-intro .hi-bg{filter:blur(22px) brightness(.8);transform:scale(1.2)}
+  .hi-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;will-change:transform}
+  .hi-art{position:relative;width:min(100cqw,100cqh);height:min(100cqw,100cqh);-webkit-mask-image:radial-gradient(closest-side,#000 86%,transparent 100%);mask-image:radial-gradient(closest-side,#000 86%,transparent 100%)}
+  .hi-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;-webkit-mask-image:linear-gradient(#000 40%,transparent 60%);mask-image:linear-gradient(#000 40%,transparent 60%);-webkit-mask-size:100% 300%;mask-size:100% 300%;-webkit-mask-position:0 0;mask-position:0 0}
+  .hi-glint{position:absolute;inset:0;background:linear-gradient(110deg,transparent 36%,rgba(255,222,176,.22) 47%,rgba(255,238,206,.42) 50%,rgba(255,222,176,.22) 53%,transparent 64%);background-size:300% 100%;background-position:120% 0;mix-blend-mode:screen;opacity:0;pointer-events:none}
+  .hi-glow{position:absolute;inset:0;background:radial-gradient(55% 75% at 6% 45%,rgba(255,146,56,.38),transparent 70%);mix-blend-mode:screen;opacity:.35;pointer-events:none}
+  .hero-film-intro.play .hi-art img{animation:hiReveal 2.4s cubic-bezier(.3,.6,.3,1) both}
+  .hero-film-intro.play .hi-glint{animation:hiGlint 2.6s ease-in-out 2.1s both}
+  .hero-film-intro.play .hi-glow{animation:hiGlow 3.6s ease-in-out infinite alternate}
+  @keyframes hiReveal{from{-webkit-mask-position:0 100%;mask-position:0 100%;filter:brightness(.55)}to{-webkit-mask-position:0 0;mask-position:0 0;filter:brightness(1)}}
+  @keyframes hiGlint{0%{background-position:120% 0;opacity:0}20%{opacity:1}80%{opacity:1}100%{background-position:-20% 0;opacity:0}}
+  @keyframes hiGlow{from{opacity:.22}to{opacity:.7}}
+  @media(prefers-reduced-motion:reduce){.hero-film-intro.play .hi-art img,.hero-film-intro.play .hi-glint,.hero-film-intro.play .hi-glow{animation:none}}
   .hero-film-shot{position:absolute;inset:0;opacity:0;transition:opacity ${FADE}ms ease}
   .hero-film-shot.on{opacity:1}
   .hero-film-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform}
@@ -49,7 +67,7 @@
     if (!hero || document.querySelector('.hero-film')) return;
     const film = document.createElement('div');
     film.className = 'hero-film'; film.setAttribute('role', 'region'); film.setAttribute('aria-roledescription', 'carousel');
-    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-900.webp 900w, /hero/${f}.webp 1536w" src="/hero/${f}.webp"></div>`).join('')
+    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><img class="hi-bg" alt="" src="/hero/00-intro-blur.webp"><div class="hi-stage"><div class="hi-art"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:640px) 100vw, 600px" srcset="/hero/00-intro-720.webp 720w, /hero/00-intro.webp 1024w" src="/hero/00-intro.webp"><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-900.webp 900w, /hero/${f}.webp 1536w" src="/hero/${f}.webp"></div>`).join('')
       + `<div class="hero-film-cap" aria-live="polite"></div><div class="hero-film-dots">${SHOTS.map((_, i) => `<button type="button" aria-label="${i + 1}"></button>`).join('')}</div>`;
     hero.insertAdjacentElement('afterend', film);
     const shots = [...film.querySelectorAll('.hero-film-shot')], cap = film.querySelector('.hero-film-cap'), dots = [...film.querySelectorAll('.hero-film-dots button')];
@@ -58,15 +76,17 @@
     function show(n) {
       shots[i].classList.remove('on');
       i = (n + SHOTS.length) % SHOTS.length;
-      const [, en, hebrew, , from, to] = SHOTS[i], img = shots[i].querySelector('img');
+      const [file, en, hebrew, , from, to] = SHOTS[i], intro = file === '00-intro', img = shots[i].querySelector(intro ? '.hi-stage' : 'img');
       // Warm up the next photo so it's ready before its turn.
-      const next = shots[(i + 1) % SHOTS.length].querySelector('img'); if (next.loading === 'lazy') next.loading = 'eager';
+      const next = shots[(i + 1) % SHOTS.length].querySelector('img:not(.hi-bg)'); if (next.loading === 'lazy') next.loading = 'eager';
+      // The opening replays its reveal, glint and glow each time it comes round.
+      if (intro) { shots[i].classList.remove('play'); void shots[i].offsetWidth; shots[i].classList.add('play'); }
       shots[i].classList.add('on');
-      cap.textContent = he() ? hebrew : en;
+      cap.textContent = he() ? hebrew : en; cap.style.opacity = cap.textContent ? '1' : '0';
       dots.forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
-      film.setAttribute('aria-label', he() ? hebrew : en);
-      if (!still && img.animate) { anim = img.animate([{ transform: t(from) }, { transform: t(to) }], { duration: HOLD + FADE * 2, easing: 'ease-in-out', fill: 'both' }); }
-      clearTimeout(timer); timer = setTimeout(() => show(i + 1), HOLD + (still ? 1500 : 0));
+      film.setAttribute('aria-label', (he() ? hebrew : en) || 'Gremier Coffee Co.');
+      if (!still && img.animate) { anim = img.animate([{ transform: t(from) }, { transform: t(to) }], { duration: (intro ? INTRO_HOLD : HOLD) + FADE * 2, easing: 'ease-in-out', fill: 'both' }); }
+      clearTimeout(timer); timer = setTimeout(() => show(i + 1), (intro ? INTRO_HOLD : HOLD) + (still ? 1500 : 0));
     }
     dots.forEach((d, k) => d.onclick = (e) => { e.stopPropagation(); show(k); });
     film.onclick = () => { if (typeof showPage === 'function') showPage(SHOTS[i][3]); };
@@ -77,7 +97,7 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(timer); timer = null; anim?.pause(); } else if (!timer) show(i); });
     // Captions follow the language switch.
     const toggle = window.toggleLang;
-    if (typeof toggle === 'function') window.toggleLang = function () { const r = toggle.apply(this, arguments); cap.textContent = he() ? SHOTS[i][2] : SHOTS[i][1]; return r; };
+    if (typeof toggle === 'function') window.toggleLang = function () { const r = toggle.apply(this, arguments); cap.textContent = he() ? SHOTS[i][2] : SHOTS[i][1]; cap.style.opacity = cap.textContent ? '1' : '0'; return r; };
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build); else build();
 })();
