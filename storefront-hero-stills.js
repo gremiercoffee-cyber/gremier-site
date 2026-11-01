@@ -1,4 +1,4 @@
-/* Home hero "film": an animated brand opening, then eight product stills, each with a slow camera move (pan / push in), crossfading
+/* Home hero "film": an animated brand opening, then seven product stills, each with a slow camera move (pan / push in), crossfading
    into the next. Under the headline, the width of the two discovery cards. A tap opens the shop (or
    coffee bars on the last shot). Reduced motion: no camera moves, just a slow crossfade.
    Not live yet: shown only with ?hero=preview (remembered for the visit) until LIVE is true. */
@@ -20,7 +20,6 @@
   const SHOTS = [
     // The opening: the brand graphic, animated (see INTRO below). No caption.
     ['00-intro', '', '', 'shop', [1, 0, 0], [1.06, 0, 0]],
-    ['01-lineup', 'Five cold brews, one favourite', 'חמישה קולד ברו, אחד אהוב', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['02-classic', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
     ['04-colombia', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['05-sweetened', 'Sweetened Classic · add milk if you like', 'קלאסיק ממותק · עם חלב, אם בא לכם', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
@@ -35,12 +34,12 @@
   const css = document.createElement('style');
   css.textContent = `
   .hero-film{position:relative;max-width:900px;margin:4px auto 26px;aspect-ratio:3/2;border-radius:22px;overflow:hidden;background:#ece6dd;cursor:pointer;isolation:isolate;container-type:size}
-  /* INTRO: the square brand graphic, centred over a blurred copy of itself so the dark paper fills the
-     frame; it reveals top to bottom, a warm glint sweeps across the logo, and the side light breathes. */
+  /* INTRO: the brand graphic (widened with its own paper on computers; the square original on phones,
+     where it fills the taller frame). It reveals top to bottom, a warm glint sweeps across the logo,
+     and the side light breathes. */
   .hero-film-intro{background:#0f0c0a}
-  .hero-film-intro .hi-bg{filter:blur(22px) brightness(.8);transform:scale(1.2)}
-  .hi-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;will-change:transform}
-  .hi-art{position:relative;width:min(100cqw,100cqh);height:min(100cqw,100cqh);-webkit-mask-image:radial-gradient(closest-side,#000 86%,transparent 100%);mask-image:radial-gradient(closest-side,#000 86%,transparent 100%)}
+  .hi-stage{position:absolute;inset:0;will-change:transform}
+  .hi-art{position:absolute;inset:0}
   .hi-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;-webkit-mask-image:linear-gradient(#000 40%,transparent 60%);mask-image:linear-gradient(#000 40%,transparent 60%);-webkit-mask-size:100% 300%;mask-size:100% 300%;-webkit-mask-position:0 0;mask-position:0 0}
   .hi-glint{position:absolute;inset:0;background:linear-gradient(110deg,transparent 36%,rgba(255,222,176,.22) 47%,rgba(255,238,206,.42) 50%,rgba(255,222,176,.22) 53%,transparent 64%);background-size:300% 100%;background-position:120% 0;mix-blend-mode:screen;opacity:0;pointer-events:none}
   .hi-glow{position:absolute;inset:0;background:radial-gradient(55% 75% at 6% 45%,rgba(255,146,56,.38),transparent 70%);mix-blend-mode:screen;opacity:.35;pointer-events:none}
@@ -67,7 +66,7 @@
     if (!hero || document.querySelector('.hero-film')) return;
     const film = document.createElement('div');
     film.className = 'hero-film'; film.setAttribute('role', 'region'); film.setAttribute('aria-roledescription', 'carousel');
-    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><img class="hi-bg" alt="" src="/hero/00-intro-blur.webp"><div class="hi-stage"><div class="hi-art"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:640px) 100vw, 600px" srcset="/hero/00-intro-720.webp 720w, /hero/00-intro.webp 1024w" src="/hero/00-intro.webp"><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-900.webp 900w, /hero/${f}.webp 1536w" src="/hero/${f}.webp"></div>`).join('')
+    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><div class="hi-stage"><div class="hi-art"><picture><source media="(max-width:640px)" srcset="/hero/00-intro-720.webp 720w, /hero/00-intro.webp 1024w" sizes="100vw"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:948px) 100vw, 900px" srcset="/hero/00-intro-wide-900.webp 900w, /hero/00-intro-wide.webp 1536w" src="/hero/00-intro-wide.webp"></picture><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-900.webp 900w, /hero/${f}.webp 1536w" src="/hero/${f}.webp"></div>`).join('')
       + `<div class="hero-film-cap" aria-live="polite"></div><div class="hero-film-dots">${SHOTS.map((_, i) => `<button type="button" aria-label="${i + 1}"></button>`).join('')}</div>`;
     hero.insertAdjacentElement('afterend', film);
     const shots = [...film.querySelectorAll('.hero-film-shot')], cap = film.querySelector('.hero-film-cap'), dots = [...film.querySelectorAll('.hero-film-dots button')];
@@ -78,7 +77,7 @@
       i = (n + SHOTS.length) % SHOTS.length;
       const [file, en, hebrew, , from, to] = SHOTS[i], intro = file === '00-intro', img = shots[i].querySelector(intro ? '.hi-stage' : 'img');
       // Warm up the next photo so it's ready before its turn.
-      const next = shots[(i + 1) % SHOTS.length].querySelector('img:not(.hi-bg)'); if (next.loading === 'lazy') next.loading = 'eager';
+      const next = shots[(i + 1) % SHOTS.length].querySelector('img'); if (next.loading === 'lazy') next.loading = 'eager';
       // The opening replays its reveal, glint and glow each time it comes round.
       if (intro) { shots[i].classList.remove('play'); void shots[i].offsetWidth; shots[i].classList.add('play'); }
       shots[i].classList.add('on');
