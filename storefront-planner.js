@@ -264,18 +264,18 @@ ${n.value}`:line;}
   let totalFrame;
   function animateTotal(to) {
     cancelAnimationFrame(totalFrame);
-    const el = $('bbTotal');
+    const els = [...document.querySelectorAll('#bbTotal,#bbWorldTotal')], el = els[0];
     const from = lastTotal;
     lastTotal = to;
     if (!el || from === null || from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const t0 = performance.now(), dur = 450;
-    el.parentElement.classList.remove('flash'); void el.offsetWidth; el.parentElement.classList.add('flash');
+    els.forEach(n=>{n.parentElement.classList.remove('flash');void n.offsetWidth;n.parentElement.classList.add('flash');});
     const step = (t) => {
       const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      el.textContent = Math.round(from + (to - from) * e);
+      els.forEach(n=>n.textContent = Math.round(from + (to - from) * e));
       if (k < 1) totalFrame = requestAnimationFrame(step);
     };
-    el.textContent = from;
+    els.forEach(n=>n.textContent=from);
     totalFrame = requestAnimationFrame(step);
   }
 
@@ -476,7 +476,7 @@ ${n.value}`:line;}
     const addon=addonsOf(plan.product).find(a=>Number(a.bar_lids)>0);if(!addon)return '';
     const packs=Math.ceil(plan.tier.guests/Number(addon.bar_lids)),price=packs*Number(addon.price);
     return photoTile('/bar/studio/domed-lids-stack-v1.webp',T('Domed lids','מכסים קמורים'),T(`${packs*Number(addon.bar_lids)} lids · ₪${price}`,`${packs*Number(addon.bar_lids)} מכסים · ₪${price}`),state.lids?1:0,
-      `<button type="button" class="bb-tile-toggle${state.lids?' on':''}" data-lids-toggle>${state.lids?T('Added ✓','נוסף ✓'):T('Add','הוספה')}</button>`,state.lids,state.lids?'✓':'');
+      `<button type="button" class="bb-tile-toggle${state.lids?' on':''}" data-lids-toggle aria-pressed="${state.lids}" aria-label="${state.lids?T('Remove domed lids','הסרת מכסים קמורים'):T('Add domed lids','הוספת מכסים קמורים')}">${state.lids?'✓':T('Add','הוספה')}</button>`,state.lids,state.lids?'✓':'');
   }
   function syrupHtml(plan) {
     if(!plan)return '';
@@ -501,12 +501,13 @@ ${n.value}`:line;}
   let building = false, bstep = 'guests', prevStep = null, openUp = null, shownStep = null;
   const building_ = () => building || !!history.state?.bbBuild;
   window.plannerStart = function (to = 'guests') {
+    window.CoffeeBarWorld?.prepare();
     building = true; bstep = to; openUp = null;
-    history.pushState({ ...(history.state || {}), bbBuild: true }, '', location.href);
-    render(); scrollTo({ top: 0, behavior: 'auto' });
+    if(!history.state?.bbBuild)history.pushState({ ...(history.state || {}), bbBuild: true }, '', location.href);
+    render(); window.CoffeeBarWorld?.scrollTop();
   };
   addEventListener('popstate', () => { building = !!history.state?.bbBuild; if (!building) shownStep = null; setTimeout(render, 0); });
-  function goStep(to) { if (to === bstep) return; if (to === 'delivery') prevStep = bstep; openUp = null; bstep = to; render(); scrollTo({ top: 0, behavior: 'auto' }); }   // each new step starts at the top
+  function goStep(to) { if (to === bstep) return; if (to === 'delivery') prevStep = bstep; openUp = null; bstep = to; render(); window.CoffeeBarWorld?.scrollTop(); }   // each new step starts at the top
 
   function introHtml(plan) {
     const from = plan ? Math.min(...tiersOf(plan.product).map((t) => t.price)) : null;
@@ -584,13 +585,13 @@ ${n.value}`:line;}
     tidyPackages(plan);
     const on = building_();
     page?.classList.toggle('bb-building', on);
-    if (!on) { box.innerHTML = introHtml(plan); mini(null); syncMini(); return; }
+    if (!on) { if(window.CoffeeBarWorld?.isOpen()){window.CoffeeBarWorld.leave(render);return;} box.innerHTML = introHtml(plan); mini(null); syncMini(); return; }
     if (!plan) bstep = 'guests';
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     const sheetWasOpen = !!box.querySelector('.bbx-sheet'), sheetScroll = box.querySelector('.bbx-sheet-body')?.scrollTop || 0;
     box.innerHTML = `
       ${window.CoffeeBarOffers?.builderBanner() || ''}
-      <div class="bbx-top"><button type="button" class="bbx-exit" data-bb-exit>${T('‹ Coffee bars', '‹ ברי קפה')}</button><span>${T('Build your coffee bar', 'בונים בר קפה')}</span></div>
+      <header class="bb-world-top"><button type="button" class="bb-world-close" data-bb-exit aria-label="${T('Close coffee bar builder','סגירת בונה בר הקפה')}">×</button><div class="bb-world-progress" aria-label="${T('Your progress','ההתקדמות שלכם')}">${['guests','bar','options','delivery'].map((key,i)=>`<span class="${(bstep==='guests'?0:bstep==='bar'?1:bstep==='delivery'?3:2)>=i?'on':''}" ${i===(bstep==='guests'?0:bstep==='bar'?1:bstep==='delivery'?3:2)?'aria-current="step"':''} aria-label="${esc([T('Guests','אורחים'),T('Your bar','הבר שלכם'),T('Options','אפשרויות'),T('Delivery','משלוח')][i])}"></span>`).join('')}</div><strong class="bb-world-total" aria-live="polite" aria-atomic="true">${plan?`₪<span id="bbWorldTotal">${plan.total}</span>`:T('Your coffee bar','בר הקפה שלכם')}</strong></header>
       ${sharedShown ? `<div class="bb-shared">${T('✨ This coffee bar was set up for you. Check it, change anything you like, and press <b>Book</b>.', '✨ בר הקפה הזה הוכן בשבילכם. בדקו, שנו מה שתרצו, ולחצו <b>להזמנה</b>.')}</div>` : ''}
       <div class="bbx">
         <aside class="bbx-scene bb-tray">
@@ -603,6 +604,7 @@ ${n.value}`:line;}
     const sheet = box.querySelector('.bbx-sheet');
     if (sheet) { if (sheetWasOpen) sheet.classList.add('stay'); sheet.querySelector('.bbx-sheet-body').scrollTop = sheetScroll; }
     else document.body.classList.remove('bbx-sheet-on');
+    window.CoffeeBarWorld?.sync(true,bstep);
     reconcileScene(previousScene, $('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
@@ -610,7 +612,7 @@ ${n.value}`:line;}
     watch();
     // Each step fades in (no sliding) when it changes.
     const st = box.querySelector('.bbx-step');
-    if (st && shownStep !== bstep) { if (shownStep !== null) st.animate([{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.7,.2,1)' }); shownStep = bstep; }
+    if (st && shownStep !== bstep) { if (shownStep !== null) st.animate([{ opacity: 0 }, { opacity: 1 }], { duration: matchMedia('(prefers-reduced-motion: reduce)').matches?80:320, easing: 'cubic-bezier(.2,.7,.2,1)' }); shownStep = bstep; }
   }
 
   // The current bar in a few lines, for the assistant.
