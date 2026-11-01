@@ -37,7 +37,9 @@
     if (!shelf || shelf.querySelector('.cmp-shop')) return;
     const html = table();
     if (!html) return;
-    shelf.querySelector('.shelf-heading')?.insertAdjacentHTML('afterend', `<details class="cmp-shop"><summary>${T('Compare our coffees', 'השוואת הקפה שלנו')}</summary>${html}</details>`);
+    const tools = shelf.querySelector('.shelf-tools');
+    const pill = `<details class="cmp-shop"><summary class="shelf-pill"><span aria-hidden="true">⚖</span>${T('Compare our coffees', 'השוואת הקפה שלנו')}</summary>${html}</details>`;
+    if (tools) tools.insertAdjacentHTML('afterbegin', pill); else shelf.querySelector('.shelf-heading')?.insertAdjacentHTML('afterend', pill);
   }
   // Product window of a liter coffee.
   function placeDrawer() {

@@ -31,3 +31,18 @@
 .discovery-bar-table::before{content:"";position:absolute;top:.8cqw;left:4%;width:92%;height:1.4cqw;background:radial-gradient(ellipse,#20170f50,transparent 70%);pointer-events:none}
 .discovery-bar .discovery-visual .discovery-table-logo{position:absolute;left:50%;top:auto;bottom:1cqw;transform:translateX(-50%);height:7.8cqw;width:auto;object-fit:contain}
 @media(max-width:640px){.discovery-bar .discovery-visual{height:auto;aspect-ratio:1.8;bottom:54px}.discovery-bar .discovery-visual .discovery-bar-products{height:auto}.discovery-bar .discovery-visual .discovery-table-logo{height:7.8cqw;width:auto}}
+/* Shelf extras as small pill buttons under the title; the comparison opens full width below them. */
+.shelf-tools{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 14px}
+.shelf-tools:empty{display:none}
+.shelf-pill{display:inline-flex !important;align-items:center;gap:7px;width:auto !important;margin:0 !important;padding:9px 15px !important;border-radius:999px !important;background:#fff !important;border:1px solid #e6dfd4 !important;box-shadow:0 3px 12px rgba(40,28,16,.09);font:600 13.5px 'DM Sans',sans-serif !important;color:#1a1a1a !important;cursor:pointer;list-style:none;transition:transform .15s,box-shadow .15s}
+.shelf-pill:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(40,28,16,.13)}
+.shelf-pill span{font-size:14px;color:#b9742f}
+.shelf-pill::-webkit-details-marker{display:none}
+.shelf-tools .cmp-shop{margin:0;border:0;background:none;border-radius:0}
+.shelf-tools .cmp-shop > summary::after{content:'▾';float:none;margin-inline-start:2px;color:#9a948c}
+.shelf-tools .cmp-shop[open]{flex-basis:100%;order:2;margin-top:4px}
+.shelf-tools .cmp-shop[open] > summary{margin-bottom:10px !important}
+.shelf-tools .cmp-shop[open] > summary::after{content:'▴'}
+.shelf-dots button{width:6px;height:6px;padding:0;border:0;border-radius:99px;background:#d8d2c8;cursor:pointer;transition:width .2s,background .2s}
+.shelf-dots button.active{width:22px;background:#a8794a}
+.shelf-pill > span, .shelf-pack-link.shelf-pill > span:last-child { width:auto !important; height:auto !important; min-width:0 !important; padding:0 !important; border-radius:0 !important; background:none !important; display:inline !important; box-shadow:none !important; }
