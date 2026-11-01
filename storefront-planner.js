@@ -325,6 +325,7 @@ ${n.value}`:line;}
     if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total))){if(typeof openCheckout==='function')openCheckout();return;}
     if(!chosen&&options.deliveryAtCheckout){try{localStorage.removeItem('gremier_bar_delivery');}catch{}}
     else if(!chosen){
+      if(!document.querySelector('#planner .bb-delivery')){bstep='bar';render();}
       const q=document.querySelector('#planner .bb-delivery');q?.scrollIntoView({behavior:'smooth',block:'center'});q?.classList.add('bb-attention');setTimeout(()=>q?.classList.remove('bb-attention'),1600);
       if(typeof showToast==='function')showToast(state.deliveryMode==='event'?T('Choose the event date and arrival time first','בחרו קודם תאריך ושעת הגעה'):state.deliveryMode==='pickup'?T('Choose the pickup date first','בחרו קודם תאריך איסוף'):T('Choose the delivery date first','בחרו קודם תאריך משלוח'));
       return;
@@ -364,7 +365,7 @@ ${n.value}`:line;}
     state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.milk='dairy';state.milkMix=null;
     state.syrups={caramel:0,vanilla:0,sugar:0};state.extras={};state.lids=false;
     if(typeof showPage==='function')showPage('coffeebars');
-    render();$('planner')?.scrollIntoView({behavior:'smooth',block:'start'});
+    window.plannerStart('bar');
   };
   window.plannerWhatsApp = function () {
     const plan = suggestion();
@@ -461,107 +462,112 @@ ${n.value}`:line;}
     if(hero.dataset.builderIntro!==content){hero.innerHTML=content;hero.dataset.builderIntro=content;}
     hero.classList.add('bb-intro');
   }
+  // The Coffee Bars page shows a short intro and "Start building your coffee bar"; that opens the builder
+  // as its own page (a history entry, so Back returns): the scene (large) with the questions beside it on
+  // desktop and under it on phones. Three steps, fading between them: guests → your coffee bar (what's
+  // included, delivery, Book) → upgrades (optional questions, one open at a time).
+  let building = false, bstep = 'guests', openUp = null, shownStep = null;
+  const building_ = () => building || !!history.state?.bbBuild;
+  window.plannerStart = function (to = 'guests') {
+    building = true; bstep = to; openUp = null;
+    history.pushState({ ...(history.state || {}), bbBuild: true }, '', location.href);
+    render(); scrollTo({ top: 0, behavior: 'auto' });
+  };
+  addEventListener('popstate', () => { building = !!history.state?.bbBuild; if (!building) shownStep = null; setTimeout(render, 0); });
+  function goStep(to) { if (to === bstep) return; bstep = to; render(); const panel = document.querySelector('#planner .bbx-panel'); if (panel && panel.getBoundingClientRect().top < 60) panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+
+  function introHtml(plan) {
+    const from = plan ? Math.min(...tiersOf(plan.product).map((t) => t.price)) : null;
+    return `<div class="bbx-intro">
+      <ul class="bbx-points"><li>${T('Cold brew in 5-litre jerry cans, dispensers, milk, syrups, cups and straws', 'קולד ברו בג׳ריקנים של 5 ליטר, מתקנים, חלב, סירופים, כוסות וקשיות')}</li>
+        <li>${T('Sized for your guest count, ready to pour', 'לפי מספר האורחים, מוכן למזיגה')}</li>
+        <li>${T('Delivered to your event, or free pickup', 'משלוח לאירוע, או איסוף עצמי חינם')}</li></ul>
+      <button type="button" class="bbx-start" data-bb-start>${T('Start building your coffee bar', 'התחילו לבנות את בר הקפה')}</button>
+      ${from ? `<small class="bbx-from">${T(`From ₪${from} · takes about a minute`, `החל מ-₪${from} · לוקח בערך דקה`)}</small>` : ''}
+    </div>`;
+  }
+  function includedHtml(plan) {
+    return `<ul class="bbx-included">${tiles(plan).map((x) => `<li><b>${x.n > 1 ? x.n + '×' : '✓'}</b> ${esc(x.title)}${x.sub ? ` <small>${esc(x.sub)}</small>` : ''}</li>`).join('')}</ul>`;
+  }
+  const upgrades = (plan) => [
+    ['coffee', T('A different coffee?', 'קפה אחר?'), plan.classic === plan.jugs ? T('All Classic', 'הכל קלאסיק') : [plan.classic ? `${plan.classic} Classic` : '', ...FLAVOURS.filter(([k]) => plan.mix[k]).map(([k, , en, hb]) => `${plan.mix[k]} ${T(en, hb)}`)].filter(Boolean).join(', '),
+      `<small class="bb-q-hint bb-q-lead">${T(`You get ${plan.jugs} jerry can${plan.jugs > 1 ? 's' : ''} of coffee (5 litres each). Press + to make a can a different coffee.`, `מקבלים ${plan.jugs} ג׳ריקנים של קפה (5 ליטר כל אחד). לחצו + כדי להחליף ג׳ריקן לקפה אחר.`)}</small>${coffeeHtml(plan)}`],
+    ['milk', T('Parve (non-dairy) milk?', 'חלב פרווה?'), state.milk === 'dairy' ? T('Dairy', 'חלב רגיל') : state.milk === 'parve' ? T('Some parve', 'גם פרווה') : T('All parve', 'הכל פרווה'), milkHtml(plan)],
+    ['points', T('More serving stations?', 'עוד עמדות הגשה?'), T(`${plan.stations} station${plan.stations > 1 ? 's' : ''}`, `${plan.stations} עמדות`),
+      chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan.stations) + (plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee has its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `לכל קפה מתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : '')],
+    ['lids', T('Domed lids for the cups?', 'מכסים קמורים לכוסות?'), state.lids ? T('Yes', 'כן') : T('No', 'לא'), lidsHtml(plan)],
+    ['syrups', T('Extra syrups?', 'עוד סירופים?'), T('One of each included', 'אחד מכל סוג כלול'), syrupHtml(plan)],
+    ['home', T('Coffee to take home?', 'קפה גם לבית?'), (plan.extras || []).filter((x) => !x.jug).length ? T(`${plan.extras.filter((x) => !x.jug).length} added`, `${plan.extras.filter((x) => !x.jug).length} נוספו`) : T('Optional', 'לא חובה'), takeHomeHtml()],
+  ].filter((u) => u[3]);
+  function stepHtml(plan, tierChips) {
+    if (bstep === 'guests' || !plan) return `<div class="bbx-step" data-step="guests">
+      <h2>${T('How many guests do you have?', 'כמה אורחים יהיו?')}</h2>
+      <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div>
+      <small class="bb-q-hint">${T('Pick the closest number, or type your own.', 'בחרו את המספר הקרוב, או הקלידו.')}</small>
+      ${plan ? `<div class="bbx-actions"><span></span><button type="button" class="bbx-next" data-go="bar">${T('See my coffee bar ›', 'לבר הקפה שלי ›')}</button></div>` : ''}</div>`;
+    const book = `<button type="button" class="pl-order bbx-book" onclick="plannerOrder()">${T('Book', 'להזמנה')} · ₪<span id="bbTotal">${plan.total}</span></button>`;
+    if (bstep === 'bar') return `<div class="bbx-step" data-step="bar">
+      <h2>${T(`Your coffee bar for ${plan.tier.guests} guests`, `בר הקפה שלכם ל-${plan.tier.guests} אורחים`)}</h2>
+      <p class="bbx-lead">${T('Everything you need, ready to pour:', 'כל מה שצריך, מוכן למזיגה:')}</p>
+      ${includedHtml(plan)}
+      ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
+      <button type="button" class="bbx-more" data-go="upgrades"><span>${T('Want to make it yours?', 'רוצים להתאים אישית?')}</span><b>${T('Different coffee, parve milk, more stations and more ›', 'קפה אחר, חלב פרווה, עוד עמדות ועוד ›')}</b></button>
+      ${deliveryHtml()}
+      <div class="bbx-actions"><button type="button" class="bbx-back" data-go="guests">${T('‹ Guests', '‹ אורחים')}</button>${book}</div>
+      <div class="bbx-small"><button type="button" class="bb-share-btn" onclick="plannerShare()">${T('Share your coffee bar', 'שיתוף בר הקפה')}</button></div></div>`;
+    const list = upgrades(plan);
+    return `<div class="bbx-step" data-step="upgrades">
+      <h2>${T('Make it yours', 'התאימו אישית')}</h2>
+      <p class="bbx-lead">${T('All optional. Open any to change it; your bar and price update as you go.', 'הכל לא חובה. פתחו כל אחד כדי לשנות; הבר והמחיר מתעדכנים תוך כדי.')}</p>
+      <div class="bbx-ups">${list.map(([key, q, now, body]) => `<div class="bbx-up${openUp === key ? ' open' : ''}"><button type="button" class="bbx-up-head" data-up="${key}" aria-expanded="${openUp === key}"><span>${q}</span><small>${esc(now)}</small><i aria-hidden="true">${openUp === key ? '−' : '+'}</i></button>${openUp === key ? `<div class="bbx-up-body">${body}</div>` : ''}</div>`).join('')}</div>
+      <div class="bbx-actions"><button type="button" class="bbx-back" data-go="bar">${T('‹ My bar', '‹ הבר שלי')}</button>${book}</div></div>`;
+  }
+
   function render() {
     const box = $('planner');
     if (!box) return;
-    if(shared&&all().length){Object.assign(state,shared);shared=null;sharedShown=true;}
-    const previousScene=$('bbScene');
+    if (shared && all().length) { Object.assign(state, shared); shared = null; sharedShown = true; building = true; bstep = 'bar'; }
+    const previousScene = $('bbScene');
     const plan = suggestion();
-    // The page shows once the builder can draw (until then its older content stays hidden, so it
-    // never flashes); with products loaded but no bar product, it shows as it is.
-    $('coffeebarsPage')?.classList.toggle('bb-ready', !!plan || all().length > 0);
+    const page = $('coffeebarsPage');
+    page?.classList.toggle('bb-ready', !!plan || all().length > 0);
     renderHero(plan);
+    tidyPackages(plan);
+    const on = building_();
+    page?.classList.toggle('bb-building', on);
+    if (!on) { box.innerHTML = introHtml(plan); mini(null); syncMini(); return; }
+    if (!plan) bstep = 'guests';
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     box.innerHTML = `
-      ${window.CoffeeBarOffers?.builderBanner()||''}
-      ${sharedShown?`<div class="bb-shared">${T('✨ This coffee bar was set up for you. Check the details below, change anything you like, and press <b>Book</b> when it looks right.','✨ בר הקפה הזה הוכן במיוחד בשבילכם. בדקו את הפרטים, שנו מה שתרצו, ולחצו <b>להזמנה</b> כשהכל נראה טוב.')}</div>`:''}
-      <div class="bb-grid">
-          <div class="pl-q bb-guest-start"><h2>${T('How many guests are you expecting?', 'כמה אורחים צפויים להגיע?')}</h2>
-            <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div></div>
-        <aside class="bb-tray">
-          <div class="bb-tray-title">${T('Your bar', 'הבר שלכם')}</div>
+      ${window.CoffeeBarOffers?.builderBanner() || ''}
+      <div class="bbx-top"><button type="button" class="bbx-exit" data-bb-exit>${T('‹ Coffee bars', '‹ ברי קפה')}</button><span>${T('Build your coffee bar', 'בונים בר קפה')}</span></div>
+      ${sharedShown ? `<div class="bb-shared">${T('✨ This coffee bar was set up for you. Check it, change anything you like, and press <b>Book</b>.', '✨ בר הקפה הזה הוכן בשבילכם. בדקו, שנו מה שתרצו, ולחצו <b>להזמנה</b>.')}</div>` : ''}
+      <div class="bbx">
+        <aside class="bbx-scene bb-tray">
           ${plan ? sceneHtml(plan) : ''}
-          ${plan ? `<div class="bb-sum">
-            <div class="bb-sum-name">${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</div>
-            ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
-            <button type="button" class="pl-order" onclick="plannerOrder()">${T('Book', 'להזמנה')} · ₪<span id="bbTotal">${plan.total}</span></button>
-            <button type="button" class="bb-share-btn" onclick="plannerShare()">${T('Share your coffee bar', 'שיתוף בר הקפה')}</button>
-            <button type="button" class="bb-wa" onclick="plannerWhatsApp()">${T('Questions? Message us', 'שאלות? כתבו לנו')}</button>
-          </div>` : ''}
+          ${plan ? `<div class="bbx-price"><span>${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>` : ''}
         </aside>
-        <h2 class="bb-build-title">${T('Now let’s build your coffee bar','עכשיו בואו נבנה את בר הקפה שלכם')}</h2>
-        <div class="bb-qs">
-          <div class="pl-q"><h2>${T('Which coffee would you like?', 'איזה קפה תרצו לבחור?')} <small class="bb-q-note">${plan ? T(`${plan.jugs} × 5L jugs`, `${plan.jugs} ג'ריקנים של 5 ל׳`) : ''}</small></h2>${plan?`<small class="bb-q-hint bb-q-lead">${T(`For ${plan.tier.guests} guests you get ${plan.jugs} jerry can${plan.jugs>1?'s':''} of coffee (5 litres each), Classic included. To make a can a different coffee, press + next to it.`,`ל-${plan.tier.guests} אורחים מקבלים ${plan.jugs} ג׳ריקנים של קפה (5 ליטר כל אחד), קלאסיק כלול. כדי להחליף ג׳ריקן לקפה אחר, לחצו + ליד הקפה.`)}</small>`:''}${coffeeHtml(plan)}</div>
-          <div class="pl-q"><h2>${T('Which milk would you like?', 'איזה חלב תרצו לבחור?')}</h2>${milkHtml(plan)}</div>
-          <div class="pl-q"><h2>${T('How many serving stations would you like?', 'כמה עמדות הגשה תרצו?')}</h2>${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan?.stations)}${plan && plan.flavours > state.points ? `<small class="bb-q-hint">${T(`Each coffee is served from its own dispenser, so ${plan.flavours} coffees means ${plan.flavours} stations.`, `כל סוג קפה מוגש ממתקן משלו, לכן ${plan.flavours} סוגים = ${plan.flavours} עמדות.`)}</small>` : ''}</div>
-          ${plan?lidsHtml(plan):''}
-          <div class="pl-q"><h2>${T('Would you like any extra syrups?','האם תרצו להוסיף עוד סירופים?')} <small class="bb-q-note">${T('One of each already included','אחד מכל סוג כבר כלול')}</small></h2>${syrupHtml(plan)}</div>
-          ${plan?deliveryHtml():''}
-        </div>
-      </div>
-      ${takeHomeHtml()}
-      ${plan ? `<section class="bb-booking" aria-label="${T('Order your coffee bar','הזמנת בר הקפה שלכם')}">
-        <div><span>${T(`Coffee bar · ${plan.tier.guests} guests`,`בר קפה · ${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>
-        <button type="button" class="pl-order" onclick="plannerOrder()">${T('Book your coffee bar','להזמנת בר הקפה שלכם')}</button>
-        <button type="button" class="bb-share-btn bb-share-low" onclick="plannerShare()">${T('Share your coffee bar','שיתוף בר הקפה')}</button>
-        ${plan.tooBig?`<small>${T('For a bigger event, message us and we’ll plan it together.','לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</small>`:''}
-      </section>` : ''}`;
-    tidyPackages(plan);
-    reconcileScene(previousScene,$('bbScene'));
+        <div class="bbx-panel bb-qs">${stepHtml(plan, tierChips)}</div>
+      </div>`;
+    reconcileScene(previousScene, $('bbScene'));
     if (plan) animateTotal(plan.total);
     layoutScene();
     mini(plan);
     watch();
-    applySteps();
+    // Each step fades in (no sliding) when it changes.
+    const st = box.querySelector('.bbx-step');
+    if (st && shownStep !== bstep) { if (shownStep !== null) st.animate([{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.7,.2,1)' }); shownStep = bstep; }
   }
 
-  // ── One question at a time ──
-  // The scene stays on top; below it one question shows, and moving on slides it out and the next in.
-  // Single-choice questions (guests, stations) move on by themselves; the last step is review & book.
-  let step=0, shownStep=-1, stepDir=1;
-  const AUTO=['guests','points'];
-  function stepNodes(){
-    const box=$('planner');if(!box)return[];
-    const review=[box.querySelector('.bb-take-home'),box.querySelector('.bb-booking')].filter(Boolean);
-    return [box.querySelector('.bb-guest-start'),...box.querySelectorAll('.bb-qs > .pl-q'),review.length?review:null].filter(Boolean).map(n=>Array.isArray(n)?n:[n]);
-  }
-  function applySteps(){
-    const box=$('planner');if(!box)return;
-    const nodes=stepNodes();if(!nodes.length)return;
-    box.classList.add('bb-stepped');
-    if(sharedShown&&shownStep<0)step=nodes.length-1;   // a shared bar opens on its review
-    step=Math.max(0,Math.min(step,nodes.length-1));
-    nodes.forEach((group,k)=>group.forEach(n=>{n.hidden=k!==step;n.classList.add('bb-step');}));
-    const last=step===nodes.length-1;
-    const nav=document.createElement('div');nav.className='bb-stepnav';
-    nav.innerHTML=`<button type="button" class="bb-step-back" data-step="-1" ${step?'':'disabled'}>${T('‹ Back','‹ חזרה')}</button>
-      <span class="bb-step-count">${last?T('Review & book','סיכום והזמנה'):T(`Step ${step+1} of ${nodes.length-1}`,`שלב ${step+1} מתוך ${nodes.length-1}`)}</span>
-      ${last?'<span></span>':`<button type="button" class="bb-step-next" data-step="1">${step===nodes.length-2?T('Review my bar ›','לסיכום ›'):T('Next ›','הבא ›')}</button>`}`;
-    nodes[step][nodes[step].length-1].after(nav);
-    const bar=document.createElement('div');bar.className='bb-step-progress';bar.innerHTML=`<i style="width:${Math.round((step+1)/nodes.length*100)}%"></i>`;
-    nodes[step][0].before(bar);
-    if(step!==shownStep){
-      const dir=shownStep<0?0:stepDir;shownStep=step;
-      if(dir)nodes[step].forEach(n=>n.animate([{opacity:0,transform:`translateX(${dir*48}px)`},{opacity:1,transform:'none'}],{duration:340,easing:'cubic-bezier(.2,.7,.2,1)'}));
-    }
-  }
-  function goStep(d){
-    const nodes=stepNodes();if(!nodes.length)return;
-    const to=Math.max(0,Math.min(nodes.length-1,step+d));if(to===step)return;
-    const out=nodes[step];stepDir=d>0?1:-1;
-    const done=()=>{step=to;render();const q=stepNodes()[step]?.[0];if(q&&q.getBoundingClientRect().top>innerHeight-120)q.scrollIntoView({behavior:'smooth',block:'center'});};
-    if(out[0]?.animate){const a=out[0].animate([{opacity:1,transform:'none'},{opacity:0,transform:`translateX(${-stepDir*48}px)`}],{duration:200,easing:'ease-in'});a.onfinish=done;}else done();
-  }
-  window.plannerGoStep=(n)=>{step=Math.max(0,n);shownStep=-1;render();};
   // The current bar in a few lines, for the assistant.
-  window.plannerSummary=()=>{
-    const plan=suggestion();if(!plan)return '';
-    const milk=state.milk==='dairy'?'dairy milk':plan.milk.map(m=>`${m.liters}L ${m.addon?.name||m.key}`).join(', ')||state.milk;
-    const del=state.deliveryMode==='event'?`delivered to the event${state.deliveryDate?` on ${state.deliveryDate}${state.deliveryTime?' at '+state.deliveryTime:''}`:''}`:state.deliveryMode==='pickup'?`pickup${state.deliveryDate?' on '+state.deliveryDate:''} (free)`:`delivered before the event${state.deliveryDate?' on '+state.deliveryDate:''}`;
-    const q=stepNodes()[step]?.[0]?.querySelector('h2')?.textContent?.trim()||'';
-    return [`Guests: ${state.guests} (package tier ${plan.tier.guests})`,`Coffee: ${plan.jugs} × 5L jerry cans (${plan.classic} Classic${Object.entries(plan.mix).map(([k,n])=>`, ${n} ${k}`).join('')})`,
-      `Milk: ${milk} (${plan.milkLiters}L)`,`Serving stations: ${plan.stations}`,`Domed lids: ${state.lids?'yes':'no'}`,`Syrups: caramel ${plan.syrupCounts.caramel}, vanilla ${plan.syrupCounts.vanilla}, sugar ${plan.syrupCounts.sugar} (one of each included)`,
-      `Delivery: ${del}`,`Total so far: ₪${plan.total}`,q?`The customer is on the question: "${q}"`:''].filter(Boolean).join('\n');
+  window.plannerSummary = () => {
+    const plan = suggestion(); if (!plan) return '';
+    const milk = state.milk === 'dairy' ? 'dairy milk' : plan.milk.map((m) => `${m.liters}L ${m.addon?.name || m.key}`).join(', ') || state.milk;
+    const del = state.deliveryMode === 'event' ? `delivered to the event${state.deliveryDate ? ` on ${state.deliveryDate}${state.deliveryTime ? ' at ' + state.deliveryTime : ''}` : ''}` : state.deliveryMode === 'pickup' ? `pickup${state.deliveryDate ? ' on ' + state.deliveryDate : ''} (free)` : `delivered before the event${state.deliveryDate ? ' on ' + state.deliveryDate : ''}`;
+    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included, delivery, Book)' : `on the optional upgrades${openUp ? ` (open: ${openUp})` : ''}`;
+    return [`Guests: ${state.guests} (package tier ${plan.tier.guests})`, `Coffee: ${plan.jugs} × 5L jerry cans (${plan.classic} Classic${Object.entries(plan.mix).map(([k, n]) => `, ${n} ${k}`).join('')})`,
+      `Milk: ${milk} (${plan.milkLiters}L)`, `Serving stations: ${plan.stations}`, `Domed lids: ${state.lids ? 'yes' : 'no'}`, `Syrups: caramel ${plan.syrupCounts.caramel}, vanilla ${plan.syrupCounts.vanilla}, sugar ${plan.syrupCounts.sugar} (one of each included)`,
+      `Delivery: ${del}`, `Total so far: ₪${plan.total}`, `The customer is ${where}.`].join('\n');
   };
 
   // The builder is the way to order the bar itself; the list below it keeps only the separate pieces.
@@ -598,8 +604,12 @@ ${n.value}`:line;}
   document.addEventListener('click', (e) => {
     const box = $('planner');
     if (!box || !box.contains(e.target)) return;
-    const nav=e.target.closest('[data-step]');
-    if(nav){goStep(Number(nav.dataset.step));return;}
+    if(e.target.closest('[data-bb-start]')){window.plannerStart('guests');return;}
+    if(e.target.closest('[data-bb-exit]')){if(history.state?.bbBuild)history.back();else{building=false;render();}return;}
+    const go=e.target.closest('[data-go]');
+    if(go){goStep(go.dataset.go);return;}
+    const up=e.target.closest('[data-up]');
+    if(up){openUp=openUp===up.dataset.up?null:up.dataset.up;render();return;}
     const milkStep=e.target.closest('[data-milk-step]');
     if(milkStep){adjustMilk(milkStep.dataset.milkKind,Number(milkStep.dataset.milkStep));render();return;}
     const take=e.target.closest('[data-take-home]');
@@ -637,7 +647,7 @@ ${n.value}`:line;}
     const key = b.parentElement.dataset.key, v = b.dataset.v;
     state[key] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v;
     render();
-    if(AUTO.includes(key)){clearTimeout(goStep.t);goStep.t=setTimeout(()=>goStep(1),450);}
+    if(key==='guests'&&bstep==='guests'){clearTimeout(goStep.t);goStep.t=setTimeout(()=>goStep('bar'),450);}
   });
   document.addEventListener('change',(e)=>{
     if(e.target.id==='plDelDate'){state.deliveryDate=e.target.value;render();}
