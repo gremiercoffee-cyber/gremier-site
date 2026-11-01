@@ -780,14 +780,14 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261103-2"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261103-3"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261103-4"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261103-6"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 <link rel="stylesheet" href="/storefront-discovery.css?v=20261028-5"/>
-<script src="/storefront-discovery.js?v=20261102-2"></script>
+<script src="/storefront-discovery.js?v=20261103-1"></script>
 <link rel="stylesheet" href="/storefront-reveal.css?v=20261029-3"/>
 </head>
 <body>
@@ -2561,8 +2561,9 @@ function shopRank(p) {
   const popular = /popular|best/i.test(p.badge_text || '') ? 0 : 1;
   return popular * 10 + (order[shopCategoryOf(p)] || 9);
 }
+// Coffee bar pieces (cups, a dispenser, syrup sets) are a shop shelf; the full bar is built on the Coffee Bars page.
+const isBarPiece = p => shopCategoryOf(p)==='coffeebars' && !/coffee bar/i.test(p.name_en||'');
 function setCategory(cat) {
-  if(cat==='coffeebars'){showPage('coffeebars');return;}
   activeCategory = cat==='subscriptions'?'all':cat;
   const callout = document.getElementById('subCallout');
   if (callout) callout.style.display = 'none';
@@ -2571,11 +2572,11 @@ function setCategory(cat) {
 }
 function renderShop() {
   const filter = document.getElementById('catFilter');
-  const available=products.filter(p=>!isSubscriptionProduct(p)&&p.id!=='9e1abc84-b3b8-40e0-a23c-3bfbeb8602f4'&&shopCategoryOf(p)!=='coffeebars');
+  const available=products.filter(p=>!isSubscriptionProduct(p)&&(p.id!=='9e1abc84-b3b8-40e0-a23c-3bfbeb8602f4'||isBarPiece(p))&&(shopCategoryOf(p)!=='coffeebars'||isBarPiece(p)));
   if (filter) {
     const icons = {all:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"4\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>",bottles:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 3h4v3.5l1.6 2.4c.3.5.4 1 .4 1.6V20a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-9.5c0-.6.1-1.1.4-1.6L10 6.5z\"/><path d=\"M8 13h8\"/></svg>",minis:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"9\" width=\"16\" height=\"11\" rx=\"1.5\"/><path d=\"M8 9V6.5a1.5 1.5 0 0 1 3 0V9M13 9V6.5a1.5 1.5 0 0 1 3 0V9M12 9v11\"/></svg>",bulk:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7h8l3 3v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z\"/><path d=\"M9 7V4h4v3M15 4h3\"/></svg>",syrups:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3.5c3 4 5 6.6 5 9.5a5 5 0 0 1-10 0c0-2.9 2-5.5 5-9.5z\"/></svg>",coffeebars:"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z\"/><path d=\"M16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c0 1 1 1.5 1 2.5M12 3.5c0 1 1 1.5 1 2.5\"/></svg>"};
     filter.innerHTML = categories.map(c => {
-      const n = c.key === 'coffeebars' ? getCoffeeBarProducts().length : c.key === 'all' ? available.length : available.filter(p => shopCategoryOf(p) === c.key).length;
+      const n = c.key === 'coffeebars' ? available.filter(isBarPiece).length : c.key === 'all' ? available.length : available.filter(p => shopCategoryOf(p) === c.key).length;
       return `<button class="filter-btn ${activeCategory===c.key?'active':''}" onclick="setCategory('${c.key}')"><span class="fb-ico" aria-hidden="true">${icons[c.key]||icons.all}</span><span>${trCat(c.key)}</span><span class="fb-n">${n}</span></button>`;
     }).join('');
   }
@@ -5343,7 +5344,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>
-<script src="/storefront-planner.js?v=20261103-6"></script>
+<script src="/storefront-planner.js?v=20261103-8"></script>
 <script src="/storefront-bar-chat.js?v=20261103-2"></script>
 <script src="/storefront-promo.js?v=20261024-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>

@@ -546,3 +546,14 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .subm-pause select { width:auto; padding:6px 8px; }
 .subm-cancel { background:none; border:0; color:#9a3a2a; font-size:.8rem; text-decoration:underline; cursor:pointer; margin-inline-start:auto; }
 .subm-status { font-size:.8rem; color:#2c6e49; margin-top:8px; }
+
+/* Gremier's button colour: the warm amber-to-black of the opening logo graphic, with a soft shift on hover. */
+:root { --gremier-grad: linear-gradient(120deg, #b9742f 0%, #7c4621 28%, #2b1d14 62%, #0f0c0a 100%); }
+.btn-primary, .planner .pl-order, .planner .bbx-start, .planner .bbx-cta, .planner .bbx-next,
+.planner .pl-chips button.on, .bc-bubble, .bc-form button, .shop-bar-route a, .bb-mini-go {
+  background: var(--gremier-grad) !important; background-size: 160% 100% !important; background-position: 0% 0 !important;
+  color: #fff !important; border-color: transparent !important; transition: background-position .5s ease, transform .15s, box-shadow .15s;
+}
+.btn-primary:hover, .planner .pl-order:hover, .planner .bbx-start:hover, .planner .bbx-cta:hover, .planner .bbx-next:hover,
+.bc-bubble:hover, .bc-form button:hover, .shop-bar-route a:hover { background-position: 100% 0 !important; box-shadow: 0 8px 22px rgba(120,70,30,.28); }
+.btn-primary:disabled, .planner .pl-order:disabled { filter: grayscale(.4) opacity(.7); }

@@ -5,7 +5,8 @@
   ['bottles','Liter bottles','בקבוקי ליטר','Your fridge staple','הקפה שתמיד במקרר'],
   ['minis','Mini four-packs','מארזי מיני','Small bottles. Big favourites.','בקבוקים קטנים. טעם גדול.'],
   ['bulk','Wholesale','סיטונאי','More of your favourite','יותר מהקפה האהוב עליכם'],
-  ['syrups','Syrups','סירופים','Make it your own','בדיוק בטעם שלכם']
+  ['syrups','Syrups','סירופים','Make it your own','בדיוק בטעם שלכם'],
+  ['coffeebars','Coffee bar pieces','חלקים לבר קפה','Extra cups, a dispenser or syrups','כוסות נוספות, דיספנסר או סירופים']
  ];
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function groups(list,category,he){

@@ -238,7 +238,13 @@ body.pd-silent #pdDrawer, body.pd-silent #pdBackdrop, body.pd-silent #cartDrawer
 .bb-share-opt span { font-size:13px; color:#6b7178; line-height:1.45; }
 /* Coffee Bars page: intro + start button. The builder: scene and questions side by side (desktop) or
    stacked (phone), one cohesive card; steps fade between each other. */
-.planner .bbx-intro { max-width:620px; margin:-36px auto 30px; position:relative; z-index:2; background:#fff; border-radius:22px; padding:26px 24px 22px; box-shadow:0 10px 34px rgba(30,20,10,.12); text-align:center; box-sizing:border-box; }
+.planner .bbx-intro { max-width:640px; margin:8px auto 40px; position:relative; z-index:2; background:#fff; border-radius:24px; padding:0 0 22px; box-shadow:0 10px 34px rgba(30,20,10,.12); text-align:center; box-sizing:border-box; overflow:hidden; }
+.planner .bbx-banner { display:block; width:100%; aspect-ratio:16/9; object-fit:cover; margin:0 0 20px; background:#ece6dd; }
+.planner .bbx-intro .bbx-points, .planner .bbx-intro .bbx-start, .planner .bbx-intro .bbx-from { margin-inline:24px; width:auto; }
+.planner .bbx-intro .bbx-start { display:block; width:calc(100% - 48px); }
+/* The Coffee Bars page is one hero screen: the intro and the start card (the pieces live in the shop). */
+#coffeebarsPage:not(.bb-building) > *:not(.cbp-hero):not(#planner) { display:none !important; }
+#coffeebarsPage:not(.bb-building) .cbp-hero { padding-bottom:12px; }
 .planner .bbx-points { list-style:none; margin:0 0 18px; padding:0; display:grid; gap:8px; text-align:start; }
 .planner .bbx-points li { position:relative; padding-inline-start:26px; font-size:15px; color:#33302c; line-height:1.5; }
 .planner .bbx-points li::before { content:'✓'; position:absolute; inset-inline-start:0; color:#b47a2c; font-weight:700; }
@@ -291,7 +297,9 @@ body.pd-silent #pdDrawer, body.pd-silent #pdBackdrop, body.pd-silent #cartDrawer
   .planner .bbx-scene.bb-tray { position:relative; top:auto; padding:10px; }
   .planner .bbx-panel.bb-qs { padding:20px 16px; }
   .planner .bbx-step h2 { font-size:19px; }
-  .planner .bbx-intro { margin:-28px 14px 24px; }
+  .planner .bbx-intro { margin:6px 14px 30px; }
+  .planner .bbx-intro .bbx-points, .planner .bbx-intro .bbx-from { margin-inline:18px; }
+  .planner .bbx-intro .bbx-start { width:calc(100% - 36px); margin-inline:18px; }
 }
 @media (max-width:420px) { .planner .bbx-included { grid-template-columns:1fr; } }
 /* The two choices after "your coffee bar": book it (main), or the eye-catching "show me more options" card. */
@@ -317,3 +325,11 @@ body.pd-silent #pdDrawer, body.pd-silent #pdBackdrop, body.pd-silent #cartDrawer
 /* In the builder the card lists what's included, so the scene drops its own list (no repeat). */
 .planner .bbx-scene .bs-legend { display:none; }
 @media (max-width:420px) { .planner .bbx-included { grid-template-columns:1fr 1fr; gap:6px 10px; } .planner .bbx-included li { font-size:13px; } }
+/* Option pages: three dots for where you are, a sub-heading for each part, and the parts' own titles hidden. */
+.planner .bbx-dots { display:flex; gap:6px; margin:0 0 14px; }
+.planner .bbx-dots i { width:26px; height:4px; border-radius:99px; background:#ece6dc; }
+.planner .bbx-dots i.on { background:var(--gremier-grad); }
+.planner .bbx-sub { font:700 16px 'DM Sans',sans-serif; color:#1a1a1a; margin:20px 0 10px; }
+.planner .bbx-step .pl-q { padding:0; border:0; }
+.planner .bbx-step .pl-q:not(.bb-delivery) > h2 { display:none; }
+.planner .bbx-step .bb-jugs { margin-bottom:4px; }
