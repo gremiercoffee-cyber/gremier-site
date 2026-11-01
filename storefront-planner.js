@@ -576,7 +576,7 @@ ${n.value}`:line;}
   function render() {
     const box = $('planner');
     if (!box) return;
-    if (shared && all().length) { Object.assign(state, shared); shared = null; sharedShown = true; building = true; bstep = 'bar'; }
+    if (shared && all().length) { Object.assign(state, shared); shared = null; sharedShown = true; building = true; bstep = 'bar'; if(!history.state?.bbBuild)history.pushState({...history.state,bbBuild:true},'',location.href); }
     const previousScene = $('bbScene');
     const plan = suggestion();
     const page = $('coffeebarsPage');
@@ -585,7 +585,7 @@ ${n.value}`:line;}
     tidyPackages(plan);
     const on = building_();
     page?.classList.toggle('bb-building', on);
-    if (!on) { if(window.CoffeeBarWorld?.isOpen()){window.CoffeeBarWorld.leave(render);return;} box.innerHTML = introHtml(plan); mini(null); syncMini(); return; }
+    if (!on) { pickerOpen=false;document.body.classList.remove('bbx-sheet-on');if(window.CoffeeBarWorld?.isOpen()){window.CoffeeBarWorld.leave(render);return;} box.innerHTML = introHtml(plan); mini(null); syncMini(); return; }
     if (!plan) bstep = 'guests';
     const tierChips = (plan ? tiersOf(plan.product) : []).map((t) => [t.guests, String(t.guests)]);
     const sheetWasOpen = !!box.querySelector('.bbx-sheet'), sheetScroll = box.querySelector('.bbx-sheet-body')?.scrollTop || 0;

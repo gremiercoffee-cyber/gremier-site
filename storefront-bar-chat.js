@@ -84,7 +84,7 @@
         <div class="bc-log" id="bcLog" aria-live="polite"></div><div class="bc-quick" id="bcQuick"></div>
         <form class="bc-form" id="bcForm"><input id="bcInput" autocomplete="off"><button type="submit" id="bcSend"></button></form></div>
         <button type="button" class="bc-bubble" id="bcBubble" aria-expanded="false">💬</button>`;
-      document.body.appendChild(box);
+      ($('bbWorld')||document.body).appendChild(box);
       box.addEventListener('click', (e) => {
         if (e.target.closest('#bcBubble')) setOpen(!open);
         else if (e.target.closest('[data-bc-close]')) setOpen(false);
@@ -105,7 +105,7 @@
     document.body.classList.toggle('on-coffeebars', active);
     const on = active && page.classList.contains('bb-building');
     document.body.classList.toggle('bb-builder-on', on);
-    if (on) mount(); else if (open) setOpen(false);
+    if (on) { mount(); const room=$('bbWorld');if(room&&$('barChat').parentElement!==room)room.append($('barChat')); } else if (open) setOpen(false);
   }
   function hook() {
     const page = $('coffeebarsPage');
