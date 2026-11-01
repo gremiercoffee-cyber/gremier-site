@@ -855,6 +855,7 @@
   <a onclick="showPage('home');closeMobileMenu()" id="mm-home">Home</a>
   <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
   <a onclick="showPage('coffeebars');closeMobileMenu()" id="mm-bars">Coffee Bars</a>
+  <a href="/where-to-buy" onclick="closeMobileMenu()" id="mm-locations">Where to find us</a>
   <a onclick="goToAbout();closeMobileMenu()" id="mm-about">About</a>
 <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Account</a>
 <a onclick="showPage('giftcards');closeMobileMenu()">Gift Cards 🎁</a><a onclick="showPage('giftcards');closeMobileMenu()">Gift Cards</a></div>
@@ -867,6 +868,7 @@
     <li><a onclick="showPage('home')">Home</a></li>
     <li><a onclick="showPage('shop')">Shop</a></li>
     <li><a onclick="showPage('coffeebars')">Coffee Bars</a></li>
+    <li><a href="/where-to-buy" id="nav-locations">Where to find us</a></li>
     <li><a onclick="goToAbout()">About</a></li>
 <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Account</a></li>
 <li><a onclick="showPage('giftcards')">Gift Cards</a></li>  </ul>
@@ -1554,6 +1556,10 @@ function tr(key) { return T[lang][key] || key; }
 function trCat(key) { return T[lang].cats[key] || key; }
 function applyTranslations() {
   document.body.classList.toggle('rtl', lang === 'he');
+  for (const id of ['nav-locations','mm-locations']) {
+    const link = document.getElementById(id);
+    if (link) link.textContent = lang === 'he' ? 'איפה מוצאים אותנו' : 'Where to find us';
+  }
   const langCode = document.getElementById('langCode');
   if (langCode) langCode.textContent = lang === 'en' ? 'EN' : 'HE';
   const map = {
