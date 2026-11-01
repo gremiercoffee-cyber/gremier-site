@@ -34,12 +34,13 @@
   // Shop: above the bottles shelf.
   function placeShop() {
     const shelf = $('shop-shelf-bottles');
-    if (!shelf || shelf.querySelector('.cmp-shop')) return;
+    if (!shelf || shelf.querySelector('.shelf-compare-toggle')) return;
     const html = table();
     if (!html) return;
     const tools = shelf.querySelector('.shelf-tools');
-    const pill = `<details class="cmp-shop"><summary class="shelf-pill"><span aria-hidden="true">⚖</span>${T('Compare our coffees', 'השוואת הקפה שלנו')}</summary>${html}</details>`;
-    if (tools) tools.insertAdjacentHTML('afterbegin', pill); else shelf.querySelector('.shelf-heading')?.insertAdjacentHTML('afterend', pill);
+    if (!tools) return;
+    tools.insertAdjacentHTML('afterbegin', `<button type="button" class="shelf-pill shelf-compare-toggle" aria-expanded="false" aria-controls="shopCoffeeComparison">${T('Compare our coffees', 'השוואת הקפה שלנו')}<span aria-hidden="true">▾</span></button>`);
+    tools.insertAdjacentHTML('afterend', `<div id="shopCoffeeComparison" class="shelf-comparison-panel" hidden>${html}</div>`);
   }
   // Product window of a liter coffee.
   function placeDrawer() {
@@ -50,6 +51,14 @@
     if (html) $('pdDesc')?.insertAdjacentHTML('afterend', `<details class="cmp-drawer"><summary><span aria-hidden="true">⚖</span>${T('Compare our coffees', 'השוואת הקפה שלנו')}</summary>${html}</details>`);
   }
   document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.shelf-compare-toggle');
+    if (toggle) {
+      const panel = $(toggle.getAttribute('aria-controls'));
+      const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(expanded));
+      if (panel) panel.hidden = !expanded;
+      return;
+    }
     const row = e.target.closest('[data-cmp-open]');
     if (!row || typeof openProductDrawer !== 'function') return;
     if (typeof pdCurrentProduct !== 'undefined' && pdCurrentProduct && String(pdCurrentProduct.id) === row.dataset.cmpOpen) return;
