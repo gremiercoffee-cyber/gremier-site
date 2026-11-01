@@ -14,17 +14,18 @@
   if (!LIVE && !preview) return;
 
   // [file, English caption, Hebrew caption, page, move from → to as [scale, x%, y%]]
+  // Each shot drifts on a diagonal with a little zoom, in a different direction from the one before.
   // The image can move (scale − 1) / 2 of its size each way before an edge shows; every move stays inside that.
   const SHOTS = [
-    ['01-lineup', 'Five cold brews, one favourite', 'חמישה קולד ברו, אחד אהוב', 'shop', [1.1, 4, 0], [1.1, -4, 0]],
-    ['02-classic', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.0, 0, 0], [1.12, 0, 1]],
-    ['03-pour', 'House Blend · just pour over ice', 'האוס בלנד · פשוט מוזגים על קרח', 'shop', [1.1, 0, 4], [1.1, 0, -3]],
-    ['04-colombia', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.09, 4, 0], [1.09, -2, 0]],
-    ['05-sweetened', 'Sweetened Classic · add milk if you like', 'קלאסיק ממותק · עם חלב, אם בא לכם', 'shop', [1.09, 3, 0], [1.09, -3, 0]],
-    ['06-syrups', 'Vanilla Bean & Caramel syrups', 'סירופ וניל ושל קרמל', 'shop', [1.09, -4, 0], [1.09, 4, 0]],
-    ['07-minis', 'Cremier minis · grab and go', 'קרמייר מיני · לוקחים והולכים', 'shop', [1.0, 0, 0], [1.12, 0, 2]],
-    ['08-five-liter', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.09, 4, 0], [1.09, -4, 0]],
-    ['09-coffee-bar', 'Coffee bars for your event', 'עמדות קפה לאירוע שלכם', 'coffeebars', [1.1, 4, 0], [1.1, -4, 0]],
+    ['01-lineup', 'Five cold brews, one favourite', 'חמישה קולד ברו, אחד אהוב', 'shop', [1.1, 5, 3], [1.14, -5, -3]],
+    ['02-classic', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.04, -2, 2], [1.14, 3, -2]],
+    ['03-pour', 'House Blend · just pour over ice', 'האוס בלנד · פשוט מוזגים על קרח', 'shop', [1.12, 4, 5], [1.12, -3, -4]],
+    ['04-colombia', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.14, 5, -3], [1.08, -2, 3]],
+    ['05-sweetened', 'Sweetened Classic · add milk if you like', 'קלאסיק ממותק · עם חלב, אם בא לכם', 'shop', [1.08, -3, 3], [1.14, 4, -3]],
+    ['06-syrups', 'Vanilla Bean & Caramel syrups', 'סירופ וניל ושל קרמל', 'shop', [1.12, -5, -3], [1.12, 5, 3]],
+    ['07-minis', 'Cremier minis · grab and go', 'קרמייר מיני · לוקחים והולכים', 'shop', [1.04, 2, 2], [1.14, -3, -2]],
+    ['08-five-liter', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.12, 5, 3], [1.12, -5, -3]],
+    ['09-coffee-bar', 'Coffee bars for your event', 'עמדות קפה לאירוע שלכם', 'coffeebars', [1.14, -5, 3], [1.1, 5, -3]],
   ];
   const HOLD = 5600, FADE = 1200;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
