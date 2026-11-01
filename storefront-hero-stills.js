@@ -44,7 +44,7 @@
     ['10-elevate', '', '', 'shop', [1.1, 0, 0], [1, 0, 0], '50% 0%']];
   // Bump when a photo is replaced, so browsers fetch the new one instead of a cached copy.
   const IMG_V = '20261103d';
-  const HOLD = 5600, FADE = 1200, INTRO_HOLD = 7400;
+  const HOLD = 5600, FADE = 1200, INTRO_HOLD = 3000;
   // Photos whose files aren't the usual 900 / 1536 wide. TILT: tall photos the camera tilts down (top to bottom).
   const SIZES = { '10-elevate': [720, 1024] }, TILT = { '10-elevate': 7200 };
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -84,8 +84,8 @@
   .hi-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;-webkit-mask-image:linear-gradient(#000 40%,transparent 60%);mask-image:linear-gradient(#000 40%,transparent 60%);-webkit-mask-size:100% 300%;mask-size:100% 300%;-webkit-mask-position:0 0;mask-position:0 0}
   .hi-glint{position:absolute;inset:0;background:linear-gradient(110deg,transparent 36%,rgba(255,222,176,.22) 47%,rgba(255,238,206,.42) 50%,rgba(255,222,176,.22) 53%,transparent 64%);background-size:300% 100%;background-position:120% 0;mix-blend-mode:screen;opacity:0;pointer-events:none}
   .hi-glow{position:absolute;inset:0;background:radial-gradient(55% 75% at 6% 45%,rgba(255,146,56,.38),transparent 70%);mix-blend-mode:screen;opacity:.35;pointer-events:none}
-  .hero-film-intro.play .hi-art img{animation:hiReveal 2.4s cubic-bezier(.3,.6,.3,1) both}
-  .hero-film-intro.play .hi-glint{animation:hiGlint 2.6s ease-in-out 2.1s both}
+  .hero-film-intro.play .hi-art img{animation:hiReveal 1.2s cubic-bezier(.3,.6,.3,1) both}
+  .hero-film-intro.play .hi-glint{animation:hiGlint 1.5s ease-in-out .9s both}
   .hero-film-intro.play .hi-glow{animation:hiGlow 3.6s ease-in-out infinite alternate}
   @keyframes hiReveal{from{-webkit-mask-position:0 100%;mask-position:0 100%;filter:brightness(.55)}to{-webkit-mask-position:0 0;mask-position:0 0;filter:brightness(1)}}
   @keyframes hiGlint{0%{background-position:120% 0;opacity:0}20%{opacity:1}80%{opacity:1}100%{background-position:-20% 0;opacity:0}}
