@@ -29,6 +29,7 @@ function fromAddress(): string {
 
 export async function sendOrderEmails(params: {
 
+  idempotencyKey?: string;
   ownerSubject: string;
 
   ownerText: string;
@@ -85,6 +86,7 @@ export async function sendOrderEmails(params: {
         headers: {
 
           Authorization: `Bearer ${apiKey}`,
+          ...(params.idempotencyKey ? { "Idempotency-Key": params.idempotencyKey + ":" + to } : {}),
 
           "Content-Type": "application/json",
 

@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isServiceOrAdmin } from "../_shared/security.ts";
 import { sendOrderEmails } from "../_shared/order-email.ts";
+import { sendPendingLoyaltyCodes } from "../_shared/loyalty-codes.ts";
 import { designedEmailHtml } from "../_shared/email-design.ts";
 
 const SITE = "https://gremiercoffee.co.il";
@@ -25,6 +26,7 @@ Deno.serve(async (req) => {
   if (!await isServiceOrAdmin(req)) return new Response("Forbidden", { status: 403 });
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey(), { auth: { persistSession: false } });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+  if (!body.only_email) await sendPendingLoyaltyCodes(sb);
   const now = jerusalem();
   // A test run sends to one address only (an existing birthday row), and never marks it sent.
   const only = typeof body.only_email === "string" ? body.only_email.toLowerCase() : null;
@@ -35,7 +37,14 @@ Deno.serve(async (req) => {
   // A product photo for the email (a liter bottle of coffee).
   const { data: shots } = await sb.from("products").select("name_en, images").eq("is_active", true).eq("category", "bottles").order("sort_order").limit(10);
   const image = (shots || []).find((p: any) => /classic dark|house blend|colomb/i.test(p.name_en || "") && p.images?.[0])?.images?.[0] || null;
-  const expires = new Date(Date.UTC(now.year, now.month, 1) - 1000).toISOString();   // end of the month
+  // Midnight at the start of the next month in Jerusalem (including DST), not UTC.
+  const nextMonthUtc = Date.UTC(now.year, now.month, 1);
+  const offsetPart = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', timeZoneName: 'shortOffset' })
+    .formatToParts(new Date(nextMonthUtc)).find((p) => p.type === 'timeZoneName')?.value || 'GMT+2';
+  const offset = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(offsetPart);
+  if (!offset) throw new Error('Could not determine Jerusalem timezone offset');
+  const minutes = (Number(offset[2]) * 60 + Number(offset[3] || 0)) * (offset[1] === '+' ? 1 : -1);
+  const expires = new Date(nextMonthUtc - minutes * 60_000 - 1).toISOString();
   let sent = 0;
   for (const r of rows || []) {
     const c = code();

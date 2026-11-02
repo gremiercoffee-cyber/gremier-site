@@ -6,6 +6,7 @@ import { enqueuePendingWebsiteDelivery } from "./pending-delivery.ts";
 import { redeemOrderCodes } from "./redeem-order-codes.ts";
 import { issueFinbotReceipt } from "./finbot-receipts.ts";
 import { settleReferral } from "./engage.ts";
+import { sendPendingLoyaltyCodes } from "./loyalty-codes.ts";
 import { pushToCustomer } from "./customer-push.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
@@ -55,8 +56,8 @@ async function settleLoyalty(supabase: SupabaseClient, orderId: string): Promise
   const after = await supabase.from("profiles").select("coupon_available").eq("id", row.user_id).maybeSingle();
   if (!before.data?.coupon_available && after.data?.coupon_available) {
     await pushToCustomer(supabase, { userId: row.user_id }, {
-      he: { title: "🎁 פתחת 10% הנחה!", body: "צברת 200 נקודות. ההנחה תחכה לך בהזמנה הבאה." },
-      en: { title: "🎁 You unlocked 10% off!", body: "You've earned 200 points. The discount is waiting on your next order." },
+      he: { title: "🎁 פתחת 10% הנחה!", body: "צברת 200 נקודות. הקוד יישלח במייל. מזינים אותו בקופה." },
+      en: { title: "🎁 You unlocked 10% off!", body: "You've earned 200 points. Your code will arrive by email. Enter it at checkout." },
       url: "/#myorders", tag: "loyalty-coupon",
     });
   }
@@ -100,6 +101,7 @@ export async function fulfillPaidOrder(
   } catch (e) {
     console.error("settleLoyalty failed:", e);
   }
+  await sendPendingLoyaltyCodes(supabase);
   // A friend's first order paid with a referral code: ₪20 gift card for whoever shared it (once).
   try {
     await settleReferral(supabase, orderId);

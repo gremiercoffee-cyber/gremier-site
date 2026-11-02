@@ -391,20 +391,8 @@ Deno.serve(async (req) => {
       return json({ error: "Gift cards can't be used on a subscription." }, 400);
     }
 
-    // Check loyalty coupon (profile-based) — kept for their next regular order
-    if (userId && !isSubscriptionOrder) {
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("coupon_available")
-        .eq("id", userId)
-        .maybeSingle();
-      if (profile?.coupon_available) {
-        discount = Math.round(subtotal * 0.10);
-      }
-    }
-
-    // Kept apart from codes and gift cards: only this uses up the member's loyalty coupon.
-    const loyaltyDiscount = discount;
+    // Rewards require an explicitly entered code.
+    const loyaltyDiscount = 0;
 
     // Check coupon code sent from client
     let appliedCouponCode: string | null = null;
@@ -425,7 +413,7 @@ Deno.serve(async (req) => {
         const notExhausted = maxUses === null || usesCount < maxUses;
         const notExpired = !coupon.expires_at || new Date(coupon.expires_at) > new Date();
         // A code made for one email (e.g. a birthday code) works only with that email.
-        const forThisEmail = coupon.user_id || !coupon.customer_email || String(coupon.customer_email).toLowerCase() === String(customerEmail || "").toLowerCase();
+        const forThisEmail = coupon.user_id ? coupon.user_id === userId : !coupon.customer_email || String(coupon.customer_email).toLowerCase() === String(customerEmail || "").toLowerCase();
         if (isSubscriptionOrder && !coupon.for_subscriptions) {
           return json({ error: "This code can't be used on a subscription." }, 400);
         }

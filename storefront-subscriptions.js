@@ -31,14 +31,14 @@
       </div><div class="subm-status" role="status"></div></div>`;
   }
   async function place() {
-    const anchor = document.querySelector('#accountSignedIn .account-points-card') || document.querySelector('#accountSignedIn .account-profile-card');
+    const anchor = document.querySelector('#accountSignedIn .account-profile-card');
     if (!anchor) return;
     let box = $('acctSubscriptions');
     if (!box) { box = document.createElement('div'); box.id = 'acctSubscriptions'; anchor.insertAdjacentElement('afterend', box); }
     const r = await engage({ action: 'my_subscriptions' }).catch(() => null);
     max = r?.max_pause_months || 6;
     const subs = (r?.subscriptions || []).filter((s) => !s.cancelled || Date.now() - new Date(s.started).getTime() < 60 * 864e5);
-    box.innerHTML = subs.map(card).join('');
+    box.innerHTML = r?.error ? `<p role="status">${T('Subscriptions could not load. Please refresh to try again.', 'לא ניתן לטעון את המנויים. רעננו ונסו שוב.')}</p>` : subs.length ? `<h3>${T('Your subscriptions', 'המנויים שלכם')}</h3>` + subs.map(card).join('') : ''; 
     box.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => act(b));
   }
   async function act(b) {

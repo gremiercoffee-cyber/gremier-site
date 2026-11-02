@@ -836,7 +836,7 @@
     <div id="couponAvailableBox" style="display:none;background:#f7f5f2;border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;margin-bottom:16px">
       <div style="font-size:1rem;margin-bottom:4px">🎉</div>
       <div style="font-size:.88rem;font-weight:500;color:#1a1a1a" id="pts-coupon-title">You have a 10% discount ready!</div>
-      <div style="font-size:.76rem;color:var(--text2);margin-top:3px" id="pts-coupon-sub">It will be automatically applied at checkout.</div>
+      <div style="font-size:.76rem;color:var(--text2);margin-top:3px" id="pts-coupon-sub">We email you a code. Enter it at checkout to use your reward.</div>
     </div>
     <button class="btn btn-outline btn-full btn-sm" onclick="closePointsModal(); showPage('shop')">Shop Now</button>
   </div>
@@ -1015,7 +1015,7 @@
       <div id="accountNotSignedIn" style="text-align:center;padding:48px 20px;display:none">
         <div style="font-size:2.4rem;margin-bottom:14px;opacity:.35">☕</div>
         <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#1a1a1a;margin-bottom:8px" id="t-acc-signin-title">Sign in to view your account</div>
-        <div style="font-size:.84rem;color:var(--text2);margin-bottom:24px" id="t-acc-signin-sub">Track orders, view points, and manage your profile.</div>
+        <div style="font-size:.84rem;color:var(--text2);margin-bottom:24px" id="t-acc-signin-sub">Track your orders, earn rewards, and manage subscriptions in one place.</div>
         <button class="btn btn-primary" onclick="openAuthModal()" id="t-acc-signin-btn">Sign In</button>
       </div>
       <!-- Signed in state -->
@@ -1040,7 +1040,7 @@
             <span class="acc-coupon-icon">🎉</span>
             <div>
               <div class="acc-coupon-text" id="t-acc-coupon-title">You have a 10% discount ready!</div>
-              <div class="acc-coupon-sub" id="t-acc-coupon-sub">Automatically applied at checkout.</div>
+              <div class="acc-coupon-sub" id="t-acc-coupon-sub">Enter your code at checkout. We also email it to you.</div>
             </div>
           </div>
         </div>
@@ -1726,8 +1726,7 @@ async function awardPointsForOrder(orderTotal) {
   if (currentUser) await refreshUserProfile();
 }
 function applyCouponIfAvailable() {
-  if (userCouponAvailable) return true;
-  return false;
+  return false; // Rewards require the customer to enter their code.
 }
 async function redeemCoupon() {
   if (!currentUser || !userCouponAvailable) return;
@@ -3208,21 +3207,23 @@ function updateAccountPage() {
   document.getElementById('accPtsNumber').textContent = userPoints;
   const pct = Math.min(100, Math.round((userPoints / 200) * 100));
   document.getElementById('accPtsBarFill').style.width = pct + '%';
+  document.getElementById('accPtsBarGoal').textContent = lang === 'he'
+    ? `${Math.max(0, 200 - userPoints)} נקודות להטבה הבאה`
+    : `${Math.max(0, 200 - userPoints)} points to your next reward`;
   if (lang === 'he') {
     document.getElementById('t-acc-pts-label').textContent = 'נקודות נאמנות';
     document.getElementById('t-acc-pts-sub').textContent = '₪10 = נקודה אחת · 200 נקודות = 10% הנחה';
-    document.getElementById('accPtsBarGoal').textContent = '200 נק׳ = 10% הנחה';
     document.getElementById('t-acc-coupon-title').textContent = 'יש לך הנחה של 10% מוכנה!';
-    document.getElementById('t-acc-coupon-sub').textContent = 'תיושם אוטומטית בקופה.';
+    document.getElementById('t-acc-coupon-sub').textContent = 'מזינים את הקוד בקופה. הקוד נשלח גם במייל.';
     document.getElementById('t-acc-orders-title').textContent = 'היסטוריית הזמנות';
     document.getElementById('t-acc-signout').textContent = 'התנתק';
     document.getElementById('t-acc-signin-title').textContent = 'התחבר לצפייה בחשבון';
-    document.getElementById('t-acc-signin-sub').textContent = 'עקוב אחר הזמנות, נקודות ופרופיל.';
+    document.getElementById('t-acc-signin-sub').textContent = 'עקבו אחר הזמנות, צברו הטבות ונהלו את המנויים במקום אחד.';
     document.getElementById('t-acc-signin-btn').textContent = 'כניסה';
   }
 document.getElementById('accCouponBox').style.display = userCouponAvailable ? 'flex' : 'none';
   // Load and show actual coupon codes
-  if (userCouponAvailable && currentUser) loadAndShowUserCoupons();}
+  if (currentUser) loadAndShowUserCoupons();}
   async function loadAndShowUserCoupons() {
   if (!currentUser) return;
   try {
@@ -3230,18 +3231,19 @@ document.getElementById('accCouponBox').style.display = userCouponAvailable ? 'f
       .select('*')
       .eq('user_id', currentUser.id)
       .eq('is_active', true)
-      .eq('is_used', false)
-      .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false });
+    const available = (coupons || []).filter(c => (!c.expires_at || new Date(c.expires_at) > new Date()) && (c.max_uses == null || Number(c.uses_count || 0) < Number(c.max_uses)));
     const box = document.getElementById('accCouponBox');
     if (!box) return;
-    if (!coupons || !coupons.length) {
+    if (!available.length) {
       box.style.display = 'none';
       return;
     }
     box.style.display = 'flex';
+    document.getElementById('t-acc-coupon-title').textContent = lang === 'he' ? 'הקודים שלכם' : 'Your available codes';
     const codeEl = document.getElementById('t-acc-coupon-sub');
     if (codeEl) {
-      const codes = coupons.map(c => `<strong>${c.code}</strong> (${c.discount_type === 'percent' ? c.discount_value + '%' : '₪' + c.discount_value} off)`).join('<br/>');
+      const codes = available.map(c => `<strong>${c.code}</strong> (${c.discount_type === 'percent' ? c.discount_value + '%' : '₪' + c.discount_value} off)`).join('<br/>');
       codeEl.innerHTML = lang === 'he'
         ? `הקוד שלך: ${codes}`
         : `Your code: ${codes}`;
@@ -3259,14 +3261,15 @@ async function loadMyOrders() {
   updateAccountPage();
   const { data, error } = await sb.from('orders').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:false});
   const list = document.getElementById('myOrdersList');
-  if (error || !data?.length) { list.innerHTML = `<p style="color:var(--text2);text-align:center">${tr('empty-orders')}</p>`; return; }
-  list.innerHTML = data.map(order => {
+  if (error) { list.innerHTML = `<p style="color:var(--text2);text-align:center">${lang==='he'?'לא הצלחנו לטעון את ההזמנות. נסו שוב.':'We couldn’t load your orders. Please try again.'} <button type="button" class="btn btn-outline btn-sm" onclick="loadMyOrders()">${lang==='he'?'נסו שוב':'Try again'}</button></p>`; return; }
+  if (!data?.length) { list.innerHTML = `<p style="color:var(--text2);text-align:center">${tr('empty-orders')}</p>`; return; }
+  list.innerHTML = data.map((order, orderIndex) => {
     const date = new Date(order.created_at).toLocaleDateString(lang==='he'?'he-IL':'en-IL',{day:'numeric',month:'short',year:'numeric'});
     const statusLabel = tr('order-status')[order.status] || order.status;
     const itemsText = (order.items||[]).map(i=>`${lang==='he'?(i.name_he||i.name_en):i.name_en} ×${i.qty}`).join(', ');
     return `<div class="order-card">
       <div class="order-card-header">
-        <div><div class="order-num">${lang==='he'?'הזמנה':'Order'} #${order.order_number}</div><div class="order-date">${date}</div></div>
+        <div><div class="order-num">${orderIndex === 0 ? (lang==='he'?'ההזמנה האחרונה · ':'Latest order · ') : ''}${lang==='he'?'הזמנה':'Order'} #${order.order_number}</div><div class="order-date">${date}</div></div>
         <span class="status-badge status-${order.status}">${statusLabel}</span>
       </div>
       <div class="order-items-list">${itemsText}</div>
@@ -4708,8 +4711,8 @@ async function sendChatMessageText(text) {
     ['points', 'נקודות'],
     ['200 pts = 10% off', '200 נקודות = 10% הנחה'],
     ['You have a 10% discount ready!', 'מחכה לך הנחה של 10%!'],
-    ['It will be automatically applied at checkout.', 'ההנחה תופעל אוטומטית בקופה.'],
-    ['Automatically applied at checkout.', 'מופעלת אוטומטית בקופה.'],
+    ['We email you a code. Enter it at checkout to use your reward.', 'ההנחה תופעל אוטומטית בקופה.'],
+    ['Enter your code at checkout. We also email it to you.', 'מופעלת אוטומטית בקופה.'],
     ['Shop Now', 'לחנות'],
     ['Home', 'בית'],
     ['Shop', 'חנות'],
@@ -5346,7 +5349,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261103-1"></script>
 <script src="/storefront-birthday.js?v=20261103-2"></script>
-<script src="/storefront-subscriptions.js?v=20261103-1"></script>
+<script src="/storefront-subscriptions.js?v=20261103-2"></script>
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>
