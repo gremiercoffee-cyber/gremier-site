@@ -12,10 +12,10 @@
  const allowed=()=>{const c=read(CONSENT);return c?.value==='accepted'&&Date.now()-c.at<180*86400000;};
  const names={home:'Home',shop:'Shop',coffeebars:'Coffee bars',myorders:'Account',giftcards:'Gift cards'};
  let queue=[],sending=false,currentPage='Home',lastView='',lastAction='',lastActionAt=0,lastInput=Date.now(),tickAt=Date.now();
- let visitor=null,session=null,currentProduct=null;
+ let visitor=null,session=null,currentProduct=null,internal=false;
  const endpoint=()=>`${apiBase}/functions/v1/site-journeys`;
  function ensure(){
-  if(!allowed())return false;
+  if(internal||!allowed())return false;
   visitor=visitor||read(VISITOR)||crypto.randomUUID();write(VISITOR,visitor);
   session=read(SESSION,sessionStorage);
   if(!session||Date.now()-session.last>30*60000||Date.now()-session.start>12*3600000){queue=[];session={id:crypto.randomUUID(),start:Date.now(),last:Date.now()};lastView='';}
@@ -46,7 +46,8 @@
    const r=await fetch(endpoint(),{method:'POST',headers,keepalive:true,body:JSON.stringify({action:'collect',consent:true,visitor_id:visitor,session_id:sid,events:batch,
     device:/iPad|Tablet/i.test(navigator.userAgent)?'Tablet':/Mobile|Android/i.test(navigator.userAgent)?'Phone':'Computer',referrer:document.referrer,language:he()?'he':'en'})});
    const data=await r.json();
-   if(data.expired){remove(SESSION,sessionStorage);session=null;lastView='';}
+   if(data.internal){internal=true;queue=[];}
+   else if(data.expired){remove(SESSION,sessionStorage);session=null;lastView='';}
    else if(!r.ok)queue.unshift(...batch);
   }catch{queue.unshift(...batch);}finally{sending=false;}
  }
@@ -93,7 +94,7 @@
   const submit=root.submitOrder;if(typeof submit==='function')root.submitOrder=function(...args){track('pay_click',{page:'Checkout'});return submit.apply(this,args);};
   wrap('setCategory',([category])=>track('category_view',{page:'Shop',category}));
   wrap('plannerStart',()=>page('Coffee bar builder','bar_builder'));
-  wrap('setUser',()=>track('member_signin'));
+  wrap('setUser',()=>{track('member_signin');flush();});
   wrap('showCheckoutResultUI',()=>page('Order confirmation'));
   wrap('applyTranslations',()=>{if(document.getElementById('analyticsConsent'))banner(true);const link=document.getElementById('analyticsChoices');if(link)link.textContent=T('Privacy choices','העדפות פרטיות');});
   document.addEventListener('click',e=>{if(e.target.closest('#bbMini,#bbWorldOpen,[data-bb-start]'))page('Coffee bar builder','bar_builder');});

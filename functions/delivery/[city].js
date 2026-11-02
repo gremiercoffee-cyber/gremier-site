@@ -39,6 +39,6 @@ h1{font-size:1.7rem;line-height:1.25;margin:0 0 6px}h2{font-size:1.15rem;margin:
 <a class="cta" href="/#shop">Shop the coffee</a><a class="cta alt" href="/#coffeebars">Coffee bar for an event in ${esc(en)}</a></section>
 <h2>Our coffee · הקפה שלנו</h2><div class="grid">${coffees.map(card).join('')}</div>
 <div class="box he">☕ נחלט טרי באצוות קטנות · כשר בהשגחת הרב שמואל ויינער</div>
-</main><script src="/storefront-journeys.js?v=20261102-2"></script></body></html>`;
+</main><script src="/storefront-journeys.js?v=20261102-3"></script></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
 }

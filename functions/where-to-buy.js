@@ -50,6 +50,6 @@ if(window.L&&stores.length){
   map.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
   document.querySelectorAll('.s').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('a'))return;const m=markers[+el.dataset.i];map.setView(m.getLatLng(),16);m.openPopup();document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'});}));
 }
-</script><script src="/storefront-journeys.js?v=20261102-2"></script></body></html>`;
+</script><script src="/storefront-journeys.js?v=20261102-3"></script></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
 }
