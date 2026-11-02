@@ -109,10 +109,11 @@
   const client=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB;
   // Expenses filed in the app's expense inbox after the saved FinBot report was taken (amounts read off
   // each document). From the Osek Morshe start (2026-10-22) their VAT is reclaimable (input VAT).
-  let inboxExpenses=null,vatMode=(()=>{try{return localStorage.getItem('gremier_stats_vat')==='net'?'net':'raw';}catch{return 'raw';}})();
+  let inboxExpenses=null,workerPay=null,profitMode=(()=>{try{return localStorage.getItem('gremier_stats_profit')==='home'?'home':'il';}catch{return 'il';}})(),vatMode=(()=>{try{return localStorage.getItem('gremier_stats_vat')==='net'?'net':'raw';}catch{return 'raw';}})();
   async function loadInboxExpenses(){
-    const {data,error}=await client().from('expense_inbox_files').select('doc_date,total_minor,vat_minor,currency,read_status,status,created_at').neq('status','archived');
-    inboxExpenses=error?null:data||[];renderOverview();
+    const [{data,error},work]=await Promise.all([client().from('expense_inbox_files').select('supplier,doc_date,total_minor,vat_minor,currency,read_status,status,created_at').neq('status','archived'),
+      client().from('worker_entries').select('entry_date,amount').eq('kind','work')]);
+    inboxExpenses=error?null:data||[];workerPay=work.error?null:work.data||[];render();
   }
   function inboxSince(s){
     if(!inboxExpenses||!s)return null;
@@ -122,6 +123,43 @@
     reclaim.forEach(f=>{const k=root.GremierRevenue?.vatPeriod?.(f.doc_date||f.created_at.slice(0,10));if(k)byPeriod[k]=(byPeriod[k]||0)+f.vat_minor;});
     return {total:counted.reduce((t,f)=>t+f.total_minor,0),vat:reclaim.reduce((t,f)=>t+f.vat_minor,0),byPeriod,count:counted.length,
       waiting:after.filter(f=>['unread','failed'].includes(f.read_status)).length};
+  }
+  // Counted documents filed in the app since the saved report (ILS, amount read).
+  const appFiles=s=>(inboxExpenses||[]).filter(f=>f.created_at>s.captured_at&&(f.doc_date||f.created_at).startsWith(String(s.report_year))&&['read','manual'].includes(f.read_status)&&(f.currency||'ILS')==='ILS'&&Number.isFinite(f.total_minor));
+  const fileNet=f=>f.total_minor-((f.doc_date||f.created_at.slice(0,10))>='2026-10-22'&&f.vat_minor>0?f.vat_minor:0);
+  // Costs the business may claim that are really the household's: the car, home property tax, and
+  // electricity / water beyond the 5% the business really uses. FinBot labels say what share was claimed ("חשמל 25%").
+  const TAKE_HOME_UTILITY=5;
+  function personal(label,supplier=false){
+    const l=String(label||'');
+    if(supplier){
+      if(/ארנונה|עיריית|municipal/i.test(l))return {kind:'home',keep:0};
+      if(/חברת החשמל|\bIEC\b|electric/i.test(l)||/(^|\s)חשמל/.test(l))return {kind:'utility',keep:TAKE_HOME_UTILITY/100};
+      if(/גיחון|תאגיד המים|water corp/i.test(l))return {kind:'utility',keep:TAKE_HOME_UTILITY/100};
+      if(/ליסינג|השכרת רכב|leasing|car rental|סונול|דור אלון|(^|\s)פז(\s|$)|(^|\s)דלק(\s|$)/i.test(l))return {kind:'car',keep:0};
+      return null;
+    }
+    if(/רכב|דלק/.test(l))return {kind:'car',keep:0};
+    if(/ארנונה/.test(l))return {kind:'home',keep:0};
+    if(/חשמל|מים/.test(l)){const pct=Number((l.match(/(\d+)\s*%/)||[])[1])||100;return {kind:'utility',keep:Math.min(1,TAKE_HOME_UTILITY/pct)};}
+    return null;
+  }
+  // Net profit two ways. Israeli accounts: income before VAT less every claimed expense before VAT.
+  // Take-home: the same, with the household's share of the car, property tax and utilities added back, less what workers earned.
+  function profitCard(annual,year,live){
+    if(!live)return '';
+    const R=root.GremierRevenue,out=R.salesVat(live),x=inboxSince(snapshot),files=appFiles(snapshot);
+    const income=live.total_minor-out.vat_minor,expenses=annual.totals.expenses+(x?.total||0)-(x?.vat||0),il=income-expenses;
+    const back={car:0,home:0,utility:0};
+    annual.categories.filter(c=>c.group!=='income'&&c.group!=='fixed_assets').forEach(c=>{const k=personal(c.label);if(k)back[k.kind]+=Math.round(c.amount_minor*(1-k.keep));});
+    files.forEach(f=>{const k=personal(f.supplier,true);if(k)back[k.kind]+=Math.round(fileNet(f)*(1-k.keep));});
+    const workers=workerPay?Math.round(workerPay.filter(w=>String(w.entry_date).startsWith(String(year))).reduce((t,w)=>t+Number(w.amount||0),0)*100):null;
+    const home=il+back.car+back.home+back.utility-(workers||0),value=profitMode==='home'?home:il;
+    const tabs=`<div class="fin-views fin-profit-toggle" role="group" aria-label="Net profit"><button type="button" class="btn btn-outline" data-profit-mode="il" aria-pressed="${profitMode==='il'}">Israeli accounts</button><button type="button" class="btn btn-outline" data-profit-mode="home" aria-pressed="${profitMode==='home'}">Take-home</button></div>`;
+    const detail=profitMode==='il'
+      ?row('Income before VAT',money(income))+row('Less expenses claimed, before VAT',money(-expenses))+row('Net profit · Israeli accounts',money(il))+`<p class="fin-note">What the books show: every expense the business claims, including the car, the home's property tax and its share of electricity and water. Payments received in ${year}; expenses from FinBot through ${snapshot.as_of_date} plus documents filed in the app since. Your accountant's report is the official figure.</p>`
+      :row('Net profit · Israeli accounts',money(il))+(back.car?row('Add back: car (lease, fuel)',money(back.car)):'')+(back.home?row('Add back: home property tax',money(back.home)):'')+(back.utility?row(`Add back: electricity & water above ${TAKE_HOME_UTILITY}%`,money(back.utility)):'')+row('Less workers\' pay',workers===null?'Unavailable':money(-workers))+row('Take-home profit',money(home))+`<p class="fin-note">What the business really earns you: costs you'd pay anyway at home are added back (only ${TAKE_HOME_UTILITY}% of electricity and water counts as business), and what workers earned (from the Workers page) comes off.</p>`;
+    return `<section class="fin-panel fin-profit"><div class="flex-between"><h2>Net profit · ${year}</h2>${tabs}</div><div class="fin-metrics fin-year-metrics">${metric(profitMode==='home'?'Take-home profit':'Net profit · Israeli accounts',money(value),profitMode==='home'?'What you actually keep':'As the business reports it',value<0?'fin-negative':'fin-positive')}</div><details class="sales-help"><summary>How it's worked out</summary>${detail}</details></section>`;
   }
   function setup() {
     const host=get('tab-reports');if(!host||get('financialResults'))return;
@@ -154,8 +192,9 @@
     const today=root.GremierDashboard?.businessDate(new Date())||new Date().toISOString().slice(0,10);
     const toggle=`<div class="fin-views fin-vat-toggle" role="group" aria-label="VAT"><button type="button" class="btn btn-outline" data-vat-mode="raw" aria-pressed="${vatMode==='raw'}">As recorded</button><button type="button" class="btn btn-outline" data-vat-mode="net" aria-pressed="${vatMode==='net'}">After VAT</button></div>`;
     const bindToggle=()=>host.querySelectorAll('[data-vat-mode]').forEach(b=>b.onclick=()=>{vatMode=b.dataset.vatMode;try{localStorage.setItem('gremier_stats_vat',vatMode);}catch{}renderOverview();});
-    if(vatMode==='net'){host.innerHTML=toggle+afterVat(annual,year,live,due,today);bindToggle();return;}
-    host.innerHTML=toggle+`<div class="fin-metrics fin-year-metrics">${metric('Income',live?money(live.total_minor):root.GremierRevenue?.loading?'Loading…':'Unavailable',`Payments · ${year} through ${year===Number(today.slice(0,4))?today:year+'-12-31'}`)}${metric('Earned so far',live&&due?money(live.total_minor+due.total_minor):root.GremierRevenue?.loading?'Loading…':'Unavailable',live&&due?`Incl. ${money(due.total_minor)} stores haven't paid yet`:'Income plus what stores owe')}${(()=>{const x=inboxSince(snapshot);return metric('Recorded expenses',money(annual.totals.expenses+(x?.total||0)),`FinBot through ${snapshot.as_of_date}`+(x?.count?` + ${money(x.total)} from ${x.count} filed in the app since`:'')+(x?.waiting?` · ${x.waiting} still being read`:''));})()}</div>${live&&due?`<details class="sales-help"><summary>What's in "Earned so far"</summary>${row('Receipts issued',money(live.total_minor-root.GremierRevenue.reconcile(live,0).unreceipted))}${row('Paid website orders · receipt not issued yet',money(root.GremierRevenue.reconcile(live,0).unreceipted))}${row('Store statements sent · not paid yet',money(due.billed))}${row('Store deliveries · statement not sent yet',money(due.running))}${row('Earned so far',money(live.total_minor+due.total_minor))}${due.rows.length?`<details><summary>Stores that owe · ${new Set(due.rows.map(r=>r.store_id)).size}</summary>${Object.values(due.rows.reduce((m,r)=>{const k=r.store_id;(m[k]||(m[k]={name:r.stores?.name||'Store',months:[],amount:0})).months.push(r.month);m[k].amount+=r.amount_minor;return m;},{})).sort((a,b)=>b.amount-a.amount).map(x=>row(x.name+' · '+x.months.map(m=>monthName(m)).join(', '),money(x.amount))).join('')}</details>`:''}<p class="fin-note">Each store month counts once. Until it's paid, it counts at its statement amount. Once you issue the store's receipt, that month counts at what was actually paid instead, so if a store owed ₪1,000 and paid ₪800, it counts as ₪800 and nothing is counted twice.</p></details>`:''}<details class="sales-help"><summary>Why can the totals differ?</summary>${live?(()=>{const r=root.GremierRevenue.reconcile(live,annual.totals.income);return row('Saved FinBot income',money(r.snapshot))+row('Imported receipt adjustments / payment dates',money(r.importAdjustments))+(r.legacyWebsite?row('Old website · net sales after refund',money(r.legacyWebsite)):'')+row('Additional app receipts',money(r.newReceipts))+row('Paid online orders without receipts',money(r.unreceipted))+row('Current income · counted once',money(r.total));})():'<p>Live income could not be loaded. Refresh to retry.</p>'}<p class="fin-note">Income includes paid orders without receipts and links each order to its receipt once. FinBot figures below are a saved accounting report by document date. Expenses: that report, plus documents filed in the app's expense inbox since it was taken (amounts read off each document, VAT included). Switch to After VAT to take out the VAT that goes to the government.</p></details>`;bindToggle();
+    const bindProfit=()=>host.querySelectorAll('[data-profit-mode]').forEach(b=>b.onclick=()=>{profitMode=b.dataset.profitMode;try{localStorage.setItem('gremier_stats_profit',profitMode);}catch{}renderOverview();});
+    if(vatMode==='net'){host.innerHTML=toggle+afterVat(annual,year,live,due,today)+profitCard(annual,year,live);bindToggle();bindProfit();return;}
+    host.innerHTML=toggle+`<div class="fin-metrics fin-year-metrics">${metric('Income',live?money(live.total_minor):root.GremierRevenue?.loading?'Loading…':'Unavailable',`Payments · ${year} through ${year===Number(today.slice(0,4))?today:year+'-12-31'}`)}${metric('Earned so far',live&&due?money(live.total_minor+due.total_minor):root.GremierRevenue?.loading?'Loading…':'Unavailable',live&&due?`Incl. ${money(due.total_minor)} stores haven't paid yet`:'Income plus what stores owe')}${(()=>{const x=inboxSince(snapshot);return metric('Recorded expenses',money(annual.totals.expenses+(x?.total||0)),`FinBot through ${snapshot.as_of_date}`+(x?.count?` + ${money(x.total)} from ${x.count} filed in the app since`:'')+(x?.waiting?` · ${x.waiting} still being read`:''));})()}</div>${live&&due?`<details class="sales-help"><summary>What's in "Earned so far"</summary>${row('Receipts issued',money(live.total_minor-root.GremierRevenue.reconcile(live,0).unreceipted))}${row('Paid website orders · receipt not issued yet',money(root.GremierRevenue.reconcile(live,0).unreceipted))}${row('Store statements sent · not paid yet',money(due.billed))}${row('Store deliveries · statement not sent yet',money(due.running))}${row('Earned so far',money(live.total_minor+due.total_minor))}${due.rows.length?`<details><summary>Stores that owe · ${new Set(due.rows.map(r=>r.store_id)).size}</summary>${Object.values(due.rows.reduce((m,r)=>{const k=r.store_id;(m[k]||(m[k]={name:r.stores?.name||'Store',months:[],amount:0})).months.push(r.month);m[k].amount+=r.amount_minor;return m;},{})).sort((a,b)=>b.amount-a.amount).map(x=>row(x.name+' · '+x.months.map(m=>monthName(m)).join(', '),money(x.amount))).join('')}</details>`:''}<p class="fin-note">Each store month counts once. Until it's paid, it counts at its statement amount. Once you issue the store's receipt, that month counts at what was actually paid instead, so if a store owed ₪1,000 and paid ₪800, it counts as ₪800 and nothing is counted twice.</p></details>`:''}<details class="sales-help"><summary>Why can the totals differ?</summary>${live?(()=>{const r=root.GremierRevenue.reconcile(live,annual.totals.income);return row('Saved FinBot income',money(r.snapshot))+row('Imported receipt adjustments / payment dates',money(r.importAdjustments))+(r.legacyWebsite?row('Old website · net sales after refund',money(r.legacyWebsite)):'')+row('Additional app receipts',money(r.newReceipts))+row('Paid online orders without receipts',money(r.unreceipted))+row('Current income · counted once',money(r.total));})():'<p>Live income could not be loaded. Refresh to retry.</p>'}<p class="fin-note">Income includes paid orders without receipts and links each order to its receipt once. FinBot figures below are a saved accounting report by document date. Expenses: that report, plus documents filed in the app's expense inbox since it was taken (amounts read off each document, VAT included). Switch to After VAT to take out the VAT that goes to the government.</p></details>`+profitCard(annual,year,live);bindToggle();bindProfit();
   }
   // The same year with VAT taken out: sales VAT (collected for the government) leaves income, expense VAT
   // (reclaimed) leaves expenses, and the difference is what's paid, by two-month VAT period.
@@ -171,11 +210,11 @@
       ${pending?`<p class="fin-note">Store months from October aren't invoiced yet. When you issue their tax invoices, ${money(pending)} VAT is added on top: the stores pay it and it goes to the government, so it doesn't change what you earn.</p>`:''}
       <p class="fin-note">From 22 Oct 2026 (Osek Morshe): website prices include VAT, so 18/118 of each order is VAT; store payments carry VAT when they pay a tax invoice; expense VAT counts from documents filed in the app dated 22 Oct or later. Before that you were Osek Patur, so nothing earlier changes. Estimates for planning; your accountant's VAT report is the official figure.</p></details>`;
   }
-  root.addEventListener('gremier-revenue-ready',renderOverview);
+  root.addEventListener('gremier-revenue-ready',()=>render());
   function chooseYear() {
     snapshot=snapshots.find(s=>String(s.report_year)===get('financialYear').value);current=null;
     preferences={};preferenceReady=false;preferenceState='loading';
-    get('financialMonth').innerHTML='<option value="all">Year to date · snapshot</option>'+snapshot.payload.monthly.map(m=>`<option value="${esc(m.month)}">${esc(monthName(m.month))}${m.is_partial_month?' · partial':''}</option>`).join('');
+    get('financialMonth').innerHTML='<option value="all">Year to date</option>'+liveMonths(snapshot.report_year).map(m=>`<option value="${esc(m)}">${esc(monthName(m))}</option>`).join('');
     render();
     const year=snapshot.report_year;
     client().from('finbot_us_expense_preferences').select('category_overrides,filing_context').eq('report_year',year).maybeSingle().then(({data,error})=>{
@@ -183,30 +222,56 @@
       preferenceReady=!error;preferenceState=error?'error':'ready';preferences=data||{};render();
     }).catch(()=>{if(snapshot?.report_year!==year)return;preferenceState='error';preferenceReady=false;render();});
   }
+  const thisMonth=()=>(root.GremierDashboard?.businessDate(new Date())||new Date().toISOString()).slice(0,7);
+  const liveMonths=year=>Array.from({length:12},(_,i)=>year+'-'+String(i+1).padStart(2,'0')).filter(m=>m<=thisMonth());
+  // Income from the site's records (payments received); expenses from the saved FinBot report through its
+  // date plus documents filed in the app since. FinBot can't be read automatically, so this keeps it current.
+  function liveReport(selected){
+    const p=snapshot.payload,base=summarize(p,'all'),live=root.GremierRevenue?.annualReport?.(p.report_year),files=appFiles(snapshot);
+    const months=liveMonths(p.report_year).filter(m=>selected==='all'||m===selected).map(m=>{
+      const f=base.months.find(x=>x.month===m),rows=live?live.rows.filter(r=>String(r.date).slice(0,7)===m):[];
+      const app=files.filter(x=>(x.doc_date||x.created_at).slice(0,7)===m).reduce((t,x)=>t+x.total_minor,0);
+      const income_minor=live?rows.reduce((t,r)=>t+r.amount_minor,0):f?.income_minor||0,expenses_minor=(f?.expenses_minor||0)+app;
+      return {month:m,is_partial_month:m===thisMonth(),income_minor,expenses_minor,net_minor:income_minor-expenses_minor,app,finbot:f||null,
+        website:live?rows.filter(r=>r.origin==='online').reduce((t,r)=>t+r.amount_minor,0):f?.sources_minor.website||0};
+    });
+    const keep=new Set(months.map(m=>m.month)),fb=base.months.filter(m=>keep.has(m.month)),sum=(list,k)=>list.reduce((t,m)=>t+m[k],0);
+    const totals={income:sum(months,'income_minor'),cost_of_sales:sum(fb,'cost_of_sales_minor'),operating_expenses:sum(fb,'operating_expenses_minor'),app:sum(months,'app'),expenses:sum(months,'expenses_minor'),fixed_assets:sum(fb,'fixed_assets_minor')};
+    totals.net=totals.income-totals.expenses;
+    const cats=new Map(),sup=new Map();
+    fb.forEach(m=>{m.categories.forEach(c=>{const k=c.label+'|'+c.group,i=cats.get(k)||{...c,amount_minor:0};i.amount_minor+=c.amount_minor;cats.set(k,i);});m.suppliers.forEach(x=>sup.set(x.label,(sup.get(x.label)||0)+x.amount_minor));});
+    files.filter(x=>keep.has((x.doc_date||x.created_at).slice(0,7))).forEach(x=>{const k=x.supplier||'Unnamed document';sup.set(k,(sup.get(k)||0)+x.total_minor);});
+    return {months,totals,live:!!live,files:files.filter(x=>keep.has((x.doc_date||x.created_at).slice(0,7))).length,
+      categories:[...cats.values()].sort((a,b)=>b.amount_minor-a.amount_minor),suppliers:[...sup].sort((a,b)=>b[1]-a[1]),
+      sources:{website:sum(months,'website'),other:totals.income-sum(months,'website')},grossProfit:totals.income-totals.cost_of_sales,
+      margin:totals.income?totals.net/totals.income*100:null};
+  }
   function render() {
     if(!snapshot)return;
     get('tab-reports').dataset.financialView=view;
     renderOverview();
     try {
-      current=summarize(snapshot.payload,get('financialMonth').value);
-      const p=snapshot.payload,m=current,t=m.totals;
+      const picked=get('financialMonth').value,inSnapshot=picked==='all'||snapshot.payload.monthly.some(x=>x.month===picked);
+      current=summarize(snapshot.payload,inSnapshot?picked:'all');
+      const p=snapshot.payload,m=view==='us'?current:liveReport(picked),t=m.totals;
       get('financialExport').disabled=false;
       get('financialAccounts').setAttribute('aria-pressed',String(view==='accounts'));
       get('financialUS').setAttribute('aria-pressed',String(view==='us'));
-      get('financialStatus').textContent=`Saved FinBot snapshot · ${new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(p.as_of_date+'T12:00:00Z'))}`;
+      const asOf=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(p.as_of_date+'T12:00:00Z'));
+      get('financialStatus').textContent=view==='us'?`Saved FinBot report · ${asOf}`:`Up to date · income from the site's records${m.live?'':' (loading…)'}; expenses from FinBot through ${asOf} plus ${m.files} document${m.files===1?'':'s'} filed in the app since`;
       const coverage=`<aside class="fin-coverage"><details><summary>About these figures</summary><p>FinBot’s recorded accounts through ${esc(p.as_of_date)}. October is partial. Historical website receipts issued in October cover earlier payments, so the monthly view follows document dates, not when each sale happened. Website receipts are already included in revenue. Fixed assets are separate from profit-and-loss expenses.</p><p>${esc(p.coverage.unreported_expenses_2026)} dated ${p.report_year} expense documents were not yet reported; ${esc(p.coverage.undated_expenses_all_years)} documents across all years have no date. They are not estimated into these totals.</p></details></aside>`;
       if(view==='us'){renderUS(m,coverage);return;}
       const list=(items)=>items.map(c=>row(title(c.label),money(c.amount_minor))).join('')||'<p class="fin-note">No recorded costs in this period.</p>';
       const source=(label,n)=>`${row(label,money(n))}<div class="fin-track"><i style="width:${Math.max(0,Math.min(100,n/(t.income||1)*100))}%"></i></div>`;
       const max=Math.max(1,...m.months.flatMap(x=>[Math.abs(x.income_minor),Math.abs(x.expenses_minor)]));
       const trends=m.months.map(x=>`<tr><th scope="row">${esc(monthName(x.month))}${x.is_partial_month?'<small>Partial month</small>':''}</th><td>${esc(money(x.income_minor))}<div class="fin-track"><i style="width:${Math.max(0,x.income_minor)/max*100}%"></i></div></td><td>${esc(money(x.expenses_minor))}<div class="fin-track fin-expense"><i style="width:${Math.max(0,x.expenses_minor)/max*100}%"></i></div></td><td class="${x.net_minor<0?'fin-negative':'fin-positive'}">${esc(money(x.net_minor))}</td></tr>`).join('');
-      get('financialResults').innerHTML=`<details class="stats-accounting-details"><summary>Saved accounting report</summary><div class="fin-metrics">${metric('FinBot income',money(t.income),'Saved report')}${metric('Expenses',money(t.expenses),'')}${metric('Accounting result',money(t.net),'',t.net<0?'fin-negative':'fin-positive')}${metric('Result margin',m.margin===null?'—':m.margin.toFixed(1)+'%','')}</div>
-        <div class="fin-grid"><section class="fin-panel"><h2>Revenue sources</h2>${source('Website receipts',m.sources.website)}${source('Other FinBot income',m.sources.other)}<p class="fin-note">Other income is unclassified.</p></section>
-        <section class="fin-panel"><h2>Revenue to result</h2>${row('Revenue',money(t.income))}${row('Less cost of sales',money(t.cost_of_sales))}${row('Gross result',money(m.grossProfit))}${row('Less operating expenses',money(t.operating_expenses))}${row('Accounting result',money(t.net))}</section></div>
-        <section class="fin-panel"><h2>Monthly revenue vs. expenses</h2><p class="fin-note">By document date · October includes receipts for earlier sales.</p><div class="table-wrap"><table class="fin-table"><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Result</th></tr></thead><tbody>${trends}</tbody></table></div></section>
+      get('financialResults').innerHTML=`<details class="stats-accounting-details"><summary>Accounting report · ${p.report_year}</summary><div class="fin-metrics">${metric('Income',money(t.income),'Payments received · VAT included')}${metric('Expenses',money(t.expenses),t.app?`Incl. ${money(t.app)} filed in the app since ${asOf}`:'')}${metric('Accounting result',money(t.net),'',t.net<0?'fin-negative':'fin-positive')}${metric('Result margin',m.margin===null?'—':m.margin.toFixed(1)+'%','')}</div>
+        <div class="fin-grid"><section class="fin-panel"><h2>Revenue sources</h2>${source('Website',m.sources.website)}${source('Stores, events & other',m.sources.other)}</section>
+        <section class="fin-panel"><h2>Revenue to result</h2>${row('Revenue',money(t.income))}${row('Less cost of sales',money(t.cost_of_sales))}${row('Gross result',money(m.grossProfit))}${row('Less operating expenses',money(t.operating_expenses))}${t.app?row('Less documents filed in the app (not yet sorted)',money(t.app)):''}${row('Accounting result',money(t.net))}</section></div>
+        <section class="fin-panel"><h2>Monthly revenue vs. expenses</h2><p class="fin-note">Income by payment date; expenses by document date.</p><div class="table-wrap"><table class="fin-table"><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Result</th></tr></thead><tbody>${trends}</tbody></table></div></section>
         <div class="fin-grid"><section class="fin-panel"><h2>Cost of sales</h2>${list(m.categories.filter(c=>c.group==='cost_of_sales'))}</section><section class="fin-panel"><h2>Operating expenses</h2>${list(m.categories.filter(c=>c.group==='operating_expenses'))}</section></div>
         <div class="fin-grid"><section class="fin-panel"><h2>Supplier spending</h2><details><summary>View ${m.suppliers.length} suppliers</summary>${m.suppliers.map(([name,n])=>row(name,money(n))).join('')||'<p class="fin-note">No suppliers in this period.</p>'}</details></section><section class="fin-panel"><h2>Fixed assets</h2>${row('Recorded asset purchases',money(t.fixed_assets))}<p class="fin-note">Excluded from P&L expenses.</p></section></div><section class="fin-panel" id="financialReceiptActivity"><h2>Receipts since this snapshot</h2><p class="fin-note">Loading the live receipt register…</p></section>${coverage}</details>`;
-      loadReceiptActivity(snapshot,get('financialMonth').value);
+      loadReceiptActivity(snapshot,inSnapshot?picked:'all');
     }catch{
       current=null;get('financialExport').disabled=true;get('financialResults').innerHTML='<p class="fin-note">This snapshot could not be validated. Reload saved data to retry.</p>';
     }
