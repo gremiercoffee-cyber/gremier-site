@@ -27,5 +27,29 @@
   const n=values.reduce((s,v)=>s+v.num,0),d=values.reduce((s,v)=>s+v.den,0);
   return `<div class="wj-trend-total"><strong>${d?(100*n/d).toFixed(1)+'%':'—'}</strong><span>${n.toLocaleString('en-IL')} of ${d.toLocaleString('en-IL')} visits in this period</span></div><p class="wj-note">${m.note}. Grouped by ${grain}; no visits means a gap.</p><svg class="wj-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="${m.label} over time"><title>${m.label} over time</title>${ticks}${segments.map(p=>`<polyline points="${p.map(v=>v.join(',')).join(' ')}" fill="none" stroke="#b8874e" stroke-width="3" stroke-linejoin="round"/>`).join('')}${values.map((v,i)=>v.value===null?'':`<circle cx="${x(i)}" cy="${y(v.value)}" r="${values.length>100?2:4}" fill="#b8874e" tabindex="0"><title>${esc(v.from===v.to?v.from:v.from+' – '+v.to)}: ${v.value.toFixed(1)}% (${v.num}/${v.den})</title></circle>`).join('')}${labels}</svg>${d?'':'<p class="wj-note">No qualifying visits in this period yet.</p>'}<details><summary>View exact numbers</summary><div class="table-wrap"><table><thead><tr><th>Period</th><th>Converted</th><th>Visits</th><th>Rate</th></tr></thead><tbody>${values.map(v=>`<tr><td>${esc(v.from===v.to?v.from:v.from+' – '+v.to)}</td><td>${v.num}</td><td>${v.den}</td><td>${v.value===null?'—':v.value.toFixed(1)+'%'}</td></tr>`).join('')}</tbody></table></div></details>`;
  }
- const api={metrics,series,bars,chart};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.GremierJourneyCharts=api;
+ function trafficSeries(days,from,to,grain='day',trackingStart='2026-11-02'){
+  const daily=new Map();
+  days.forEach(d=>daily.set(d.day,(daily.get(d.day)||0)+Number(d.visits||0)));
+  const groups=new Map();
+  for(let t=Date.parse(from+'T12:00:00Z');t<=Date.parse(to+'T12:00:00Z');t+=864e5){
+   const date=new Date(t),day=date.toISOString().slice(0,10);let key=day;
+   if(grain==='month')key=day.slice(0,7);
+   if(grain==='week'){date.setUTCDate(date.getUTCDate()-((date.getUTCDay()+6)%7));key=date.toISOString().slice(0,10);}
+   if(!groups.has(key))groups.set(key,{label:key,from:day,to:day,visits:0,available:false});
+   const g=groups.get(key);g.to=day;
+   if(day>=trackingStart){g.available=true;g.visits+=daily.get(day)||0;}
+  }
+  return Array.from(groups.values()).map(g=>({...g,value:g.available?g.visits:null}));
+ }
+ function trafficChart(days,from,to,grain='day',trackingStart='2026-11-02'){
+  const values=trafficSeries(days,from,to,grain,trackingStart),total=values.reduce((s,v)=>s+v.visits,0),w=Math.max(280,Math.min(760,root.document?.getElementById('wjTrafficTrend')?.clientWidth||760)),h=250,left=42,right=16,top=15,bottom=38;
+  const peak=Math.max(1,...values.map(v=>v.value||0)),step=Math.max(1,Math.ceil(peak/4)),max=step*4;
+  const x=i=>left+(w-left-right)*(values.length===1?.5:i/(values.length-1)),y=v=>h-bottom-(h-top-bottom)*v/max;
+  let parts=[],part=[];values.forEach((v,i)=>{if(v.value===null){if(part.length)parts.push(part);part=[];}else part.push([x(i),y(v.value)]);});if(part.length)parts.push(part);
+  const ticks=Array.from({length:5},(_,i)=>i*step).map(v=>`<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#ece9e3"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${v.toLocaleString('en-IL')}</text>`).join('');
+  const labels=[...new Set([0,Math.floor((values.length-1)/2),values.length-1])].map(i=>`<text x="${x(i)}" y="${h-10}" text-anchor="${i===0?'start':i===values.length-1?'end':'middle'}">${esc(values[i]?.label||'')}</text>`).join('');
+  const highest=values.filter(v=>v.value!==null).sort((a,b)=>b.visits-a.visits)[0];
+  return `<div class="wj-trend-total"><strong>${total.toLocaleString('en-IL')}</strong><span>recorded visits in this period</span></div><svg class="wj-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Recorded website visits over time"><title>Recorded website visits over time</title>${ticks}${parts.map(p=>`<polyline points="${p.map(v=>v.join(',')).join(' ')}" fill="none" stroke="#b8874e" stroke-width="3" stroke-linejoin="round"/>`).join('')}${values.map((v,i)=>v.value===null?'':`<circle cx="${x(i)}" cy="${y(v.value)}" r="${values.length>100?2:4}" fill="#b8874e" tabindex="0"><title>${esc(v.from===v.to?v.from:v.from+' – '+v.to)}: ${v.visits} recorded visits</title></circle>`).join('')}${labels}</svg><p class="wj-note">${highest?.visits?`Busiest ${grain}: ${esc(highest.label)} · ${highest.visits.toLocaleString('en-IL')} visits. `:''}Dates before tracking began are blank. Today is partial. Visits are recorded only after analytics consent.</p><details><summary>View exact visit counts</summary><div class="table-wrap"><table><thead><tr><th>Period</th><th>Recorded visits</th></tr></thead><tbody>${values.map(v=>`<tr><td>${esc(v.from===v.to?v.from:v.from+' – '+v.to)}</td><td>${v.value===null?'Not tracked yet':v.visits.toLocaleString('en-IL')}</td></tr>`).join('')}</tbody></table></div></details>`;
+ }
+ const api={metrics,series,bars,chart,trafficSeries,trafficChart};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.GremierJourneyCharts=api;
 })(typeof window==='undefined'?globalThis:window);
