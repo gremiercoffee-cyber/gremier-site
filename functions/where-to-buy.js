@@ -32,7 +32,7 @@ h1{font-size:1.7rem;margin:0 0 4px}.en{direction:ltr;text-align:left;color:#555;
 .cta{margin-top:26px;background:#fff;border:1px solid #e6e4df;border-radius:16px;padding:18px;text-align:center}.cta a{display:inline-block;margin-top:8px;padding:12px 22px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-weight:600}
 .leaflet-popup-content{font:14px/1.5 system-ui,Arial,sans-serif;direction:rtl;text-align:right}
 @media(max-width:600px){#map{height:320px}h1{font-size:1.4rem}}
-</style></head><body><main>
+</style><link rel="stylesheet" href="/storefront-journeys.css?v=20261102-1"></head><body><main>
 <header><a href="/"><img src="/icon-192.png" alt="">Gremier Coffee Co.</a><a class="lang" href="/">← לאתר · Back to the shop</a></header>
 <h1>איפה קונים גרמיר</h1><p class="en">Where to buy Gremier cold brew: the stores that carry it.</p>
 <div id="map" role="img" aria-label="מפת החנויות · Store map"></div>
@@ -50,6 +50,6 @@ if(window.L&&stores.length){
   map.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
   document.querySelectorAll('.s').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('a'))return;const m=markers[+el.dataset.i];map.setView(m.getLatLng(),16);m.openPopup();document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'});}));
 }
-</script></body></html>`;
+</script><script src="/storefront-journeys.js?v=20261102-2"></script></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
 }

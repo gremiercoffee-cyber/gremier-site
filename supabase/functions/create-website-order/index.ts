@@ -8,6 +8,7 @@ import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "../_shared/engage.ts";
 import { shabbatPromoActive } from "../_shared/weekly-promo.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
+import { linkJourneyOrder } from "../_shared/web-journey-model.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -521,6 +522,7 @@ Deno.serve(async (req) => {
     if (error || !inserted?.id) {
       throw error || new Error("Could not create order");
     }
+    await linkJourneyOrder(admin, body.analytics_context, inserted.id);
 
     // A friend's referral code was used: log it and tell the owner (the reward follows on payment).
     if (appliedCouponCode) {

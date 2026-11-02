@@ -55,3 +55,6 @@ verify_jwt = false
 
 [functions.expense-inbox]
 verify_jwt = false
+
+[functions.site-journeys]
+verify_jwt = false

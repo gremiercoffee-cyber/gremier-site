@@ -174,7 +174,8 @@
     if (!/^[a-z0-9]{8,32}$/.test(id || '')) { id = (Math.random().toString(36).slice(2, 12) + Date.now().toString(36)).slice(0, 24); put('gremier_sid', id); }
     return id;
   }
-  const track = (kind) => engage({ action: 'track', sid: sid(), kind });
+  // Consent-based journeys own these events now; do not create a second browser tracker.
+  const track = (_kind) => {};
 
   // ── Feedback: one click from the email (/?fb=<order>.<token>&r=1..5), or the card on a later visit ──
   function fillRef(el, refLink) {

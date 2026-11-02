@@ -789,6 +789,7 @@
 <link rel="stylesheet" href="/storefront-discovery.css?v=20261103-3"/>
 <script src="/storefront-discovery.js?v=20261103-3"></script>
 <link rel="stylesheet" href="/storefront-reveal.css?v=20261029-3"/>
+<link rel="stylesheet" href="/storefront-journeys.css?v=20261102-1"/>
 </head>
 <body>
 <div id="gremierBoot" role="status" aria-live="polite" aria-label="Loading Gremier Coffee">
@@ -2771,7 +2772,7 @@ async function createWebsiteOrder(orderData) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(orderData),
+    body: JSON.stringify({ ...orderData, analytics_context: window.GremierJourneys?.context() }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.id) {
@@ -2814,7 +2815,7 @@ async function callCreatePayment(orderId) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-website-order`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(orderPayload),
+    body: JSON.stringify({ ...orderPayload, analytics_context: window.GremierJourneys?.context() }),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -5340,7 +5341,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
 <script src="/storefront-cart.js?v=20261102-1"></script>
-<script src="/storefront-engage.js?v=20261102-2"></script>
+<script src="/storefront-engage.js?v=20261102-3"></script>
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261103-1"></script>
@@ -5356,5 +5357,6 @@ async function sendChatMessageText(text) {
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>
 <script src="/storefront-reveal.js?v=20261029-3"></script>
+<script src="/storefront-journeys.js?v=20261102-2"></script>
 </body>
 </html>
