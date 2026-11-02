@@ -722,7 +722,7 @@ window.gremierUiCacheSave = function (key, ids) {
   } catch {}
 };
 </script>
-<link rel="stylesheet" href="/admin-dashboard.css?v=20261025-2">
+<link rel="stylesheet" href="/admin-dashboard.css?v=20261102-1">
 <link rel="stylesheet" href="/admin-surfaces.css?v=20261026-2"/>
 </head>
 <body>
@@ -844,6 +844,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <option value="today">Today</option>
             <option value="week">This Week</option>
             <option value="year">This Year</option>
+          <option value="pickmonth">Choose month…</option>
+          <option value="pickyear">Choose year…</option>
             <option value="all" selected>All Time</option>
             <option value="pickmonth">Specific month…</option>
             <option value="pickyear">Specific year…</option>
@@ -1265,9 +1267,12 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="header-actions">
         <select class="form-input" style="width:auto" id="dashPeriod" aria-label="Dashboard reporting period" onchange="loadDashboard()">
           <option value="month" selected>This Month</option>
+          <option value="lastmonth">Last Month</option>
           <option value="week">Last 7 Days</option>
           <option value="year">This Year</option>
         </select>
+        <label id="dashMonthLabel" hidden>Month <input type="month" id="dashMonth" class="form-input" aria-label="Dashboard month" onchange="loadDashboard()"></label>
+        <label id="dashYearLabel" hidden>Year <input type="number" id="dashYear" class="form-input" aria-label="Dashboard year" min="2000" max="2100" step="1" onchange="loadDashboard()"></label>
         <button type="button" class="app-icon-button" id="dashRefresh" title="Refresh" aria-label="Refresh dashboard" onclick="loadDashboard()">↻</button>
       </div>
     </div>
@@ -1281,7 +1286,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <section class="dash-panel"><div class="dash-section-head"><div><h2>Needs your attention</h2></div></div><div id="dashAttention"></div></section>
     <section class="dash-panel dash-money-panel"><h2>Sales &amp; payments</h2><div id="dashMoney"></div></section>
   </div>
-  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Paid online orders</span><span><i class="dash-store-dot"></i>Store delivery value</span></div></div><div id="dashTrend"></div></section>
+  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span></div></div><div id="dashTrend"></div></section>
   <section class="dash-panel dash-coverage"><div><h2>Accounts &amp; expenses</h2></div><div class="dash-coverage-status"><button class="btn btn-outline btn-sm" onclick="showTab('reports')">Stats</button><button class="btn btn-outline btn-sm" onclick="showTab('expenses')">Expense inbox</button></div></section>
 
   <!-- Revenue chart -->
@@ -1952,7 +1957,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
-<script src="/admin-dashboard.js?v=20261025-2"></script>
+<script src="/admin-dashboard.js?v=20261102-1"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
 <script>
   function escHtml(s) {
@@ -9779,7 +9784,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-store-invoices.js?v=20261031-2"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
-<script src="/admin-revenue.js?v=20261103-2"></script>
+<script src="/admin-revenue.js?v=20261102-1"></script>
 <script src="/admin-receipts.js?v=20261023-1"></script>
 <script src="/admin-sales-breakdown.js?v=20261031-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261025-1"/>
@@ -9787,7 +9792,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-messages.js?v=20261023-2"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
 <script src="/admin-production.js?v=20261026-2"></script>
-<script src="/admin-stats-tabs.js?v=20261103-3"></script>
+<script src="/admin-stats-tabs.js?v=20261102-1"></script>
 <link rel="stylesheet" href="/admin-journeys.css?v=20261102-3"/>
 <script src="/admin-journey-charts.js?v=20261102-2"></script>
 <script src="/admin-journeys.js?v=20261102-4"></script>

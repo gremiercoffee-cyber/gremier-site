@@ -139,7 +139,34 @@
   const legacyWebsite=sum(report.rows.filter(r=>r.summary));
   return {legacyWebsite,snapshot:snapshotIncome,importAdjustments:imported-snapshotIncome,newReceipts,unreceipted,total:report.total_minor};
  }
- const api={reconcile,splitOrder,online,receipts,income,channels,owed,normalize,ref,needsReview,salesVat,owedVat,vatPeriod,rowVat};
+ // Shared operational sales basis for Dashboard and Stats: store statements/deliveries,
+ // and non-store receipts plus paid orders, matched once across all dates.
+ function operationalMonths(data,y,bills,businessDate,through='9999-12-31'){
+  const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
+  const revenue=keys.map(m=>channels(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate)));
+  const statements=keys.map(m=>bills.filter(b=>!b.cancelled_at&&b.year+'-'+String(b.month).padStart(2,'0')===m));
+  const payments=revenue.reduce((n,r,i)=>n+(statements[i].length?r.stores:0),0);
+  const settled=bills.filter(b=>!b.cancelled_at&&b.paid_at&&Number(b.year)===Number(y)).reduce((n,b)=>n+minor(b.total||0),0);
+  const late=payments?Math.max(0,payments-settled)/payments:0;
+  return keys.map((month,i)=>({month,stores:statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0)+Math.round(revenue[i].stores*late):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
+ }
+ function operationalSales(data,r,businessDate,partialStore=null){
+  if(Number(r.start.slice(0,4))<2026){
+   const snapshot=(data.snapshots||[]).find(x=>Number(x.report_year)===Number(r.start.slice(0,4)));
+   const rows=(snapshot?.payload?.monthly||[]).filter(m=>m.month>=r.start.slice(0,7)&&m.month<=r.to.slice(0,7));
+   const total=rows.length?rows.reduce((n,m)=>n+Number(m.income_minor||0),0):null;
+   return {historical:true,total,online:null,stores:null,other:null,totals:null,legacy:0,monthly:rows.map(m=>({key:m.month,online:0,store:0,other:Number(m.income_minor||0)/100})),rows:[]};
+  }
+  const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=income(data,r.start,to,businessDate),c=channels(report);
+  const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to));
+  const monthly=all.filter(m=>m.month>=r.start.slice(0,7)&&m.month<=to.slice(0,7));
+  const stores=r.period==='week'?partialStore:monthly.reduce((n,m)=>n+m.stores,0);
+  const totals={...report.totals,stores:stores===null?0:stores};
+  return {online:c.online,other:c.other,stores,total:stores===null?null:c.online+c.other+stores,totals,
+   monthly:monthly.map(m=>({key:m.month,online:m.online/100,store:m.stores/100,other:m.other/100})),
+   rows:report.rows,legacy:report.rows.filter(x=>x.summary).reduce((n,x)=>n+x.amount_minor,0)};
+ }
+ const api={reconcile,splitOrder,online,receipts,income,channels,owed,normalize,ref,needsReview,salesVat,owedVat,vatPeriod,rowVat,operationalMonths,operationalSales};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
  if(!root.document)return;root.GremierRevenue=api;
  const get=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -152,14 +179,15 @@
  const storeOwed=(from,to)=>loaded?.bills?owed(loaded.bills,from,to,loaded.billLinks||[],new Map(loaded.businessReceipts.map(r=>[r.id,r]))):null;
  api.annualOwed=year=>storeOwed(year+'-01-01',year+'-12-31');
  // Month by month, counted once like the income total (stores by payments here; Stats charts use store statements).
+ api.salesByMonth=(year,bills)=>loaded?operationalMonths(loaded,year,bills||loaded.bills||[],date,date(new Date())):null;
  api.monthly=year=>loaded?Array.from({length:12},(_,i)=>{const m=year+'-'+String(i+1).padStart(2,'0'),r=root.GremierSales?.monthRange?root.GremierSales.monthRange(m):{from:m+'-01',to:m+'-31'};const c=channels(income(loaded,r.from,r.to,date));return {month:m,...c};}):null;
  const totalsHtml=totals=>['stores','coffee','coffee_bar',...['other','unclassified'].filter(k=>totals[k])].map(k=>`<div class="fin-row"><span>${labels[k]}</span><strong>${money(totals[k])}</strong></div>`).join('');
- api.dashboardOnline=(orders,r,purposes=[],storeValue=null)=>{
+ api.dashboardOnline=(orders,r,purposes=[],storeValue=null,salesTotals=null)=>{
   const host=get('dashOnlineRevenue');if(!host)return;
   try {
-   const products=typeof allProducts!=='undefined'?allProducts:[],totals=online(orders,products,r.start,r.today,date,purposes);
-   if(storeValue!==null)totals.stores+=minor(storeValue);
-   const pending=orders.filter(o=>eligible(o)&&date(o.created_at)>=r.start&&date(o.created_at)<=r.today&&needsReview({parts:splitOrder(o,products,purposes.find(p=>p.source_key==='order-purpose:'+o.id)?.category)}));
+   const products=typeof allProducts!=='undefined'?allProducts:[],totals=salesTotals?{...salesTotals}:online(orders,products,r.start,r.to||r.today,date,purposes);
+   if(!salesTotals&&storeValue!==null)totals.stores+=minor(storeValue);
+   const pending=orders.filter(o=>eligible(o)&&date(o.created_at)>=r.start&&date(o.created_at)<=(r.to||r.today)&&needsReview({parts:splitOrder(o,products,purposes.find(p=>p.source_key==='order-purpose:'+o.id)?.category)}));
    const open=get('dashPurposeReview')?.open;
    host.innerHTML='<h2>Sales by purpose</h2>'+totalsHtml({...totals,unclassified:0})+(pending.length?`<details id="dashPurposeReview" class="dash-review" ${open?'open':''}><summary><span>Needs review · ${pending.length}</span><strong>${money(totals.unclassified)}</strong></summary><p class="sales-note">Orders awaiting a sales category.</p><div role="status" id="dashPurposeStatus" class="dash-review-error"></div>${pending.map(o=>`<div class="dash-review-order"><div><strong>#${esc(o.order_number)} · ${esc(o.customer_name)}</strong><small>${esc((o.items||[]).map(i=>`${i.qty??1} × ${i.name_en||i.name_he||'Item'}`).join(', '))}</small></div><strong>${money(minor(o.total))}</strong><label>Category<select class="form-input" aria-label="Category for order ${esc(o.order_number)}" data-dashboard-purpose="${esc(o.id)}"><option value="" selected disabled>Choose category</option>${['coffee','coffee_bar','stores','other'].map(k=>`<option value="${k}">${labels[k]}</option>`).join('')}</select></label></div>`).join('')}</details>`:'')+(storeValue===null?'<p class="sales-note">Store totals unavailable.</p>':'');
    host.querySelectorAll('[data-dashboard-purpose]').forEach(select=>select.onchange=async()=>{
@@ -171,7 +199,7 @@
      const previous=purposes.findIndex(p=>p.source_key===source_key);if(previous>=0)purposes.splice(previous,1);
      purposes.push({source_key,category:select.value});
      root.GremierDashboard?.clearCache?.();
-     api.dashboardOnline(orders,r,purposes,storeValue);
+     if(salesTotals)root.loadDashboard();else api.dashboardOnline(orders,r,purposes,storeValue);
     } catch {get('dashPurposeStatus').textContent='Category was not saved. Try again.';select.disabled=false;}
    });
   } catch {host.innerHTML='<h2>Sales by purpose</h2><p>Activity breakdown unavailable.</p>';}
@@ -186,12 +214,14 @@
   get('revenueYear').onchange=load;get('revenueMonth').onchange=load;get('revenueRefresh').onclick=load;
  }
  function scope(){const y=get('revenueScope').value==='month'?get('revenueMonth').value.slice(0,4):get('revenueYear').value;if(!/^20\d{2}$/.test(y))throw Error('Choose a valid year.');const m=get('revenueScope').value==='month'?get('revenueMonth').value:null;return {year:y,...(m?root.GremierSales.monthRange(m):{from:y+'-01-01',to:y+'-12-31'})};}
- async function pages(table,columns){const out=[];for(let n=0;n<100000;n+=1000){const r=await client().from(table).select(columns).order(table==='order_receipts'?'order_id':table==='finbot_income_sources'?'document_reference':table==='revenue_classification_overrides'?'source_key':table==='business_receipt_bills'?'billing_id':'id').range(n,n+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Reporting limit reached');}
- async function load(){setup();api.loading=true;const seq=++serial;get('revenueStatus').textContent='Loading revenue…';try{
-  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference,tax_invoice_id,linked_invoice_id'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number,source_kind,period_start,source_details'],['revenue_classification_overrides','source_key,category']];
-  const results=await Promise.all([...tables.map(([t,c])=>pages(t,c)),pages('store_deliveries','id,delivery_date').catch(()=>null),pages('store_billing','id,store_id,year,month,total,billed_at,paid_at,cancelled_at,invoiced_gross_minor,stores(name)').catch(()=>null),pages('business_receipt_bills','billing_id,receipt_id').catch(()=>null)]);if(seq!==serial)return;
-  loaded=Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides','deliveries','bills','billLinks'].map((k,i)=>[k,results[i]]));api.loading=false;render();root.dispatchEvent(new Event('gremier-revenue-ready'));
- }catch(e){if(seq!==serial)return;get('revenueStatus').textContent=e.message;get('revenueResults').innerHTML='';loaded=null;api.loading=false;root.dispatchEvent(new Event('gremier-revenue-ready'));}}
+ async function pages(table,columns){const out=[];for(let n=0;n<100000;n+=1000){const r=await client().from(table).select(columns).order(table==='order_receipts'?'order_id':table==='finbot_income_sources'?'document_reference':table==='revenue_classification_overrides'?'source_key':table==='business_receipt_bills'?'billing_id':table==='finbot_reporting_snapshots'?'report_year':'id').range(n,n+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Reporting limit reached');}
+ let dataFlight=null;
+ async function fetchData(){if(dataFlight)return dataFlight;const task=(async()=>{
+  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference,tax_invoice_id,linked_invoice_id'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number,source_kind,period_start,source_details'],['revenue_classification_overrides','source_key,category'],['finbot_reporting_snapshots','report_year,as_of_date,payload']];
+  const results=await Promise.all([...tables.map(([t,c])=>pages(t,c)),pages('store_deliveries','id,delivery_date').catch(()=>null),pages('store_billing','id,store_id,year,month,total,billed_at,paid_at,cancelled_at,invoiced_gross_minor,stores(name)'),pages('business_receipt_bills','billing_id,receipt_id').catch(()=>null)]);return Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides','snapshots','deliveries','bills','billLinks'].map((k,i)=>[k,results[i]]));
+})();dataFlight=task;try{return await task;}finally{if(dataFlight===task)dataFlight=null;}}
+ api.fetchData=fetchData;
+ async function load(){setup();api.loading=true;const seq=++serial;get('revenueStatus').textContent='Loading revenue…';try{const next=await fetchData();if(seq!==serial)return;loaded=next;api.loading=false;render();root.dispatchEvent(new Event('gremier-revenue-ready'));}catch(e){if(seq!==serial)return;get('revenueStatus').textContent=e.message;get('revenueResults').innerHTML='';loaded=null;api.loading=false;root.dispatchEvent(new Event('gremier-revenue-ready'));}}
  function render(){
   const r=scope(),combined=income(loaded,r.from,r.to,date),channel=channels(combined),due=storeOwed(r.from,r.to),rows=receipts(loaded).filter(x=>x.date>=r.from&&x.date<=r.to);
   const orders=loaded.orders.filter(o=>eligible(o)&&date(o.created_at)>=r.from&&date(o.created_at)<=r.to).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));

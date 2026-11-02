@@ -62,3 +62,5 @@
 #tab-dashboard #dashBriefingCard { margin-top:8px; }
 @media(max-width:1000px) { #tab-dashboard .dash-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } #tab-dashboard .dash-overview-grid { grid-template-columns:1fr; } }
 @media(max-width:600px) { #tab-dashboard .dash-panel { padding:18px; } #tab-dashboard .dash-metric { padding:16px; } #tab-dashboard .dash-metrics { gap:10px; } #tab-dashboard .dash-coverage { flex-direction:column; align-items:flex-start; } #tab-dashboard .dash-coverage-status { flex-direction:row; flex-wrap:wrap; } #tab-dashboard .dash-section-head { flex-wrap:wrap; } #tab-dashboard .dash-trend-panel .dash-section-head { margin-bottom:16px; } }
+
+#tab-dashboard .dash-bar-other,#tab-dashboard .dash-other-dot{background:#8e7e70}#dashMonthLabel,#dashYearLabel{font-size:12px;display:flex;gap:8px;align-items:center}#dashMonthLabel[hidden],#dashYearLabel[hidden]{display:none!important}#dashYear{width:100px}

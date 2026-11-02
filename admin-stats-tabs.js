@@ -159,18 +159,7 @@
  // Stores count what was delivered (the month's statement, paid or not). Months without statements
  // (before June 2026) count store payments instead; payments received in statement months beyond what
  // paid those statements were for earlier deliveries, so they're kept too, in the month received.
- function salesByMonth(y){
-  const rev=root.GremierRevenue?.monthly?.(y),keys=months(y);
-  const billed=keys.map(m=>data.bills.filter(b=>!b.cancelled_at&&b.year+'-'+String(b.month).padStart(2,'0')===m));
-  const inStatementMonths=keys.reduce((s,m,i)=>s+(billed[i].length?(rev?.[i]?.stores||0):0),0);
-  const paidStatements=data.bills.filter(b=>!b.cancelled_at&&b.paid_at&&b.year===y).reduce((s,b)=>s+Math.round(Number(b.total||0)*100),0);
-  const late=inStatementMonths?Math.max(0,inStatementMonths-paidStatements)/inStatementMonths:0;
-  return keys.map((m,i)=>{
-   const pay=rev?.[i]?.stores||0;
-   const stores=billed[i].length?Math.round(billed[i].reduce((s,b)=>s+Number(b.total||0),0)*100)+Math.round(pay*late):pay;
-   return {month:m,stores,online:rev?.[i]?.online||0,other:rev?.[i]?.other||0};
-  });
- }
+ function salesByMonth(y){return root.GremierRevenue?.salesByMonth?.(y,data.bills)||months(y).map(month=>({month,stores:0,online:0,other:0}));}
  // Old-website sales exist only as one total for the year, so they're in year totals but not in any month.
  const oldWebsite=y=>(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary).reduce((s,r)=>s+r.amount_minor,0);
  const finbotYear=y=>data.snaps.find(s=>s.report_year===y);

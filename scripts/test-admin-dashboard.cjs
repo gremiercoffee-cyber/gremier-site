@@ -62,6 +62,10 @@ function loaderHarness(tables,failTable) {
   const nodes=new Map(), calls=[];
   const document={getElementById(id){if(!nodes.has(id)) nodes.set(id,{value:id==='dashPeriod'?'month':'',innerHTML:'',textContent:'',classList:{toggle(){}},addEventListener(){}});return nodes.get(id)}};
   const root={document,MAIN_SB:{from(table){const q={select(){return q},gte(){return q},lt(){return q},lte(){return q},eq(){return q},is(){return q},not(){return q},order(){return q},range(a,b){calls.push({table,a,b});return Promise.resolve(table===failTable?{error:new Error('Unavailable')}:{data:(tables[table]||[]).slice(a,b+1)})}};return q}}};
+  root.GremierRevenue={operationalSales:require('../admin-revenue.js').operationalSales,fetchData:async()=>{
+    if(['orders','store_billing'].includes(failTable))throw Error('Revenue source unavailable');
+    return {orders:tables.orders||[],products:[],stores:tables.stores||[],customers:[],orderReceipts:[],businessReceipts:[],imported:[],overrides:[],bills:tables.store_billing||[],deliveries:[],snapshots:[]};
+  }};
   class ReportingDate extends Date { constructor(...args) { super(...(args.length ? args : ['2026-10-15T12:00:00Z'])); } }
   vm.runInNewContext(fs.readFileSync(require.resolve('../admin-dashboard.js'),'utf8'),{window:root,document,Intl,Date:ReportingDate,console});
   return {root,nodes,calls};
@@ -77,7 +81,7 @@ test('loader renders unavailable for a failed source while preserving successful
   const h=loaderHarness({orders:[order()]},'store_billing');
   await h.root.loadDashboard();
   assert.match(h.nodes.get('dashKPIs').innerHTML,/Unavailable/);
-  assert.match(h.nodes.get('dashSalesTotal').innerHTML,/100/);
+  assert.match(h.nodes.get('dashSalesTotal').innerHTML,/Unavailable/);
   assert.match(h.nodes.get('dashUpdated').textContent,/bills/);
   assert.equal(h.nodes.get('dashRefresh').disabled,false);
 });
@@ -86,11 +90,39 @@ test('a new dashboard instance paints its scoped cache synchronously and retains
  const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
  const next=loaderHarness({},'orders');next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-a';const pending=next.root.loadDashboard();
  assert.match(next.nodes.get('dashSalesTotal').innerHTML,/100/);assert.doesNotMatch(next.nodes.get('dashSalesTotal').innerHTML,/Unavailable/);assert.match(next.nodes.get('dashUpdated').textContent,/Saved/);
- await pending;assert.match(next.nodes.get('dashSalesTotal').innerHTML,/100/);assert.match(next.nodes.get('dashUpdated').textContent,/saved figures for orders/);
+ await pending;assert.match(next.nodes.get('dashSalesTotal').innerHTML,/100/);assert.match(next.nodes.get('dashUpdated').textContent,/saved figures for .*orders/);
 });
 test('cache never crosses a period or signed-in user, and overlapping refreshes share one fetch',async()=>{
  const cache=storage(),first=loaderHarness({orders:[order()]});first.root.localStorage=cache;first.root.__gremierAdminUserId='admin-a';await first.root.loadDashboard();
  const next=loaderHarness({});next.root.localStorage=cache;next.root.__gremierAdminUserId='admin-b';const pending=next.root.loadDashboard();assert.doesNotMatch(next.nodes.get('dashSalesTotal').innerHTML,/100|Unavailable/);assert.strictEqual(next.root.loadDashboard(),pending);await pending;assert.equal(next.calls.length,7);
  next.nodes.get('dashPeriod').value='year';const changed=next.root.loadDashboard();assert.match(next.nodes.get('dashSalesTotal').innerHTML,/dash-skeleton/);await changed;
- next.root.GremierDashboard.clearCache();assert.equal(Object.keys(cache).filter(k=>k.startsWith('gremier_dash_v2:')).length,0);
+ next.root.GremierDashboard.clearCache();assert.equal(Object.keys(cache).filter(k=>k.startsWith('gremier_dash_v3:')).length,0);
+});
+
+
+test('dashboard can select last month across January, any past month, and a whole past year',()=>{
+ const now=new Date('2026-01-15T12:00:00Z');
+ assert.equal(range('lastmonth',now).start,'2025-12-01');assert.equal(range('lastmonth',now).end,'2026-01-01');
+ const oct=range('pickmonth',now,{month:'2025-10'});assert.equal(oct.start,'2025-10-01');assert.equal(oct.end,'2025-11-01');assert.equal(oct.label,'October 2025');
+ const y=range('pickyear',now,{year:2024});assert.equal(y.start,'2024-01-01');assert.equal(y.end,'2025-01-01');assert.equal(y.yearly,true);
+ assert.throws(()=>range('pickmonth',now,{month:'2026-02'}));
+});
+test('dashboard and Stats share event receipts, store statements and deduplicated online payments',()=>{
+ const revenue=require('../admin-revenue.js'),oct=range('pickmonth',new Date('2026-11-02T12:00:00Z'),{month:'2026-10'});
+ const rd={orders:[order({id:'paid',order_number:1,total:100})],products:[],stores:[{id:'s',name:'Store'}],customers:[],overrides:[],imported:[{document_reference:'event',document_date:'2026-10-12',amount_minor:800000,customer_name:'Coffee bar event'}],orderReceipts:[{order_id:'paid',status:'issued',amount_minor:10000,payment_date:'2026-10-05',document_reference:'web'}],businessReceipts:[],bills:[{year:2026,month:10,total:500}],snapshots:[]};
+ const m=model(data({orders:rd.orders,revenueData:rd}),oct,revenue);
+ assert.equal(m.online,100);assert.equal(m.other,8000);assert.equal(m.store,500);assert.equal(m.totalSales,8600);
+ const stats=revenue.operationalMonths(rd,2026,rd.bills,businessDate)[9];assert.equal(m.totalSales,(stats.online+stats.other+stats.stores)/100);
+ assert.equal(m.sales.totals.coffee_bar,800000);assert.equal(m.buckets.reduce((n,b)=>n+b.online+b.store+b.other,0),m.totalSales);
+});
+test('historical years use saved FinBot income and never fabricate a channel breakdown',()=>{
+ const revenue=require('../admin-revenue.js'),year=range('pickyear',new Date('2026-11-02T12:00:00Z'),{year:2025});
+ const rd={snapshots:[{report_year:2025,payload:{monthly:[{month:'2025-01',income_minor:123400},{month:'2025-02',income_minor:50000}]}}]};
+ const m=model(data({revenueData:rd}),year,revenue);assert.equal(m.totalSales,1734);assert.equal(m.online,null);assert.equal(m.sales.historical,true);
+});
+
+test('an issued non-store 599 document is included once even after its linked payment receipt',()=>{
+ const revenue=require('../admin-revenue.js'),nov=range('month',new Date('2026-11-02T12:00:00Z'));
+ const rd={orders:[],products:[],stores:[],customers:[],overrides:[],imported:[],orderReceipts:[],bills:[],snapshots:[],businessReceipts:[{id:'invoice',document_type:'tax_invoice',status:'issued',amount_minor:59900,payment_date:'2026-11-01',customer_snapshot:{name:'Coffee bar customer'}},{id:'payment',document_type:'receipt',linked_invoice_id:'invoice',status:'issued',amount_minor:59900,payment_date:'2026-11-02',customer_snapshot:{name:'Coffee bar customer'}}]};
+ const m=model(data({revenueData:rd}),nov,revenue);assert.equal(m.other,599);assert.equal(m.totalSales,599);assert.equal(m.sales.totals.coffee_bar,59900);
 });
