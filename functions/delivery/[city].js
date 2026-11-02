@@ -29,7 +29,7 @@ h1{font-size:1.7rem;line-height:1.25;margin:0 0 6px}h2{font-size:1.15rem;margin:
 .p{display:grid;gap:3px;background:#fff;border:1px solid #e6e4df;border-radius:14px;padding:10px;text-decoration:none;color:inherit}.p img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;background:#f2efea}
 .p b{font-size:.88rem}.p span{font-size:.82rem;color:#666}.p i{font-style:normal;font-weight:600}
 .cta{display:inline-block;margin:8px 8px 0 0;padding:12px 20px;border-radius:999px;background:#1a1a1a;color:#fff;text-decoration:none;font-weight:600}.cta.alt{background:#fff;color:#1a1a1a;border:1.5px solid #1a1a1a}
-</style><link rel="stylesheet" href="/storefront-journeys.css?v=20261102-1"></head><body><main>
+</style><link rel="stylesheet" href="/storefront-journeys.css?v=20261102-2"></head><body><main>
 <header><img src="/icon-192.png" alt=""><a href="/">Gremier Coffee Co.</a></header>
 <section class="he"><h1>קולד ברו עם משלוח ב${esc(he)}</h1><p class="lead">קולד ברו בחליטה איטית, חלק ובלי מרירות, לבית, למשרד ולאירועים ב${esc(he)}.</p>
 <div class="box">${esc(delHe)} אפשר לבחור משלוח רגיל או מהיר, וגם תאריך.</div>
@@ -39,6 +39,6 @@ h1{font-size:1.7rem;line-height:1.25;margin:0 0 6px}h2{font-size:1.15rem;margin:
 <a class="cta" href="/#shop">Shop the coffee</a><a class="cta alt" href="/#coffeebars">Coffee bar for an event in ${esc(en)}</a></section>
 <h2>Our coffee · הקפה שלנו</h2><div class="grid">${coffees.map(card).join('')}</div>
 <div class="box he">☕ נחלט טרי באצוות קטנות · כשר בהשגחת הרב שמואל ויינער</div>
-</main><script src="/storefront-journeys.js?v=20261102-3"></script></body></html>`;
+</main><script src="/storefront-journeys.js?v=20261102-4"></script></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
 }

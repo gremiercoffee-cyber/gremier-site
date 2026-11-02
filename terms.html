@@ -35,7 +35,7 @@
   [data-lang] { display:none; }
   html[lang="he"] [data-lang="he"], html[lang="en"] [data-lang="en"] { display:block; }
 </style>
-<link rel="stylesheet" href="/storefront-journeys.css?v=20261102-1"></head>
+<link rel="stylesheet" href="/storefront-journeys.css?v=20261102-2"></head>
 <body>
 <header><div class="bar">
   <a class="home" href="/"><img src="/logo.png" alt=""/><span>Gremier Coffee</span></a>
@@ -224,7 +224,7 @@
 
 <section id="privacy-en">
 <h2>Privacy Policy</h2>
-<h3>Analytics choices and retention</h3><p>Analytics is optional. Choose “Essential only” to shop without journey tracking, or change your choice using “Privacy choices” in the website footer. Detailed journeys are deleted after 30 days and replaced with anonymous daily summaries, retained for two years. A random browser ID and visit count are retained for up to six months to recognize returning visits. Identified journey information is accessible only to authorized administrators. Essential storage for sign-in, carts, language and checkout operates separately.</p>
+<h3>Analytics choices and retention</h3><p>Analytics is optional. Choose “Decline” to shop without journey tracking, or change your choice using “Privacy choices” in the website footer. Detailed journeys are deleted after 30 days and replaced with anonymous daily summaries, retained for two years. A random browser ID and visit count are retained for up to six months to recognize returning visits. Identified journey information is accessible only to authorized administrators. Essential storage for sign-in, carts, language and checkout operates separately.</p>
 <h3>What we collect</h3>
 <ul>
   <li>Details you give when you order: name, phone, email, delivery address and notes.</li>
@@ -272,5 +272,5 @@
   const params = new URLSearchParams(location.search).get('lang');
   setLang(params === 'en' || params === 'he' ? params : saved === 'en' ? 'en' : saved === 'he' ? 'he' : (navigator.languages || [navigator.language]).some((x) => /^(he|iw)/i.test(x || '')) ? 'he' : 'en');
 </script>
-<script src="/storefront-journeys.js?v=20261102-3"></script></body>
+<script src="/storefront-journeys.js?v=20261102-4"></script></body>
 </html>
