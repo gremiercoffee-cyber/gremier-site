@@ -16,9 +16,11 @@ Deno.serve(async req=>{
    if(raw.action==='report'){
     const r=await db.rpc('web_report',{from_day:start,to_day:end,testing:raw.testing===true,visitor_offset:Math.max(0,Math.min(100000,Math.floor(Number(raw.visitor_offset)||0)))});
     if(r.error)throw Error('report_unavailable');
+    const trend=await db.rpc('web_conversion_trend',{from_day:start,to_day:end,testing:raw.testing===true});
+    if(trend.error)throw Error('trend_unavailable');
     const ids=(r.data.breakdowns||[]).filter((x:any)=>x.dimension==='product').map((x:any)=>x.label).filter(uuid);
     const p=ids.length?await db.from('products').select('id,name_en').in('id',ids):{data:[]};
-    return json({...r.data,products:p.data||[],from:start,to:end});
+    return json({...r.data,conversion_days:trend.data||[],products:p.data||[],from:start,to:end});
    }
    if(!uuid(raw.visitor_id))return json({error:'invalid_visitor'},400);
    const nextDay=new Date(Date.parse(end+'T12:00:00Z')+86400000).toISOString().slice(0,10);

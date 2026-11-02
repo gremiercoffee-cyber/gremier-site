@@ -18,3 +18,5 @@ Validation:
 - Browser: essential-only creates no analytics ID/events; accept starts tracking; products/cart/checkout generate categorical events; withdrawal stops further collection. Admin UI checked with synthetic fixtures; real report endpoint access checked separately.
 
 Consent approach informed by [CNIL analytics guidance](https://www.cnil.fr/fr/node/677); scheduled retention uses [Supabase Cron](https://supabase.com/docs/guides/cron). This implementation is not a legal compliance certification.
+
+Charts: popular pages include product views. Three conversion trends use visits reaching checkout/all visits, visits both checking out and paying/checkout visits, and paid visits/all visits. Day/week/month groups sum numerators and denominators; empty denominators are gaps. Data is assigned to the visit start date in Jerusalem, including later order payment. The checkout/paid intersection is retained in daily rollups.

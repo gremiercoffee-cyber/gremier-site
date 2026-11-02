@@ -58,3 +58,6 @@ verify_jwt = false
 
 [functions.site-journeys]
 verify_jwt = false
+
+[functions.referral-tools]
+verify_jwt = false
