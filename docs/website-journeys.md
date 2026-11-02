@@ -1,6 +1,6 @@
 # Website journeys
 
-Stats → Website & customers → Website journeys. First-party opt-in analytics, separate from the earlier Cloudflare/Activity card.
+Main sidebar → Website traffic (also directly in the mobile More menu, outside Website settings). First-party opt-in analytics, separate from the earlier Cloudflare/Activity card.
 
 Sessions start after an affirmative analytics choice, expire after 30 minutes without activity and rotate after 12 hours. Identifiers are random browser IDs, not proof of a human identity. A verified member JWT can associate a visit with its account. Guests who decline are not recorded. Browser storage preferences expire after six months; the footer opens the choice panel again.
 

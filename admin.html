@@ -763,6 +763,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('paylinks')" id="nav-paylinks"><span class="icon">🔗</span><span>Payment Links</span></div>
       <div class="nav-item" onclick="showTab('members')" id="nav-members"><span class="icon">👤</span><span>Members</span></div>
       <div class="nav-item" onclick="showTab('reports')" id="nav-reports"><span class="icon">📈</span><span>Stats</span></div>
+      <div class="nav-item" onclick="showTab('traffic')" id="nav-traffic"><span class="icon">🌐</span><span>Website traffic</span></div>
       <details class="settings-nav" id="websiteSettingsNav"><summary><span class="icon">⚙️</span><span>Website settings</span><span class="settings-chevron" aria-hidden="true">›</span></summary><div class="settings-items">
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
@@ -1347,6 +1348,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 </div>
 
+<!-- WEBSITE TRAFFIC -->
+<div id="tab-traffic" class="tab-content" style="display:none"></div>
+
 <!-- COUPONS TAB -->
 <div id="tab-coupons" class="tab-content" style="display:none">
   <div class="page-header">
@@ -1496,6 +1500,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <button class="nav-drawer-item" onclick="showTab('paylinks');closeNavDrawer()"><span>&#128279;</span>Payment Links</button>
     <button class="nav-drawer-item" onclick="showTab('members');closeNavDrawer()"><span>&#128100;</span>Members</button>
     <button class="nav-drawer-item" onclick="showTab('reports');closeNavDrawer()"><span>&#128200;</span>Stats</button>
+    <button class="nav-drawer-item" onclick="showTab('traffic');closeNavDrawer()"><span>🌐</span>Website traffic</button>
     <details class="settings-nav" id="drawerWebsiteSettings"><summary><span>⚙️</span><span>Website settings</span><span class="settings-chevron" aria-hidden="true">›</span></summary><div class="settings-items">
     <button class="nav-drawer-item" onclick="showTab('delivery');closeNavDrawer()"><span>&#128666;</span>Delivery</button>
     <button class="nav-drawer-item" onclick="showTab('coupons');closeNavDrawer()"><span>&#127903;&#65039;</span>Coupons</button>
@@ -9783,9 +9788,9 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-reviews.js?v=20261023-1"></script>
 <script src="/admin-production.js?v=20261026-2"></script>
 <script src="/admin-stats-tabs.js?v=20261103-3"></script>
-<link rel="stylesheet" href="/admin-journeys.css?v=20261102-2"/>
+<link rel="stylesheet" href="/admin-journeys.css?v=20261102-3"/>
 <script src="/admin-journey-charts.js?v=20261102-1"></script>
-<script src="/admin-journeys.js?v=20261102-2"></script>
+<script src="/admin-journeys.js?v=20261102-3"></script>
 <link rel="stylesheet" href="/admin-referrals.css?v=20261102-2"/>
 <script src="/admin-referrals.js?v=20261102-2"></script>
 <link rel="stylesheet" href="/admin-production-workers.css?v=20261026-2"/>

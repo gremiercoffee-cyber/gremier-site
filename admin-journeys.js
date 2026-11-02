@@ -1,4 +1,4 @@
-/* Read-only website analytics in Stats → Website & customers. */
+/* Standalone Website traffic screen. */
 (function(root){
  'use strict';
  const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,12 +10,12 @@
  let serial=0,detailSerial=0,loaded=false,last=null,visitorOffset=0,trendMetric='checkout',trendGrain='day';
  async function call(body){const client=typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB;const r=await client.functions.invoke('site-journeys',{body});if(r.error||r.data?.error)throw Error(r.data?.error||'Website analytics unavailable');return r.data;}
  function mount(){
-  const host=$('tab-reports');if(!host||$('websiteJourneyAnalytics'))return !!host;
+  const host=$('tab-traffic');if(!host||$('websiteJourneyAnalytics'))return !!host;
   const el=document.createElement('section');el.id='websiteJourneyAnalytics';el.className='wj-root';
-  el.innerHTML=`<header class="wj-heading"><div><h2>Website journeys</h2><p>Visits, shopping and the paths people take.</p></div><button class="btn btn-outline btn-sm" id="wjRefresh">Refresh</button></header>
+  el.innerHTML=`<header class="wj-heading"><div><h1>Website traffic</h1><p>Visits, shopping and the paths people take.</p></div><button class="btn btn-outline btn-sm" id="wjRefresh">Refresh</button></header>
    <div class="wj-filters"><label>From<input type="date" id="wjFrom" value="${before(6)}"></label><label>To<input type="date" id="wjTo" value="${today()}"></label><div>${[['today','Today'],['week','7 days'],['month','30 days'],['year','This year']].map(([id,label])=>`<button type="button" class="btn btn-outline btn-sm" data-wj-period="${id}">${label}</button>`).join('')}</div></div>
    <p class="wj-note" id="wjStatus" role="status">Loading…</p><div id="wjResults"></div><div id="wjDetail"></div>`;
-  (host.querySelector('.st-pane[data-pane="web"]')||host).prepend(el);
+  host.prepend(el);
   $('wjRefresh').onclick=load;$('wjFrom').onchange=$('wjTo').onchange=()=>{visitorOffset=0;load();};
   el.querySelectorAll('[data-wj-period]').forEach(b=>b.onclick=()=>{visitorOffset=0;$('wjTo').value=today();$('wjFrom').value=b.dataset.wjPeriod==='year'?today().slice(0,4)+'-01-01':before({today:0,week:6,month:29}[b.dataset.wjPeriod]);load();});
   el.addEventListener('click',e=>{const button=e.target.closest('[data-wj-visitor]');if(button)detail(button.dataset.wjVisitor);});return true;
@@ -50,7 +50,6 @@
    $('wjCloseDetail').onclick=()=>{detailSerial++;box.innerHTML='';};box.scrollIntoView({block:'start',behavior:'smooth'});
   }catch(e){if(seq===detailSerial)box.innerHTML=`<p>${esc(e.message)}</p>`;}
  }
- document.addEventListener('click',e=>{if(e.target.closest('[data-stats-tab="web"]')){mount();load();}});
- const show=root.showTab;if(typeof show==='function')root.showTab=function(tab,...args){const r=show.call(this,tab,...args);if(tab==='reports'){mount();if(!loaded)load();}return r;};
- let attempts=0;const timer=setInterval(()=>{if(mount()){clearInterval(timer);if(getComputedStyle($('tab-reports')).display!=='none'&&!loaded)load();}else if(++attempts>30)clearInterval(timer);},500);
+ const show=root.showTab;if(typeof show==='function')root.showTab=function(tab,...args){const r=show.call(this,tab,...args);if(tab==='traffic'){mount();load();}return r;};
+ let attempts=0;const timer=setInterval(()=>{if(mount()){clearInterval(timer);if(getComputedStyle($('tab-traffic')).display!=='none'&&!loaded)load();}else if(++attempts>30)clearInterval(timer);},500);
 })(window);
