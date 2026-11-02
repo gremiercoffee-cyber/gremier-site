@@ -844,8 +844,6 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <option value="today">Today</option>
             <option value="week">This Week</option>
             <option value="year">This Year</option>
-          <option value="pickmonth">Choose month…</option>
-          <option value="pickyear">Choose year…</option>
             <option value="all" selected>All Time</option>
             <option value="pickmonth">Specific month…</option>
             <option value="pickyear">Specific year…</option>
@@ -1270,6 +1268,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           <option value="lastmonth">Last Month</option>
           <option value="week">Last 7 Days</option>
           <option value="year">This Year</option>
+        
+          <option value="pickmonth">Choose month…</option>
+          <option value="pickyear">Choose year…</option>
         </select>
         <label id="dashMonthLabel" hidden>Month <input type="month" id="dashMonth" class="form-input" aria-label="Dashboard month" onchange="loadDashboard()"></label>
         <label id="dashYearLabel" hidden>Year <input type="number" id="dashYear" class="form-input" aria-label="Dashboard year" min="2000" max="2100" step="1" onchange="loadDashboard()"></label>
