@@ -778,11 +778,11 @@
   /* Preview badge */
 </style>
 
-<link rel="stylesheet" href="/subscriptions.css?v=20261021-2"/>
+<link rel="stylesheet" href="/subscriptions.css?v=20261103-1"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261103-7"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
-<link rel="stylesheet" href="/storefront-subscribe.css?v=20261103-7"/>
+<link rel="stylesheet" href="/storefront-subscribe.css?v=20261103-8"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261101-layout2"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
@@ -1209,6 +1209,15 @@
           <span id="t-co-apt-na">Private house — not applicable</span>
         </label>
       </div>
+      </div>
+      <!-- Monthly subscriptions: required delivery window -->
+      <div class="form-group co-window-group" id="coSubWindow" hidden>
+        <label class="form-label" id="coSubWindowTitle">When should your monthly box arrive? *</label>
+        <div class="co-window-opts">
+          <label class="co-window"><input type="radio" name="subWindow" value="early" onchange="setCheckoutSubWindow(this.value)"/><span><b></b><small></small></span></label>
+          <label class="co-window"><input type="radio" name="subWindow" value="mid" onchange="setCheckoutSubWindow(this.value)"/><span><b></b><small></small></span></label>
+        </div>
+        <div class="co-window-first" id="coSubWindowFirst"></div>
       </div>
       <div class="form-group">
         <label class="form-label" id="t-co-ship">Shipping Type</label>
@@ -2655,7 +2664,7 @@ function renderCartDrawer() {
       ? `<img src="${escAttr(cloudinaryOptimize(item.images[0], 100))}" alt="${escAttr(name)}"/>`
       : productIcon(item.category);
     const subDetail = item.is_subscription
-      ? `<div style="font-size:.74rem;color:var(--text2);line-height:1.45;margin-top:4px">${subscriptionIntervalLabel(item.subscription_interval)} · ${(item.subscription_items || []).map(si => `${lang === 'he' ? (si.name_he || si.name_en) : si.name_en} ×${si.qty}`).join(', ')}</div>`
+      ? `<div style="font-size:.74rem;color:var(--text2);line-height:1.45;margin-top:4px">${subscriptionIntervalLabel(item.subscription_interval)}${item.subscription_window ? ' (' + subscriptionWindowLabel(item.subscription_window) + ')' : ''} · ${(item.subscription_items || []).map(si => `${lang === 'he' ? (si.name_he || si.name_en) : si.name_en} ×${si.qty}`).join(', ')}</div>`
       : '';
     return `<div class="cart-item">
       <div class="cart-item-thumb">${thumb}</div>
@@ -2673,6 +2682,37 @@ function renderCartDrawer() {
     </div>`;
   }).join('');
   document.getElementById('cartTotal').textContent = `₪${total}`;
+}
+// Monthly subscriptions arrive in one of two windows; the server keeps the same rule.
+function subscriptionWindowLabel(w) {
+  return w === 'early' ? (lang === 'he' ? '1–5 בחודש' : '1st–5th') : w === 'mid' ? (lang === 'he' ? '15–20 בחודש' : '15th–20th') : '';
+}
+function subscriptionWindowFirstDate(w) {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date()).split('-').map(Number);
+  const start = w === 'early' ? 1 : 15, end = w === 'early' ? 5 : 20;
+  return d >= start && d <= end ? new Date(y, m - 1, d) : new Date(y, m - 1 + (d > end ? 1 : 0), start);
+}
+function renderCheckoutSubWindow() {
+  const box = document.getElementById('coSubWindow'); if (!box) return;
+  const sub = cart.find(i => i.is_subscription), show = !!sub && sub.subscription_interval !== 'weekly';
+  box.hidden = !show; if (!show) return;
+  const he = lang === 'he', copy = { early: he ? ['תחילת החודש', 'בדרך כלל 1–5 בחודש'] : ['Start of the month', 'Usually the 1st–5th'], mid: he ? ['אמצע החודש', 'בדרך כלל 15–20 בחודש'] : ['Middle of the month', 'Usually the 15th–20th'] };
+  document.getElementById('coSubWindowTitle').textContent = he ? 'מתי להביא את המנוי החודשי? *' : 'When should your monthly box arrive? *';
+  box.querySelectorAll('input[name="subWindow"]').forEach(input => {
+    input.checked = sub.subscription_window === input.value;
+    const label = input.nextElementSibling; label.querySelector('b').textContent = copy[input.value][0]; label.querySelector('small').textContent = copy[input.value][1];
+  });
+  const first = document.getElementById('coSubWindowFirst'), w = sub.subscription_window;
+  if (!w) { first.textContent = he ? 'בחרו אחד כדי להמשיך.' : 'Choose one to continue.'; return; }
+  box.classList.remove('missing');
+  const date = subscriptionWindowFirstDate(w).toLocaleDateString(he ? 'he-IL' : 'en-GB', { day: 'numeric', month: 'long' });
+  first.textContent = document.getElementById('shipPickup')?.checked
+    ? (he ? `מוכן לאיסוף בסביבות ${date}, ואז בכל חודש ב־${subscriptionWindowLabel(w)}.` : `Ready for pickup around ${date}, then every month around the ${subscriptionWindowLabel(w)}.`)
+    : (he ? `משלוח ראשון בסביבות ${date}, ואז בכל חודש ב־${subscriptionWindowLabel(w)}. החיוב לפי מועד ההזמנה.` : `First delivery around ${date}, then every month around the ${subscriptionWindowLabel(w)}. Billing stays on your order date.`);
+}
+function setCheckoutSubWindow(w) {
+  const sub = cart.find(i => i.is_subscription); if (!sub) return;
+  sub.subscription_window = w; updateCartCount(); renderCheckoutSubWindow();
 }
 function subscriptionIntervalLabel(interval) {
   const labels = {
@@ -2869,6 +2909,7 @@ async function submitOrder() {
     alert(lang==='he'?'אנא בחרו ישוב מהרשימה':'Please select your city from the list'); return;
   }
   const subBasket=cart.find(i=>i.is_subscription);
+  if(subBasket&&subBasket.subscription_interval!=='weekly'&&!['early','mid'].includes(subBasket.subscription_window)){const box=document.getElementById('coSubWindow');box?.classList.add('missing');box?.scrollIntoView({behavior:'smooth',block:'center'});alert(lang==='he'?'בחרו מתי להביא את המנוי: תחילת החודש (1–5) או אמצע החודש (15–20).':'Choose when your subscription should arrive: the start of the month (1st–5th) or the middle (15th–20th).');return;}
   if(subBasket?.subscription_items?.length){try{const q=GremierSubscriptionModel.quote(subBasket.subscription_items,products);if(!isPickup&&!q.deliveryEligible){alert(lang==='he'?'מנוי זה זמין באיסוף עצמי בלבד.':'This subscription requires pickup, two coffee items, or one 5L container.');return;}}catch(e){alert(e.message);return;}}
   // The subscription order's total becomes the recurring monthly charge, so it has to be
   // checked out alone and without coupons/gift cards (server enforces the same).
@@ -2939,6 +2980,7 @@ const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expe
         selected_guest_price: i.selected_guest_price || null,
         is_subscription: !!i.is_subscription,
         subscription_interval: i.subscription_interval || null,
+        subscription_window: i.subscription_window || null,
         subscription_items: i.subscription_items || null,
         pack_items: i.pack_items || null,
       })),
@@ -2965,6 +3007,7 @@ event_time: isEvent ? eventTime : null,
         pricing_source: isPickup ? 'pickup' : pricing.source,
         subscription: cart.some(i => i.is_subscription) ? {
           interval: cart.find(i => i.is_subscription)?.subscription_interval || 'monthly',
+          window: cart.find(i => i.is_subscription)?.subscription_window || null,
         } : null,
       },
       status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
@@ -3874,6 +3917,7 @@ function updateSubscriptionCheckoutNotice(){
 }
 function updateDeliveryPrice() {
   updateSubscriptionCheckoutNotice();
+  renderCheckoutSubWindow();
   const feeRow = document.getElementById('deliveryFeeRow');
   const freeNote = document.getElementById('freeDeliveryNote');
   const isExpedited = document.getElementById('shipExpedited')?.checked;
@@ -4072,7 +4116,10 @@ function showRedeemApplied(message, discount) {
   const regOpts = document.getElementById('regularOptions');
   if (opts) opts.style.display = isExpedited ? 'block' : 'none';
   if (eventOpts) eventOpts.style.display = isEvent ? 'block' : 'none';
-  if (regOpts) regOpts.style.display = isRegular ? 'block' : 'none';
+  // Monthly subscriptions pick a delivery window instead of a date.
+  const monthlySub = cart.some(i => i.is_subscription && i.subscription_interval !== 'weekly');
+  if (regOpts) regOpts.style.display = isRegular && !monthlySub ? 'block' : 'none';
+  renderCheckoutSubWindow();
   const subscription=cart.find(item=>item.is_subscription);
   const dateLabel=document.getElementById('t-co-regular-date'),dateHint=document.getElementById('t-co-regular-date-hint');
   if(dateLabel)dateLabel.textContent=subscription?(lang==='he'?'תאריך יעד למשלוח חוזר (אופציונלי)':'Recurring delivery target (optional)'):(lang==='he'?'תאריך משלוח מבוקש (אופציונלי)':'Requested delivery date (optional)');
