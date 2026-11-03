@@ -18,10 +18,10 @@
   // Cut-out photos for the doorstep, and their width:height, so the row can be laid out before they load.
   function art(p) {
     const n = String(p.name_en || '').toLowerCase(), M_ = M();
-    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 24, kind: 'syrup' };
-    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.90, h: 20, kind: 'mini', count: 4 };
-    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 29, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
-    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 27, kind: 'bottle' };
+    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 17, kind: 'syrup' };
+    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.90, h: 16, kind: 'mini', count: 4 };
+    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 23, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
+    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 21, kind: 'bottle' };
   }
   const groups = [
     ['bottle', 'Liter bottles', 'בקבוקי ליטר'],
