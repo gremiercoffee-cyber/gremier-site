@@ -415,7 +415,7 @@ ${n.value}`:line;}
     return addonsOf(p).map((addon,index)=>({addon,index,key:addon.milk_type||'parve'})).filter(x=>x.addon.per_liter&&!x.addon.legacy_milk);
   }
   // Milk as photo tiles: dairy holds all the litres to start; + on oat, almond or soy swaps a litre over.
-  const THUMB=(k)=>`/bar/studio/thumbs/${k}.webp?v=1`;
+  const THUMB=(k)=>`/bar/studio/thumbs/${k}.webp?v=2`;
   function photoTile(img,label,note,n,stepper,on,badge){
     return `<div class="bb-jug-tile${on?' on':''}"><div class="bb-jug-pic">${img?`<img src="${img}" alt="" loading="lazy">`:''}${badge?`<i>${badge}</i>`:''}</div><b>${label}</b><small>${note}</small><span class="bb-jug-step">${stepper}</span></div>`;
   }
