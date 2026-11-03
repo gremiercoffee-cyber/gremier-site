@@ -4469,7 +4469,7 @@ function describeItemExtras(i) {
   const box = Array.isArray(i && i.subscription_items) ? i.subscription_items : [];
   const boxText = box.map(c => `${(c && (c.name_en || c.name_he)) || 'Item'} ×${Number(c && c.qty) || 1}`).join(', ');
   if (boxText) segs.push('Box: ' + boxText);
-  if ((i && i.is_subscription) || box.length) segs.push(String(i.subscription_interval || 'monthly') === 'weekly' ? '🔁 weekly' : '🔁 monthly');
+  if ((i && i.is_subscription) || box.length) segs.push(String(i.subscription_interval || 'monthly') === 'weekly' ? '🔁 weekly' : '🔁 monthly' + (i.subscription_window === 'early' ? ' · 1st–5th' : i.subscription_window === 'mid' ? ' · 15th–20th' : ''));
   return segs.join(' · ');
 }
 async function openOrderDetail(id) {

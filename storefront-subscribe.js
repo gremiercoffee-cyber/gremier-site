@@ -142,7 +142,7 @@
     scene.classList.toggle('empty', !want.length);
     scene.classList.toggle('ready', g.ready);
     scene.classList.toggle('free', g.freeOk);
-    scene.querySelector('.sb-tag-when').textContent = state.interval === 'weekly' ? T('Every week', 'כל שבוע') : T('Every month', 'כל חודש');
+    scene.querySelector('.sb-tag-when').textContent = state.interval === 'weekly' ? T('Every week', 'כל שבוע') : state.window === 'early' ? T('1st–5th monthly', '1–5 בחודש') : state.window === 'mid' ? T('15th–20th monthly', '15–20 בחודש') : T('Every month', 'כל חודש');
     scene.querySelector('.sb-tag-state').textContent = g.ready ? T('Delivery ✓', 'משלוח ✓') : g.coffee ? T('Pickup only', 'איסוף עצמי') : T('Nothing yet', 'עוד ריק');
     scene.setAttribute('aria-label', T(`Your box at the door: ${bottleCount} bottles`, `הקופסה שלכם בדלת: ${bottleCount} בקבוקים`));
   }
@@ -183,6 +183,8 @@
       ${groups.map(([kind, en, hebrew]) => { const list = pool.filter((p) => art(p).kind === kind); return list.length ? `<h3>${T(en, hebrew)}</h3><div class="sb-grid">${list.map(tile).join('')}</div>` : ''; }).join('')}
       <h3>${T('Delivery area', 'אזור משלוח')}</h3>
       <div class="sb-chips sb-areas" role="group" aria-label="${T('Delivery area', 'אזור משלוח')}">${areaChips}</div>
+      ${state.interval === 'monthly' ? `<h3>${T('When should it arrive?', 'מתי להגיע?')}</h3>
+      <div class="sb-chips sb-when" role="group" aria-label="${T('Delivery window', 'חלון משלוח')}"><button type="button" data-sb-window="early" aria-pressed="${state.window === 'early'}" class="${state.window === 'early' ? 'on' : ''}"><b>${T('Start of the month', 'תחילת החודש')}</b><small>${T('usually the 1st–5th', 'בדרך כלל 1–5 בחודש')}</small></button><button type="button" data-sb-window="mid" aria-pressed="${state.window === 'mid'}" class="${state.window === 'mid' ? 'on' : ''}"><b>${T('Middle of the month', 'אמצע החודש')}</b><small>${T('usually the 15th–20th', 'בדרך כלל 15–20 בחודש')}</small></button></div>` : ''}
       <p class="sb-fine">${T('Syrups stay full price and come with coffee. Billed each cycle until you cancel; delivery is charged per delivery unless it’s free. Delivery dates are targets and can move a few days.', 'סירופים במחיר מלא ומצטרפים לקפה. חיוב בכל מחזור עד לביטול; משלוח נגבה בכל משלוח אלא אם הוא חינם. תאריכי המשלוח הם יעד ועשויים לזוז בכמה ימים.')}</p>
       <div class="sb-foot">
         ${state.confirm && others ? `<div class="sb-confirm" role="alert"><p>${T(`A subscription checks out on its own. Your cart has ${others} other item${others > 1 ? 's' : ''}.`, `מנוי מוזמן לבד. בעגלה יש עוד ${others} פריטים.`)}</p><button type="button" class="sb-cta" data-sb-replace>${T('Remove them and add my subscription', 'להסיר אותם ולהוסיף את המנוי')}</button><button type="button" class="sb-ghost" data-sb-keep>${T('Keep my cart', 'להשאיר את העגלה')}</button></div>`
@@ -195,8 +197,8 @@
   function render() {
     if (!el || !state) return;
     const g = progress(), body = el.querySelector('.sb-body'), scroll = el.scrollTop;
-    const focused = document.activeElement?.closest?.('[data-sb-step],[data-sb-add],[data-sb-area],[data-sb-interval]');
-    const focusSel = focused ? ['data-sb-step', 'data-sb-add', 'data-sb-area', 'data-sb-interval'].filter((k) => focused.hasAttribute(k)).map((k) => `[${k}="${CSS.escape(focused.getAttribute(k))}"]`).join('') + (focused.dataset.d ? `[data-d="${focused.dataset.d}"]` : '') : null;
+    const focused = document.activeElement?.closest?.('[data-sb-step],[data-sb-add],[data-sb-area],[data-sb-interval],[data-sb-window]');
+    const focusSel = focused ? ['data-sb-step', 'data-sb-add', 'data-sb-area', 'data-sb-interval', 'data-sb-window'].filter((k) => focused.hasAttribute(k)).map((k) => `[${k}="${CSS.escape(focused.getAttribute(k))}"]`).join('') + (focused.dataset.d ? `[data-d="${focused.dataset.d}"]` : '') : null;
     const inQuick = !!focused?.closest('.sb-quick');
     if (!body.querySelector('.sb-scene')) body.querySelector('.sb-view').insertAdjacentHTML('afterbegin', sceneHtml());
     body.querySelector('.sb-progress-mount').innerHTML = progressHtml(g);
@@ -213,7 +215,7 @@
   function open(startId, qty = 1) {
     if (!M() || !all().length) return false;
     const start = all().find((p) => String(p.id) === String(startId));
-    state = { picks: {}, interval: 'monthly', area: '', confirm: false };
+    state = { picks: {}, interval: 'monthly', window: (typeof cart !== 'undefined' && cart.find((i) => i.is_subscription)?.subscription_window) || '', area: '', confirm: false };
     if (start && M().eligible(start)) state.picks[start.id] = Math.max(1, Math.min(20, qty));
     try { const c = (JSON.parse(localStorage.getItem('gremier_checkout_details_v1') || 'null') || {}).city; const z = c && zones().find((x) => [x.name_en, x.name_he].map((s) => String(s || '').toLowerCase()).includes(String(c.en || c.he || '').toLowerCase())); if (z) state.area = z.id; } catch (_) {}
     if (!el) {
@@ -255,7 +257,7 @@
       id: [base.id, state.interval, ...items.map((i) => `${i.product_id}x${i.qty}`)].join('_'),
       base_product_id: base.id, name_en: 'Coffee subscription', name_he: 'מנוי קפה', price: g.q.total, images: base.images, category: base.category,
       delivery_price: fees.length ? Math.max(...fees.map(Number)) : null, qty: 1, selected_variations: {}, selected_addons: [], bar_extras: null, coffee_bar_configuration: null, selected_guest_price: null,
-      is_subscription: true, subscription_interval: state.interval, subscription_items: items,
+      is_subscription: true, subscription_interval: state.interval, subscription_window: state.interval === 'monthly' ? state.window || null : null, subscription_items: items,
     }];
     if (typeof updateCartCount === 'function') updateCartCount();
     if (typeof showToast === 'function') showToast(T('Subscription added ✓', 'המנוי נוסף ✓'));
@@ -272,6 +274,7 @@
     else if (t.dataset.sbStep) step(t.dataset.sbStep, Number(t.dataset.d));
     else if (t.dataset.sbAdd) step(t.dataset.sbAdd, 1);
     else if (t.dataset.sbInterval) { state.interval = t.dataset.sbInterval; render(); }
+    else if (t.dataset.sbWindow) { state.window = t.dataset.sbWindow; render(); }
     else if (t.dataset.sbArea) { state.area = state.area === t.dataset.sbArea ? '' : t.dataset.sbArea; render(); }
     else if (t.matches('[data-sb-go],[data-sb-replace]')) add();
     else if (t.matches('[data-sb-keep]')) { state.confirm = false; render(); }

@@ -1,5 +1,19 @@
+/** Monthly subscriptions arrive in one of two windows each month, chosen at checkout. */
+export const SUBSCRIPTION_WINDOWS:Record<string,{start:number,end:number,label:string}>={early:{start:1,end:5,label:'1st–5th of the month'},mid:{start:15,end:20,label:'15th–20th of the month'}};
+/** The next date inside a monthly window, on or after today: today itself while the window is open. */
+export function subscriptionWindowDate(window: string, today: string): string|null {
+ const w=SUBSCRIPTION_WINDOWS[window];if(!w)return null;
+ const base=new Date(today+'T12:00:00Z'),day=base.getUTCDate();
+ if(day>=w.start&&day<=w.end)return today;
+ return new Date(Date.UTC(base.getUTCFullYear(),base.getUTCMonth()+(day>w.end?1:0),w.start,12)).toISOString().slice(0,10);
+}
 /** Delivery targets are independent of card billing dates and are not guaranteed appointments. */
-export function subscriptionDeliveryRule(interval: string, chosen: unknown, today: string) {
+export function subscriptionDeliveryRule(interval: string, chosen: unknown, today: string, window?: unknown) {
+ // New monthly subscriptions must pick a window (callers pass it); weekly ones keep the date rule below.
+ if(interval==='monthly'&&window!==undefined){
+  const w=String(window||'');if(!SUBSCRIPTION_WINDOWS[w])throw Error('Choose when your monthly delivery should arrive: the 1st–5th or the 15th–20th');
+  return {mode:'window',window:w,first_date:subscriptionWindowDate(w,today),interval};
+ }
  const date=String(chosen||'').trim();
  if(!date)return {mode:'billing'};
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+'T12:00:00Z'))||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date||date<today)throw Error('Choose a valid future subscription delivery date');
@@ -12,6 +26,7 @@ export function subscriptionDeliveryTarget(info: Record<string,unknown>, today: 
  const rule=subscription?.delivery_schedule as Record<string,unknown>|undefined;
  if(!rule)return null; // Older subscriptions retain their existing scheduling behavior.
  if(rule.mode==='billing')return today;
+ if(rule.mode==='window')return subscriptionWindowDate(String(rule.window),today);
  if(rule.mode!=='preferred')return null;
  if(!info.recurring_child&&typeof rule.first_date==='string'&&rule.first_date>=today)return rule.first_date;
  const base=new Date(today+'T12:00:00Z');

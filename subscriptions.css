@@ -14,3 +14,14 @@
 .sub-choice .sub-item-qty span{min-width:20px}
 .sub-choice input{margin:0}
 @media(max-width:360px){.sub-choice{padding:8px;gap:5px}.sub-choice>label{gap:5px}.sub-choice-image{width:32px;flex-basis:32px;height:40px}.sub-choice .sub-item-qty button{width:30px;height:32px}}
+
+.co-window-group{background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px}
+.co-window-group.missing{border-color:#c0392b;box-shadow:0 0 0 3px #c0392b22}
+.co-window-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:6px}
+.co-window{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer}
+.co-window:has(input:checked){border-color:#1a1a1a;background:#fff}
+.co-window input{accent-color:#1a1a1a;margin:0}
+.co-window span{display:flex;flex-direction:column;gap:2px}
+.co-window b{font-size:.85rem;font-weight:500;color:var(--cream)}
+.co-window small{font-size:.74rem;color:var(--text2)}
+.co-window-first{font-size:.78rem;color:var(--text2);margin-top:8px;line-height:1.5}

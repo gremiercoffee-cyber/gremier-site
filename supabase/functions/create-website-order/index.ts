@@ -352,13 +352,16 @@ Deno.serve(async (req) => {
         // admin recognise the order; the box contents say what to deliver every cycle.
         is_subscription: isSub,
         subscription_interval: isSub ? interval : null,
+        subscription_window: isSub && interval === "monthly" && ["early", "mid"].includes(String(item.subscription_window || body.delivery_info?.subscription?.window)) ? String(item.subscription_window || body.delivery_info?.subscription?.window) : null,
         subscription_items: sub?.contents ?? null,
         pack_items: pack?.contents ?? null,
         category: product.category || null,
       };
     });
     const subscriptionInterval = isSubscriptionOrder ? allowedItems[0].subscription_interval : null;
-    const subscriptionSchedule = isSubscriptionOrder ? subscriptionDeliveryRule(subscriptionInterval, deliveryInfo.delivery_type === "pickup" ? null : deliveryInfo.delivery_date, new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date())) : null;
+    // Monthly boxes arrive early (1st–5th) or mid-month (15th–20th); the customer must choose one.
+    const subscriptionWindow = isSubscriptionOrder ? String(body.delivery_info?.subscription?.window || subscriptionLines[0]?.subscription_window || "") : undefined;
+    const subscriptionSchedule = isSubscriptionOrder ? subscriptionDeliveryRule(subscriptionInterval, deliveryInfo.delivery_type === "pickup" ? null : deliveryInfo.delivery_date, new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date()), subscriptionWindow) : null;
 
     const subtotal = allowedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
     const [zonesResult, settingsResult] = await Promise.all([

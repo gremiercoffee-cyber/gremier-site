@@ -1,5 +1,5 @@
 import { describeCoffeeBar } from "./coffee-bar-order.ts";
-import { subscriptionDeliveryTarget, SUBSCRIPTION_DELIVERY_NOTE } from "./subscription-delivery.ts";
+import { subscriptionDeliveryTarget, SUBSCRIPTION_DELIVERY_NOTE, SUBSCRIPTION_WINDOWS } from "./subscription-delivery.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCustomerReceiptText, sendOrderEmails } from "./order-email.ts";
 import { emailItems } from "./email-items.ts";
@@ -62,7 +62,8 @@ export function describeDelivery(info: Record<string, unknown> | null | undefine
   const requested = hasDate ? formatDate(date) + (time ? ` at ${time}` : "") : "";
   const requestedShort = hasDate ? formatShort(date) + (time ? ` ${time}` : "") : "";
   const subscriptionTarget=subscriptionDeliveryTarget(row,new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date()));
-  if(subscriptionTarget)return {typeLabel:'Subscription delivery · '+SUBSCRIPTION_DELIVERY_NOTE,requested:formatDate(subscriptionTarget)+' (target; a few days before or after)',requestedShort:formatShort(subscriptionTarget)+' target'};
+  const windowLabel=SUBSCRIPTION_WINDOWS[String((row.subscription as any)?.delivery_schedule?.window||'')]?.label;
+  if(subscriptionTarget)return {typeLabel:'Subscription delivery · '+(windowLabel?windowLabel+' · ':'')+SUBSCRIPTION_DELIVERY_NOTE,requested:formatDate(subscriptionTarget)+' (target; a few days before or after)',requestedShort:formatShort(subscriptionTarget)+' target'};
   return { typeLabel, requested, requestedShort };
 }
 
@@ -107,7 +108,7 @@ export function describeItemExtras(item: Record<string, unknown>): string {
     .join(", ");
   if (boxText) segs.push(`Box: ${boxText}`);
   if (item.is_subscription === true || box.length) {
-    segs.push(String(item.subscription_interval || "monthly") === "weekly" ? "🔁 weekly" : "🔁 monthly");
+    segs.push(String(item.subscription_interval || "monthly") === "weekly" ? "🔁 weekly" : "🔁 monthly" + (item.subscription_window === "early" ? " · 1st–5th" : item.subscription_window === "mid" ? " · 15th–20th" : ""));
   }
   return segs.join(" · ");
 }
@@ -278,6 +279,20 @@ async function sendViaPushover(title: string, message: string): Promise<boolean>
   return true;
 }
 
+/** Monthly-window subscriptions: when to expect this box, in both languages. */
+function subscriptionWindowNote(info: Record<string, unknown>): string | null {
+  if (info.delivery_type === "pickup") return null;
+  const window = String(((info.subscription as Record<string, unknown> | undefined)?.delivery_schedule as Record<string, unknown> | undefined)?.window || "");
+  if (window !== "early" && window !== "mid") return null;
+  const target = subscriptionDeliveryTarget(info, new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date()));
+  const m = String(target || "").match(/^(\d{4})-(\d{2})-(\d{2})/), when = m ? `${m[3]}/${m[2]}` : "";
+  return window === "early"
+    ? `📅 Your subscription arrives at the start of the month (usually the 1st–5th)${when ? `, so expect this delivery around ${when}` : ""}.
+📅 המנוי שלכם מגיע בתחילת החודש (בדרך כלל 1–5 בחודש)${when ? `, כך שהמשלוח הזה צפוי להגיע בסביבות ${when}` : ""}.`
+    : `📅 Your subscription arrives in the middle of the month (usually the 15th–20th)${when ? `, so expect this delivery around ${when}` : ""}.
+📅 המנוי שלכם מגיע באמצע החודש (בדרך כלל 15–20 בחודש)${when ? `, כך שהמשלוח הזה צפוי להגיע בסביבות ${when}` : ""}.`;
+}
+
 /** Notify when an order is paid. Resend (primary) + optional Google Sheet + Pushover fallback. */
 export async function sendOrderPaidNotification(
   order: OrderNotifyRow,
@@ -298,7 +313,7 @@ export async function sendOrderPaidNotification(
     discount: Number(order.discount) || 0,
     total: Number(order.total) || 0,
     delivery_address: order.delivery_address,
-    subscription_delivery_note: subscriptionDeliveryTarget(order.delivery_info || {},new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date())) ? 'Subscription delivery target: '+describeDelivery(order.delivery_info).requested+'. '+SUBSCRIPTION_DELIVERY_NOTE+'\nמועד המשלוח הוא יעד בלבד: ייתכן שהמשלוח יגיע כמה ימים לפניו או אחריו. מועד החיוב נשאר ללא שינוי.' : null,
+    subscription_delivery_note: subscriptionWindowNote(order.delivery_info || {}) || (subscriptionDeliveryTarget(order.delivery_info || {},new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date())) ? 'Subscription delivery target: '+describeDelivery(order.delivery_info).requested+'. '+SUBSCRIPTION_DELIVERY_NOTE+'\nמועד המשלוח הוא יעד בלבד: ייתכן שהמשלוח יגיע כמה ימים לפניו או אחריו. מועד החיוב נשאר ללא שינוי.' : null),
     notes: order.notes,
   });
 
