@@ -1,5 +1,16 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {normalizeManualInput,manualPayload}=require('../supabase/functions/_shared/manual-receipt-model.ts');
+test('store invoice entry adds VAT once; receipts and private customers keep entered totals',()=>{
+ const fs=require('fs'),source=fs.readFileSync(require('path').join(__dirname,'../admin-finance.js'),'utf8');
+ const helper=source.slice(source.indexOf(' function manualAmountTotals(){'),source.indexOf(' function updateSettlement(){'));
+ const totals=(type,store,amount)=>new Function('docType','customers','get',helper+';return manualAmountTotals();')(type,[{id:'c',store_id:store?'s':null}],id=>({value:id==='manualCustomer'?'c':amount}));
+ assert.deepEqual(totals('invoice_receipt',true,'2080'),{netBasis:true,entered:208000,vat:37440,gross:245440});
+ assert.equal(totals('tax_invoice',true,'2060').gross,243080);
+ assert.equal(totals('receipt',true,'2454.40').gross,245440);
+ assert.equal(totals('invoice_receipt',false,'2080').gross,208000);
+ const p=manualPayload({id:'20000000-0000-4000-8000-000000000001',document_type:'invoice_receipt',amount_minor:245440,payment_date:'2026-11-03',payment_method:'bank_transfer',description:'July and August',payment_details:{}},{name:'Store'},new Date('2026-11-03T12:00:00Z'));
+ assert.equal(p.items[0].price,2080);assert.equal(p.payments[0].sum,2454.4);
+});
 test('one combined paid document retains selected months and the actual VAT-inclusive payment',()=>{
  const ids=['10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002'];
  const input=normalizeManualInput({id:'20000000-0000-4000-8000-000000000001',customer_id:'30000000-0000-4000-8000-000000000001',document_type:'invoice_receipt',amount:'2080',payment_date:'2026-11-03',payment_method:'bank_transfer',description:'July and August',billing_ids:ids,billed_total_minor:206000,adjustment_reason:'Customer paid ₪20 extra'},new Date('2026-11-03T12:00:00Z'));
