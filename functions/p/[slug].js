@@ -6,6 +6,10 @@ export async function onRequestGet({ params, request, env }) {
   const page = await env.ASSETS.fetch(new URL('/', request.url));
   let p = null;
   try { p = (await products()).find((x) => slug(x.name_en) === String(params.slug || '').toLowerCase() || String(x.id) === params.slug); } catch (_) {}
+  if (!p) {   // links from before the cups were renamed "XL cups"
+    const old = (await products().catch(() => [])).find((x) => slug(x.name_en).replace('-xl-', '-') === String(params.slug || '').toLowerCase());
+    if (old) return Response.redirect(`${SITE}/p/${slug(old.name_en)}`, 301);
+  }
   if (!p) return new Response(page.body, { status: 404, headers: page.headers });
   const url = `${SITE}/p/${slug(p.name_en)}`;
   const title = `${p.name_en}${p.name_he ? ' · ' + p.name_he : ''} | Gremier Coffee`;
