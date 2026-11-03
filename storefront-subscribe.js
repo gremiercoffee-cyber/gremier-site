@@ -18,10 +18,10 @@
   // Cut-out photos for the doorstep, and their width:height, so the row can be laid out before they load.
   function art(p) {
     const n = String(p.name_en || '').toLowerCase(), M_ = M();
-    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 20, kind: 'syrup' };
-    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.478, h: 13, kind: 'mini', count: 4 };
-    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 20, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
-    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 22, kind: 'bottle' };
+    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 31, kind: 'syrup' };
+    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.478, h: 24, kind: 'mini', count: 4 };
+    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 35, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
+    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 40, kind: 'bottle' };
   }
   const groups = [
     ['bottle', 'Liter bottles', 'בקבוקי ליטר'],
@@ -132,7 +132,7 @@
     if (want.length > MAX_UNITS) row.insertAdjacentHTML('beforeend', `<span class="sb-more">+${want.length - MAX_UNITS}</span>`);
     // Shrink the row to fit the step: widths are known from each photo's proportions.
     const H = scene.clientHeight || 300, W = stage.clientWidth || 400;
-    const need = shown.reduce((s, x) => s + (x.a.h / 100) * H * x.a.ratio, 0);
+    const need = shown.reduce((s, x) => s + (x.a.h / 100) * H * x.a.ratio + 2, 0);
     scene.style.setProperty('--k', Math.min(1, W / Math.max(1, need)).toFixed(3));
     scene.classList.toggle('empty', !want.length);
     scene.classList.toggle('ready', g.ready);

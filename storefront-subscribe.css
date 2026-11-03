@@ -145,12 +145,12 @@ body.rtl .sb-fill { background:linear-gradient(270deg,#c27a3a,#7a4a22); }
 }
 
 /* Real driveway backdrop; selected bottles remain separate live instances. */
-.sb-scene-photo { background:#e9dfd0 url('/subscriptions/doorstep-v2.webp') center bottom / cover no-repeat; aspect-ratio:1.6; }
+.sb-scene-photo { background:#e9dfd0 url('/subscriptions/doorstep-v3.webp') center / contain no-repeat; aspect-ratio:2.4; }
 .sb-scene-photo .sb-wall,.sb-scene-photo .sb-lamp,.sb-scene-photo .sb-door,.sb-scene-photo .sb-number,.sb-scene-photo .sb-plant,.sb-scene-photo .sb-floor,.sb-scene-photo .sb-mat,.sb-scene-photo .sb-van { display:none; }
-.sb-scene-photo .sb-stage,.sb-scene-photo.free .sb-stage { left:53%; right:9%; bottom:9%; height:45%; }
+.sb-scene-photo .sb-stage,.sb-scene-photo.free .sb-stage { left:80%; right:1%; bottom:28%; height:45%; }
 .sb-scene-photo .sb-item { height:calc(var(--h) * 1% * 2.22 * var(--k)); margin-inline:1px; }
 .sb-scene-photo .sb-item.sb-mini { aspect-ratio:var(--r); }
-.sb-scene-photo .sb-empty { left:53%; width:38%; bottom:9%; font-size:10px; background:#fff9; border-radius:8px; padding:4px; box-sizing:border-box; }
+.sb-scene-photo .sb-empty { left:77%; width:22%; bottom:9%; font-size:10px; background:#fff9; border-radius:8px; padding:4px; box-sizing:border-box; }
 @media(max-width:899px) {
   .sb-body { gap:12px; padding-top:8px; }
   .sb-view { position:sticky; top:64px; z-index:10; align-self:start; gap:6px; padding:6px 8px 8px; border-radius:14px; box-shadow:0 5px 16px #21180f16; }
