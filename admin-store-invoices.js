@@ -52,16 +52,24 @@
   try{
    const r=await sbc().from('receipt_customers').select('id,name,tax_id,email,address').eq('store_id',storeId).is('archived_at',null).maybeSingle();
    if(r.error)throw Error('Could not load the store\'s details.');if(!r.data)throw Error(errors.store_customer_missing);
-   const c=r.data,p=c.tax_id?(await call({action:'preview',id:crypto.randomUUID(),store_id:storeId})).preview:null;
+   const c=r.data;let p=null;
+   if(c.tax_id){try{p=(await call({action:'preview',id:crypto.randomUUID(),store_id:storeId})).preview;}catch(e){if(e.message!==errors.no_unpaid_months)throw e;}}
    const field=(id,label,value,attrs='')=>`<label>${label}<input class="form-input" id="${id}" value="${esc(value||'')}" ${attrs}></label>`;
    box.innerHTML=`<div class="fw-review"><h3>Tax invoices for this store</h3>
     <p class="fw-note">The store's official details, exactly as they'll appear on its invoices. Changes are saved to the store.</p>
     <div class="fw-form">${field('sinvName','Official name',c.name,'maxlength="100"')}${field('sinvTax','ח.פ. / עוסק',c.tax_id,'inputmode="numeric" maxlength="9"')}${field('sinvEmail','Email · for sending',c.email,'type="email" maxlength="50"')}${field('sinvAddress','Address · optional',c.address,'maxlength="100"')}</div>
     <div class="fw-actions"><button class="btn btn-outline btn-sm" id="sinvSave">Save details</button></div>
+    <div class="fw-panel" style="margin:16px 0"><h3>Already received payment?</h3><p class="fw-note">Issue one חשבונית מס/קבלה for the total received, without selecting months. Use this when no official tax invoice was issued for that payment.</p><button type="button" class="btn btn-outline" id="storeInvoiceCombined">Combined tax invoice + receipt · חשבונית מס/קבלה</button></div>
     ${p?`<h3>Months to invoice</h3><div class="table-wrap"><table><thead><tr><th></th><th>Month</th><th>Before VAT</th><th>VAT 18%</th><th>Invoice total</th></tr></thead><tbody>${p.months.map(m=>`<tr><td><input type="checkbox" class="sinv-month" value="${esc(m.id)}" checked aria-label="Invoice ${esc(m.label)}"></td><td>${esc(m.label)}</td><td>${money(m.net_minor)}</td><td>${money(m.vat_minor)}</td><td><strong>${money(m.gross_minor)}</strong></td></tr>`).join('')}</tbody></table></div>
     <label class="fw-check"><input type="checkbox" id="storeInvoiceEmail" ${p.customer.email?'':'disabled'}> Email them to ${esc(p.customer.email||'the store (add an email above)')}</label>
     <label class="fw-check"><input type="checkbox" id="storeInvoiceOk"> I checked the store's name, ח.פ. and amounts. Each ticked month becomes an official, numbered tax invoice in FinBot.</label>`:'<p class="fw-note">Add the store\'s ח.פ. and save to see its invoices.</p>'}
     <div class="fw-actions">${p?'<button class="btn btn-amber" id="storeInvoiceIssue" disabled>Issue tax invoices</button>':''}<button class="btn btn-outline" id="storeInvoiceCancel">Close</button></div></div>`;
+   get('storeInvoiceCombined').onclick=async()=>{
+    if(box.dataset.dirty==='1'){status.textContent='Save the edited store details first.';return;}
+    const b=get('storeInvoiceCombined');b.disabled=true;
+    try{await root.GremierFinance.openStoreCombined(storeId);box.innerHTML='';current=null;status.textContent='';}
+    catch(e){status.textContent=e.message;b.disabled=false;}
+   };
    if(p)current={store_id:storeId,months:p.months};
    const issueBtn=get('storeInvoiceIssue'),ok=get('storeInvoiceOk');
    const chosen=()=>[...box.querySelectorAll('.sinv-month:checked')].map(i=>current.months.find(m=>m.id===i.value));

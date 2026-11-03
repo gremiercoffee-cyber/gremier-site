@@ -348,7 +348,17 @@
   sbc()?.auth.getSession().then(({data})=>restore(data.session));
   sbc()?.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_IN')restore(session);});
  }
- root.GremierFinance={load:loadFinance,loadExpenses,openExpenseBatch};
+ async function openStoreCombined(storeId){
+  setup();
+  await loadFinance();
+  const c=customers.find(c=>c.store_id===storeId);
+  if(!c)throw Error('Store customer details are unavailable. Save the store details and try again.');
+  get('receiptCustomerSearch').value='';customerOptions();get('manualCustomer').value=c.id;
+  await loadCustomerBills();setDocType('invoice_receipt');
+  get('manualReceiptForm').scrollIntoView?.({behavior:'smooth',block:'start'});
+  get('manualAmount').focus({preventScroll:true});
+ }
+ root.GremierFinance={load:loadFinance,loadExpenses,openExpenseBatch,openStoreCombined};
  const expenseSession=session=>{
   const owner=session?.user?.id||'';
   if(owner!==expenseOwner){expenseOwner=owner;batch=null;get('expensePrepared').innerHTML='';}
