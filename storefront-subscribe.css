@@ -145,7 +145,7 @@ body.rtl .sb-fill { background:linear-gradient(270deg,#c27a3a,#7a4a22); }
 }
 
 /* Real driveway backdrop; selected bottles remain separate live instances. */
-.sb-scene-photo { background:#e9dfd0 url('/subscriptions/doorstep-v5.webp') center / contain no-repeat; aspect-ratio:2.4; }
+.sb-scene-photo { background:#e9dfd0 url('/subscriptions/doorstep-v6.webp') center / contain no-repeat; aspect-ratio:2.4; }
 .sb-scene-photo .sb-wall,.sb-scene-photo .sb-lamp,.sb-scene-photo .sb-door,.sb-scene-photo .sb-number,.sb-scene-photo .sb-plant,.sb-scene-photo .sb-floor,.sb-scene-photo .sb-mat,.sb-scene-photo .sb-van { display:none; }
 .sb-scene-photo .sb-stage,.sb-scene-photo.free .sb-stage { left:56%; right:20%; bottom:6%; height:45%; }
 .sb-scene-photo .sb-item { height:calc(var(--h) * 1% * 2.22 * var(--k)); margin-inline:1px; }
