@@ -22,15 +22,15 @@
   }
 
   function html(k) {
-    const shop = `<a class="promo-shop" onclick="showPage('shop')">${T('Shop now →', 'לחנות ←')}</a>`;
+    const shop = `<a class="promo-shop" onclick="showPage('shop')">${T('Shop now', 'לחנות')}</a>`;
     if (k === 'Thu') {
       return `🚚 <span>${T('Want it by Shabbat? Choose expedited delivery at checkout.', 'רוצים עד שבת? בחרו משלוח מהיר בקופה.')}</span>${shop}`;
     }
     const main = k === 'Tue'
-      ? T('Order by Wednesday and it arrives before Shabbat*', 'מזמינים עד יום רביעי ומקבלים לפני שבת*')
-      : T('Last day: order today and it arrives before Shabbat*', 'יום אחרון: מזמינים היום ומקבלים לפני שבת*');
+      ? T('Order by Wednesday, receive by Shabbat*', 'מזמינים עד רביעי, מקבלים עד שבת*')
+      : T('Last day: order today, receive by Shabbat*', 'יום אחרון: מזמינים היום, מקבלים עד שבת*');
     return `🕯️ <span>${main}</span>${shop}
-      <small class="promo-note">${T('*Regular delivery to Jerusalem and Beit Shemesh, at the usual delivery price.', '*במשלוח רגיל לירושלים ולבית שמש, במחיר המשלוח הרגיל.')}</small>`;
+      <small class="promo-note">${T('*Applies to regular delivery to Jerusalem and Beit Shemesh', '*בתוקף למשלוח רגיל לירושלים ולבית שמש')}</small>`;
   }
 
   function render() {
