@@ -1,5 +1,5 @@
-/** Tuesday and Wednesday (Israel time): regular delivery is free and arrives before Shabbat
- *  (guaranteed in Jerusalem and Beit Shemesh; elsewhere best effort). Same rule as the website's
+/** Tuesday and Wednesday (Israel time): an order that already qualifies for free regular delivery
+ *  is guaranteed to arrive before Shabbat. Delivery prices don't change. Same rule as the website's
  *  shabbatPromoActive() in index.html. */
 export function shabbatPromoActive(now = new Date()): boolean {
   const day = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "Asia/Jerusalem" }).format(now);

@@ -3783,8 +3783,9 @@ function findZoneForCity(city) {
   return null;
 }
 
-// Tuesday and Wednesday (Israel time): free regular delivery, before Shabbat. Same rule as the
-// server (supabase/functions/_shared/weekly-promo.ts), which decides the real price.
+// Tuesday and Wednesday (Israel time): an order that qualifies for free regular delivery is
+// guaranteed to arrive before Shabbat. Prices don't change. Same rule as the server
+// (supabase/functions/_shared/weekly-promo.ts).
 function shabbatPromoActive(now = new Date()) {
   const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'Asia/Jerusalem' }).format(now);
   return day === 'Tue' || day === 'Wed';
@@ -3965,9 +3966,10 @@ function updateDeliveryPrice() {
   const isFree = !hasProductFee && pricing.freeAbove && qualifyingTotal >= pricing.freeAbove;
   const zoneRegular = isFree ? 0 : pricing.regular;
   const zoneExpedited = pricing.expedited;
-  const shabbatPromo = !subscriptionCart && shabbatPromoActive();
+  const qualifiesFree = (hasProductFee ? productFee : zoneRegular) === 0;
+  const shabbatPromo = !subscriptionCart && qualifiesFree && shabbatPromoActive();
   const couponFreeDelivery = appliedRedeem?.kind === 'coupon' && !!appliedRedeem.free_delivery;
-  const regularFee = shabbatPromo || couponFreeDelivery ? 0 : (hasProductFee ? productFee : zoneRegular);
+  const regularFee = couponFreeDelivery ? 0 : (hasProductFee ? productFee : zoneRegular);
   const expeditedSurcharge = Math.max(0, zoneExpedited - pricing.regular);
   const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
   const isEvent = document.getElementById('shipEvent')?.checked;
@@ -3983,7 +3985,10 @@ function updateDeliveryPrice() {
   const evtEl = document.getElementById('shipEventPrice');
   if (evtEl) evtEl.textContent = `₪${eventFee}`;
   if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = fee === 0 ? (lang==='he'?'חינם':'Free') : `₪${fee}`; }
-  if (freeNote) freeNote.style.display = (((!hasProductFee && isFree) || shabbatPromo) && !isExpedited && !isEvent) ? 'block' : 'none';
+  if (freeNote) {
+    freeNote.textContent = shabbatPromo ? (lang==='he' ? '✓ משלוח חינם, מגיע לפני שבת!' : '✓ Free delivery, arriving before Shabbat!') : (lang==='he' ? '✓ משלוח חינם בהזמנה הזו!' : '✓ Free delivery on this order!');
+    freeNote.style.display = (((!hasProductFee && isFree) || shabbatPromo) && !isExpedited && !isEvent) ? 'block' : 'none';
+  }
   refreshGiftCardDiscount(fee);
 const summaryTotal = document.getElementById('coSummaryTotal');
 if (summaryTotal) {
@@ -4571,7 +4576,8 @@ async function sendChatMessageText(text) {
         const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
         if (freeAbove > total) {
           const left = Math.ceil(freeAbove - total);
-          hint.innerHTML = (he() ? `עוד ₪${left} ומשלוח חינם 🎉` : `Add ₪${left} more for free delivery 🎉`)
+          const shabbat = shabbatPromoActive();
+          hint.innerHTML = (he() ? `עוד ₪${left} ומשלוח חינם${shabbat ? ' לפני שבת' : ''} 🎉` : `Add ₪${left} more for free delivery${shabbat ? ' before Shabbat' : ''} 🎉`)
             + `<div class="pv-free-bar"><i style="width:${Math.min(100, Math.round(total / freeAbove * 100))}%"></i></div>`;
           hint.style.display = 'block';
         }
@@ -5086,7 +5092,6 @@ async function sendChatMessageText(text) {
     try {
       const pricing = resolveDeliveryPricing(city);
       const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-      if (shabbatPromoActive() && !cart.some((i) => i.is_subscription)) return 0;   // Tue/Wed promo
       const fees = cart.map((i) => i.delivery_price).filter((v) => v !== null && v !== undefined && !isNaN(v));
       if (fees.length) return Math.max(...fees);
       if (pricing.freeAbove && cartTotal >= pricing.freeAbove) return 0;
@@ -5396,7 +5401,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261023-1"></script>
-<script src="/storefront-cart.js?v=20261102-1"></script>
+<script src="/storefront-cart.js?v=20261103-1"></script>
 <script src="/storefront-engage.js?v=20261102-3"></script>
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
@@ -5410,7 +5415,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-bar-world.js?v=20261101-layout2"></script>
 <script src="/storefront-planner.js?v=20261101-layout2"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
-<script src="/storefront-promo.js?v=20261024-1"></script>
+<script src="/storefront-promo.js?v=20261103-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>
 <script src="/storefront-reveal.js?v=20261029-3"></script>

@@ -305,7 +305,7 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
   return { sent, skipped, ...(dryRun ? { preview } : {}) };
 }
 
-// ── Tuesday "free delivery before Shabbat" email ──
+// ── Tuesday "free delivery arrives before Shabbat" email ──
 // Once a week, to people who left something this week (since Sunday, Israel time): a checkout that
 // wasn't paid, or a signed-in cart that never became an order. One email per person per week
 // (promo_sends), same skips as the cart reminders. Runs Tuesday morning; Wednesday is the last day.
@@ -316,20 +316,20 @@ function promoEmail(name: string, items: Record<string, any>[], he: boolean, opt
   const simple = items.filter((i) => (i.product_id || i.id) && !i.is_subscription && !i.options && !(i.selected_variations && Object.keys(i.selected_variations).length) && !i.selected_guest_price && !(i.selected_addons && i.selected_addons.length));
   const cart = simple.map((i) => `${String(i.base_product_id || i.product_id || i.id).split("_")[0]}.${Math.max(1, Math.min(50, Number(i.qty) || 1))}`).join("~");
   const link = simple.length === items.length && cart ? `${SITE}/?cart=${cart}&utm_source=shabbat_promo` : `${SITE}/?utm_source=shabbat_promo#shop`;
-  const subject = he ? "משלוח חינם לפני שבת 🕯️" : "Free delivery before Shabbat 🕯️";
+  const subject = he ? "מגיע לפני שבת 🕯️" : "Delivered before Shabbat 🕯️";
   const when = he ? (lastDay ? "רק היום" : "היום ומחר") : (lastDay ? "Today only" : "Today and tomorrow");
   const intro = he
-    ? `היי${first ? " " + first : ""}, ${when}: מזמינים באתר עד יום רביעי, המשלוח חינם ומגיע לפני שבת*.`
-    : `Hi${first ? " " + first : ""}! ${when}: order on our site by Wednesday and delivery is free, arriving before Shabbat*.`;
+    ? `היי${first ? " " + first : ""}, ${when}: הזמנה באתר עד יום רביעי עם משלוח רגיל חינם מגיעה לפני שבת*.`
+    : `Hi${first ? " " + first : ""}! ${when}: order on our site by Wednesday, and if it gets free regular delivery it arrives before Shabbat*.`;
   const cartTitle = he ? "מה שהשארת בעגלה:" : "What you left in your cart:";
   const cta = he ? "להשלמת ההזמנה" : "Complete your order";
-  const note = he ? "*מובטח בירושלים ובבית שמש; בשאר הארץ נעשה כמיטב יכולתנו." : "*Guaranteed in Jerusalem and Beit Shemesh; elsewhere we'll do our best.";
+  const note = he ? "*מובטח בהזמנות שעומדות בתנאי המשלוח הרגיל החינם באזור שלכם. מחירי המשלוח לא משתנים." : "*Guaranteed for orders that meet your area's free regular delivery minimum. Delivery prices don't change.";
   const sign = he ? "גרמיר קופי" : "Gremier Coffee";
   const stop = he ? "להסרה מרשימת הדיוור" : "Unsubscribe";
   const text = `${intro}\n\n${cartTitle}\n${lines.map((l) => "• " + l).join("\n")}\n\n${cta}: ${link}\n\n${note}\n\n${sign}\n\n—\n${stop}: ${optoutUrl}`;
   const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as Record<string, string>)[c]);
   // Designed, with photos of what's in their cart.
-  const html = designedEmailHtml({ he, preheader: intro, hello: he ? "משלוח חינם לפני שבת 🕯️" : "Free delivery before Shabbat 🕯️", lead: intro,
+  const html = designedEmailHtml({ he, preheader: intro, hello: he ? "מגיע לפני שבת 🕯️" : "Delivered before Shabbat 🕯️", lead: intro,
     bodyBlocks: [itemsHtml(items.map((i) => ({ name: he ? (i.name_he || i.name_en) : i.name_en, qty: Number(i.qty) || 1, image: images[String(i.base_product_id || i.product_id || i.id).split("_")[0]] || null })), he, cartTitle.replace(/:$/, ""))],
     cta: { label: cta, url: link }, small: [note, stop], smallLinks: ["", optoutUrl], sign });
   return { subject, text, html };
@@ -428,15 +428,15 @@ async function shabbatPromoEmail(sb: Sb, body: Record<string, unknown>) {
     if (res.ok) {
       sent.push(r.from);
       await pushToCustomer(sb, { email: r.email }, {
-        he: { title: "🕯️ משלוח חינם לפני שבת", body: `${lastDay ? "רק היום" : "היום ומחר"}: מזמינים עד רביעי והמשלוח חינם. העגלה שלך מחכה.` },
-        en: { title: "🕯️ Free delivery before Shabbat", body: `${lastDay ? "Today only" : "Today and tomorrow"}: order by Wednesday and delivery is free. Your cart is waiting.` },
+        he: { title: "🕯️ מגיע לפני שבת", body: `${lastDay ? "רק היום" : "היום ומחר"}: הזמנה עם משלוח חינם עד רביעי מגיעה לפני שבת. העגלה שלך מחכה.` },
+        en: { title: "🕯️ Delivered before Shabbat", body: `${lastDay ? "Today only" : "Today and tomorrow"}: order by Wednesday and free-delivery orders arrive before Shabbat. Your cart is waiting.` },
         url: (mail.text.match(/https:\/\/gremiercoffee\.co\.il\/\S+/) || [])[0]?.replace("https://gremiercoffee.co.il", "") || "/#shop", tag: "weekly-promo",
       });
     } else { skip("email_failed"); await sb.from("promo_sends").delete().eq("email", r.email).eq("week", week); }
     await new Promise((done) => setTimeout(done, 600));   // stay under the email provider's rate limit
   }
   await sendOrderEmails({
-    ownerSubject: `🕯️ Free-delivery-before-Shabbat email sent to ${sent.length}`,
+    ownerSubject: `🕯️ Before-Shabbat delivery email sent to ${sent.length}`,
     ownerText: `This week's promo email went to ${sent.length} ${sent.length === 1 ? "person" : "people"} (${sent.filter((f) => f === "checkout").length} unpaid checkouts, ${sent.filter((f) => f === "saved_cart").length} signed-in carts).${Object.keys(skipped).length ? `\n\nSkipped: ${Object.entries(skipped).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}`,
   });
   return { week, sent: sent.length, skipped };

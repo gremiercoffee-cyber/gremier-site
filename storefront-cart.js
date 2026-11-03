@@ -21,13 +21,13 @@
   }
 
   function freeDeliveryHtml() {
-    if (typeof shabbatPromoActive === 'function' && shabbatPromoActive() && cart.length && !cart.some((i) => i.is_subscription)) {
-      return `<div class="cx-free done">${T('✓ Free delivery today, before Shabbat*', '✓ משלוח חינם היום, לפני שבת*')}</div>`;
-    }
     const g = gap();
     if (!g) return '';
-    if (g.left <= 0) return `<div class="cx-free done">${T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>`;
-    return `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם ב${g.where}`) : T(`Add ₪${g.left} more for free delivery`, `עוד ₪${g.left} ומשלוח חינם`)}</span>
+    // Tuesday/Wednesday: free regular delivery is guaranteed to arrive before Shabbat.
+    const shabbat = typeof shabbatPromoActive === 'function' && shabbatPromoActive();
+    if (g.left <= 0) return `<div class="cx-free done">${shabbat ? T('✓ Free delivery, arriving before Shabbat', '✓ משלוח חינם, מגיע לפני שבת') : T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>`;
+    const more = shabbat ? T(' before Shabbat', ' לפני שבת') : '';
+    return `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery${more} in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם${more} ב${g.where}`) : T(`Add ₪${g.left} more for free delivery${more}`, `עוד ₪${g.left} ומשלוח חינם${more}`)}</span>
       <div class="cx-bar"><i style="width:${Math.min(100, Math.round((g.subtotal / g.freeAbove) * 100))}%"></i></div></div>`;
   }
   // How far the cart is from free delivery. With the city known, its own threshold; before that, the

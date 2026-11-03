@@ -381,9 +381,9 @@ Deno.serve(async (req) => {
       zonesResult.data || [],
       settingsResult.data || null,
     );
-    // Tuesday/Wednesday: free regular delivery, before Shabbat (not for subscriptions, which recur).
-    const shabbatPromo = !isSubscriptionOrder && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular";
-    if (shabbatPromo) { delivery.fee = 0; delivery.source = "shabbat_promo"; }
+    // Tuesday/Wednesday: an order that qualifies for free regular delivery is guaranteed to arrive
+    // before Shabbat (not subscriptions, which recur). The fee itself never changes.
+    const shabbatPromo = !isSubscriptionOrder && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && delivery.fee === 0;
 
     let discount = 0;
 
