@@ -34,7 +34,10 @@
     for (const r of (pairs || []).filter((r) => r.product_id === String(p.id))) { const o = byId(r.other_id); if (sellable(o) && !ADD_ONS.includes(String(o.id))) out.push(o); if (out.length === 3) break; }
     for (const id of ADD_ONS) { const o = byId(id); if (o && String(o.id) !== String(p.id) && o.is_active !== false && !out.includes(o)) out.push(o); }
     // Cups are rarely in past orders yet: suggest the flavour syrups with them.
-    if (ADD_ONS.includes(String(p.id))) for (const o of all()) if (sellable(o) && typeof isSyrupProduct === 'function' && isSyrupProduct(o) && !out.includes(o) && !ADD_ONS.includes(String(o.id))) out.unshift(o);
+    if (ADD_ONS.includes(String(p.id))) { for (const o of all()) if (sellable(o) && typeof isSyrupProduct === 'function' && isSyrupProduct(o) && !out.includes(o) && !ADD_ONS.includes(String(o.id))) out.unshift(o); return out.slice(0, 6); }
+    // The cheap cups & straws add-on leads: first for coffee, second (after the top match) for syrups.
+    const cups = byId(ADD_ONS[1]), i = out.indexOf(cups);
+    if (i >= 0) { out.splice(i, 1); out.splice(typeof isSyrupProduct === 'function' && isSyrupProduct(p) && out.length ? 1 : 0, 0, cups); }
     return out.slice(0, 6);
   }
 
