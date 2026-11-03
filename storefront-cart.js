@@ -23,11 +23,8 @@
   function freeDeliveryHtml() {
     const g = gap();
     if (!g) return '';
-    // Tuesday/Wednesday: free regular delivery is guaranteed to arrive before Shabbat.
-    const shabbat = typeof shabbatPromoActive === 'function' && shabbatPromoActive();
-    if (g.left <= 0) return `<div class="cx-free done">${shabbat ? T('✓ Free delivery, arriving before Shabbat', '✓ משלוח חינם, מגיע לפני שבת') : T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>`;
-    const more = shabbat ? T(' before Shabbat', ' לפני שבת') : '';
-    return `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery${more} in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם${more} ב${g.where}`) : T(`Add ₪${g.left} more for free delivery${more}`, `עוד ₪${g.left} ומשלוח חינם${more}`)}</span>
+    if (g.left <= 0) return `<div class="cx-free done">${T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>`;
+    return `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם ב${g.where}`) : T(`Add ₪${g.left} more for free delivery`, `עוד ₪${g.left} ומשלוח חינם`)}</span>
       <div class="cx-bar"><i style="width:${Math.min(100, Math.round((g.subtotal / g.freeAbove) * 100))}%"></i></div></div>`;
   }
   // How far the cart is from free delivery. With the city known, its own threshold; before that, the
@@ -148,7 +145,7 @@
   }
 
   // Signed-in customers' carts are kept on their profile too, so a cart left on the site can get the
-  // Tuesday "free delivery before Shabbat" email (admin-tools shabbat_promo_email). Plain fields only.
+  // Tuesday "order by Wednesday, delivered before Shabbat" email (admin-tools shabbat_promo_email). Plain fields only.
   let saveTimer = null, lastSaved = null;
   function saveToProfile() {
     clearTimeout(saveTimer);

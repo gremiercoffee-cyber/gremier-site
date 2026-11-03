@@ -6,7 +6,7 @@ const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "../_shared/engage.ts";
-import { shabbatPromoActive } from "../_shared/weekly-promo.ts";
+import { shabbatGuaranteedZone, shabbatPromoActive } from "../_shared/weekly-promo.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { linkJourneyOrder } from "../_shared/web-journey-model.ts";
 
@@ -381,9 +381,9 @@ Deno.serve(async (req) => {
       zonesResult.data || [],
       settingsResult.data || null,
     );
-    // Tuesday/Wednesday: an order that qualifies for free regular delivery is guaranteed to arrive
-    // before Shabbat (not subscriptions, which recur). The fee itself never changes.
-    const shabbatPromo = !isSubscriptionOrder && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && delivery.fee === 0;
+    // Tuesday/Wednesday: regular delivery to Jerusalem or Beit Shemesh is guaranteed to arrive before
+    // Shabbat, free or paid (not subscriptions, which recur). The fee itself never changes.
+    const shabbatPromo = !isSubscriptionOrder && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && shabbatGuaranteedZone(delivery.zone?.name_en);
 
     let discount = 0;
 

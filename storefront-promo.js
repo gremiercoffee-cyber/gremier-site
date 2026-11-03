@@ -1,5 +1,5 @@
 /* Weekly delivery banner in the top bar (in place of the member banner on those days):
-   Tuesday and Wednesday: orders with free regular delivery arrive before Shabbat (shabbatPromoActive() in index.html).
+   Tuesday and Wednesday: regular delivery to Jerusalem and Beit Shemesh arrives before Shabbat (shabbatPromoActive() in index.html).
    Thursday: choose expedited delivery to get it by Shabbat. Israel time. */
 (function () {
   'use strict';
@@ -27,10 +27,10 @@
       return `🚚 <span>${T('Want it by Shabbat? Choose expedited delivery at checkout.', 'רוצים עד שבת? בחרו משלוח מהיר בקופה.')}</span>${shop}`;
     }
     const main = k === 'Tue'
-      ? T('Order by Wednesday: free-delivery orders arrive before Shabbat*', 'הזמנה עם משלוח חינם עד יום רביעי מגיעה לפני שבת*')
-      : T('Last day: order today and free-delivery orders arrive before Shabbat*', 'יום אחרון: הזמנה עם משלוח חינם היום מגיעה לפני שבת*');
+      ? T('Order by Wednesday and it arrives before Shabbat*', 'מזמינים עד יום רביעי ומקבלים לפני שבת*')
+      : T('Last day: order today and it arrives before Shabbat*', 'יום אחרון: מזמינים היום ומקבלים לפני שבת*');
     return `🕯️ <span>${main}</span>${shop}
-      <small class="promo-note">${T('*Orders that meet your area\'s free regular delivery minimum. Delivery prices don\'t change.', '*בהזמנות שעומדות בתנאי המשלוח הרגיל החינם באזור שלכם. מחירי המשלוח לא משתנים.')}</small>`;
+      <small class="promo-note">${T('*Regular delivery to Jerusalem and Beit Shemesh, at the usual delivery price.', '*במשלוח רגיל לירושלים ולבית שמש, במחיר המשלוח הרגיל.')}</small>`;
   }
 
   function render() {
