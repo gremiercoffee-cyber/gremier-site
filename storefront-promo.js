@@ -29,8 +29,18 @@
     const main = k === 'Tue'
       ? T('Order by Wednesday, receive by Shabbat*', 'מזמינים עד רביעי, מקבלים עד שבת*')
       : T('Last day: order today, receive by Shabbat*', 'יום אחרון: מזמינים היום, מקבלים עד שבת*');
-    return `🕯️ <span>${main}</span>${shop}
-      <small class="promo-note">${T('*Applies to regular delivery to Jerusalem and Beit Shemesh', '*בתוקף למשלוח רגיל לירושלים ולבית שמש')}</small>`;
+    return `🕯️ <span>${main}</span>${shop}`;
+  }
+
+  // The asterisk's note lives in the page footer, on the days the offer runs.
+  function footnote() {
+    const k = kind();
+    let n = $('promoFootnote');
+    if (!k || k === 'Thu') { n?.remove(); return; }
+    const bottom = document.querySelector('footer .footer-bottom');
+    if (!bottom) return;
+    if (!n) { n = document.createElement('p'); n.id = 'promoFootnote'; n.className = 'promo-footnote'; bottom.before(n); }
+    n.textContent = T('*Order by Wednesday, receive by Shabbat: applies to regular delivery to Jerusalem and Beit Shemesh', '*מזמינים עד רביעי, מקבלים עד שבת: בתוקף למשלוח רגיל לירושלים ולבית שמש');
   }
 
   function render() {
@@ -64,7 +74,8 @@
   };
   for (const fn of ['applyTranslations', 'toggleLang']) {
     const orig = window[fn];
-    if (typeof orig === 'function') window[fn] = function () { const r = orig.apply(this, arguments); if ($('memberBanner')?.classList.contains('promo')) render(); return r; };
+    if (typeof orig === 'function') window[fn] = function () { const r = orig.apply(this, arguments); if ($('memberBanner')?.classList.contains('promo')) render(); footnote(); return r; };
   }
   render();
+  footnote();
 })();
