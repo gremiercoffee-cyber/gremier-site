@@ -4,7 +4,7 @@
  const sbc=()=>typeof sb!=='undefined'?sb:root.MAIN_SB||root.ADMIN_SB,get=id=>document.getElementById(id);
  const money=n=>new Intl.NumberFormat('en-IL',{style:'currency',currency:'ILS'}).format(n/100);
  const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
- const receiptErrors={check_bank_code_required:'Enter the bank number printed on the check.',check_branch_required:'Enter the branch number printed on the check.',check_account_required:'Enter the account number printed on the check (up to 15 digits).',check_check_number_required:'Enter the check number (up to 15 digits).',check_date_required:'Enter a valid date printed on the check.',payment_reference_max_40:'The payment reference can contain up to 40 characters.',amount_exceeds_finbot_limit:'The amount exceeds FinBot’s supported receipt limit.',customer_changed_refresh_preview:'Customer details changed. Refresh and review the receipt again.'};
+ const receiptErrors={already_invoiced_use_receipt:'One of these months already has an official tax invoice. Issue a receipt linked to it instead of another tax invoice.',check_bank_code_required:'Enter the bank number printed on the check.',check_branch_required:'Enter the branch number printed on the check.',check_account_required:'Enter the account number printed on the check (up to 15 digits).',check_check_number_required:'Enter the check number (up to 15 digits).',check_date_required:'Enter a valid date printed on the check.',payment_reference_max_40:'The payment reference can contain up to 40 characters.',amount_exceeds_finbot_limit:'The amount exceeds FinBot’s supported receipt limit.',customer_changed_refresh_preview:'Customer details changed. Refresh and review the receipt again.'};
  async function call(name,body){const r=await sbc().functions.invoke(name,{body});if(r.error||r.data?.error){const detail=r.data||await r.error?.context?.json?.().catch(()=>null);throw Error(receiptErrors[detail?.error]||detail?.error||'Request failed; refresh before retrying.');}return r.data;}
  async function pages(table,columns,order){const out=[],primary=table==='order_receipts'?'order_id':'id';for(let n=0;n<100000;n+=1000){let query=sbc().from(table).select(columns).order(order);if(order!==primary)query=query.order(primary);const r=await query.range(n,n+999);if(r.error)throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Report is too large');}
  const status=(id,message)=>{if(get(id))get(id).textContent=message;};
@@ -151,11 +151,11 @@
   get('manualStoreCombined').hidden=!store||type==='invoice_receipt'||!vatDay();
   if(!receipt)status('manualReceiptStatus','');
   get('manualMethodGroup').hidden=invoice;get('manualReferenceGroup').hidden=invoice;get('manualCheckFields').hidden=invoice||get('manualMethod').value!=='check';
-  get('manualBills').hidden=!receipt;if(!receipt)get('manualBills').querySelectorAll('input:checked').forEach(i=>{i.checked=false;});
+  get('manualBills').hidden=invoice;if(invoice)get('manualBills').querySelectorAll('input:checked').forEach(i=>{i.checked=false;});
   get('manualLinkedGroup').hidden=!receipt;if(!receipt){get('manualLinkedInvoice').value='';get('manualLinkedNumber').value='';}get('manualLinkedNumberGroup').hidden=get('manualLinkedInvoice').value!=='finbot';
   get('manualAmount').previousSibling.textContent=invoice?'Amount incl. VAT · ₪':type==='invoice_receipt'?'Amount received incl. VAT · ₪':'Amount received · ₪';
   get('manualDate').previousSibling.textContent=invoice?'Sale date':'Date received';
-  get('manualDocNote').textContent=invoice?'Issue now, before the customer pays. When they pay, issue a קבלה and pick this invoice.':type==='invoice_receipt'?'For a payment already received, when no official tax invoice has been issued: one combined חשבונית מס/קבלה. Enter the total received INCLUDING VAT and the actual payment date. No month selection is needed. This does not change monthly bill balances. If an official tax invoice already exists, issue a receipt linked to that invoice instead.':store?'Pick the months being paid, and/or the tax invoice it pays.':vatDay()?'If this pays a tax invoice, choose it above (or type the number of one issued in FinBot). A plain receipt adds no VAT.':'';
+  get('manualDocNote').textContent=invoice?'Issue now, before the customer pays. When they pay, issue a קבלה and pick this invoice.':type==='invoice_receipt'?'For a payment already received, when no official tax invoice has been issued: one combined חשבונית מס/קבלה. Enter the total received INCLUDING VAT and the actual payment date. Select months below to settle them with this document, or leave them empty for a standalone payment. A different total requires an adjustment reason. If an official tax invoice already exists, issue a receipt linked to that invoice instead.':store?'Pick the months being paid, and/or the tax invoice it pays.':vatDay()?'If this pays a tax invoice, choose it above (or type the number of one issued in FinBot). A plain receipt adds no VAT.':'';
   updateSettlement();
  }
  async function loadOpenInvoices(customerId){
@@ -192,7 +192,7 @@
  async function review(){
   get('manualPreview').disabled=true;status('manualReceiptStatus','Preparing review…');
   try{
-   const selected=docType==='receipt'?selectedBills():[],input={id:requestId,document_type:docType,linked_invoice_id:docType==='receipt'&&!['','finbot'].includes(get('manualLinkedInvoice').value)?get('manualLinkedInvoice').value:null,linked_document_number:docType==='receipt'&&get('manualLinkedInvoice').value==='finbot'?get('manualLinkedNumber').value.trim():null,customer_id:get('manualCustomer').value,customer_version:customers.find(c=>c.id===get('manualCustomer').value)?.updated_at||'',amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,customer_address:get('manualAddress').value.trim(),adjustment_reason:get('manualAdjustmentGroup').hidden?'':get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+owed(b),0):null,email_requested:get('manualEmail').checked};
+   const selected=docType!=='tax_invoice'?selectedBills():[],input={id:requestId,document_type:docType,linked_invoice_id:docType==='receipt'&&!['','finbot'].includes(get('manualLinkedInvoice').value)?get('manualLinkedInvoice').value:null,linked_document_number:docType==='receipt'&&get('manualLinkedInvoice').value==='finbot'?get('manualLinkedNumber').value.trim():null,customer_id:get('manualCustomer').value,customer_version:customers.find(c=>c.id===get('manualCustomer').value)?.updated_at||'',amount:get('manualAmount').value,payment_date:get('manualDate').value,payment_method:get('manualMethod').value,payment_reference:get('manualReference').value,description:get('manualDescription').value,customer_address:get('manualAddress').value.trim(),adjustment_reason:get('manualAdjustmentGroup').hidden?'':get('manualAdjustment').value,billing_ids:selected.map(b=>b.id),billed_total_minor:selected.length?selected.reduce((s,b)=>s+owed(b),0):null,email_requested:get('manualEmail').checked};
    input.payment_details=docType!=='tax_invoice'&&get('manualMethod').value==='check'?{bank_code:get('manualCheckBank').value,branch:get('manualCheckBranch').value,account:get('manualCheckAccount').value,check_number:get('manualCheckNumber').value,check_date:get('manualCheckDate').value}:{};
    const r=await call('business-receipts',{action:'preview',...input});if(r.already_claimed)throw Error('This request already has a receipt or needs review. Check the receipt history.');
    preview=input;get('manualReceiptForm').hidden=true;const p=r.preview;
@@ -348,13 +348,21 @@
   sbc()?.auth.getSession().then(({data})=>restore(data.session));
   sbc()?.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_IN')restore(session);});
  }
- async function openStoreCombined(storeId){
+ async function openStoreCombined(storeId,billingIds=[]){
   setup();
   await loadFinance();
   const c=customers.find(c=>c.store_id===storeId);
   if(!c)throw Error('Store customer details are unavailable. Save the store details and try again.');
   get('receiptCustomerSearch').value='';customerOptions();get('manualCustomer').value=c.id;
   await loadCustomerBills();setDocType('invoice_receipt');
+  const wanted=new Set(billingIds);
+  get('manualBills').querySelectorAll('input.manual-bill').forEach(i=>{i.checked=wanted.has(i.value);});
+  if(billingIds.length){
+   if(selectedBills().length!==billingIds.length)throw Error('Some months are no longer available. Refresh the store before continuing.');
+   const selected=selectedBills();get('manualAmount').value=(selected.reduce((sum,b)=>sum+owed(b),0)/100).toFixed(2);
+   get('manualDescription').value=('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);
+  }
+  updateSettlement();
   get('manualReceiptForm').scrollIntoView?.({behavior:'smooth',block:'start'});
   get('manualAmount').focus({preventScroll:true});
  }

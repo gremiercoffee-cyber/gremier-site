@@ -63,7 +63,7 @@
     ${p?`<h3>Months to invoice</h3><div class="table-wrap"><table><thead><tr><th></th><th>Month</th><th>Before VAT</th><th>VAT 18%</th><th>Invoice total</th></tr></thead><tbody>${p.months.map(m=>`<tr><td><input type="checkbox" class="sinv-month" value="${esc(m.id)}" checked aria-label="Invoice ${esc(m.label)}"></td><td>${esc(m.label)}</td><td>${money(m.net_minor)}</td><td>${money(m.vat_minor)}</td><td><strong>${money(m.gross_minor)}</strong></td></tr>`).join('')}</tbody></table></div>
     <label class="fw-check"><input type="checkbox" id="storeInvoiceEmail" ${p.customer.email?'':'disabled'}> Email them to ${esc(p.customer.email||'the store (add an email above)')}</label>
     <label class="fw-check"><input type="checkbox" id="storeInvoiceOk"> I checked the store's name, ח.פ. and amounts. Each ticked month becomes an official, numbered tax invoice in FinBot.</label>`:'<p class="fw-note">Add the store\'s ח.פ. and save to see its invoices.</p>'}
-    <div class="fw-actions">${p?'<button class="btn btn-amber" id="storeInvoiceIssue" disabled>Issue tax invoices</button>':''}<button class="btn btn-outline" id="storeInvoiceCancel">Close</button></div></div>`;
+    <div class="fw-actions">${p?'<button class="btn btn-amber" id="storeInvoiceIssue" disabled>Separate tax invoices · one per month</button><button type="button" class="btn btn-outline" id="storeInvoiceTogether" disabled>Together · one חשבונית מס/קבלה</button>':''}<button class="btn btn-outline" id="storeInvoiceCancel">Close</button></div></div>`;
    get('storeInvoiceCombined').onclick=async()=>{
     if(box.dataset.dirty==='1'){status.textContent='Save the edited store details first.';return;}
     const b=get('storeInvoiceCombined');b.disabled=true;
@@ -73,7 +73,7 @@
    if(p)current={store_id:storeId,months:p.months};
    const issueBtn=get('storeInvoiceIssue'),ok=get('storeInvoiceOk');
    const chosen=()=>[...box.querySelectorAll('.sinv-month:checked')].map(i=>current.months.find(m=>m.id===i.value));
-   const refresh=()=>{if(!issueBtn)return;const list=chosen();issueBtn.textContent=list.length?`Issue ${list.length} tax invoice${list.length>1?'s':''} · ${money(list.reduce((n,m)=>n+m.gross_minor,0))}`:'Choose months';issueBtn.disabled=!ok.checked||!list.length||box.dataset.dirty==='1';};
+   const refresh=()=>{const together=get('storeInvoiceTogether');if(together)together.disabled=box.dataset.dirty==='1'||!chosen().length;if(!issueBtn)return;const list=chosen();issueBtn.textContent=list.length?`Separate: ${list.length} tax invoice${list.length>1?'s':''} · ${money(list.reduce((n,m)=>n+m.gross_minor,0))}`:'Choose months';issueBtn.disabled=!ok.checked||!list.length||box.dataset.dirty==='1';};
    box.dataset.dirty='0';
    for(const id of ['sinvName','sinvTax','sinvEmail','sinvAddress'])get(id).oninput=()=>{box.dataset.dirty='1';refresh();status.textContent='Save the details before issuing.';};
    box.querySelectorAll('.sinv-month').forEach(i=>i.onchange=refresh);if(ok)ok.onchange=refresh;refresh();
@@ -88,6 +88,11 @@
     await open(storeId);load();status.textContent='Details saved.';
    };
    get('storeInvoiceCancel').onclick=()=>{current=null;box.innerHTML='';status.textContent='';};
+   if(get('storeInvoiceTogether'))get('storeInvoiceTogether').onclick=async()=>{
+    const b=get('storeInvoiceTogether');b.disabled=true;
+    try{await root.GremierFinance.openStoreCombined(storeId,chosen().map(m=>m.id));box.innerHTML='';current=null;status.textContent='';}
+    catch(e){status.textContent=e.message;b.disabled=false;}
+   };
    if(issueBtn)issueBtn.onclick=()=>issue(chosen());
    status.textContent='';box.scrollIntoView?.({behavior:'smooth',block:'nearest'});
   }catch(e){status.textContent=e.message;}finally{if(button)button.disabled=false;}

@@ -64,7 +64,7 @@ Deno.serve(async req=>{
   const type=input.document_type,date=input.payment_date+'T23:59:00+03:00';
   // VAT documents start the day the business became Osek Morshe.
   if(type!=='receipt'&&!vatApplies(date))throw Error('tax_invoices_start_2026_10_22');
-  if(type!=='receipt'&&input.billing_ids.length)throw Error('months_take_a_receipt');
+  if(type==='tax_invoice'&&input.billing_ids.length)throw Error('months_take_a_receipt');
   // A קבלה can pay one of this customer's manual tax invoices.
   let linked:any=null;
   if(input.linked_invoice_id){
@@ -81,13 +81,14 @@ Deno.serve(async req=>{
    const paid=await db.from('business_receipts').select('id').eq('linked_document_number',input.linked_document_number).neq('status','needs_review');if((paid.data||[]).length)throw Error('invoice_already_paid');
   }
   let bills:any[]=[],invoices:any[]=[];
-  if(store_id&&type==='receipt'&&!linked&&(input.billing_ids.length||!input.linked_document_number)){
+  if(store_id&&['receipt','invoice_receipt'].includes(type)&&!linked&&(input.billing_ids.length||!input.linked_document_number)){
    if(!input.billing_ids.length)throw Error('choose_paid_months');
    const r=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at,tax_invoice_id,invoiced_gross_minor').in('id',input.billing_ids);if(r.error)throw Error('billing_unavailable');bills=r.data;
    if(bills.length!==input.billing_ids.length||bills.some(b=>b.store_id!==store_id||b.paid_at||b.cancelled_at))throw Error('month_not_outstanding');
    // Months on a VAT invoice (one per month) are owed their invoiced amount; the receipt names those invoices.
    const total=bills.reduce((s,b)=>s+(b.invoiced_gross_minor??Math.round(Number(b.total)*100)),0);if(total!==input.billed_total_minor)throw Error('billing_changed_refresh_preview');
    const invoiceIds=[...new Set(bills.map(b=>b.tax_invoice_id||null))];
+   if(type==='invoice_receipt'&&invoiceIds.some(Boolean))throw Error('already_invoiced_use_receipt');
    // A receipt covers either months that are all on tax invoices, or (older) months with none.
    if(invoiceIds.includes(null)&&invoiceIds.length>1)throw Error('mix_of_invoiced_and_not');
    for(const id of invoiceIds.filter(Boolean)){
