@@ -4091,6 +4091,7 @@ async function loadOrders() {
   if (status !== 'all') query = query.eq('status', status);
   const { data } = await query;
   const rawOrders = data || [];
+  await loadOrderCouponDetails(rawOrders);
   allOrders = applyClientOrderFilters(rawOrders);
   localStorage.setItem(cacheKey, JSON.stringify(rawOrders));
   renderOrdersTable(allOrders);
@@ -4158,10 +4159,31 @@ function renderOrdersTable(orders) {
     if (chev) chev.style.transform = 'rotate(-90deg)';
   }
 }
+const orderCouponDetails = new Map();
+async function loadOrderCouponDetails(orders) {
+  const codes = [...new Set(orders.map(o => String(o.coupon_code || '').toUpperCase()).filter(Boolean))].filter(code => !orderCouponDetails.has(code));
+  for (let i = 0; i < codes.length; i += 50) {
+    const { data, error } = await sb.from('coupons').select('code,description,discount_type,discount_value,free_delivery').in('code', codes.slice(i, i + 50));
+    if (error) { console.warn('Coupon descriptions could not load'); continue; }
+    for (const coupon of data || []) orderCouponDetails.set(String(coupon.code).toUpperCase(), coupon);
+  }
+}
+function orderCouponPurpose(o) {
+  const code = String(o.coupon_code || '').toUpperCase();
+  const coupon = orderCouponDetails.get(code);
+  const description = String(coupon?.description || '').trim();
+  let purpose;
+  if (/^BDAY-/.test(code) || /birthday|יום הולדת/i.test(description)) purpose = 'Birthday gift';
+  else if (/^LOYAL-/.test(code) || /loyalty|points|נקודות/i.test(description)) purpose = 'Points reward';
+  else if (/^REF-/.test(code) || /referral/i.test(description)) purpose = 'Friend referral';
+  else purpose = description || 'Promotion — purpose not recorded';
+  const benefit = coupon ? (coupon.discount_type === 'percent' ? `${Number(coupon.discount_value)}% off` : `₪${Number(coupon.discount_value)} off`) : '';
+  return purpose + (benefit ? ` · ${benefit}` : '') + (coupon?.free_delivery ? ' · free delivery' : '');
+}
 function orderDiscountLabel(o) {
   const parts = [];
-  if (o.coupon_code) parts.push('Coupon: ' + o.coupon_code);
-  if (Number(o.delivery_info?.loyalty_discount) > 0) parts.push('Loyalty reward');
+  if (o.coupon_code) parts.push('Coupon: ' + orderCouponPurpose(o));
+  if (Number(o.delivery_info?.loyalty_discount) > 0) parts.push('Points reward');
   if (Number(o.gift_card_discount || o.delivery_info?.gift_card_amount) > 0) parts.push('Gift card');
   if (!parts.length && Number(o.discount) > 0) parts.push(o.source === 'payment_link' && o.notes ? 'Manual: ' + o.notes : 'Discount source not recorded');
   return parts.join(' · ');
@@ -4450,9 +4472,10 @@ function describeItemExtras(i) {
   if ((i && i.is_subscription) || box.length) segs.push(String(i.subscription_interval || 'monthly') === 'weekly' ? '🔁 weekly' : '🔁 monthly');
   return segs.join(' · ');
 }
-function openOrderDetail(id) {
+async function openOrderDetail(id) {
   const o = allOrders.find(x=>x.id===id);
   if (!o) return;
+  await loadOrderCouponDetails([o]);
   const items = (o.items||[]).map(i=>{
     const extras = describeItemExtras(i);
     const extrasHtml = i.coffee_bar_configuration ? extras.split(' · ').map(escHtml).join('<br>') : escHtml(extras);
@@ -4477,7 +4500,7 @@ function openOrderDetail(id) {
     </div>
     ${o.notes?`<div style="background:var(--bg3);padding:10px 14px;border-radius:4px;font-size:.82rem;color:var(--text2);margin-bottom:16px">Notes: ${escHtml(o.notes)}</div>`:''}
     <div>${items}</div>
-    ${orderDiscountLabel(o) ? `<div style="padding:10px 0;font-size:.85rem;color:var(--text2)">Discount: ${escHtml(orderDiscountLabel(o))}${Number(o.discount)>0 ? ` · −₪${Number(o.discount).toFixed(2)}` : ''}</div>` : ''}
+    ${orderDiscountLabel(o) ? `<div style="padding:10px 0;font-size:.85rem;color:var(--text2)">${escHtml(orderDiscountLabel(o))}${Number(o.discount)>0 ? ` · −₪${Number(o.discount).toFixed(2)}` : ''}</div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:12px 0;font-size:.95rem"><span style="color:var(--text2)">Total</span><span style="color:var(--cream);font-size:1.1rem">₪${o.total}</span></div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <select class="form-input" style="flex:1" onchange="updateOrderStatus('${o.id}',this.value)">
