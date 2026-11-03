@@ -18,10 +18,10 @@
   // Cut-out photos for the doorstep, and their width:height, so the row can be laid out before they load.
   function art(p) {
     const n = String(p.name_en || '').toLowerCase(), M_ = M();
-    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 31, kind: 'syrup' };
-    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.478, h: 24, kind: 'mini', count: 4 };
-    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 35, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
-    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 40, kind: 'bottle' };
+    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 24, kind: 'syrup' };
+    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.90, h: 20, kind: 'mini', count: 4 };
+    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 29, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
+    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 27, kind: 'bottle' };
   }
   const groups = [
     ['bottle', 'Liter bottles', 'בקבוקי ליטר'],
@@ -105,15 +105,16 @@
       <p class="sb-empty">${T('Your box lands here', 'הקופסה שלכם תגיע לכאן')}</p>
     </div>`;
   }
-  // The doorstep: one cut-out per bottle (a mini 4-pack shows four minis), dropped in as they're added.
+  // The doorstep: one live group per mini 4-pack, with four bottles arranged in two rows, dropped in as they're added.
   function updateScene(g) {
     const scene = el.querySelector('.sb-scene'), row = scene.querySelector('.sb-row'), stage = scene.querySelector('.sb-stage');
     const want = [];
     for (const [id, qty] of units()) {
       const p = all().find((x) => String(x.id) === id); if (!p) continue;
       const a = art(p);
-      for (let i = 0; i < qty * (a.count || 1); i++) want.push({ key: id + ':' + i, p, a });
+      for (let i = 0; i < qty * (a.kind === 'mini' ? 1 : (a.count || 1)); i++) want.push({ key: id + ':' + i, p, a });
     }
+    const bottleCount = want.reduce((sum, x) => sum + (x.a.kind === 'mini' ? 4 : 1), 0);
     const shown = want.slice(0, MAX_UNITS), keys = new Set(shown.map((x) => x.key));
     row.querySelectorAll('.sb-item:not(.leaving)').forEach((n) => { if (!keys.has(n.dataset.key)) { n.classList.remove('entering'); n.classList.add('leaving'); setTimeout(() => n.remove(), 260); } });
     let prev = null;
@@ -123,6 +124,10 @@
         n = document.createElement('div'); n.className = 'sb-item entering sb-' + x.a.kind; n.dataset.key = x.key;
         n.style.setProperty('--h', x.a.h); n.style.setProperty('--r', x.a.ratio);
         const img = document.createElement('img'); img.src = x.a.src; img.alt = ''; img.draggable = false; n.append(img);
+        if (x.a.kind === 'mini') {
+          n.setAttribute('aria-label', nameOf(x.p) + ' · 4 minis');
+          for (let j = 1; j < 4; j++) n.append(img.cloneNode());
+        }
         setTimeout(() => n.classList.remove('entering'), 600);
       }
       if (prev ? prev.nextSibling !== n : row.firstChild !== n) prev ? prev.after(n) : row.prepend(n);
@@ -139,7 +144,7 @@
     scene.classList.toggle('free', g.freeOk);
     scene.querySelector('.sb-tag-when').textContent = state.interval === 'weekly' ? T('Every week', 'כל שבוע') : T('Every month', 'כל חודש');
     scene.querySelector('.sb-tag-state').textContent = g.ready ? T('Delivery ✓', 'משלוח ✓') : g.coffee ? T('Pickup only', 'איסוף עצמי') : T('Nothing yet', 'עוד ריק');
-    scene.setAttribute('aria-label', T(`Your box at the door: ${want.length} items`, `הקופסה שלכם בדלת: ${want.length} פריטים`));
+    scene.setAttribute('aria-label', T(`Your box at the door: ${bottleCount} bottles`, `הקופסה שלכם בדלת: ${bottleCount} בקבוקים`));
   }
 
   function progressHtml(g) {
