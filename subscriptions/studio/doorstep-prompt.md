@@ -1,0 +1,1 @@
+Generated with built-in image generation. Photorealistic warm Jerusalem stone house and wooden front door on right; full-size cream GREMIER COFFEE CO. van parked in driveway on left with believable scale and perspective; natural daylight. Clean empty coir mat in bottom-right foreground for live product overlays. No bottles, boxes or floating text in the background. Landscape 3:2.

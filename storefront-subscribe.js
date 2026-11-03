@@ -18,10 +18,10 @@
   // Cut-out photos for the doorstep, and their width:height, so the row can be laid out before they load.
   function art(p) {
     const n = String(p.name_en || '').toLowerCase(), M_ = M();
-    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 34, kind: 'syrup' };
-    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.478, h: 21, kind: 'mini' };
-    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 34, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
-    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 40, kind: 'bottle' };
+    if (M_.syrup(p)) return { src: /caramel/.test(n) ? '/bar/caramel.webp' : '/bar/vanilla.webp', ratio: 0.395, h: 20, kind: 'syrup' };
+    if (p.category === 'minis') return { src: `/packs/studio/minis-${/vanilla/.test(n) ? 'vanilla' : /caramel/.test(n) ? 'caramel' : /classic/.test(n) ? 'classic' : 'original'}-v1.webp`, ratio: 0.478, h: 13, kind: 'mini', count: 4 };
+    if (M_.large(p)) return { src: `/bar/jer_${/house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}.webp`, ratio: 0.683, h: 20, kind: 'jug', count: Number((n.match(/^(\d+)\s*[×x]/) || [])[1]) || 1 };
+    return { src: `/packs/studio/bottles-${/decaf/.test(n) ? 'decaf' : /sweetened/.test(n) ? 'sweetened' : /house/.test(n) ? 'house' : /colombia/.test(n) ? 'colombia' : 'classic'}-v2.webp`, ratio: 0.293, h: 22, kind: 'bottle' };
   }
   const groups = [
     ['bottle', 'Liter bottles', 'בקבוקי ליטר'],
@@ -91,7 +91,7 @@
   const PLANT = `<svg viewBox="0 0 80 140" aria-hidden="true"><path d="M40 92C30 70 12 64 6 40c16 6 28 22 34 44zM40 90c4-26 18-44 34-52-2 24-18 40-34 54zM40 92C38 62 30 36 36 8c10 22 10 54 4 84z" fill="#5f7a52"/><path d="M40 92C34 74 22 58 18 30c12 14 20 36 22 62z" fill="#78966a"/><path d="M18 92h44l-6 46H24z" fill="#b8865a"/><path d="M16 88h48v8H16z" fill="#a3734b"/></svg>`;
 
   function sceneHtml() {
-    return `<div class="sb-scene" role="img">
+    return `<div class="sb-scene sb-scene-photo" role="img">
       <div class="sb-wall"></div>
       <div class="sb-lamp"><i></i></div>
       <div class="sb-door"><div class="sb-door-window"></div><div class="sb-door-panel a"></div><div class="sb-door-panel b"></div><i class="sb-door-knob"></i>
@@ -105,14 +105,14 @@
       <p class="sb-empty">${T('Your box lands here', 'הקופסה שלכם תגיע לכאן')}</p>
     </div>`;
   }
-  // The doorstep: one cut-out per unit (a 4-pack shows two minis), dropped in as they're added.
+  // The doorstep: one cut-out per bottle (a mini 4-pack shows four minis), dropped in as they're added.
   function updateScene(g) {
     const scene = el.querySelector('.sb-scene'), row = scene.querySelector('.sb-row'), stage = scene.querySelector('.sb-stage');
     const want = [];
     for (const [id, qty] of units()) {
       const p = all().find((x) => String(x.id) === id); if (!p) continue;
       const a = art(p);
-      for (let i = 0; i < qty * (a.kind === 'jug' ? a.count : 1); i++) want.push({ key: id + ':' + i, p, a });
+      for (let i = 0; i < qty * (a.count || 1); i++) want.push({ key: id + ':' + i, p, a });
     }
     const shown = want.slice(0, MAX_UNITS), keys = new Set(shown.map((x) => x.key));
     row.querySelectorAll('.sb-item:not(.leaving)').forEach((n) => { if (!keys.has(n.dataset.key)) { n.classList.remove('entering'); n.classList.add('leaving'); setTimeout(() => n.remove(), 260); } });
@@ -123,7 +123,6 @@
         n = document.createElement('div'); n.className = 'sb-item entering sb-' + x.a.kind; n.dataset.key = x.key;
         n.style.setProperty('--h', x.a.h); n.style.setProperty('--r', x.a.ratio);
         const img = document.createElement('img'); img.src = x.a.src; img.alt = ''; img.draggable = false; n.append(img);
-        if (x.a.kind === 'mini') n.append(img.cloneNode());
         setTimeout(() => n.classList.remove('entering'), 600);
       }
       if (prev ? prev.nextSibling !== n : row.firstChild !== n) prev ? prev.after(n) : row.prepend(n);
@@ -133,7 +132,7 @@
     if (want.length > MAX_UNITS) row.insertAdjacentHTML('beforeend', `<span class="sb-more">+${want.length - MAX_UNITS}</span>`);
     // Shrink the row to fit the step: widths are known from each photo's proportions.
     const H = scene.clientHeight || 300, W = stage.clientWidth || 400;
-    const need = shown.reduce((s, x) => s + (x.a.h / 100) * H * x.a.ratio * (x.a.kind === 'mini' ? 1.55 : 1), 0);
+    const need = shown.reduce((s, x) => s + (x.a.h / 100) * H * x.a.ratio, 0);
     scene.style.setProperty('--k', Math.min(1, W / Math.max(1, need)).toFixed(3));
     scene.classList.toggle('empty', !want.length);
     scene.classList.toggle('ready', g.ready);
