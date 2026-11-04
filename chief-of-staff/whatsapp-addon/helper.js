@@ -6,7 +6,7 @@
 const HELPER_DEVICE = "home-chrome";
 // The server says which helper it expects; when that's newer than this file, the extension reloads itself from
 // disk (at most every 10 minutes), so updates apply without a trip to chrome://extensions.
-const HELPER_VERSION = 2;
+const HELPER_VERSION = 3;
 let helperBusy = false;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -170,7 +170,8 @@ async function helperTick() {
   if (!helper_on) return;
   helperBusy = true;
   try {
-    const { job, helper_version } = await helperFetch("/api/bridge/helper/next", { device: HELPER_DEVICE });
+    const {account='personal'}=await chrome.storage.local.get('account');
+    const { job, helper_version } = await helperFetch("/api/bridge/helper/next", { device: HELPER_DEVICE+':'+account,account });
     if (helper_version > HELPER_VERSION) {
       const { helper_reloaded = 0 } = await chrome.storage.local.get("helper_reloaded");
       if (Date.now() - helper_reloaded > 10 * 60_000) { await chrome.storage.local.set({ helper_reloaded: Date.now() }); chrome.runtime.reload(); return; }

@@ -81,7 +81,7 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   const cutoff = new Date(Date.now() - WAITING_NUDGE_DAYS * 86400_000).toISOString();
   const stale = await all<Item>(env,
     `SELECT * FROM items WHERE status = 'open' AND muted = 0 AND kind = 'waiting'
-       AND COALESCE(reminded_at, created_at) <= ? LIMIT 20`, cutoff);
+       AND NOT EXISTS(SELECT 1 FROM waiting_email_links l JOIN job_emails e ON e.id=l.email_id JOIN jobs j ON j.id=e.job_id WHERE l.item_id=items.id AND e.status IN('sent','replied','sending') AND j.status!='cancelled' AND e.sent_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-21 days')) AND COALESCE(reminded_at, created_at) <= ? LIMIT 20`, cutoff);
   for (const item of stale.filter(eligible)) {
     await notify(env, "waiting", `${item.person ?? "They"} still hasn't gotten back to you`,
       `${item.title}. Want me to draft a follow-up?`, item.id);

@@ -1,5 +1,5 @@
 /**
- * Learning: every so often, read what's new (what the user said, brain dumps, WhatsApp, email
+ * Learning: every so often, read what's new (what the user said, brain dumps, email
  * subjects, calendar) and propose what it reveals about their life: facts, who people/companies
  * are to them, routines. Nothing is trusted until the user accepts it in Memory → To review.
  */
@@ -33,10 +33,9 @@ export async function learnPass(env: Env, force = false) {
   const since = (await setting(env, KEY)) ?? new Date(Date.now() - 3 * 86400_000).toISOString();
   const started = now();
 
-  const [said, dumps, wa, mail, cal] = await Promise.all([
-    all<{ content: string }>(env, "SELECT content FROM messages WHERE role = 'user' AND created_at > ? ORDER BY created_at LIMIT 40", since),
+  const [said, dumps, mail, cal] = await Promise.all([
+    all<{ content: string }>(env, "SELECT content FROM messages WHERE role = 'user' AND NOT EXISTS(SELECT 1 FROM conversations c WHERE c.id=messages.conversation_id AND c.privacy_scope='health') AND created_at > ? ORDER BY created_at LIMIT 40", since),
     all<{ raw: string }>(env, "SELECT raw FROM brain_dumps WHERE created_at > ? LIMIT 10", since),
-    all<{ chat: string; sender: string; text: string }>(env, "SELECT chat, sender, text FROM whatsapp_inbox WHERE received_at > ? ORDER BY received_at LIMIT 40", since),
     all<{ subject: string; counterpart: string }>(env, "SELECT subject, counterpart FROM gmail_threads WHERE updated_at > ? LIMIT 25", since),
     all<{ summary: string; start_at: string; location: string | null }>(env, "SELECT summary, start_at, location FROM calendar_events WHERE updated_at > ? LIMIT 25", since),
   ]);
@@ -45,7 +44,6 @@ export async function learnPass(env: Env, force = false) {
   const snippets = [
     ...said.map((m) => `[user said] ${cut(m.content, 800)}`),
     ...dumps.map((d) => `[brain dump] ${cut(d.raw, 1200)}`),
-    ...wa.map((m) => `[WhatsApp ${m.chat}${m.sender !== m.chat ? ` / ${m.sender}` : ""}] ${cut(m.text)}`),
     ...mail.map((m) => `[email with ${m.counterpart}] ${cut(m.subject, 150)}`),
     ...cal.map((e) => `[calendar ${localTime(e.start_at, tz)}] ${cut(e.summary, 150)}${e.location ? ` @ ${e.location}` : ""}`),
   ];

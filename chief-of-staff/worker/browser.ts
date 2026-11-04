@@ -1,3 +1,4 @@
+import {heartbeatSetting} from './db';
 /**
  * The computer helper: jobs the user asks for ("enable the People API in Google Cloud", "make a CoSend account")
  * done in Chrome on their home computer by the Chief of Staff extension.
@@ -32,19 +33,20 @@ interface LogEntry { url: string; did: string; why?: string; result?: string }
 
 const MAX_STEPS = 80;
 /** The extension reloads itself from disk when the server expects a newer helper than the one running. */
-export const HELPER_VERSION = 2;
+export const HELPER_VERSION = 3;
 const RETRY_MINUTES = 20, MAX_RETRIES = 3;
 const isTalk = (l: LogEntry) => /^(asked you|you answered):/.test(l.did);
 
 // ---- Jobs --------------------------------------------------------------------------------------
-export async function createJob(env: Env, p: { instruction: string; start_url?: string | null; source?: string }) {
+export async function createJob(env: Env, p: { instruction: string; start_url?: string | null; source?: string; target_account?:string }) {
   const instruction = String(p.instruction ?? "").trim().slice(0, 4000);
   if (!instruction) throw new Error("What should the helper do?");
   const source = String(p.source ?? "you").slice(0, 40);
   const status = source === "you" ? "queued" : "waiting_approval";
   const start = p.start_url && /^https?:\/\//.test(p.start_url) ? p.start_url.slice(0, 500) : null;
   const id = uid(), t = now();
-  await run(env, "INSERT INTO browser_jobs (id, instruction, start_url, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, instruction, start, source, status, t, t);
+  const target=p.target_account==='personal'||p.target_account==='business'?p.target_account:null;
+  await run(env, "INSERT INTO browser_jobs (id, instruction, start_url, source, status, created_at, updated_at,target_account) VALUES (?, ?, ?, ?, ?, ?, ?,?)", id, instruction, start, source, status, t, t,target);
   if (status === "waiting_approval") await notify(env, "helper_approve", `🖥️ ${source} asks the computer helper to: ${instruction.slice(0, 90)}`, "Tap Allow to let it run on your computer, or Deny.", id, "/?tab=tasks");
   return { id, status };
 }
@@ -82,16 +84,17 @@ export async function expireJobs(env: Env) {
 
 // ---- The extension's side ------------------------------------------------------------------------
 /** The next job for this computer (one at a time), or a job it was already doing. */
-export async function nextJob(env: Env, device: string) {
+export async function nextJob(env: Env, device: string, account?:string) {
   // The computer checked in: the app can tell "waiting for your computer" from "your computer isn't connected".
-  await run(env, "INSERT INTO settings (key, value) VALUES ('helper_last_seen', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", JSON.stringify(now()));
+  await heartbeatSetting(env,'settings','helper_last_seen',now());
+  if(account==='personal'||account==='business')await heartbeatSetting(env,'settings','helper_last_seen:'+account,now());
   const helper_version = HELPER_VERSION;
-  const mine = await first<BrowserJob>(env, "SELECT * FROM browser_jobs WHERE claimed_by = ? AND status IN ('running','needs_you') ORDER BY created_at LIMIT 1", device);
+  const mine = await first<BrowserJob>(env, "SELECT * FROM browser_jobs WHERE claimed_by = ? AND (target_account IS NULL OR target_account=?) AND status IN ('running','needs_you') ORDER BY created_at LIMIT 1", device,account??'');
   if (mine) return { helper_version, job: { id: mine.id, instruction: mine.instruction, start_url: mine.start_url, status: mine.status, resume: true } };
   const busy = await first(env, "SELECT 1 FROM browser_jobs WHERE status IN ('running','needs_you')");
   if (busy) return { helper_version, job: null };
   // A job waiting to try a website again later is skipped until its time.
-  const q = await first<BrowserJob>(env, "SELECT * FROM browser_jobs WHERE status = 'queued' AND (not_before IS NULL OR not_before <= ?) ORDER BY created_at LIMIT 1", now());
+  const q = await first<BrowserJob>(env, "SELECT * FROM browser_jobs WHERE status = 'queued' AND (target_account IS NULL OR target_account=?) AND (not_before IS NULL OR not_before <= ?) ORDER BY created_at LIMIT 1",account??'', now());
   if (!q) return { helper_version, job: null };
   const claim = await run(env, "UPDATE browser_jobs SET status = 'running', claimed_by = ?, heartbeat_at = ?, updated_at = ? WHERE id = ? AND status = 'queued'", device, now(), now(), q.id);
   if (!claim.meta.changes) return { helper_version, job: null };

@@ -15,6 +15,7 @@ import { shoppingSections } from "../shared/shopping";
 export type Subject = { name: string; feature?: string };
 type Subjects = Record<string, Subject>; // "<chat>:<thread>" → subject
 const KNOWN: Record<string, { name: string; feature: string; hello: string }> = {
+  health: { name: "🌿 Health", feature: "health", hello: "Health Journal is your private health journal. Send a voice note here for a reviewable journal draft, or ask about confirmed entries and measured patterns. Open https://chief-of-staff.gremiercoffee.workers.dev/daynote/ . Reminders are off unless you enable them." },
   coffee: { name: "☕ Coffee", feature: "coffee", hello: "This topic is for Gremier Coffee: ask about stock, brewing and deliveries, or tell me what you bottled, brewed or delivered and I'll update the app." },
   shopping: { name: "🛒 Shopping", feature: "shopping", hello: "This topic is for shopping. Tell me (or voice-note) what to add; the pinned list below has a button per item: tap it when you have it." },
 };

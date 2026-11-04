@@ -9,6 +9,7 @@
  * you asked for, drops only clear small talk. Each kept message is stored, appended to the tracker's
  * Google Doc, and credited to the person, so you can see who has answered and who hasn't.
  */
+import {ALUMNI_TRACKER,alumniBridgeTrackers,captureAlumni} from './alumni-visits';
 import type { Env } from "./env";
 import { getProvider } from "./ai";
 import { all, first, now, run, uid } from "./db";
@@ -114,7 +115,7 @@ async function chatsFor(env: Env, aliases: string[], account?: string) {
 
 export async function trackersForBridge(env: Env, account: string) {
   const ts = (await all<Tracker>(env, "SELECT * FROM trackers WHERE active = 1")).filter((t) => (t.sources ?? "whatsapp").includes("whatsapp"));
-  const out = [];
+  const out = [...await alumniBridgeTrackers(env,account)];
   for (const t of ts.filter((x) => x.accounts === "both" || x.accounts === account)) {
     const aliases = (await trackedPeople(env, t)).flatMap((p) => p.aliases);
     // Send the exact chat names as WhatsApp shows them, plus the typed names (the add-on matches by "contains").
@@ -129,6 +130,7 @@ export async function trackersForBridge(env: Env, account: string) {
 }
 
 export async function markBackfilled(env: Env, id: string, account: string) {
+  if(id===ALUMNI_TRACKER&&account==='personal'){await run(env,"INSERT OR REPLACE INTO settings(key,value) VALUES('alumni_visits_backfilled','true')");return;}
   const t = await first<Tracker>(env, "SELECT backfilled FROM trackers WHERE id = ?", id);
   if (!t) return;
   const done = new Set(list(t.backfilled)); done.add(account);
@@ -159,7 +161,8 @@ Does this message contain, or relate to, that? Count it as yes if it is an answe
 }
 
 /** A message for a tracker, from the add-on (WhatsApp) or the Gmail check. */
-export async function capture(env: Env, m: { tracker_id?: string; chat?: string; sender?: string; text?: string; at?: string; account?: string; source?: string }) {
+export async function capture(env: Env, m: { tracker_id?: string; chat?: string; sender?: string; text?: string; at?: string; account?: string; source?: string; chatId?:string;messageId?:string;fromMe?:boolean }) {
+  if(m.tracker_id===ALUMNI_TRACKER||m.tracker_id===ALUMNI_TRACKER+'-context')return captureAlumni(env,m);
   const t = m.tracker_id ? await first<Tracker>(env, "SELECT * FROM trackers WHERE id = ? AND active = 1", m.tracker_id) : null;
   const text = (m.text ?? "").trim().slice(0, 6000);
   const r = await captureInner(env, t, m, text);

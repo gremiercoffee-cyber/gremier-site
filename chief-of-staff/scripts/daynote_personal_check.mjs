@@ -1,0 +1,9 @@
+// Owner-authorized local analysis. Credentials and raw health records remain in memory.
+import {readFileSync} from 'node:fs';import {build} from 'esbuild';
+const b=await build({stdin:{contents:"export {personalModel} from './shared/personal-health';export {localDate} from './shared/daynote';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
+const m=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
+const token=readFileSync('C:/Users/Yoni/.tokens/cloudflare-gremiercoffee.txt','utf8').trim(),endpoint='https://api.cloudflare.com/client/v4/accounts/dc73ca97eef41fb2bd0a80c0835bee95/d1/database/7b4ec7b1-cece-4e94-adf7-67e8ad5067ee/query';
+async function query(sql){const r=await fetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({sql})});if(!r.ok)throw Error('D1 analysis read failed: '+r.status);const d=await r.json();if(!d.success)throw Error('D1 analysis not acknowledged');return d.result[0].results;}
+const rows=await query('SELECT * FROM daynote_measurements ORDER BY date,id'),entries=await query('SELECT document FROM daynote_entries WHERE deleted=0');
+const measurements=rows.map(r=>({...r,raw:JSON.parse(r.raw)})),journals=entries.map(r=>JSON.parse(r.document));
+for(const date of [process.argv[2]||m.localDate(),'2026-10-30']){const start=performance.now(),result=m.personalModel(measurements,journals,date);console.log(JSON.stringify({date,version:result.version,compute_ms:Math.round(performance.now()-start),has_recovery:!!result.recovery,has_load:!!result.load,has_sleep_target:!!result.plan,conditional:result.plan?.conditional,calibration:result.calibration,load_calibration:result.load_calibration,forecast:result.forecast,missing:result.missing,requires_whoop:result.requires_whoop}));}

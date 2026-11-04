@@ -15,6 +15,7 @@ export { buttonFromKey, say, sendFile, tg, tgConfig, toTelegramHtml, type TgButt
 interface TgUser { id: number; first_name?: string }
 interface TgChat { id: number; type: string; title?: string; is_forum?: boolean }
 interface TgMessage {
+  forum_topic_edited?:{name?:string}; forum_topic_closed?:Record<string,never>; forum_topic_reopened?:Record<string,never>;
   message_id: number; from?: TgUser; chat: TgChat; text?: string; caption?: string; message_thread_id?: number; is_topic_message?: boolean;
   voice?: { file_id: string; duration: number }; audio?: { file_id: string }; date: number; migrate_to_chat_id?: number; migrate_from_chat_id?: number;
   photo?: { file_id: string; width: number; height: number }[]; document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
@@ -102,6 +103,10 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
     return;
   }
 
+  if(u.message?.forum_topic_edited?.name && u.message.message_thread_id && u.message.chat.id===c.group_id){
+    await (await import('./telegram-lifecycle')).syncTopicName(env,u.message.chat.id,u.message.message_thread_id,u.message.forum_topic_edited.name);return;
+  }
+  if(u.message?.forum_topic_closed||u.message?.forum_topic_reopened)return; // closing is not deleting
   if (u.callback_query) {
     const q = u.callback_query;
     if (q.from.id !== c.owner_id) return;
@@ -139,6 +144,13 @@ export async function handleUpdate(env: Env, u: TgUpdate, defer: (p: Promise<unk
       await tg(env, "sendChatAction", { chat_id: where.chat, action: "typing", ...(where.thread ? { message_thread_id: where.thread } : {}) }).catch(() => {});
       let text = (m.text ?? m.caption ?? "").trim();
       if (!text && (m.voice || m.audio)) text = await voiceText(env, (m.voice ?? m.audio)!.file_id);
+      const {healthTopicAllowed,extractDaynoteNote}=await import('./daynote');
+      if((m.voice||m.audio)&&await healthTopicAllowed(env,m.from!.id,where.chat,where.thread)){
+        const {suggestedDate}=await import('../shared/daynote');
+        const n=await extractDaynoteNote(env,{id:`tg_${m.chat.id}_${m.message_id}`,date:suggestedDate(),text,source:'telegram'});
+        const summary=n.observations.map((o:import("../shared/daynote").Observation)=>`• ${o.label}: ${o.value??'uncertain'} (${o.date})`).join('\n');
+        await say(env,where.chat,`Journal draft — not confirmed yet.\n${summary||'Transcript saved; review it in Daynote.'}\nReview, edit and confirm: https://chief-of-staff.gremiercoffee.workers.dev/daynote/?note=${n.id}`,{thread:where.thread});return;
+      }
       const file = await attachment(env, m);
       if (/^\/jobs\b/.test(text)) { const { jobsSummary } = await import("./jobs"); await say(env, where.chat, await jobsSummary(env), { thread: where.thread }); return; }
       if (/^\/list\b/.test(text)) { const { repostShoppingCard } = await import("./telegram-topics"); if (!await repostShoppingCard(env)) await say(env, where.chat, "There's no Shopping topic yet. Ask me to make one.", { thread: where.thread }); return; }

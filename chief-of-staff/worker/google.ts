@@ -85,6 +85,8 @@ async function unseal(env: Env, sealed: string) {
   const [iv, ct] = sealed.split(".");
   return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await tokenKey(env), unb64(ct)));
 }
+// Daynote uses the same server-side credential encryption without changing Workspace scopes.
+export {seal as sealGoogleToken,unseal as unsealGoogleToken};
 
 // ---- OAuth ---------------------------------------------------------------------
 const redirectUri = (req: Request) => new URL("/api/google/callback", req.url).toString();
@@ -245,7 +247,7 @@ const toRow = (e: GEvent) => {
   };
 };
 
-async function syncCalendar(env: Env, token: string, alerts: boolean, account: string) {
+export async function syncCalendar(env: Env, token: string, alerts: boolean, account: string) {
   const from = new Date(Date.now() - 86400_000).toISOString();
   const events = (await fetchEvents(token, from, new Date(Date.now() + 90 * 86400_000).toISOString())).map(toRow);
   const t = now();
@@ -255,10 +257,13 @@ async function syncCalendar(env: Env, token: string, alerts: boolean, account: s
      ON CONFLICT(id) DO UPDATE SET summary=excluded.summary, end_at=excluded.end_at, all_day=excluded.all_day,
        location=excluded.location, html_link=excluded.html_link, updated_at=excluded.updated_at,
        reminded_at = CASE WHEN calendar_events.start_at = excluded.start_at THEN calendar_events.reminded_at ELSE NULL END,
-       start_at=excluded.start_at`,
+       start_at=excluded.start_at
+     WHERE calendar_events.summary IS NOT excluded.summary OR calendar_events.start_at IS NOT excluded.start_at
+       OR calendar_events.end_at IS NOT excluded.end_at OR calendar_events.all_day IS NOT excluded.all_day
+       OR calendar_events.location IS NOT excluded.location OR calendar_events.html_link IS NOT excluded.html_link`,
   ).bind(`${account}:${e.id}`, account, e.summary, e.start_at, e.end_at, e.all_day, e.location, e.html_link, t));
   // Anything not seen this run was deleted, declined or moved out of the window.
-  stmts.push(env.DB.prepare(`DELETE FROM calendar_events WHERE account = ? AND updated_at < ?`).bind(account, t));
+  stmts.push(env.DB.prepare(`DELETE FROM calendar_events WHERE account=? AND id NOT IN (SELECT value FROM json_each(?))`).bind(account,JSON.stringify(events.map(e=>`${account}:${e.id}`))));
   await env.DB.batch(stmts);
 
   if (!alerts) return events.length;
@@ -477,6 +482,7 @@ export async function readThread(env: Env, threadId: string, account?: string) {
     thread_id: th.id,
     subject: header(th.messages[0], "Subject"),
     messages: th.messages.slice(-6).map((m) => ({
+      id:m.id,
       from: header(m, "From"), to: header(m, "To"), date: new Date(Number(m.internalDate)).toISOString(),
       from_user: fromMe(m), text: bodyText(m),
     })),
@@ -536,6 +542,15 @@ export async function createDraft(env: Env, opts: { threadId?: string; to?: stri
     body: JSON.stringify({ message: { raw, ...(opts.threadId ? { threadId: opts.threadId } : {}) } }),
   });
   return { draft_id: d.id, from_account: auth.email, to, subject, open_in_gmail: `https://mail.google.com/mail/?authuser=${encodeURIComponent(auth.email)}#drafts` };
+}
+
+/** Sends an existing Gmail draft as it is now (the owner may have edited it in Gmail). Only called after approval. */
+export async function sendDraft(env: Env, draftId: string, account: string) {
+  const emails = await accountEmails(env);
+  if (!emails.includes(account)) throw new Error("That Google account isn't connected any more.");
+  const token = await accessToken(env, account);
+  const r = await gapi<{ id: string; threadId?: string }>(token, `${GMAIL}/drafts/send`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: draftId }) });
+  return { sent: true, message_id: r.id, thread_id: r.threadId ?? null, from_account: account };
 }
 
 /** Today's and tomorrow's events for the assistant's context (from the synced table, no API call). */

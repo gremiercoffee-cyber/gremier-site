@@ -1,3 +1,5 @@
+import {isWaiting} from '../shared/waiting';
+export {isWaiting} from '../shared/waiting';
 /**
  * Things the user is only waiting on ("Wait for Arnpack's quote"): the other person will answer on their own,
  * so they stay out of block reminders, wrap-ups, check-ins and briefings. Once it has been quiet too long it
@@ -7,7 +9,6 @@ export const FOLLOW_UP_AFTER_DAYS = 4;
 
 type W = { kind: string; title: string; person?: string | null; created_at: string };
 
-export const isWaiting = (i: Pick<W, "kind" | "title">) => i.kind === "waiting" || /^(wait(ing)?|await(ing)?)\b/i.test(i.title.trim());
 const waitedDays = (i: Pick<W, "created_at">) => Math.floor((Date.now() - Date.parse(i.created_at)) / 86_400_000);
 /** Waiting long enough that the user should reach back out. */
 export const needsFollowUp = (i: W) => isWaiting(i) && waitedDays(i) >= FOLLOW_UP_AFTER_DAYS;

@@ -6,13 +6,14 @@ import {build} from 'esbuild';
 
 // Emails from a research chat: Codex writes them, the user taps Send, Codex sends exactly that from Gmail,
 // and replies are tracked in the chat. Fake model, fake Telegram, fake Gmail thread reads.
-globalThis.__model=[];globalThis.__tg=[];globalThis.__threads={};
+globalThis.__model=[];globalThis.__tg=[];globalThis.__threads={};globalThis.__bgs=[];
 const out=await build({entryPoints:['worker/jobs.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'fakes',setup(b){
  b.onLoad({filter:/[\\/]worker[\\/]ai\.ts$/},()=>({contents:`export function getProvider(){return {
-  complete:async()=>globalThis.__model.shift()??'{}', startBackground:async()=>'bg', checkBackground:async()=>({done:false}) }}`,loader:'js'}));
+  complete:async()=>globalThis.__model.shift()??'{}', startBackground:async(q)=>{globalThis.__bgs.push(q);return 'bg'}, checkBackground:async()=>({done:false}) }}`,loader:'js'}));
  // Only the email module's Gmail reads are faked; everything else keeps the real google.ts.
  b.onResolve({filter:/^\.\/google$/},(a)=>/outreach\.ts$/.test(a.importer)?{path:'fake-gmail',namespace:'fake'}:undefined);
- b.onLoad({filter:/^fake-gmail$/,namespace:'fake'},()=>({contents:`export async function readThread(env,id){const t=globalThis.__threads[id];if(!t)throw new Error('no thread');return t}`,loader:'js'}));
+ b.onLoad({filter:/^fake-gmail$/,namespace:'fake'},()=>({contents:`export async function readThread(env,id){const t=globalThis.__threads[id];if(!t)throw new Error('no thread');return t}
+  export async function createDraft(env,o,send){const n=(globalThis.__sent=globalThis.__sent||[]).push(o);const id='d'+n;globalThis.__threads['td'+n]={messages:[{id,to:o.to,from_user:true,from:'me@gmail.com',date:new Date().toISOString(),text:o.body}]};return{message_id:id,thread_id:'td'+n,from_account:'me@gmail.com'}}`,loader:'js'}));
 }}]});
 const jobs=await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
 globalThis.fetch=async(url,init)=>{const method=String(url).split('/').pop();const body=JSON.parse(init.body);globalThis.__tg.push({method,body});
@@ -69,12 +70,13 @@ test('Send all → Codex sends exactly the drafts; sent ones are tracked and a r
  assert.equal(r.run.gmail,true);
  assert.match(r.run.prompt,/tapped Send[^]*Exact body one\.[^]*Exact body two\./);
  assert.equal((await jobs.nextCodexRun(e,{device:'home'})).run,null,'a second tap sent nothing more');
+ globalThis.__threads.t1={messages:[{id:'m1',to:'sales@plastico.co.il',from_user:true,from:'me@gmail.com',date:new Date().toISOString(),text:'Exact body one.'}]};
  await jobs.runResult(e,r.run.id,{text:'{"from":"me@gmail.com","sent":[{"number":1,"message_id":"m1","thread_id":"t1"}],"failed":[{"number":2,"error":"bounced"}]}'});
  const es=db.prepare('SELECT * FROM job_emails ORDER BY number').all();
  assert.equal(es[0].status,'sent');assert.equal(es[0].thread_id,'t1');assert.equal(es[0].from_account,'me@gmail.com');
- assert.equal(es[1].status,'draft','a failed one goes back to a draft');
+ assert.equal(es[1].status,'uncertain','a send without a verified receipt is not retried');
  assert.ok(posts().some(p=>/✅ #1 sent to PlastiCo/.test(p.text)));
- assert.ok(posts().some(p=>/#2 to B .* didn't send: bounced/.test(p.text)&&p.reply_markup));
+ assert.ok(posts().some(p=>/#2 to B .*send unconfirmed/.test(p.text)));assert.equal(es[0].message_id,'m1');
  // a reply arrives
  db.prepare("UPDATE job_emails SET checked_at=? WHERE id=?").run(new Date(Date.now()-3600_000).toISOString(),es[0].id);
  globalThis.__threads.t1={messages:[{from_user:true,from:'me',date:es[0].sent_at,text:'Exact body one.'},{from_user:false,from:'Dana <sales@plastico.co.il>',date:new Date(Date.now()+1000).toISOString(),text:'2.10 NIS each, min 3,000.\nOn Thu Dana wrote:\n> Exact body one.'}]};
@@ -83,10 +85,10 @@ test('Send all → Codex sends exactly the drafts; sent ones are tracked and a r
  const replyPost=posts().find(p=>/PlastiCo replied/.test(p.text));
  assert.match(replyPost.text,/2\.10 NIS each/);assert.doesNotMatch(replyPost.text,/On Thu/,'quoted text is cut');
  globalThis.__model.push(JSON.stringify({email:{action:'status'}}));
- assert.match(await jobs.messageJob(e,j,'who replied?','app'),/#1 PlastiCo.*replied[^]*#2 B.*draft/);
+ assert.match(await jobs.messageJob(e,j,'who replied?','app'),/#1 PlastiCo.*replied[^]*#2 B.*Send unconfirmed/);
 });
 
-test('a Codex send that never finishes fails safely (back to a draft, check Sent first)',async()=>{
+test('a Codex send that never finishes stays uncertain until checked in Gmail',async()=>{
  globalThis.__tg.length=0;const {env:e,db}=env();const j=await researched(e,db);
  globalThis.__model.push(JSON.stringify({email:{action:'write',ask:'x'}}));
  await jobs.messageJob(e,j,'email them','app');
@@ -97,7 +99,7 @@ test('a Codex send that never finishes fails safely (back to a draft, check Sent
  r=await jobs.nextCodexRun(e,{device:'home'});
  db.prepare("UPDATE job_runs SET started_at=? WHERE id=?").run(new Date(Date.now()-3600_000).toISOString(),r.run.id);
  await jobs.tickJobs(e);
- assert.equal(db.prepare('SELECT status FROM job_emails').get().status,'draft');
+ assert.equal(db.prepare('SELECT status FROM job_emails').get().status,'uncertain');
  assert.ok(posts().some(p=>/check Gmail's Sent folder/.test(p.text)));
 });
 
@@ -108,4 +110,20 @@ test('from the main chat: an email chat of its own, where Codex writes the email
  const j=db.prepare("SELECT * FROM jobs").get();assert.equal(j.engine,'codex');assert.equal(j.pinned,1);
  const next=await jobs.nextCodexRun(e,{device:'home'});
  assert.equal(next.run.gmail,true);assert.match(next.run.prompt,/October invoice/);
+});
+
+test('Codex out of usage: drafts are written on the API, and Send goes straight out from Gmail, checked the same way',async()=>{
+ globalThis.__tg.length=0;globalThis.__bgs.length=0;globalThis.__sent=[];const {env:e,db}=env();const j=await researched(e,db);
+ db.prepare("UPDATE settings SET value=? WHERE key='codex_runner'").run(JSON.stringify({seen_at:new Date().toISOString(),primary:100,secondary:20}));
+ globalThis.__model.push(JSON.stringify({email:{action:'write',ask:'ask for prices'}}));
+ await jobs.messageJob(e,j,'ask them for prices','app');
+ assert.equal((await jobs.nextCodexRun(e,{device:'home',primary:100})).run,null,'not left for Codex');
+ assert.match(globalThis.__bgs.at(-1).prompt,/ask for prices[^]*PlastiCo/,'the API gets the same brief');
+ const run=db.prepare("SELECT * FROM job_runs WHERE mode='email_draft'").get();
+ await jobs.finishRun(e,run.id,JSON.stringify({emails:[{to_email:'sales@plastico.co.il',to_name:'PlastiCo',subject:'Prices',body:'Exact body.'}]}),'api');
+ const em=db.prepare('SELECT * FROM job_emails').get();
+ await jobs.pressButton(e,`esend:${em.id}`);
+ assert.deepEqual(globalThis.__sent.map(o=>[o.to,o.subject,o.body]),[['sales@plastico.co.il','Prices','Exact body.']],'exactly as written');
+ assert.equal(db.prepare('SELECT status FROM job_emails').get().status,'sent');
+ assert.ok(posts().some(p=>/✅ #1 sent to PlastiCo[^]*Sent from me@gmail.com/.test(p.text)));
 });

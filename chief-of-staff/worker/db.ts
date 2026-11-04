@@ -1,9 +1,16 @@
+import {isWaiting} from '../shared/waiting';
 import {EXECUTION_MODES} from './work-context';
 import type { Item, ItemKind, Project, Settings } from "../shared/types";
 import type { Env } from "./env";
 
 export const now = () => new Date().toISOString();
 export const uid = () => crypto.randomUUID();
+
+/** Heartbeat precision is minutes, not every queue poll. Returns whether it wrote. */
+export async function heartbeatSetting(env:Env,table:'settings'|'daynote_settings',key:string,value:unknown,path='$',interval=120000){
+ const cutoff=new Date(Date.now()-interval).toISOString();
+ return run(env,`INSERT INTO ${table}(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE COALESCE(json_extract(${table}.value,?), '')<?`,key,JSON.stringify(value),path,cutoff);
+}
 
 /** Normalise any date string the model or UI sends to UTC ISO, so string comparison works. */
 export function toIso(v: unknown): string | null {
@@ -53,7 +60,8 @@ export async function learnCategory(env: Env, person: string | null | undefined,
 }
 
 export async function createItem(env: Env, input: ItemInput): Promise<Item> {
-  const kind = (KINDS.includes(input.kind as ItemKind) ? input.kind : "task") as ItemKind;
+  const requestedKind=(KINDS.includes(input.kind as ItemKind)?input.kind:"task") as ItemKind;
+  const kind=requestedKind!=="idea"&&isWaiting({kind:requestedKind,title:input.title??""})?"waiting":requestedKind;
   if (!validCategory(input.category) && input.person) {
     const p = await first<{ category: string | null }>(env, "SELECT category FROM people WHERE lower(name) = lower(?) OR lower(whatsapp_name) = lower(?)", input.person, input.person);
     if (p?.category) input = { ...input, category: p.category };
@@ -133,6 +141,7 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   const next: Item = { ...existing };
   if (input.kind !== undefined && KINDS.includes(input.kind as ItemKind)) next.kind = input.kind as ItemKind;
   if (input.title !== undefined && input.title.trim()) next.title = input.title.trim();
+  if(next.kind!=="idea"&&isWaiting(next))next.kind="waiting";
   if (input.notes !== undefined) next.notes = input.notes;
   if (input.priority !== undefined) next.priority = clampPriority(input.priority);
   if (input.due_at !== undefined) next.due_at = toIso(input.due_at);

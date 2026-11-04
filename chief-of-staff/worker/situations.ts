@@ -1,3 +1,4 @@
+import {focusCandidates} from '../shared/home-focus';
 import {isDrivingBlock,drivingSuitable} from './work-context';
 import {attentionState,actionableItem} from './attention';
 import { followUpLine, isWaiting, quietWait } from "./waiting";
@@ -119,7 +120,7 @@ export async function itemsFor(env: Env, s: Situation, extra: string[] = []) {
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   const seen = new Set<string>();
   return [...attached, ...intuited].filter((i) => {
-    if (quietWait(i)) return false;
+    if (isWaiting(i)) return false;
     const k = norm(i.title);
     if (driving&&!drivingSuitable(i))return false;
     if (seen.has(k) || !driving&&(i.source === "whatsapp" || i.source === "gmail") && i.kind === "task") return false;
@@ -144,11 +145,13 @@ export async function nowChecklist(env: Env, provided?: Awaited<ReturnType<typeo
   const state=provided??await attentionState(env);
   const block = await currentBlock(env);
   const available = [...state.items.values()].filter(i =>
-    ['task','commitment','reminder'].includes(i.kind) && !quietWait(i) && actionableItem(i,state.blocks,state.tz,state.at)
+    ['task','commitment','reminder'].includes(i.kind) && !isWaiting(i) && actionableItem(i,state.blocks,state.tz,state.at)
     && !( !drivingSuitable(i)&&['whatsapp','gmail'].includes(i.source) && i.kind==='task'));
   const immediate = available.filter(i => i.due_at ? new Date(i.due_at)<=state.at : !block)
     .sort((a,b) => (a.due_at?0:1)-(b.due_at?0:1) || a.priority-b.priority || (a.due_at??a.created_at).localeCompare(b.due_at??b.created_at));
-  const ids = [...new Set([...(block?.items.map(i=>i.id)??[]),...immediate.map(i=>i.id)])].slice(0,12);
+  const explicitIds=new Set(block?.items.map(i=>i.id)??[]);
+  const candidates=[...new Map([...(block?.items??[]).flatMap(i=>state.items.get(i.id)?[state.items.get(i.id)!]:[]),...immediate].map(i=>[i.id,i])).values()];
+  const ids=focusCandidates(candidates,explicitIds,state.at).map(i=>i.id).slice(0,12);
   const names = new Map((await all<{id:string;name:string}>(env,'SELECT id,name FROM projects')).map(p=>[p.id,p.name]));
   const items = ids.flatMap(id => {const i=state.items.get(id);return i?[{id:i.id,title:i.title,category:i.category??null,project_id:i.project_id,project:i.project_id?names.get(i.project_id)??null:null}]:[];});
   return {id:block?.id??'now',name:block?.name??'Ready to work on',category:block?.category??null,until:block?.until??null,count:items.length,items};

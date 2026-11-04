@@ -54,7 +54,11 @@ async function retryResponses() {
     catch { break; }
   }
 }
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'shopping-retry') { void retryShopping();void retryResponses(); } });
+async function retryAlumni() {
+  const {alumni_queue=[]}=await chrome.storage.local.get('alumni_queue');
+  for(const entry of alumni_queue){try{await call('/api/bridge/track',entry.payload,entry.account);await shoppingQueue(rows=>rows.filter(r=>r.id!==entry.id),'alumni_queue');}catch{break;}}
+}
+chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'shopping-retry') { void retryShopping();void retryResponses();void retryAlumni(); } });
 async function remember(patch) {
   const cur = (await chrome.storage.local.get("cos")).cos || {};
   await chrome.storage.local.set({ cos: { ...cur, ...patch } });
@@ -112,6 +116,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true; // async reply
   }
   if (msg.type === "track") {
+    if(String(msg.payload?.tracker_id||'').startsWith('alumni-aish-visits')){
+      (async()=>{const a=await account();if(a!=='personal')return;const id=JSON.stringify([a,msg.payload.chatId||msg.payload.chat,msg.payload.messageId||[msg.payload.at,msg.payload.sender,msg.payload.text]]);await shoppingQueue(rows=>rows.some(r=>r.id===id)?rows:[...rows,{id,account:a,payload:msg.payload}],'alumni_queue');await retryAlumni();})().catch(()=>{});
+      reply({queued:true});return;
+    }
     call("/api/bridge/track", msg.payload)
       .then((res) => { if (res.kept) remember({ last_event: `Tracker: saved a message from ${msg.payload.sender}` }); })
       .catch(() => {});

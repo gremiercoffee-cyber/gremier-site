@@ -1,3 +1,4 @@
+import {currentHomeUpdate} from '../../shared/home-focus';
 import HashgachaReports from '../components/HashgachaReports';
 import GroupDraftApprovals from '../components/GroupMessage';
 import MeetingPrepConfirmations from '../components/MeetingPrep';
@@ -90,7 +91,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     setParty(list[0]);
     list.forEach((c) => api.projectCelebrated(c.id).catch(() => {}));
   }, [dash, party]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sending]);
+  useEffect(() => { if(messages.length||sending)endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sending]);
   useEffect(() => () => callRef.current?.hangUp(), []);
   useEffect(() => { if (startVoice) startLive(); }, [startVoice]);
   useEffect(() => { if (initialAsk) send(initialAsk); }, [initialAsk]);
@@ -249,8 +250,10 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   const performAction=(n:Nudge,action:string)=>n.item_id&&['done','notneeded'].includes(action)?completion.complete(n.item_id,()=>onAct(n,action),()=>{}):onAct(n,action);
   const [showUpdates,setShowUpdates]=useState(false);
   const allNudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??'') && n.type !== "briefing" && (n.type !== "helper" || n.title.includes("needs you")) && (area === "all" || nudgeArea(n) === area));
-  const nudges=showUpdates?allNudges:allNudges.slice(0,5);
-  const briefing = dash?.nudges.find((n) => n.type === "briefing");
+  const nowIds=new Set((dash?.now_block?.items??[]).map(i=>i.id));
+  const freshUpdates=allNudges.filter(n=>currentHomeUpdate(n.updated_at||n.created_at,dash?.timezone||'Asia/Jerusalem')&&!['situation','wrapup'].includes(n.type)&&!(n.item_id&&nowIds.has(n.item_id)));
+  const nudges=showUpdates?freshUpdates:freshUpdates.slice(0,2);
+  const briefing = area==='all'?dash?.nudges.find((n) => n.type === "briefing"&&currentHomeUpdate(n.updated_at||n.created_at,dash?.timezone||'Asia/Jerusalem')):undefined;
   const [nowVisibleCount,setNowVisibleCount]=useState<number|null>(null);
   const nowBlock = dash?.now_block;
   const nowItems = (nowBlock?.items??[]).filter(i=>inArea(i.category));
@@ -258,37 +261,29 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   return (
     <div className="pt-4 space-y-5">
       <div className="space-y-5">
-      <div className="flex flex-col items-center text-center gap-3">
-        {live === "off" && <div className="scale-[0.8] -my-3"><Orb state={live} /></div>}
-        <div>
-          <h1 className="font-display text-[30px] leading-tight">{greeting}</h1>
-          <p className="text-muted text-sm mt-0.5">{live === "off" ? "I'm here. Tell me what's going on." : "I'm listening."}</p>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <div><h1 className="font-semibold tracking-tight text-[23px] leading-tight">{greeting}</h1><p className="text-xs text-muted mt-1">{live==='off'?'A little focus for right now.':"I'm listening."}</p></div>
+        {live!=='off'?<div className="scale-50 w-16 h-16"><Orb state={live}/></div>:<ReadAloud/>}
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar" aria-label="Life areas">
+        {[["all", "All"], ...areas.map(a=>[a.key,`${a.icon} ${a.label}`])].map(([k,label])=><button key={k} aria-pressed={area===k} onClick={()=>setArea(k)} className={`shrink-0 rounded-full px-3 py-2 text-[13px] ${area===k?'bg-ink text-bg shadow-sm':'bg-surface border border-line/70 text-muted'}`}>{label}</button>)}
       </div>
 
-      <div className="flex justify-center"><ReadAloud /></div>
-
-      <div className="flex justify-center gap-1.5 flex-wrap">
-        {[["all", "All"], ...areas.map((a) => [a.key, `${a.icon} ${a.label}`])].map(([k, label]) => (
-          <button key={k} onClick={() => setArea(k)}
-            className={`rounded-full px-3 py-1.5 text-[13px] ${area === k ? "bg-ink text-bg" : "bg-surface border border-line/70 text-muted"}`}>{label}</button>
-        ))}
-      </div>
-
-      <section aria-label="Now" className="rounded-2xl bg-accent/10 px-4 py-3">
+      <section aria-label="Now" className="rounded-3xl border border-accent/15 bg-gradient-to-br from-accent/10 to-surface px-5 py-4 shadow-card">
           <div className="text-[14px] flex items-center gap-2">
-            <span className="text-accent font-medium">Now:</span>
+            <span className="text-accent font-semibold">Now</span>
             <span className="flex-1 truncate">{ICON[nowBlock?.category ?? ""] ? `${ICON[nowBlock?.category ?? ""]} ` : ""}{nowBlock?.name??"Ready to work on"}
               {nowBlock?.until && <span className="text-muted"> · until {nowBlock?.until}</span>}</span>
             {(nowVisibleCount??nowItems.length) > 0 && <span className="text-xs text-muted">{nowVisibleCount??nowItems.length} thing{(nowVisibleCount??nowItems.length) > 1 ? "s" : ""}</span>}
           </div>
-          <NowChecklist items={nowItems} onChanged={onChanged} onCountChange={setNowVisibleCount}/>
+          <NowChecklist key={area} items={nowItems} onChanged={onChanged} onCountChange={setNowVisibleCount}/>
           {!nowItems.length && <p className="mt-2 text-sm text-muted">{dash?"Nothing needs doing right now.":"Loading your next steps…"}</p>}
       </section>
 
       {completion.error&&<p role="alert" className="text-sm text-danger">{completion.error}</p>}
       {(briefing || nudges.length > 0) && (
-        <div className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
+        <details className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
+          <summary className="cursor-pointer flex items-center justify-between px-4 py-3 text-sm font-medium"><span>☀️ Today’s updates</span><span className="text-xs text-muted">{freshUpdates.length+(briefing?1:0)} ▸</span></summary>
           {briefing && (
             <Row icon="☀️" title="Today's briefing" time={briefing.created_at}
               onDismiss={dismissAction(briefing) ? () => dismiss(briefing) : undefined}>
@@ -324,16 +319,17 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
               </>}
             </Row>
           ))}
-          {allNudges.length>5&&<button className="w-full px-4 py-3 text-sm text-accent" onClick={()=>setShowUpdates(!showUpdates)}>{showUpdates?'Show fewer updates':`Show ${allNudges.length-5} more updates`}</button>}
-        </div>
+          {freshUpdates.length>2&&<button className="w-full px-4 py-3 text-sm text-accent" onClick={()=>setShowUpdates(!showUpdates)}>{showUpdates?'Show fewer updates':`Show ${freshUpdates.length-2} more updates`}</button>}
+        </details>
       )}
 
       {!!dash?.attention_cards?.length && <section aria-label="Needs your attention" className="space-y-2">
         <h2 className="px-1 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Needs your attention</h2>
-        <div className="rounded-[20px] bg-surface border border-line divide-y divide-line">{dash.attention_cards.map(card=><a key={card.id} href={card.url} className="block px-4 py-3"><p className="text-[15px] font-medium">{card.title} →</p><p className="text-sm text-muted mt-1">{card.body}</p></a>)}</div>
+        <div className="rounded-[20px] bg-surface border border-line divide-y divide-line">{dash.attention_cards.slice(0,2).map(card=><a key={card.id} href={card.url} className="block px-4 py-3"><p className="text-[15px] font-medium">{card.title} →</p><p className="text-xs text-muted mt-1 line-clamp-2">{card.body}</p></a>)}</div>
+        {dash.attention_cards.length>2&&<details className="rounded-2xl border border-line bg-surface p-3"><summary className="cursor-pointer text-xs text-muted">{dash.attention_cards.length-2} more needing attention</summary>{dash.attention_cards.slice(2).map(card=><a key={card.id} href={card.url} className="block py-3 text-sm border-t border-line mt-2">{card.title} →</a>)}</details>}
       </section>}
-      {!!dash?.hashgacha?.length&&inArea('yeshiva')&&<HashgachaReports campaigns={dash.hashgacha} onChanged={onChanged}/>}
-      {dash && <HomeWork tasks={dash.home_tasks??[]} projects={dash.home_projects??[]} inArea={inArea} onChanged={onChanged}/>}
+      {!!dash?.hashgacha?.length&&inArea('yeshiva')&&<details className="rounded-2xl border border-line bg-surface p-4"><summary className="cursor-pointer text-sm font-medium">📚 Hashgacha reports</summary><div className="mt-3"><HashgachaReports campaigns={dash.hashgacha} onChanged={onChanged}/></div></details>}
+      {dash && <HomeWork tasks={dash.home_tasks??[]} projects={dash.home_projects??[]} inArea={inArea} onChanged={onChanged} focusIds={(dash.now_block?.items??[]).map(i=>i.id)}/>}
       </div>
     </div>
   );
@@ -667,7 +663,7 @@ function ReadAloud() {
     } catch (e) { setState("idle"); alert((e as Error).message); }
   };
   return (
-    <button onClick={go} className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-medium shadow-card border ${state === "speaking" ? "bg-accent text-white border-accent" : "bg-surface border-line/70"}`}>
+    <button onClick={go} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-medium shadow-card border ${state === "speaking" ? "bg-accent text-white border-accent" : "bg-surface border-line/70"}`}>
       <span className="text-[18px]">{state === "speaking" ? "⏹️" : "🔊"}</span>
       {state === "loading" ? "Getting your briefing…" : state === "speaking" ? "Stop" : "Brief me"}
     </button>

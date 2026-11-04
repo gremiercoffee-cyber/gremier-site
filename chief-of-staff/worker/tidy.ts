@@ -21,7 +21,7 @@ export async function tidyConversations(env: Env, opts: { force?: boolean; keepI
   const quietSince = new Date(Date.now() - (opts.force ? 30 : 6 * 60) * 60_000).toISOString();
   const convos = await all<Convo>(env,
     `SELECT id, title, last_message_at, pinned, archived FROM conversations
-      WHERE archived = 0 AND pinned = 0 AND last_message_at < ? AND (reviewed_at IS NULL OR reviewed_at < last_message_at)
+      WHERE privacy_scope != 'health' AND archived = 0 AND pinned = 0 AND last_message_at < ? AND (reviewed_at IS NULL OR reviewed_at < last_message_at)
       ORDER BY last_message_at DESC LIMIT 30`, quietSince);
   const protectedIds = new Set((await all<{ conversation_id: string }>(env, "SELECT DISTINCT conversation_id FROM ideas WHERE conversation_id IS NOT NULL")).map((r) => r.conversation_id));
   if (opts.keepId) protectedIds.add(opts.keepId);
@@ -73,7 +73,7 @@ When unsure, keep. Reply ONLY JSON: {"decisions":[{"id":"...","action":"delete|k
   }
   // Worth keeping but quiet for a week: archive (still searchable, restorable).
   const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
-  const archived = await all<{ id: string }>(env, "SELECT id FROM conversations WHERE archived = 0 AND pinned = 0 AND last_message_at < ?", weekAgo);
+  const archived = await all<{ id: string }>(env, "SELECT id FROM conversations WHERE privacy_scope != 'health' AND archived = 0 AND pinned = 0 AND last_message_at < ?", weekAgo);
   for (const a of archived) if (a.id !== opts.keepId) await run(env, "UPDATE conversations SET archived = 1 WHERE id = ?", a.id);
   return { deleted, merged, archived: archived.length };
 }

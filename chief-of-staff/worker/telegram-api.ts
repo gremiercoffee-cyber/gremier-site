@@ -10,7 +10,14 @@ export async function tg<T = unknown>(env: Env, method: string, body: Record<str
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
   const data = (await r.json()) as { ok: boolean; result: T; description?: string };
-  if (!data.ok) throw new Error(`Telegram ${method}: ${data.description ?? r.status}`);
+  if (!data.ok) {
+    const code=(data as {error_code?:number}).error_code??r.status;
+    if(typeof body.chat_id==='number'&&typeof body.message_thread_id==='number'&&method!=='deleteForumTopic'){
+      const life=await import('./telegram-lifecycle');
+      if(life.isMissingTopic(code,data.description??''))await life.forgetTopic(env,body.chat_id,body.message_thread_id).catch(()=>{});
+    }
+    throw new Error(`Telegram ${method}: ${data.description ?? r.status}`);
+  }
   return data.result;
 }
 

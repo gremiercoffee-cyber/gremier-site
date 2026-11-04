@@ -220,3 +220,34 @@ test('background research uses the brain with its existing search cap',async()=>
  assert.equal(modelRoute({MODEL_BRAIN:'custom-brain',MODEL_MAIN:'legacy-brain'},'chat:text').model,'custom-brain');
  await mocked([answer('Queued')],async(p,requests)=>{await p.startBackground({system:'Research',prompt:'Approved fixture',maxSearches:3});assert.equal(requests[0].body.model,'gpt-6.1-terra');assert.equal(requests[0].body.max_tool_calls,3);assert.equal(requests[0].body.background,true);});
 });
+
+
+test('multi-step filing keeps tool access through loading, lookup, project creation and the final batch of saves',async()=>{
+ const saved=[];
+ const tools=['load_tools','get_context','create_project','create_item'].map(name=>({name,description:name,input_schema:{type:'object',properties:{}},handler:async args=>{saved.push(name);return {id:name,kind:'task',...args};}}));
+ await mocked([
+  answer('',[call('load_tools',{},'load')]),answer('',[call('get_context',{},'read')]),answer('',[call('create_project',{name:'Sunday morning'},'project')]),
+  answer('',[call('create_item',{title:'Make videos'},'a'),call('create_item',{title:'Buy shoes'},'b'),call('finish_reply',{reply:'Both tasks saved.'},'finish')]),
+ ],async(p,requests)=>{
+  const r=await p.runAgent(brainRequest({directReply:true,batchReply:true,maxToolRounds:6,noFollowUp:['create_item','create_project'],tools}));
+  assert.deepEqual(saved,['load_tools','get_context','create_project','create_item','create_item']);assert.equal(r.text,'Both tasks saved.');assert.ok(requests.every(r=>r.body.tool_choice==='auto'));assert.equal(r.metrics.rounds,4);
+ });
+});
+test('a partial save with accompanying prose does not end a multi-save turn prematurely',async()=>{
+ let writes=0;const tools=[{name:'update_item',description:'Update',input_schema:{},handler:async()=>{writes++;return {id:'tax'};}},{name:'create_item',description:'Create',input_schema:{},handler:async()=>{writes++;return {id:'video'};}}];
+ await mocked([answer('Taxes updated; videos still need saving.',[call('update_item',{},'tax'),message('Taxes updated; videos still need saving.')]),answer('',[call('create_item',{},'video'),call('finish_reply',{reply:'Both saved.'},'finish')])],async(p,requests)=>{
+  const r=await p.runAgent(brainRequest({directReply:true,batchReply:true,noFollowUp:['create_item','update_item'],tools}));assert.equal(writes,2);assert.equal(requests.length,2);assert.equal(r.text,'Both saved.');
+ });
+});
+test('identical schedule patches run once, but a changed patch and deliberate reversion still run',async()=>{
+ const changes=[];
+ await mocked([answer('',[call('save_time_block',{id:'morning',skip_dates:['2026-11-01']},'a'),call('save_time_block',{skip_dates:['2026-11-01'],id:'morning'},'b')]),answer('',[call('save_time_block',{id:'morning',skip_dates:['2026-11-01']},'c'),call('save_time_block',{id:'morning',skip_dates:['2026-11-01','2026-11-02']},'d'),call('save_time_block',{id:'morning',skip_dates:['2026-11-01']},'e')]),answer('Schedule updated.')],async(p)=>{
+  await p.runAgent(brainRequest({directReply:true,tools:[{name:'save_time_block',description:'Schedule',input_schema:{},handler:async args=>{changes.push(args.skip_dates);return {ok:true};}}]}));assert.deepEqual(changes,[['2026-11-01'],['2026-11-01','2026-11-02'],['2026-11-01']]);
+ });
+});
+test('a reached action limit is identified as a turn budget, not missing permissions',async()=>{
+ await mocked([answer('',[call('get_context',{},'lookup')]),answer('Only the lookup finished.')],async(p,requests)=>{
+  await p.runAgent(brainRequest({maxToolRounds:1,tools:[{name:'get_context',readOnly:true,description:'Read',input_schema:{},handler:async()=>({items:[]})}]}));
+  assert.equal(requests[1].body.tool_choice,'none');assert.match(JSON.stringify(requests[1].body.input),/action-round limit/);assert.match(JSON.stringify(requests[1].body.input),/Do not invent an access\/permission problem/);
+ });
+});

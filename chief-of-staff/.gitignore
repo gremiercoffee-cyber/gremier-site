@@ -6,3 +6,7 @@ bridge/config.json
 bridge/state.json
 bridge/bridge.log
 whatsapp-addon/config.js
+
+# Private local diagnostics and import dependencies
+.local/
+__pycache__/

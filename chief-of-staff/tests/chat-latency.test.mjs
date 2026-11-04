@@ -57,3 +57,26 @@ test('a reminder time without a timezone is read as the user local time, not UTC
  assert.equal(e.due_at,'2026-07-01T07:00:00.000Z','summer time is right in July');
  db.close();
 });
+
+
+test('follow-up context includes recently saved undated tasks even when forty overdue items fill the normal inventory',async()=>{
+ const r=await build({entryPoints:['worker/assistant.ts'],bundle:true,write:false,format:'esm',platform:'node'});
+ const {buildContext}=await import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString('base64')}`);
+ const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
+ const prepare=sql=>{let args=[];return{bind(...v){args=v;return this},async first(){return db.prepare(sql).get(...args)??null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){return{meta:{changes:Number(db.prepare(sql).run(...args).changes)}}}}};
+ const stamp=new Date().toISOString();
+ for(let i=0;i<40;i++)db.prepare("INSERT INTO items(id,kind,title,status,priority,due_at,source,created_at,updated_at) VALUES(?,'task',?,'open',2,'2026-01-01','manual',?,?)").run('old'+i,'Old overdue task '+i,stamp,stamp);
+ db.prepare("INSERT INTO items(id,kind,title,status,priority,source,created_at,updated_at) VALUES('videos','task','Make five-second coffee videos','open',2,'chat',?,?)").run(stamp,stamp);
+ db.prepare("INSERT INTO items(id,kind,title,status,priority,source,created_at,updated_at) VALUES('closed','task','Already completed packing','done',2,'chat',?,?)").run(stamp,stamp);
+ const context=await buildContext({DB:{prepare},TIMEZONE:'Asia/Jerusalem'},'text','Why have you not saved those tasks?');
+ assert.match(context,/Recently saved work/);assert.match(context,/Make five-second coffee videos \[open; id videos/);assert.match(context,/Already completed packing \[done; id closed/);assert.match(context,/already saved even if an earlier reply said otherwise/);db.close();
+});
+
+test('a yeshiva task lookup answers from records with zero provider or relay requests',async()=>{
+ const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
+ const prepare=sql=>{let a=[];return{bind(...v){a=v;return this},async first(){return db.prepare(sql).get(...a)??null},async all(){return {results:db.prepare(sql).all(...a)}},async run(){return {meta:{changes:Number(db.prepare(sql).run(...a).changes)}}}}};
+ const env={DB:{prepare},OPENAI_API_KEY:'fixture-never-sent',MODEL_MAIN:'gpt-6-luna',TIMEZONE:'Asia/Jerusalem'};
+ for(const [id,title,kind,status,category,nudge] of [['yeshiva','Set up Daniel spreadsheet','task','open','yeshiva',null],['coffee','Grind coffee','task','open','coffee',null],['waiting','Wait for report','task','open','yeshiva',null],['done','Old work','task','done','yeshiva',null],['later','Deferred work','task','open','yeshiva','2099-01-01']])db.prepare('INSERT INTO items(id,title,kind,status,category,nudge_after,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,title,kind,status,category,nudge,'2026-11-04','2026-11-04');
+ const original=globalThis.fetch;globalThis.fetch=async()=>{throw Error('A basic list must not call a provider or relay');};
+ try{const r=await chat(env,"What's on my list for yeshiva stuff to do now?",'text',null,{channel:'telegram'});assert.equal(r.engine,'records');assert.equal(r.timing.modelCalls,0);assert.match(r.reply.content,/Daniel/);assert.doesNotMatch(r.reply.content,/Grind|report|Old work|Deferred/);assert.equal(db.prepare('SELECT count(*) n FROM messages').get().n,2);}finally{globalThis.fetch=original;db.close();}
+});

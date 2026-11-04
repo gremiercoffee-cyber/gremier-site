@@ -1,0 +1,2 @@
+CREATE TABLE daynote_relationships(id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, related_id TEXT NOT NULL, evidence TEXT NOT NULL, rationale TEXT NOT NULL, source_note TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('suggested','approved','dismissed')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(parent_id,related_id), CHECK(parent_id<>related_id));
+CREATE TABLE daynote_relationship_scans(note_id TEXT PRIMARY KEY, scanned_at TEXT NOT NULL);

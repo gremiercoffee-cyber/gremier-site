@@ -1,0 +1,1 @@
+ALTER TABLE daynote_notes ADD COLUMN processed INTEGER NOT NULL DEFAULT 0;

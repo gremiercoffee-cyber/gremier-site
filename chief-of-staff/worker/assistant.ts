@@ -1,3 +1,6 @@
+import {quickTaskReply} from './assistant-quick';
+import {healthPlanChat} from './daynote-chat';
+import {daynoteTools} from './daynote';
 import {hashgachaCampaigns,sourceReports,syncHashgacha,trackHashgacha} from './hashgacha';
 import {PROJECT_POLICY} from '../shared/project-policy';
 /** The single Chief of Staff assistant: prompt, context assembly and tools over the user's data. */
@@ -10,7 +13,7 @@ import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
   all, createItem, createProject, first, getSettings, HttpError, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
-import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, upcomingEventsText } from "./google";
+import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, sendDraft, upcomingEventsText } from "./google";
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
 import { findPeople, memoryContext, noteContact, recallMemories, recallText, savePerson } from "./memory";
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
@@ -83,7 +86,7 @@ How to file things — keep these clearly separate:
 - task: something the user needs to do.
 - reminder: something to be reminded of at a specific time (always set due_at).
 - commitment: a promise the user made to someone (set person; due_at if there is a deadline).
-- waiting: something the user is waiting on from someone else (set person).
+- waiting: something the user is waiting on from someone else (set person). Never file "Wait for ..." as an actionable task. Keep it tracked as waiting, and offer a separate follow-up when appropriate; do not present waiting as work to do now.
 - idea: never file ideas with create_item; use capture_idea (below).
 - Lists: shopping uses its dedicated tools. A deliberate batch for now/this afternoon is a dated session project, even across areas; create_project first, then create_item with its name. Other unrelated to-dos stay standalone. Never infer a weekly catch-all from deadlines alone.
 
@@ -190,7 +193,7 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
     timeZone: tz, dateStyle: "full", timeStyle: "short",
   }).format(new Date());
 
-  const [memory, recalled, items, projects, areaText, activeP, g, bridge, sectionSummaries] = await Promise.all([
+  const [memory, recalled, items, projects, areaText, activeP, g, bridge, sectionSummaries, recentSaves] = await Promise.all([
     memoryContext(env), // core only: stable between messages
     query ? recallText(env, query) : Promise.resolve(""),
     all<Item>(
@@ -200,6 +203,8 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
     ),
     all<Project>(env, "SELECT * FROM projects WHERE status != 'done' ORDER BY created_at LIMIT 30"),
     areasText(env),activeProjects(env),googleStatus(env).catch(()=>null),bridgeStatus(env),summaries?Promise.resolve(summaries):contextSummaries(env),
+    // The due-first inventory can omit newly saved, undated work. Keep those receipts visible on follow-ups.
+    all<Item>(env,"SELECT * FROM items WHERE source IN ('chat','voice','codex') AND updated_at>=? ORDER BY updated_at DESC,id LIMIT 20",new Date(Date.now()-86400000).toISOString()),
   ]);
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const {schedule:situations,groups,tasks,trackers,ideas,missions}=sectionSummaries;
@@ -233,7 +238,7 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
   lines.push(!g || !g.accounts.length ? "- Google: not connected (no calendar or email access)."
     : `- Google accounts: ${g.accounts.map((a) => a.email).join(", ")}. Calendar lookups cover all of them; email search covers all unless you pass account. Drafts go from the account the thread is in (or the account you pass for new mail).`);
   lines.push(bridge.configured
-    ? "- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve); approved messages go out when their computer is on. Actionable incoming WhatsApps arrive as items with source whatsapp."
+    ? "- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve); approved messages go out when their computer is on. WhatsApp is user-directed: search captured messages only when asked, then save only the specific work the user requests. Passive scanning only maintains the unanswered-reply queue after four hours; never infer tasks, meetings or memories from ordinary WhatsApps."
     : "- WhatsApp: not set up yet.");
   if (ideas && want.has("ideas")) lines.push("", "## Ideas (open)", ideas);
   if (missions && want.has("missions")) lines.push("", "## Missions (working in the background)", missions);
@@ -256,6 +261,7 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
   );
   const events = g?.accounts.length && want.has("calendar") ? await upcomingEventsText(env, tz) : null;
   if (events) lines.push("", "## Calendar (next 48 hours)", events);
+  if(recentSaves.length)lines.push("", "## Recently saved work (database records; already saved even if an earlier reply said otherwise)",...recentSaves.map(i=>`- ${i.title} [${i.status}; id ${i.id}${i.project_id?`; project ${projectName.get(i.project_id)||i.project_id}`:''}; updated ${i.updated_at}]`));
   // Changes every message: keep at the very end.
   const off = zoneOffset(tz, new Date());
   lines.push("", `Current local time: ${localNow} (timezone ${tz}, UTC${off < 0 ? "-" : "+"}${String(Math.floor(Math.abs(off) / 60)).padStart(2, "0")}:${String(Math.abs(off) % 60).padStart(2, "0")} now; UTC now ${now()}).`);
@@ -387,6 +393,12 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         if (!g) return { error: `No group called "${input.group}".`, groups: await groupsSummary(env) };
         return { id: g.id, name: g.name, description: g.description, members: (await members(env, g.id)).map((m) => ({ name: m.name, email: m.email, phone: m.phone, whatsapp_name: m.whatsapp_name, role: m.role })) };
       },
+    },
+    {
+      name:'search_whatsapp',readOnly:true,
+      description:'Search captured WhatsApps by text and/or person/chat when the user asks to pull specific information or work. Read-only: never adds anything. Disclose captured-history coverage and bridge freshness.',
+      input_schema:{type:'object',properties:{query:{type:'string'},chat:{type:'string'},days:{type:'integer'}},required:[]},
+      handler:async input=>(await import('./whatsapp')).searchWhatsApp(env,input as never),
     },
     {
       name: "check_group_messages",
@@ -868,6 +880,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       description: "Start a research chat: research or monitoring once, every N minutes until stopped or a time limit (e.g. hourly election updates), or weekly (asks before each report). Pinned in the side panel (and its own Telegram topic); waits for the user's Start tap.",
       input_schema: { type: "object", properties: {
         title: { type: "string", description: "2-5 words" },
+        project_id:{type:"string",description:"Existing project id when this work belongs to that outcome; do not guess or group only by broad topic."},
         instructions: { type: "string", description: "everything the user asked for, in full: what to research or watch, what to judge it by, and how to report (format, summary, action items, a recommendation)" },
         kind: { type: "string", enum: ["once", "every", "weekly"] },
         every_minutes: { type: "integer", description: "every: e.g. 60 for hourly" },
@@ -888,6 +901,12 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         research_chat: { type: "string", description: "the research chat's title when the emails are about its results" },
       }, required: ["ask"] },
       handler: async (input) => { const { createEmailChat } = await import("./jobs"); const r = await createEmailChat(env, input as never); note("email_with_codex", `✉️ Emails: ${r.where}`); return r; },
+    },
+    {
+      name: "codex_backup",
+      description: "What runs research and report jobs when Codex is out of usage or the computer is off: claude (their Claude plan) or api (the OpenAI API, pay per use). E.g. \"when Codex runs out, use the API\". Applies to every job from now on.",
+      input_schema: { type: "object", properties: { engine: { type: "string", enum: ["claude", "api"] } }, required: ["engine"] },
+      handler: async (input) => { const { setBackupEngine } = await import("./jobs"); const r = await setBackupEngine(env, input.engine === "api" ? "api" : "claude"); note("codex_backup", `When Codex is out: ${r.backup}`); return r; },
     },
     {
       name: "list_jobs", readOnly: true,
@@ -1213,6 +1232,10 @@ export async function executeApproved(env: Env, action: string, payload: Record<
     case "forget_memory":
       await run(env, "DELETE FROM memories WHERE id = ?", id);
       return "forgot memory";
+    case "send_gmail_draft": {
+      const r = await sendDraft(env, String(payload.draft_id ?? ""), String(payload.account ?? ""));
+      return `Sent the email to ${String(payload.to ?? "")} from ${r.from_account}.`;
+    }
     case "share_file":
       return shareFile(env, String(payload.file_id), String(payload.email),
         (["reader", "commenter", "writer"].includes(String(payload.role)) ? payload.role : "reader") as "reader", payload.account as string | undefined);
@@ -1246,18 +1269,30 @@ export async function titleConversation(env:Env,c:Conversation,firstText:string)
 }
 
 export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[]; channel?: "telegram"; subject?: { name: string; feature?: string } } = {}) {
+  if(opts.channel==='telegram'&&opts.subject?.feature==='health')return healthPlanChat(env,text,conversationId);
   const started=performance.now(),stages:Record<string,number>={};
   const provider = getProvider(env); // fail before storing anything if no model is configured
-  const existing = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
+  const healthScope=opts.channel==='telegram'&&opts.subject?.feature==='health';
+  const stored = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
+  const existing=stored&&(((stored as any).privacy_scope==='health')===healthScope)?stored:null;
   const stale = existing && Date.now() - new Date(existing.last_message_at).getTime() > CONVERSATION_IDLE_MS;
   let convo = await resolveConversation(env, existing?.id, !existing || !!stale);
 
+  if(healthScope)await run(env,"UPDATE conversations SET privacy_scope='health' WHERE id=?",convo.id);
   const attached = (await Promise.all((opts.files ?? []).slice(0, 6).map((id) => fileInfo(env, id)))).filter(Boolean) as { id: string; filename: string }[];
   if (attached.length) text = [text, ...attached.map((f) => `📎 ${f.filename}`)].filter(Boolean).join("\n");
   const userMsg: Message = { id: uid(), role: "user", content: text, mode, meta: null, created_at: now(), conversation_id: convo.id };
   await run(env, "INSERT INTO messages (id, role, content, mode, created_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?)",
     userMsg.id, userMsg.role, userMsg.content, userMsg.mode, userMsg.created_at, convo.id);
 
+  const quick=await quickTaskReply(env,text);
+  if(quick){
+    const reply:Message={id:uid(),role:'assistant',content:quick.text,mode,meta:JSON.stringify({source:'records',items:quick.items.map(i=>({id:i.id,title:i.title}))}),created_at:new Date(Date.now()+1).toISOString(),conversation_id:convo.id};
+    await run(env,'INSERT INTO messages(id,role,content,mode,meta,created_at,conversation_id) VALUES(?,?,?,?,?,?,?)',reply.id,reply.role,reply.content,mode,reply.meta,reply.created_at,convo.id);
+    await run(env,'UPDATE conversations SET last_message_at=? WHERE id=?',reply.created_at,convo.id);convo.last_message_at=reply.created_at;
+    if(!convo.title)await titleConversation(env,convo,text);
+    return {user:userMsg,reply,actions:[],conversation:convo,engine:'records',timing:{totalMs:Math.round(performance.now()-started),modelCalls:0}};
+  }
   const recent = await all<Message>(env, "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?", convo.id, HISTORY_LIMIT);
   // Older long replies (reports, drafts) are trimmed; the latest few stay whole.
   const history: Turn[] = recent.reverse().map((m, i, arr) => ({
@@ -1310,15 +1345,16 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
       },
     });
   }
+  if(healthScope)tools.splice(0,tools.length,...daynoteTools(env));
   cacheOrder(tools);
   const result = await provider.runAgent({
     tier: "main",
     purpose: `chat:${mode}`,
     directReply:true,
     batchReply:true,
-    maxToolRounds:2,
+    maxToolRounds:6,
     defer:opts.defer,
-    system: promptFor(chatFeatures),
+    system: promptFor(chatFeatures)+(healthScope?"\nHealth topic: use get_health_journal for health questions and explain only its calculated statistics. No invented measurements, Readiness scores, diagnoses, medication changes or causal claims. Propose notes with propose_health_note; observations and new questions require owner confirmation in Health Journal. Never file health notes as generic tasks/memories or enable questions automatically. If insufficient data, say so. All health responses stay in this Health topic.":""),
     cacheKey: "cos-chat",
     noFollowUp: ["create_item", "update_item", "remember", "save_person", "save_time_block", "save_task", "save_tracker",
       "save_group", "update_idea", "create_project", "update_project", "save_area", "research_now", "start_mission", "update_mission",
@@ -1365,12 +1401,12 @@ const TOOL_GROUPS: Record<string, string[]> = {
   schedule: ["save_time_block"],
   calendar: ["calendar_lookup"],
   email: ["search_email", "read_email_thread", "draft_email", "email_with_codex"],
-  whatsapp: ["prepare_whatsapps", "send_whatsapp"],
+  whatsapp: ["search_whatsapp", "prepare_whatsapps", "send_whatsapp"],
   docs: ["create_doc", "create_sheet", "append_rows", "search_drive", "read_file", "share_file"],
   groups: ["save_group", "draft_group_message", "get_group", "check_group_messages"],
   trackers: ["save_tracker", "get_tracker_entries"],
   ideas: ["capture_idea", "update_idea", "idea_step", "research_now"],
-  tasks: ["get_report", "start_job", "list_jobs"],
+  tasks: ["get_report", "start_job", "list_jobs", "codex_backup"],
   // The older Google-Doc research tasks: kept for changing an existing one, never offered for new research.
   oldtasks: ["save_task"],
   missions: ["start_mission", "update_mission"],
@@ -1381,11 +1417,11 @@ const TOOL_GROUPS: Record<string, string[]> = {
   files: ["find_email_files","sign_document","fill_document","save_detail"],
   recurring: ["get_recurring_reminders","save_recurring_reminder"],
   areas: ["save_area"],
-  research: ["start_job", "list_jobs", "email_with_codex"],
+  research: ["start_job", "list_jobs", "email_with_codex", "codex_backup"],
   helper: ["computer_helper"],
   details: ["save_detail"],
   people: ["save_person"],
-  jobs: ["start_job", "list_jobs", "email_with_codex"],
+  jobs: ["start_job", "list_jobs", "email_with_codex", "codex_backup"],
   topics: ["make_telegram_topic"],
 };
 /** What each group is for, so load_tools can say what there is to load. */
@@ -1429,7 +1465,7 @@ const TOOL_TRIGGERS: Record<string, RegExp> = {
   helper: /\b(web ?sites?|sign ?up|account|log ?in|register|online|computer helper|browser|chrome|portal|console|enable)\b|אתר/i,
   details: /\b(my details|address|id number|vat|business number|licen[cs]e|osek|teudat)\b|ת"ז|תעודת זהות|כתובת|עוסק/i,
   people: /\b(is my|is our|works (at|for)|phone number|email address|contact|address book|supplier|accountant|lawyer|boss)\b/i,
-  jobs: /\b(monitor|keep (an eye|checking|track)|every (\d+ )?(hour|minute)s?|hourly|updates? (on|about)|weekly report|report (on|every)|watch (for|the)|track|jobs?)\b|מעקב|כל שעה|עדכונים/i,
+  jobs: /\b(monitor|keep (an eye|checking|track)|every (\d+ )?(hour|minute)s?|hourly|updates? (on|about)|weekly report|report (on|every)|watch (for|the)|track|jobs?|codex|backup|fallback|runs? out|out of usage)\b|מעקב|כל שעה|עדכונים/i,
   ideas: /\b(idea|what if|thinking (about|of)|brainstorm|business plan)\b|רעיון|מה אם/i,
   tasks: /\b(every (day|week|morning|evening|sunday|monday|tuesday|wednesday|thursday|friday)|weekly|daily|report)\b|כל שבוע|כל יום|דוח/i,
   shopping: /\b(shopping|grocer(?:y|ies)|supermarket|list|buy|bought|pick up|milk|eggs|bread)\b|קניות|לקנות|מכולת|סופר/i,
@@ -1466,7 +1502,7 @@ const PROMPT_PARTS = splitPrompt();
 const PROJECT_RULES = `a project is a named outcome, event or work session with several steps, not an area, person or topic. Create one when asked. A list of things to do now or in one sitting ("this afternoon I need to…") gets a dated session project (create_project, e.g. "Sunday afternoon — 18 October 2026") and each of them goes in it. Tasks that clearly serve the same outcome/event share one project; reuse an existing one only for the same goal and edition, move tasks with update_item, never duplicate them. A lone task stays standalone; if unsure, leave it and ask at most one short question.`;
 const CHAT_CORE=`You are the user's personal Chief of Staff, by text and voice. Work out what they want and do it with tools; never claim a save without its tool. Answer questions directly.
 - Saving tasks, reminders, memories, projects and schedule changes, and deleting, need no permission. Sending messages, contacting people, sharing files, spending money and every AI research/background job go through approval; a pending approval is not done.
-- One pass: use IDs and facts already in the context, batch independent calls (with finish_reply for save-only work), and don't re-read your own saves.
+- Use IDs and facts in context; batch independent calls. Use finish_reply only after ALL requested saves. Before saying work is unsaved, check recent saved work or search_items. Never repeat a successful save.
 - Times are the user's local time (from the context). Every separate thing they mention is its own create_item; never drop one. Use block only when they tie it to a time block.
 - category: an ## Areas key only when clear.
 - Projects: ${PROJECT_RULES}

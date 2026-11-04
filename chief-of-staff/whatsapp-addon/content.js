@@ -92,6 +92,7 @@
 
   // ---- Trackers: collect every message on a topic (downloaded from the Chief of Staff) ----
   let trackers = [];
+  const alumniConversations = new Set();
   let backfillPending = [];
   const lc = (s) => (s || "").toLowerCase();
   const squash = (s) => lc(s).replace(/[^\p{L}\p{N}]/gu, "");
@@ -108,11 +109,16 @@
     return kwOk && peopleOk;
   }
   function track(m, only) {
+    if(!only&&!m.fromMe&&m.text&&m.t&&alumniConversations.has(m.chatId)) {
+      send({type:'track',payload:{tracker_id:'alumni-aish-visits-context',chat:m.chat,sender:m.sender,chatId:m.chatId,messageId:m.messageId,fromMe:false,text:m.text,at:new Date(m.t*1000).toISOString()}});
+    }
     for (const t of trackers) {
       if (only && !only.includes(t.id)) continue;
       if (!matches(t, m)) continue;
+      if(t.id==='alumni-aish-visits'&&m.chatId){alumniConversations.add(m.chatId);if(alumniConversations.size>100)alumniConversations.delete(alumniConversations.values().next().value);}
       send({ type: "track", payload: { tracker_id: t.id, chat: m.chat, sender: m.fromMe ? "Me" : m.sender, text: m.text,
-        at: new Date((m.t || Date.now() / 1000) * 1000).toISOString() } });
+        chatId: m.chatId, messageId: m.messageId, fromMe: !!m.fromMe,
+        at: m.t ? new Date(m.t * 1000).toISOString() : null } });
     }
   }
   async function refreshTrackers() {

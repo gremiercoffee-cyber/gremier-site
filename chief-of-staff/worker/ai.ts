@@ -163,10 +163,12 @@ class OpenAIProvider implements ModelProvider {
     const result: AgentResult = { text: "", toolCalls: [] };
     const executed = new Map<string, string>();
     const reads=new Map<string,Promise<{output:string;receipt:AgentResult["toolCalls"][number]}>>();
+    const scheduleWrites=new Map<string,{key:string;value:{output:string;receipt:AgentResult['toolCalls'][number]}}>();
     const metrics={rounds:0,modelMs:0,toolMs:0};
     const maxRounds = req.maxToolRounds ?? 6;
     let refusal = false;
     for (let round = 0; round <= maxRounds; round++) {
+      if(round===maxRounds)input.push({role:'developer',content:'This turn has reached its action-round limit. Tools were available and prior successful changes remain saved. Report only verified outcomes and any remaining work. Do not invent an access/permission problem or say previously saved items are unsaved. Do not repeat actions.'});
       // Rebuild: load_tools can extend the list between rounds. Preserve optional fields.
       const tools: OpenAI.Responses.Tool[] = req.tools.map(t => ({
         type: "function", name: t.name, description: t.description, parameters: t.input_schema, strict: false,
@@ -200,12 +202,22 @@ class OpenAIProvider implements ModelProvider {
           const tool=req.tools.find(t=>t.name===call.name);if(!tool)throw Error(`unknown tool ${call.name}`);
           const normalize=(v:any):any=>Array.isArray(v)?v.map(normalize):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,normalize(v[k])])):v;
           const key=call.name+'|'+JSON.stringify(normalize(args));
+          // Some models repeat the same block patch for each skipped date. Apply an identical patch once,
+          // but execute a changed patch (including a deliberate reversion) normally.
+          const scheduleTarget=call.name==='save_time_block'&&typeof(args.id||args.name)==='string'?String(args.id||args.name):null;
+          const prior=scheduleTarget?scheduleWrites.get(scheduleTarget):undefined;
+          if(prior?.key===key){
+            const output=JSON.stringify({already_applied:true,result:prior.value.receipt.result,note:'This identical schedule change is already saved. Do not repeat it; continue the remaining requested tasks.'});
+            executed.set(call.call_id,output);return {output,receipt:prior.value.receipt};
+          }
           let promise=tool.readOnly?reads.get(key):undefined;
           if(!promise){
             promise=(async()=>{const value=await tool.handler(args);return {output:JSON.stringify(value??{ok:true}),receipt:{name:call.name,input:args,result:value}};})();
             if(tool.readOnly)reads.set(key,promise);else reads.clear();
           }
-          const value=await promise;executed.set(call.call_id,value.output);return value;
+          const value=await promise;executed.set(call.call_id,value.output);
+          if(scheduleTarget&&!(value.receipt.result as any)?.error&&(value.receipt.result as any)?.ok!==false)scheduleWrites.set(scheduleTarget,{key,value});
+          return value;
         }catch(e){const error=e instanceof Error?e.message:String(e),output=JSON.stringify({error});executed.set(call.call_id,output);return {output,receipt:{name:call.name,input:args,result:null,error}};}
       };
       // Only contiguous pure lookups run together. Writes stay ordered and invalidate reads.
@@ -232,7 +244,7 @@ class OpenAIProvider implements ModelProvider {
         const short=routineConfirmation(req.history.filter(t=>t.role==='user').at(-1)?.content||'',result.toolCalls);
         if(short){result.text=short;break;}
       }
-      if ((!req.directReply||!pending) && response.output_text?.trim() && req.noFollowUp && calls.every(c => req.noFollowUp!.includes(c.name)) && last.every(t => !t.error)) break;
+      if ((!req.directReply||!req.batchReply&&!pending) && response.output_text?.trim() && req.noFollowUp && calls.every(c => req.noFollowUp!.includes(c.name)) && last.every(t => !t.error)) break;
       // A pre-tool handoff may no longer describe the outcome after an error.
       result.text = "";
     }

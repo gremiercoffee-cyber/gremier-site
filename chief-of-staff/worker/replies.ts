@@ -35,7 +35,7 @@ async function styleNotes(env: Env, person?: string | null) {
 
 /** Already-classified obligations are materialized without extra AI or a notification. */
 export async function collectWhatsAppReplies(env:Env){
- const pending=await all<{id:string;chat:string;sender:string;account:string;text:string;received_at:string}>(env,"SELECT * FROM whatsapp_inbox WHERE awaiting_reply=1 AND item_id IS NULL AND reply_reason IS NOT NULL AND reply_reason NOT LIKE 'reviewed: no response needed%' ORDER BY received_at");
+ const pending=await all<{id:string;chat:string;sender:string;account:string;text:string;received_at:string}>(env,"SELECT * FROM whatsapp_inbox WHERE awaiting_reply=1 AND item_id IS NULL AND reply_reason IS NOT NULL AND reply_reason NOT LIKE 'reviewed: no response needed%' AND COALESCE(sent_at,received_at)<=? ORDER BY received_at",new Date(Date.now()-4*3600000).toISOString());
  for(const w of pending){
   const existing=await first<Item>(env,"SELECT * FROM items WHERE status='open' AND source='whatsapp' AND reply_required=1 AND ext_ref=? AND ext_account=?",w.chat,w.account);
   const itemId=existing?.id??`reply:${w.id}`;

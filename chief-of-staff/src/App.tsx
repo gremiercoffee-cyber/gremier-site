@@ -183,6 +183,7 @@ export default function App() {
   const goHome = () => openConversation(null);
   const openItem = (item: Item) => setSheet({ item });
   const openResearch = (id: string) => { setJobId(id); setView("research"); setDrawer(false); };
+  useEffect(()=>{const url=new URL(location.href);if(view==='research'&&jobId)url.searchParams.set('job',jobId);else url.searchParams.delete('job');history.replaceState(null,'',url.pathname+url.search);},[view,jobId]);
   const current = conversations.find((c) => c.id === conversationId);
   const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => {
@@ -224,6 +225,7 @@ export default function App() {
             <div className="px-2 pt-2 border-t border-line">
               <DrawerItem active={view === "settings" || view === "people"} onClick={() => go("settings")}
                 icon={<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>} label="Settings" />
+              <a href="/daynote/?open=standalone" className="block px-5 py-3 text-sm">🌿 Health Journal · Health journal</a>
             </div>
     </>
   );
@@ -252,7 +254,7 @@ export default function App() {
         </button>
       </header>
 
-      <NotifBanner />
+      {view!=="research"&&view!=="home"&&<NotifBanner />}
       {health && !health.model && (
         <div className="mx-4 mb-2 rounded-xl bg-sunken text-sm px-3 py-2 text-muted">
           The assistant isn't connected to a model yet. Set the <code>OPENAI_API_KEY</code> secret.
@@ -272,7 +274,7 @@ export default function App() {
           <Switch value={view} onChange={(v) => setView(v as View)} options={[["projects", "Projects"], ["lists", "All tasks"]]} />
         )}
         {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
-        {view === "projects" && <Projects onOpenItem={openItem} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
+        {view === "projects" && <Projects onOpenJob={openResearch} onOpenItem={openItem} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
         {view === 'shopping' && <Shopping refreshKey={refreshKey} />}
         {view === 'details' && <MyDetails />}
 

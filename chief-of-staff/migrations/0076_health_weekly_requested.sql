@@ -1,0 +1,1 @@
+INSERT INTO daynote_settings(key,value) VALUES('preferences','{"reminders":false,"reminder_time":"21:00","weekly_summary":true,"wake_time":null}') ON CONFLICT(key) DO UPDATE SET value=json_set(CASE WHEN json_valid(value) THEN value ELSE '{}' END,'$.weekly_summary',json('true'));

@@ -1,3 +1,16 @@
+import {alumniStatus,processAlumni,backfillAlumniInbox,decideAlumni,prepareAlumniWriteCheck,confirmAlumniWriteCheck} from './alumni-visits';
+import {assistantTaskBrief} from './assistant-quick';
+import {healthAIRunnerRoute} from './daynote-ai';
+import {agentChatsRoute} from './agent-chats';
+import {chatgptRelayRoute} from './chatgpt-relay';
+import {reconcileTopics} from './telegram-lifecycle';
+import {briefHistory,linkJobProject,refreshBrief,publishBrief,jobContext} from './job-briefs';
+import {HEALTH_ORIGIN} from '../shared/health-origin';
+import {androidDeviceRoute} from './daynote-android';
+import {redeemDaynoteLogin} from './daynote-login';
+import {finishWhoopAuth,syncWhoop} from './daynote-whoop';
+import {daynoteRoute,healthReminders} from './daynote';
+import {finishHealthAuth,healthSync} from './daynote-google';
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { transcribeAudio } from "./transcribe";
@@ -97,6 +110,9 @@ route("POST", "/api/jobs/:id/message", async (req, env, [id]) => {
   if (!text) throw new HttpError(400, "Type a message.");
   return json({ reply: await messageJob(env, j, text, "app") });
 });
+route("GET", "/api/jobs/:id/brief/history", async (_req,env,[id])=>json(await briefHistory(env,id)));
+route("POST", "/api/jobs/:id/brief/refresh", async (_req,env,[id])=>{await refreshBrief(env,id);await publishBrief(env,id);return json({ok:true});});
+route("POST", "/api/jobs/:id/project", async (req,env,[id])=>json(await linkJobProject(env,id,(await body<{project_id:string|null}>(req)).project_id)));
 route("POST", "/api/jobs/:id/pin", async (req, env, [id]) => json(await setPinned(env, id, !!(await body<{ pinned?: boolean }>(req)).pinned)));
 route("POST", "/api/jobs/button", async (req, env) => { await pressButton(env, String((await body<{ data?: string }>(req)).data ?? "")); return json({ ok: true }); });
 route("GET", "/api/helper/jobs", async (_req, env) => json(await listJobs(env)));
@@ -376,12 +392,13 @@ route("POST", "/api/braindumps", async (req, env) => {
   return json(await processBrainDump(env, text));
 });
 
+route('GET','/api/assistant/brief',async(req,env)=>{const q=new URL(req.url).searchParams,c=q.get('category');if(c&&!['coffee','yeshiva','personal'].includes(c))throw new HttpError(400,'Unknown category.');return json(await assistantTaskBrief(env,c,Number(q.get('limit'))||12));});
 // ---- Items -----------------------------------------------------------------
 route("GET", "/api/items", async (req, env) => {
   const q = new URL(req.url).searchParams;
   const where: string[] = [];
   const binds: unknown[] = [];
-  for (const key of ["kind", "status", "project_id"]) {
+  for (const key of ["kind", "status", "project_id", "category"]) {
     const v = q.get(key);
     if(key==="project_id"&&v==="none"){where.push("project_id IS NULL");continue;}
     if (v && v !== "all") (where.push(`${key} = ?`), binds.push(v));
@@ -780,11 +797,17 @@ route("GET", "/api/export", async (_req, env) => {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+    const relay=await chatgptRelayRoute(req,env);if(relay)return relay;
+    if(url.origin===HEALTH_ORIGIN&&url.pathname==='/')return Response.redirect(new URL('/daynote/'+url.search,url.origin).toString(),302);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     if (url.pathname === "/api/health") {
       return json({ ok: true, configured: !!env.COS_ACCESS_TOKEN, model: !!env.OPENAI_API_KEY, transcription: !!env.OPENAI_API_KEY, push: pushConfigured(env) });
     }
     // Google redirects the browser here without our bearer token; the single-use state is the check.
+    if(url.pathname.startsWith('/api/daynote/android-device/'))return androidDeviceRoute(env,req);
+    if(url.pathname === '/api/daynote/sign-in')return redeemDaynoteLogin(env,req);
+    if(url.pathname === "/api/daynote/whoop/callback" && req.method === "GET") return finishWhoopAuth(env,req);
+    if (url.pathname === "/api/daynote/google/callback" && req.method === "GET") return finishHealthAuth(env,req);
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
     // Outside agents (Codex, Claude Code): ask the computer helper for a job and check on it. Every job waits for
     // the user's Allow on their phone. Their own key, never the app passcode.
@@ -802,10 +825,35 @@ export default {
       const key = req.headers.get("x-agent-key") ?? "";
       if (!env.AGENT_KEY || !safeEqual(key, env.AGENT_KEY)) return json({ error: "unauthorised" }, 401);
       if (url.pathname === "/api/agent/helper-jobs" && req.method === "POST") {
-        const b = (await req.json().catch(() => ({}))) as { instruction?: string; start_url?: string; from?: string };
-        try { return json(await createJob(env, { instruction: String(b.instruction ?? ""), start_url: b.start_url, source: String(b.from || "An outside agent").replace(/^you$/i, "An outside agent") })); }
+        const b = (await req.json().catch(() => ({}))) as { instruction?: string; start_url?: string; from?: string;target_account?:string };
+        try { return json(await createJob(env, { instruction: String(b.instruction ?? ""), start_url: b.start_url,target_account:b.target_account, source: String(b.from || "An outside agent").replace(/^you$/i, "An outside agent") })); }
         catch (e) { return json({ error: (e as Error).message }, 400); }
       }
+      try{
+      const healthAIResponse=await healthAIRunnerRoute(req,env);if(healthAIResponse)return json(healthAIResponse);
+      if(url.pathname==='/api/agent/health/sync'&&req.method==='POST')return json(await healthSync(env,true,true,url.searchParams.get('history_days')==='28'?28:7));
+      if(url.pathname==='/api/agent/alumni-visits/status'&&req.method==='GET')return json(await alumniStatus(env,url.searchParams.get('probe')==='1'));
+      if(url.pathname==='/api/agent/alumni-visits/write-check/prepare'&&req.method==='POST')return json(await prepareAlumniWriteCheck(env));
+      if(url.pathname==='/api/agent/alumni-visits/write-check/confirm'&&req.method==='POST'){const p=await req.json() as {approval_id?:string};return json(await confirmAlumniWriteCheck(env,String(p.approval_id??'')));}
+      const alumniDecision=url.pathname.match(/^\/api\/agent\/alumni-visits\/([a-f0-9]{64})\/decision$/);
+      if(alumniDecision&&req.method==='POST')return json(await decideAlumni(env,alumniDecision[1],await req.json()));
+      if(url.pathname==='/api/agent/alumni-visits/backfill'&&req.method==='POST')return json(await backfillAlumniInbox(env));
+      if(url.pathname==='/api/agent/alumni-visits/process'&&req.method==='POST'){await processAlumni(env);return json(await alumniStatus(env));}
+      const agentChatResponse=await agentChatsRoute(req,env);if(agentChatResponse)return agentChatResponse;
+      if(url.pathname.startsWith('/api/agent/cos/')){
+        const target='/api/'+url.pathname.slice('/api/agent/cos/'.length);
+        const allowed=(req.method==='GET'&&/^\/api\/(dashboard|items|projects|memories|replies|areas|assistant\/brief)$/.test(target))||(['POST','PATCH'].includes(req.method)&&/^\/api\/(items|projects)(?:\/[^/]+)?$/.test(target)&&!target.endsWith('/organize'));
+        if(!allowed)return json({error:'This operation is not available to the agent records API. Use the normal approval workflow.'},403);
+        const internal=new URL(req.url);internal.pathname=target;
+        for(const [method,re,handler] of routes){const match=target.match(re);if(match&&method===req.method){const result=await handler(new Request(internal,req),env,match.slice(1).map(decodeURIComponent),ctx);const headers=new Headers(result.headers);headers.set('cache-control','private, no-store');return new Response(result.body,{status:result.status,headers});}}
+        return json({error:'Record endpoint not found.'},404);
+      }
+      }catch(e){return json({error:e instanceof HttpError?e.message:'Agent request failed.'},e instanceof HttpError?e.status:500);}
+      if(url.pathname==='/api/agent/telegram/reconcile' && req.method==='POST')return json(await reconcileTopics(env,true));
+      if(url.pathname==='/api/agent/jobs' && req.method==='GET')return json(await listJobChats(env));
+      const jobContextMatch=url.pathname.match(/^\/api\/agent\/jobs\/([\w-]+)\/context$/);
+      if(jobContextMatch && req.method==='GET')return json(await jobContext(env,jobContextMatch[1]));
+      if(jobContextMatch && req.method==='POST'){await refreshBrief(env,jobContextMatch[1]);await publishBrief(env,jobContextMatch[1]);return json(await jobContext(env,jobContextMatch[1]));}
       // Jobs: the Codex runner on the home computer takes Codex runs (and reports the plan's usage);
       // the runner and the Claude Code task send each run's answer back.
       if (url.pathname === "/api/agent/codex/next" && req.method === "POST") return json(await nextCodexRun(env, (await req.json().catch(() => ({}))) as Parameters<typeof nextCodexRun>[1]));
@@ -852,7 +900,7 @@ export default {
         return json({ ok: true });
       }
       // Computer helper (only extensions with the helper switched on ask for jobs).
-      if (url.pathname === "/api/bridge/helper/next" && req.method === "POST") { const b = (await req.json().catch(() => ({}))) as { device?: string }; return json(await nextJob(env, String(b.device ?? "computer").slice(0, 60))); }
+      if (url.pathname === "/api/bridge/helper/next" && req.method === "POST") { const b = (await req.json().catch(() => ({}))) as { device?: string;account?:string }; return json(await nextJob(env, String(b.device ?? "computer").slice(0, 60),b.account)); }
       const hm = url.pathname.match(/^\/api\/bridge\/helper\/([^/]+)\/(step|finish|status)$/);
       if (hm && hm[2] === "status") return json(await jobStatus(env, hm[1]));
       if (hm && hm[2] === "step" && req.method === "POST") return json(await nextAction(env, hm[1], await req.json()));
@@ -877,6 +925,7 @@ export default {
     if (!env.COS_ACCESS_TOKEN) return json({ error: "Server not configured: set the COS_ACCESS_TOKEN secret." }, 503);
     if (!authorised(req, env)) return json({ error: "unauthorised" }, 401);
 
+    if(url.pathname.startsWith('/api/daynote/')){try{return await daynoteRoute(req,env);}catch(e){return json({error:e instanceof HttpError?e.message:'Daynote could not finish this request. Your local answers are kept.'},e instanceof HttpError?e.status:500);}}
     for (const [method, re, handler] of routes) {
       const m = url.pathname.match(re);
       if (m && method === req.method) {
@@ -901,9 +950,12 @@ export default {
     ctx.waitUntil(import("./telegram-notices").then((t) => t.pendingCards(env)).catch((e) => console.error("telegram approvals", e)));
     ctx.waitUntil(import("./worksession").then((w) => w.tickWorkSession(env)).catch((e) => console.error("work session", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
+    ctx.waitUntil(healthSync(env).catch(()=>{}));
+    ctx.waitUntil(processAlumni(env).catch(e=>console.error('alumni visits',e instanceof Error?e.message:'processing failed')));
+    ctx.waitUntil(syncWhoop(env).catch(()=>{}));
+    ctx.waitUntil(healthReminders(env).catch(()=>{}));
     // Pull Google first so new emails and meetings are in place before reminders and the briefing.
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
-      .then(() => organizeMeetingRounds(env)).catch(e=>console.error('meeting rounds',e))
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
       .then(() => syncContactsDaily(env)).catch((e) => console.error("contacts", e))
