@@ -317,6 +317,140 @@ window.loadHtml2Canvas = function () {
     .modal-box { background:var(--card); border:1px solid var(--border); border-radius:4px; width:100%; max-width:620px; padding:32px; transform:scale(.97); transition:transform .3s; margin:auto; }
     .modal-backdrop.open .modal-box { transform:scale(1); }
     .modal-title { font-family:'DM Sans',sans-serif; font-size:1.5rem; color:var(--cream); margin-bottom:22px; }
+    /* STORE DELIVERIES — app-style page and Log delivery form */
+    .sd-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .sd-head #storeReceiptButton { order:3; border-radius:999px; padding:8px 14px; font-weight:700; background:#fff; }
+    .sd-viewseg { display:flex; gap:4px; padding:4px; background:var(--bg3); border-radius:14px; margin:4px 0 16px; max-width:360px; }
+    .sd-viewseg button { flex:1; border:0; background:none; padding:10px 12px; border-radius:11px; font:inherit; font-size:.88rem; font-weight:700; color:var(--text2); cursor:pointer; }
+    .sd-viewseg button.on { background:#fff; color:var(--cream); box-shadow:0 1px 4px rgba(0,0,0,.12); }
+    .sd-filters { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+    .sd-filters[style*="none"] { display:none !important; }
+    .sd-monthbar { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--border); border-radius:18px; padding:8px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .sd-arrow { width:44px; height:48px; flex:none; border:0; border-radius:12px; background:var(--bg3); font-size:1.5rem; line-height:1; color:var(--cream); cursor:pointer; }
+    .sd-arrow:hover { background:var(--border); }
+    .sd-monthpill { position:relative; flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; border-radius:12px; cursor:pointer; padding:4px; text-align:center; }
+    .sd-monthpill:hover { background:var(--bg2); }
+    .sd-monthpill b { font-size:1.08rem; font-weight:800; color:var(--cream); }
+    .sd-monthpill small { font-size:.72rem; color:var(--text2); }
+    .sd-monthpill input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0; }
+    .sd-filterrow { display:flex; gap:8px; }
+    .sd-pickbtn { position:relative; flex:1; min-width:0; display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:10px 14px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.04); transition:border-color .15s; }
+    .sd-pickbtn:hover, .sd-pickbtn:focus-within { border-color:var(--cream); }
+    .sd-pickico { width:36px; height:36px; flex:none; border-radius:11px; background:var(--bg3); display:grid; place-items:center; font-size:1.05rem; }
+    .sd-picktext { flex:1; min-width:0; display:flex; flex-direction:column; }
+    .sd-picktext small { font-size:.7rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text2); }
+    .sd-picktext b { font-size:.98rem; font-weight:800; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sd-pickbtn.empty .sd-picktext b { color:var(--text2); font-weight:600; }
+    .sd-chev { color:var(--text2); font-size:.9rem; flex:none; }
+    .sd-pickbtn select { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; font-size:16px; }
+    .sd-iconbtn { flex:none; display:flex; align-items:center; gap:6px; padding:0 16px; border:1px solid var(--border); border-radius:16px; background:#fff; font:inherit; font-size:.85rem; font-weight:700; color:var(--cream); cursor:pointer; }
+    .sd-iconbtn:hover { border-color:var(--cream); }
+    .sd-hero { background:linear-gradient(135deg,#1a1a1a,#3a3a3a); color:#fff; border-radius:22px; padding:18px; margin-bottom:6px; box-shadow:0 10px 26px rgba(0,0,0,.16); }
+    .sd-hero[style*="none"] { display:none !important; }
+    .sd-hero-top { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .sd-hero-top small { display:block; font-size:.78rem; color:rgba(255,255,255,.7); font-weight:600; }
+    .sd-hero-top b { display:block; font-family:'DM Sans',sans-serif; font-size:2.2rem; font-weight:800; letter-spacing:-.02em; line-height:1.1; margin-top:2px; }
+    .sd-hero-runs { font-size:.8rem; color:rgba(255,255,255,.75); font-weight:600; padding-bottom:6px; }
+    .sd-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+    .sd-chip { font-size:.8rem; padding:5px 11px; border-radius:999px; background:rgba(255,255,255,.12); color:rgba(255,255,255,.9); }
+    .sd-chip b { color:#fff; }
+    .sd-chip small { color:rgba(255,255,255,.65); }
+    .sd-bill { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:14px; }
+    .sd-tile { background:rgba(255,255,255,.08); border-radius:14px; padding:10px; display:flex; flex-direction:column; gap:1px; min-width:0; }
+    .sd-tile small { font-size:.68rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:rgba(255,255,255,.6); }
+    .sd-tile b { font-size:1.05rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sd-tile span { font-size:.7rem; color:rgba(255,255,255,.6); }
+    .sd-tile.warn { background:rgba(224,160,48,.28); box-shadow:inset 0 0 0 1px rgba(224,160,48,.6); }
+    .sd-list { display:flex; flex-direction:column; gap:18px; }
+    .sd-day { display:flex; flex-direction:column; gap:10px; }
+    .sd-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px 12px 12px 14px; box-shadow:0 1px 3px rgba(0,0,0,.04); cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+    .sd-card:hover { border-color:var(--cream); box-shadow:0 4px 14px rgba(0,0,0,.08); }
+    .sd-avatar { width:42px; height:42px; flex:none; border-radius:13px; display:grid; place-items:center; background:linear-gradient(135deg,#f3e3c3,#e0a030); color:#3b2a00; font-weight:800; font-size:1.05rem; }
+    .sd-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+    .sd-main > b { font-size:.98rem; font-weight:800; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sd-items { display:flex; flex-wrap:wrap; gap:5px; }
+    .sd-items span { font-size:.74rem; font-weight:700; padding:2px 9px; border-radius:999px; background:var(--bg3); color:var(--cream2); }
+    .sd-note { font-size:.76rem; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sd-side { flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+    .sd-side b { font-size:1.05rem; font-weight:800; color:var(--cream); }
+    .sd-del { width:34px; height:34px; border-radius:50%; border:0; background:var(--bg3); cursor:pointer; font-size:.85rem; }
+    .sd-del:hover { background:#fde2e1; }
+    .sd-empty { display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; background:#fff; border:1px solid var(--border); border-radius:18px; padding:26px 16px; }
+    .sd-empty > span { width:56px; height:56px; border-radius:50%; display:grid; place-items:center; background:var(--bg3); font-size:1.6rem; margin-bottom:4px; }
+    .sd-empty b { font-size:1rem; color:var(--cream); }
+    .sd-empty small { font-size:.84rem; color:var(--text2); }
+    .sd-empty-btn { margin-top:10px; border:0; border-radius:12px; padding:10px 16px; background:#1a1a1a; color:#fff; font:inherit; font-weight:700; cursor:pointer; }
+    .sd-storegrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+    .sd-storegrid[hidden], #sdByStoreHead[hidden] { display:none; }
+    .sd-storecard { display:flex; flex-direction:column; gap:8px; text-align:left; background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; font:inherit; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .sd-storecard:hover { border-color:var(--cream); }
+    .sd-storecard-top { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+    .sd-storecard-top b { font-size:.95rem; font-weight:800; color:var(--cream); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sd-storecard-top strong { font-size:1.05rem; font-weight:800; color:var(--cream); flex:none; }
+    .sd-bar { display:block; height:6px; border-radius:999px; background:var(--bg3); overflow:hidden; }
+    .sd-bar span { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#e0a030,#c4831a); }
+    .sd-storecard small { font-size:.76rem; color:var(--text2); }
+    .sd-pricelist { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; }
+    .sd-pricecard { background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,.04); display:flex; flex-direction:column; gap:10px; }
+    .sd-pricecard.off { opacity:.6; }
+    .sd-pricecard-top { display:flex; align-items:center; gap:10px; }
+    .sd-pricecard-top .sd-avatar { width:34px; height:34px; border-radius:10px; font-size:.9rem; }
+    .sd-pricecard-top b { flex:1; min-width:0; font-size:.95rem; font-weight:800; color:var(--cream); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sd-edit { border:1px solid var(--border); background:#fff; border-radius:999px; padding:6px 14px; font:inherit; font-size:.8rem; font-weight:700; color:var(--cream); cursor:pointer; }
+    .sd-edit:hover { border-color:var(--cream); }
+    .sd-prices { display:flex; flex-wrap:wrap; gap:6px; }
+    .sd-price { display:flex; flex-direction:column; padding:6px 10px; border-radius:10px; background:var(--bg3); font-size:.88rem; font-weight:800; color:var(--cream); }
+    .sd-price small { font-size:.64rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text2); }
+    #logDeliveryModal .ld-box { max-width:480px; padding:0; border-radius:22px; overflow:hidden; display:flex; flex-direction:column; max-height:92vh; }
+    .ld-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 18px 12px; }
+    .ld-head h2 { margin:0; font-family:'DM Sans',sans-serif; font-size:1.25rem; font-weight:800; color:var(--cream); }
+    .ld-body { overflow:auto; padding:2px 18px 14px; display:flex; flex-direction:column; gap:12px; -webkit-overflow-scrolling:touch; }
+    .sd-billseg { max-width:280px; margin:10px 0 12px; }
+    .sd-billfilters { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+    .sd-billfilters .sd-pickbtn { flex:1 1 160px; }
+    #sdBillingView > .flex-between h3 { font-size:1.25rem !important; font-weight:800; }
+    .sd-pickbtn.big { padding:12px 14px; }
+    .sd-pickbtn.big .sd-pickico { width:42px; height:42px; }
+    .sd-pickbtn.big .sd-picktext b { font-size:1.05rem; }
+    .ld-dates { display:flex; gap:6px; }
+    .ld-day { position:relative; flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:4px; padding:11px 8px; border-radius:12px; border:1px solid var(--border); background:#fff; font:inherit; font-size:.86rem; font-weight:700; color:var(--cream2); cursor:pointer; white-space:nowrap; overflow:hidden; }
+    .ld-day.on { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
+    .ld-datebtn input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0; }
+    .ld-qty { display:flex; flex-direction:column; background:#fff; border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    .ld-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px 10px 14px; }
+    .ld-row + .ld-row { border-top:1px solid var(--border); }
+    .ld-row.has { background:rgba(224,160,48,.1); }
+    .ld-row-name { display:flex; flex-direction:column; min-width:0; }
+    .ld-row-name b { font-size:.95rem; font-weight:700; color:var(--cream); }
+    .ld-row-name small { font-size:.74rem; color:var(--text2); min-height:1em; }
+    .ld-step { display:flex; align-items:center; gap:4px; flex:none; }
+    .ld-step button { width:40px; height:40px; border-radius:12px; border:0; background:var(--bg3); font-size:1.3rem; font-weight:600; color:var(--cream); cursor:pointer; line-height:1; }
+    .ld-step button:active { transform:scale(.94); }
+    .ld-step button:last-child { background:#1a1a1a; color:#fff; }
+    .ld-step input { width:54px; height:40px; text-align:center; border:1px solid var(--border); border-radius:10px; font:inherit; font-size:1.05rem; font-weight:800; color:var(--cream); background:#fff; -moz-appearance:textfield; }
+    .ld-step input::-webkit-outer-spin-button, .ld-step input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+    .ld-more { background:#fff; border:1px solid var(--border); border-radius:14px; padding:10px 14px; font-size:.86rem; }
+    .ld-more summary { cursor:pointer; font-weight:700; color:var(--cream2); }
+    .ld-notes { border-radius:14px; }
+    .ld-hint { margin:0; font-size:.76rem; color:var(--text2); }
+    .ld-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 18px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--border); background:#fff; }
+    .ld-total { display:flex; flex-direction:column; min-width:0; }
+    .ld-total small { font-size:.7rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text2); }
+    .ld-total b { font-family:'DM Sans',sans-serif; font-size:1.5rem; font-weight:800; color:var(--cream); line-height:1.1; }
+    .ld-total span { font-size:.74rem; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ld-actions { display:flex; gap:8px; align-items:center; flex:none; }
+    .ld-delete { width:48px; height:52px; border-radius:14px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:1rem; }
+    .ld-delete:hover { background:#fde2e1; border-color:#f3b5b0; }
+    .ld-save { min-height:52px; padding:0 24px; border:0; border-radius:14px; background:#1a1a1a; color:#fff; font:inherit; font-size:1rem; font-weight:800; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.18); }
+    .ld-save:disabled { opacity:.6; cursor:default; }
+    @media (max-width:600px) {
+      .sd-bill { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .sd-hero-top b { font-size:1.9rem; }
+      .sd-viewseg { max-width:none; }
+      #logDeliveryModal { align-items:flex-end; padding:0; }
+      #logDeliveryModal .ld-box { border-radius:22px 22px 0 0; max-height:94vh; padding:0 !important; }
+      .ld-step button { width:42px; height:42px; }
+    }
     /* PAYMENT LINK */
     .pl-items { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
     .pl-item { display:flex; align-items:center; gap:12px; background:var(--highlight); padding:10px 14px; border-radius:4px; border:1px solid var(--border); }
@@ -1253,106 +1387,59 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
        <!-- STORE DELIVERIES TAB -->
 <div id="tab-storedeliveries" class="tab-content" style="display:none">
-  <div class="page-header">
-    <div class="flex-between">
-      <div>
-        <h1 class="page-title">🏪 Store Deliveries</h1>
+  <div class="page-header sd-head">
+    <h1 class="page-title">Store Deliveries</h1>
+    <button class="plk-create" onclick="openLogDeliveryModal()">
+      <span class="plk-create-icon" aria-hidden="true">＋</span>
+      <span class="plk-create-text"><b>Log delivery</b><small>Store, bottles, done</small></span>
+    </button>
+  </div>
+  <div class="sd-viewseg" role="tablist" aria-label="View">
+    <button type="button" role="tab" id="sdViewDeliveries" class="on" aria-selected="true" onclick="sdShowView('deliveries')">🏪 Deliveries</button>
+    <button type="button" role="tab" id="sdViewBilling" aria-selected="false" onclick="sdShowView('billing')">🧾 Billing</button>
+  </div>
+  <button type="button" id="billingBoardToggleBtn" hidden></button>
 
-      </div>
-      <div class="header-actions">
-        <button class="btn btn-amber btn-sm" onclick="openLogDeliveryModal()">+ Log Delivery</button>
-        <button class="btn btn-outline btn-sm" onclick="toggleBillingBoard()" id="billingBoardToggleBtn">🧾 Monthly Billing</button>
-      </div>
+  <!-- Month and store: designed buttons that open the normal pickers -->
+  <div id="sdDeliveryFilters" class="sd-filters">
+    <div class="sd-monthbar">
+      <button type="button" class="sd-arrow" onclick="sdShiftMonth(-1)" aria-label="Previous month">‹</button>
+      <label class="sd-monthpill">
+        <b id="sdMonthLabel">This month</b><small>Tap to choose a month</small>
+        <input type="month" id="sdMonth" onchange="sdMonthChanged()" onclick="try{this.showPicker()}catch(_){}" aria-label="Month"/>
+      </label>
+      <button type="button" class="sd-arrow" onclick="sdShiftMonth(1)" aria-label="Next month">›</button>
+    </div>
+    <div class="sd-filterrow">
+      <label class="sd-pickbtn">
+        <span class="sd-pickico" aria-hidden="true">🏪</span>
+        <span class="sd-picktext"><small>Store</small><b id="sdStoreLabel">All stores</b></span>
+        <span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="sdStoreFilter" onchange="sdStoreChanged()" aria-label="Store"><option value="all">All Stores</option></select>
+      </label>
+      <button type="button" class="sd-iconbtn" title="Export CSV" aria-label="Export CSV" onclick="exportDeliveriesCSV()"><span aria-hidden="true">⬇</span> CSV</button>
     </div>
   </div>
 
-  <!-- Month picker -->
-  <div id="sdDeliveryFilters" class="filter-bar" style="margin-bottom:20px">
-    <input type="month" class="form-input" style="width:auto" id="sdMonth" onchange="loadStoreDeliveries()"/>
-    <select class="form-input" style="width:auto" id="sdStoreFilter" onchange="loadStoreDeliveries()">
-      <option value="all">All Stores</option>
-    </select>
-    <button type="button" class="app-icon-button" title="Export CSV" aria-label="Export CSV" onclick="event.stopPropagation();exportDeliveriesCSV()">⬇</button>
+  <!-- Month summary -->
+  <div id="sdMonthStats" class="sd-hero">
+    <div class="sd-hero-top">
+      <div><small id="sdHeroMonth">Store sales</small><b id="sdHeroTotal">₪0</b></div>
+      <span class="sd-hero-runs" id="sdHeroRuns"></span>
+    </div>
+    <div id="sdStats" class="sd-chips"></div>
+    <div id="sdBillingMiniStats" class="sd-bill"></div>
   </div>
 
-  <!-- Merged billing + monthly summary stats -->
-  <div id="sdMonthStats" class="card collapse-card" data-collapse-key="sd_stats" style="margin-bottom:20px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Month stats</h3>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0 16px 16px">
-      <div class="stat-grid" style="margin-bottom:0">
-        <div id="sdBillingMiniStats" style="display:contents">
-          <div class="stat-card"><div class="stat-label">Money Owed</div><div class="stat-value">₪0</div><div class="stat-sub">billed, not paid</div></div>
-          <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">₪0</div><div class="stat-sub">statements sent</div></div>
-          <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">₪0</div><div class="stat-sub">marked paid</div></div>
-          <div class="stat-card"><div class="stat-label">Unbilled</div><div class="stat-value">₪0</div><div class="stat-sub">not owed yet</div></div>
-        </div>
-        <div id="sdStats" style="display:contents"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Monthly summary -->
   <div id="sdNormalView">
+    <h2 class="ord-sec-h">Deliveries <span class="ord-sec-n" id="sdDelCount"></span></h2>
+    <div id="sdDeliveriesBody" class="sd-list"><div class="plk-empty"><div class="spinner"></div></div></div>
 
-  <!-- Per-store breakdown -->
-  <div class="card collapse-card" data-collapse-key="sd_store_blocks" data-collapse-default="collapsed" style="margin-bottom:20px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Store totals</h3>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0 16px 16px">
-      <div id="sdStoreBlocks"></div>
-    </div>
-  </div>
+    <h2 class="ord-sec-h" id="sdByStoreHead">By store</h2>
+    <div id="sdStoreBlocks" class="sd-storegrid"></div>
 
-  <!-- All deliveries table -->
-  <div class="flex-between" style="margin-top:28px;margin-bottom:14px">
-    <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">All Deliveries This Month</h3>
-  </div>
-  <div class="card" style="padding:0">
-    <div class="table-wrap">
-      <table>
-        <thead><tr>
-          <th>Store</th>
-          <th class="cell-num">Large</th>
-          <th class="cell-num">Small</th>
-          <th class="cell-num">Syrup</th>
-          <th class="cell-total">Total</th>
-          <th class="cell-date">Date</th>
-          <th class="cell-actions">Actions</th>
-        </tr></thead>
-        <tbody id="sdDeliveriesBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Stores management -->
-  <div class="card collapse-card" data-collapse-key="sd_prices" data-collapse-default="collapsed" style="margin-top:36px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Store Prices</h3>
-      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openAddStoreModal()">+ Add Store</button>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0">
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>Store Name</th>
-            <th>Large (₪)</th>
-            <th>Small (₪)</th>
-            <th>Dairy Free (₪)</th>
-            <th>Unfiltered (₪)</th>
-            <th>Syrup (₪)</th>
-            <th class="cell-actions">Edit</th>
-          </tr></thead>
-          <tbody id="sdStoresPricesBody"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+    <h2 class="ord-sec-h">Stores &amp; prices <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="openAddStoreModal()">＋ Add store</button></span></h2>
+    <div id="sdStoresPricesBody" class="sd-pricelist"><div class="plk-empty"><div class="spinner"></div></div></div>
   </div>
 
   <!-- Monthly Billing board (toggle view) -->
@@ -1361,21 +1448,36 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
       <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">Generate statements</button>
     </div>
-    <div class="billing-modes" style="display:flex;gap:8px;margin:14px 0">
-      <button type="button" class="btn btn-sm" id="billModeAll" onclick="setBillingMode('all')">Bills</button>
-      <button type="button" class="btn btn-sm" id="billModeDocuments" onclick="setBillingMode('documents')">Documents</button>
+    <div class="sd-viewseg sd-billseg" role="tablist" aria-label="Billing view">
+      <button type="button" role="tab" id="billModeAll" onclick="setBillingMode('all')">Bills</button>
+      <button type="button" role="tab" id="billModeDocuments" onclick="setBillingMode('documents')">Documents</button>
     </div>
-    <div id="billAllFilters" class="filter-bar billing-filters" style="flex-wrap:wrap;gap:12px">
-      <label>Period<select class="form-input" id="billMonth" onchange="renderBillingAll()"><option value="">All time</option></select></label>
-      <label>Store<select class="form-input" id="billStore" onchange="billFocusStore=this.value;renderBillingAll()"><option value="">All stores</option></select></label>
-      <label>Status<select class="form-input" id="billStatus" onchange="renderBillingAll()">
+    <div id="billAllFilters" class="sd-billfilters">
+      <label class="sd-pickbtn">
+        <span class="sd-pickico" aria-hidden="true">📅</span>
+        <span class="sd-picktext"><small>Period</small><b data-pick-label="billMonth">All time</b></span>
+        <span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="billMonth" onchange="renderBillingAll()" aria-label="Period"><option value="">All time</option></select>
+      </label>
+      <label class="sd-pickbtn">
+        <span class="sd-pickico" aria-hidden="true">🏪</span>
+        <span class="sd-picktext"><small>Store</small><b data-pick-label="billStore">All stores</b></span>
+        <span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="billStore" onchange="billFocusStore=this.value;renderBillingAll()" aria-label="Store"><option value="">All stores</option></select>
+      </label>
+      <label class="sd-pickbtn">
+        <span class="sd-pickico" aria-hidden="true">🏷️</span>
+        <span class="sd-picktext"><small>Status</small><b data-pick-label="billStatus">All statuses</b></span>
+        <span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="billStatus" onchange="renderBillingAll()" aria-label="Status">
         <option value="all">All statuses</option>
         <option value="owed">Billed and unpaid</option>
         <option value="paid">Paid</option>
         <option value="unbilled">Not billed yet</option>
         <option value="open">All unpaid</option>
         <option value="cancelled">Cancelled</option>
-      </select></label>
+      </select>
+      </label>
     </div>
     <div id="billStoreShare" class="fw-actions" style="margin:10px 0"></div>
     <div id="billAllSummary" class="stat-grid" style="display:none"></div>
@@ -1852,33 +1954,43 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
 <!-- LOG DELIVERY MODAL -->
 <div class="modal-backdrop" id="logDeliveryModal">
-  <div class="modal-box" style="max-width:480px">
-    <h2 class="modal-title">Log Store Delivery</h2>
+  <div class="modal-box ld-box" role="dialog" aria-modal="true" aria-labelledby="ldTitle">
+    <header class="ld-head">
+      <h2 id="ldTitle">Log store delivery</h2>
+      <button type="button" class="plx-close" aria-label="Close" onclick="closeLogDeliveryModal()">✕</button>
+    </header>
     <input type="hidden" id="editDeliveryId"/>
-    <div class="form-group">
-      <label class="form-label">Store</label>
-      <select class="form-input" id="ldStore" onchange="updateDeliveryPreview()"></select>
+    <div class="ld-body">
+      <label class="sd-pickbtn big">
+        <span class="sd-pickico" aria-hidden="true">🏪</span>
+        <span class="sd-picktext"><small>Store</small><b id="ldStoreLabel">Choose a store</b></span>
+        <span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="ldStore" onchange="updateDeliveryPreview()" aria-label="Store"></select>
+      </label>
+      <div class="ld-dates" role="group" aria-label="Delivery date">
+        <button type="button" class="ld-day" data-ld-day="0" onclick="ldSetDay(0)">Today</button>
+        <button type="button" class="ld-day" data-ld-day="-1" onclick="ldSetDay(-1)">Yesterday</button>
+        <label class="ld-day ld-datebtn"><span aria-hidden="true">📅</span> <span id="ldDateLabel">Other date</span>
+          <input type="date" id="ldDate" onchange="updateDeliveryPreview()" onclick="try{this.showPicker()}catch(_){}" aria-label="Pick a date"/></label>
+      </div>
+      <div class="ld-qty">
+        <div class="ld-row"><div class="ld-row-name"><b>Large bottles</b><small id="ldPriceLarge"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldLarge',-1)" aria-label="One less large">−</button><input type="number" inputmode="numeric" min="0" id="ldLarge" value="0" oninput="updateDeliveryPreview()" aria-label="Large bottles"/><button type="button" onclick="ldStep('ldLarge',1)" aria-label="One more large">+</button></div></div>
+        <div class="ld-row"><div class="ld-row-name"><b>Small bottles</b><small id="ldPriceSmall"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldSmall',-1)" aria-label="One less small">−</button><input type="number" inputmode="numeric" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()" aria-label="Small bottles"/><button type="button" onclick="ldStep('ldSmall',1)" aria-label="One more small">+</button></div></div>
+        <div class="ld-row"><div class="ld-row-name"><b>Dairy free</b><small id="ldPriceDairyFree"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldDairyFree',-1)" aria-label="One less dairy free">−</button><input type="number" inputmode="numeric" min="0" id="ldDairyFree" value="0" oninput="updateDeliveryPreview()" aria-label="Dairy free"/><button type="button" onclick="ldStep('ldDairyFree',1)" aria-label="One more dairy free">+</button></div></div>
+        <div class="ld-row"><div class="ld-row-name"><b>Unfiltered liter</b><small id="ldPriceUnfiltered"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldUnfiltered',-1)" aria-label="One less unfiltered">−</button><input type="number" inputmode="numeric" min="0" id="ldUnfiltered" value="0" oninput="updateDeliveryPreview()" aria-label="Unfiltered liter"/><button type="button" onclick="ldStep('ldUnfiltered',1)" aria-label="One more unfiltered">+</button></div></div>
+        <div class="ld-row"><div class="ld-row-name"><b>Syrups</b><small id="ldPriceSyrup"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldSyrup',-1)" aria-label="One less syrup">−</button><input type="number" inputmode="numeric" min="0" id="ldSyrup" value="0" oninput="updateDeliveryPreview()" aria-label="Syrups"/><button type="button" onclick="ldStep('ldSyrup',1)" aria-label="One more syrup">+</button></div></div>
+      </div>
+      <details class="ld-more"><summary>Other products (jerry cans, dispensers…)</summary><div id="ldExtraRows"></div></details>
+      <input class="form-input ld-notes" id="ldNotes" placeholder="Notes (optional)"/>
+      <p class="ld-hint">Save the bottle totals here. You can choose flavors after saving.</p>
     </div>
-    <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="ldDate"/></div>
-    <div class="form-row-3">
-      <div class="form-group"><label class="form-label">Large Bottles</label><input class="form-input" type="number" min="0" id="ldLarge" value="0" oninput="updateDeliveryPreview()"/></div>
-      <div class="form-group"><label class="form-label">Small Bottles</label><input class="form-input" type="number" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()"/></div>
-      <div class="form-group"><label class="form-label">Dairy Free</label><input class="form-input" type="number" min="0" id="ldDairyFree" value="0" oninput="updateDeliveryPreview()"/></div>
-      <div class="form-group"><label class="form-label">Unfiltered Liter</label><input class="form-input" type="number" min="0" id="ldUnfiltered" value="0" oninput="updateDeliveryPreview()"/></div>
-      <div class="form-group"><label class="form-label">Syrups</label><input class="form-input" type="number" min="0" id="ldSyrup" value="0" oninput="updateDeliveryPreview()"/></div>
-    </div>
-    <div id="deliveryPreview" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:16px;display:none">
-      <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px">Delivery Total</div>
-      <div style="font-family:'DM Sans',sans-serif;font-size:1.6rem;color:var(--cream)" id="deliveryPreviewTotal">₪0</div>
-      <div style="font-size:.78rem;color:var(--text2);margin-top:4px" id="deliveryPreviewBreakdown"></div>
-    </div>
-    <details class="form-group"><summary>Other products (jerry cans, dispensers…)</summary><div id="ldExtraRows"></div></details>
-    <p style="font-size:.78rem;color:var(--text2)">Save the bottle totals here. You can optionally specify flavors after saving.</p>
-    <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" id="ldNotes" placeholder="Any notes…"/></div>    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-amber" id="saveDeliveryBtn" onclick="saveDelivery()">Save Delivery</button>
-      <button class="btn btn-outline" onclick="closeLogDeliveryModal()">Cancel</button>
-      <button class="btn btn-red btn-sm" id="deleteDeliveryBtn" style="margin-left:auto;display:none" onclick="deleteDelivery()">Delete</button>
-    </div>
+    <footer class="ld-foot">
+      <div id="deliveryPreview" class="ld-total"><small>Total</small><b id="deliveryPreviewTotal">₪0</b><span id="deliveryPreviewBreakdown"></span></div>
+      <div class="ld-actions">
+        <button type="button" class="ld-delete" id="deleteDeliveryBtn" style="display:none" onclick="deleteDelivery()" aria-label="Delete delivery" title="Delete delivery">🗑</button>
+        <button type="button" class="ld-save" id="saveDeliveryBtn" onclick="saveDelivery()">Save Delivery</button>
+      </div>
+    </footer>
   </div>
 </div>
 <!-- Optional stock detail after a delivery has been saved -->
@@ -6676,24 +6788,224 @@ function populateStoreSelects() {
       allStores.filter(s => s.is_active).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
   }
   if (ldStore) {
-    ldStore.innerHTML = allStores.filter(s => s.is_active)
-      .map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    const keep = ldStore.value;
+    ldStore.innerHTML = '<option value="">Choose a store</option>' + allStores.filter(s => s.is_active)
+      .map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+    if (keep && [...ldStore.options].some(o => o.value === keep)) ldStore.value = keep;
   }
+}
+
+// ── Store Deliveries: view switch, month and store buttons ──
+function sdShowView(view) {
+  const billingOn = document.getElementById('sdBillingView').style.display !== 'none';
+  if ((view === 'billing') !== billingOn) toggleBillingBoard();
+  document.getElementById('sdViewDeliveries')?.classList.toggle('on', view !== 'billing');
+  document.getElementById('sdViewBilling')?.classList.toggle('on', view === 'billing');
+  document.getElementById('sdViewDeliveries')?.setAttribute('aria-selected', String(view !== 'billing'));
+  document.getElementById('sdViewBilling')?.setAttribute('aria-selected', String(view === 'billing'));
+}
+function sdMonthName(val) {
+  const [y, m] = String(val || '').split('-').map(Number);
+  if (!y || !m) return 'This month';
+  return new Date(y, m - 1, 15).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+function sdSyncFilterLabels() {
+  const month = getSDMonth();
+  const label = document.getElementById('sdMonthLabel');
+  if (label) label.textContent = sdMonthName(month);
+  const sel = document.getElementById('sdStoreFilter');
+  const storeLabel = document.getElementById('sdStoreLabel');
+  if (sel && storeLabel) storeLabel.textContent = sel.value === 'all' ? 'All stores' : (sel.options[sel.selectedIndex]?.text || 'All stores');
+}
+function sdShiftMonth(delta) {
+  const [y, m] = getSDMonth().split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  document.getElementById('sdMonth').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  sdMonthChanged();
+}
+function sdMonthChanged() { sdSyncFilterLabels(); loadStoreDeliveries(); }
+function sdStoreChanged() { sdSyncFilterLabels(); loadStoreDeliveries(); }
+function sdFocusStore(id) {
+  const sel = document.getElementById('sdStoreFilter');
+  if (!sel) return;
+  sel.value = sel.value === id ? 'all' : id;
+  sdStoreChanged();
+  document.getElementById('sdDeliveryFilters')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+const sdMoney = (n) => { const v = Math.round((Number(n) || 0) * 100) / 100; return '₪' + v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+function sdItemsLine(d) {
+  const parts = [];
+  if (d.qty_large) parts.push(`${d.qty_large} large`);
+  if (d.qty_small) parts.push(`${d.qty_small} small`);
+  if (d.qty_dairy_free) parts.push(`${d.qty_dairy_free} dairy free`);
+  if (d.qty_unfiltered) parts.push(`${d.qty_unfiltered} unfiltered`);
+  if (d.qty_syrup) parts.push(`${d.qty_syrup} syrup${d.qty_syrup === 1 ? '' : 's'}`);
+  const extras = Object.entries(d.quantities || {}).filter(([id, q]) => !id.startsWith('_agg_') && Number(q) > 0 && typeof LD_PRODUCTS !== 'undefined' && !GremierDelivery.bucket(id, LD_PRODUCTS));
+  extras.forEach(([id, q]) => parts.push(`${q} ${(LD_PRODUCTS[id]?.label || id.replace(/_/g, ' ')).toLowerCase()}`));
+  return parts;
+}
+function sdBillTiles(t) {
+  const tile = (label, value, sub, cls) => `<div class="sd-tile${cls ? ' ' + cls : ''}"><small>${label}</small><b>${value}</b><span>${sub}</span></div>`;
+  return tile('Owed', t.owed, t.owedSub, t.owedOn ? 'warn' : '') + tile('Billed', t.billed, t.billedSub) + tile('Paid', t.paid, t.paidSub, 'ok') + tile('Unbilled', t.unbilled, t.unbilledSub);
 }
 
 function renderStoresPricesTable() {
   const body = document.getElementById('sdStoresPricesBody');
   if (!body) return;
-  if (!allStores.length) { body.innerHTML = '<tr><td colspan="5" class="empty-state">No stores yet.</td></tr>'; return; }
-  body.innerHTML = allStores.map(s => `<tr>
-    <td style="color:var(--cream)">${escHtml(s.name)}${!s.is_active ? ' <span style="color:var(--text2);font-size:.72rem">(inactive)</span>' : ''}</td>
-    <td>₪${parseFloat(s.price_large || 0).toFixed(2)}</td>
-    <td>₪${parseFloat(s.price_small || 0).toFixed(2)}</td>
-    <td>${s.price_dairy_free > 0 ? '₪' + parseFloat(s.price_dairy_free).toFixed(2) : '—'}</td>
-    <td>${s.price_unfiltered > 0 ? '₪' + parseFloat(s.price_unfiltered).toFixed(2) : '—'}</td>
-    <td>${s.price_syrup > 0 ? '₪' + parseFloat(s.price_syrup).toFixed(2) : '—'}</td>
-    <td class="cell-actions"><button class="btn btn-outline btn-sm" onclick="openAddStoreModal('${s.id}')">Edit</button></td>
-  </tr>`).join('');
+  if (!allStores.length) { body.innerHTML = '<div class="oc-empty">No stores yet. Add your first store.</div>'; return; }
+  const price = (label, v) => Number(v) > 0 ? `<span class="sd-price"><small>${label}</small>₪${Number(v).toFixed(Number(v) % 1 ? 2 : 0)}</span>` : '';
+  body.innerHTML = allStores.map(s => `<div class="sd-pricecard${s.is_active ? '' : ' off'}">
+    <div class="sd-pricecard-top"><span class="sd-avatar" aria-hidden="true">${escHtml((s.name || '?').trim().charAt(0).toUpperCase())}</span>
+      <b>${escHtml(s.name)}</b>${s.is_active ? '' : '<span class="plk-tag">Inactive</span>'}
+      <button type="button" class="sd-edit" onclick="openAddStoreModal('${s.id}')">Edit</button></div>
+    <div class="sd-prices">${price('Large', s.price_large)}${price('Small', s.price_small)}${price('Dairy free', s.price_dairy_free)}${price('Unfiltered', s.price_unfiltered)}${price('Syrup', s.price_syrup)}</div>
+  </div>`).join('');
+}
+
+function renderBillingMiniStats(rows) {
+  const el = document.getElementById('sdBillingMiniStats');
+  if (!el) return;
+  const amount = r => Number(r.total || 0);
+  rows = rows.filter(r => !r.cancelled_at);
+  const billedRows = rows.filter(r => !!r.billed_at);
+  const paidRows = rows.filter(r => !!r.paid_at);
+  const owedRows = rows.filter(r => !!r.billed_at && !r.paid_at);
+  const unbilledRows = rows.filter(r => !r.billed_at);
+  const sum = (list) => list.reduce((s, r) => s + amount(r), 0);
+  el.innerHTML = sdBillTiles({
+    owed: sdMoney(sum(owedRows)), owedSub: `${owedRows.length} not paid`, owedOn: sum(owedRows) > 0,
+    billed: sdMoney(sum(billedRows)), billedSub: `${billedRows.length} sent`,
+    paid: sdMoney(sum(paidRows)), paidSub: `${paidRows.length} paid`,
+    unbilled: sdMoney(sum(unbilledRows)), unbilledSub: `${unbilledRows.length} not billed`,
+  });
+}
+
+function renderDeliveriesTable() {
+  const body = document.getElementById('sdDeliveriesBody');
+  if (!body) return;
+  const count = document.getElementById('sdDelCount');
+  if (count) count.textContent = allDeliveries.length || '';
+  if (!allDeliveries.length) {
+    body.innerHTML = `<div class="sd-empty"><span aria-hidden="true">🏪</span><b>No deliveries in ${escHtml(sdMonthName(getSDMonth()))}</b><small>Log one when you drop bottles at a store.</small><button type="button" class="sd-empty-btn" onclick="openLogDeliveryModal()">＋ Log delivery</button></div>`;
+    return;
+  }
+  const byDay = new Map();
+  allDeliveries.forEach(d => { if (!byDay.has(d.delivery_date)) byDay.set(d.delivery_date, []); byDay.get(d.delivery_date).push(d); });
+  const today = localDateStr(new Date());
+  body.innerHTML = [...byDay.entries()].map(([day, list]) => {
+    const label = day === today ? 'Today' : new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const dayTotal = list.reduce((s, d) => s + deliveryTotal(d), 0);
+    return `<div class="sd-day"><h3 class="ob-day-h">${label}<span>${sdMoney(dayTotal)}</span></h3>${list.map(d => {
+      const name = d.store_name || d.stores?.name || '—';
+      const items = sdItemsLine(d);
+      return `<div class="sd-card" onclick="openEditDeliveryModal('${d.id}')" role="button" tabindex="0" title="Edit delivery">
+        <span class="sd-avatar" aria-hidden="true">${escHtml(name.trim().charAt(0).toUpperCase())}</span>
+        <div class="sd-main"><b>${escHtml(name)}</b>
+          <span class="sd-items">${items.length ? items.map(t => `<span>${escHtml(t)}</span>`).join('') : '<span>No items</span>'}</span>
+          ${d.notes ? `<small class="sd-note">📝 ${escHtml(d.notes)}</small>` : ''}</div>
+        <div class="sd-side"><b>${sdMoney(deliveryTotal(d))}</b>
+          <button type="button" class="sd-del" aria-label="Delete delivery" title="Delete delivery" onclick="event.stopPropagation();deleteDeliveryById('${d.id}')">🗑</button></div>
+      </div>`;
+    }).join('')}</div>`;
+  }).join('');
+}
+
+function renderSDStats() {
+  sdSyncFilterLabels();
+  const el = document.getElementById('sdStats');
+  if (!el) return;
+  const totalRevenue = allDeliveries.reduce((s, d) => s + deliveryTotal(d), 0);
+  const regularLarge = allDeliveries.reduce((s, d) => s + Number(d.qty_large || 0), 0);
+  const unfilteredLarge = allDeliveries.reduce((s, d) => s + Number(d.qty_unfiltered || 0), 0);
+  const totalSmall = allDeliveries.reduce((s, d) => s + (d.qty_small || 0), 0);
+  const totalDairy = allDeliveries.reduce((s, d) => s + (d.qty_dairy_free || 0), 0);
+  const totalSyrup = allDeliveries.reduce((s, d) => s + (d.qty_syrup || 0), 0);
+  const activeStores = new Set(allDeliveries.map(d => d.store_id)).size;
+  const sel = document.getElementById('sdStoreFilter');
+  const storeName = sel && sel.value !== 'all' ? sel.options[sel.selectedIndex]?.text : '';
+  document.getElementById('sdHeroMonth').textContent = `${storeName ? storeName + ' · ' : 'Store sales · '}${sdMonthName(getSDMonth())}`;
+  document.getElementById('sdHeroTotal').textContent = sdMoney(totalRevenue);
+  document.getElementById('sdHeroRuns').textContent = `${allDeliveries.length} deliver${allDeliveries.length === 1 ? 'y' : 'ies'}${storeName ? '' : ` · ${activeStores} store${activeStores === 1 ? '' : 's'}`}`;
+  const chip = (n, label) => `<span class="sd-chip"><b>${n}</b> ${label}</span>`;
+  el.innerHTML = chip(regularLarge + unfilteredLarge, `large${unfilteredLarge ? ` <small>(${unfilteredLarge} unfiltered)</small>` : ''}`)
+    + chip(totalSmall, 'small') + (totalDairy ? chip(totalDairy, 'dairy free') : '') + chip(totalSyrup, `syrup${totalSyrup === 1 ? '' : 's'}`);
+}
+
+function renderStoreBlocks() {
+  const el = document.getElementById('sdStoreBlocks');
+  const head = document.getElementById('sdByStoreHead');
+  if (!el) return;
+  const map = {};
+  allDeliveries.forEach(d => {
+    const sid = d.store_id;
+    if (!map[sid]) map[sid] = { id: sid, name: d.store_name || allStores.find(s => s.id === sid)?.name || '—', runs: 0, large: 0, small: 0, dairy: 0, unfiltered: 0, syrup: 0, total: 0 };
+    const g = map[sid];
+    g.runs++; g.large += d.qty_large || 0; g.small += d.qty_small || 0; g.dairy += d.qty_dairy_free || 0;
+    g.unfiltered += d.qty_unfiltered || 0; g.syrup += d.qty_syrup || 0; g.total += deliveryTotal(d);
+  });
+  const groups = Object.values(map).sort((a, b) => b.total - a.total);
+  // One store already chosen above: the per-store breakdown would only repeat the summary.
+  const single = (document.getElementById('sdStoreFilter')?.value || 'all') !== 'all';
+  if (head) head.hidden = !groups.length || single;
+  el.hidden = !groups.length || single;
+  if (!groups.length || single) { el.innerHTML = ''; return; }
+  const top = groups[0].total || 1;
+  el.innerHTML = groups.map(g => {
+    const bits = [g.large && `${g.large} large`, g.small && `${g.small} small`, g.dairy && `${g.dairy} dairy free`, g.unfiltered && `${g.unfiltered} unfiltered`, g.syrup && `${g.syrup} syrup`].filter(Boolean).join(' · ');
+    return `<button type="button" class="sd-storecard" onclick="sdFocusStore('${g.id}')" title="Show only ${escAttr(g.name)}">
+      <span class="sd-storecard-top"><b>${escHtml(g.name)}</b><strong>${sdMoney(g.total)}</strong></span>
+      <span class="sd-bar"><span style="width:${Math.max(4, Math.round(g.total / top * 100))}%"></span></span>
+      <small>${bits || 'No items'} · ${g.runs} deliver${g.runs === 1 ? 'y' : 'ies'}</small>
+    </button>`;
+  }).join('');
+}
+
+// Log delivery form: steppers, quick dates, store button label, live total.
+function ldStep(id, delta) {
+  const input = document.getElementById(id);
+  input.value = Math.max(0, (parseInt(input.value, 10) || 0) + delta);
+  updateDeliveryPreview();
+}
+function ldSetDay(offset) {
+  const d = new Date(); d.setDate(d.getDate() + offset);
+  document.getElementById('ldDate').value = localDateStr(d);
+  updateDeliveryPreview();
+}
+function ldSyncFormLabels(store) {
+  const sel = document.getElementById('ldStore');
+  const storeLabel = document.getElementById('ldStoreLabel');
+  if (storeLabel) {
+    storeLabel.textContent = store ? store.name : 'Choose a store';
+    storeLabel.closest('.sd-pickbtn')?.classList.toggle('empty', !store);
+  }
+  const each = (v) => store ? (Number(v) > 0 ? `₪${Number(v)} each` : 'No price set') : '';
+  [['ldPriceLarge', store?.price_large], ['ldPriceSmall', store?.price_small], ['ldPriceDairyFree', store?.price_dairy_free], ['ldPriceUnfiltered', store?.price_unfiltered], ['ldPriceSyrup', store?.price_syrup]]
+    .forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.textContent = each(v); });
+  const date = document.getElementById('ldDate')?.value || '';
+  const today = localDateStr(new Date());
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const which = date === today ? '0' : date === localDateStr(y) ? '-1' : 'other';
+  document.querySelectorAll('#logDeliveryModal .ld-day').forEach(b => b.classList.toggle('on', (b.dataset.ldDay || 'other') === which));
+  const dl = document.getElementById('ldDateLabel');
+  if (dl) dl.textContent = which === 'other' && date ? new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Other date';
+  document.querySelectorAll('#logDeliveryModal .ld-step input').forEach(i => i.closest('.ld-row').classList.toggle('has', (parseInt(i.value, 10) || 0) > 0));
+  const title = document.getElementById('ldTitle');
+  if (title) title.textContent = document.getElementById('editDeliveryId')?.value ? 'Edit store delivery' : 'Log store delivery';
+}
+function updateDeliveryPreview() {
+  const storeId = document.getElementById('ldStore')?.value;
+  const store = allStores.find(s => s.id === storeId);
+  ldSyncFormLabels(store);
+  const n = (id) => parseInt(document.getElementById(id).value, 10) || 0;
+  const large = n('ldLarge'), small = n('ldSmall'), dairyFree = n('ldDairyFree'), unfiltered = n('ldUnfiltered'), syrup = n('ldSyrup');
+  const totalEl = document.getElementById('deliveryPreviewTotal');
+  const breakdown = document.getElementById('deliveryPreviewBreakdown');
+  document.getElementById('deliveryPreview').style.display = '';
+  if (!store) { totalEl.textContent = '₪0'; breakdown.textContent = 'Choose a store to see the price'; return; }
+  const total = (large * (store.price_large || 0)) + (small * (store.price_small || 0)) + (dairyFree * (store.price_dairy_free || 0)) + (unfiltered * (store.price_unfiltered || 0)) + (syrup * (store.price_syrup || 0));
+  const units = large + small + dairyFree + unfiltered + syrup;
+  totalEl.textContent = sdMoney(total);
+  breakdown.textContent = units ? `${units} item${units === 1 ? '' : 's'}` : 'Add bottles below';
 }
 
 async function loadStoreDeliveries() {
@@ -6755,140 +7067,13 @@ async function loadBillingMiniStats() {
     renderBillingMiniStats(rows || []);
   } catch (err) {
     console.warn('Could not load billing mini stats', err);
-    el.innerHTML = `
-      <div class="stat-card"><div class="stat-label">Money Owed</div><div class="stat-value">—</div><div class="stat-sub">billing unavailable</div></div>
-      <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">—</div><div class="stat-sub">check store_billing</div></div>
-      <div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">—</div><div class="stat-sub">check store_billing</div></div>
-      <div class="stat-card"><div class="stat-label">Unbilled</div><div class="stat-value">—</div><div class="stat-sub">check store_billing</div></div>`;
+    el.innerHTML = sdBillTiles({ owed: '—', owedSub: 'billing unavailable', billed: '—', billedSub: '', paid: '—', paidSub: '', unbilled: '—', unbilledSub: '' });
   }
 }
 
-function renderBillingMiniStats(rows) {
-  const el = document.getElementById('sdBillingMiniStats');
-  if (!el) return;
-  const amount = r => Number(r.total || 0);
-  rows = rows.filter(r => !r.cancelled_at);
-  const billedRows = rows.filter(r => !!r.billed_at);
-  const paidRows = rows.filter(r => !!r.paid_at);
-  const owedRows = rows.filter(r => !!r.billed_at && !r.paid_at);
-  const unbilledRows = rows.filter(r => !r.billed_at);
-  const billedTotal = billedRows.reduce((sum, r) => sum + amount(r), 0);
-  const paidTotal = paidRows.reduce((sum, r) => sum + amount(r), 0);
-  const owedTotal = owedRows.reduce((sum, r) => sum + amount(r), 0);
-  const unbilledTotal = unbilledRows.reduce((sum, r) => sum + amount(r), 0);
-  el.innerHTML = `
-    <div class="stat-card" style="border-color:${owedTotal > 0 ? 'rgba(224,160,48,.55)' : 'var(--border)'}">
-      <div class="stat-label">Money Owed</div>
-      <div class="stat-value">₪${owedTotal.toFixed(0)}</div>
-      <div class="stat-sub">${owedRows.length} billed · not paid</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Billed</div>
-      <div class="stat-value">₪${billedTotal.toFixed(0)}</div>
-      <div class="stat-sub">${billedRows.length} statement${billedRows.length === 1 ? '' : 's'} sent</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Paid</div>
-      <div class="stat-value">₪${paidTotal.toFixed(0)}</div>
-      <div class="stat-sub">${paidRows.length} paid</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Unbilled</div>
-      <div class="stat-value">₪${unbilledTotal.toFixed(0)}</div>
-      <div class="stat-sub">${unbilledRows.length} not owed yet</div>
-    </div>`;
-}
 
-function renderDeliveriesTable() {
-  const body = document.getElementById('sdDeliveriesBody');
-  if (!body) return;
-  if (!allDeliveries.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-state">No deliveries this month.</td></tr>';
-    return;
-  }
-  body.innerHTML = allDeliveries.map(d => {
-    const total = deliveryTotal(d);
-    const date = new Date(d.delivery_date + 'T12:00:00').toLocaleDateString('en-IL', { day:'numeric', month:'short' });
-    return `<tr>
-      <td style="color:var(--cream)">${escHtml(d.store_name || d.stores?.name || '—')}</td>
-      <td class="cell-num">${d.qty_large || 0}</td>
-      <td class="cell-num">${d.qty_small || 0}</td>
-      <td class="cell-num">${d.qty_syrup || 0}</td>
-      <td class="cell-total" style="color:var(--cream)">₪${total.toFixed(0)}</td>
-      <td class="cell-date">${date}</td>
-      <td class="cell-actions">
-        <div class="cell-actions-wrap">
-          <button class="btn btn-outline btn-sm" onclick="openEditDeliveryModal('${d.id}')">Edit</button>
-<button type="button" class="app-icon-button danger" title="Delete delivery" aria-label="Delete delivery" onclick="event.stopPropagation();deleteDeliveryById('${d.id}')">🗑</button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
 
-function renderSDStats() {
-  const el = document.getElementById('sdStats');
-  if (!el) return;
-  const totalRevenue = allDeliveries.reduce((s, d) => s + deliveryTotal(d), 0);
-  const regularLarge = allDeliveries.reduce((s, d) => s + Number(d.qty_large || 0), 0);
-  const unfilteredLarge = allDeliveries.reduce((s, d) => s + Number(d.qty_unfiltered || 0), 0);
-  const totalLarge = regularLarge + unfilteredLarge;
-  const totalSmall = allDeliveries.reduce((s, d) => s + (d.qty_small || 0), 0);
-  const totalSyrup = allDeliveries.reduce((s, d) => s + (d.qty_syrup || 0), 0);
-  const activeStores = new Set(allDeliveries.map(d => d.store_id)).size;
-  el.innerHTML = `
-    <div class="stat-card"><div class="stat-label">Store Revenue</div><div class="stat-value">₪${totalRevenue.toFixed(0)}</div></div>
-    <div class="stat-card"><div class="stat-label">Large Bottles</div><div class="stat-value">${totalLarge}</div><div class="stat-sub">${regularLarge} regular<br>${unfilteredLarge} unfiltered</div></div>
-    <div class="stat-card"><div class="stat-label">Small Bottles</div><div class="stat-value">${totalSmall}</div></div>
-    <div class="stat-card"><div class="stat-label">Syrups</div><div class="stat-value">${totalSyrup}</div></div>
-    <div class="stat-card"><div class="stat-label">Active Stores</div><div class="stat-value">${activeStores}</div></div>
-  `;
-}
 
-function renderStoreBlocks() {
-  const el = document.getElementById('sdStoreBlocks');
-  if (!el) return;
-  // Group deliveries by store
-  const map = {};
-  allDeliveries.forEach(d => {
-    const sid = d.store_id;
-    if (!map[sid]) {
-      const store = allStores.find(s => s.id === sid);
-      map[sid] = {
-        name: d.store_name || store?.name || '—',
-        store,
-        deliveries: [],
-        totalLarge: 0, totalSmall: 0, totalDairyFree: 0, totalUnfiltered: 0, totalSyrup: 0, totalRevenue: 0,
-      };
-    }
-    map[sid].deliveries.push(d);
-    map[sid].totalLarge += d.qty_large || 0;
-    map[sid].totalSmall += d.qty_small || 0;
-    map[sid].totalDairyFree += d.qty_dairy_free || 0;
-    map[sid].totalUnfiltered += d.qty_unfiltered || 0;
-    map[sid].totalSyrup += d.qty_syrup || 0;
-    map[sid].totalRevenue += deliveryTotal(d);
-  });
-  if (!Object.keys(map).length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px">` +
-    Object.values(map).sort((a,b) => b.totalRevenue - a.totalRevenue).map(g => {
-      const s = g.store;
-      const lines = [];
-      if (g.totalLarge > 0) lines.push(`${g.totalLarge} large × ₪${s?.price_large||0} = ₪${(g.totalLarge*(s?.price_large||0)).toFixed(0)}`);
-      if (g.totalSmall > 0) lines.push(`${g.totalSmall} small × ₪${s?.price_small||0} = ₪${(g.totalSmall*(s?.price_small||0)).toFixed(0)}`);
-      if (g.totalDairyFree > 0) lines.push(`${g.totalDairyFree} dairy free × ₪${s?.price_dairy_free||0} = ₪${(g.totalDairyFree*(s?.price_dairy_free||0)).toFixed(0)}`);
-      if (g.totalUnfiltered > 0) lines.push(`${g.totalUnfiltered} unfiltered × ₪${s?.price_unfiltered||0} = ₪${(g.totalUnfiltered*(s?.price_unfiltered||0)).toFixed(0)}`);
-      if (g.totalSyrup > 0) lines.push(`${g.totalSyrup} syrup × ₪${s?.price_syrup||0} = ₪${(g.totalSyrup*(s?.price_syrup||0)).toFixed(0)}`);
-      return `<div class="card" style="padding:16px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div style="font-weight:600;color:var(--cream)">${escHtml(g.name)}</div>
-          <div style="font-family:'DM Sans',sans-serif;font-size:1.2rem;color:var(--cream)">₪${g.totalRevenue.toFixed(0)}</div>
-        </div>
-        <div style="font-size:.78rem;color:var(--text2);line-height:1.8">${lines.join('<br>') || 'No deliveries'}</div>
-        <div style="margin-top:10px;font-size:.72rem;color:var(--text2)">${g.deliveries.length} delivery run${g.deliveries.length !== 1 ? 's' : ''}</div>
-      </div>`;
-    }).join('') + `</div>`;
-}
 
 // ── Store modal ──
 function openAddStoreModal(storeId) {
@@ -7127,9 +7312,10 @@ async function openLogDeliveryModal() {
   document.getElementById('ldSyrup').value = '0';
   document.getElementById('ldNotes').value = '';
   document.getElementById('deleteDeliveryBtn').style.display = 'none';
-  document.getElementById('deliveryPreview').style.display = 'none';
   populateStoreSelects();
+  document.getElementById('ldStore').value = '';
   ldRenderProductRows();
+  updateDeliveryPreview();
   document.getElementById('logDeliveryModal').classList.add('open');
 }
 
@@ -7167,31 +7353,6 @@ async function openEditDeliveryModal(deliveryId) {
 
 function closeLogDeliveryModal() { document.getElementById('logDeliveryModal').classList.remove('open'); }
 
-function updateDeliveryPreview() {
-  const storeId = document.getElementById('ldStore')?.value;
-  const store = allStores.find(s => s.id === storeId);
-  if (!store) return;
-  const large = parseInt(document.getElementById('ldLarge').value) || 0;
-  const small = parseInt(document.getElementById('ldSmall').value) || 0;
-  const dairyFree = parseInt(document.getElementById('ldDairyFree').value) || 0;
-  const unfiltered = parseInt(document.getElementById('ldUnfiltered').value) || 0;
-  const syrup = parseInt(document.getElementById('ldSyrup').value) || 0;
-  const total = (large * store.price_large) + (small * store.price_small) + (dairyFree * (store.price_dairy_free || 0)) + (unfiltered * (store.price_unfiltered || 0)) + (syrup * (store.price_syrup || 0));
-  const preview = document.getElementById('deliveryPreview');
-  const lines = [];
-  if (large > 0) lines.push(`${large} large × ₪${store.price_large} = ₪${(large*store.price_large).toFixed(0)}`);
-  if (small > 0) lines.push(`${small} small × ₪${store.price_small} = ₪${(small*store.price_small).toFixed(0)}`);
-  if (dairyFree > 0) lines.push(`${dairyFree} dairy free × ₪${store.price_dairy_free||0} = ₪${(dairyFree*(store.price_dairy_free||0)).toFixed(0)}`);
-  if (unfiltered > 0) lines.push(`${unfiltered} unfiltered × ₪${store.price_unfiltered||0} = ₪${(unfiltered*(store.price_unfiltered||0)).toFixed(0)}`);
-  if (syrup > 0) lines.push(`${syrup} syrup × ₪${store.price_syrup||0} = ₪${(syrup*(store.price_syrup||0)).toFixed(0)}`);
-  if (total > 0 || large > 0 || small > 0 || dairyFree > 0 || unfiltered > 0 || syrup > 0) {
-    preview.style.display = 'block';
-    document.getElementById('deliveryPreviewTotal').textContent = `₪${total.toFixed(2)}`;
-    document.getElementById('deliveryPreviewBreakdown').innerHTML = lines.join(' · ');
-  } else {
-    preview.style.display = 'none';
-  }
-}
 
 async function saveDelivery() {
   const btn = document.getElementById('saveDeliveryBtn');
@@ -7310,7 +7471,7 @@ function toggleBillingBoard() {
   billing.style.display = showingBilling ? '' : 'none';
   document.getElementById('sdDeliveryFilters').style.display = showingBilling ? 'none' : '';
   document.getElementById('sdMonthStats').style.display = showingBilling ? 'none' : '';
-  btn.textContent = showingBilling ? '🏪 Store Deliveries' : '🧾 Monthly Billing';
+  if (btn) btn.textContent = showingBilling ? 'Deliveries' : 'Billing';
   if (showingBilling) loadBillingBoard();
 }
 
@@ -7522,8 +7683,9 @@ function focusBillStore(id) {
 function syncBillingModeUI() {
   const documents = billingMode === 'documents';
   const archive = document.getElementById('billingDocumentFilters'); if (archive) archive.hidden = !documents;
-  const docButton = document.getElementById('billModeDocuments'); if (docButton) docButton.className = 'btn btn-sm ' + (documents ? 'btn-amber' : 'btn-outline');
-  const bills = document.getElementById('billModeAll'); if (bills) bills.className = 'btn btn-sm ' + (documents ? 'btn-outline' : 'btn-amber');
+  const docButton = document.getElementById('billModeDocuments'); if (docButton) { docButton.classList.toggle('on', documents); docButton.setAttribute('aria-selected', documents); }
+  const bills = document.getElementById('billModeAll'); if (bills) { bills.classList.toggle('on', !documents); bills.setAttribute('aria-selected', !documents); }
+  document.querySelectorAll('#billAllFilters [data-pick-label]').forEach(b => { const sel = document.getElementById(b.dataset.pickLabel); b.textContent = sel?.selectedOptions[0]?.textContent || ''; });
   document.getElementById('billAllFilters').style.display = documents ? 'none' : 'flex';
   document.getElementById('billAllSummary').style.display = documents ? 'none' : '';
   document.getElementById('billStoreShare').style.display = documents ? 'none' : '';
