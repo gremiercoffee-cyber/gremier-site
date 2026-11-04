@@ -62,6 +62,15 @@
     return !!place && (place.source === 'google' ? (place.precision === 'building' || place.confirmed === true) : place.source === 'pin' && place.confirmed === true);
   }
 
+  /* Is address lookup working on this page? 'unknown' until checked. Checkout only insists on a
+     selection once it is known to work; otherwise the order goes through and is flagged for review. */
+  let lookup = 'unknown', probe = null;
+  function checkLookup() {
+    // An empty search answers without calling Google: 503 when no key is set, otherwise no suggestions.
+    if (!probe) probe = call({ action: 'autocomplete', input: '' }).then(() => { lookup = 'up'; }, (e) => { if (e.unavailable) lookup = 'down'; });
+    return probe;
+  }
+
   function endpoint() {
     const url = root.GREMIER_PLACES_URL || (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL + '/functions/v1/places' : '');
     const key = typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : '';
@@ -116,12 +125,13 @@
       try {
         const data = await call({ action: 'autocomplete', input: q, session, lang: he() ? 'he' : 'en' });
         if (mine !== seq) return;
+        lookup = 'up';
         list = data.suggestions || []; active = -1; note = list.length ? '' : t('noResults');
         if (status === 'unavailable') status = 'typing';
       } catch (e) {
         if (mine !== seq) return;
         list = [];
-        if (e.unavailable) { status = 'unavailable'; opts.onChange?.(value()); }
+        if (e.unavailable) { lookup = 'down'; status = 'unavailable'; opts.onChange?.(value()); }
       }
       render();
     }
@@ -177,12 +187,17 @@
 
     const api = {
       value,
-      set(v) { input.value = v?.text || ''; place = v?.place || null; status = place ? 'selected' : (input.value ? 'typing' : 'empty'); list = []; note = ''; render(); },
-      ready() { return status === 'unavailable' || placeReady(place); },
+      set(v) {
+        input.value = v?.text || ''; place = v?.place || null; status = place ? 'selected' : (input.value ? 'typing' : 'empty'); list = []; note = ''; render();
+        // A saved address without a chosen place: show the matching suggestions so it can be picked.
+        if (!place && input.value.trim().length >= 2) checkLookup().then(() => { if (lookup === 'up' && !place) search(); });
+      },
+      ready() { return status === 'unavailable' || lookup !== 'up' || placeReady(place); },
       problem() { return api.ready() ? '' : (place ? t('confirmNeeded') : t('pick')); },
       destroy() { box.remove(); },
     };
     render();
+    checkLookup();
     return api;
   }
 
