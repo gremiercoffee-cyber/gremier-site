@@ -8,6 +8,7 @@ import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "../_shared/engage.ts";
 import { shabbatGuaranteedZone, shabbatPromoActive } from "../_shared/weekly-promo.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
+import { pickAddress } from "../_shared/delivery-address.ts";
 import { linkJourneyOrder } from "../_shared/web-journey-model.ts";
 
 const corsHeaders = {
@@ -248,7 +249,8 @@ Deno.serve(async (req) => {
     const customerPhone = cleanText(body.customer_phone, 40);
     const deliveryAddress = cleanText(body.delivery_address, 300);
     // Only the customer's delivery choices — every other delivery_info field is server-set.
-    const deliveryInfo = pickDeliveryChoice(body.delivery_info);
+    // Plus the address pieces (typed street, selected Google place, apartment details), each validated.
+    const deliveryInfo = { ...pickDeliveryChoice(body.delivery_info), ...(body.delivery_info?.delivery_type === "pickup" ? {} : pickAddress(body.delivery_info)) };
 
     if (!customerName || !customerEmail || !customerPhone || (deliveryInfo.delivery_type !== "pickup" && !deliveryAddress)) {
       return json({ error: "Missing customer details" }, 400);

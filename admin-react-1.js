@@ -84,7 +84,9 @@ function rowToJob2(r) {
     websiteOrderId: r.website_order_id || null,
     customerPhone: r.customer_phone || null,
     waSentAt: r.wa_sent_at || null,
-    sourceBrewId: r.source_brew_id || null
+    sourceBrewId: r.source_brew_id || null,
+    deliveryLocation: r.delivery_location || null,
+    deliveryDetails: r.delivery_details || null
   };
 }
 function jobToRow2(job) {
@@ -121,6 +123,13 @@ function jobToRow2(job) {
     paid: job.paid || false,
     website_order_id: job.websiteOrderId || null,
     customer_phone: job.customerPhone || null,
+    // Only sent when set, so jobs without an address (brews, store runs) never touch these columns.
+    ...(job.deliveryLocation !== undefined ? {
+      delivery_location: job.deliveryLocation
+    } : {}),
+    ...(job.deliveryDetails !== undefined ? {
+      delivery_details: job.deliveryDetails
+    } : {}),
     wa_sent_at: job.waSentAt || null,
     source_brew_id: job.sourceBrewId || job.source_brew_id || null
   };
@@ -455,6 +464,9 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     subType: 'private',
     privateName: websiteOrderDisplayLabel2(order),
     privateAddress: order?.delivery_address || '',
+    // The customer's chosen Google place and apartment details travel with the delivery.
+    deliveryLocation: order?.delivery_info?.address_place || null,
+    deliveryDetails: order?.delivery_info?.address_details || null,
     customerPhone: order?.customer_phone || '',
     websiteOrderId: order?.order_id || order?.id || null,
     quantities,
@@ -1949,7 +1961,17 @@ function JobRowComp({
       ...TS.meta,
       color: '#3f7fc4'
     }
-  }, "\uD83D\uDCCD ", job.privateAddress || job.cbAddress)), showDelete && /*#__PURE__*/React.createElement("button", {
+  }, "\uD83D\uDCCD ", job.privateAddress || job.cbAddress), job.deliveryDetails && window.GremierRoute?.detailsLine(job.deliveryDetails) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...TS.meta,
+      color: '#333'
+    }
+  }, "\uD83C\uDFE2 ", window.GremierRoute.detailsLine(job.deliveryDetails)), job.type === 'delivery' && job.deliveryType !== 'store' && (job.privateAddress || job.cbAddress) && !job.deliveryLocation && !job.websiteOrderId && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...TS.meta,
+      color: '#9a6b00'
+    }
+  }, "\u26A0 No map location: edit to choose the address")), showDelete && /*#__PURE__*/React.createElement("button", {
     "aria-label": "Delete task",
     title: "Delete task",
     style: {
@@ -2574,6 +2596,90 @@ function DaySection({
     onDelete: onDelete
   })))));
 }
+
+// The shared address picker (address-picker.js) on a delivery address input. Typing alone never sets
+// a location; the picker reports the selected Google place (or a confirmed pin) through onLocation.
+function AddressField2({
+  value,
+  location,
+  onText,
+  onLocation,
+  placeholder
+}) {
+  const ref = useRef2(null);
+  useEffect2(() => {
+    if (!ref.current || !window.GremierPlaces) return;
+    const picker = window.GremierPlaces.attach(ref.current, {
+      lang: () => /[֐-׿]/.test(ref.current?.value || '') ? 'he' : 'en',
+      onChange: v => {
+        onText(ref.current.value);
+        onLocation(v.place);
+      }
+    });
+    picker.set({
+      text: value || '',
+      place: location || null
+    });
+    return () => picker.destroy();
+  }, []);
+  return /*#__PURE__*/React.createElement("input", {
+    ref: ref,
+    style: TS.inp,
+    defaultValue: value,
+    placeholder: placeholder
+  });
+}
+// Apartment, floor, entrance, instructions: kept apart from the address and never sent to Maps.
+function DeliveryDetails2({
+  value,
+  onChange
+}) {
+  const v = value || {},
+    set = k => e => onChange({
+      ...v,
+      [k]: e.target.value
+    });
+  const half = {
+    ...TS.inp,
+    width: '100%'
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr',
+      gap: 6,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    style: half,
+    value: v.apartment || '',
+    onChange: set('apartment'),
+    placeholder: "Apt / unit",
+    maxLength: 20
+  }), /*#__PURE__*/React.createElement("input", {
+    style: half,
+    value: v.floor || '',
+    onChange: set('floor'),
+    placeholder: "Floor (e.g. 3, ground)",
+    maxLength: 20
+  }), /*#__PURE__*/React.createElement("input", {
+    style: half,
+    value: v.entrance || '',
+    onChange: set('entrance'),
+    placeholder: "Entrance / building",
+    maxLength: 40
+  })), /*#__PURE__*/React.createElement("input", {
+    style: TS.inp,
+    value: v.instructions || '',
+    onChange: set('instructions'),
+    placeholder: "Delivery instructions (e.g. call on arrival)",
+    maxLength: 200
+  }));
+}
 function ScheduleForm({
   mode,
   stores,
@@ -2710,6 +2816,9 @@ function ScheduleForm({
   const [people, setPeople] = useState2(prefill?.people ?? 25);
   const [cbName, setCbName] = useState2(prefill?.cbName || '');
   const [cbAddress, setCbAddress] = useState2(prefill?.cbAddress || '');
+  // Navigation point (Google place / confirmed pin) and apartment details, for private and coffee-bar deliveries.
+  const [deliveryLocation, setDeliveryLocation] = useState2(prefill?.deliveryLocation || null);
+  const [deliveryDetails, setDeliveryDetails] = useState2(prefill?.deliveryDetails || {});
   const [dispensers, setDispensers] = useState2(prefill?.dispensers ?? 1);
   // a brand-new job (no prefill at all) defaults all three syrups to checked/qty 1, same as before.
   // Editing an existing job instead mirrors exactly what was saved — a syrup absent from the saved
@@ -2768,6 +2877,18 @@ function ScheduleForm({
       time: logNow ? time || new Date().toTimeString().slice(0, 5) : time
     };
     if (jobType === 'delivery') {
+      // Address: the typed text stays as is; the navigation point must be an actual selected result.
+      let where = {};
+      if (subType !== 'store') {
+        const text = (subType === 'coffeebar' ? cbAddress : privateAddress).trim();
+        const details = Object.fromEntries(Object.entries(deliveryDetails || {}).map(([k, v]) => [k, String(v || '').trim()]).filter(([, v]) => v));
+        const ready = window.GremierPlaces?.placeReady(deliveryLocation);
+        if (text && !ready && !confirm('This address has no confirmed map location yet, so it will show as "needs review" in the route planner.\n\nSave anyway?')) return null;
+        where = {
+          deliveryLocation: ready ? deliveryLocation : null,
+          deliveryDetails: Object.keys(details).length ? details : null
+        };
+      }
       if (subType === 'coffeebar') {
         const canCount = Math.ceil(people / 25);
         const finalSyrups = Object.fromEntries(Object.entries(prefill?.cbSyrups || {}).filter(([pid]) => !['vanilla_syrup', 'caramel_syrup', 'sugar_syrup'].includes(pid)));
@@ -2788,6 +2909,7 @@ function ScheduleForm({
           coffeeBarConfiguration: prefill?.coffeeBarConfiguration || null,
           cbName,
           cbAddress,
+          ...where,
           dispensers,
           cbSyrups: finalSyrups,
           quantities: Object.keys(cbExtrasClean).length ? cbExtrasClean : undefined,
@@ -2802,6 +2924,7 @@ function ScheduleForm({
         storeName: subType === 'store' ? storeName : undefined,
         privateName: subType === 'private' ? privateName : undefined,
         privateAddress: subType === 'private' ? privateAddress : undefined,
+        ...where,
         customerPhone: prefill?.customerPhone || undefined,
         websiteOrderId: prefill?.websiteOrderId || undefined,
         quantities,
@@ -2958,12 +3081,16 @@ function ScheduleForm({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: lbl
-  }, "Address"), /*#__PURE__*/React.createElement("input", {
-    style: TS.inp,
+  }, "Address"), /*#__PURE__*/React.createElement(AddressField2, {
     value: privateAddress,
-    onChange: e => setPrivateAddress(e.target.value),
-    placeholder: "Delivery address"
-  }))), subType !== 'coffeebar' && /*#__PURE__*/React.createElement(React.Fragment, null, subType === 'store' && /*#__PURE__*/React.createElement("div", {
+    location: deliveryLocation,
+    onText: setPrivateAddress,
+    onLocation: setDeliveryLocation,
+    placeholder: "Street and number (Hebrew or English)"
+  })), /*#__PURE__*/React.createElement(DeliveryDetails2, {
+    value: deliveryDetails,
+    onChange: setDeliveryDetails
+  })), subType !== 'coffeebar' && /*#__PURE__*/React.createElement(React.Fragment, null, subType === 'store' && /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       flexWrap: 'wrap',
@@ -3051,12 +3178,16 @@ function ScheduleForm({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: lbl
-  }, "Address (optional)"), /*#__PURE__*/React.createElement("input", {
-    style: TS.inp,
+  }, "Address (optional)"), /*#__PURE__*/React.createElement(AddressField2, {
     value: cbAddress,
-    onChange: e => setCbAddress(e.target.value),
+    location: deliveryLocation,
+    onText: setCbAddress,
+    onLocation: setDeliveryLocation,
     placeholder: "Event address"
-  })), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement(DeliveryDetails2, {
+    value: deliveryDetails,
+    onChange: setDeliveryDetails
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 12
     }
@@ -3759,6 +3890,8 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       storeName: job.storeName || '',
       privateName: job.privateName || '',
       privateAddress: job.privateAddress || '',
+      deliveryLocation: job.deliveryLocation || null,
+      deliveryDetails: job.deliveryDetails || null,
       quantities: job.quantities || {},
       date: job.date,
       time: job.time,
@@ -3833,7 +3966,12 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       color: '#121212',
       margin: '0 0 14px'
     }
-  }, production ? 'Production schedule' : 'Delivery schedule'), production && /*#__PURE__*/React.createElement("div", {
+  }, production ? 'Production schedule' : 'Delivery schedule'), !production && /*#__PURE__*/React.createElement("div", {
+    className: "production-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-outline",
+    onClick: () => window.GremierRoute?.open()
+  }, "\uD83E\uDDED Navigate")), production && /*#__PURE__*/React.createElement("div", {
     className: "production-actions"
   }, [['brew', 'Brew'], ['bottle', 'Bottle'], ['label', 'Label']].map(([type, label]) => /*#__PURE__*/React.createElement("button", {
     key: type,

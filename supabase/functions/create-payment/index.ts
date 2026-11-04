@@ -1,6 +1,7 @@
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { quoteDeliveryFee, loadDeliveryPricingTables } from "../_shared/delivery-pricing.ts";
+import { shippingSetByAdmin } from "../_shared/link-shipping.ts";
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -440,7 +441,7 @@ serve(async (req) => {
 
         .from("payment_links")
 
-        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, order_id, tranzila_url, delivery_fee, delivery_info")
+        .select("link_code, customer_name, customer_phone, customer_email, total, status, payme_sale_id, order_id, tranzila_url, delivery_fee, delivery_info, items")
 
         .eq("link_code", String(payment_link_code))
 
@@ -498,7 +499,8 @@ serve(async (req) => {
       // Only the customer's delivery choices from the request (see pickDeliveryChoice).
       const pickedDelivery = pickDeliveryChoice(delivery_info);
       const chosenDelivery = Object.keys(pickedDelivery).length ? pickedDelivery : null;
-      if (chosenDelivery && String(chosenDelivery.delivery_type || "") !== "") {
+      // Shipping the admin set on the link is already a line item in its total: never price it again.
+      if (chosenDelivery && String(chosenDelivery.delivery_type || "") !== "" && !shippingSetByAdmin(row)) {
         try {
           const { zones, settings } = await loadDeliveryPricingTables(supabase);
           const quote = quoteDeliveryFee(chosenDelivery, zones, settings, Number(row.total) || 0);

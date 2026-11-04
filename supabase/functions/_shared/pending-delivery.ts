@@ -2,6 +2,7 @@ import { coffeeBarSchedulePrefill } from "./coffee-bar-order.ts";
 import { subscriptionDeliveryTarget } from "./subscription-delivery.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { describeItemExtras } from "./order-notify.ts";
+import { addressColumns } from "./delivery-address.ts";
 
 const DEFAULT_DELIVERY_TIME = "12:00";
 
@@ -298,6 +299,8 @@ async function autoScheduleDelivery(
     dispensers: bar?.dispensers ?? null,
     cb_name: bar ? order.customer_name || "Website Order" : null,
     cb_address: bar ? order.delivery_address || "" : null,
+    // The customer's chosen map place and apartment details, for the route planner (jobs columns from 20261104200000).
+    ...addressColumns(info),
     cb_syrups: bar?.cbSyrups ?? null,
     coffee_bar_configuration: bar?.coffeeBarConfiguration ?? null,
     store_name: null,

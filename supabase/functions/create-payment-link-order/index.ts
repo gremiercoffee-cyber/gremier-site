@@ -1,4 +1,5 @@
 import { cleanText } from "../_shared/security.ts";
+import { adminShippingInfo } from "../_shared/link-shipping.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
         payment_method: "payme",
         source: "payment_link",
         delivery_info: {
+          ...adminShippingInfo(link),
           payment_link_code: linkCode,
           reusable_checkout: reusable,
           server_created: true,

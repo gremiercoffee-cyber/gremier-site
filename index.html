@@ -1203,7 +1203,7 @@
         </div>
         <div class="city-ac-hint" id="t-co-city-hint">Type to search — all Israeli cities &amp; towns</div>
       </div>
-      <div class="form-group"><label class="form-label" id="t-co-addr">Street Address</label><input class="form-input" id="coAddr" type="text" placeholder="Street and apartment number"/></div>
+      <div class="form-group"><label class="form-label" id="t-co-addr">Street Address</label><input class="form-input" id="coAddr" type="text" placeholder="Street and number, then choose from the list"/></div>
       <div class="form-group">
         <div class="form-row-2" id="coAptRow">
           <div><label class="form-label" id="t-co-apt">Apartment *</label><input class="form-input" id="coApt" type="text" placeholder="Apt / unit"/></div>
@@ -1215,6 +1215,8 @@
           <span id="t-co-apt-na">Private house — not applicable</span>
         </label>
       </div>
+      <div class="form-group"><label class="form-label" id="t-co-entrance">Entrance / building (optional)</label><input class="form-input" id="coEntrance" type="text" maxlength="40" placeholder="e.g. Building B, side entrance"/></div>
+      <div class="form-group"><label class="form-label" id="t-co-instr">Delivery instructions (optional)</label><input class="form-input" id="coInstr" type="text" maxlength="200" placeholder="e.g. call on arrival, leave with the guard"/></div>
       </div>
       <!-- Monthly subscriptions: required delivery window -->
       <div class="form-group co-window-group" id="coSubWindow" hidden>
@@ -1491,7 +1493,7 @@ const T = {
     'mo-eye':'Account','mo-title':'My Orders',
     'cart-title':'Your Cart','cart-total':'Total','cart-checkout':'Proceed to Checkout',
     'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure card payment.',
-    'co-name':'Full Name','co-delivery-note':"🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.",'co-phone':'Phone','co-email':'Email',
+    'co-name':'Full Name','co-entrance':'Entrance / building (optional)','co-instr':'Delivery instructions (optional)','co-delivery-note':"🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.",'co-phone':'Phone','co-email':'Email',
     'co-city':'City','co-city-hint':'Type to search — all Israeli cities & towns','co-city-ph':'Start typing your city…',
     'co-addr':'Street Address','co-apt':'Apartment *','co-floor':'Floor *','co-apt-na':'Private house — not applicable','co-notes':'Notes (optional)',
     'pay-title':'Secure payment: card, bit, Apple Pay or Google Pay',
@@ -1544,7 +1546,7 @@ const T = {
     'mo-eye':'חשבון','mo-title':'ההזמנות שלי',
     'cart-title':'העגלה שלך','cart-total':'סה"כ','cart-checkout':'המשך לתשלום',
     'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח בכרטיס.',
-    'co-name':'שם מלא','co-delivery-note':'🚚 נשתדל להביא את ההזמנה עד הדלת, או לפחות עד הבניין. אם השליח יצטרך שמישהו יקבל את המשלוח, הוא ייצור איתכם קשר בדרך.','co-phone':'טלפון','co-email':'אימייל',
+    'co-name':'שם מלא','co-entrance':'כניסה / בניין (לא חובה)','co-instr':'הוראות למשלוח (לא חובה)','co-delivery-note':'🚚 נשתדל להביא את ההזמנה עד הדלת, או לפחות עד הבניין. אם השליח יצטרך שמישהו יקבל את המשלוח, הוא ייצור איתכם קשר בדרך.','co-phone':'טלפון','co-email':'אימייל',
     'co-city':'עיר','co-city-hint':'הקלידו לחיפוש — כל הישובים בישראל','co-city-ph':'הקלידו שם ישוב…',
     'co-addr':'רחוב ומספר בית','co-apt':'דירה *','co-floor':'קומה *','co-apt-na':'בית פרטי — לא רלוונטי','co-notes':'הערות (אופציונלי)',
     'pay-title':'תשלום מאובטח: כרטיס, bit, Apple Pay או Google Pay',
@@ -1597,7 +1599,7 @@ function applyTranslations() {
     't-shop-eye':'shop-eye','t-shop-title':'shop-title',
     't-mo-eye':'mo-eye','t-mo-title':'mo-title',
     't-cart-title':'cart-title','t-cart-total':'cart-total','t-cart-checkout':'cart-checkout',
-    't-co-title':'co-title','t-co-sub':'co-sub','t-co-name':'co-name','t-co-phone':'co-phone','t-co-delivery-note':'co-delivery-note',
+    't-co-title':'co-title','t-co-sub':'co-sub','t-co-name':'co-name','t-co-entrance':'co-entrance','t-co-instr':'co-instr','t-co-phone':'co-phone','t-co-delivery-note':'co-delivery-note',
     't-co-email':'co-email','t-co-city':'co-city','t-co-city-hint':'co-city-hint','t-co-addr':'co-addr','t-co-apt':'co-apt','t-co-floor':'co-floor','t-co-apt-na':'co-apt-na','t-co-notes':'co-notes',
     't-pay-title':'pay-title','t-pay-sub':'pay-sub',
     't-co-submit':'co-submit','t-co-cancel':'co-cancel',
@@ -2916,6 +2918,12 @@ async function submitOrder() {
   if (!isPickup && !selectedCheckoutCity) {
     alert(lang==='he'?'אנא בחרו ישוב מהרשימה':'Please select your city from the list'); return;
   }
+  // The street must be an actual result chosen from the list (and confirmed when Google only knows the street).
+  const addrPick = window.coAddrPicker ? window.coAddrPicker.value() : null;
+  if (!isPickup && window.coAddrPicker && !window.coAddrPicker.ready()) {
+    document.getElementById('coAddr')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alert(window.coAddrPicker.problem()); return;
+  }
   const subBasket=cart.find(i=>i.is_subscription);
   if(subBasket&&subBasket.subscription_interval!=='weekly'&&!['early','mid'].includes(subBasket.subscription_window)){const box=document.getElementById('coSubWindow');box?.classList.add('missing');box?.scrollIntoView({behavior:'smooth',block:'center'});alert(lang==='he'?'בחרו מתי להביא את המנוי: תחילת החודש (1–5) או אמצע החודש (15–20).':'Choose when your subscription should arrive: the start of the month (1st–5th) or the middle (15th–20th).');return;}
   if(subBasket?.subscription_items?.length){try{const q=GremierSubscriptionModel.quote(subBasket.subscription_items,products);if(!isPickup&&!q.deliveryEligible){alert(lang==='he'?'מנוי זה זמין באיסוף עצמי בלבד.':'This subscription requires pickup, two coffee items, or one 5L container.');return;}}catch(e){alert(e.message);return;}}
@@ -3006,6 +3014,16 @@ delivery_date: isEvent ? eventDate : (isExpedited && priorityType === 'specific_
 date_requested: shipType === 'regular' ? !!regularDate : null,
 event_time: isEvent ? eventTime : null,
         delivery_fee: deliveryFee,
+        // What the customer typed, the place they chose (for navigation) and the apartment details, kept apart.
+        ...(isPickup ? {} : {
+          address_entered: addr,
+          address_place: addrPick?.place || null,
+          address_details: {
+            apartment: aptNA ? '' : apt, floor: aptNA ? '' : floor,
+            entrance: (document.getElementById('coEntrance')?.value || '').trim(),
+            instructions: (document.getElementById('coInstr')?.value || '').trim(),
+          },
+        }),
         city_en: isPickup ? null : selectedCheckoutCity.en,
         city_he: isPickup ? null : selectedCheckoutCity.he,
         city_code: isPickup ? null : (selectedCheckoutCity.code || null),
@@ -4537,12 +4555,15 @@ async function sendChatMessageText(text) {
 
   // P6. Remember returning customers' details (this device only) and prefill from Google sign-in.
   const CK = 'gremier_checkout_details_v1';
+  // The shared address picker on the street field (Google Places through our places function).
+  const attachAddrPicker = () => { if (window.GremierPlaces && document.getElementById('coAddr') && !window.coAddrPicker) window.coAddrPicker = GremierPlaces.attach(document.getElementById('coAddr'), { lang: () => (typeof lang !== 'undefined' ? lang : 'en') }); };
   const _submit = window.submitOrder;
   window.submitOrder = function () {
     const v = id => (document.getElementById(id)?.value || '').trim();
     store.set(CK, {
       name: v('coName'), phone: v('coPhone'), email: v('coEmail'), addr: v('coAddr'),
       apt: v('coApt'), floor: v('coFloor'), aptNA: !!document.getElementById('coAptNA')?.checked,
+      entrance: v('coEntrance'), instructions: v('coInstr'), place: window.coAddrPicker?.value().place || null,
       city: (typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null) || null,
     });
     return _submit.apply(this, arguments);
@@ -4550,12 +4571,16 @@ async function sendChatMessageText(text) {
   const _openCheckout = window.openCheckout;
   window.openCheckout = async function () {
     const r = await _openCheckout.apply(this, arguments);
+    attachAddrPicker();
     const saved = store.get(CK) || {};
     const set = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = val; };
     const meta = ((typeof currentUser!=='undefined'?currentUser:null) && (typeof currentUser!=='undefined'?currentUser:null).user_metadata) || {};
     set('coName', saved.name || meta.full_name || meta.name);
     set('coEmail', saved.email || ((typeof currentUser!=='undefined'?currentUser:null) && (typeof currentUser!=='undefined'?currentUser:null).email));
+    const addrWasEmpty = !document.getElementById('coAddr')?.value;
     set('coPhone', saved.phone); set('coAddr', saved.addr); set('coApt', saved.apt); set('coFloor', saved.floor);
+    set('coEntrance', saved.entrance); set('coInstr', saved.instructions);
+    if (addrWasEmpty && saved.addr && window.coAddrPicker) window.coAddrPicker.set({ text: saved.addr, place: saved.place || null });
     const na = document.getElementById('coAptNA');
     if (saved.aptNA && na && !na.checked) { na.checked = true; toggleAptNA(); }
     if (saved.city && !(typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null) && typeof selectCheckoutCity === 'function') selectCheckoutCity(saved.city);
@@ -5403,9 +5428,10 @@ async function sendChatMessageText(text) {
   }, 1500);
 })();
 </script>
+<script src="/address-picker.js?v=20261104-1"></script>
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
-<script src="/storefront-addresses.js?v=20261023-1"></script>
+<script src="/storefront-addresses.js?v=20261104-1"></script>
 <script src="/storefront-cart.js?v=20261103-2"></script>
 <script src="/storefront-engage.js?v=20261102-3"></script>
 <script src="/storefront-compare.js?v=20261103-3"></script>

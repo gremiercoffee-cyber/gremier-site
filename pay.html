@@ -328,6 +328,22 @@ const PAY_DELIVERY_OPTIONS = [
   { id: 'pickup',    name: 'No delivery',        hint: 'Pickup / arranged separately' },
 ];
 
+/* Shipping set by the admin on this link (or an older link with a manual delivery fee line).
+   It is already inside the link total, so the customer isn't asked again and nothing is added. */
+function payShippingPreset() {
+  const info = paymentLink?.delivery_info && typeof paymentLink.delivery_info === 'object' ? paymentLink.delivery_info : {};
+  if (info.shipping_set_by_admin === true) return info;
+  const line = (paymentLink?.items || []).find(i => i && i.category === 'delivery_fee');
+  return line ? { delivery_type: 'delivery', delivery_label: 'Delivery', delivery_fee: Number(line.price || 0) * Number(line.qty || 1) } : null;
+}
+function payPresetLabel(p) {
+  if (p.delivery_type === 'pickup') return 'Pickup — no delivery';
+  const kind = { regular: 'Regular delivery', expedited: 'Expedited delivery', event: 'Delivery to your event' }[p.delivery_type] || p.delivery_label || 'Delivery';
+  const where = p.city_en || p.zone_name || '';
+  const when = p.delivery_type === 'event' && p.delivery_date ? ' · ' + p.delivery_date + (p.event_time ? ' ' + p.event_time : '') : '';
+  return kind + (where ? ' to ' + where : '') + when;
+}
+
 async function initPayDelivery() {
   try {
     const [{ data: zones }, { data: settings }] = await Promise.all([
@@ -345,6 +361,22 @@ async function initPayDelivery() {
 function renderPayDeliveryOptions() {
   const box = document.getElementById('payDeliveryOpts');
   if (!box) return;
+  const preset = payShippingPreset();
+  if (preset) {
+    payDeliveryType = preset.delivery_type === 'pickup' ? 'pickup' : 'preset';
+    const fee = Number(preset.delivery_fee || 0);
+    box.innerHTML = `
+    <div class="pay-delivery-opt selected" data-opt="preset">
+      <span class="pay-delivery-dot"></span>
+      <span class="pay-delivery-text">
+        <span class="pay-delivery-name">${esc(payPresetLabel(preset))}</span>
+        <span class="pay-delivery-hint">${preset.delivery_type === 'pickup' ? 'Arranged with Gremier' : 'Already included in your total'}</span>
+      </span>
+      <span class="pay-delivery-price">${preset.delivery_type === 'pickup' ? '' : (fee ? '₪' + fee : 'Free')}</span>
+    </div>`;
+    updatePayDeliveryQuote();
+    return;
+  }
   box.innerHTML = PAY_DELIVERY_OPTIONS.map(o => `
     <label class="pay-delivery-opt ${o.id === payDeliveryType ? 'selected' : ''}" data-opt="${o.id}">
       <input type="radio" name="payDelivery" value="${o.id}" ${o.id === payDeliveryType ? 'checked' : ''}
@@ -360,6 +392,18 @@ function renderPayDeliveryOptions() {
 }
 
 function selectPayDelivery(id) {
+  const preset = payShippingPreset();
+  if (preset) {
+    // Only the street address is needed; the city and date were set with the link.
+    const fields = document.getElementById('payDeliveryFields');
+    if (fields) fields.style.display = preset.delivery_type === 'pickup' ? 'none' : 'block';
+    const cityWrap = document.querySelector('.pay-city-wrap');
+    if (cityWrap) cityWrap.style.display = 'none';
+    const ev = document.getElementById('payEventWrap');
+    if (ev) ev.style.display = 'none';
+    updatePayDeliveryQuote();
+    return;
+  }
   payDeliveryType = id;
   document.querySelectorAll('.pay-delivery-opt').forEach(el => {
     el.classList.toggle('selected', el.dataset.opt === id);
@@ -409,6 +453,13 @@ function payFeeFor(type) {
 
 function updatePayDeliveryQuote() {
   const base = Number(paymentLink?.total) || 0;
+  if (payShippingPreset()) {
+    const feeRow = document.getElementById('payFeeRow');
+    if (feeRow) feeRow.style.display = 'none';
+    const totalEl = document.getElementById('payTotalAmt');
+    if (totalEl) totalEl.textContent = '₪' + base;
+    return;
+  }
   const hasCity = !!paySelectedCity;
 
   PAY_DELIVERY_OPTIONS.forEach(o => {
@@ -490,6 +541,7 @@ function choosePayCity(i) {
 
 /** What gets sent to create-payment; the server re-prices it. */
 function getPayDeliveryInfo() {
+  if (payShippingPreset()) return null;   // set on the link; the server keeps it
   if (payDeliveryType === 'pickup') return { delivery_type: 'pickup' };
   if (!paySelectedCity) return null;
   return {
@@ -506,6 +558,11 @@ function getPayDeliveryInfo() {
 
 /** Blocks checkout until the delivery choice is complete. Returns an error string or ''. */
 function validatePayDelivery() {
+  const preset = payShippingPreset();
+  if (preset) {
+    if (preset.delivery_type === 'pickup') return '';
+    return (document.getElementById('payAddress')?.value || '').trim() ? '' : 'Please enter your street address';
+  }
   if (payDeliveryType === 'pickup') return '';
   syncPayCity();
   if (!paySelectedCity) {

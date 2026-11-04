@@ -36,6 +36,10 @@
       id: a.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 7)),
       label: s(a.label, 30) || s(a.addr, 30),
       addr: s(a.addr, 120), apt: a.aptNA ? '' : s(a.apt, 10), floor: a.aptNA ? '' : s(a.floor, 10), aptNA: !!a.aptNA,
+      entrance: s(a.entrance, 40), instructions: s(a.instructions, 200),
+      // Only the place ID and what kind of match it was are kept (Google allows storing place IDs).
+      place: a.place && a.place.source === 'google' && a.place.id ? { source: 'google', id: String(a.place.id).slice(0, 300), precision: a.place.precision === 'building' ? 'building' : 'approximate', confirmed: !!a.place.confirmed || a.place.precision === 'building', label: '' }
+        : a.place && a.place.source === 'pin' ? { source: 'pin', lat: Number(a.place.lat), lng: Number(a.place.lng), confirmed: !!a.place.confirmed } : null,
       city: { en: s(c.en, 60), he: s(c.he, 60), code: c.code != null ? String(c.code).slice(0, 10) : null, region: c.region ? s(c.region, 40) : null },
     };
   }
@@ -93,10 +97,15 @@
   const val = (id) => ($(id)?.value || '').trim();
   function formAddress() {
     return { addr: val('coAddr'), apt: val('coApt'), floor: val('coFloor'), aptNA: !!$('coAptNA')?.checked,
+      entrance: val('coEntrance'), instructions: val('coInstr'), place: window.coAddrPicker?.value().place || null,
       city: (typeof selectedCheckoutCity !== 'undefined' && selectedCheckoutCity) || null };
   }
   function fillForm(a) {
     if ($('coAddr')) $('coAddr').value = a ? a.addr : '';
+    // The saved Google place goes back into the picker; an older saved address without one must be chosen again.
+    if (window.coAddrPicker) window.coAddrPicker.set({ text: a ? a.addr : '', place: (a && a.place) || null });
+    if ($('coEntrance')) $('coEntrance').value = a ? a.entrance || '' : '';
+    if ($('coInstr')) $('coInstr').value = a ? a.instructions || '' : '';
     if ($('coApt')) $('coApt').value = a ? a.apt : '';
     if ($('coFloor')) $('coFloor').value = a ? a.floor : '';
     const na = $('coAptNA');

@@ -48,6 +48,7 @@ function rowToJob2(r) {
     paid: r.paid||false, websiteOrderId: r.website_order_id||null,
     customerPhone: r.customer_phone||null, waSentAt: r.wa_sent_at||null,
     sourceBrewId: r.source_brew_id||null,
+    deliveryLocation: r.delivery_location||null, deliveryDetails: r.delivery_details||null,
   };
 }
 function jobToRow2(job) {
@@ -65,6 +66,9 @@ function jobToRow2(job) {
     dispensers: job.dispensers??null, wa_needs_send: job.waNeedsSend||false,
     cb_syrups: job.cbSyrups||null, coffee_bar_configuration:job.coffeeBarConfiguration||null, billed: job.billed||false, paid: job.paid||false,
     website_order_id: job.websiteOrderId||null, customer_phone: job.customerPhone||null,
+    // Only sent when set, so jobs without an address (brews, store runs) never touch these columns.
+    ...(job.deliveryLocation!==undefined?{delivery_location:job.deliveryLocation}:{}),
+    ...(job.deliveryDetails!==undefined?{delivery_details:job.deliveryDetails}:{}),
     wa_sent_at: job.waSentAt||null, source_brew_id: job.sourceBrewId||job.source_brew_id||null,
   };
 }
@@ -358,6 +362,9 @@ async function buildWebsiteOrderSchedulePrefill2(order) {
     subType: 'private',
     privateName: websiteOrderDisplayLabel2(order),
     privateAddress: order?.delivery_address || '',
+    // The customer's chosen Google place and apartment details travel with the delivery.
+    deliveryLocation: order?.delivery_info?.address_place || null,
+    deliveryDetails: order?.delivery_info?.address_details || null,
     customerPhone: order?.customer_phone || '',
     websiteOrderId: order?.order_id || order?.id || null,
     quantities,
@@ -985,6 +992,8 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
         {detail&&<div style={TS.meta}>{detail}</div>}
         <div style={TS.meta}>{formatDate2(job.date)}{job.time?` · ${formatTime2(job.time)}`:''}</div>
         {(job.privateAddress||job.cbAddress)&&<div style={{...TS.meta,color:'#3f7fc4'}}>📍 {job.privateAddress||job.cbAddress}</div>}
+        {job.deliveryDetails&&window.GremierRoute?.detailsLine(job.deliveryDetails)&&<div style={{...TS.meta,color:'#333'}}>🏢 {window.GremierRoute.detailsLine(job.deliveryDetails)}</div>}
+        {job.type==='delivery'&&job.deliveryType!=='store'&&(job.privateAddress||job.cbAddress)&&!job.deliveryLocation&&!job.websiteOrderId&&<div style={{...TS.meta,color:'#9a6b00'}}>⚠ No map location: edit to choose the address</div>}
       </div>
       {showDelete&&<button aria-label="Delete task" title="Delete task" style={{background:'none',border:'none',color:'#d5544a',fontSize:16,cursor:'pointer',padding:'2px 4px'}} onClick={e=>{e.stopPropagation();onDelete&&onDelete(job);}}>🗑</button>}
     </div>
@@ -1204,6 +1213,35 @@ function DaySection({ label, dayJobs, overdue, onCheckoff, onTap, onDelete }) {
   );
 }
 
+// The shared address picker (address-picker.js) on a delivery address input. Typing alone never sets
+// a location; the picker reports the selected Google place (or a confirmed pin) through onLocation.
+function AddressField2({ value, location, onText, onLocation, placeholder }) {
+  const ref = useRef2(null);
+  useEffect2(() => {
+    if (!ref.current || !window.GremierPlaces) return;
+    const picker = window.GremierPlaces.attach(ref.current, {
+      lang: () => (/[֐-׿]/.test(ref.current?.value || '') ? 'he' : 'en'),
+      onChange: (v) => { onText(ref.current.value); onLocation(v.place); },
+    });
+    picker.set({ text: value || '', place: location || null });
+    return () => picker.destroy();
+  }, []);
+  return <input ref={ref} style={TS.inp} defaultValue={value} placeholder={placeholder} />;
+}
+// Apartment, floor, entrance, instructions: kept apart from the address and never sent to Maps.
+function DeliveryDetails2({ value, onChange }) {
+  const v = value || {}, set = (k) => (e) => onChange({ ...v, [k]: e.target.value });
+  const half = { ...TS.inp, width: '100%' };
+  return <div style={{ marginBottom: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 6 }}>
+      <input style={half} value={v.apartment || ''} onChange={set('apartment')} placeholder="Apt / unit" maxLength={20} />
+      <input style={half} value={v.floor || ''} onChange={set('floor')} placeholder="Floor (e.g. 3, ground)" maxLength={20} />
+      <input style={half} value={v.entrance || ''} onChange={set('entrance')} placeholder="Entrance / building" maxLength={40} />
+    </div>
+    <input style={TS.inp} value={v.instructions || ''} onChange={set('instructions')} placeholder="Delivery instructions (e.g. call on arrival)" maxLength={200} />
+  </div>;
+}
+
 function ScheduleForm({ mode, stores, onClose, onSubmit, prefill, onModeChange }) {
   const logNow = mode === 'lognow';
   const [submitting,setSubmitting]=useState2(false);
@@ -1243,6 +1281,9 @@ const [jobType,setJobType] = useState2(prefill?.jobType||'delivery');
   const [people,setPeople] = useState2(prefill?.people ?? 25);
 const [cbName,setCbName] = useState2(prefill?.cbName || '');
   const [cbAddress,setCbAddress] = useState2(prefill?.cbAddress || '');
+  // Navigation point (Google place / confirmed pin) and apartment details, for private and coffee-bar deliveries.
+  const [deliveryLocation,setDeliveryLocation] = useState2(prefill?.deliveryLocation || null);
+  const [deliveryDetails,setDeliveryDetails] = useState2(prefill?.deliveryDetails || {});
   const [dispensers,setDispensers] = useState2(prefill?.dispensers ?? 1);
   // a brand-new job (no prefill at all) defaults all three syrups to checked/qty 1, same as before.
   // Editing an existing job instead mirrors exactly what was saved — a syrup absent from the saved
@@ -1283,6 +1324,15 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
   function build() {
     const base = { date: logNow?todayISO2():(date||todayISO2()), time: logNow?(time||new Date().toTimeString().slice(0,5)):time };
     if (jobType==='delivery') {
+      // Address: the typed text stays as is; the navigation point must be an actual selected result.
+      let where = {};
+      if (subType!=='store') {
+        const text = (subType==='coffeebar'?cbAddress:privateAddress).trim();
+        const details = Object.fromEntries(Object.entries(deliveryDetails||{}).map(([k,v])=>[k,String(v||'').trim()]).filter(([,v])=>v));
+        const ready = window.GremierPlaces?.placeReady(deliveryLocation);
+        if (text && !ready && !confirm('This address has no confirmed map location yet, so it will show as "needs review" in the route planner.\n\nSave anyway?')) return null;
+        where = { deliveryLocation: ready ? deliveryLocation : null, deliveryDetails: Object.keys(details).length ? details : null };
+      }
       if (subType==='coffeebar') {
         const canCount = Math.ceil(people/25);
         const finalSyrups = Object.fromEntries(Object.entries(prefill?.cbSyrups||{}).filter(([pid])=>!['vanilla_syrup','caramel_syrup','sugar_syrup'].includes(pid)));
@@ -1290,13 +1340,14 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
           if (checked) finalSyrups[pid] = cbSyrupQty[pid] || 0;
         });
         const cbExtrasClean = Object.fromEntries(Object.entries(cbExtras).filter(([,v])=>Number(v)>0));
-        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array.from({length:canCount},(_,i)=>prefill?.jerryCans?.[i]||'classic'), websiteOrderId:prefill?.websiteOrderId||null, customerPhone:prefill?.customerPhone||null, coffeeBarConfiguration:prefill?.coffeeBarConfiguration||null, cbName, cbAddress, dispensers, cbSyrups:finalSyrups, quantities:Object.keys(cbExtrasClean).length?cbExtrasClean:undefined, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
+        return { ...base, type:'delivery', deliveryType:'coffeebar', people, jerryCans:Array.from({length:canCount},(_,i)=>prefill?.jerryCans?.[i]||'classic'), websiteOrderId:prefill?.websiteOrderId||null, customerPhone:prefill?.customerPhone||null, coffeeBarConfiguration:prefill?.coffeeBarConfiguration||null, cbName, cbAddress, ...where, dispensers, cbSyrups:finalSyrups, quantities:Object.keys(cbExtrasClean).length?cbExtrasClean:undefined, label:`Coffee Bar${cbName?' — '+cbName:''} (${people}p)` };
       }
       const total = Object.values(quantities).reduce((s,v)=>s+(v||0),0);
       return { ...base, type:'delivery', deliveryType:subType,
         storeName: subType==='store'?storeName:undefined,
         privateName: subType==='private'?privateName:undefined,
         privateAddress: subType==='private'?privateAddress:undefined,
+        ...where,
         customerPhone: prefill?.customerPhone || undefined,
         websiteOrderId: prefill?.websiteOrderId || undefined,
         quantities, plannedTotal:total,
@@ -1345,7 +1396,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
               ))}
             </div>
             {subType==='store'&&<div style={{marginBottom:12}}><span style={lbl}>Store</span><select style={TS.inp} value={storeName} onChange={e=>setStoreName(e.target.value)}><option value="">Select store…</option>{stores.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}</select></div>}
-            {subType==='private'&&<><div style={{marginBottom:12}}><span style={lbl}>Recipient</span><input style={TS.inp} value={privateName} onChange={e=>setPrivateName(e.target.value)} placeholder="Name"/></div><div style={{marginBottom:12}}><span style={lbl}>Address</span><input style={TS.inp} value={privateAddress} onChange={e=>setPrivateAddress(e.target.value)} placeholder="Delivery address"/></div></>}
+            {subType==='private'&&<><div style={{marginBottom:12}}><span style={lbl}>Recipient</span><input style={TS.inp} value={privateName} onChange={e=>setPrivateName(e.target.value)} placeholder="Name"/></div><div style={{marginBottom:12}}><span style={lbl}>Address</span><AddressField2 value={privateAddress} location={deliveryLocation} onText={setPrivateAddress} onLocation={setDeliveryLocation} placeholder="Street and number (Hebrew or English)"/></div><DeliveryDetails2 value={deliveryDetails} onChange={setDeliveryDetails}/></>}
             {subType!=='coffeebar'&&(
               <>
                 {subType==='store'&&(
@@ -1367,7 +1418,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
                 <div style={{marginBottom:12}}><span style={lbl}>People</span><select style={TS.inp} value={people} onChange={e=>setPeople(Number(e.target.value))}>{[25,50,75,100,125,150].map(n=><option key={n} value={n}>{n} people ({Math.floor(n/25)} cans)</option>)}</select></div>
                 {prefill?.coffeeBarConfiguration&&<div style={{padding:12,marginBottom:12,background:'#f5f7f5',borderRadius:10,fontSize:12,lineHeight:1.7,whiteSpace:'pre-line'}}><b>Customer selections</b><br/>{window.CoffeeBarOrder.describeCoffeeBarJob(prefill.coffeeBarConfiguration)}</div>}
                 <div style={{marginBottom:12}}><span style={lbl}>Client (optional)</span><input style={TS.inp} value={cbName} onChange={e=>setCbName(e.target.value)} placeholder="Event / who for"/></div>
-                <div style={{marginBottom:12}}><span style={lbl}>Address (optional)</span><input style={TS.inp} value={cbAddress} onChange={e=>setCbAddress(e.target.value)} placeholder="Event address"/></div>
+                <div style={{marginBottom:12}}><span style={lbl}>Address (optional)</span><AddressField2 value={cbAddress} location={deliveryLocation} onText={setCbAddress} onLocation={setDeliveryLocation} placeholder="Event address"/></div>
+                <DeliveryDetails2 value={deliveryDetails} onChange={setDeliveryDetails}/>
                 <div style={{marginBottom:12}}><span style={lbl}>Dispensers</span><input style={TS.inp} type="number" value={dispensers} onChange={e=>setDispensers(Number(e.target.value)||0)}/></div>
                 <div style={{marginBottom:6}}><span style={lbl}>Syrups Included</span></div>
                 {[['vanilla_syrup','Vanilla Syrup'],['caramel_syrup','Caramel Syrup'],['sugar_syrup','Sugar Syrup']].map(([pid,label])=>(
@@ -1756,6 +1808,8 @@ async function addJobFromForm(job, mode) {
       storeName: job.storeName || '',
       privateName: job.privateName || '',
       privateAddress: job.privateAddress || '',
+      deliveryLocation: job.deliveryLocation || null,
+      deliveryDetails: job.deliveryDetails || null,
       quantities: job.quantities || {},
       date: job.date,
       time: job.time,
@@ -1789,6 +1843,7 @@ async function addJobFromForm(job, mode) {
     <div className={production?'production-schedule':'delivery-schedule'} style={{...TS.screen,minHeight:0,paddingBottom:0}}>
       <div style={{padding:'0 12px'}}>
         <h2 style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.1rem',fontWeight:600,color:'#121212',margin:'0 0 14px'}}>{production?'Production schedule':'Delivery schedule'}</h2>
+        {!production&&<div className="production-actions"><button className="btn btn-outline" onClick={()=>window.GremierRoute?.open()}>🧭 Navigate</button></div>}
         {production&&<div className="production-actions">{[['brew','Brew'],['bottle','Bottle'],['label','Label']].map(([type,label])=><button key={type} className="btn btn-outline" onClick={()=>{setProductionView('all');window.__gremierOpenProductionLog?.({prodType:type});}}>{label}</button>)}<button className="btn btn-outline" onClick={()=>setProductionView(v=>v==='drain'?'all':'drain')}>{productionView==='drain'?'All tasks':'Drains'}</button><button className="btn btn-outline" onClick={()=>window.__gremierOpenProductionLog?.({mode:'schedule'})}>Schedule</button><button className="btn btn-outline" onClick={()=>window.toggleProductionKiosk?.()}>Kiosk mode</button></div>}
       </div>
 

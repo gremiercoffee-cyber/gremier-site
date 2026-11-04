@@ -337,7 +337,92 @@ window.loadHtml2Canvas = function () {
     .pl-product-price { font-size:.68rem; color:var(--text2); }
     .pl-item-thumb { width:40px; height:40px; border-radius:4px; overflow:hidden; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
     .pl-item-thumb img { width:100%; height:100%; object-fit:cover; }
-    .modal-box.modal-paylink { max-width:720px; }
+    /* Payment link builder: products on the left, the order on the right. */
+    .modal-box.modal-paylink { max-width:1060px; padding:0; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; max-height:calc(100vh - 40px); }
+    .plx-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 24px 14px; border-bottom:1px solid var(--border); }
+    .plx-title { font-family:'DM Sans',sans-serif; font-size:1.3rem; font-weight:700; color:var(--cream); margin:0; }
+    .plx-sub { margin:3px 0 0; font-size:.8rem; color:var(--text2); }
+    .plx-close { border:0; background:var(--bg3); width:34px; height:34px; border-radius:50%; cursor:pointer; font-size:.9rem; color:var(--cream2); flex:none; }
+    .plx-close:hover { background:var(--border); }
+    .plx-body { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(320px,1fr); min-height:0; flex:1; }
+    .plx-pick { padding:18px 24px 24px; overflow-y:auto; min-height:0; }
+    .plx-sum { padding:18px 24px 24px; background:var(--bg2); border-left:1px solid var(--border); overflow-y:auto; min-height:0; display:flex; flex-direction:column; gap:16px; }
+    .plx-search { display:flex; align-items:center; gap:8px; background:var(--bg3); border-radius:12px; padding:0 14px; }
+    .plx-search span { color:var(--text2); font-size:1.1rem; }
+    .plx-search input { flex:1; border:0; background:none; outline:none; padding:12px 0; font:inherit; font-size:.92rem; color:var(--cream); }
+    .plx-cats { display:flex; gap:6px; overflow-x:auto; padding:12px 0 2px; scrollbar-width:none; }
+    .plx-cats::-webkit-scrollbar { display:none; }
+    .plx-cat { border:1px solid var(--border); background:#fff; color:var(--cream2); border-radius:999px; padding:6px 13px; font:inherit; font-size:.78rem; font-weight:600; white-space:nowrap; cursor:pointer; }
+    .plx-cat[aria-pressed="true"] { background:var(--silver); border-color:var(--silver); color:#fff; }
+    .modal-paylink .pl-product-grid { grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); max-height:none; overflow:visible; gap:10px; padding:12px 0 4px; }
+    .modal-paylink .pl-product-card { position:relative; background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px 8px; display:flex; flex-direction:column; align-items:center; gap:6px; font:inherit; }
+    .modal-paylink .pl-product-card:hover { border-color:var(--silver-dim); background:#fff; }
+    .modal-paylink .pl-product-card.in-cart { border-color:var(--silver); box-shadow:0 0 0 1px var(--silver); }
+    .modal-paylink .pl-product-thumb { width:72px; height:72px; border-radius:10px; background:var(--bg3); }
+    .modal-paylink .pl-product-name { font-size:.74rem; font-weight:600; }
+    .modal-paylink .pl-product-price { font-size:.74rem; }
+    .pl-product-badge { position:absolute; top:6px; right:6px; min-width:22px; height:22px; border-radius:11px; background:var(--silver); color:#fff; font-size:.72rem; font-weight:700; display:grid; place-items:center; padding:0 6px; }
+    .plx-link { border:0; background:none; color:var(--blue); font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; padding:14px 0 0; }
+    .plx-custom { display:grid; grid-template-columns:1fr 100px 64px auto; gap:8px; margin-top:10px; align-items:center; }
+    .plx-custom .form-input { margin:0; }
+    .plx-sec { display:flex; flex-direction:column; gap:10px; }
+    .plx-h { margin:0; font-family:'DM Sans',sans-serif; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); font-weight:700; }
+    .modal-paylink .pl-items { margin:0; gap:6px; }
+    .modal-paylink .pl-item { background:#fff; border-radius:12px; padding:8px 10px; gap:10px; }
+    .modal-paylink .pl-item-thumb { width:36px; height:36px; border-radius:8px; }
+    .modal-paylink .pl-item-name { font-size:.82rem; line-height:1.3; }
+    .plx-empty { font-size:.82rem; color:var(--text2); padding:14px; border:1px dashed var(--border); border-radius:12px; text-align:center; }
+    .plx-ship { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:6px; }
+    .plx-ship-opt { border:1px solid var(--border); background:#fff; border-radius:12px; padding:9px 10px; text-align:left; font:inherit; cursor:pointer; display:flex; flex-direction:column; gap:2px; }
+    .plx-ship-opt b { font-size:.8rem; color:var(--cream); }
+    .plx-ship-opt small { font-size:.7rem; color:var(--text2); }
+    .plx-ship-opt[aria-checked="true"] { border-color:var(--silver); box-shadow:0 0 0 1px var(--silver); }
+    .plx-ship-where, .plx-ship-when { display:grid; grid-template-columns:1fr 110px; gap:8px; }
+    .plx-ship-when { grid-template-columns:1fr 1fr; }
+    .plx-ship-where .form-input, .plx-ship-when .form-input { margin:0; }
+    .plx-ship-where[hidden], .plx-ship-when[hidden], .plx-custom[hidden], .plx-row[hidden] { display:none; }
+    .plx-fee { display:flex; align-items:center; background:#fff; border:1px solid var(--border); border-radius:10px; padding-left:10px; }
+    .plx-fee span { color:var(--text2); font-size:.85rem; }
+    .plx-fee input { border:0; outline:none; width:100%; padding:9px 8px; font:inherit; font-size:.87rem; background:none; color:var(--cream); }
+    .plx-hint { margin:0; font-size:.74rem; color:var(--text2); line-height:1.45; }
+    .plx-hint:empty { display:none; }
+    .plx-totals { background:#fff; border:1px solid var(--border); border-radius:14px; padding:6px 14px; }
+    .plx-row { display:flex; justify-content:space-between; align-items:center; padding:7px 0; font-size:.84rem; color:var(--cream2); }
+    .plx-total { border-top:1px solid var(--border); padding-top:10px; margin-top:2px; font-weight:700; color:var(--cream); }
+    .plx-total .pl-total-amt { font-size:1.45rem; font-weight:700; }
+    .plx-more summary { cursor:pointer; font-size:.8rem; font-weight:600; color:var(--cream2); padding:6px 0; list-style:none; }
+    .plx-more summary::-webkit-details-marker { display:none; }
+    .plx-more summary::before { content:'\203A'; display:inline-block; width:14px; transition:transform .15s; color:var(--text2); }
+    .plx-more[open] summary::before { transform:rotate(90deg); }
+    .plx-more .form-input { margin:0; }
+    .plx-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:4px 0 8px; }
+    .plx-stack { display:flex; flex-direction:column; gap:8px; padding-top:6px; }
+    .plx-stack .plx-grid2 { padding:0; }
+    .plx-cust { background:#fff; border:1px solid var(--border); border-radius:14px; padding:6px 14px 10px; }
+    .plx-cust:not([open]) { padding-bottom:6px; }
+    .plx-opt { font-weight:400; color:var(--text2); margin-left:4px; }
+    .plx-switch { display:flex; align-items:center; gap:12px; cursor:pointer; position:relative; }
+    .plx-switch input { position:absolute; opacity:0; width:0; height:0; }
+    .plx-switch-ui { width:42px; height:24px; border-radius:12px; background:var(--border); position:relative; flex:none; transition:background .2s; }
+    .plx-switch-ui::after { content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .2s; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+    .plx-switch input:checked + .plx-switch-ui { background:var(--blue); }
+    .plx-switch input:checked + .plx-switch-ui::after { transform:translateX(18px); }
+    .plx-switch input:focus-visible + .plx-switch-ui { outline:2px solid var(--blue); outline-offset:2px; }
+    .plx-switch b { display:block; font-size:.84rem; color:var(--cream); }
+    .plx-switch small { display:block; font-size:.74rem; color:var(--text2); }
+    .plx-go { min-height:48px; font-size:.95rem; border-radius:12px; margin-top:auto; }
+    .modal-paylink .pl-link-error { margin:0; }
+    @media (max-width:820px) {
+      .modal-box.modal-paylink { max-height:none; border-radius:14px; padding:0 !important; }
+      .plx-body { grid-template-columns:minmax(0,1fr); }
+      .plx-pick, .plx-sum { min-width:0; }
+      .plx-pick, .plx-sum { overflow:visible; padding:16px; }
+      .plx-sum { border-left:0; border-top:1px solid var(--border); }
+      .modal-paylink .pl-product-grid { grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); }
+      .plx-custom { grid-template-columns:1fr 1fr; }
+      .plx-custom #plCustomItemName { grid-column:1/-1; }
+      .plx-head { padding:16px; }
+    }
     .pl-order-now-toggle { display:block; margin:20px 0 8px; cursor:pointer; position:relative; }
     .pl-order-now-toggle input { position:absolute; opacity:0; width:0; height:0; }
     .pl-order-now-box { display:flex; align-items:center; gap:16px; padding:18px; border:2px solid var(--border); border-radius:8px; background:var(--bg3); transition:border-color .25s,background .25s,box-shadow .25s; }
@@ -1788,74 +1873,90 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <!-- PAYMENT LINK MODAL -->
 <div class="modal-backdrop" id="payLinkModal">
   <div class="modal-box modal-paylink">
-    <h2 class="modal-title" id="plModalTitle">New Payment Link</h2>
-    <p class="page-sub" id="plModalSub" style="margin:-8px 0 16px;font-size:.82rem"></p>
-<input type="hidden" id="plEditLinkId"/>
-<div class="form-group">
-  <label class="form-label">Link Name <span style="font-weight:400;color:var(--text2)">(internal — only for admin)</span></label>
-  <input class="form-input" id="plLinkName" placeholder="Example: Weekly yeshiva coffee order"/>
-</div>
-<div class="form-row-2">
-  <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="plCustomer" placeholder="Optional"/></div>
-  <div class="form-group"><label class="form-label">Phone (for WhatsApp)</label><input class="form-input" id="plPhone" placeholder="05X-XXXXXXX"/></div>
-</div>
-    <div class="form-group"><label class="form-label">Email <span style="font-weight:400;color:var(--text2)">(for order confirmation)</span></label><input class="form-input" id="plEmail" type="email" placeholder="customer@example.com"/></div>
-    <div class="form-group"><label class="form-label">Delivery address <span style="font-weight:400;color:var(--text2)">(optional — customer can add on pay page)</span></label><input class="form-input" id="plAddress" placeholder="City, street…"/></div>
-
-    <div class="form-group">
-      <label class="form-label">Delivery Fee</label>
-      <input class="form-input" type="number" id="plDeliveryFee" placeholder="Optional — adds as a line item" oninput="plSetDeliveryFee(this.value)"/>
-    </div>
-
-    <div class="card" style="padding:14px 16px;margin:12px 0 16px;background:var(--bg3)">
-      <div style="font-family:'DM Sans',sans-serif;color:var(--cream);font-size:1.05rem;margin-bottom:10px">＋ Custom Item / Adjustment</div>
-      <div class="form-row-3">
-        <div class="form-group"><label class="form-label">Item / Note</label><input class="form-input" id="plCustomItemName" placeholder="e.g. Replace syrup with extra coffee"/></div>
-        <div class="form-group"><label class="form-label">Price</label><input class="form-input" type="number" id="plCustomItemPrice" placeholder="0"/></div>
-        <div class="form-group"><label class="form-label">Qty</label><input class="form-input" type="number" id="plCustomItemQty" value="1" min="1"/></div>
+    <input type="hidden" id="plEditLinkId"/>
+    <header class="plx-head">
+      <div>
+        <h2 class="plx-title" id="plModalTitle">New Payment Link</h2>
+        <p class="plx-sub" id="plModalSub"></p>
       </div>
-      <button type="button" class="btn btn-outline btn-sm" onclick="plAddCustomItem()">+ Add Custom Item</button>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Add Products / Extras</label>
-      <input type="text" class="form-input" placeholder="Search products…" oninput="searchPayLinkProducts(this.value)" id="plProductSearch"/>
-      <div id="plProductResults" class="pl-product-grid"></div>
-    </div>
-    <div class="pl-items" id="plItems"></div>
-    <div class="pl-total-row">
-      <span style="font-size:.82rem;color:var(--text2);text-transform:uppercase;letter-spacing:.08em">Subtotal</span>
-      <span class="pl-total-amt" id="plSubtotal">₪0</span>
-    </div>
-    <div class="form-row-2" style="margin-top:12px">
-      <div class="form-group">
-        <label class="form-label">Final Price (override)</label>
-        <input class="form-input" type="number" id="plFinalPrice" placeholder="Leave blank = subtotal" oninput="updatePlTotal()"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Discount Note</label>
-        <input class="form-input" id="plDiscountNote" placeholder="e.g. Loyalty discount"/>
-      </div>
-    </div>
-    <div class="pl-total-row" style="border-top:2px solid var(--border)">
-      <span style="font-size:.88rem;color:var(--cream);text-transform:uppercase;letter-spacing:.08em">Total</span>
-      <span class="pl-total-amt" id="plFinalTotal">₪0</span>
-    </div>
-    <label class="pl-order-now-toggle" for="plCreateOrderNow">
-      <input type="checkbox" id="plCreateOrderNow"/>
-      <div class="pl-order-now-box">
-        <div class="pl-order-now-icon">📦</div>
-        <div class="pl-order-now-text">
-          <strong>Create an order now?</strong>
-          <span>Yes — add to Ops for scheduling right away. Customer still pays via the link later.</span>
+      <button type="button" class="plx-close" aria-label="Close" onclick="closePayLinkModal()">✕</button>
+    </header>
+    <div class="plx-body">
+      <!-- Left: what they're buying -->
+      <section class="plx-pick" aria-label="Products">
+        <div class="plx-search">
+          <span aria-hidden="true">⌕</span>
+          <input type="search" id="plProductSearch" placeholder="Search products" oninput="searchPayLinkProducts(this.value)" autocomplete="off"/>
         </div>
-        <div class="pl-order-now-switch" aria-hidden="true"></div>
-      </div>
-    </label>
-    <div id="plLinkError" class="pl-link-error" role="alert"></div>
-    <button class="btn btn-amber btn-full" style="margin-top:16px" id="plGenerateBtn" onclick="generatePayLink()">Generate Payment Link</button>
-    <div id="plLinkResult" style="display:none"></div>
-    <button class="btn btn-outline" onclick="closePayLinkModal()" style="margin-top:10px;width:100%">Close</button>
+        <div class="plx-cats" id="plCats" role="group" aria-label="Category"></div>
+        <div id="plProductResults" class="pl-product-grid"></div>
+        <button type="button" class="plx-link" onclick="plToggleCustom()">＋ Custom item or adjustment</button>
+        <div class="plx-custom" id="plCustomBox" hidden>
+          <input class="form-input" id="plCustomItemName" placeholder="e.g. Extra coffee instead of syrup"/>
+          <input class="form-input" type="number" id="plCustomItemPrice" placeholder="₪ Price"/>
+          <input class="form-input" type="number" id="plCustomItemQty" value="1" min="1" aria-label="Quantity"/>
+          <button type="button" class="btn btn-outline btn-sm" onclick="plAddCustomItem()">Add</button>
+        </div>
+      </section>
+
+      <!-- Right: the order, shipping, total, create -->
+      <aside class="plx-sum" aria-label="Order">
+        <div class="plx-sec">
+          <h3 class="plx-h">Order</h3>
+          <div class="pl-items" id="plItems"></div>
+        </div>
+
+        <div class="plx-sec">
+          <h3 class="plx-h">Shipping</h3>
+          <div class="plx-ship" id="plShipOpts" role="radiogroup" aria-label="Shipping"></div>
+          <div class="plx-ship-where" id="plShipWhere" hidden>
+            <select class="form-input" id="plShipZone" aria-label="Delivery area" onchange="plShipSet({zone:this.value, fee:null})"></select>
+            <label class="plx-fee"><span>₪</span><input type="number" min="0" id="plShipFee" aria-label="Shipping fee" oninput="plShipSet({fee:this.value===''?null:Number(this.value)})"/></label>
+          </div>
+          <div class="plx-ship-when" id="plShipWhen" hidden>
+            <input type="date" class="form-input" id="plShipDate" aria-label="Event date" onchange="plShipSet({date:this.value})"/>
+            <input type="time" class="form-input" id="plShipTime" aria-label="Arrival time" onchange="plShipSet({time:this.value})"/>
+          </div>
+          <p class="plx-hint" id="plShipHint"></p>
+        </div>
+
+        <div class="plx-totals">
+          <div class="plx-row"><span>Products</span><span id="plSubtotal">₪0</span></div>
+          <div class="plx-row" id="plShipRow" hidden><span id="plShipRowLabel">Shipping</span><span id="plShipRowAmt">₪0</span></div>
+          <details class="plx-more" id="plAdjust">
+            <summary>Change the final price</summary>
+            <div class="plx-grid2">
+              <input class="form-input" type="number" id="plFinalPrice" placeholder="Final price ₪" oninput="updatePlTotal()" aria-label="Final price"/>
+              <input class="form-input" id="plDiscountNote" placeholder="Note, e.g. Loyalty discount" aria-label="Discount note"/>
+            </div>
+          </details>
+          <div class="plx-row plx-total"><span>Total</span><span class="pl-total-amt" id="plFinalTotal">₪0</span></div>
+        </div>
+
+        <details class="plx-more plx-cust" id="plCustomerBox">
+          <summary>Customer details <span class="plx-opt" id="plCustomerSummary">optional</span></summary>
+          <div class="plx-stack">
+            <div class="plx-grid2">
+              <input class="form-input" id="plCustomer" placeholder="Name" aria-label="Customer name"/>
+              <input class="form-input" id="plPhone" placeholder="Phone 05X-XXXXXXX" aria-label="Phone (for WhatsApp)"/>
+            </div>
+            <input class="form-input" id="plEmail" type="email" placeholder="Email for the order confirmation" aria-label="Email"/>
+            <input class="form-input" id="plAddress" placeholder="Street address (they can add it when paying)" aria-label="Delivery address"/>
+            <input class="form-input" id="plLinkName" placeholder="Link name, only you see it" aria-label="Link name"/>
+          </div>
+        </details>
+
+        <label class="plx-switch" for="plCreateOrderNow">
+          <input type="checkbox" id="plCreateOrderNow"/>
+          <span class="plx-switch-ui" aria-hidden="true"></span>
+          <span><b>Add to Ops now</b><small>Schedule it before they pay</small></span>
+        </label>
+
+        <div id="plLinkError" class="pl-link-error" role="alert"></div>
+        <button class="btn btn-amber btn-full plx-go" id="plGenerateBtn" onclick="generatePayLink()">Create link</button>
+        <div id="plLinkResult" style="display:none"></div>
+      </aside>
+    </div>
   </div>
 </div>
 <!-- COUPON MODAL -->
@@ -4626,44 +4727,149 @@ function exportOrdersCSV() {
 }
 // ══ PAYMENT LINKS ══
 plCartItems = [];
-async function openNewLink(type) {
-  plLinkType = type === 'recurring' ? 'recurring' : 'onetime';
-  const title = document.getElementById('plModalTitle');
-  const sub = document.getElementById('plModalSub');
-  const btn = document.getElementById('plGenerateBtn');
-  if (plLinkType === 'recurring') {
-    if (title) title.textContent = 'New Recurring Link';
-    if (sub) sub.textContent = 'Same URL stays active after each payment — use for subscriptions or repeat customers.';
-    if (btn) btn.textContent = 'Generate Recurring Link';
-  } else {
-    if (title) title.textContent = 'New One-time Link';
-    if (sub) sub.textContent = 'Single checkout — the link closes after the customer pays.';
-    if (btn) btn.textContent = 'Generate One-time Link';
+// Shipping picked here is saved on the link (delivery_info.shipping_set_by_admin) and added as a
+// "delivery_fee" line, so the pay page shows it as included and never charges delivery again.
+// "They choose" leaves it to the customer on the pay page, as before.
+const PL_SHIP_TYPES = [
+  { id: 'customer', name: 'They choose', hint: 'On the pay page' },
+  { id: 'pickup', name: 'Pickup', hint: 'No delivery' },
+  { id: 'regular', name: 'Regular', hint: '2–5 days' },
+  { id: 'expedited', name: 'Expedited', hint: '1–2 days' },
+  { id: 'event', name: 'Event', hint: 'Date & time' },
+];
+const PL_SHIP_NAMES = { regular: 'Regular delivery', expedited: 'Expedited delivery', event: 'Event delivery' };
+let plShip = { type: 'customer', zone: '', fee: null, date: '', time: '' };
+let plEditingHadShipping = false;
+let plZones = null, plZoneSettings = null;
+let plCat = '';
+const PL_CAT_NAMES = { bottles: 'Bottles', minis: 'Mini packs', bulk: 'Bulk & 5L', subscriptions: 'Subscriptions', coffeebars: 'Coffee bars', syrups: 'Syrups', cups: 'Cups', accessories: 'Extras', packs: 'Packs' };
+
+async function plLoadZones() {
+  if (plZones) return;
+  try {
+    const [{ data: zones }, { data: settings }] = await Promise.all([
+      sb.from('delivery_zones').select('*').order('name_en'),
+      sb.from('delivery_settings').select('*').eq('id', 1).maybeSingle(),
+    ]);
+    plZones = (zones || []).filter(z => z.is_active !== false);
+    plZoneSettings = settings || null;
+  } catch (e) { console.warn('delivery zones:', e); plZones = []; }
+}
+const plDelivers = () => ['regular', 'expedited', 'event'].includes(plShip.type);
+function plProductsSubtotal() {
+  return plCartItems.filter(i => i.category !== 'delivery_fee').reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
+}
+// Area names are stored in capitals (BET SHEMESH): show them as Bet Shemesh.
+function plZoneName(z) { const n = String(z?.name_en || ""); return n && n === n.toUpperCase() ? n.toLowerCase().replace(/(^|[\s-])\S/g, c => c.toUpperCase()) : n; }
+function plZone() { return (plZones || []).find(z => String(z.id) === String(plShip.zone)) || null; }
+// Same prices as the website checkout (supabase/functions/_shared/delivery-pricing.ts).
+function plShipQuote() {
+  if (!plDelivers()) return 0;
+  const z = plZone(), st = plZoneSettings || {};
+  const regular = z ? Number(z.regular_price) || 0 : Number(st.default_regular_price) || 30;
+  const expedited = z ? Number(z.expedited_price) || 0 : Number(st.default_expedited_price) || 50;
+  const event = z ? (z.event_price != null ? Number(z.event_price) : expedited) : Number(st.default_event_price) || 80;
+  const freeAbove = z?.free_above ? Number(z.free_above) : null;
+  if (plShip.type === 'expedited') return expedited;
+  if (plShip.type === 'event') return event;
+  return freeAbove != null && plProductsSubtotal() >= freeAbove ? 0 : regular;
+}
+function plShipFee() { if (!plDelivers()) return 0; return plShip.fee != null && !isNaN(plShip.fee) ? Math.max(0, Number(plShip.fee)) : plShipQuote(); }
+function plShipLabel() { const z = plZone(); return (PL_SHIP_NAMES[plShip.type] || '') + (z ? ' · ' + plZoneName(z) : ''); }
+function plSyncShipLine() {
+  plCartItems = plCartItems.filter(i => i.category !== 'delivery_fee');
+  const fee = plShipFee();
+  if (plDelivers() && fee > 0) plCartItems.push({ id: 'delivery_fee', custom_id: 'delivery_fee', name_en: plShipLabel(), name_he: '', price: fee, qty: 1, category: 'delivery_fee', meta: { type: 'delivery_fee', delivery_type: plShip.type } });
+}
+function plShipSet(patch) {
+  // A fee you typed belongs to that option and area: switching either goes back to the website price.
+  if (patch.type && patch.type !== plShip.type && !("fee" in patch)) patch = { ...patch, fee: null };
+  plShip = { ...plShip, ...patch }; renderPlShip(); renderPlItems(); }
+function renderPlShip() {
+  const box = document.getElementById('plShipOpts');
+  if (!box) return;
+  box.innerHTML = PL_SHIP_TYPES.map(o => `<button type="button" class="plx-ship-opt" role="radio" aria-checked="${o.id === plShip.type}" onclick="plShipSet({type:'${o.id}'})"><b>${o.name}</b><small>${o.hint}</small></button>`).join('');
+  const delivers = plDelivers();
+  document.getElementById('plShipWhere').hidden = !delivers;
+  document.getElementById('plShipWhen').hidden = plShip.type !== 'event';
+  if (delivers) {
+    const sel = document.getElementById('plShipZone');
+    sel.innerHTML = '<option value="">Other area · standard price</option>' + (plZones || []).map(z => `<option value="${escAttr(String(z.id))}">${escAttr(plZoneName(z))}${z.name_he ? ' · ' + escAttr(z.name_he) : ''}</option>`).join('');
+    sel.value = plShip.zone || '';
+    const fee = document.getElementById('plShipFee');
+    if (document.activeElement !== fee) fee.value = plShipFee();
   }
- plCartItems = [];
-plEditingLinkId = null;
-plEditingLinkCode = null;
-document.getElementById('plEditLinkId').value = '';
-document.getElementById('plLinkName').value = '';
-document.getElementById('plCustomer').value = '';
-  document.getElementById('plPhone').value = '';
-  document.getElementById('plEmail').value = '';
-  document.getElementById('plAddress').value = '';
-  document.getElementById('plProductSearch').value = '';
-  if (document.getElementById('plDeliveryFee')) document.getElementById('plDeliveryFee').value = '';
-  if (document.getElementById('plCustomItemName')) document.getElementById('plCustomItemName').value = '';
-  if (document.getElementById('plCustomItemPrice')) document.getElementById('plCustomItemPrice').value = '';
-  if (document.getElementById('plCustomItemQty')) document.getElementById('plCustomItemQty').value = '1';
-  document.getElementById('plFinalPrice').value = '';
-  document.getElementById('plDiscountNote').value = '';
+  if (plShip.type === 'event') {
+    document.getElementById('plShipDate').value = plShip.date || '';
+    document.getElementById('plShipTime').value = plShip.time || '';
+  }
+  const quote = plShipQuote(), z = plZone();
+  document.getElementById('plShipHint').textContent =
+    plShip.type === 'customer' ? 'They pick pickup or delivery and their city when paying. The delivery fee is added there.'
+    : plShip.type === 'pickup' ? 'No delivery fee. The pay page won’t ask about delivery.'
+    : (plShip.fee != null && Number(plShip.fee) !== quote ? `Website price is ₪${quote}; you set ₪${plShipFee()}. ` : (quote === 0 && plShip.type === 'regular' && z?.free_above ? `Free: products are over ₪${z.free_above}. ` : ''))
+      + 'Included in the total. The customer won’t be charged delivery again.';
+}
+
+function renderPlCats() {
+  const el = document.getElementById('plCats');
+  if (!el) return;
+  const first = new Map();
+  [...allProducts].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).forEach(p => { if (p.category && !first.has(p.category)) first.set(p.category, true); });
+  const cats = [['', 'All'], ...[...first.keys()].map(c => [c, PL_CAT_NAMES[c] || (c.charAt(0).toUpperCase() + c.slice(1))])];
+  el.innerHTML = cats.map(([c, l]) => `<button type="button" class="plx-cat" aria-pressed="${c === plCat}" onclick="plSetCat('${escAttr(c)}')">${escAttr(l)}</button>`).join('');
+}
+function plSetCat(c) { plCat = c; renderPlCats(); searchPayLinkProducts(document.getElementById('plProductSearch')?.value || ''); }
+function plToggleCustom(open) {
+  const box = document.getElementById('plCustomBox');
+  if (!box) return;
+  box.hidden = open === undefined ? !box.hidden : !open;
+  if (!box.hidden) document.getElementById('plCustomItemName')?.focus();
+}
+function plCustomerSummary() {
+  const el = document.getElementById('plCustomerSummary');
+  if (!el) return;
+  const name = (document.getElementById('plCustomer')?.value || '').trim(), phone = (document.getElementById('plPhone')?.value || '').trim();
+  el.textContent = [name, phone].filter(Boolean).join(' · ') || 'optional';
+}
+function plResetForm() {
+  ['plEditLinkId', 'plLinkName', 'plCustomer', 'plPhone', 'plEmail', 'plAddress', 'plProductSearch', 'plCustomItemName', 'plCustomItemPrice', 'plFinalPrice', 'plDiscountNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('plCustomItemQty').value = '1';
   document.getElementById('plCreateOrderNow').checked = false;
   document.getElementById('plProductResults').innerHTML = '';
   document.getElementById('plLinkResult').style.display = 'none';
+  document.getElementById('plAdjust').open = false;
+  document.getElementById('plCustomerBox').open = false;
+  plToggleCustom(false);
+  plCat = '';
+  plShip = { type: 'customer', zone: '', fee: null, date: '', time: '' };
+  plEditingHadShipping = false;
   plSetLinkError('');
-  renderPlItems();
-  if (!allProducts.length) await loadAllProducts();
-  searchPayLinkProducts('');
+}
+function plGoLabel() { return plEditingLinkId ? 'Save changes' : plLinkType === 'recurring' ? 'Create recurring link' : 'Create link'; }
+async function plShowModal() {
+  const ready = Promise.all([allProducts.length ? null : loadAllProducts(), plLoadZones()]);
+  document.getElementById('plGenerateBtn').textContent = plGoLabel();
   document.getElementById('payLinkModal').classList.add('open');
+  await ready;
+  renderPlCats();
+  renderPlShip();
+  renderPlItems();
+  plCustomerSummary();
+  ['plCustomer', 'plPhone'].forEach(id => { const el = document.getElementById(id); if (el && !el.dataset.plSum) { el.dataset.plSum = '1'; el.addEventListener('input', plCustomerSummary); } });
+}
+async function openNewLink(type) {
+  plLinkType = type === 'recurring' ? 'recurring' : 'onetime';
+  plCartItems = [];
+  plEditingLinkId = null;
+  plEditingLinkCode = null;
+  plResetForm();
+  document.getElementById('plModalTitle').textContent = plLinkType === 'recurring' ? 'New recurring link' : 'New payment link';
+  document.getElementById('plModalSub').textContent = plLinkType === 'recurring'
+    ? 'Stays open after each payment, for repeat customers.'
+    : 'Closes after the customer pays.';
+  renderPlItems();
+  await plShowModal();
 }
 function closePayLinkModal() { document.getElementById('payLinkModal').classList.remove('open'); }
 
@@ -4674,20 +4880,14 @@ async function editPayLink(id) {
     console.error(error);
     return;
   }
-
+  plResetForm();
   plEditingLinkId = link.id;
   plEditingLinkCode = link.link_code;
   plLinkType = isRecurringPayLink(link) ? 'recurring' : 'onetime';
-
-  const title = document.getElementById('plModalTitle');
-  const sub = document.getElementById('plModalSub');
-  const btn = document.getElementById('plGenerateBtn');
-
-  if (title) title.textContent = plLinkType === 'recurring' ? 'Edit Recurring Link' : 'Edit One-time Link';
-  if (sub) sub.textContent = plLinkType === 'recurring'
-    ? 'Edit this recurring link — the same URL will keep working.'
-    : 'Edit this one-time payment link.';
-  if (btn) btn.textContent = 'Save Changes';
+  document.getElementById('plModalTitle').textContent = 'Edit ' + (getPayLinkDisplayName(link) || 'link');
+  document.getElementById('plModalSub').textContent = plLinkType === 'recurring'
+    ? 'Recurring link: the same address keeps working.'
+    : 'One-time link: closes after the customer pays.';
 
   document.getElementById('plEditLinkId').value = link.id;
   document.getElementById('plLinkName').value = link.link_name || '';
@@ -4695,19 +4895,13 @@ async function editPayLink(id) {
   document.getElementById('plPhone').value = link.customer_phone || '';
   document.getElementById('plEmail').value = link.customer_email || '';
   document.getElementById('plAddress').value = link.delivery_address || '';
-  document.getElementById('plProductSearch').value = '';
-  if (document.getElementById('plDeliveryFee')) document.getElementById('plDeliveryFee').value = '';
-  if (document.getElementById('plCustomItemName')) document.getElementById('plCustomItemName').value = '';
-  if (document.getElementById('plCustomItemPrice')) document.getElementById('plCustomItemPrice').value = '';
-  if (document.getElementById('plCustomItemQty')) document.getElementById('plCustomItemQty').value = '1';
-  document.getElementById('plFinalPrice').value = '';
   document.getElementById('plDiscountNote').value = link.discount_note || '';
-  document.getElementById('plCreateOrderNow').checked = false;
-  document.getElementById('plLinkResult').style.display = 'none';
-  plSetLinkError('');
+  document.getElementById('plCustomerBox').open = !!(link.customer_name || link.customer_phone || link.customer_email || link.delivery_address || link.link_name);
+  document.getElementById('plAdjust').open = !!link.discount_note || Number(link.discount) > 0;
 
   plCartItems = (link.items || []).map(i => ({
     id: i.product_id || i.id || i.custom_id || Math.random().toString(36).slice(2),
+    product_id: i.product_id || null,
     name_en: i.name_en || i.name || 'Item',
     name_he: i.name_he || '',
     price: Number(i.price) || 0,
@@ -4718,13 +4912,23 @@ async function editPayLink(id) {
     meta: i.meta || null,
     custom_id: i.custom_id || null,
   }));
-  const deliveryLine = plCartItems.find(i => i.category === 'delivery_fee' || String(i.name_en || '').toLowerCase() === 'delivery fee');
-  if (deliveryLine && document.getElementById('plDeliveryFee')) document.getElementById('plDeliveryFee').value = Number(deliveryLine.price || 0) * Number(deliveryLine.qty || 1);
+  if (Number(link.discount) > 0) document.getElementById('plFinalPrice').value = Number(link.total) || '';
 
-  renderPlItems();
-  if (!allProducts.length) await loadAllProducts();
-  searchPayLinkProducts('');
-  document.getElementById('payLinkModal').classList.add('open');
+  // Shipping saved with the link, or an older link's manual "Delivery Fee" line.
+  await plLoadZones();
+  const info = link.delivery_info && typeof link.delivery_info === 'object' ? link.delivery_info : {};
+  const line = plCartItems.find(i => i.category === 'delivery_fee' || String(i.name_en || '').toLowerCase() === 'delivery fee');
+  const lineFee = line ? Number(line.price || 0) * Number(line.qty || 1) : 0;
+  if (info.shipping_set_by_admin) {
+    plEditingHadShipping = true;
+    const zone = (plZones || []).find(z => z.name_en === info.zone_name || (info.city_he && z.name_he === info.city_he));
+    plShip = { type: info.delivery_type || 'regular', zone: zone ? String(zone.id) : '', fee: null, date: info.delivery_date || '', time: info.event_time || '' };
+    if (plDelivers() && lineFee !== plShipQuote()) plShip.fee = lineFee;
+  } else if (line) {
+    plShip = { type: 'regular', zone: '', fee: lineFee, date: '', time: '' };
+  }
+  if (line) plCartItems = plCartItems.filter(i => i !== line);   // re-added from the shipping picker
+  await plShowModal();
 }
 function renderPayLinkProductThumb(p) {
   if (p.images?.length) return `<img src="${escAttr(p.images[0])}" alt=""/>`;
@@ -4782,14 +4986,6 @@ function plGuestPrice(product, guests) {
   if (lower) return Number(lower.price);
   return Number(product?.price || 0);
 }
-function plSetDeliveryFee(value) {
-  const fee = Number(value || 0);
-  plCartItems = plCartItems.filter(i => i.category !== 'delivery_fee');
-  if (fee > 0) {
-    plCartItems.push({ id:'delivery_fee', custom_id:'delivery_fee', name_en:'Delivery Fee', name_he:'', price:fee, qty:1, category:'delivery_fee', meta:{type:'delivery_fee'} });
-  }
-  renderPlItems();
-}
 function plAddCustomItem() {
   const name = (document.getElementById('plCustomItemName')?.value || '').trim();
   const price = Number(document.getElementById('plCustomItemPrice')?.value || 0);
@@ -4816,19 +5012,31 @@ function plWhatsAppShareButton(label, text, phone, extraClass='btn-green') {
   const url = whatsAppShareHref(phone, encodeURIComponent(text));
   return `<a href="${url}" target="_blank" class="btn ${extraClass} btn-full" style="margin-top:10px;text-decoration:none">${label}</a>`;
 }
+function plInCart(id) { return plCartItems.filter(i => i.id === id).reduce((s, i) => s + (Number(i.qty) || 0), 0); }
+function plCard(onclick, p, name, price, count, title) {
+  return `
+    <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}${count ? ' in-cart' : ''}" onclick="${onclick}" title="${escAttr(title)}">
+      ${count ? `<span class="pl-product-badge">${count}</span>` : ''}
+      <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
+      <div class="pl-product-name">${escAttr(name)}</div>
+      <div class="pl-product-price">₪${price}</div>
+    </button>`;
+}
 function searchPayLinkProducts(query) {
   const q = (query || '').trim().toLowerCase();
-  let list = [...allProducts].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  let list = [...allProducts].sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0) || (a.sort_order || 0) - (b.sort_order || 0));
+  if (plCat) list = list.filter(p => p.category === plCat);
   if (q) {
     list = list.filter(p =>
-      p.name_en.toLowerCase().includes(q) ||
+      (p.name_en || '').toLowerCase().includes(q) ||
       (p.name_he || '').toLowerCase().includes(q) ||
       (p.category || '').toLowerCase().includes(q)
     );
   }
   const el = document.getElementById('plProductResults');
+  if (!el) return;
   if (!list.length) {
-    el.innerHTML = '<div style="color:var(--text2);font-size:.83rem;padding:8px 0;grid-column:1/-1">No products found.</div>';
+    el.innerHTML = '<div class="plx-empty" style="grid-column:1/-1">No products found.</div>';
     return;
   }
   // Coffee bars appear as one card per guest tier (25/50/… people), priced from guest_pricing.
@@ -4837,27 +5045,12 @@ function searchPayLinkProducts(query) {
     if (isBar) {
       const guestVar = (p.variations || []).find(v => v.type === 'guest_count');
       const tiers = (guestVar?.options || [])
-        .map(o => ({ guests: Number(o.guests ?? o.value) || Number(String(o.label||'').match(/\d+/)?.[0]) || 0, price: Number(o.price) || 0 }))
+        .map(o => ({ guests: Number(o.guests ?? o.value) || Number(String(o.label || '').match(/\d+/)?.[0]) || 0, price: Number(o.price) || 0 }))
         .filter(t => t.guests > 0 && t.price > 0);
-      if (!tiers.length) return `
-        <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlCoffeeBarTier('${p.id}',25)" title="${escAttr(p.name_en)}">
-          <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
-          <div class="pl-product-name">${p.name_en}</div>
-          <div class="pl-product-price">₪${p.price}</div>
-        </button>`;
-      return tiers.map(t => `
-        <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlCoffeeBarTier('${p.id}',${t.guests})" title="${escAttr(p.name_en)} — ${t.guests} people">
-          <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
-          <div class="pl-product-name">${p.name_en} — ${t.guests} people</div>
-          <div class="pl-product-price">₪${t.price}</div>
-        </button>`).join('');
+      if (!tiers.length) return plCard(`addPlCoffeeBarTier('${p.id}',25)`, p, p.name_en, p.price, plInCart(`${p.id}:guests:25`), p.name_en);
+      return tiers.map(t => plCard(`addPlCoffeeBarTier('${p.id}',${t.guests})`, p, `${p.name_en} · ${t.guests} people`, t.price, plInCart(`${p.id}:guests:${t.guests}`), `${p.name_en} — ${t.guests} people`)).join('');
     }
-    return `
-    <button type="button" class="pl-product-card ${p.is_active ? '' : 'inactive'}" onclick="addPlItem('${p.id}')" title="${escAttr(p.name_en)}">
-      <div class="pl-product-thumb">${renderPayLinkProductThumb(p)}</div>
-      <div class="pl-product-name">${p.name_en}</div>
-      <div class="pl-product-price">₪${p.price}</div>
-    </button>`;
+    return plCard(`addPlItem('${p.id}')`, p, p.name_en, p.price, plInCart(p.id), p.name_en);
   }).join('');
 }
 function addPlCoffeeBarTier(productId, guests) {
@@ -4902,21 +5095,26 @@ function addPlItem(productId) {
   renderPlItems();
 }
 function renderPlItems() {
+  plSyncShipLine();
   const container = document.getElementById('plItems');
-  if (!plCartItems.length) { container.innerHTML='<div style="color:var(--text2);font-size:.83rem;padding:8px 0">No products added yet.</div>'; }
-  else container.innerHTML = plCartItems.map(item=>`
+  const lines = plCartItems.filter(i => i.category !== 'delivery_fee');
+  if (!lines.length) container.innerHTML = '<div class="plx-empty">Tap a product to add it.</div>';
+  else container.innerHTML = lines.map(item => `
     <div class="pl-item">
       <div class="pl-item-thumb">${renderPlItemThumb(item)}</div>
-      <div class="pl-item-name">${item.name_en}</div>
+      <div class="pl-item-name">${escAttr(item.name_en)}</div>
       <div class="qty-inline">
-        <button class="qty-inline-btn" onclick="plChangeQty('${item.id}',-1)">−</button>
+        <button class="qty-inline-btn" aria-label="One less" onclick="plChangeQty('${item.id}',-1)">−</button>
         <span style="font-size:.83rem;color:var(--cream);min-width:20px;text-align:center">${item.qty}</span>
-        <button class="qty-inline-btn" onclick="plChangeQty('${item.id}',1)">+</button>
+        <button class="qty-inline-btn" aria-label="One more" onclick="plChangeQty('${item.id}',1)">+</button>
       </div>
       <div class="pl-item-price">₪${item.price * item.qty}</div>
-      <button class="pl-item-rm" onclick="plRemoveItem('${item.id}')">✕</button>
+      <button class="pl-item-rm" aria-label="Remove" onclick="plRemoveItem('${item.id}')">✕</button>
     </div>`).join('');
   updatePlTotal();
+  // Keep the shipping fee (free-above) and the product badges in step with the order.
+  if (document.getElementById('plShipOpts')?.childElementCount) renderPlShip();
+  searchPayLinkProducts(document.getElementById('plProductSearch')?.value || '');
 }
 function plChangeQty(id, delta) {
   const item = plCartItems.find(x=>x.id===id);
@@ -4927,8 +5125,16 @@ function plChangeQty(id, delta) {
 }
 function plRemoveItem(id) { plCartItems = plCartItems.filter(x=>x.id!==id); renderPlItems(); }
 function updatePlTotal() {
-  const subtotal = plCartItems.reduce((s,i)=>s+i.price*i.qty,0);
-  document.getElementById('plSubtotal').textContent = `₪${subtotal}`;
+  const products = plProductsSubtotal();
+  const subtotal = plCartItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
+  document.getElementById('plSubtotal').textContent = `₪${products}`;
+  const row = document.getElementById('plShipRow');
+  if (row) {
+    row.hidden = false;
+    const fee = plShipFee();
+    document.getElementById('plShipRowLabel').textContent = plShip.type === 'customer' ? 'Shipping' : plShip.type === 'pickup' ? 'Pickup' : plShipLabel();
+    document.getElementById('plShipRowAmt').textContent = plShip.type === 'customer' ? 'Added when paying' : fee ? `₪${fee}` : 'Free';
+  }
   const override = parseFloat(document.getElementById('plFinalPrice').value);
   const final = isNaN(override) ? subtotal : override;
   document.getElementById('plFinalTotal').textContent = `₪${final}`;
@@ -4957,6 +5163,7 @@ async function insertPaymentLink(linkData, deliveryAddress) {
   const extras = {};
   if (deliveryAddress) extras.delivery_address = deliveryAddress;
   if (linkData.customer_email) extras.customer_email = linkData.customer_email;
+  if (linkData.delivery_info) extras.delivery_info = linkData.delivery_info;
   if (linkData.created_by) extras.created_by = linkData.created_by;
   if (linkData.reusable) {
     extras.reusable = true;
@@ -5000,6 +5207,20 @@ async function generatePayLink() {
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
   const customerEmail = document.getElementById('plEmail').value.trim() || null;
   const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
+  if (plShip.type === 'event' && (!plShip.date || !plShip.time)) { plSetLinkError('Choose the event date and arrival time under Shipping.'); return; }
+  // Shipping set here: shown as included on the pay page, never charged again there.
+  const shipZone = plZone();
+  const shipInfo = plShip.type === 'customer' ? null : {
+    shipping_set_by_admin: true,
+    delivery_type: plShip.type,
+    delivery_label: plShip.type === 'pickup' ? 'Pickup — no delivery' : plShipLabel(),
+    zone_name: shipZone?.name_en || '',
+    city_en: shipZone ? plZoneName(shipZone) : '',
+    city_he: shipZone?.name_he || '',
+    delivery_date: plShip.type === 'event' ? plShip.date : null,
+    event_time: plShip.type === 'event' ? plShip.time : null,
+    delivery_fee: plDelivers() ? plShipFee() : 0,
+  };
 
  const linkItems = plCartItems.map(i=>({
   product_id: i.product_id || (String(i.id || '').startsWith('custom_') || i.category === 'delivery_fee' ? null : i.id),
@@ -5027,6 +5248,7 @@ async function generatePayLink() {
     total: Number(total), status: 'pending',
     created_by: adminUser?.id || session.user?.id || null,
     reusable,
+    delivery_info: shipInfo,
   };
  let saveError = null;
 
@@ -5044,6 +5266,7 @@ if (plEditingLinkId) {
     total: Number(total),
     reusable,
     tranzila_url: reusable ? REUSABLE_LINK_MARKER : null,
+    ...(shipInfo || plEditingHadShipping ? { delivery_info: shipInfo } : {}),
     updated_at: new Date().toISOString(),
   };
 
@@ -5077,7 +5300,7 @@ if (saveError) {
       payment_status: 'unpaid',
       payment_method: 'payme',
       source: 'payment_link',
-      delivery_info: { payment_link_code: linkCode, created_from_admin: true },
+      delivery_info: { ...(shipInfo || {}), payment_link_code: linkCode, created_from_admin: true },
       notes: linkData.discount_note,
     };
     const { data: order, error: orderErr } = await sb.from('orders').insert(orderData).select('id, order_number').single();
@@ -5127,7 +5350,7 @@ if (saveError) {
     plSetLinkError('Unexpected error: ' + (err.message || String(err)));
     showToast('Payment link failed — see red box above button', 8000);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = plLinkType === 'recurring' ? 'Generate Recurring Link' : 'Generate One-time Link'; }
+    if (btn) { btn.disabled = false; btn.textContent = plGoLabel(); }
   }
 }
 
@@ -9320,7 +9543,9 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261029-1"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
-<script src="/admin-react-1.js?v=ee04168070"></script>
+<script src="/address-picker.js?v=20261104-1"></script>
+<script src="/admin-route.js?v=20261104-1"></script>
+<script src="/admin-react-1.js?v=f5c25d1bab"></script>
 <script src="/admin-stock-numbers.js?v=20261026-1"></script>
 <script src="/admin-react-2.js?v=c449863011"></script>
 
