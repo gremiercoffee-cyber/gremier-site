@@ -1001,6 +1001,8 @@ function JobRowComp({ job, onCheckoff, onTap, showDelete, onDelete }) {
 }
 
 // ── Calendar ───────────────────────────────────────────────
+// The Month view calendar is switched off (not used). The code stays; set this to true to show it again.
+const SHOW_MONTH_CALENDAR = false;
 function MiniCalendar2({ year, month, jobs, today, onDayTap }) {
   const days = monthDates2(year, month);
   const first = days[0].getDay();
@@ -1598,6 +1600,13 @@ const [showForm, setShowForm] = useState2(false);
   },[]);
 
   useEffect2(()=>{const timer=setInterval(()=>{if(document.getElementById(production?'tab-production':'tab-orders')?.style.display!=='none')reload();},60000);return()=>clearInterval(timer);},[]);
+  // The Orders screen shows deliveries and orders together as one card list (admin-orders-board.js):
+  // hand it the delivery jobs, and let its buttons use this component's check-off / edit / delete flows.
+  useEffect2(()=>{
+    if(production||loading)return;
+    window.__gremierDeliveries={jobs:allJobs.filter(j=>j.type==='delivery'),stores};
+    window.dispatchEvent(new CustomEvent('gremier:deliveries-changed'));
+  },[allJobs,stores,loading]);
   // derived
   const overdueJobs = jobs.filter(j=>!j.done&&!j.brewStarted&&isJobOverdue2(j)).sort((a,b)=>a.date.localeCompare(b.date));
   const todayJobs = jobs.filter(j=>j.date===today&&!j.done&&!j.brewStarted);
@@ -1837,15 +1846,23 @@ async function addJobFromForm(job, mode) {
     await patchJob2(job.id,{date:newDate,time:newTime||null});
     await reload();
   }
-  if (loading) return <div style={{...TS.screen,minHeight:0,padding:'24px 12px',display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a6a6a'}}><div style={{width:20,height:20,border:'2px solid #cccccc',borderTopColor:'#1a1a1a',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div>;
+  if(!production){
+    const byId=(id)=>allJobs.find(j=>j.id===id);
+    window.__gremierDeliveryActions={
+      checkoff(id){const j=byId(id);if(j)handleCheckoff(j);},
+      edit(id){const j=byId(id);if(j)openEditJob(j);},
+      remove(id){const j=byId(id);if(j)handleDelete(j);},
+    };
+  }
+  if (loading) return production ? <div style={{...TS.screen,minHeight:0,padding:'24px 12px',display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6a6a6a'}}><div style={{width:20,height:20,border:'2px solid #cccccc',borderTopColor:'#1a1a1a',borderRadius:'50%',animation:'spin .7s linear infinite'}}/>Loading schedule…</div> : null;
 
   return (
     <div className={production?'production-schedule':'delivery-schedule'} style={{...TS.screen,minHeight:0,paddingBottom:0}}>
-      <div style={{padding:'0 12px'}}>
-        <h2 style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.1rem',fontWeight:600,color:'#121212',margin:'0 0 14px'}}>{production?'Production schedule':'Delivery schedule'}</h2>
-        {!production&&<div className="production-actions"><button className="btn btn-outline" onClick={()=>window.GremierRoute?.open()}>🧭 Navigate</button></div>}
+      {/* On Orders, deliveries are shown with the orders as cards (admin-orders-board.js); this view keeps only its drawers and modals. */}
+      {production&&<div style={{padding:'0 12px'}}>
+        <h2 style={{fontFamily:"'DM Sans',sans-serif",fontSize:'1.1rem',fontWeight:600,color:'#121212',margin:'0 0 14px'}}>Production schedule</h2>
         {production&&<div className="production-actions">{[['brew','Brew'],['bottle','Bottle'],['label','Label']].map(([type,label])=><button key={type} className="btn btn-outline" onClick={()=>{setProductionView('all');window.__gremierOpenProductionLog?.({prodType:type});}}>{label}</button>)}<button className="btn btn-outline" onClick={()=>setProductionView(v=>v==='drain'?'all':'drain')}>{productionView==='drain'?'All tasks':'Drains'}</button><button className="btn btn-outline" onClick={()=>window.__gremierOpenProductionLog?.({mode:'schedule'})}>Schedule</button><button className="btn btn-outline" onClick={()=>window.toggleProductionKiosk?.()}>Kiosk mode</button></div>}
-      </div>
+      </div>}
 
       {/* brewing banner */}
       {brewingJobs.length>0&&(
@@ -1860,6 +1877,7 @@ async function addJobFromForm(job, mode) {
         </div>
       )}
 
+      {production&&<>
       {/* overdue */}
       {overdueJobs.length>0&&<DaySection label="Overdue" dayJobs={overdueJobs} overdue onCheckoff={handleCheckoff} onTap={openEditJob} onDelete={handleDelete}/>}
 
@@ -1891,10 +1909,11 @@ async function addJobFromForm(job, mode) {
           Show {Object.keys(grouped).length-3} more dates ▾
         </button>
       )}
+      </>}
 
       {ReactDOM.createPortal(<>
-      {/* calendar follows the customer orders on the combined page */}
-      <div style={{...TS.card,margin:'10px 12px'}}>
+      {/* calendar follows the customer orders on the combined page (switched off: SHOW_MONTH_CALENDAR) */}
+      {SHOW_MONTH_CALENDAR&&<div style={{...TS.card,margin:'10px 12px'}}>
         <button type="button" aria-expanded={calOpen} style={{display:'flex',width:'100%',padding:0,border:0,background:'none',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none',marginBottom:calOpen?10:0}} onClick={toggleCal}>
           <span style={{fontSize:13,fontWeight:700,color:'#121212'}}>📅 Month view</span>
           <span style={{fontSize:12,color:'#6a6a6a'}}>{calOpen?'▾':'▸'}</span>
@@ -1907,7 +1926,7 @@ async function addJobFromForm(job, mode) {
         </div>
         <MiniCalendar2 year={monthView.year} month={monthView.month} jobs={jobs} today={today} onDayTap={setCalDay}/>
         </>}
-      </div>
+      </div>}
 
       {/* completed this week */}
       {completedThisWeek.length>0&&(

@@ -1990,6 +1990,8 @@ function JobRowComp({
 }
 
 // ── Calendar ───────────────────────────────────────────────
+// The Month view calendar is switched off (not used). The code stays; set this to true to show it again.
+const SHOW_MONTH_CALENDAR = false;
 function MiniCalendar2({
   year,
   month,
@@ -3600,6 +3602,16 @@ function ScheduleTab({
     }, 60000);
     return () => clearInterval(timer);
   }, []);
+  // The Orders screen shows deliveries and orders together as one card list (admin-orders-board.js):
+  // hand it the delivery jobs, and let its buttons use this component's check-off / edit / delete flows.
+  useEffect2(() => {
+    if (production || loading) return;
+    window.__gremierDeliveries = {
+      jobs: allJobs.filter(j => j.type === 'delivery'),
+      stores
+    };
+    window.dispatchEvent(new CustomEvent('gremier:deliveries-changed'));
+  }, [allJobs, stores, loading]);
   // derived
   const overdueJobs = jobs.filter(j => !j.done && !j.brewStarted && isJobOverdue2(j)).sort((a, b) => a.date.localeCompare(b.date));
   const todayJobs = jobs.filter(j => j.date === today && !j.done && !j.brewStarted);
@@ -3926,7 +3938,24 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     });
     await reload();
   }
-  if (loading) return /*#__PURE__*/React.createElement("div", {
+  if (!production) {
+    const byId = id => allJobs.find(j => j.id === id);
+    window.__gremierDeliveryActions = {
+      checkoff(id) {
+        const j = byId(id);
+        if (j) handleCheckoff(j);
+      },
+      edit(id) {
+        const j = byId(id);
+        if (j) openEditJob(j);
+      },
+      remove(id) {
+        const j = byId(id);
+        if (j) handleDelete(j);
+      }
+    };
+  }
+  if (loading) return production ? /*#__PURE__*/React.createElement("div", {
     style: {
       ...TS.screen,
       minHeight: 0,
@@ -3946,7 +3975,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       borderRadius: '50%',
       animation: 'spin .7s linear infinite'
     }
-  }), "Loading schedule\u2026");
+  }), "Loading schedule\u2026") : null;
   return /*#__PURE__*/React.createElement("div", {
     className: production ? 'production-schedule' : 'delivery-schedule',
     style: {
@@ -3954,7 +3983,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       minHeight: 0,
       paddingBottom: 0
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, production && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '0 12px'
     }
@@ -3966,12 +3995,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       color: '#121212',
       margin: '0 0 14px'
     }
-  }, production ? 'Production schedule' : 'Delivery schedule'), !production && /*#__PURE__*/React.createElement("div", {
-    className: "production-actions"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-outline",
-    onClick: () => window.GremierRoute?.open()
-  }, "\uD83E\uDDED Navigate")), production && /*#__PURE__*/React.createElement("div", {
+  }, "Production schedule"), production && /*#__PURE__*/React.createElement("div", {
     className: "production-actions"
   }, [['brew', 'Brew'], ['bottle', 'Bottle'], ['label', 'Label']].map(([type, label]) => /*#__PURE__*/React.createElement("button", {
     key: type,
@@ -4026,7 +4050,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       fontSize: 11,
       cursor: 'pointer'
     }
-  }, "\u2715 cancel")))), overdueJobs.length > 0 && /*#__PURE__*/React.createElement(DaySection, {
+  }, "\u2715 cancel")))), production && /*#__PURE__*/React.createElement(React.Fragment, null, overdueJobs.length > 0 && /*#__PURE__*/React.createElement(DaySection, {
     label: "Overdue",
     dayJobs: overdueJobs,
     overdue: true,
@@ -4132,7 +4156,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
       cursor: 'pointer'
     },
     onClick: () => setShowAllDates(true)
-  }, "Show ", Object.keys(grouped).length - 3, " more dates \u25BE"), ReactDOM.createPortal( /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Show ", Object.keys(grouped).length - 3, " more dates \u25BE")), ReactDOM.createPortal( /*#__PURE__*/React.createElement(React.Fragment, null, SHOW_MONTH_CALENDAR && /*#__PURE__*/React.createElement("div", {
     style: {
       ...TS.card,
       margin: '10px 12px'
