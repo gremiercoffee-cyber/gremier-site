@@ -395,10 +395,11 @@ function GlobalPillsFloat() {
     setJobs(prev=>prev.map(j=>j.id===jobId?{...j,paid:true}:j));
     await window.opsFetch(`jobs?id=eq.${jobId}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({paid:true})});
   }
+  // Instant: the card goes at once; the save runs behind it and only speaks up if it fails.
   async function dismissWebOrder(order) {
-    if (!window.confirm(`Remove "${websiteOrderDisplayLabel2(order)}" from queue?`)) return;
-    await window.opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});
-    await reload();
+    setPendingWeb(prev=>prev.filter(o=>o.id!==order.id));
+    try{await window.opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});}
+    catch(err){window.showToast?.('Could not remove it: '+(err.message||err),6000);reload();}
   }
   async function scheduleWebOrder(o) {
     setWebQueueOpen(false);

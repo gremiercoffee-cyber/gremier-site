@@ -1526,6 +1526,7 @@ const [showForm, setShowForm] = useState2(false);
   const [editingJobId, setEditingJobId] = useState2(null);
   const [rescheduleJob, setRescheduleJob] = useState2(null);
   const checkoffInProgress = useRef2(new Set());
+  const pendingSaves = useRef2(new Map());   // job id -> its insert, so a quick check-off waits for the row
   const today = todayISO2();
   const tomorrow = tomorrowISO2();
 
@@ -1654,6 +1655,9 @@ const [showForm, setShowForm] = useState2(false);
     const finalJob = { ...job, done:true, actualQty:actual, needsConfirmation:false, waSentAt:null,
       waNeedsSend: isStoreWaDelivery2({...job,done:true},stores)?true:job.waNeedsSend,
       ...(confirmedQtys?{quantities:confirmedQtys}:{}) };
+    // Instant: the delivery shows as done (and the fulfil question opens) now; stock and the job save run behind it.
+    setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
+    if (job.websiteOrderId) setFulfillOrderId(job.websiteOrderId);
     const patch = { done:true, actual_qty:actual, wa_sent_at:null };
     if (isStoreWaDelivery2(finalJob,stores)) patch.wa_needs_send=true;
     // if quantities were adjusted at checkoff, that MUST be saved to the job row too — otherwise the
@@ -1661,15 +1665,11 @@ const [showForm, setShowForm] = useState2(false);
     // plan instead of whatever was actually decremented here, drifting inventory out of sync
     if (confirmedQtys) patch.quantities = confirmedQtys;
     try{
+      await pendingSaves.current.get(job.id);
       await applyJobSideEffects2(finalJob,confirmedQtys,stores);
       await patchJob2(job.id,patch);
-      setJobs(prev=>prev.map(j=>j.id===job.id?finalJob:j));
       window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
     }catch(err){window.showToast?.('Delivery not fully saved: '+err.message+' — retry to finish safely.',8000);await reload();return;}
-    // If this delivery is linked to a website order, offer to mark it as fulfilled.
-    if (job.websiteOrderId) {
-      setFulfillOrderId(job.websiteOrderId);
-    }
   }
 
 async function handleDelete(job) {
@@ -1725,10 +1725,11 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
     setJobs(prev=>prev.map(j=>j.id===jobId?{...j,paid:true}:j));
     await patchJob2(jobId,{paid:true});
   }
+  // Instant: the card goes at once; the save runs behind it and only speaks up if it fails.
   async function dismissWebOrder(order) {
-    if (!window.confirm(`Remove "${websiteOrderDisplayLabel2(order)}" from queue?`)) return;
-    await opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});
-    await reload();
+    setPendingWeb(prev=>prev.filter(o=>o.id!==order.id));
+    try{await window.opsFetch(`pending_website_deliveries?id=eq.${order.id}`,{method:'PATCH',prefer:'return=minimal',body:JSON.stringify({status:'dismissed'})});}
+    catch(err){window.showToast?.('Could not remove it: '+(err.message||err),6000);reload();}
   }
 async function addJobFromForm(job, mode) {
     if (!job) return;
@@ -1745,14 +1746,18 @@ async function addJobFromForm(job, mode) {
         updatedJob.waSentAt = null;
         updatedJob.waNeedsSend = true;
       }
-      await patchJob2(editingJobId, jobToRow2(updatedJob));
-      if (storeChanged && isStoreWaDelivery2(updatedJob, stores)) {
-        window.showToast && window.showToast('Store changed — WhatsApp message ready to send again');
-      }
+      // Instant: close the form and show the change now; save behind it.
+      const editId = editingJobId;
+      setJobs(prev=>prev.map(j=>j.id===editId?updatedJob:j));
       setEditingJobId(null);
       setShowForm(false);
       setFormPrefill(null);
-      await reload();
+      if (storeChanged && isStoreWaDelivery2(updatedJob, stores)) {
+        window.showToast && window.showToast('Store changed — WhatsApp message ready to send again');
+      }
+      try { await patchJob2(editId, jobToRow2(updatedJob)); }
+      catch (err) { showToast(`⚠ Change not saved: ${err.message || 'Unknown error'}`, 8000); }
+      reload();
       return;
     }
 
@@ -1791,17 +1796,28 @@ async function addJobFromForm(job, mode) {
       return;
     }
 
-    try {
-      await window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(created.map(jobToRow2))});
-    } catch(err) {
-      console.error('addJobFromForm: DB insert failed', err);
-      showToast(`⚠ Could not save job: ${err.message || 'Unknown error'}`);
-      return;
-    }
+    // Instant: close the form and show the new job(s) now; the insert runs behind it.
     setShowForm(false);
     setFormPrefill(null);
-    await reload();
-    if (mode==='lognow' && created.length===1) await handleCheckoff(created[0]);
+    setJobs(prev=>[...prev,...created]);
+    const saving = window.opsFetch('jobs',{method:'POST',prefer:'return=minimal',body:JSON.stringify(created.map(jobToRow2))});
+    created.forEach(j=>pendingSaves.current.set(j.id,saving));
+    const checkNow = mode==='lognow' && created.length===1;
+    // A delivery check-off only opens the confirm screen, so it can open before the insert finishes.
+    if (checkNow && created[0].type==='delivery') handleCheckoff(created[0]);
+    try {
+      await saving;
+    } catch(err) {
+      console.error('addJobFromForm: DB insert failed', err);
+      setJobs(prev=>prev.filter(j=>!created.some(c=>c.id===j.id)));
+      setCheckoffJob(cur=>cur&&created.some(c=>c.id===cur.id)?null:cur);
+      showToast(`⚠ Could not save job: ${err.message || 'Unknown error'}`, 8000);
+      return;
+    } finally {
+      created.forEach(j=>pendingSaves.current.delete(j.id));
+    }
+    if (checkNow && created[0].type!=='delivery') await handleCheckoff(created[0]);
+    reload();
   }
   function openEditJob(job) {
     if (/^admin_del_[0-9a-f-]{36}$/i.test(job.id)) {

@@ -2864,7 +2864,7 @@ async function unarchiveNotification(id) {
 }
 
 function updateNotifBadge() {
-  const unread = notifCache.filter(n => !n.read_at && !n.archived_at).length;
+  const unread = notifCache.filter(n => !n.read_at && !n.archived_at).length + (window.GremierAbandoned?.count() || 0);
   ['pushBellBtn', 'notifBellDesktop'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -4144,46 +4144,9 @@ function applyClientOrderFilters(orders) {
   else if (orderKindFilter === 'regular') list = list.filter(o => !isSubscriptionOrder(o));
   return list;
 }
-async function dismissAbandonedOrder(orderId) {
-  if (!confirm('Mark this as cancelled and remove from abandoned list?')) return;
-  await sb.from('orders').update({ status:'cancelled', updated_at: new Date().toISOString() }).eq('id', orderId);
-  showToast('Order dismissed ✓');
-  await loadOrders();
-}
-
-function renderAbandonedOrders(orders) {
-  const panel = document.getElementById('abandonedOrdersPanel');
-  if (!panel) return;
-  const abandoned = (orders || []).filter(isAbandonedCheckoutOrder);
-  if (!abandoned.length) {
-    panel.innerHTML = '';
-    return;
-  }
-  panel.innerHTML = `
-    <div class="collapse-card" data-collapse-key="orders_abandoned" data-collapse-default="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px">
-      <div class="collapse-head" style="padding:14px 18px">
-        <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);font-weight:600">
-          🛒 Abandoned Checkouts (${abandoned.length})
-        </div>
-        <span class="collapse-chevron">▾</span>
-      </div>
-      <div class="collapse-body" style="padding:0 18px 14px">
-      ${abandoned.map(o => {
-        const items = (o.items||[]).map(i=>`${escHtml(i.name_en)} ×${i.qty}`).join(', ');
-        const date = new Date(o.created_at).toLocaleDateString('en-IL',{day:'numeric',month:'short'});
-        return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
-          <div style="min-width:0">
-            <div style="font-size:.85rem;color:var(--cream);font-weight:500">${escHtml(o.customer_name||'Unknown')}</div>
-            <div style="font-size:.75rem;color:var(--text2);margin-top:2px">${items||'No items'}</div>
-            <div style="font-size:.72rem;color:var(--text2);margin-top:2px">${date} · ₪${o.total}</div>
-          </div>
-          <button class="btn btn-sm" style="background:none;border:1px solid var(--border);color:var(--text2);flex-shrink:0" onclick="dismissAbandonedOrder('${o.id}')">Dismiss</button>
-        </div>`;
-      }).join('')}
-      </div>
-    </div>
-  `;
-  initCollapseCards();
+// Abandoned checkouts are listed (and popped up on every screen) by admin-abandoned.js.
+function renderAbandonedOrders() {
+  window.GremierAbandoned?.renderAll();
 }
 async function loadOrders() {
   const cacheKey = 'gremier_orders_cache_v2';
@@ -4465,27 +4428,39 @@ async function deductInventoryForOrder(order) {
   }
   if (stockChanged) window.notifyGremierStockChanged?.();
 }
+// Instant: the order shows as fulfilled at once. The server (delivery, stock, customer email)
+// runs behind it, the lists refresh quietly afterwards, and only a failure puts the order back.
 async function markOrderFulfilled(orderId, forceEmail, skipToast) {
+  const o = typeof allOrders !== 'undefined' ? allOrders.find(x => x.id === orderId) : null;
+  const before = o ? o.status : null;
+  const modalOpen = () => document.getElementById('orderModal')?.classList.contains('open');
+  if (o) {
+    o.status = 'fulfilled';
+    renderOrdersTable(allOrders);
+    if (modalOpen()) openOrderDetail(orderId);
+  }
+  if (!skipToast) showToast(o?.customer_email ? 'Fulfilled ✓ · emailing the customer…' : 'Fulfilled ✓');
+  const undo = (msg) => {
+    if (o) { o.status = before; renderOrdersTable(allOrders); if (modalOpen()) openOrderDetail(orderId); }
+    showToast(msg, 8000);
+  };
   try {
-    // The server completes the delivery and applies its stock transaction once.
-    const { data } = await callAdminFunction('notify-order-fulfilled', {
-      order_id: orderId,
-      force: !!forceEmail,
-    });
+    const { data } = await callAdminFunction('notify-order-fulfilled', { order_id: orderId, force: !!forceEmail });
     if (data.ok || data.skipped === 'already_notified') {
-      if (!skipToast) showToast(data.emailed ? 'Fulfilled + customer emailed ✓' : 'Marked fulfilled ✓');
-      await syncPaymentLinkForOrder(orderId);
-      await loadOrders();
-      await refreshPayLinksIfVisible();
-      if (document.getElementById('orderModal').classList.contains('open')) openOrderDetail(orderId);
+      if (!skipToast && data.emailed) showToast('Fulfilled ✓ · customer emailed ✓');
+      // Quiet refresh in the background; nothing here holds up the screen.
+      Promise.resolve()
+        .then(() => syncPaymentLinkForOrder(orderId))
+        .then(() => Promise.all([loadOrders(), refreshPayLinksIfVisible(), window.GremierOpenOrders?.load()]))
+        .catch(err => console.warn('after fulfil refresh:', err));
       return data;
     }
-    showToast(data.detail || data.error || 'Fulfillment notify failed', 8000);
     console.warn('notify-order-fulfilled:', data);
+    undo('Not marked fulfilled: ' + (data.detail || data.error || 'server said no'));
     return data;
   } catch (err) {
     console.error(err);
-    if (!skipToast) showToast(err.message || 'Could not reach notify-order-fulfilled');
+    undo('Not marked fulfilled: ' + (err.message || 'could not reach the server'));
     return null;
   }
 }
@@ -9615,11 +9590,12 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-route.js?v=20261104-1"></script>
 <script src="/admin-open-orders.js?v=20261105-1"></script>
 <script src="/admin-orders-board.js?v=20261104-1"></script>
-<script src="/admin-react-1.js?v=95138d5410"></script>
+<script src="/admin-abandoned.js?v=20261104-1"></script>
+<script src="/admin-react-1.js?v=af629a4288"></script>
 <script src="/admin-stock-numbers.js?v=20261026-1"></script>
 <script src="/admin-react-2.js?v=c449863011"></script>
 
-<script src="/admin-react-3.js?v=d0490dd33c"></script>
+<script src="/admin-react-3.js?v=9ae909da0f"></script>
 
 <!-- ══════════ HUB ADD-ONS: Today, Search, Customer page, Subscriptions, WhatsApp actions ══════════ -->
 <style id="hub-styles">

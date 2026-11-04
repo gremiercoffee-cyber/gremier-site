@@ -92,17 +92,18 @@
     // Open WhatsApp / SMS first, inside the tap: browsers block windows opened after a wait.
     if (how === 'wa' && phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
     if (how === 'sms' && phone) location.href = `sms:+${phone}?&body=${encodeURIComponent(text)}`;
-    if (!o.customer_email) { $('msgStatus').textContent = how === 'wa' ? 'Opened WhatsApp.' : 'Opened Messages.'; return; }
-    const status = $('msgStatus');
-    status.textContent = 'Sending email…';
+    // Close at once; the email goes in the background and a toast reports how it went.
+    close();
+    if (!o.customer_email) return;
+    const toast = (m, ms) => typeof showToast === 'function' && showToast(m, ms);
+    toast('Sending email…');
     try {
       const subject = lang === 'he' ? `ההזמנה שלך מגרמיר קופי #${o.order_number}` : `Your Gremier Coffee order #${o.order_number}`;
-      const { res, data } = await callAdminFunction('admin-tools', { action: 'message_customer', order_id: o.id, text, subject, template: state.tpl?.key || null });
+      const { res, data } = await callAdminFunction('admin-tools', { action: 'message_customer', order_id: o.id, text, subject, template: state?.tpl?.key || null });
       if (!res.ok || !data.ok) throw new Error(data.error || data.detail || res.status);
-      status.textContent = `✓ Emailed to ${o.customer_email}`;
-      if (typeof showToast === 'function') showToast('Message emailed ✓');
+      toast(`Emailed to ${o.customer_email} ✓`);
     } catch (e) {
-      status.textContent = `Email failed: ${e.message || e}`;
+      toast(`Email to ${o.customer_email} failed: ${e.message || e}`, 8000);
     }
   }
 
