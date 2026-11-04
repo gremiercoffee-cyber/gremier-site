@@ -338,47 +338,49 @@ window.loadHtml2Canvas = function () {
     .pl-item-thumb { width:40px; height:40px; border-radius:4px; overflow:hidden; background:var(--bg3); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
     .pl-item-thumb img { width:100%; height:100%; object-fit:cover; }
     /* Payment links page: one create button, then the open links as cards. */
-    .plk { display:flex; flex-direction:column; gap:14px; margin-bottom:26px; }
+    .plk { display:flex; flex-direction:column; gap:10px; margin:22px 0 26px; }
+    .plk:not(:has(.plk-card)) { margin:0; }
     .plk-h[hidden] { display:none; }
     .plk .page-title { margin:0; }
-    .plk-create { display:flex; align-items:center; gap:18px; width:100%; min-height:112px; padding:22px 24px; border:0; border-radius:22px; background:linear-gradient(135deg,#1a1a1a,#3a3a3a); color:#fff; cursor:pointer; text-align:left; font:inherit; box-shadow:0 10px 28px rgba(0,0,0,.18); transition:transform .15s, box-shadow .15s; }
+    .plk-orders-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .plk-create { display:flex; align-items:center; gap:12px; min-height:60px; padding:10px 20px 10px 10px; border:0; border-radius:16px; background:linear-gradient(135deg,#1a1a1a,#3a3a3a); color:#fff; cursor:pointer; text-align:left; font:inherit; box-shadow:0 6px 18px rgba(0,0,0,.16); transition:transform .15s, box-shadow .15s; }
     .plk-create:hover { transform:translateY(-1px); box-shadow:0 14px 34px rgba(0,0,0,.22); }
     .plk-create:active { transform:scale(.99); }
-    .plk-create-icon { width:60px; height:60px; border-radius:18px; background:rgba(255,255,255,.14); display:grid; place-items:center; font-size:2rem; font-weight:300; flex:none; }
-    .plk-create-text { flex:1; display:flex; flex-direction:column; gap:4px; }
-    .plk-create-text b { font-size:1.3rem; font-weight:700; letter-spacing:-.01em; }
-    .plk-create-text small { font-size:.85rem; color:rgba(255,255,255,.72); line-height:1.4; }
+    .plk-create-icon { width:40px; height:40px; border-radius:12px; background:rgba(255,255,255,.14); display:grid; place-items:center; font-size:1.4rem; font-weight:300; flex:none; }
+    .plk-create-text { display:flex; flex-direction:column; gap:1px; }
+    .plk-create-text b { font-size:1rem; font-weight:700; }
+    .plk-create-text small { font-size:.74rem; color:rgba(255,255,255,.7); }
     .plk-create-arrow { font-size:2rem; color:rgba(255,255,255,.6); flex:none; }
     .plk-h { margin:10px 0 0; font-family:'DM Sans',sans-serif; font-size:.78rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); font-weight:700; }
     .plk-list { display:flex; flex-direction:column; gap:8px; }
     .plk-list[hidden] { display:none; }
     .plk-empty { padding:18px; text-align:center; color:var(--text2); font-size:.85rem; }
     .plk-empty:has(.spinner) { display:flex; justify-content:center; }
-    .plk-card { display:flex; align-items:center; gap:14px; background:#fff; border:1px solid var(--border); border-radius:18px; padding:16px 16px 16px 18px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .plk-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px 12px 12px 14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
     .plk-card.old { opacity:.7; }
     .plk-thumbs { display:flex; flex:none; }
-    .plk-thumbs img, .plk-thumbs span { width:56px; height:56px; border-radius:12px; object-fit:cover; border:2px solid #fff; background:var(--bg3); display:grid; place-items:center; font-size:1.1rem; }
-    .plk-thumbs > * + * { margin-left:-24px; }
+    .plk-thumbs img, .plk-thumbs span { width:46px; height:46px; border-radius:11px; object-fit:cover; border:2px solid #fff; background:var(--bg3); display:grid; place-items:center; font-size:1.05rem; }
+    .plk-thumbs > * + * { margin-left:-20px; }
     .plk-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; cursor:pointer; }
-    .plk-name { font-weight:700; font-size:1.08rem; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .plk-items { font-size:.88rem; color:var(--cream2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .plk-meta { font-size:.8rem; color:var(--text2); display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .plk-name { font-weight:700; font-size:.98rem; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plk-items { font-size:.82rem; color:var(--cream2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plk-meta { font-size:.76rem; color:var(--text2); display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
     .plk-tag { font-size:.68rem; font-weight:700; border-radius:999px; padding:2px 8px; background:var(--bg3); color:var(--cream2); }
     .plk-tag.paid { background:rgba(46,139,87,.12); color:var(--green); }
     .plk-tag.warn { background:rgba(163,105,28,.12); color:#a3691c; }
-    .plk-side { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex:none; }
-    .plk-total { font-weight:700; font-size:1.2rem; color:var(--cream); }
+    .plk-side { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:none; }
+    .plk-total { font-weight:700; font-size:1.05rem; color:var(--cream); }
     .plk-actions { display:flex; gap:6px; align-items:center; }
-    .plk-wa { width:42px; height:42px; border-radius:50%; background:var(--green); color:#fff; display:grid; place-items:center; text-decoration:none; }
-    .plk-actions .pl-menu-btn { width:42px; height:42px; border-radius:50%; }
+    .plk-wa { width:36px; height:36px; border-radius:50%; background:var(--green); color:#fff; display:grid; place-items:center; text-decoration:none; }
+    .plk-actions .pl-menu-btn { width:36px; height:36px; border-radius:50%; }
     .plk-more { align-self:center; border:0; background:none; color:var(--text2); font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; padding:8px; }
     .plk-more[hidden] { display:none; }
     @media (max-width:600px) {
-      .plk-create { min-height:96px; padding:18px; gap:14px; border-radius:18px; }
-      .plk-create-icon { width:50px; height:50px; font-size:1.7rem; }
-      .plk-create-text b { font-size:1.15rem; }
-      .plk-card { padding:14px; gap:12px; }
-      .plk-thumbs img, .plk-thumbs span { width:48px; height:48px; }
+      .plk-create { min-height:52px; padding:8px 14px 8px 8px; border-radius:14px; }
+      .plk-create-icon { width:36px; height:36px; }
+      .plk-create-text small { display:none; }
+      .plk-card { padding:10px 10px 10px 12px; gap:10px; }
+      .plk-thumbs img, .plk-thumbs span { width:42px; height:42px; }
       .plk-thumbs > *:nth-child(n+3) { display:none; }
     }
     /* Payment link builder: products on the left, the order on the right. */
@@ -925,23 +927,13 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div id="tab-production" class="tab-content" style="display:none"><header class="page-header"><h1 class="page-title">Production</h1></header><div id="productionWorkerBar"></div><div id="ops-production-root"></div><section id="ops-production-extras-root" aria-label="Production calendar and completed work"></section><div id="productionWorkEntries"></div><div id="productionStockHistory"></div></div>
       <!-- ORDERS -->
       <div id="tab-orders" class="tab-content" style="display:none">
-        <div class="page-header">
+        <div class="page-header plk-orders-head">
           <h1 class="page-title">Orders</h1>
-
-        </div>
-        <!-- Payment links live here: one create button, then links still waiting for payment (hidden when none). -->
-        <div class="plk" id="ordersPayLinks">
           <button class="plk-create" onclick="openNewLink('onetime')">
             <span class="plk-create-icon" aria-hidden="true">＋</span>
-            <span class="plk-create-text"><b>Create payment link</b><small>Choose products and shipping, then send it on WhatsApp</small></span>
-            <span class="plk-create-arrow" aria-hidden="true">›</span>
+            <span class="plk-create-text"><b>Create payment link</b><small>Products, shipping, send on WhatsApp</small></span>
           </button>
-          <h2 class="plk-h" id="plkWaitingHead" hidden>Waiting for payment</h2>
-          <div class="plk-list" id="payLinksOneTimeBody"></div>
-          <button class="plk-more" id="archivedToggleBtn" onclick="togglePayLinkArchived()" hidden>Show older links (0)</button>
-          <div class="plk-list" id="payLinksArchivedBody" hidden></div>
         </div>
-        <section id="ordersSchedule" aria-label="Schedule"><div id="ops-schedule-root"></div></section>
         <h2 class="orders-section-title">Customer orders</h2>
         <div class="card" style="padding:0">
           <div class="table-wrap"><table id="ordersTable">
@@ -952,6 +944,14 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <tbody id="ordersBody"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
+        <!-- Payment links still waiting for payment (hidden when none); create button is in the header. -->
+        <div class="plk" id="ordersPayLinks">
+          <h2 class="plk-h" id="plkWaitingHead" hidden>Waiting for payment</h2>
+          <div class="plk-list" id="payLinksOneTimeBody"></div>
+          <button class="plk-more" id="archivedToggleBtn" onclick="togglePayLinkArchived()" hidden>Show older links (0)</button>
+          <div class="plk-list" id="payLinksArchivedBody" hidden></div>
+        </div>
+        <section id="ordersSchedule" aria-label="Schedule"><div id="ops-schedule-root"></div></section>
         <div class="card" id="closedOrdersCard" style="padding:0;margin-top:16px;display:none">
           <div class="collapse-head" style="padding:14px 18px;cursor:pointer" onclick="toggleClosedOrders()">
             <h3 class="collapse-head-title" id="closedOrdersTitle">✓ Fulfilled &amp; closed</h3>
