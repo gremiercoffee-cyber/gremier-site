@@ -48,8 +48,16 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 | `complete_drain` | `job_id` or `product` | adds concentrate (3kg→19L, 2→12.7, 1.5→9.5, 1→6.4), closes the brew |
 | `log_store_delivery` | `store` (fuzzy), `quantities` {product_key: n}, `date` | done delivery job, deducts inventory, adds the `store_deliveries` billing row, flags the WhatsApp delivery note |
 | `complete_delivery` | `job_id` (default next due), `quantities` (actuals) | marks a scheduled delivery done with the same stock/billing effects |
+| `schedule_store_delivery` | `store` (fuzzy), `quantities`, `date` (today or later), `time` | puts a store delivery on the schedule; stock and billing change only when it's completed |
+| `reschedule_job` | `job_id`, `date`, `time`, `quantities` (deliveries) | moves an open job or changes a scheduled delivery's planned amounts |
 | `log_bottling` | `product` (bottled key, e.g. classic_liter, vanilla_mini, jerry_can), `units` | adds the bottles to stock and uses concentrate (minis 4/L ×0.29; liters ×0.44 classic / ×0.5 others; jerry cans 5 L) |
-| `adjust_stock` | `kind` (inventory\|concentrate\|beans\|labeled), `product`, `delta` | stock correction |
+| `adjust_stock` | `kind` (inventory\|concentrate\|beans\|labeled), `product`, `delta` (±1000), `reason` | stock correction by an amount |
+| `set_stock` | `kind`, `product`, `qty` (the counted amount), `expected` (what `stock` showed), `reason` | sets stock to a count; refused with `stock_changed` if it moved since it was read |
+| `production_clock_in` / `production_clock_out` | `worker_id` / `shift_id` | production shifts (hours and pay) |
+
+`start_brew`, `complete_drain`, `log_bottling` and `log_labeling` also need `worker_id` ("owner" or a
+worker id from `production_people`) — never guess it. Unknown product keys are rejected rather than
+creating a new stock line. Every stock change is logged as `Stock: <product> before → after`.
 | `log_note` | `text` | adds a note to the timeline |
 
 Product keys: `classic_liter, sweetened_classic, house_blend, colombia_liter, decaf_liter,

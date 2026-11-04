@@ -1,7 +1,7 @@
 // Shared by hub-api (plain JSON) and hub-mcp (Claude / MCP). See docs/HUB_API.md.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  adjustStock, BOTTLES, completeDelivery, logBottling, logLabeling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
+  adjustStock, setStock, scheduleStoreDelivery, rescheduleJob, BOTTLES, completeDelivery, logBottling, logLabeling, completeDrain, HubError, logStoreDelivery, readActivity, readOrders,
   readSchedule, readStock, readStores, readSummary, startBrew,
 } from "./hub-ops.ts";
 import { widgetDrains } from "./widget-production.ts";
@@ -31,7 +31,10 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   complete_drain: { properties: { job_id: str("Drain job id (from schedule)"), product: str("Or: complete the earliest pending drain of this coffee") } },
   log_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles, e.g. {\"classic_liter\": 6, \"vanilla_mini\": 4}" }, date: str("YYYY-MM-DD, default today") }, required: ["store", "quantities"] },
   complete_delivery: { properties: { job_id: str("Delivery job id; default = next one due today/overdue"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "Actual amounts if different from planned" } } },
-  adjust_stock: { properties: { kind: { type: "string", enum: ["inventory", "concentrate", "beans", "labeled"] }, product: str("Product key, or coffee type for concentrate/beans"), delta: num("+/- amount (bottles, liters or kg)") }, required: ["kind", "product", "delta"] },
+  adjust_stock: { properties: { kind: { type: "string", enum: ["inventory", "concentrate", "beans", "labeled"] }, product: str("Product key, or coffee type for concentrate/beans"), delta: num("+/- amount (bottles, liters or kg), up to ±1000"), reason: str("Optional, shown in the timeline") }, required: ["kind", "product", "delta"] },
+  set_stock: { properties: { kind: { type: "string", enum: ["inventory", "concentrate", "beans", "labeled"] }, product: str("Product key (inventory/labeled), or coffee type for concentrate/beans: classic, unfiltered, houseBlend, colombia, decaf"), qty: num("The counted amount (bottles, liters or kg)"), expected: num("Recommended: the amount stock showed when you read it; refused if it changed since"), reason: str("Optional, shown in the timeline, e.g. 'Monday count'") }, required: ["kind", "product", "qty"] },
+  schedule_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles" }, date: str("YYYY-MM-DD, today or later"), time: str("HH:MM, optional") }, required: ["store", "quantities", "date"] },
+  reschedule_job: { properties: { job_id: str("Open job id (from schedule)"), date: str("New YYYY-MM-DD"), time: str("New HH:MM, or empty to clear"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "New planned amounts (deliveries only)" } }, required: ["job_id"] },
   log_note: { properties: { text: str("What to record in the timeline") }, required: ["text"] },
 };
 
@@ -60,8 +63,11 @@ export const ACTIONS: Record<string, Handler> = {
   start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|unfiltered|houseBlend|colombia|decaf; unfiltered uses Classic beans), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },
   complete_drain: { scope: "write", describe: "Mark a drain done (adds concentrate). Args: job_id or product; default = earliest pending drain.", run: ({ sb }, a) => completeDrain(sb, a as any) },
   log_store_delivery: { scope: "write", describe: "Log a store delivery that happened. Args: store (name, fuzzy), quantities {product_key: qty}, date (default today). Deducts stock, adds the store billing row.", run: ({ sb }, a) => logStoreDelivery(sb, a as any) },
+  schedule_store_delivery: { scope: "write", describe: "Schedule a future store delivery (stock and billing change only when it's completed). Args: store, quantities {product_key: qty}, date, time.", run: ({ sb }, a) => scheduleStoreDelivery(sb, a as any) },
+  reschedule_job: { scope: "write", describe: "Move an open job (delivery, drain…) to another date/time, or change a scheduled delivery's planned amounts. Args: job_id, date, time, quantities.", run: ({ sb }, a) => rescheduleJob(sb, a as any) },
   complete_delivery: { scope: "write", describe: "Mark a scheduled delivery done. Args: job_id (default = next one today/overdue), quantities (optional actual amounts).", run: ({ sb }, a) => completeDelivery(sb, a as any) },
-  adjust_stock: { scope: "write", describe: "Stock correction. Args: kind (inventory|concentrate|beans|labeled), product, delta (+/-).", run: ({ sb }, a) => adjustStock(sb, a as any) },
+  adjust_stock: { scope: "write", describe: "Stock correction by an amount. Args: kind (inventory|concentrate|beans|labeled), product, delta (+/-), reason.", run: ({ sb, app }, a) => adjustStock(sb, a as any, `app:${app}`) },
+  set_stock: { scope: "write", describe: "Set stock to a counted amount. Args: kind (inventory|concentrate|beans|labeled), product, qty, expected (the amount you last read; refused if it changed), reason.", run: ({ sb, app }, a) => setStock(sb, a as any, `app:${app}`) },
   log_labeling: {scope:"write",describe:"Log empty bottles labeled. Args: product, units.",run:({sb},a)=>logLabeling(sb,a as any)},
   production_people: {scope:"read",describe:"Active production workers and owner.",run:async({sb})=>productionPeople(sb)},
   production_clock_in: {scope:"write",describe:"Start or resume a production shift.",run:async({sb},a)=>{const {data,error}=await sb.rpc("production_clock",{p_worker:a.worker_id,p_operation:"in",p_id:a.request_id});if(error)throw new HubError("clock_failed",error.message);return data;}},

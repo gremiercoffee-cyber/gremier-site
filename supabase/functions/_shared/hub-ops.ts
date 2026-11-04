@@ -191,6 +191,36 @@ export async function logStoreDelivery(sb: Sb, args: { store: string; quantities
   return { refs: [`jobs:${id}`, ...(fx.store_delivery_id ? [`store_deliveries:${fx.store_delivery_id}`] : [])], job_id: id, store: store.name, quantities: qtys, ...fx };
 }
 
+/** Put a store delivery on the schedule (nothing changes in stock or billing until it's completed). */
+export async function scheduleStoreDelivery(sb: Sb, args: { store: string; quantities: Record<string, number>; date: string; time?: string }) {
+  const store = await resolveStore(sb, args.store);
+  const qtys = cleanQuantities(args.quantities);
+  if (!Object.keys(qtys).length) throw new HubError("no_quantities", "Give quantities, e.g. {\"classic_liter\": 6}");
+  const date = String(args.date || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < todayISO()) throw new HubError("bad_date", "date must be YYYY-MM-DD, today or later");
+  const time = /^\d{2}:\d{2}$/.test(String(args.time || "")) ? String(args.time) : null;
+  const id = newId("hub_");
+  const { error } = await sb.from("jobs").insert({ id, type: "delivery", delivery_type: "store", store_name: store.name, quantities: qtys, date, time, done: false, needs_confirmation: false, created_at: new Date().toISOString() });
+  if (error) throw new HubError("schedule_failed", error.message);
+  return { refs: [`jobs:${id}`], job_id: id, store: store.name, date, time, quantities: qtys };
+}
+/** Move an open job (delivery, drain…) to another day/time, or change a scheduled delivery's amounts. */
+export async function rescheduleJob(sb: Sb, args: { job_id: string; date?: string; time?: string; quantities?: Record<string, number> }) {
+  const { data: job } = await sb.from("jobs").select("id, type, done, date, time, store_name, private_name, label").eq("id", String(args.job_id || "")).maybeSingle();
+  if (!job) throw new HubError("no_job", "Job not found (ids come from schedule)");
+  if ((job as any).done) throw new HubError("already_done", "That job is already done");
+  const patch: Record<string, unknown> = {};
+  if (args.date !== undefined) { const d = String(args.date); if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < todayISO()) throw new HubError("bad_date", "date must be YYYY-MM-DD, today or later"); patch.date = d; }
+  if (args.time !== undefined) { const t = String(args.time || ""); if (t && !/^\d{2}:\d{2}$/.test(t)) throw new HubError("bad_time", "time must be HH:MM"); patch.time = t || null; }
+  if (args.quantities !== undefined) { if ((job as any).type !== "delivery") throw new HubError("bad_job", "Only deliveries have quantities"); const q = cleanQuantities(args.quantities); if (!Object.keys(q).length) throw new HubError("no_quantities", "quantities is empty"); patch.quantities = q; }
+  if (!Object.keys(patch).length) throw new HubError("nothing_to_change", "Give date, time or quantities");
+  const { data: done } = await sb.from("jobs").update(patch).eq("id", (job as any).id).eq("done", false).select("id");
+  if (!done?.length) throw new HubError("already_done", "That job was just completed");
+  const who = (job as any).store_name || (job as any).private_name || (job as any).label || (job as any).type;
+  await sb.rpc("log_activity", { p_actor: "system", p_action: "job.updated", p_summary: `${(job as any).type} · ${who}: ${Object.keys(patch).join(", ")} changed`, p_ref: `jobs:${(job as any).id}`, p_details: { before: { date: (job as any).date, time: (job as any).time }, patch } });
+  return { refs: [`jobs:${(job as any).id}`], job_id: (job as any).id, ...patch };
+}
+
 /** Mark a scheduled delivery done. No id = the next pending delivery for today (or overdue). */
 export async function completeDelivery(sb: Sb, args: { job_id?: string; quantities?: Record<string, number> }) {
   let q = sb.from("jobs").select("*").eq("type", "delivery").eq("done", false);
@@ -277,18 +307,53 @@ export async function logLabeling(sb:Sb,args:{product:string;units:number;reques
 }
 
 /** Manual stock correction. kind: inventory | concentrate | beans | labeled. */
-export async function adjustStock(sb: Sb, args: { kind: string; product: string; delta: number }) {
+// What a stock line holds now, and that the product exists (so a typo can't create a new stock line).
+const STOCK_TABLES: Record<string, { table: string; key: string; col: string; unit: string }> = {
+  inventory: { table: "inventory", key: "product", col: "qty", unit: "units" },
+  labeled: { table: "labeled_stock", key: "product", col: "qty", unit: "labeled" },
+  concentrate: { table: "concentrate", key: "type", col: "liters", unit: "L" },
+  beans: { table: "beans", key: "type", col: "kg", unit: "kg" },
+};
+async function currentStock(sb: Sb, kind: string, product: string): Promise<number> {
+  const t = STOCK_TABLES[kind];
+  if (!t) throw new HubError("bad_kind", "kind must be inventory, concentrate, beans or labeled");
+  if (!/^[a-zA-Z0-9_]{2,40}$/.test(product)) throw new HubError("bad_product", "Unknown product");
+  if ((kind === "concentrate" || kind === "beans") && (!CONCENTRATES.includes(product as any) || (kind === "beans" && product === "unfiltered")))
+    throw new HubError("bad_product", kind === "beans" ? "Bean types: classic, houseBlend, colombia, decaf" : "Concentrates: " + CONCENTRATES.join(", "));
+  const { data, error } = await sb.from(t.table).select(t.col).eq(t.key, product).maybeSingle();
+  if (error) throw new HubError("stock_failed", error.message);
+  if (!data && (kind === "inventory" || kind === "labeled") && !CATEGORY[product]) throw new HubError("bad_product", `Unknown product "${product}". Call stock for the product keys.`);
+  return Number((data as any)?.[t.col]) || 0;
+}
+async function logStockChange(sb: Sb, actor: string, kind: string, product: string, before: number, now: number, reason?: string) {
+  const unit = STOCK_TABLES[kind].unit, d = Number((now - before).toFixed(1));
+  await sb.rpc("log_activity", { p_actor: actor, p_action: "stock.adjust", p_summary: `Stock: ${product} (${kind}) ${before} → ${now} ${unit} (${d > 0 ? "+" : ""}${d})${reason ? " · " + reason : ""}`, p_ref: `${STOCK_TABLES[kind].table}:${product}`, p_details: { kind, product, before, now, reason: reason || null } });
+}
+/** Set a stock line to a counted amount. With `expected`, refuses if the stock changed since it was read. */
+export async function setStock(sb: Sb, args: { kind: string; product: string; qty: number; expected?: number; reason?: string }, actor = "system") {
+  const product = String(args.product || ""), kind = String(args.kind || ""), qty = Number(args.qty);
+  if (!Number.isFinite(qty) || qty < 0 || qty > 100000) throw new HubError("bad_qty", "qty must be a number from 0 to 100000");
+  const before = await currentStock(sb, kind, product);
+  if (args.expected !== undefined && args.expected !== null && Number(args.expected) !== before)
+    throw new HubError("stock_changed", `${product} is now ${before}, not ${args.expected}. Read stock again and confirm.`);
+  const target = kind === "inventory" || kind === "labeled" ? Math.round(qty) : Number(qty.toFixed(1));
+  if (target === before) return { refs: [], kind, product, before, now: before, changed: false };
+  const r = await adjustStock(sb, { kind, product, delta: target - before }, actor, args.reason, true);
+  return { ...r, before, changed: true };
+}
+export async function adjustStock(sb: Sb, args: { kind: string; product: string; delta: number; reason?: string }, actor = "system", reason?: string, uncapped = false) {
   const delta = Number(args.delta);
   const product = String(args.product || "");
-  if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 1000) throw new HubError("bad_delta", "delta must be a non-zero number");
-  if (!/^[a-zA-Z0-9_]{2,40}$/.test(product)) throw new HubError("bad_product", "Unknown product");
+  if (!Number.isFinite(delta) || delta === 0 || (!uncapped && Math.abs(delta) > 1000)) throw new HubError("bad_delta", "delta must be a non-zero number up to ±1000");
+  const before = await currentStock(sb, String(args.kind), product);
   let now: number | null = null;
   if (args.kind === "inventory") { await incInventoryBatch(sb, { [product]: Math.round(delta) }); const { data } = await sb.from("inventory").select("qty").eq("product", product).maybeSingle(); now = Number((data as any)?.qty ?? 0); }
   else if (args.kind === "concentrate") { if (!CONCENTRATES.includes(product as any)) throw new HubError("bad_product", "Unknown concentrate"); now = await incConcentrate(sb, product, delta); }
   else if (args.kind === "beans") { if (!CONCENTRATES.includes(product as any) || product === "unfiltered") throw new HubError("bad_product", "Unknown bean type"); now = await incBeans(sb, product, delta); }
   else if (args.kind === "labeled") now = await incLabeled(sb, product, Math.round(delta));
   else throw new HubError("bad_kind", "kind must be inventory, concentrate, beans or labeled");
-  return { refs: [], kind: args.kind, product, delta, now };
+  await logStockChange(sb, actor, String(args.kind), product, before, Number(now), reason ?? (args.reason ? String(args.reason).slice(0, 120) : undefined));
+  return { refs: [], kind: args.kind, product, delta, before, now };
 }
 
 // ── reads ──
