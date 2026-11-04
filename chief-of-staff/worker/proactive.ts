@@ -102,7 +102,8 @@ export async function runProactive(env: Env, opts: { forceBriefing?: boolean } =
   // 6. Morning briefing, once per local day (with the weekly sweep on Sundays).
   const local = localParts(settings.timezone);
   const briefingKey = `briefing:${local.date}`;
-  const already = await first(env, "SELECT 1 FROM settings WHERE key = ?", briefingKey);
+  // The owner can switch the daily briefing off on its own ('briefing_off'); asking for one still works.
+  const already = await first(env, "SELECT 1 FROM settings WHERE key = ? OR (key = 'briefing_off' AND value = 'true')", briefingKey);
   if (opts.forceBriefing || (!already && local.hour >= settings.briefing_hour && !isShabbat(settings.timezone))) {
     await createBriefing(env, local.date, settings.timezone);
     await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", briefingKey, "true");
