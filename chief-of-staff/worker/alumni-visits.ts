@@ -192,7 +192,9 @@ export async function processAlumni(env:Env){
     o=JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));
     await run(env,'UPDATE alumni_visit_events SET observation=? WHERE id=?',JSON.stringify(o),e.id);
    }
-   if(o.aish_visit!==true||(!o.confirmed&&!o.uncertain)){await run(env,"UPDATE alumni_visit_events SET status='ignored',result='Not a confirmed Aish alumni visit/update' WHERE id=?",e.id);continue;}
+   // Any recognised visit becomes a card; one that isn't clearly confirmed is marked for checking.
+   if(o.aish_visit===true&&!o.confirmed&&!o.uncertain)o={...o,uncertain:true};
+   if(o.aish_visit!==true){await run(env,"UPDATE alumni_visit_events SET status='ignored',result='Not a confirmed Aish alumni visit/update' WHERE id=?",e.id);continue;}
    // Refetch before every event so previous writes and owner edits are reflected.
    s=await snapshot(env);
    const cells:Cell[]=e.plan?JSON.parse(e.plan):planVisit(s,o,e.said_at);
