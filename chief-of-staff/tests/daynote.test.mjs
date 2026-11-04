@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 Error.stackTraceLimit=0;
-const result=await build({stdin:{contents:"export * from './shared/daynote';export * from './worker/daynote';export * from './worker/daynote-relationships';export * from './worker/daynote-google';export {default as worker} from './worker/index';export {sealGoogleToken} from './worker/google';export {assistantTools,chat} from './worker/assistant';export {learnPass} from './worker/learn';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
+const result=await build({stdin:{contents:"export * from './shared/daynote';export * from './worker/daynote';export * from './worker/daynote-relationships';export * from './worker/daynote-google';export {default as worker} from './worker/index';export {sealGoogleToken} from './worker/google';export {assistantTools,chat} from './worker/assistant';export {learnPass} from './worker/learn';export {healthPlanChat} from './worker/daynote-chat';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
 const m=await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64'));
 function setup(){
  const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
@@ -93,9 +93,8 @@ test('morning metrics and post-midnight sleep match the PREVIOUS waking day; mis
 test('empty accounts have no sample insights and illness/travel exclusions are explicit',()=>{
  assert.deepEqual(m.analyzeJournals([],[]).comparisons,[]);const h=setup(),j=h.journal('2026-11-01');j.answers.alcohol=yes();j.answers.illness=yes();assert.equal(m.analyzeJournals([j],[]).comparisons.length,0);
 });
-test('Health topic access requires owner, configured group AND registered Health topic',async()=>{
- const h=setup();h.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('telegram',JSON.stringify({owner_id:9,group_id:-10,private_id:9}));h.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('telegram_subjects',JSON.stringify({'-10:111':{name:'Health',feature:'health'},'-10:222':{name:'Coffee',feature:'coffee'}}));
- assert.equal(await m.healthTopicAllowed(h.env,9,-10,111),true);for(const args of [[8,-10,111],[9,9,111],[9,-10,222],[9,-10,undefined]])assert.equal(await m.healthTopicAllowed(h.env,...args),false);
+test('General chat has no health tools and journal reminders are off by default',async()=>{
+ const h=setup();
  assert.ok(!m.assistantTools(h.env,'chat',[]).some(t=>t.name==='get_health_journal'));assert.equal((await m.daynotePreferences(h.env)).reminders,false);
 });
 test('Daynote APIs preserve existing bearer authentication and do not expose token fields in status/export',async()=>{
@@ -156,7 +155,7 @@ test('Health conversations have only health tools, cannot reuse General, and are
  const modelReply=()=>response({id:'fixture-response',status:'completed',output_text:reply,output:[{type:'message',id:'m',role:'assistant',status:'completed',content:[{type:'output_text',text:reply,annotations:[]}]}]});
  const deferred=[];
  await withFetch(async(url,init)=>{requests.push(JSON.parse(init.body));return modelReply();},async()=>{
-  const health=await m.chat(h.env,'Sensitive health fixture: how was my sleep?','text',null,{channel:'telegram',subject:{name:'Health',feature:'health'},defer:p=>deferred.push(p)});
+  const health=await m.healthPlanChat(h.env,'Sensitive health fixture: how was my sleep?',null);
   await Promise.all(deferred);// The health chat offers its tools inside the private prompt (the same request works on Codex, Claude or the API).
   const sent=JSON.stringify(requests[0]);assert.ok(sent.includes('get_health_journal'));assert.ok(!sent.includes('\\"remember\\"'));assert.ok(!sent.includes('load_tools'));assert.equal(health.engine,'api','no plan runner online: the API answers');assert.equal(h.db.prepare('SELECT privacy_scope FROM conversations WHERE id=?').get(health.conversation.id).privacy_scope,'health');
   const general=await m.chat(h.env,'What should I do?','text',health.conversation.id,{defer:p=>deferred.push(p)});await Promise.all(deferred);assert.notEqual(general.conversation.id,health.conversation.id);

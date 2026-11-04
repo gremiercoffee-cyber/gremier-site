@@ -160,15 +160,11 @@ test('approvals and blocked jobs surface while reply and waiting tasks remain in
  t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();
  h.db.prepare("INSERT INTO pending_actions(id,action,payload,description,created_at) VALUES('approve','test','{}','Review a proposal','2026-10-18')").run();
  h.item('reply','task',null);h.db.prepare("UPDATE items SET source='whatsapp' WHERE id='reply'").run();h.item('waiting','waiting',null);h.db.prepare("UPDATE items SET updated_at='2026-10-01' WHERE id='waiting'").run();
- h.db.prepare("INSERT INTO missions(id,goal,waiting_on_user,created_at,updated_at) VALUES('blocked','An approved goal','Which option?','2026-10-18','2026-10-18')").run();
- let d=await dashboard(h);assert.deepEqual(new Set(d.home_tasks.map(i=>i.id)),new Set(['reply','waiting']));assert.deepEqual(new Set(d.attention_cards.map(c=>c.id)),new Set(['approvals','mission:blocked']));assert.equal(h.db.prepare("SELECT status FROM pending_actions WHERE id='approve'").get().status,'pending');
- h.db.prepare("UPDATE pending_actions SET status='rejected'").run();await itemDb.updateItem(h.env,'reply',{status:'done'});await itemDb.updateItem(h.env,'waiting',{status:'done'});h.db.prepare("UPDATE missions SET waiting_on_user=NULL").run();d=await dashboard(h);assert.deepEqual(d.attention_cards,[]);
+ let d=await dashboard(h);assert.deepEqual(new Set(d.home_tasks.map(i=>i.id)),new Set(['reply','waiting']));assert.deepEqual(new Set(d.attention_cards.map(c=>c.id)),new Set(['approvals']));assert.equal(h.db.prepare("SELECT status FROM pending_actions WHERE id='approve'").get().status,'pending');
+ h.db.prepare("UPDATE pending_actions SET status='rejected'").run();await itemDb.updateItem(h.env,'reply',{status:'done'});await itemDb.updateItem(h.env,'waiting',{status:'done'});d=await dashboard(h);assert.deepEqual(d.attention_cards,[]);
 });
 
-test('a dated event takes precedence over an overlapping recurring block, and failures clear after a newer run',async t=>{
+test('a dated event takes precedence over an overlapping recurring block',async t=>{
  t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();await situations.saveSituation(h.env,{name:'Specific appointment',date:'2026-10-18',start_time:'20:15',end_time:'21:00'});
- h.db.prepare("INSERT INTO routines(id,name,instructions,schedule,created_at,updated_at) VALUES('routine','Check results','Fixture','{}','2026-10-18','2026-10-18')").run();
- h.db.prepare("INSERT INTO routine_runs(id,routine_id,started_at,status) VALUES('failed','routine','2026-10-18T07:00:00Z','failed')").run();
- let d=await dashboard(h);assert.equal(d.now_block.name,'Specific appointment');assert.ok(d.attention_cards.some(c=>c.id==='failed:routine'));
- h.db.prepare("INSERT INTO routine_runs(id,routine_id,started_at,status) VALUES('success','routine','2026-10-18T08:00:00Z','done')").run();d=await dashboard(h);assert.equal(d.attention_cards.some(c=>c.id==='failed:routine'),false);
+ const d=await dashboard(h);assert.equal(d.now_block.name,'Specific appointment');
 });

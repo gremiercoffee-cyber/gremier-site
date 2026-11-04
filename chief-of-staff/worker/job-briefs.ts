@@ -2,14 +2,13 @@
 import type {Env} from './env';
 import {all,first,run,now,HttpError} from './db';
 import {getProvider} from './ai';
-import {tg,tgConfig} from './telegram-api';
 
 export interface BriefDocument { summary:string; recommendation:string; next_action:string; questions:string[] }
-type BriefRow={job_id:string;source_revision:number;document:string;updated_at:string;telegram_message_id:number|null;telegram_revision:number;telegram_error:string|null};
+type BriefRow={job_id:string;source_revision:number;document:string;updated_at:string};
 const parse=(s:string):BriefDocument=>JSON.parse(s);
 export async function jobKnowledge(env:Env,id:string){
  const job=await first<any>(env,'SELECT j.*,p.name AS project_title FROM jobs j LEFT JOIN projects p ON p.id=j.project_id WHERE j.id=?',id);
- if(!job||job.status==='cancelled')throw new HttpError(404,'Job removed or Telegram topic deleted.');
+ if(!job||job.status==='cancelled')throw new HttpError(404,'Research chat removed.');
  const [brief,emails,messages,reports,runs]=await Promise.all([
   first<BriefRow>(env,'SELECT * FROM job_briefs WHERE job_id=?',id),
   all<any>(env,'SELECT id,number,to_name,to_email,subject,body,status,thread_id,from_account,sent_at,replied_at,reply_text,checked_at,error FROM job_emails WHERE job_id=? ORDER BY number',id),
@@ -28,7 +27,6 @@ export async function jobKnowledge(env:Env,id:string){
  return {job_id:id,title:job.title,instructions:job.instructions,project_id:job.project_id,project_title:job.project_title,revision,snapshot_consistent:revision===job.context_revision,state,
   brief:brief&&brief.source_revision>0?{...parse(brief.document),source_revision:brief.source_revision,updated_at:brief.updated_at}:null,
   stale:!brief||brief.source_revision!==revision,last_checked:checks.at(-1)??null,
-  telegram:{synced:!!brief&&brief.telegram_revision===revision,error:brief?.telegram_error??null},
   related_jobs:related.map(r=>({...r,stale:r.source_revision!==r.context_revision,document:r.document?parse(r.document):null})),
   emails,messages:messages.reverse(),reports,runs};
 }
@@ -54,37 +52,13 @@ export async function refreshBrief(env:Env,id:string,provider=getProvider(env)){
  if(typeof raw.summary!=='string'||!raw.summary.trim()||typeof raw.recommendation!=='string'||typeof raw.next_action!=='string'||!Array.isArray(raw.questions)||raw.questions.some((q:unknown)=>typeof q!=='string'))throw new Error('Invalid brief response');
  return saveBrief(env,id,k.revision,{summary:raw.summary.slice(0,420),recommendation:raw.recommendation.slice(0,240),next_action:raw.next_action.slice(0,240),questions:raw.questions.slice(0,3).map((q:string)=>q.slice(0,250))});
 }
-export async function publishBrief(env:Env,id:string){
- const token=new Date(Date.now()+120000).toISOString();
- if(!await first(env,'UPDATE job_briefs SET telegram_lease_until=? WHERE job_id=? AND (telegram_lease_until IS NULL OR telegram_lease_until<?) RETURNING job_id',token,id,now()))return false;
- try{return await publishBriefLocked(env,id);}finally{await run(env,'UPDATE job_briefs SET telegram_lease_until=NULL WHERE job_id=? AND telegram_lease_until=?',id,token);}
-}
-async function publishBriefLocked(env:Env,id:string){
- const k=await jobKnowledge(env,id);if(!k.brief||k.stale)return false;
- const j=await first<any>(env,'SELECT chat_id,topic_id FROM jobs WHERE id=?',id),c=await tgConfig(env);
- // Never fall back to General/private chat: publish only to an existing job topic in the configured owner group.
- if(!j?.topic_id||!c.owner_id||j.chat_id!==c.group_id||!env.TELEGRAM_BOT_TOKEN)return false;
- const row=await first<BriefRow>(env,'SELECT * FROM job_briefs WHERE job_id=?',id);if(!row||row.telegram_revision>=k.revision)return true;
- const b=k.brief,utc=(s:string)=>new Date(s).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem'});
- const text=[k.title+' — '+k.state,'Updated: '+utc(b.updated_at), 'Last checked: '+(k.last_checked?utc(k.last_checked):'Not yet'),'',b.summary,b.recommendation?'Recommendation: '+b.recommendation:'','Next: '+b.next_action,...b.questions.map(q=>'• '+q)].filter(Boolean).join('\n').slice(0,3500);
- const base={chat_id:j.chat_id,text,link_preview_options:{is_disabled:true},reply_markup:{inline_keyboard:[[{text:'Open current report',url:'https://chief-of-staff.gremiercoffee.workers.dev/?job='+encodeURIComponent(id)}]]}};
- let message=row.telegram_message_id;
- try{
-  if(message){try{await tg(env,'editMessageText',{...base,message_id:message});}catch(e){if(!String(e).includes('message is not modified'))throw e;}}
-  else {const sent=await tg<{message_id:number}>(env,'sendMessage',{...base,message_thread_id:j.topic_id,disable_notification:true});message=sent.message_id;await run(env,'UPDATE job_briefs SET telegram_message_id=? WHERE job_id=?',message,id);}
-  await tg(env,'pinChatMessage',{chat_id:j.chat_id,message_id:message,disable_notification:true});
-  await run(env,'UPDATE job_briefs SET telegram_revision=?,telegram_error=NULL WHERE job_id=? AND source_revision=?',k.revision,id,k.revision);return true;
- }catch{await run(env,"UPDATE job_briefs SET telegram_error='Could not update or pin the brief. Check bot topic/pin permissions.' WHERE job_id=?",id);return false;}
-}
 export async function tickBriefs(env:Env){
- const config=await tgConfig(env);
- const mirrorGroup=env.TELEGRAM_BOT_TOKEN&&config.owner_id?config.group_id??null:null;
- const due=await all<{id:string}>(env,"SELECT j.id FROM jobs j LEFT JOIN job_briefs b ON b.job_id=j.id WHERE j.status!='cancelled' AND (b.job_id IS NULL OR b.source_revision<j.context_revision OR (b.telegram_revision<b.source_revision AND j.chat_id=? AND j.topic_id IS NOT NULL)) AND (b.retry_after IS NULL OR b.retry_after<?) AND (b.lease_until IS NULL OR b.lease_until<?) ORDER BY j.updated_at DESC LIMIT 2",mirrorGroup,now(),now());
+ const due=await all<{id:string}>(env,"SELECT j.id FROM jobs j LEFT JOIN job_briefs b ON b.job_id=j.id WHERE j.status!='cancelled' AND (b.job_id IS NULL OR b.source_revision<j.context_revision ) AND (b.retry_after IS NULL OR b.retry_after<?) AND (b.lease_until IS NULL OR b.lease_until<?) ORDER BY j.updated_at DESC LIMIT 2",now(),now());
  for(const {id} of due){
   await run(env,"INSERT OR IGNORE INTO job_briefs(job_id,source_revision,document,updated_at) VALUES(?,0,?,?)",id,JSON.stringify({summary:'Preparing current brief.',recommendation:'',next_action:'Review latest records below.',questions:[]}),now());
   const token=new Date(Date.now()+120000).toISOString();
   if(!await first(env,'UPDATE job_briefs SET lease_until=? WHERE job_id=? AND (lease_until IS NULL OR lease_until<?) RETURNING job_id',token,id,now()))continue;
-  try{await refreshBrief(env,id);await publishBrief(env,id);}
+  try{await refreshBrief(env,id);}
   catch{await run(env,'UPDATE job_briefs SET retry_after=? WHERE job_id=?',new Date(Date.now()+5*60000).toISOString(),id);}
   finally{await run(env,'UPDATE job_briefs SET lease_until=NULL WHERE job_id=? AND lease_until=?',id,token);}
  }

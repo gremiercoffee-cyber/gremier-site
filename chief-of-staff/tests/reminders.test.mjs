@@ -8,7 +8,7 @@ async function bundle(entry) {
   const result=await build({entryPoints:[entry],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'no-paid-model',setup(b){b.onLoad({filter:/[\\/]worker[\\/]ai\.ts$/},()=>({contents:'export class ProviderUnavailable extends Error {} export async function extendedCache(){return false} export function getProvider(){ throw new Error("Unexpected AI call"); }',loader:'js'}));}}]});
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
-const reminders=await bundle('worker/reminders.ts'), calendar=await bundle('shared/reminders.ts'), routines=await bundle('worker/routines.ts'), missions=await bundle('worker/missions.ts'), ideas=await bundle('worker/ideas.ts');
+const reminders=await bundle('worker/reminders.ts'), calendar=await bundle('shared/reminders.ts');
 function setup() {
   const db=new DatabaseSync(':memory:');
   for(const name of readdirSync('migrations').filter(n=>n.endsWith('.sql')).sort()) db.exec(readFileSync(`migrations/${name}`,'utf8'));
@@ -58,21 +58,5 @@ test('done on first day suppresses second and third dates; pause and invalid sch
   assert.equal(env.db.prepare("SELECT muted FROM items WHERE status='open'").get().muted,1);
   await assert.rejects(reminders.saveRecurringReminder(env,{title:'Bad',days:[32]}),/days of the month/);
   await assert.rejects(reminders.saveRecurringReminder(env,{title:'Bad',days:[16],link:'javascript:alert(1)'}),/http/);
-  env.db.close();
-});
-test('AI task runs and missions only create deduplicated approval requests; no paid work before approval',async()=>{
-  const env=setup();
-  const r=await routines.saveRoutine(env,{name:'Research options',instructions:'Compare options',depth:'quick',oneoff:true,active:false,schedule:{kind:'monthly',day:16,time:'09:00'}});
-  const routine={...r,schedule:JSON.stringify(r.schedule)};
-  assert.equal((await routines.runRoutine(env,routine)).status,'pending_approval');
-  await routines.runRoutine(env,routine);
-  assert.equal(env.db.prepare('SELECT COUNT(*) n FROM pending_actions').get().n,1);
-  assert.equal(env.db.prepare('SELECT COUNT(*) n FROM routine_runs').get().n,0);
-  assert.match(env.db.prepare('SELECT description FROM pending_actions').get().description,/one run/);
-  const mission=await missions.startMission(env,'Research a supplier',['Find options']);
-  assert.equal(mission.status,'pending_approval');assert.equal(env.db.prepare('SELECT COUNT(*) n FROM missions').get().n,0);
-  env.db.prepare("INSERT INTO ideas(id,title,summary,transcript,analysis,steps,notes,status,created_at,updated_at) VALUES('idea','Example','','','','[{\"id\":\"step\",\"label\":\"Find options\",\"kind\":\"research\",\"status\":\"suggested\"}]','[]','active','2026-10-15','2026-10-15')").run();
-  assert.equal((await ideas.ideaStep(env,'idea','step','do')).status,'pending_approval');
-  assert.match(env.db.prepare("SELECT steps FROM ideas WHERE id='idea'").get().steps,/suggested/);
   env.db.close();
 });

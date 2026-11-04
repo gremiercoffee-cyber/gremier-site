@@ -3,8 +3,7 @@ import {assistantTaskBrief} from './assistant-quick';
 import {healthAIRunnerRoute} from './daynote-ai';
 import {agentChatsRoute} from './agent-chats';
 import {chatgptRelayRoute} from './chatgpt-relay';
-import {reconcileTopics} from './telegram-lifecycle';
-import {briefHistory,linkJobProject,refreshBrief,publishBrief,jobContext} from './job-briefs';
+import {briefHistory,linkJobProject,refreshBrief,jobContext} from './job-briefs';
 import {HEALTH_ORIGIN} from '../shared/health-origin';
 import {androidDeviceRoute} from './daynote-android';
 import {redeemDaynoteLogin} from './daynote-login';
@@ -14,16 +13,13 @@ import {finishHealthAuth,healthSync} from './daynote-google';
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { transcribeAudio } from "./transcribe";
-import { connectWebhook, handleUpdate, tgConfig, type TgUpdate } from "./telegram";
 import { jobChat, listJobChats, messageJob, nextCodexRun, pressButton, replyWithToken, runResult, setPinned, tickJobs, type Job } from "./jobs";
 import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { checkPlacement, chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
-import {meetingPrepState,confirmPrepNote,discardPrepDraft,editPrepNote,deletePrepNote} from './meeting-prep';
 import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
 import {attentionState,actionableItem,actionableNotice,actionableNoticeItem} from './attention';
 import {organizeProjects} from './projectorganization';
-import {organizeMeetingRounds} from './meeting-rounds';
 import type { CalendarEvent, Conversation, Dashboard, Item, Memory, Message, Nudge, PendingAction, Project } from "../shared/types";
 import type { Env } from "./env";
 import { recurringReminders, saveRecurringReminder, syncRecurringReminders } from './reminders';
@@ -32,7 +28,6 @@ import { getProvider } from "./ai";
 import { modelRoute } from "./ai-routing";
 import { ProviderUnavailable } from "./ai";
 import { chat, decidePendingAction } from "./assistant";
-import { processBrainDump } from "./braindump";
 import {
   HttpError, all, archiveFinishedProjects, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, syncProject, updateItem,
 } from "./db";
@@ -41,22 +36,17 @@ import { learnPass, reviewMemory } from "./learn";
 import { scanNewWatches } from "./watches";
 import { processSelfNotes, saveSelfNote } from "./meetingnotes";
 import { tidyConversations } from "./tidy";
-import { detectMeeting } from "./meetings";
 import { getAreas, removeArea, saveArea } from "./areas";
 import { hubConfigured } from "./hub";
-import { archiveBroadcast, draftBroadcast, members, saveGroup, sendBroadcast, setCollect, type Broadcast, type Group } from "./groups";
-import { addManualAnswer, groupCollections } from "./trackers";
-import { ideaStep, runIdeaResearch, updateIdea, type Idea } from "./ideas";
+import { members, saveGroup, type Group } from "./groups";
 import { actionsForNudge, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
 import { pushConfigured, sendPush } from "./push";
 import { activeNotificationIds, reconcileNotificationGroups } from "./notifications";
 import { findPeople, recallMemories } from "./memory";
-import { updateMission } from "./missions";
 import { batchReplyInstructions, dismissReply,saveReplyDraft,markWhatsAppReplied,replyQueue, sendReply, draftReply } from "./replies";
-import { describeSchedule, normalizeSchedule, runRoutine, saveRoutine, type Routine, tellRoutine, advanceRoutineRuns } from "./routines";
 import { currentBlock, nowChecklist, describeSituation, saveSituation, type Situation } from "./situations";
-import { capture, checkTrackerNow, judgeEntry, knownChats, linkWhatsapp, matchWhatsappNames, markBackfilled, saveTracker, trackerEntries, trackersForBridge, trackerStatus, type Tracker } from "./trackers";
+import { bridgeWatches, capture, knownChats, linkWhatsapp, markBackfilled, saveChatNames } from "./wa-bridge";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
 import { contactsStatus, openWhatsApps, syncContacts, syncContactsDaily } from "./contacts";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
@@ -111,7 +101,7 @@ route("POST", "/api/jobs/:id/message", async (req, env, [id]) => {
   return json({ reply: await messageJob(env, j, text, "app") });
 });
 route("GET", "/api/jobs/:id/brief/history", async (_req,env,[id])=>json(await briefHistory(env,id)));
-route("POST", "/api/jobs/:id/brief/refresh", async (_req,env,[id])=>{await refreshBrief(env,id);await publishBrief(env,id);return json({ok:true});});
+route("POST", "/api/jobs/:id/brief/refresh", async (_req,env,[id])=>{await refreshBrief(env,id);return json({ok:true});});
 route("POST", "/api/jobs/:id/project", async (req,env,[id])=>json(await linkJobProject(env,id,(await body<{project_id:string|null}>(req)).project_id)));
 route("POST", "/api/jobs/:id/pin", async (req, env, [id]) => json(await setPinned(env, id, !!(await body<{ pinned?: boolean }>(req)).pinned)));
 route("POST", "/api/jobs/button", async (req, env) => { await pressButton(env, String((await body<{ data?: string }>(req)).data ?? "")); return json({ ok: true }); });
@@ -151,17 +141,6 @@ route("GET", "/api/signed/:id", async (_req, env, [id]) => {
 
 route('GET','/api/hashgacha',async(_req,env)=>json(await hashgachaCampaigns(env)));
 route('POST','/api/hashgacha/refresh',async(_req,env)=>{await syncHashgacha(env,{remind:false});return json(await hashgachaCampaigns(env));});
-
-// Meeting prep is internal storage only. Selecting a meeting is the explicit confirmation.
-route('GET','/api/meeting-prep',async(_req,env)=>json(await meetingPrepState(env)));
-route('POST','/api/meeting-prep/drafts/:id/confirm',async(req,env,[id])=>{
- const b=await body<{meeting_id:string}>(req);return json(await confirmPrepNote(env,id,String(b.meeting_id??'')));
-});
-route('DELETE','/api/meeting-prep/drafts/:id',async(_req,env,[id])=>json(await discardPrepDraft(env,id)));
-route('PUT','/api/meeting-prep/notes/:id',async(req,env,[id])=>{
- const b=await body<{text:string}>(req);return json(await editPrepNote(env,id,String(b.text??'')));
-});
-route('DELETE','/api/meeting-prep/notes/:id',async(_req,env,[id])=>json(await deletePrepNote(env,id)));
 
 // ---- Dashboard -------------------------------------------------------------
 route("GET", "/api/dashboard", async (_req, env) => {
@@ -382,16 +361,6 @@ route("POST", "/api/transcribe", async (req, env) => {
   return json({ text: data.text });
 });
 
-// ---- Brain dump ------------------------------------------------------------
-route("GET", "/api/braindumps", async (_req, env) =>
-  json(await all(env, "SELECT * FROM brain_dumps ORDER BY created_at DESC LIMIT 20")));
-route("POST", "/api/braindumps", async (req, env) => {
-  const b = await body<{ text?: string }>(req);
-  const text = (b.text ?? "").trim();
-  if (!text) throw new HttpError(400, "text is required");
-  return json(await processBrainDump(env, text));
-});
-
 route('GET','/api/assistant/brief',async(req,env)=>{const q=new URL(req.url).searchParams,c=q.get('category');if(c&&!['coffee','yeshiva','personal'].includes(c))throw new HttpError(400,'Unknown category.');return json(await assistantTaskBrief(env,c,Number(q.get('limit'))||12));});
 // ---- Items -----------------------------------------------------------------
 route("GET", "/api/items", async (req, env) => {
@@ -423,7 +392,7 @@ route("DELETE", "/api/items/:id", async (_req, env, [id]) => {
 route("GET", "/api/projects", async (_req, env) =>
   json(await all<Project>(env, `SELECT p.*, (SELECT COUNT(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_count
      FROM projects p ORDER BY p.status='active' DESC, p.updated_at DESC`)));
-route("POST", "/api/projects/organize",async (_req,env)=>json({meetings:await organizeMeetingRounds(env,{force:true}),...await organizeProjects(env,{force:true})}));
+route("POST", "/api/projects/organize",async (_req,env)=>json(await organizeProjects(env,{force:true})));
 route("POST", "/api/projects", async (req, env) => json(await createProject(env, await body(req)), 201));
 route("PATCH", "/api/projects/:id", async (req, env, [id]) => {
   const p = await first<Project>(env, "SELECT * FROM projects WHERE id = ?", id);
@@ -455,29 +424,6 @@ route("POST", "/api/memories/:id/review", async (req, env, [id]) => {
   const b = await body<{ action?: string; content?: string }>(req);
   return json(await reviewMemory(env, id, String(b.action), b.content));
 });
-route("GET", "/api/ideas", async (_req, env) =>
-  json(await all<Idea>(env, "SELECT * FROM ideas WHERE status != 'dropped' ORDER BY status IN ('done', 'parked'), updated_at DESC")));
-/** An idea that's dropped, done or deleted takes its home-screen cards with it. */
-async function clearIdeaCards(env: Env, title: string) {
-  await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = 'idea' AND title LIKE ?", `%${title.slice(0, 60)}%`);
-}
-route("POST", "/api/ideas/:id", async (req, env, [id]) => {
-  const i = await updateIdea(env, id, await body(req));
-  if (i.status === "dropped" || i.status === "done") await clearIdeaCards(env, i.title);
-  return json(i);
-});
-route("POST", "/api/ideas/:id/steps/:step", async (req, env, [id, step], ctx) => {
-  const b = await body<{ action?: string; when?: string }>(req);
-  const r = await ideaStep(env, id, step, b.action === "dismiss" ? "dismiss" : "do", { when: b.when });
-  if ((r as { queued?: boolean }).queued) ctx.waitUntil(runIdeaResearch(env, id).catch((e) => console.error("idea research", e)));
-  return json(r);
-});
-route("DELETE", "/api/ideas/:id", async (_req, env, [id]) => {
-  const i = await first<{ title: string }>(env, "SELECT title FROM ideas WHERE id = ?", id);
-  await run(env, "DELETE FROM ideas WHERE id = ?", id);
-  if (i) await clearIdeaCards(env, i.title);
-  return json({ ok: true });
-});
 route("GET", "/api/groups", async (_req, env) => {
   const gs = await all<Group>(env, "SELECT * FROM contact_groups ORDER BY name");
   return json(await Promise.all(gs.map(async (g) => ({ ...g, members: await members(env, g.id) }))));
@@ -488,38 +434,10 @@ route("POST", "/api/groups", async (req, env) => {
 route("DELETE", "/api/groups/:id", async (_req, env, [id]) => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM group_members WHERE group_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM broadcasts WHERE group_id = ?").bind(id),
     env.DB.prepare("DELETE FROM contact_groups WHERE id = ?").bind(id),
   ]);
   return json({ ok: true });
 });
-route("GET", "/api/groups/:id/messages", async (_req, env, [id]) =>
-  json(await all<Broadcast>(env, "SELECT * FROM broadcasts WHERE group_id = ? ORDER BY COALESCE(archived_at,sent_at,created_at) DESC", id)));
-route("POST", "/api/broadcasts", async (req, env) => {
-  try { return json(await draftBroadcast(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-// Collecting answers from a group: the switch on a draft, the folders in Groups, and answers typed in by hand.
-route("POST", "/api/broadcasts/:id/collect", async (req, env, [id]) => {
-  const b = await body<{ collect?: boolean; expecting?: string }>(req);
-  try { return json(await setCollect(env, id, b)); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("GET", "/api/groups/:id/collections", async (_req, env, [id]) => json(await groupCollections(env, id)));
-route("POST", "/api/trackers/:id/answers", async (req, env, [id]) => {
-  const b = await body<{ person?: string; text?: string }>(req);
-  try { return json(await addManualAnswer(env, id, String(b.person ?? ""), String(b.text ?? ""))); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("POST", "/api/trackers/:id/active", async (req, env, [id]) => {
-  const b = await body<{ active?: boolean }>(req);
-  await run(env, "UPDATE trackers SET active = ?, updated_at = ? WHERE id = ?", b.active ? 1 : 0, now(), id);
-  return json({ ok: true });
-});
-route("POST", "/api/broadcasts/:id/send", async (req, env, [id]) => {
-  const edit=await req.text();
-  try { return json(await sendBroadcast(env, id,edit?JSON.parse(edit):undefined)); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route('GET','/api/broadcasts/drafts',async(_req,env)=>json(await all(env,"SELECT b.*,g.name AS group_name,(SELECT count(*) FROM group_members m JOIN people p ON p.id=m.person_id WHERE m.group_id=g.id AND p.email IS NOT NULL AND p.email!='') AS email_count FROM broadcasts b JOIN contact_groups g ON g.id=b.group_id WHERE b.status='draft' AND b.archived_at IS NULL ORDER BY b.created_at DESC")));
-route('POST','/api/broadcasts/:id/archive',async(_req,env,[id])=>json(await archiveBroadcast(env,id)));
-route("DELETE", "/api/broadcasts/:id", async (_req, env, [id]) => { await run(env, "DELETE FROM broadcasts WHERE id = ? AND status = 'draft'", id); return json({ ok: true }); });
 route("POST", "/api/learn", async (_req, env) => json(await learnPass(env, true)));
 route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
 route("POST", "/api/people/:id", async (req, env, [id]) => {
@@ -550,25 +468,6 @@ route("POST", "/api/nudges/:id/dismiss", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
-// ---- Trackers ----------------------------------------------------------------------
-route("GET", "/api/trackers", async (_req, env) => {
-  const ts = await all<Tracker & { n: number; last: string | null }>(env,
-    `SELECT t.*, (SELECT COUNT(*) FROM tracker_entries e WHERE e.tracker_id = t.id) AS n,
-            (SELECT MAX(said_at) FROM tracker_entries e WHERE e.tracker_id = t.id) AS last
-     FROM trackers t ORDER BY t.active DESC, t.created_at DESC`);
-  return json(await Promise.all(ts.map(async (t) => ({ ...t, status: await trackerStatus(env, t) }))));
-});
-route("POST", "/api/trackers", async (req, env) => {
-  try { return json(await saveTracker(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("POST", "/api/trackers/:id/check", async (req, env, [id]) => {
-  const b = await body<{ days?: number }>(req).catch(() => ({} as { days?: number }));
-  try { return json(await checkTrackerNow(env, id, b.days)); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("POST", "/api/tracker-entries/:id/verdict", async (req, env, [id]) => {
-  const b = await body<{ verdict?: string }>(req);
-  return json(await judgeEntry(env, id, b.verdict === "good" ? "good" : "bad"));
-});
 route('GET', '/api/shopping', async (_req, env) => json(await shoppingState(env)));
 route('POST', '/api/shopping/lists', async (req, env) => json(await saveShoppingList(env, await body(req))));
 route('DELETE', '/api/shopping/lists/:id', async (_req, env, [id]) => json(await deleteShoppingList(env, id)));
@@ -585,15 +484,6 @@ route("POST", "/api/people/:id/whatsapp", async (req, env, [id]) => {
   if (!b.chat) throw new HttpError(400, "chat required");
   return json(await linkWhatsapp(env, id, b.chat));
 });
-route("GET", "/api/trackers/:id/entries", async (_req, env, [id]) => json(await trackerEntries(env, id, 500)));
-route("DELETE", "/api/trackers/:id", async (_req, env, [id]) => {
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM tracker_entries WHERE tracker_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM trackers WHERE id = ?").bind(id),
-  ]);
-  return json({ ok: true });
-});
-
 // ---- Situations (time/place reminders) ---------------------------------------------
 route("GET", "/api/situations", async (_req, env) => {
   const list = await all<Situation>(env, "SELECT * FROM situations ORDER BY active DESC, created_at");
@@ -605,57 +495,6 @@ route("POST", "/api/situations", async (req, env) => {
 route("DELETE", "/api/situations/:id", async (_req, env, [id]) => {
   await run(env, "DELETE FROM situations WHERE id = ?", id);
   return json({ ok: true });
-});
-
-// ---- Tasks (recurring agent jobs) -----------------------------------------------------
-route("GET", "/api/routines", async (_req, env) => {
-  await advanceRoutineRuns(env).catch((e) => console.error("advance runs", e));
-  const rs = await all<Routine>(env, "SELECT * FROM routines WHERE NOT EXISTS (SELECT 1 FROM recurring_reminders rr WHERE rr.id=routines.id) ORDER BY active DESC, created_at");
-  const runs = await all<{ routine_id: string; status: string; state: string | null; error: string | null }>(env, `SELECT id, routine_id, started_at, finished_at, status, summary, report, sources, searches, doc_link, error, state
-    FROM routine_runs WHERE routine_id IN (SELECT id FROM routines) ORDER BY started_at DESC LIMIT 60`);
-  // Progress for runs in flight, in plain words.
-  const progress = (x: { status: string; state: string | null; error: string | null }) => {
-    if (x.status !== "running") return null;
-    if (!x.state) return x.error ?? "Planning the research…";
-    try {
-      const st = JSON.parse(x.state) as { jobs: { text?: string; failed?: string; id?: string | null }[]; write_id?: string | null };
-      const done = st.jobs.filter((j) => j.text !== undefined).length;
-      if (done === st.jobs.length || st.write_id) return "Writing the report…";
-      return `Researching: ${done} of ${st.jobs.length} parts done`;
-    } catch { return null; }
-  };
-  return json(rs.map((r) => ({
-    ...r, schedule: normalizeSchedule(r.schedule), schedule_text: describeSchedule(normalizeSchedule(r.schedule)),
-    runs: runs.filter((x) => x.routine_id === r.id).slice(0, 8).map(({ state, ...x }) => ({ ...x, progress: progress({ ...x, state }) })),
-  })));
-});
-route("POST", "/api/routines", async (req, env) => {
-  try { return json(await saveRoutine(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("GET", "/api/routine-runs/:id", async (_req, env, [id]) => {
-  const r = await first(env, `SELECT rr.id, rr.routine_id, rr.started_at, rr.summary, rr.report, rr.sources, rr.doc_link, r.name
-    FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?`, id);
-  if (!r) throw new HttpError(404, "report not found");
-  return json(r);
-});
-route("DELETE", "/api/routines/:id", async (_req, env, [id]) => {
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM routine_runs WHERE routine_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM routines WHERE id = ?").bind(id),
-  ]);
-  return json({ ok: true });
-});
-route("POST", "/api/routines/:id/tell", async (req, env, [id]) => {
-  const b = await body<{ text?: string }>(req);
-  if (!b.text?.trim()) throw new HttpError(400, "Say what to change.");
-  try { return json(await tellRoutine(env, id, b.text.trim().slice(0, 2000))); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("POST", "/api/routines/:id/run", async (_req, env, [id], ctx) => {
-  const r = await first<Routine>(env, "SELECT * FROM routines WHERE id = ?", id);
-  if (!r) throw new HttpError(404, "task not found");
-  await runRoutine(env, r); // queues confirmation; never starts paid work from this endpoint
-  void ctx;
-  return json({ ok: true, message: 'Not started. Review and approve the AI job below before it runs.' });
 });
 
 // ---- Replies: consolidated catch-up ------------------------------------------------
@@ -675,20 +514,12 @@ route("POST", "/api/replies/:id/send", async (req, env, [id]) => {
   catch (e) { throw new HttpError(400, (e as Error).message); }
 });
 
-// ---- Missions ----------------------------------------------------------------------
-route("GET", "/api/missions", async (_req, env) =>
-  json(await all(env, "SELECT * FROM missions ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, updated_at DESC LIMIT 50")));
-route("POST", "/api/missions/:id", async (req, env, [id]) => {
-  const b = await body<{ status?: string }>(req);
-  return json(await updateMission(env, id, { status: b.status, note: b.status ? `You set it to ${b.status}.` : undefined }));
-});
-
 // ---- Search everything ----------------------------------------------------------
 route("GET", "/api/search", async (req, env) => {
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim().slice(0, 100);
-  if (q.length < 2) return json({ q, items: [], memories: [], people: [], conversations: [], brain_dumps: [], projects: [], events: [] });
+  if (q.length < 2) return json({ q, items: [], memories: [], people: [], conversations: [], projects: [], events: [] });
   const like = `%${q.replace(/[%_]/g, "")}%`;
-  const [items, memLike, memFts, people, conversations, dumps, projects, events] = await Promise.all([
+  const [items, memLike, memFts, people, conversations, projects, events] = await Promise.all([
     all<Item>(env, `SELECT * FROM items WHERE title LIKE ? OR notes LIKE ? OR person LIKE ?
       ORDER BY status = 'open' DESC, updated_at DESC LIMIT 25`, like, like, like),
     all<Memory>(env, "SELECT * FROM memories WHERE content LIKE ? ORDER BY updated_at DESC LIMIT 15", like),
@@ -696,14 +527,13 @@ route("GET", "/api/search", async (req, env) => {
     findPeople(env, q, 10),
     all(env, `SELECT m.conversation_id, c.title, m.role, m.content, m.created_at FROM messages m
       LEFT JOIN conversations c ON c.id = m.conversation_id WHERE m.content LIKE ? ORDER BY m.created_at DESC LIMIT 15`, like),
-    all(env, "SELECT id, raw, summary, created_at FROM brain_dumps WHERE raw LIKE ? OR summary LIKE ? ORDER BY created_at DESC LIMIT 8", like, like),
     all<Project>(env, "SELECT * FROM projects WHERE name LIKE ? OR description LIKE ? ORDER BY updated_at DESC LIMIT 8", like, like),
     all<CalendarEvent>(env, `SELECT id, summary, start_at, end_at, all_day, location, html_link FROM calendar_events
       WHERE summary LIKE ? OR location LIKE ? GROUP BY summary, start_at ORDER BY start_at LIMIT 10`, like, like),
   ]);
   const seen = new Set<string>();
   const memories = [...memLike, ...memFts].filter((m) => !seen.has(m.id) && seen.add(m.id)).slice(0, 15);
-  return json({ q, items, memories, people, conversations, brain_dumps: dumps, projects, events });
+  return json({ q, items, memories, people, conversations, projects, events });
 });
 
 route("POST", "/api/nudges/:id/act", async (req, env, [id]) => {
@@ -717,7 +547,6 @@ route("POST", "/api/nudges/:id/undo", async (_req, env, [id]) => {
   return json({ ok: true });
 });
 route("POST", "/api/proactive/run", async (_req, env) => json(await runProactive(env)));
-route('GET', '/api/ai-job-approvals', async (_req, env) => json(await all(env,"SELECT * FROM pending_actions WHERE action LIKE 'ai_%' AND status='pending' ORDER BY created_at DESC")));
 route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => json(await decidePendingAction(env, id, decision)));
 route("GET", "/api/approvals", async (_req, env) => json(await (await import("./approvals")).listApprovals(env)));
 route("POST", "/api/approvals/:source/:id/:decision", async (_req, env, [source, id, decision]) => json(await (await import("./approvals")).decideApproval(env, source, id, decision)));
@@ -810,13 +639,6 @@ export default {
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
     // Outside agents (Codex, Claude Code): ask the computer helper for a job and check on it. Every job waits for
     // the user's Allow on their phone. Their own key, never the app passcode.
-    // Telegram calls this for every message to the bot; the secret header proves it's Telegram.
-    if (url.pathname === "/api/telegram/webhook" && req.method === "POST") {
-      if (!env.TELEGRAM_WEBHOOK_SECRET || !safeEqual(req.headers.get("x-telegram-bot-api-secret-token") ?? "", env.TELEGRAM_WEBHOOK_SECRET)) return json({ error: "unauthorised" }, 401);
-      const update = await req.json().catch(() => null);
-      if (update) await handleUpdate(env, update as TgUpdate, (p) => ctx.waitUntil(p.catch((e) => console.error("telegram", e))));
-      return json({ ok: true });
-    }
     // A Claude plan run sends its answer here, to the one-time link it was given for that run.
     const reply = url.pathname.match(/^\/api\/runs\/([\w-]+)\/result$/);
     if (reply && req.method === "POST") return json(await replyWithToken(env, reply[1], url.searchParams.get("k") ?? "", (await req.json().catch(() => ({}))) as Parameters<typeof replyWithToken>[3]));
@@ -848,11 +670,10 @@ export default {
         return json({error:'Record endpoint not found.'},404);
       }
       }catch(e){return json({error:e instanceof HttpError?e.message:'Agent request failed.'},e instanceof HttpError?e.status:500);}
-      if(url.pathname==='/api/agent/telegram/reconcile' && req.method==='POST')return json(await reconcileTopics(env,true));
       if(url.pathname==='/api/agent/jobs' && req.method==='GET')return json(await listJobChats(env));
       const jobContextMatch=url.pathname.match(/^\/api\/agent\/jobs\/([\w-]+)\/context$/);
       if(jobContextMatch && req.method==='GET')return json(await jobContext(env,jobContextMatch[1]));
-      if(jobContextMatch && req.method==='POST'){await refreshBrief(env,jobContextMatch[1]);await publishBrief(env,jobContextMatch[1]);return json(await jobContext(env,jobContextMatch[1]));}
+      if(jobContextMatch && req.method==='POST'){await refreshBrief(env,jobContextMatch[1]);return json(await jobContext(env,jobContextMatch[1]));}
       // Jobs: the Codex runner on the home computer takes Codex runs (and reports the plan's usage);
       // the runner and the Claude Code task send each run's answer back.
       if (url.pathname === "/api/agent/codex/next" && req.method === "POST") return json(await nextCodexRun(env, (await req.json().catch(() => ({}))) as Parameters<typeof nextCodexRun>[1]));
@@ -860,14 +681,6 @@ export default {
       if (rm && req.method === "POST") return json(await runResult(env, rm[1], (await req.json().catch(() => ({}))) as Parameters<typeof runResult>[2]));
       // The coffee production outlook (read-only), as Chief of Staff sees it.
       if (url.pathname === "/api/agent/coffee/outlook" && req.method === "POST") { const { hubCall } = await import("./hub"); return json(await hubCall(env, "outlook")); }
-      if (url.pathname === "/api/agent/telegram/topic" && req.method === "POST") { const { makeSubjectTopic } = await import("./telegram-topics"); return json(await makeSubjectTopic(env, (await req.json().catch(() => ({}))) as { subject?: string })); }
-      if (url.pathname === "/api/agent/telegram/connect" && req.method === "POST") return json(await connectWebhook(env, url.origin));
-      if (url.pathname === "/api/agent/telegram/owner" && req.method === "POST") {
-        const b = (await req.json().catch(() => ({}))) as { owner_id?: number };
-        if (!Number.isInteger(b.owner_id)) return json({ error: "owner_id required" }, 400);
-        await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('telegram', ?)", JSON.stringify({ ...(await tgConfig(env)), owner_id: b.owner_id }));
-        return json({ ok: true });
-      }
       const am = url.pathname.match(/^\/api\/agent\/helper-jobs\/([^/]+)$/);
       if (am && req.method === "GET") { const j = (await listJobs(env)).find((x) => x.id === am[1]); return j ? json({ id: j.id, status: j.status, question: j.question, result: j.result }) : json({ error: "not found" }, 404); }
       return json({ error: "not found" }, 404);
@@ -885,12 +698,12 @@ export default {
         return json({ ok: true });
       }
       if (url.pathname === "/api/bridge/trackers" && req.method === "GET") {
-        return json(await trackersForBridge(env, url.searchParams.get("account") === "business" ? "business" : "personal"));
+        return json(await bridgeWatches(env, url.searchParams.get("account") === "business" ? "business" : "personal"));
       }
       if (url.pathname === "/api/bridge/track" && req.method === "POST") return json(await capture(env, await req.json()));
       if (url.pathname === "/api/bridge/chats" && req.method === "POST") {
         const b = (await req.json().catch(() => ({}))) as { account?: string; names?: string[] };
-        return json(await matchWhatsappNames(env, b.account === "business" ? "business" : "personal", Array.isArray(b.names) ? b.names : []));
+        return json(await saveChatNames(env, b.account === "business" ? "business" : "personal", Array.isArray(b.names) ? b.names : []));
       }
       const bf = url.pathname.match(/^\/api\/bridge\/trackers\/([\w-]+)\/backfilled$/);
       if (bf && req.method === "POST") {
@@ -905,7 +718,8 @@ export default {
       if (hm && hm[2] === "step" && req.method === "POST") return json(await nextAction(env, hm[1], await req.json()));
       if (hm && hm[2] === "finish" && req.method === "POST") return json(await finishJob(env, hm[1], await req.json()));
       if (url.pathname === "/api/bridge/selfnote" && req.method === "POST") return json(await saveSelfNote(env, await req.json()));
-      if (url.pathname === "/api/bridge/convo" && req.method === "POST") return json(await detectMeeting(env, await req.json()));
+      // Older add-ons still post conversations here; meeting detection is gone.
+      if (url.pathname === "/api/bridge/convo" && req.method === "POST") return json({ ok: true, disabled: true, agreed: false });
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));
       if (url.pathname === "/api/bridge/outbox" && req.method === "GET") return json(await takeOutbox(env));
       const m = url.pathname.match(/^\/api\/bridge\/outbox\/([\w-]+)$/);
@@ -947,14 +761,13 @@ export default {
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
     // New approvals buzz the phone once; the cards live on Today.
     ctx.waitUntil(import("./approvals").then((a) => a.announceApprovals(env)).catch((e) => console.error("approvals", e)));
-    ctx.waitUntil(import("./worksession").then((w) => w.tickWorkSession(env)).catch((e) => console.error("work session", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     ctx.waitUntil(healthSync(env).catch(()=>{}));
     ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));
     ctx.waitUntil(processAlumni(env).catch(e=>console.error('alumni visits',e instanceof Error?e.message:'processing failed')));
     ctx.waitUntil(syncWhoop(env).catch(()=>{}));
     ctx.waitUntil(healthReminders(env).catch(()=>{}));
-    // Pull Google first so new emails and meetings are in place before reminders and the briefing.
+    // Pull Google first so new emails and meetings are in place before reminders.
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
@@ -968,8 +781,8 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 /**
- * Reminders and briefings that list to-dos stay current: finished items drop off (and a block
- * reminder disappears once everything in it is done); briefings lose the lines for things done since.
+ * Reminders that list to-dos stay current: finished items drop off, and a block reminder disappears
+ * once everything in it is done.
  */
 async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null })[]) {
   const attention=await attentionState(env);
@@ -981,9 +794,8 @@ async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null 
       const open = ids.length ? await all<{ id: string; title: string; person: string | null; due_at: string | null; project_id: string | null; project: string | null }>(env,
         `SELECT i.id, i.title, i.person, i.due_at, i.project_id, p.name AS project FROM items i LEFT JOIN projects p ON p.id = i.project_id
           WHERE i.status = 'open' AND i.id IN (${ids.map(() => "?").join(",")})`, ...ids) : [];
-      // On a wrap-up, "not yet" pushes an item to tomorrow: it leaves the card.
       const ordered = ids.map((id) => open.find((o) => o.id === id))
-        .filter((o) => o && actionableNoticeItem(attention.items.get(o.id)!,n,attention) && !(n.type === "wrapup" && o.due_at && o.due_at > now())) as typeof open;
+        .filter((o) => o && actionableNoticeItem(attention.items.get(o.id)!,n,attention)) as typeof open;
       const note = n.body.split("\n").filter((l) => l.startsWith("📝"));
       if (!ordered.length && !note.length) { await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", n.id); continue; }
       out.push({
@@ -992,15 +804,6 @@ async function liveNudges(env: Env, nudges: (Nudge & { item_ids?: string | null 
         body: [...note, ...ordered.map((i) => `• ${i.title}${i.person ? ` (${i.person})` : ""}`)].join("\n"),
       });
       continue;
-    }
-    if (n.type === "briefing") {
-      const closed = await all<{ title: string }>(env, "SELECT title FROM items WHERE status != 'open' AND updated_at >= ?", n.updated_at ?? n.created_at);
-      const keys = closed.map((c) => c.title.toLowerCase().slice(0, 30)).filter((k) => k.length >= 6);
-      if (keys.length) {
-        const body = n.body.split("\n").filter((l) => !(/^\s*([-*•]|\d+\.)\s/.test(l) && keys.some((k) => l.toLowerCase().includes(k)))).join("\n");
-        out.push({ ...n, body });
-        continue;
-      }
     }
     out.push(n);
   }

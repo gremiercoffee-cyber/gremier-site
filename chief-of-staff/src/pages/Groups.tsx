@@ -1,14 +1,9 @@
-import {GroupMessage} from '../components/GroupMessage';
-import Collections from '../components/Collections';
 import { useEffect, useState } from "react";
-import { api, type BroadcastRow, type GroupRow } from "../api";
+import { api, type GroupRow } from "../api";
 import { Button, Empty } from "../components/ui";
 
-/** A message that has gone out (even if one address failed) is finished: it moves to the Archive, not the active list. */
-const isDone = (b: BroadcastRow) => !!b.archived_at || b.status === "sent" || b.status === "partial";
-
 const field = "w-full rounded-xl border border-line bg-bg px-3 py-2 text-[15px]";
-/** Contact groups you can message all at once: email goes out from your Gmail, WhatsApp is preloaded. */
+/** Contact groups: who is in them, so you can search email and WhatsApp from a whole group. */
 export default function Groups({ onAsk, refreshKey }: { onAsk: (t: string) => void; refreshKey: number }) {
   const [list, setList] = useState<GroupRow[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -20,8 +15,7 @@ export default function Groups({ onAsk, refreshKey }: { onAsk: (t: string) => vo
   return (
     <div className="space-y-3 mt-4">
       <p className="text-sm text-muted px-1">
-        Groups you message all at once, e.g. "the rabbis" or "wholesale customers". Write the message here or just ask me
-        ("tell the rabbis the meeting moved to Thursday"). Email goes to everyone from your Gmail; WhatsApp opens with the same text ready to send.
+        Groups of people, e.g. "the rabbis" or "wholesale customers". Ask me things like "any emails from the rabbis this week?"
       </p>
       <div className="flex gap-2">
         <input className={field} placeholder="New group name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -44,12 +38,8 @@ export default function Groups({ onAsk, refreshKey }: { onAsk: (t: string) => vo
 }
 
 function GroupDetail({ g, onClose, onChanged, onAsk }: { g: GroupRow; onClose: () => void; onChanged: () => void; onAsk: (t: string) => void }) {
-  const [msgs, setMsgs] = useState<BroadcastRow[]>([]);
   const [add, setAdd] = useState({ name: "", email: "", phone: "" });
-  const [draft, setDraft] = useState({ subject: "", body: "" });
   const [showMembers, setShowMembers] = useState(g.members.length < 8);
-  const loadMsgs = () => api.groupMessages(g.id).then(setMsgs).catch(() => {});
-  useEffect(() => { loadMsgs(); }, [g.id]);
 
   return (
     <div className="rounded-2xl bg-surface border border-accent/30 p-4 space-y-4">
@@ -58,21 +48,6 @@ function GroupDetail({ g, onClose, onChanged, onAsk }: { g: GroupRow; onClose: (
         <button className="text-sm text-muted" onClick={onClose}>Close</button>
       </div>
 
-      {/* New message */}
-      <section className="space-y-2">
-        <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">New message</p>
-        <input className={field} placeholder="Subject (for email)" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} dir="auto" />
-        <textarea className={field} rows={5} placeholder={"Hi {first_name},\n\n…"} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} dir="auto" />
-        <p className="text-xs text-muted">{"{first_name}"} becomes each person's first name.</p>
-        <div className="flex gap-2">
-          <Button disabled={!draft.body.trim()} onClick={async () => { await api.draftGroupMessage({ group: g.id, ...draft }); setDraft({ subject: "", body: "" }); loadMsgs(); }}>Save draft</Button>
-          <Button variant="soft" onClick={() => onAsk(`Write a message to the "${g.name}" group: `)}>Have me write it</Button>
-        </div>
-      </section>
-
-      <Collections groupId={g.id} refreshKey={msgs.length} />
-      {msgs.filter(b=>!isDone(b)).map(b=><GroupMessage key={b.id} b={b} g={g} onChanged={loadMsgs}/>)}
-      <details className="rounded-xl border border-line p-3"><summary className="cursor-pointer text-sm">Archive ({msgs.filter(isDone).length})</summary><div className="space-y-3 mt-3">{msgs.filter(isDone).sort((a,b)=>(b.archived_at??b.sent_at??b.created_at).localeCompare(a.archived_at??a.sent_at??a.created_at)).map(b=><GroupMessage key={b.id} b={b} g={g} onChanged={loadMsgs}/>)}</div></details>
 
       {/* Members */}
       <section>

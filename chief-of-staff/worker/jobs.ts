@@ -1,11 +1,11 @@
 import {heartbeatSetting} from './db';
 /**
- * Jobs: research or checks the user starts from Telegram ("hourly updates on the US elections until Wednesday",
- * "a weekly report on the cold-brew market"). Each job has its own Telegram topic.
+ * Jobs (research chats): research or checks the user starts ("hourly updates on the US elections until Wednesday",
+ * "a weekly report on the cold-brew market"). Each job is its own chat in the app's side panel.
  *
  * - once: runs one time.  every: runs every N minutes, without asking, until told to stop or its time limit.
  *   weekly: at its time it asks "Want this week's report now?" and runs only on Yes.
- * - A new job waits for one tap on Start in its topic (AI jobs need the user's OK); after that it just runs.
+ * - A new job waits for one tap on Start in its chat (AI jobs need the user's OK); after that it just runs.
  *
  * Each run goes to an engine: the Claude plan (a Claude Code scheduled task fired through its API trigger), the
  * Codex plan (Codex on the home computer, through the local runner) or the API (OpenAI background research).
@@ -14,12 +14,10 @@ import {heartbeatSetting} from './db';
 import type { Env } from "./env";
 import { all, first, getSettings, localParts, now, run, uid } from "./db";
 import { getProvider } from "./ai";
-import { localToUtc, nextRun } from "./routines";
-import { say, tg, tgConfig } from "./telegram";
+import { localToUtc, nextRun } from "./schedule";
 import { sendPush } from "./push";
 import { createDoc } from "./gworkspace";
 import * as mail from "./outreach";
-import {reconcileTopics} from "./telegram-lifecycle";
 import {jobContext,jobKnowledge,tickBriefs,linkJobProject} from "./job-briefs";
 
 export type Engine = "claude" | "codex" | "api";
@@ -79,17 +77,13 @@ export interface JobInput {
 }
 const ENGINES = ["auto", "claude", "codex", "api"];
 
-/** Sets up a job with its own topic; it starts when the user taps Start there. */
+/** Sets up a job with its own chat; it starts when the user taps Start there. */
 export async function createJob(env: Env, input: JobInput) {
   const title = String(input.title ?? "").trim().slice(0, 80);
   const instructions = String(input.instructions ?? "").trim().slice(0, 3000);
   if (!title || !instructions) throw new Error("A job needs a short title and what to do.");
   const kind = (["once", "every", "weekly"].includes(String(input.kind)) ? input.kind : "once") as Job["kind"];
   const every = kind === "every" ? Math.min(7 * 1440, Math.max(15, Math.round(Number(input.every_minutes) || 60))) : null;
-  const c = await tgConfig(env);
-  const chatId = c.group_id ?? c.private_id ?? null;
-  let topic: number | null = null;
-  if (c.group_id) topic = await tg<{ message_thread_id: number }>(env, "createForumTopic", { chat_id: c.group_id, name: title.slice(0, 120) }).then((t) => t.message_thread_id).catch(() => null);
   const j: Job = {
     id: uid(), title, instructions, kind, every_minutes: every,
     weekday: kind === "weekly" ? Math.min(6, Math.max(0, Math.round(Number(input.weekday) || 0))) : null,
@@ -97,7 +91,7 @@ export async function createJob(env: Env, input: JobInput) {
     until_at: kind === "every" ? await localIso(env, input.until) : null,
     engine: (ENGINES.includes(String(input.engine)) ? input.engine : "auto") as Job["engine"],
     only_changes: input.only_changes ?? kind === "every" ? 1 : 0,
-    status: "pending", chat_id: chatId, topic_id: topic, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(),
+    status: "pending", chat_id: null, topic_id: null, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(),
     model: cleanModel(input.model),
   };
   await run(env, `INSERT INTO jobs (id, title, instructions, kind, every_minutes, weekday, time, until_at, engine, only_changes, status, chat_id, topic_id, created_at, updated_at, model)
@@ -105,7 +99,7 @@ export async function createJob(env: Env, input: JobInput) {
   if(input.project_id)await linkJobProject(env,j.id,input.project_id);
   await post(env, j, `**${title}**\n${instructions}\n\n${await describeJob(env, j)}`,
     [[{ text: j.kind === "weekly" ? "▶ Start (and run the first one now)" : "▶ Start", data: `start:${j.id}` }, { text: "✗ Cancel", data: `cancel:${j.id}` }]]);
-  return { id: j.id, title, schedule: await describeJob(env, j), where: `a research chat pinned in the side panel${chatId ? (topic ? ", and its own Telegram topic" : ", and the Telegram chat") : ""}`, status: "waiting for Start" };
+  return { id: j.id, title, schedule: await describeJob(env, j), where: "a research chat pinned in the side panel", status: "waiting for Start" };
 }
 
 /** "Email the bottle suppliers asking for prices" from the main chat: its own chat, where Codex writes the emails
@@ -119,32 +113,22 @@ export async function createEmailChat(env: Env, input: { title?: string; ask?: s
     if (r) { await log(env, r, "you", ask); await post(env, r, await mail.requestDrafts(env, r, ask)); return { where: `the “${r.title}” research chat`, status: "Codex is writing the emails; they'll appear there with Send buttons" }; }
   }
   const title = String(input.title ?? "").trim().slice(0, 80) || "Emails";
-  const c = await tgConfig(env);
-  const chatId = c.group_id ?? c.private_id ?? null;
-  const topic = c.group_id ? await tg<{ message_thread_id: number }>(env, "createForumTopic", { chat_id: c.group_id, name: `✉️ ${title}`.slice(0, 120) }).then((t) => t.message_thread_id).catch(() => null) : null;
   const j = { id: uid(), title, instructions: ask, kind: "once", every_minutes: null, weekday: null, time: null, until_at: null, engine: "codex", only_changes: 0, status: "done",
-    chat_id: chatId, topic_id: topic, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(), model: null } as Job;
+    chat_id: null, topic_id: null, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(), model: null } as Job;
   await run(env, `INSERT INTO jobs (id, title, instructions, kind, engine, only_changes, status, chat_id, topic_id, created_at, updated_at) VALUES (?, ?, ?, 'once', 'codex', 0, 'done', ?, ?, ?, ?)`,
     j.id, j.title, j.instructions, j.chat_id, j.topic_id, j.created_at, j.updated_at);
   await log(env, j, "you", ask);
   await post(env, j, await mail.requestDrafts(env, j, ask));
-  return { where: `a new chat “${title}” pinned in the side panel${topic ? " (and its own Telegram topic)" : ""}`, status: "Codex is writing the emails; they'll appear there with Send buttons" };
+  return { where: `a new chat “${title}” pinned in the side panel`, status: "Codex is writing the emails; they'll appear there with Send buttons" };
 }
 
-export async function jobByTopic(env: Env, chatId: number, topic: number) {
-  return first<Job>(env, "SELECT * FROM jobs WHERE chat_id = ? AND topic_id = ? ORDER BY created_at DESC LIMIT 1", chatId, topic);
-}
-
-async function where(j: Job) { return j.chat_id ? { chat: j.chat_id, thread: j.topic_id ?? undefined } : null; }
 async function log(env: Env, j: Job, role: "you" | "bot", text: string, buttons?: Buttons) {
   await run(env, "INSERT INTO job_messages (id, job_id, role, text, buttons, created_at) VALUES (?, ?, ?, ?, ?, ?)", uid(), j.id, role, text, buttons ? JSON.stringify(buttons) : null, now());
 }
-/** A message from the job: in its chat in the app, in its Telegram topic (when connected), and on the phone when asked. */
-export async function post(env: Env, j: Job, text: string, buttons?: Buttons, opts: { push?: boolean; telegram?: boolean } = {}) {
+/** A message from the job: in its chat in the app, and on the phone when asked. */
+export async function post(env: Env, j: Job, text: string, buttons?: Buttons, opts: { push?: boolean } = {}) {
   if((await first<{status:string}>(env,'SELECT status FROM jobs WHERE id=?',j.id))?.status==='cancelled')return;
   await log(env, j, "bot", text, buttons);
-  const w = await where(j);
-  if (w && opts.telegram !== false) await say(env, w.chat, text, { thread: w.thread, buttons }).catch((e) => console.error("telegram post", e));
   if (opts.push) await sendPush(env, { title: `🔎 ${j.title}`, body: text.replace(/[*#_`>]/g, "").split("\n").find((l) => l.trim())?.slice(0, 160) ?? "", url: `/?job=${j.id}`, tag: `job-${j.id}` }).catch(() => {});
 }
 
@@ -185,7 +169,7 @@ export async function listJobChats(env: Env) {
 /** One research chat, read (which clears its unread count). */
 export async function jobChat(env: Env, id: string) {
   const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", id);
-  if (!j || j.status==='cancelled') throw new Error("That job was removed or its Telegram topic was deleted.");
+  if (!j || j.status==='cancelled') throw new Error("That research chat was removed.");
   await run(env, "UPDATE jobs SET seen_at = ? WHERE id = ?", now(), id);
   const messages = await all<JobMessage>(env, "SELECT * FROM job_messages WHERE job_id = ? ORDER BY created_at LIMIT 500", id);
   const busy = !!(await first(env, "SELECT 1 FROM job_runs WHERE job_id = ? AND status IN ('queued','running')", id));
@@ -194,13 +178,8 @@ export async function jobChat(env: Env, id: string) {
     messages: messages.map((m) => ({ ...m, buttons: m.buttons ? JSON.parse(m.buttons) as Buttons : null })) };
 }
 
-/** Buttons in Telegram: start / cancel a new job; run / skip this week's report. */
-export async function handleButton(env: Env, data: string, chatId: number, _thread: number | undefined, messageId: number) {
-  return pressButton(env, data, () => tg(env, "editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).then(() => undefined).catch(() => {}));
-}
-
-/** The same buttons, pressed anywhere (the app or Telegram). */
-export async function pressButton(env: Env, data: string, clearTelegram: () => Promise<void> = async () => {}) {
+/** A chat's buttons: start / cancel a new job; run / skip this week's report; pause / resume; email Send. */
+export async function pressButton(env: Env, data: string) {
   const [what, id] = data.split(":");
   if(what==='pause'||what==='resume'){
     const j=await first<Job>(env,'SELECT * FROM jobs WHERE id=?',id);if(!j)return;
@@ -208,9 +187,8 @@ export async function pressButton(env: Env, data: string, clearTelegram: () => P
     if(what==='resume'&&j.status==='paused')await start(env,j);
     return;
   }
-  if (what.startsWith("e")) { await clearTelegram(); return mail.pressEmailButton(env, what, id); }
+  if (what.startsWith("e")) return mail.pressEmailButton(env, what, id);
   const clear = async () => {
-    await clearTelegram();
     await run(env, "UPDATE job_messages SET buttons = NULL WHERE buttons LIKE ?", `%"${data.replace(/[%_]/g, "")}"%`);
   };
   if (what === "start" || what === "cancel") {
@@ -232,15 +210,15 @@ export async function pressButton(env: Env, data: string, clearTelegram: () => P
   }
 }
 
-/** A message to a job from its chat (the app, or its Telegram topic): logged with the reply. */
-export async function messageJob(env: Env, j: Job, text: string, from: "app" | "telegram") {
+/** A message to a job from its chat: logged with the reply. */
+export async function messageJob(env: Env, j: Job, text: string, _from: "app" = "app") {
   await log(env, j, "you", text);
   const reply = await talkToJob(env, j, text);
   await log(env, j, "bot", reply);
   return reply;
 }
 
-/** A message in a job's topic: stop it, change it, run it now, or ask about it. */
+/** A message in a job's chat: stop it, change it, run it now, or ask about it. */
 export async function talkToJob(env: Env, j: Job, text: string) {
   if (/^\s*(stop|cancel|end it|enough|that's enough|תפסיק|עצור|די)\b/i.test(text)) { await stop(env, j); return "Done, it's stopped."; }
   if(/^\s*(current (brief|report)|status|latest (brief|report))\??\s*$/i.test(text)){
@@ -306,7 +284,7 @@ Reply ONLY JSON: {"ask"?:"a one-off request for the next run only, in their word
 
 // ---- Running ------------------------------------------------------------------------------------
 export async function queueRun(env: Env, j: Job, o: { mode?: string; ask?: string } = {}) {
-  if((await first<{status:string}>(env,'SELECT status FROM jobs WHERE id=?',j.id))?.status==='cancelled')throw new Error("This job was removed with its Telegram topic.");
+  if((await first<{status:string}>(env,'SELECT status FROM jobs WHERE id=?',j.id))?.status==='cancelled')throw new Error("This research chat was removed.");
   const r: JobRun = { id: uid(), job_id: j.id, engine: null, status: "queued", ref: null, claimed_by: null, attempts: 0, created_at: now(), started_at: null, result: null, mode: o.mode ?? null, ask: o.ask ?? null };
   await run(env, "INSERT INTO job_runs (id, job_id, status, created_at, mode, ask) VALUES (?, ?, 'queued', ?, ?, ?)", r.id, j.id, r.created_at, r.mode, r.ask);
   await dispatch(env, j, r);
@@ -429,7 +407,7 @@ async function failRun(env: Env, j: Job, runId: string, error: string) {
   await post(env, j, `⚠️ This run didn't work: ${error.slice(0, 200)}`);
 }
 
-/** A finished run: post it in the job's topic (unless nothing changed), and keep it for the next comparison. */
+/** A finished run: post it in the job's chat (unless nothing changed), and keep it for the next comparison. */
 export async function finishRun(env: Env, runId: string, text: string, engine?: Engine) {
   const r = await first<JobRun>(env, "SELECT * FROM job_runs WHERE id = ?", runId);
   if (!r || ["done", "skipped", "failed"].includes(r.status)) return { ok: true, ignored: true };
@@ -462,7 +440,6 @@ export async function finishRun(env: Env, runId: string, text: string, engine?: 
 
 /** Cron (every 5 minutes): start what's due, ask about this week's reports, collect API results, rescue slow runs. */
 export async function tickJobs(env: Env) {
-  await reconcileTopics(env).catch(()=>{});
   const t = now();
   for (const j of await all<Job>(env, "SELECT * FROM jobs WHERE status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= ?", t)) {
     if (j.kind === "every") {
@@ -551,7 +528,7 @@ export async function runResult(env: Env, id: string, p: { text?: string; error?
   return { ok: true };
 }
 
-/** /jobs in Telegram, and the chat's list. */
+/** The research chats, for the assistant. */
 export async function jobsSummary(env: Env) {
   const js = await all<Job>(env, "SELECT * FROM jobs WHERE status IN ('pending','active','paused') ORDER BY created_at DESC LIMIT 20");
   if (!js.length) return "No jobs running.";

@@ -1,5 +1,7 @@
 # Health Journal
 
+> **November 2026:** Telegram was removed from Chief of Staff. Everything below that mentions Telegram is history; alerts now come only from the app.
+
 Live standalone app: https://health.gremiercoffee.co.il/daynote/
 
 Existing-session handoff: https://chief-of-staff.gremiercoffee.workers.dev/daynote/?open=standalone

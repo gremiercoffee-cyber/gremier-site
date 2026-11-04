@@ -17,7 +17,7 @@ test('reply obligations enter the queue only after four hours, and responses pre
 test('passive learning never receives WhatsApp messages, including forced learning',async()=>{
  const h=setup();h.db.prepare("INSERT INTO whatsapp_inbox(id,hash,chat,sender,text,received_at) VALUES('w','w','Avi','Avi','PRIVATE WHATSAPP FACT',?)").run(new Date().toISOString());let prompts=[];globalThis.manualModel={complete:async req=>{prompts.push(req.prompt);return '{"suggestions":[]}';}};
  assert.equal((await m.learnPass(h.env,true)).learned,0);assert.equal(prompts.length,0);
- h.db.prepare("INSERT INTO brain_dumps(id,raw,created_at) VALUES('d','Remember my explicit preference',?)").run(new Date(Date.now()+1000).toISOString());await m.learnPass(h.env,true);assert.equal(prompts.length,1);assert.ok(!prompts[0].includes('PRIVATE WHATSAPP FACT'));assert.match(prompts[0],/explicit preference/);
+ h.db.prepare("INSERT INTO messages(id,role,content,mode,created_at) VALUES('d','user','Remember my explicit preference','text',?)").run(new Date(Date.now()+1000).toISOString());await m.learnPass(h.env,true);assert.equal(prompts.length,1);assert.ok(!prompts[0].includes('PRIVATE WHATSAPP FACT'));assert.match(prompts[0],/explicit preference/);
 });
 test('on-demand WhatsApp search is literal, scoped and read-only',async()=>{
  const h=setup();globalThis.manualModel={complete:async()=>'{"action":"none"}'};await m.handleIncoming(h.env,{...incoming,text:'Quote includes 10% tax'});const r=await m.searchWhatsApp(h.env,{query:'10%',chat:'Avi'});assert.equal(r.messages.length,1);assert.match(r.coverage,/not the full/);assert.equal(h.db.prepare('SELECT count(*) n FROM items').get().n,0);assert.equal((await m.searchWhatsApp(h.env,{query:'missing%'})).messages.length,0);

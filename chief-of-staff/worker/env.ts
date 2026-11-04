@@ -16,9 +16,6 @@ export interface Env {
   MODEL_WRITER?: string;
   /** The stronger model for the few jobs that need it (filling in forms). */
   MODEL_CAREFUL?: string;
-  /** The Telegram bot, and the secret Telegram sends back on every webhook call. */
-  TELEGRAM_BOT_TOKEN?: string;
-  TELEGRAM_WEBHOOK_SECRET?: string;
   /** The Claude Code scheduled task's API trigger (fire URL and token) that runs jobs on the Claude plan. */
   CLAUDE_ROUTINE_URL?: string;
   CLAUDE_ROUTINE_TOKEN?: string;

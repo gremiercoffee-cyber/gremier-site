@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 
-// Jobs with a fake model and a fake Telegram: starting, hourly runs until a time limit, weekly asking first,
+// Jobs with a fake model (research chats live in the app): starting, hourly runs until a time limit, weekly asking first,
 // posting only changes, choosing the engine, the Codex runner, and the API taking over a slow plan run.
 globalThis.__model=[];globalThis.__bg=[];globalThis.__tg=[];
 const out=await build({entryPoints:['worker/jobs.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'fakes',setup(b){
@@ -16,36 +16,37 @@ const out=await build({entryPoints:['worker/jobs.ts'],bundle:true,write:false,fo
 }}]});
 const jobs=await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
 globalThis.fetch=async(url,init)=>{const method=String(url).split('/').pop();const body=JSON.parse(init.body);globalThis.__tg.push({method,body});
- return new Response(JSON.stringify({ok:true,result:method==='createForumTopic'?{message_thread_id:77}:{}}),{headers:{'content-type':'application/json'}});};
+ return new Response(JSON.stringify({ok:true,result:{}}),{headers:{'content-type':'application/json'}});};
 
 function env(extra={}){
  const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
  db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('timezone','"Asia/Jerusalem"');
- db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('telegram',JSON.stringify({owner_id:1,group_id:-100}));
+ globalThis.__db=db;
  const prepare=sql=>{let args=[];return{bind(...v){args=v;return this},async first(){return db.prepare(sql).get(...args)??null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){return{meta:{changes:Number(db.prepare(sql).run(...args).changes)}}}}};
- return {db,env:{DB:{prepare},TELEGRAM_BOT_TOKEN:'fixture',...extra}};
+ return {db,env:{DB:{prepare},...extra}};
 }
 const reset=()=>{globalThis.__model.length=0;globalThis.__bg.length=0;globalThis.__tg.length=0;globalThis.__done={};};
-const posts=()=>globalThis.__tg.filter(t=>t.method==='sendMessage');
+// What a research chat shows: the bot's messages (with their buttons) in the app.
+const posts=()=>globalThis.__db.prepare("SELECT text,buttons FROM job_messages WHERE role='bot' ORDER BY rowid").all()
+ .map(r=>({method:'sendMessage',body:{text:r.text,reply_markup:r.buttons?{inline_keyboard:JSON.parse(r.buttons).map(row=>row.map(b=>({text:b.text,callback_data:b.data})))}:undefined}}));
 
-test('a new job gets its own topic and waits for Start; Start runs it and schedules the next hourly run',async()=>{
+test('a new job gets its own chat and waits for Start; Start runs it and schedules the next hourly run',async()=>{
  reset();const {env:e,db}=env();
  const r=await jobs.createJob(e,{title:'US elections',instructions:'Hourly updates on the US elections. End with what to watch next.',kind:'every',every_minutes:60,until:'2026-11-04T23:00',engine:'api'});
  assert.equal(r.status,'waiting for Start');
- assert.equal(globalThis.__tg[0].method,'createForumTopic');
- const intro=posts()[0].body;assert.equal(intro.message_thread_id,77);assert.match(intro.reply_markup.inline_keyboard[0][0].callback_data,/^start:/);
+ const intro=posts()[0].body;assert.match(intro.reply_markup.inline_keyboard[0][0].callback_data,/^start:/);
  assert.equal(globalThis.__bg.length,0,'nothing runs before Start');
- await jobs.handleButton(e,intro.reply_markup.inline_keyboard[0][0].callback_data,-100,77,5);
+ await jobs.pressButton(e,intro.reply_markup.inline_keyboard[0][0].callback_data);
  assert.equal(globalThis.__bg.length,1,'runs right away on the API it was given');
  assert.match(globalThis.__bg[0].prompt,/THE TASK[^]*End with what to watch next/);
  const j=db.prepare('SELECT * FROM jobs').get();assert.equal(j.status,'active');assert.ok(Date.parse(j.next_run_at)>Date.now()+50*60_000);
  assert.equal(j.until_at,'2026-11-04T21:00:00.000Z','the time limit is local time');
 });
 
-test('hourly: results post in the topic, "nothing changed" stays quiet, and it ends at its time limit',async()=>{
+test('hourly: results post in the chat, "nothing changed" stays quiet, and it ends at its time limit',async()=>{
  reset();const {env:e,db}=env();
  const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch the count.',kind:'every',every_minutes:60,engine:'api'});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  globalThis.__done={bg1:{done:true,text:'Pennsylvania called.'}};
  await jobs.tickJobs(e);
  assert.match(posts().at(-1).body.text,/Pennsylvania called\.[^]*via API/);
@@ -64,15 +65,15 @@ test('hourly: results post in the topic, "nothing changed" stays quiet, and it e
 test('weekly: asks before each report and runs only on Yes; Skip skips',async()=>{
  reset();const {env:e,db}=env();
  const {id}=await jobs.createJob(e,{title:'Cold brew market',instructions:'Weekly cold-brew market report with action items for Gremier.',kind:'weekly',weekday:0,time:'09:00',engine:'api'});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  assert.equal(globalThis.__bg.length,1,'the first report runs on Start');assert.equal(globalThis.__bg[0].purpose,'job_report');
  db.prepare("UPDATE jobs SET next_run_at=? WHERE id=?").run(new Date(Date.now()-1000).toISOString(),id);
  await jobs.tickJobs(e);
  const ask=posts().at(-1).body;assert.match(ask.text,/this week's/);assert.equal(globalThis.__bg.length,1,'asks, does not run');
  const [yes,skip]=ask.reply_markup.inline_keyboard[0].map(b=>b.callback_data);
- await jobs.handleButton(e,skip,-100,77,9);
+ await jobs.pressButton(e,skip);
  assert.equal(globalThis.__bg.length,1);assert.match(posts().at(-1).body.text,/Skipped/);
- await jobs.handleButton(e,yes,-100,77,9);
+ await jobs.pressButton(e,yes);
  assert.equal(globalThis.__bg.length,1,'a skipped week cannot be run afterwards');
 });
 
@@ -105,7 +106,7 @@ test('the Codex runner takes the run and answers; a run Codex never finishes goe
  reset();const {env:e,db}=env();
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:5,secondary:5}));
  const {id}=await jobs.createJob(e,{title:'Bean prices',instructions:'Arabica price now.',kind:'once'});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  assert.equal(globalThis.__bg.length,0,'queued for Codex, not the API');
  const next=await jobs.nextCodexRun(e,{device:'home',primary:6,secondary:5});
  assert.match(next.run.prompt,/Arabica price now/);
@@ -115,7 +116,7 @@ test('the Codex runner takes the run and answers; a run Codex never finishes goe
  assert.equal(db.prepare('SELECT status FROM jobs WHERE id=?').get(id).status,'done');
  // another run that Codex never answers
  const second=await jobs.createJob(e,{title:'Bean prices again',instructions:'Again.',kind:'once'});
- await jobs.handleButton(e,`start:${second.id}`,-100,77,6);
+ await jobs.pressButton(e,`start:${second.id}`);
  db.prepare("UPDATE job_runs SET started_at=? WHERE status='queued'").run(new Date(Date.now()-20*60_000).toISOString());
  db.prepare("UPDATE settings SET value=? WHERE key='codex_runner'").run(JSON.stringify({seen_at:new Date(Date.now()-3600_000).toISOString(),primary:5,secondary:5}));
  await jobs.tickJobs(e);
@@ -125,10 +126,10 @@ test('the Codex runner takes the run and answers; a run Codex never finishes goe
  assert.match(posts().at(-1).body.text,/Still 286[^]*via API \(Codex wasn't available\)/);
 });
 
-test('replying in the topic changes the job: stop, how often, and how it reports',async()=>{
+test('replying in the chat changes the job: stop, how often, and how it reports',async()=>{
  reset();const {env:e,db}=env();
  const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch the count.',kind:'every',every_minutes:60});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  globalThis.__model.push(JSON.stringify({changes:{every_minutes:30,instructions:'Watch the count. End with action items for me.'},run_now:false,reply:'Every 30 minutes, with action items.'}));
  const j=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
  assert.equal(await jobs.talkToJob(e,j,'check every half hour and give me action items at the end'),'Every 30 minutes, with action items.');
@@ -140,7 +141,7 @@ test('replying in the topic changes the job: stop, how often, and how it reports
 test('Claude plan: the run gets a one-time reply link; only that link, once, can answer it',async()=>{
  reset();const {env:e}=env({CLAUDE_ROUTINE_URL:'https://example/fire',CLAUDE_ROUTINE_TOKEN:'x'});
  const {id}=await jobs.createJob(e,{title:'Cold brew',instructions:'Weekly cold-brew market with action items.',kind:'once'});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  const fire=globalThis.__tg.find(t=>t.method==='fire');
  const payload=JSON.parse(fire.body.text);
  assert.match(payload.task,/action items/);
@@ -154,7 +155,7 @@ test('Claude plan: the run gets a one-time reply link; only that link, once, can
 test('a job can use a chosen model: by name on the API, and passed on to Codex',async()=>{
  reset();const {env:e,db}=env();
  const {id}=await jobs.createJob(e,{title:'Deep dive',instructions:'Deep market analysis.',kind:'once',model:'sol',engine:'api'});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  assert.equal(globalThis.__bg[0].model,'gpt-6.1-sol');
  const j=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
  globalThis.__model.push(JSON.stringify({changes:{model:'terra'},run_now:false,reply:'Using Terra now.'}));
@@ -162,7 +163,7 @@ test('a job can use a chosen model: by name on the API, and passed on to Codex',
  assert.equal(db.prepare('SELECT model FROM jobs WHERE id=?').get(id).model,'gpt-6.1-terra');
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:1,secondary:1}));
  const c=await jobs.createJob(e,{title:'Codex model',instructions:'x',kind:'once',engine:'codex',model:'gpt-5.5'});
- await jobs.handleButton(e,`start:${c.id}`,-100,77,6);
+ await jobs.pressButton(e,`start:${c.id}`);
  assert.equal((await jobs.nextCodexRun(e,{device:'home'})).run.model,'gpt-5.5');
 });
 
@@ -193,10 +194,10 @@ test('pinning is independent of a repeating job execution schedule',async()=>{
  assert.equal((await jobs.jobChat(e,id)).pinned,true);
 });
 
-test('a different report asked for in the topic: the run gets the request, never "nothing changed", and is posted',async()=>{
+test('a different report asked for in the chat: the run gets the request, never "nothing changed", and is posted',async()=>{
  reset();const {env:e,db}=env();
  const {id}=await jobs.createJob(e,{title:'Elections',instructions:'Watch the count.',kind:'every',every_minutes:60,engine:'api'});
- await jobs.handleButton(e,`start:${id}`,-100,77,5);
+ await jobs.pressButton(e,`start:${id}`);
  globalThis.__done={bg1:{done:true,text:'Likud 30.'}};await jobs.tickJobs(e);
  globalThis.__model.push(JSON.stringify({ask:'Compare Arab turnout and seats with the last election',changes:{},run_now:true,reply:'On it.'}));
  await jobs.talkToJob(e,db.prepare('SELECT * FROM jobs WHERE id=?').get(id),'prepare a report comparing Arab turnout with last time');

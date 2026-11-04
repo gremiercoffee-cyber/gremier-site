@@ -1,6 +1,4 @@
 import {quickTaskReply} from './assistant-quick';
-import {healthPlanChat} from './daynote-chat';
-import {daynoteTools} from './daynote';
 import {hashgachaCampaigns,sourceReports,syncHashgacha,trackHashgacha} from './hashgacha';
 import {PROJECT_POLICY} from '../shared/project-policy';
 /** The single Chief of Staff assistant: prompt, context assembly and tools over the user's data. */
@@ -17,27 +15,21 @@ import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, sen
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
 import { findPeople, memoryContext, noteContact, recallMemories, recallText, savePerson } from "./memory";
 import { appendRows, createDoc, createSheet, readFile, searchDrive, shareFile } from "./gworkspace";
-import { missionsSummary, startMission, updateMission } from "./missions";
-import { routinesSummary, saveRoutine, runRoutine, type Routine } from "./routines";
 import { resolveBlock, saveSituation, situationsSummary } from "./situations";
-import { saveTracker, setupPreview, trackerEntries, trackersSummary } from "./trackers";
-import { captureIdea, ideaStep, ideasSummary, updateIdea } from "./ideas";
 import { areasText, saveArea } from "./areas";
 import { activeProjects } from "./projectmatch";
 import { prepareWhatsApps } from "./contacts";
 import { createJob } from "./browser";
 import { fileForModel, fileInfo, fillForm, findEmailFiles, recentFiles, saveVault, signFile, vaultSummary } from "./documents";
-import {meetingPrepState,proposePrepNote,confirmPrepNote} from './meeting-prep';
 import { hubCall, saveCoffeeRule, setCoffeeStock } from "./hub";
-import { makeSubjectTopic } from "./telegram-topics";
-import { draftBroadcast, findGroup, groupsSummary, members, saveGroup } from "./groups";
+import { findGroup, groupsSummary, members, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
 
 What you do:
-- Before ANY AI background task or research job starts, ALWAYS get a separate explicit confirmation from the user. A request to research or schedule something is not that confirmation. The server queues an approval card; say it is waiting for approval in Tasks & trackers or Today, never claim it has started. Each research run requires approval, including scheduled repeats and deeper follow-ups. Creating ordinary reminders, calendar rules and links does not need an AI job. Never route a fixed reminder to research.
+- Before ANY AI background task or research job starts, ALWAYS get a separate explicit confirmation from the user. A request to research or schedule something is not that confirmation. The server queues an approval card; say it is waiting for approval on Today, never claim it has started. Each research run requires approval, including scheduled repeats and deeper follow-ups. Creating ordinary reminders, calendar rules and links does not need an AI job. Never route a fixed reminder to research.
 - Shopping belongs only in Shopping lists (sidebar), never in tasks, reminders, the home screen or unsolicited briefings. For "add milk to my shopping list", use add_shopping_items; default to the main Store list. Multiple shopping lists are supported. Use get_shopping_lists to find item IDs, save_shopping_list to create/rename lists, update_shopping_item to edit or check off purchases. Text and live voice use the same shopping tools. Only mention shopping when the user asks about it.
-- Keep track of their tasks, reminders, commitments, ideas, projects and the things they are waiting on from other people.
+- Keep track of their tasks, reminders, commitments, projects and the things they are waiting on from other people.
 - Remember durable facts and preferences (use the remember tool) so they never have to repeat themselves.
 - Help them decide, prioritise and plan. Be proactive: point out overdue items, conflicts, forgotten follow-ups and sensible next steps.
 - Act like a trusted human chief of staff, not a chatbot. When they tell you what is going on ("here's how I'm doing deliveries today", "we're launching X next week"), quietly build the structure it needs: tasks and reminders at sensible times, a check-in reminder afterwards phrased as a question ("Did you…?") so you can ask whether it happened, a project to group related work, and memories for lasting facts. Do not ask permission for this internal organizing; just do it and tell them briefly what you set up.
@@ -63,15 +55,8 @@ When the user wants something reminded during a block ("remind me to ask Rabbi W
 The context tells you which block the user is in RIGHT NOW: use it when they ask what to do next.
 Driving/commutes: surface phone calls across all areas and explicitly voice-only work. Use execution_mode call/voice/desk/physical when filing; coding is voice only if explicitly intended for spoken interaction. Never give a destination-work overview during a drive.
 
-Trackers: when the user wants to collect what comes in from people or on a topic, on WhatsApp AND Gmail, use save_tracker. Two kinds:
-- Following people ("I asked the Night Seder rabbis for their lists of guys who aren't showing up, track what comes in"): set group (a contact group) or people, and expecting = what was asked for. EVERY message from them is considered (no keywords needed: a bare list of names counts), and it looks back 14 days by default so answers already sent are picked up. It shows who has answered and who hasn't.
-- Your own notes ("I'll send the names to myself", "note to self", "my own chat", a chat ending in "(you)"): self_chat=true. That's the user's own WhatsApp chat, whatever it's called; don't ask for its name.
-- A topic from anyone ("everything the rabbis say about X"): keywords in Hebrew AND English (generous) plus topic.
-Prefer following people whenever the user names who it's from. Don't create a one-time task for this. If it's unclear what counts as an answer or who it's from, ask one short question before creating it. After creating it, ALWAYS report the preview back and check it: "So far: Menachemov sent 3 names, Heyman sent 1; nothing yet from the other 5. Does that look right?" If they say something was missed or wrong, adjust (update expecting/people) and mention they can tap ✓/✗ on messages and "Link WhatsApp" next to anyone not found. If the preview lists whatsapp_not_found, tell the user you couldn't find that WhatsApp chat and ask for the exact name (or offer the Link WhatsApp button). To report on it, call get_tracker_entries (includes who answered / who is still missing) and summarize: what each person sent, who is still missing, and any patterns.
+Tasks (research chats): research, reports and checks, once or on a schedule ("every Sunday a report on the coffee market in Israel", "hourly updates on X until tonight", "research Y and tell me what to do"), are research chats: start them with start_job. Each is pinned in the side panel, answers arrive there with a notification, and the user changes or stops it by writing in it. Confirm in one line what will run, then say to tap Start in its chat.
 
-Tasks (research chats): research, reports and checks, once or on a schedule ("every Sunday a report on the coffee market in Israel", "hourly updates on X until tonight", "research Y and tell me what to do"), are research chats: start them with start_job. Each is pinned in the side panel (and gets its own Telegram topic), answers arrive there with a notification, and the user changes or stops it by writing in it. Confirm in one line what will run, then say to tap Start in its chat. For an older report, get_report.
-
-Missions: when the user hands you a goal that takes several steps over days ("get every rabbi's list by Monday", "sort out the supplier for green beans"), confirm the plan in one or two lines and start a mission with start_mission. You then work on it in the background on a schedule, report progress in the briefing, and ask only when stuck. When the user answers a mission's question, or says pause/stop/cancel, use update_mission. Don't start a mission for something that's a single task.
 
 Memory, like a person with a good brain:
 - "People you know" is your address book. When the user mentions someone by role or name ("my boss", "the accountant", "Avi") look there first.
@@ -87,45 +72,38 @@ How to file things — keep these clearly separate:
 - reminder: something to be reminded of at a specific time (always set due_at).
 - commitment: a promise the user made to someone (set person; due_at if there is a deadline).
 - waiting: something the user is waiting on from someone else (set person). Never file "Wait for ..." as an actionable task. Keep it tracked as waiting, and offer a separate follow-up when appropriate; do not present waiting as work to do now.
-- idea: never file ideas with create_item; use capture_idea (below).
+- idea: an idea worth keeping goes to remember (a lasting note), or a task when there is something to do about it.
 - Lists: shopping uses its dedicated tools. A deliberate batch for now/this afternoon is a dated session project, even across areas; create_project first, then create_item with its name. Other unrelated to-dos stay standalone. Never infer a weekly catch-all from deadlines alone.
 
 How this app fits together (you ARE this app; everything below is yours to use, and things connect: a group's members are people, people have emails/WhatsApp names, items can belong to projects and time blocks):
-- Home: Now checklist, briefing, and all unfinished tasks grouped under projects or standalone. Talk/dictate/type to you. Today: the daily overview.
+- Home: Now checklist and all unfinished tasks grouped under projects or standalone. Talk/dictate/type to you. Today: the daily overview.
 - Replies: a numbered catch-up sheet for unanswered WhatsApp/email, with voice/text batch instructions, editable drafts and explicit Send. WhatsApp opens the target chat; email sends from the sheet.
-- Groups: separate editable group drafts, explicit destination and Send, collapsed sent archive.
+- Groups: contact groups (used to search email and WhatsApp from everyone in a group).
 - People: address book inside Settings.
 - Lists & projects: to-dos, reminders, commitments, waiting-for, grouped into projects.
-- Tasks & trackers: one-time tasks (missions) and repeating tasks (scheduled research/reports) · trackers (WhatsApp topics collected into a Doc).
-- Meetings: upcoming calendar and saved Schedule meetings, their running prep notes, and pending meeting choices.
+- Tasks: research chats and the computer helper's jobs.
 - Schedule: daily schedule, weekly extras, one-day changes.
-- Search: saved ideas, memories and reference material remain searchable. There is no Library in the navigation. Actionable work belongs in tasks and concrete projects, not passive notes.
+- Search: memories and reference material remain searchable. There is no Library in the navigation. Actionable work belongs in tasks and concrete projects, not passive notes.
 - Settings: connected accounts, notifications, usage.
-When the user refers to anything by name ("the rabbis group", "my cold brew idea", "the coffee report", "evening yeshiva"), resolve it with your tools (get_group, get_context, find_person, search_items, get_tracker_entries…) and act across features: e.g. "check emails from the rabbis group" → search_email with group="Rabbis"; "any WhatsApps from my wholesale customers?" → check_group_messages.
+When the user refers to anything by name ("the rabbis group", "the coffee report", "evening yeshiva"), resolve it with your tools (get_group, get_context, find_person, search_items…) and act across features: e.g. "check emails from the rabbis group" → search_email with group="Rabbis"; "any WhatsApps from my wholesale customers?" → check_group_messages.
 
-Drafting text: when the user asks you to draft/write/word a message, email, post or text WITHOUT saying where it goes, just write it in your reply so they can use it however they want. Put the draft itself in a quote block (each line starting with "> ") so they can copy it with one tap; at most one short line before it. Do NOT save it anywhere: no draft_group_message, draft_email or send_whatsapp unless they explicitly say "for the X group", "save it in Gmail", "send it to Y" or similar. If it obviously relates to a group or person, you may offer in one short line afterwards ("Want me to put it in the Rabbis group?") but don't do it.
+Drafting text: when the user asks you to draft/write/word a message, email, post or text WITHOUT saying where it goes, just write it in your reply so they can use it however they want. Put the draft itself in a quote block (each line starting with "> ") so they can copy it with one tap; at most one short line before it. Do NOT save it anywhere: no draft_email or send_whatsapp unless they explicitly say "for the X group", "save it in Gmail", "send it to Y" or similar. If it obviously relates to a person, you may offer in one short line afterwards ("Want me to send it to Dana?") but don't do it.
 
-Meeting prep: The user adds thoughts whenever they occur. Keep them as running in-app notes under Meetings; never make a prep document, suggest prep proactively, research, or add invented agenda items. Call get_meeting_prep to resolve their meeting reference against calendar and dated Schedule meetings. Then propose_meeting_prep_note with their note (preserve all details and language) and the candidate meeting IDs. ALWAYS ask them to confirm the meeting, even if only one matches: include its name and local date/time. With multiple plausible meetings, list the choices and let them choose. The UI also shows a picker. This proposal is held safely but is NOT attached yet. On a SUBSEQUENT user reply explicitly choosing/confirming the meeting, call confirm_meeting_prep_note with the existing draft ID and chosen meeting ID. Never propose and confirm in the same turn; never claim it was added before confirmation succeeds. If they say "the second one", resolve against that draft's ordered candidates. A bare confirmation may load these tools and read the pending draft. If no known meeting matches, keep the thought pending and ask which meeting/date they mean; create a Schedule meeting only when they explicitly supply/confirm it. Existing meeting notes remain available in Meetings. Notes FROM a completed meeting sent to their own WhatsApp retain their separate capture behavior.
 
-Groups and group messages: the user can keep contact groups ("the rabbis", "wholesale customers") and message a whole group at once. Create/edit groups with save_group (members by name, plus email and phone when known; existing people are matched by name). Only when the user asks to message a group (or put a draft in a group), write it with draft_group_message (use {first_name} for a personal greeting). The editable review card shows the destination group and Send button in chat, and it is also saved under Groups. Do not send before that tap; tell them to review/edit it and tap Send (each person gets their own email from their Gmail) and can open WhatsApp with the same text preloaded for each person or a group chat. Slack isn't connected yet.
+Groups: the user keeps contact groups ("the rabbis", "wholesale customers"). Create/edit them with save_group (members by name, plus email and phone when known; existing people are matched by name). Use a group to search email or WhatsApp from all its members. To message several people, use prepare_whatsapps (one-tap WhatsApp links) or draft emails.
 
-Researching the web: you CAN look things up online. For a factual research question use research_now to propose an AI job. It waits for the user's separate confirmation in Tasks & trackers or Today; tell them it has NOT started. Only after approval does it search in the background and notify them of findings. For an idea's research step use idea_step, which also waits for approval. Never say you can't browse the web.
+Researching the web: you CAN look things up online. For a research question start a research chat with start_job (kind once). It waits for the user's Start tap; tell them it has NOT started. Never say you can't browse the web.
 
-Ideas and thinking out loud: all talking happens here, so recognize when the user is sharing an idea or brain-dumping (a business idea, "what if we…", a plan they're mulling, a stream of thoughts). Then:
-1. Engage like a sharp chief of staff: reflect it back briefly, give an honest take (what's strong, what's risky, good or bad idea and why), and add an angle or two they may not have considered. Back-and-forth is fine.
-2. File it with capture_idea (or update_idea if it's an idea already listed under "Ideas", e.g. they return to it): a clear title, a summary, their own words (transcript), your analysis and verdict, and 3-5 concrete next steps, each with a kind: research ("look into what bottle suppliers charge"), plan ("sketch how to launch it"), remind ("remind me in 2 weeks"), task (a concrete to-do), other.
-3. End by offering the next steps as a short question, e.g. "Want me to look into X, sketch a plan, or remind you about it in two weeks?" Do nothing on them until the user picks.
-4. When they pick, call idea_step for each chosen step (research runs in the background and reports back; plan comes back right away, so share it).
-A brain dump with several things: file tasks/reminders/commitments as usual, and capture each idea separately.
+Ideas and thinking out loud: when the user shares an idea or thinks out loud, engage briefly and honestly (what's strong, what's risky). Save what lasts with remember, and file concrete to-dos with create_item.
 
 Rules:
 - SPEED: when your tool calls only save or change things (add a to-do, set a reminder, remember something, update the schedule…), write your short reply to the user in the SAME message as the tool calls, assuming they succeed. Make all the calls you need at once rather than one per turn.
-- GET IT DONE. When the user asks for something, do the whole thing end to end with your tools, not advice about it: look it up (research_now / idea_step), file it, schedule it, draft it, start the task or tracker, chain several steps in one go. If a tool you need isn't loaded, call load_tools. Only stop to ask when you genuinely can't continue without the user (a choice only they can make, or something outside the world). Then report briefly what you DID and what happens next ("I'm researching it now; you'll get the results in ~15 min"), never what they could do themselves. Never say you can't do something your tools can do.
+- GET IT DONE. When the user asks for something, do the whole thing end to end with your tools, not advice about it: look it up (start_job), file it, schedule it, draft it, chain several steps in one go. If a tool you need isn't loaded, call load_tools. Only stop to ask when you genuinely can't continue without the user (a choice only they can make, or something outside the world). Then report briefly what you DID and what happens next ("I'm researching it now; you'll get the results in ~15 min"), never what they could do themselves. Never say you can't do something your tools can do.
 - Be thorough: for research or lists, go for complete and useful (many options, concrete details, contacts), not a thin sample.
 - When the user tells you something actionable, file it with the tools; do not just acknowledge it. Check for duplicates with search_items first when unsure.
 - Resolve relative dates ("tomorrow at 3", "Friday") using the current local time given in the context, and pass due_at as an ISO 8601 datetime with the user's UTC offset.
-- When the user asks you to delete, drop, cancel or remove their OWN things in this app (to-dos, reminders, ideas, projects, lists, memories, schedule blocks), just do it right away (update_item status "dropped", update_idea status "dropped", etc.). Don't ask for approval. Only actions that reach the outside world (sending messages, contacting people, sharing files, spending money) need propose_action and the user's approval.
-- Email: you can search all their Gmail (search_email, also by group) and read threads. Remind first; only write a draft when the user explicitly asks you to draft. Drafts are saved to their Gmail Drafts folder. Chat-created Gmail drafts stay drafts. Replies sent by the user from the Replies sheet send the exact reviewed text; group messages send from the review card or Groups screen.
+- When the user asks you to delete, drop, cancel or remove their OWN things in this app (to-dos, reminders, projects, lists, memories, schedule blocks), just do it right away (update_item status "dropped", etc.). Don't ask for approval. Only actions that reach the outside world (sending messages, contacting people, sharing files, spending money) need propose_action and the user's approval.
+- Email: you can search all their Gmail (search_email, also by group) and read threads. Remind first; only write a draft when the user explicitly asks you to draft. Drafts are saved to their Gmail Drafts folder. Chat-created Gmail drafts stay drafts. Replies sent by the user from the Replies sheet send the exact reviewed text; 
 - Be concise and warm. Lead with what matters. Use short lists when listing items. Do not invent data you have not been given.`;
 
 const VOICE_ADDENDUM = `\n\nYou are in a live voice conversation and your replies are spoken aloud: answer in one to three short conversational sentences, no lists, no markdown, no emoji.`;
@@ -136,7 +114,7 @@ const FEW_ITEMS = 12;
 /**
  * Context triage, no AI involved: plain rules decide which saved sections ride along with a message.
  * A section is included when the message has one of its trigger words, or mentions something by
- * name that appears in that section (a group, tracker, idea, task, project or time block). With no
+ * name that appears in that section (a group, project or time block). With no
  * message (live voice setup, background jobs) everything is included.
  */
 /** Word stems (matched at word start, any ending: "meet" catches meeting/meetings) plus Hebrew substrings. */
@@ -151,16 +129,8 @@ const TRIGGERS: Record<string, RegExp> = {
     [...DAYS_HE, "ישיבה", "סדר", "שיעור", "לוח זמנים", "פנוי", "עסוק"]),
   calendar: rule([...DAYS_EN, ...TIME_EN, "calendar", "meet", "event", "appoint", "call with", "zoom", "simcha", "wedding", "bris", "bar mitzvah", "chasuna", "class", "shiur", "schedul", "busy", "free", "availab", "when", "what('s| is) (on|happening|coming)", "agenda", "upcoming", "reschedul", "postpone", "move"],
     [...DAYS_HE, "פגישה", "אירוע", "חתונה", "ברית", "יומן"]),
-  groups: rule(["group", "everyone", "every(body| one)", "all (the|my|of)", "broadcast", "mass", "announc", "let (them|everyone) know", "tell (them|all|everyone|the)", "message (all|them|the|everyone)", "email (all|them|the|everyone)", "send (it )?to (all|everyone|the)", "blast", "newsletter", "mailing", "list of (people|contacts)", "contacts", "staff", "team", "rabbis", "rebbeim", "customers", "clients", "wholesale", "parents", "talmidim", "students", "bochurim", "alumni", "emails? from", "messages? from", "heard from", "inbox"],
+  groups: rule(["group", "everyone", "every(body| one)", "all (the|my|of)", "mass", "announc", "let (them|everyone) know", "tell (them|all|everyone|the)", "message (all|them|the|everyone)", "email (all|them|the|everyone)", "send (it )?to (all|everyone|the)", "blast", "newsletter", "mailing", "list of (people|contacts)", "contacts", "staff", "team", "rabbis", "rebbeim", "customers", "clients", "wholesale", "parents", "talmidim", "students", "bochurim", "alumni", "emails? from", "messages? from", "heard from", "inbox"],
     ["קבוצה", "כולם", "הרבנים", "רבנים", "לקוחות", "הורים", "תלמידים", "בחורים"]),
-  trackers: rule(["track", "collect", "gather", "compil", "analy[sz]", "summar(y|ize|ise) (what|everything|all)", "what (did|have|has) .{1,40} (say|said|answer|written|wrote)", "answers", "responses", "opinions", "positions", "psak", "pesak", "teshuv", "ruling", "keep (an eye|tabs|watch)", "monitor", "watch for"],
-    ["מעקב", "תשובות", "פסק", "תשובה", "מה אמרו"]),
-  ideas: rule(["idea", "what if", "thinking (about|of)", "brainstorm", "business plan", "concept", "launch", "venture", "startup", "side (project|business|hustle)", "i('ve| have) been thinking", "i was thinking", "maybe (we|i) (should|could)", "how about", "could we", "should (we|i) (start|try|open|build|make)", "opportunit", "pitch", "new product", "new line", "expand", "grow (the|my)", "strategy", "vision", "dream", "invent"],
-    ["רעיון", "רעיונות", "מה אם", "חשבתי"]),
-  tasks: rule(["report", "every (day|week|month|morning|evening|night|sunday|monday|tuesday|wednesday|thursday|friday)", "each (day|week|month)", "weekly", "daily", "monthly", "nightly", "recurring", "repeat", "routine", "research", "look (in)?to", "look up", "find out", "keep me (posted|updated)", "check (on|in)", "monitor", "price", "market", "news", "updates? (on|about)", "subscription", "automat", "schedule (a|the) (task|job|report)", "task"],
-    ["דוח", "מחקר", "כל שבוע", "כל יום"]),
-  missions: rule(["mission", "in progress", "progress", "status", "working on", "follow(ing)? ?up", "by (monday|tuesday|wednesday|thursday|friday|sunday|tomorrow|next week|the end)", "deadline", "goal", "get (every|all|each)", "make sure", "chase", "handle (it|this|that)", "take care of", "on it", "how('s| is) (it|that|the) going", "any (news|update|progress)", "did you (finish|manage|get)", "where (are|is) (we|it|that)", "task"],
-    ["משימה", "התקדמות", "מעקב"]),
   projects: rule(["project", "initiative", "campaign", "rollout", "build(ing)?", "website", "renovat", "launch", "program", "list", "shopping", "groceries", "buy", "pack", "supplies", "need to get"], ["פרויקט", "פרוייקט", "רשימה", "קניות", "לקנות"]),
   manyItems: rule(["to-?dos?", "list", "remind", "overdue", "late", "left", "open", "pending", "due", "task", "everything", "anything", "what do i (have|need)", "what('s| is) (on|left|next|pending|due|urgent|important)", "plate", "catch me up", "briefing", "brief me", "summar", "status", "agenda", "priorit", "urgent", "important", "forget", "forgot", "did i", "have i", "done", "finish", "complet", "check off", "mark", "outstanding", "backlog", "behind", "waiting", "owe", "promis", "commit", "follow ?up", "focus", "work on", "should i (do|start|tackle)", "next", "free time", "spare", "productive"],
     ["משימ", "תזכ", "להזכיר", "מה נשאר", "מה יש לי", "דחוף", "חשוב"]),
@@ -180,9 +150,8 @@ export function triageSections(query: string, sections: Record<string, string>) 
 }
 
 async function contextSummaries(env:Env){
-  const [schedule,groups,tasks,trackers,ideas,missions]=await Promise.all([
-    situationsSummary(env),groupsSummary(env),routinesSummary(env),trackersSummary(env),ideasSummary(env),missionsSummary(env),
-  ]);return {schedule,groups,tasks,trackers,ideas,missions};
+  const [schedule,groups]=await Promise.all([situationsSummary(env),groupsSummary(env)]);
+  return {schedule,groups};
 }
 type ContextSummaries=Awaited<ReturnType<typeof contextSummaries>>;
 
@@ -207,10 +176,10 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
     all<Item>(env,"SELECT * FROM items WHERE source IN ('chat','voice','codex') AND updated_at>=? ORDER BY updated_at DESC,id LIMIT 20",new Date(Date.now()-86400000).toISOString()),
   ]);
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
-  const {schedule:situations,groups,tasks,trackers,ideas,missions}=sectionSummaries;
+  const {schedule:situations,groups}=sectionSummaries;
   const projectsText = projects.map((p) => `- ${p.name} [${p.area}, ${p.status}]${p.description ? ` — ${p.description}` : ""}`).join("\n");
   const want = triageSections(query, {
-    schedule: situations, groups, tasks, trackers, ideas, missions, projects: projectsText,
+    schedule: situations, groups, projects: projectsText,
   });
   // Items mentioned by name always count; otherwise a short list unless the message is about to-dos.
   const itemWords = SIGNIFICANT(query);
@@ -229,8 +198,6 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
   lines.push(memory);
   if (situations && want.has("schedule")) lines.push("", "## Schedule (time blocks)", situations);
   if (groups && want.has("groups")) lines.push("", "## Contact groups", groups);
-  if (tasks && want.has("tasks")) lines.push("", "## Tasks (recurring jobs)", tasks);
-  if (trackers && want.has("trackers")) lines.push("", "## Trackers (collecting from WhatsApp)", trackers);
   // Projects are always shown (short): every to-do being filed is checked against them.
   if (activeP.length) lines.push("", "## Projects (active)", activeP.map((p) => `- ${p.name}${p.description ? ` — ${p.description.slice(0, 80)}` : ""}${p.samples.length ? ` (open: ${p.samples.join("; ")})` : ""}`).join("\n"));
   else if (projectsText && want.has("projects")) lines.push("", "## Projects", projectsText);
@@ -240,9 +207,7 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
   lines.push(bridge.configured
     ? "- WhatsApp: you can prepare messages with send_whatsapp (user taps Send to approve); approved messages go out when their computer is on. WhatsApp is user-directed: search captured messages only when asked, then save only the specific work the user requests. Passive scanning only maintains the unanswered-reply queue after four hours; never infer tasks, meetings or memories from ordinary WhatsApps."
     : "- WhatsApp: not set up yet.");
-  if (ideas && want.has("ideas")) lines.push("", "## Ideas (open)", ideas);
-  if (missions && want.has("missions")) lines.push("", "## Missions (working in the background)", missions);
-  const skipped = ["schedule", "groups", "tasks", "trackers", ...(activeP.length ? [] : ["projects"]), "ideas", "missions", "calendar"].filter((k) => !want.has(k));
+  const skipped = ["schedule", "groups", ...(activeP.length ? [] : ["projects"]), "calendar"].filter((k) => !want.has(k));
   if (skipped.length) lines.push("", `(Not shown for this message: ${skipped.join(", ")}. If the answer could depend on one, load it with get_context first; never guess.)`);
   lines.push("", `## Open items (soonest ${shownItems.length}; use search_items for others)`);
   lines.push(
@@ -272,7 +237,7 @@ export async function buildContext(env: Env, mode: string, query = "",summaries?
 }
 
 const itemProps = {
-  kind: { type: "string", enum: ["task", "reminder", "idea", "commitment", "waiting"] },
+  kind: { type: "string", enum: ["task", "reminder", "commitment", "waiting"] },
   title: { type: "string" },
   notes: { type: "string" },
   execution_mode: {type:"string",enum:["unspecified","call","voice","desk","physical"],description:"voice only when explicitly hands-free"},
@@ -428,18 +393,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async (input) => readThread(env, String(input.thread_id), input.account as string | undefined),
     },
     {
-      name: "get_report",
-      description: "Read one of the user's task reports (by report id, or the latest report of a task by task id) to brief them or answer questions about it.",
-      input_schema: { type: "object", properties: { report_id: { type: "string" }, task_id: { type: "string" } } },
-      handler: async (input) => {
-        const r = input.report_id
-          ? await first<Record<string, unknown>>(env, `SELECT rr.*, r.name FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?`, String(input.report_id))
-          : await first<Record<string, unknown>>(env, `SELECT rr.*, r.name FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.routine_id = ? AND rr.status = 'done' ORDER BY rr.started_at DESC LIMIT 1`, String(input.task_id ?? ""));
-        if (!r) return { error: "report not found" };
-        return { name: r.name, date: r.started_at, summary: r.summary, doc_link: r.doc_link, report: String(r.report ?? "").slice(0, 14000) };
-      },
-    },
-    {
       name: "save_time_block",
       description: "Create or change a time block in the user's schedule: recurring (weekdays) or one-off (date), with start/end times and an area; or calendar-triggered (calendar_keywords). At its start the user is reminded of attached tasks and open items in that area/keywords plus a standing note. Pass id to change one; active=false pauses it.",
       input_schema: {
@@ -478,23 +431,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
-      name:'get_meeting_prep',readOnly:true,
-      description:'Read known calendar/Schedule meetings, accumulated agenda notes and pending notes awaiting a meeting choice. Use to resolve meeting references and confirmations.',
-      input_schema:{type:'object',properties:{}},handler:async()=>meetingPrepState(env),
-    },
-    {
-      name:'propose_meeting_prep_note',
-      description:'Hold the user note and offer candidate meetings. Always requires the user to choose or confirm on a subsequent turn. Creates no document, reminder, task, or notification.',
-      input_schema:{type:'object',properties:{text:{type:'string',description:'The user note, with all details and original language'},meeting_ids:{type:'array',items:{type:'string'},description:'Plausible IDs from get_meeting_prep. Omit to offer all upcoming meetings.'}},required:['text']},
-      handler:async input=>{const d=await proposePrepNote(env,input);proposedThisTurn.add(d.id);note('propose_meeting_prep_note','Meeting note held — choose the meeting');return d;},
-    },
-    {
-      name:'confirm_meeting_prep_note',
-      description:'After the user explicitly chooses/confirms a meeting for a PREVIOUSLY proposed note, append it to that meeting’s in-app agenda. Never use in the same turn as proposing the note.',
-      input_schema:{type:'object',properties:{draft_id:{type:'string'},meeting_id:{type:'string'}},required:['draft_id','meeting_id']},
-      handler:async input=>{const id=String(input.draft_id);if(proposedThisTurn.has(id))return {error:'Wait for the user to choose the meeting in a subsequent reply or the picker.'};const result=await confirmPrepNote(env,id,String(input.meeting_id));note('confirm_meeting_prep_note','Added to meeting prep');return result;},
-    },
-    {
       name: "save_group",
       description: "Create or edit a contact group: name, description, members to add (name + email/phone; existing people matched by name) or remove (by name/email).",
       input_schema: {
@@ -509,25 +445,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         const g = await saveGroup(env, input as never);
         note("save_group", `👥 Group "${g.name}": ${g.members.length} people`);
         return { id: g.id, name: g.name, members: g.members.map((m) => ({ name: m.name, email: m.email, phone: m.phone })) };
-      },
-    },
-    {
-      name: "draft_group_message",
-      description: "Write a message to a whole contact group. It is saved as a draft; the user reviews and sends it in the app (email to everyone, WhatsApp preloaded). Never claims it was sent. Pass id to revise a draft. If the message asks each person to SEND SOMETHING BACK (a list, an answer, a form, their plans), set collecting to what they're sending, and in your reply ask the user to confirm: 'Should I collect their answers? I'd keep a folder in Groups with a place for each person.' Pass collect=true only when the user says yes (or collect=false for no); the draft card also has this switch.",
-      input_schema: {
-        type: "object",
-        properties: {
-          group: { type: "string" }, subject: { type: "string" }, body: { type: "string", description: "use {first_name} for a personal greeting" },
-          from_account: { type: "string", description: "which connected Gmail to send from" }, id: { type: "string" },
-          collecting: { type: "string", description: "what each person is asked to send back, e.g. 'their Chanukah party plans'" },
-          collect: { type: "boolean", description: "the user confirmed: collect their answers in a folder (true) or not (false)" },
-        },
-        required: ["group", "body"],
-      },
-      handler: async (input) => {
-        const b = await draftBroadcast(env, input as never);
-        note("draft_group_message", "👥 Group message ready to review and send (Groups)");
-        return { id: b.id, status: b.status, where: "Groups",review_url:"/?tab=groups",message:"The group draft review card shows the destination and editable message with a Send button. Nothing has been sent." };
       },
     },
     {
@@ -561,12 +478,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       },
     },
     {
-      name: "make_telegram_topic",
-      description: "Make a topic in the user's Telegram group for a subject, with its own separate chat: coffee (☕ Coffee: the coffee app's tools in every message), shopping (🛒 Shopping: a pinned list with a tap-to-tick button per item, always up to date), or any other name. Asking again for one that exists just points to it.",
-      input_schema: { type: "object", properties: { subject: { type: "string", description: "coffee, shopping, or a short name for another subject" } }, required: ["subject"] },
-      handler: async (input) => { const r = await makeSubjectTopic(env, input as never); note("make_telegram_topic", `Telegram topic: ${r.name}`); return { ...r, tell_user: "Topics can't be pinned by a bot: to keep it at the top, long-press the topic in the group and choose Pin." }; },
-    },
-    {
       name: "coffee_rule",
       description: "Remember how the user runs stock for a coffee or product, so the brewing outlook follows it: \"I only brew decaf when there's an order\" (key decaf, mode on_demand), \"keep 2 decaf liters bottled\" (key decaf_liter, keep 2), \"I brew classic normally again\" (mode normal), or remove.",
       input_schema: { type: "object", properties: {
@@ -575,176 +486,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         keep: { type: "integer", description: "bottles to always have on hand" }, note: { type: "string", description: "their words, short" }, remove: { type: "boolean" },
       }, required: ["key"] },
       handler: async (input) => { const r = await saveCoffeeRule(env, input as never); note("coffee_rule", `☕ Stock rule saved: ${r.key}`); return r; },
-    },
-    {
-      name: "research_now",
-      description: "Propose a one-off AI research job. Requires separate user confirmation before any research starts. Return the pending approval status honestly. For repeating research use save_task; fixed reminders use save_recurring_reminder.",
-      input_schema: { type: "object", properties: { question: { type: "string", description: "exactly what to find out, with context (country, product, constraints)" }, name: { type: "string", description: "short title" } }, required: ["question"] },
-      handler: async (input) => {
-        const q = String(input.question).slice(0, 1500);
-        const r = await saveRoutine(env, { name: String(input.name ?? q.slice(0, 60)), instructions: q, depth: "quick", deliver: "alert", oneoff: true, active: false, schedule: { kind: "weekly", weekdays: [0], time: "08:00" } });
-        const approval = await runRoutine(env, { ...(r as unknown as Routine), schedule: JSON.stringify(r.schedule), active: 0, next_run_at: null, last_run_at: null, created_at: now(), updated_at: now() });
-        note("research_now", `AI research waiting for your confirmation: ${r.name}`);
-        return approval;
-      },
-    },
-    {
-      name: "capture_idea",
-      description: "File an idea or brain dump the user shared: title, summary, their words, your honest analysis and verdict, and 3-5 suggested next steps for them to choose from.",
-      input_schema: {
-        type: "object",
-        properties: {
-          title: { type: "string" }, area: { type: "string", description: "area key (see ## Areas)" },
-          summary: { type: "string", description: "clear summary of the idea in a few sentences" },
-          transcript: { type: "string", description: "the user's own words, cleaned up lightly" },
-          analysis: { type: "string", description: "honest take: what's strong, what's risky, what to watch, good or bad idea and why" },
-          verdict: { type: "string", enum: ["promising", "mixed", "doubtful"] },
-          next_steps: { type: "array", items: { type: "object", properties: { label: { type: "string" }, kind: { type: "string", enum: ["research", "plan", "remind", "task", "other"] } }, required: ["label", "kind"] } },
-        },
-        required: ["title", "summary", "next_steps"],
-      },
-      handler: async (input) => {
-        const i = await captureIdea(env, input);
-        note("capture_idea", `💡 Saved idea: ${i.title}`);
-        const steps = JSON.parse(i.steps) as { label: string; kind: string }[];
-        // Show it on the home screen too, with its next steps.
-        if (steps.length) await notify(env, "idea", `💡 ${i.title}`.slice(0, 90), `Next steps I suggest:\n${steps.map((x) => `• ${x.label}`).join("\n")}`.slice(0, 600), null, "/?tab=ideas", {topic:`idea:${i.id}`});
-        return { id: i.id, steps, now_do_this: "In your reply, list these next steps briefly (one line each) and ask which ones the user wants you to do. Don't skip this." };
-      },
-    },
-    {
-      name: "update_idea",
-      description: "Add to or change an existing idea (by id or title): add a note from the conversation, new next steps, a revised summary/analysis, or status (exploring, parked, done, dropped).",
-      input_schema: {
-        type: "object",
-        properties: {
-          idea: { type: "string" }, add_note: { type: "string" }, summary: { type: "string" }, analysis: { type: "string" },
-          verdict: { type: "string", enum: ["promising", "mixed", "doubtful"] }, status: { type: "string", enum: ["new", "exploring", "parked", "done", "dropped"] },
-          add_steps: { type: "array", items: { type: "object", properties: { label: { type: "string" }, kind: { type: "string", enum: ["research", "plan", "remind", "task", "other"] } }, required: ["label", "kind"] } },
-        },
-        required: ["idea"],
-      },
-      handler: async (input) => {
-        const i = await updateIdea(env, String(input.idea), input);
-        note("update_idea", `💡 Updated idea: ${i.title}`);
-        return { id: i.id, status: i.status, steps: JSON.parse(i.steps) };
-      },
-    },
-    {
-      name: "idea_step",
-      description: "Do (or dismiss) a next step of an idea the user chose. research → runs in the background and reports back; plan → returns a plan now; remind → reminder at 'when' (ISO, default in a week); task → adds a to-do. Pass step_id, or label for a new step.",
-      input_schema: {
-        type: "object",
-        properties: { idea: { type: "string" }, step_id: { type: "string" }, label: { type: "string" }, action: { type: "string", enum: ["do", "dismiss"] }, when: { type: "string" } },
-        required: ["idea"],
-      },
-      handler: async (input) => {
-        const r = await ideaStep(env, String(input.idea), String(input.step_id ?? ""), input.action === "dismiss" ? "dismiss" : "do", { when: input.when as string, label: input.label as string });
-        note("idea_step", 'status' in r && r.status === 'pending_approval' ? 'AI research waiting for your confirmation' : 'Idea step updated');
-        return r;
-      },
-    },
-    {
-      name: "save_tracker",
-      description: "Create or change a WhatsApp tracker that continuously collects messages on a topic into one Google Doc and the app. Pass id to change one; active=false pauses it.",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: { type: "string" }, name: { type: "string" },
-          topic: { type: "string", description: "What to collect, in plain words (used to filter out passing mentions)" },
-          keywords: { type: "string", description: "Comma separated, Hebrew and English, generous (variants, related terms)" },
-          people: { type: "string", description: "Optional: names to follow (comma separated, partial names ok)" },
-          group: { type: "string", description: "A contact group to follow (every member's WhatsApp and email)" },
-          expecting: { type: "string", description: "What the user asked them for / what counts as an answer, e.g. 'lists of guys in their Night Seder who aren't showing up'" },
-          sources: { type: "string", description: "'whatsapp,gmail' (default), or just one" },
-          self_chat: { type: "boolean", description: "Follow the user's OWN WhatsApp chat (messages they send to themselves / note to self / a chat shown with '(you)'). No people or keywords needed." },
-          accounts: { type: "string", enum: ["personal", "business", "both"] },
-          include_mine: { type: "boolean", description: "Also collect the user's own messages" },
-          backfill_days: { type: "integer", description: "Also search this many past days of loaded WhatsApp history (0 = only new)" },
-          active: { type: "boolean" },
-        },
-      },
-      handler: async (input) => {
-        const isNew = !input.id;
-        const t = await saveTracker(env, input);
-        note("save_tracker", `🗂 Tracker "${t.name}" ${t.active ? "collecting" : "paused"}`);
-        return { id: t.id, name: t.name, doc_link: t.doc_link, ...(isNew ? { preview: await setupPreview(env, t) } : {}) };
-      },
-    },
-    {
-      name: "get_tracker_entries",
-      description: "Everything a tracker has collected (by name or id), to analyze or answer questions about it.",
-      input_schema: { type: "object", properties: { tracker: { type: "string" } }, required: ["tracker"] },
-      handler: async (input) => trackerEntries(env, String(input.tracker)),
-    },
-    {
-      name: "save_task",
-      description: "Create or change an AI research/report/check job. NEVER use for fixed reminders or sending a known link: use save_recurring_reminder instead. Pass id to change an existing research job.",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          name: { type: "string" },
-          instructions: { type: "string", description: "What to research/check/prepare, specifically" },
-          schedule: {
-            type: "object",
-            properties: {
-              kind: { type: "string", enum: ["hours", "daily", "weekly", "monthly"] },
-              every_hours: { type: "number" }, time: { type: "string", description: "HH:MM local" },
-              weekdays: { type: "array", items: { type: "integer" }, description: "0=Sunday … 6=Saturday" },
-              day: { type: "integer", description: "day of month" },
-            },
-            required: ["kind"],
-          },
-          depth: { type: "string", enum: ["quick", "standard", "deep", "adaptive"], description: "adaptive = full report first, then cheap quick checks that go deeper only when something important turns up" },
-          rules: { type: "string", description: "standing notes on how to do it (focus, things to skip, format)" },
-          deliver: { type: "string", enum: ["briefing", "alert", "doc"] },
-          category: { type: "string", description: "area key (see ## Areas)" },
-          active: { type: "boolean" },
-          run_now: { type: "boolean", description: "Also run it right away" },
-        },
-      },
-      handler: async (input) => {
-        const r = await saveRoutine(env, input);
-        note("save_task", `Task "${r.name}": ${r.active ? r.schedule_text : "paused"}`);
-        return r;
-      },
-    },
-    {
-      name: "start_mission",
-      description: "Start a background mission for a multi-step goal the user authorized. Give a short plan of steps; you'll work through them on a schedule.",
-      input_schema: {
-        type: "object",
-        properties: {
-          goal: { type: "string" },
-          steps: { type: "array", items: { type: "string" }, description: "3-8 concrete steps" },
-          category: { type: "string", description: "area key (see ## Areas)" },
-          start_in_hours: { type: "number", description: "0 to begin right away" },
-        },
-        required: ["goal", "steps"],
-      },
-      handler: async (input) => {
-        const m = await startMission(env, String(input.goal), (input.steps as string[]) ?? [], input.category as string | undefined, Number(input.start_in_hours) || 0);
-        note("start_mission", `AI task waiting for your confirmation: ${m.goal}`);
-        return m;
-      },
-    },
-    {
-      name: "update_mission",
-      description: "Update a mission: record the user's answer to its question (resumes it), pause, resume (status active), cancel, or mark done.",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: { type: "string" }, answer: { type: "string" }, note: { type: "string" },
-          status: { type: "string", enum: ["active", "paused", "done", "cancelled"] },
-        },
-        required: ["id"],
-      },
-      handler: async (input) => {
-        const r = await updateMission(env, String(input.id), input as never);
-        note("update_mission", `Mission ${r.status}`);
-        return r;
-      },
     },
     {
       name: "save_person",
@@ -775,17 +516,13 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       name: "get_context",
       readOnly:true,
       description: "Load a section of saved information listed under 'Not shown for this message'.",
-      input_schema: { type: "object", properties: { section: { type: "string", enum: ["schedule", "calendar", "groups", "tasks", "trackers", "ideas", "missions", "projects", "items", "people"] } }, required: ["section"] },
+      input_schema: { type: "object", properties: { section: { type: "string", enum: ["schedule", "calendar", "groups", "projects", "items", "people"] } }, required: ["section"] },
       handler: async (input) => {
         const tz = (await getSettings(env)).timezone || "UTC";
         switch (String(input.section)) {
           case "schedule": return (await situationsSummary(env)) || "(no time blocks)";
           case "calendar": return (await upcomingEventsText(env, tz)) || "(nothing in the next 48 hours or Google not connected)";
           case "groups": return (await groupsSummary(env)) || "(no groups)";
-          case "tasks": return (await routinesSummary(env)) || "(no recurring tasks)";
-          case "trackers": return (await trackersSummary(env)) || "(no trackers)";
-          case "ideas": return (await ideasSummary(env)) || "(no open ideas)";
-          case "missions": return (await missionsSummary(env)) || "(no missions)";
           case "projects": return (await all<Project>(env, "SELECT name, area, status, description FROM projects WHERE status != 'done' ORDER BY created_at LIMIT 50")) ;
           case "items": return all<Item>(env, "SELECT id, kind, title, due_at, person, priority FROM items WHERE status = 'open' ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at LIMIT 120");
           case "people": return all(env, "SELECT id, name, role, email, phone, whatsapp_name FROM people ORDER BY name LIMIT 200");
@@ -877,7 +614,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "start_job",
-      description: "Start a research chat: research or monitoring once, every N minutes until stopped or a time limit (e.g. hourly election updates), or weekly (asks before each report). Pinned in the side panel (and its own Telegram topic); waits for the user's Start tap.",
+      description: "Start a research chat: research or monitoring once, every N minutes until stopped or a time limit (e.g. hourly election updates), or weekly (asks before each report). Pinned in the side panel ; waits for the user's Start tap.",
       input_schema: { type: "object", properties: {
         title: { type: "string", description: "2-5 words" },
         project_id:{type:"string",description:"Existing project id when this work belongs to that outcome; do not guess or group only by broad topic."},
@@ -1010,14 +747,9 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "create_item",
-      description: "File a task, reminder, commitment, waiting-for entry or idea.",
+      description: "File a task, reminder, commitment or waiting-for entry.",
       input_schema: { type: "object", properties: itemProps, required: ["kind", "title"] },
       handler: async (input) => {
-        if (input.kind === "idea") {
-          const i = await captureIdea(env, { title: input.title, summary: input.notes ?? input.title, area: input.category, next_steps: [] });
-          note("capture_idea", `💡 Saved idea: ${i.title}`);
-          return { id: i.id, kind: "idea" };
-        }
         const project_id = await resolveProjectId(env, input.project as string);
         if (input.due_at) input.due_at = await localTime(env, input.due_at);
         const item = await createItem(env, { ...(input as object), ...(input.project!==undefined?{project_id}:{}), source } as never);
@@ -1025,15 +757,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         note("create_item", `Added ${item.kind}: ${item.title}${block ? ` (during ${block})` : ""}`);
         return { id: item.id, kind: item.kind, due_at: item.due_at,project_id:item.project_id };
       },
-    },
-    {
-      name: "start_work_session",
-      description: "The user picked what they'll do now (after you suggested options for their free time). Sends each task to Telegram with Done / Didn't get to it / Won't do it buttons.",
-      input_schema: { type: "object", properties: {
-        item_ids: { type: "array", items: { type: "string" }, description: "the ids of the open items they chose (create_item first for anything new)" },
-        minutes: { type: "integer", description: "how long they have, if they said" },
-      }, required: ["item_ids"] },
-      handler: async (input) => { const { startWorkSession } = await import("./worksession"); const r = await startWorkSession(env, input as never); note("start_work_session", `▶️ ${r.tasks.length} tasks with buttons in Telegram`); return r; },
     },
     {
       name: "update_item",
@@ -1182,7 +905,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
   ];
 }
 
-/** The user tapped Approve or Reject on a pending action (in the app or in Telegram). Runs it once. */
+/** The user tapped Approve or Reject on a pending action in the app. Runs it once. */
 export async function decidePendingAction(env: Env, id: string, decision: string) {
   const a = await first<{ id: string; action: string; payload: string }>(env, "SELECT * FROM pending_actions WHERE id = ? AND status = 'pending'", id);
   if (!a) throw new HttpError(404, "no pending action");
@@ -1204,25 +927,6 @@ export async function decidePendingAction(env: Env, id: string, decision: string
 export async function executeApproved(env: Env, action: string, payload: Record<string, unknown>) {
   const id = String(payload.id ?? "");
   switch (action) {
-    case 'ai_run_routine': {
-      const r = await first<Routine>(env,'SELECT * FROM routines WHERE id=?',id);
-      if (!r) throw new Error('This task no longer exists.');
-      if (r.instructions !== payload.instructions || r.depth !== payload.depth || r.schedule !== payload.schedule || (r.rules ?? '') !== payload.rules) throw new Error('The task changed. Request a new confirmation before running it.');
-      await runRoutine(env,r,{ approved: true, ...(payload.escalated ? { escalated: payload.escalated as { why: string; focus: string } } : {}) });
-      return 'Approved this AI run.';
-    }
-    case 'ai_start_mission':
-      await startMission(env,String(payload.goal),(payload.steps as string[]) ?? [],payload.category as string | undefined,Number(payload.firstRunInHours) || 0,true);
-      return 'Approved the AI background task.';
-    case 'ai_idea_step':
-      await ideaStep(env,String(payload.ref),String(payload.stepId),'do',{ approved: true, label: String(payload.label) });
-      return 'Approved this AI research step.';
-    case 'ai_resume_mission': {
-      const m = await first<{goal:string}>(env,'SELECT goal FROM missions WHERE id=?',id);
-      if (!m || m.goal !== payload.goal) throw new Error('The AI task changed. Request a new confirmation.');
-      await run(env,"UPDATE missions SET ai_approved=1,next_run_at=? WHERE id=?",now(),id);
-      return 'Approved this AI background task.';
-    }
     case "delete_item":
       await run(env, "DELETE FROM items WHERE id = ?", id);
       return "deleted item";
@@ -1268,17 +972,14 @@ export async function titleConversation(env:Env,c:Conversation,firstText:string)
  await run(env,'UPDATE conversations SET title=? WHERE id=?',title,c.id);c.title=title;return title;
 }
 
-export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[]; channel?: "telegram"; subject?: { name: string; feature?: string } } = {}) {
-  if(opts.channel==='telegram'&&opts.subject?.feature==='health')return healthPlanChat(env,text,conversationId);
+export async function chat(env: Env, text: string, mode: "text" | "voice" | "dictation", conversationId?: string | null, opts: { defer?: (p: Promise<unknown>) => void; files?: string[] } = {}) {
   const started=performance.now(),stages:Record<string,number>={};
   const provider = getProvider(env); // fail before storing anything if no model is configured
-  const healthScope=opts.channel==='telegram'&&opts.subject?.feature==='health';
   const stored = conversationId ? await first<Conversation>(env, "SELECT * FROM conversations WHERE id = ?", conversationId) : null;
-  const existing=stored&&(((stored as any).privacy_scope==='health')===healthScope)?stored:null;
+  const existing=stored&&(stored as any).privacy_scope!=='health'?stored:null;
   const stale = existing && Date.now() - new Date(existing.last_message_at).getTime() > CONVERSATION_IDLE_MS;
   let convo = await resolveConversation(env, existing?.id, !existing || !!stale);
 
-  if(healthScope)await run(env,"UPDATE conversations SET privacy_scope='health' WHERE id=?",convo.id);
   const attached = (await Promise.all((opts.files ?? []).slice(0, 6).map((id) => fileInfo(env, id)))).filter(Boolean) as { id: string; filename: string }[];
   if (attached.length) text = [text, ...attached.map((f) => `📎 ${f.filename}`)].filter(Boolean).join("\n");
   const userMsg: Message = { id: uid(), role: "user", content: text, mode, meta: null, created_at: now(), conversation_id: convo.id };
@@ -1298,10 +999,6 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   const history: Turn[] = recent.reverse().map((m, i, arr) => ({
     role: m.role, content: i < arr.length - 4 && m.content.length > 700 ? `${m.content.slice(0, 700)}… [trimmed]` : m.content,
   }));
-  // From Telegram there are no app screens: say so with this message only (the cached prompt stays the same).
-  if (opts.channel === "telegram" && history.length) history[history.length - 1] = { ...history[history.length - 1], content: `${history[history.length - 1].content}
-
-[Sent from Telegram: there are no app screens, forms or cards here. Ask for anything you need (e.g. a form's missing details) right in the chat, and never say to open the app or tap a card. Approvals, group messages, file choices and finished files appear as buttons/files right after your reply.${opts.subject ? ` This is the Telegram topic “${opts.subject.name}”: assume what's said here is about that.${opts.subject.feature === "shopping" ? " The pinned list in this topic updates by itself, with a tap-to-tick button per item." : ""}` : ""}]` };
 
   const notes: ActionNote[] = [];
   let switched = false;
@@ -1321,7 +1018,6 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
   // per-message set is cheaper.
   // A small fixed core (cached); the free keyword check (no AI) adds a group, with its rules, when this message
   // is about it, so it is there in the first round, and load_tools fetches any other one mid-turn.
-  if (opts.subject?.feature) features.add(opts.subject.feature);
   const chatFeatures=new Set(features);
   // A file attached now, or files already in this chat: the file tools (find, fill, sign) are always at hand.
   const filesCtx = await filesContext(env, convo.id);
@@ -1345,7 +1041,6 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
       },
     });
   }
-  if(healthScope)tools.splice(0,tools.length,...daynoteTools(env));
   cacheOrder(tools);
   const result = await provider.runAgent({
     tier: "main",
@@ -1354,11 +1049,10 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
     batchReply:true,
     maxToolRounds:6,
     defer:opts.defer,
-    system: promptFor(chatFeatures)+(healthScope?"\nHealth topic: use get_health_journal for health questions and explain only its calculated statistics. No invented measurements, Readiness scores, diagnoses, medication changes or causal claims. Propose notes with propose_health_note; observations and new questions require owner confirmation in Health Journal. Never file health notes as generic tasks/memories or enable questions automatically. If insufficient data, say so. All health responses stay in this Health topic.":""),
+    system: promptFor(chatFeatures),
     cacheKey: "cos-chat",
-    noFollowUp: ["create_item", "update_item", "remember", "save_person", "save_time_block", "save_task", "save_tracker",
-      "save_group", "update_idea", "create_project", "update_project", "save_area", "research_now", "start_mission", "update_mission",
-      "draft_group_message", "propose_action", "send_whatsapp", "draft_email", "new_topic", "capture_idea", "save_watch",
+    noFollowUp: ["create_item", "update_item", "remember", "save_person", "save_time_block",
+      "save_group", "create_project", "update_project", "save_area", "propose_action", "send_whatsapp", "draft_email", "new_topic", "save_watch",
       "save_recurring_reminder", "save_shopping_list", "add_shopping_items", "update_shopping_item"],
     context: context + filesCtx,
     history,
@@ -1396,23 +1090,16 @@ export async function chat(env: Env, text: string, mode: "text" | "voice" | "dic
 
 /** Which tools belong to which feature. Anything not listed is always sent. */
 const TOOL_GROUPS: Record<string, string[]> = {
-  worktime: ["start_work_session", "coffee_app"],
+  worktime: ["coffee_app"],
   shopping: ['get_shopping_lists', 'save_shopping_list', 'add_shopping_items', 'update_shopping_item'],
   schedule: ["save_time_block"],
   calendar: ["calendar_lookup"],
   email: ["search_email", "read_email_thread", "draft_email", "email_with_codex"],
   whatsapp: ["search_whatsapp", "prepare_whatsapps", "send_whatsapp"],
   docs: ["create_doc", "create_sheet", "append_rows", "search_drive", "read_file", "share_file"],
-  groups: ["save_group", "draft_group_message", "get_group", "check_group_messages"],
-  trackers: ["save_tracker", "get_tracker_entries"],
-  ideas: ["capture_idea", "update_idea", "idea_step", "research_now"],
-  tasks: ["get_report", "start_job", "list_jobs", "codex_backup"],
-  // The older Google-Doc research tasks: kept for changing an existing one, never offered for new research.
-  oldtasks: ["save_task"],
-  missions: ["start_mission", "update_mission"],
+  groups: ["save_group", "get_group", "check_group_messages"],
   // Project filing is everyday behavior: keep its tools available on every turn.
   coffee: ["coffee_app", "coffee_update", "coffee_rule"],
-  meetings: ["get_meeting_prep","propose_meeting_prep_note","confirm_meeting_prep_note"],
   hashgacha: ["track_hashgacha_reports","get_hashgacha_reports"],
   files: ["find_email_files","sign_document","fill_document","save_detail"],
   recurring: ["get_recurring_reminders","save_recurring_reminder"],
@@ -1422,29 +1109,26 @@ const TOOL_GROUPS: Record<string, string[]> = {
   details: ["save_detail"],
   people: ["save_person"],
   jobs: ["start_job", "list_jobs", "email_with_codex", "codex_backup"],
-  topics: ["make_telegram_topic"],
 };
 /** What each group is for, so load_tools can say what there is to load. */
 const GROUP_INFO: Record<string, string> = {
-  worktime: "planning free time now, with done buttons",
-  topics: "Telegram topics for a subject (coffee, shopping…)",
+  worktime: "planning free time now",
   shopping: "shopping lists", schedule: "the user's time blocks", calendar: "Google Calendar", email: "Gmail search, read, drafts",
-  whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups and group messages", trackers: "trackers that collect answers",
-  ideas: "ideas and brainstorms", tasks: "research chats and older reports", missions: "missions (multi-step follow-ups)", coffee: "Gremier Coffee business data",
-  meetings: "meeting prep notes", hashgacha: "Hashgacha report tracking", files: "find, fill and sign documents", recurring: "fixed monthly reminders",
+  whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups",
+  coffee: "Gremier Coffee business data",
+  hashgacha: "Hashgacha report tracking", files: "find, fill and sign documents", recurring: "fixed monthly reminders",
   areas: "add or rename life areas", research: "research chats (research once or on a schedule)", helper: "do something on a website (computer helper)",
   details: "save the user's details (My details)", people: "add or update people in the address book",
-  jobs: "research or monitoring jobs that report in Telegram (once, every N minutes, weekly)",
+  jobs: "research or monitoring jobs (once, every N minutes, weekly)",
 };
 /** Rules that only matter with their tools: sent with the group, never otherwise. */
 const GROUP_RULES: Record<string, string> = {
   coffee: "Coffee app: questions → coffee_app (outlook for anything about brewing, bottling or running low). When the user says what happened or what they have (\"bottled 24 classic\", \"delivered to Good Store: 6 classic, 4 vanilla\", \"I have 20 classic liters\", \"started a decaf brew\"), update the app with coffee_update right away, no approval; if the product or amount is unclear, ask first. Then confirm in one line what changed in the app (e.g. \"Done, app updated: Classic liters 30 → 20\"). How they run stock (\"decaf only to order, keep 2\") → coffee_rule, and mention the outlook now follows it.",
-  worktime: "Free time (\"I'm here, I have 40 minutes, what should I do?\", \"I have time this afternoon\"): first look at what they usually do in that part of the day (their time blocks and areas in the context, and what they've told you), and at the coffee business: call coffee_app outlook and treat its summary (brew / bottle / order beans) as real tasks when it says so, including the honest \"you're fine for ~N days\" when nothing is needed. Then suggest 3-6 numbered options from their open tasks (search_items if they aren't in the context) and those coffee jobs that fit the time: overdue/due-soon and important first, then quick wins; each one line with a rough time (~15m). Skip things they're only waiting on others for (a long-quiet one can be \"follow up with X\"). Add one line on what's coming up next (meeting, deadline). Ask which they'll do. Things they tell you about how they like to use their time (\"afternoons are for coffee\") go to remember. When they choose (\"1, 3 and the email\"), call start_work_session with those item ids and their minutes (create_item first for anything new), then reply in one short line.",
+  worktime: "Free time (\"I'm here, I have 40 minutes, what should I do?\", \"I have time this afternoon\"): first look at what they usually do in that part of the day (their time blocks and areas in the context, and what they've told you), and at the coffee business: call coffee_app outlook and treat its summary (brew / bottle / order beans) as real tasks when it says so, including the honest \"you're fine for ~N days\" when nothing is needed. Then suggest 3-6 numbered options from their open tasks (search_items if they aren't in the context) and those coffee jobs that fit the time: overdue/due-soon and important first, then quick wins; each one line with a rough time (~15m). Skip things they're only waiting on others for (a long-quiet one can be \"follow up with X\"). Add one line on what's coming up next (meeting, deadline). Ask which they'll do. Things they tell you about how they like to use their time (\"afternoons are for coffee\") go to remember.",
   email: "When they want an email SENT to someone (\"email the suppliers\", \"send Dana an email asking…\"), use email_with_codex: Codex writes it and sends it from their Gmail after they tap Send in its chat. draft_email only when they just want a Gmail draft.",
   shopping: "Shopping goes only to the shopping-list tools (Store is the default list), never to tasks.",
   hashgacha: "Hashgacha completion comes from online submissions (get_hashgacha_reports/track_hashgacha_reports), never an email reply or a new week. Missing, partial and unavailable are different. No automatic outreach.",
-  meetings: "Meeting prep: hold the note and ask which meeting (name/date/time); attach it only after they choose. No prep documents or automatic offers.",
-  recurring: "Fixed monthly reminders (one or several days a month) use save_recurring_reminder, never save_task; include any link. Marking a month done stops that month's remaining reminders.",
+  recurring: "Fixed monthly reminders (one or several days a month) use save_recurring_reminder, never a research chat; include any link. Marking a month done stops that month's remaining reminders.",
   research: "Research the user wants done is a research chat: start_job (kind once, or every/weekly when it repeats), with everything they asked for in instructions. It waits for their Start tap in the chat. Never pretend to have browsed.",
   details: "save_detail: one of the user's details (an existing label is updated). Signatures are added in the app, not here.",
   helper: "computer_helper: only when they want something done on a website. Write the whole job: the site, what to do, what counts as done; start_url when known.",
@@ -1452,12 +1136,10 @@ const GROUP_RULES: Record<string, string> = {
 };
 /**
  * The always-on tools in the cached chat prefix: everyday filing, the schedule, recurring tasks, coffee,
- * WhatsApp, shopping and ideas. Everything else (email, calendar, docs, groups, trackers, missions, meeting
- * prep, hashgacha) is one load_tools call away, which keeps the prefix small and identical every message.
+ * WhatsApp and shopping. Everything else (email, calendar, docs, groups, hashgacha) is one load_tools call away, which keeps the prefix small and identical every message.
  */
 const TOOL_TRIGGERS: Record<string, RegExp> = {
-  topics: /(topics?|telegram|thread|separate chat|dedicated chat|its own chat)/i,
-  worktime: /(i have (some )?(time|d+|an? (hour|few|couple))|free (time|now|for)|what (should|can|do) i (do|work on|get done)|what('s| is) (next|on my plate)|i'?m (here|free|ready)|ready to work|let'?s (work|go|get)|work session|i'?ll do|i'?m (going to|gonna) do)|יש לי (זמן|שעה)|מה (לעשות|אני צריך לעשות)/i,
+  worktime: /\b(i have (some )?(time|\d+|an? (hour|few|couple))|free (time|now|for)|what (should|can|do) i (do|work on|get done)|what('s| is) (next|on my plate)|i'?m (here|free|ready)|ready to work|let'?s (work|go|get)|work session|i'?ll do|i'?m (going to|gonna) do)\b|יש לי (זמן|שעה)|מה (לעשות|אני צריך לעשות)/i,
   files: /\b(sign|signs|signed|signature|attachment|attached|pdf|document|form|fill|upload|uploaded|screenshot)\b|חתימה|לחתום|מסמך|קובץ|טופס/i,
   recurring: /\b(every month|monthly|each month|recurring|every (\d+(st|nd|rd|th)?|first|last)\b)|כל חודש/i,
   areas: /\b(areas?|categor(y|ies))\b/i,
@@ -1466,10 +1148,7 @@ const TOOL_TRIGGERS: Record<string, RegExp> = {
   details: /\b(my details|address|id number|vat|business number|licen[cs]e|osek|teudat)\b|ת"ז|תעודת זהות|כתובת|עוסק/i,
   people: /\b(is my|is our|works (at|for)|phone number|email address|contact|address book|supplier|accountant|lawyer|boss)\b/i,
   jobs: /\b(monitor|keep (an eye|checking|track)|every (\d+ )?(hour|minute)s?|hourly|updates? (on|about)|weekly report|report (on|every)|watch (for|the)|track|jobs?|codex|backup|fallback|runs? out|out of usage)\b|מעקב|כל שעה|עדכונים/i,
-  ideas: /\b(idea|what if|thinking (about|of)|brainstorm|business plan)\b|רעיון|מה אם/i,
-  tasks: /\b(every (day|week|morning|evening|sunday|monday|tuesday|wednesday|thursday|friday)|weekly|daily|report)\b|כל שבוע|כל יום|דוח/i,
   shopping: /\b(shopping|grocer(?:y|ies)|supermarket|list|buy|bought|pick up|milk|eggs|bread)\b|קניות|לקנות|מכולת|סופר/i,
-  meetings: /\b(prep|prepare|meeting|agenda)|פגישה|להתכונן/i,
   hashgacha: /hashgacha|הש?גחה|weekly reports?/i,
   email: /\b(e-?mails?|gmail|inbox|mail(ed)?|wrote|replied|reply|thread|subject|draft)\b|מייל/i,
   whatsapp: /\b(whats ?app|text (him|her|them)|message (him|her|them)|send (him|her|them|it|a message)|tell (him|her|them))\b|וואטסאפ/i,
@@ -1478,10 +1157,9 @@ const TOOL_TRIGGERS: Record<string, RegExp> = {
 };
 /** Feature sections of the system prompt, sent only with their feature. */
 const GUIDE_HEADERS: [string, string][] = [
-  ["schedule", "Schedule (time blocks):"], ["trackers", "Trackers:"], ["tasks", "Tasks (recurring jobs):"],
-  ["missions", "Missions:"], ["meetings", "Meeting prep:"], ["groups", "Groups and group messages:"], ["ideas", "Ideas and thinking out loud:"],
+  ["schedule", "Schedule (time blocks):"], ["jobs", "Tasks (research chats):"], ["groups", "Groups:"],
 ];
-const GENERAL_STARTS = ["What you do:", "Areas:", "Projects:", "Reminders can", "Recurring reminders:", "Memory", "How to file", "How this app", "Drafting text:", "Researching the web:", "Rules:"];
+const GENERAL_STARTS = ["What you do:", "Areas:", "Projects:", "Reminders can", "Recurring reminders:", "Memory", "How to file", "How this app", "Drafting text:", "Researching the web:", "Ideas and thinking", "Rules:"];
 
 function splitPrompt() {
   const blocks = SYSTEM_PROMPT.split("\n\n");
@@ -1522,8 +1200,8 @@ export function promptFor(features: Set<string>) {
 /** Which features a message needs: the context triage plus tool-only triggers. */
 export async function featuresFor(env: Env, query: string,summaries?:ContextSummaries) {
   if (!query.trim()) return new Set([...Object.keys(TOOL_GROUPS)]);
-  const {schedule:situations,groups,tasks,trackers,ideas,missions}=summaries??await contextSummaries(env);
-  const want = triageSections(query, { schedule: situations, groups, tasks, trackers, ideas, missions });
+  const {schedule:situations,groups}=summaries??await contextSummaries(env);
+  const want = triageSections(query, { schedule: situations, groups });
   for (const [k, re] of Object.entries(TOOL_TRIGGERS)) if (re.test(query)) want.add(k);
   return want;
 }

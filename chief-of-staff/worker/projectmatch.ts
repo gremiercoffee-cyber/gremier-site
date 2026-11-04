@@ -43,16 +43,6 @@ export async function matchProject(env: Env, q: { title: string; text?: string; 
   return { project_id: null, maybe };
 }
 
-/** Ask "which project?" about items already filed without one. Answered with one tap (actions.ts). */
-export async function askProject(env: Env, items: { id: string; title: string }[], candidates: { id: string; name: string }[], subject: string) {
-  if (!items.length || !candidates.length) return null;
-  const id = uid();
-  await run(env, "INSERT INTO project_asks (id, item_ids, candidates, created_at) VALUES (?, ?, ?, ?)", id, JSON.stringify(items.map((i) => i.id)), JSON.stringify(candidates), now());
-  await notify(env, "project_ask", `🗂️ Part of a project? ${subject.slice(0, 70)}`,
-    items.length > 1 ? items.map((i) => `• ${i.title}`).join("\n") : "", id, "/");
-  return id;
-}
-
 /** Put items into a project (and let it come back from the archive if needed). */
 export async function assignProject(env: Env, itemIds: string[], projectId: string | null) {
   for (const id of itemIds) await run(env, "UPDATE items SET project_id = ?, updated_at = ? WHERE id = ?", projectId, now(), id);

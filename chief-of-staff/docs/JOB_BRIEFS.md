@@ -1,5 +1,7 @@
 # Current project briefs
 
+> **November 2026:** Telegram was removed from Chief of Staff. Everything below that mentions Telegram is history; alerts now come only from the app.
+
 Jobs retain the existing CoS authentication, D1, execution engines and Telegram routing. Migration 0071 adds existing-project membership, a monotonic source revision, immutable brief versions, mirror status and per-job leases. Existing jobs and schedules are preserved. Pinning now controls sidebar placement only; pause/stop remain explicit chat commands.
 
 Open a job to see its current brief first, recommendation, next action, owner questions, correspondence, full reports and conversation. Choose an existing project folder; its Projects page now links to the jobs. `start_job` accepts an existing project_id and job chat can move a job using the available project IDs. No broad-topic automatic regrouping is performed.

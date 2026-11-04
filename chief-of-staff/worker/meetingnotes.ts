@@ -4,8 +4,6 @@
  * After: the user types notes to their own WhatsApp chat during a meeting ("Meeting with Avi about the
  * new labels: …"). Once they've stopped for a while, a burst of notes that says it's from a meeting is
  * turned into a Google Doc of meeting notes plus to-dos/reminders, filed under the right area.
- *
- * Preparation is kept separately as user-confirmed, in-app agenda notes in meeting-prep.ts.
  */
 import type { Env } from "./env";
 import { getProvider } from "./ai";
@@ -13,7 +11,7 @@ import { all, createItem, first, getSettings, now, run, uid } from "./db";
 import { areaKeysJson } from "./areas";
 import { createDoc } from "./gworkspace";
 import { notify } from "./push";
-import { askProject, matchProject } from "./projectmatch";
+import { matchProject } from "./projectmatch";
 
 const QUIET_MS = 30 * 60_000;   // notes stop for this long → the meeting is over
 const SESSION_GAP_MS = 45 * 60_000;
@@ -82,7 +80,6 @@ Reply ONLY JSON: {"is_meeting": true|false, "title": "Meeting with X: topic", "w
     made.push({ id: item.id, title: item.title });
     added++;
   }
-  if (!pm.project_id && pm.maybe.length) await askProject(env, made, pm.maybe, title);
   await notify(env, "meeting_notes", `📝 ${title}`,
     `${link ? "Your notes are in a Google Doc." : "I couldn't make the Doc (Google not connected)."}${added ? ` ${added} to-do${added > 1 ? "s" : ""} added.` : ""}`, null, link ?? "/");
 }

@@ -1,7 +1,5 @@
 import {currentHomeUpdate} from '../../shared/home-focus';
 import HashgachaReports from '../components/HashgachaReports';
-import GroupDraftApprovals from '../components/GroupMessage';
-import MeetingPrepConfirmations from '../components/MeetingPrep';
 import HomeWork from '../components/HomeWork';
 import {useImmediateCompletions} from '../useImmediateCompletions';
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -178,8 +176,6 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
   const inConversation = messages.length > 0 || sending;
   // Group drafts show in a chat only if this chat made one (not every pending draft in every chat).
-  const groupDraftSince = messages.some((m) => m.meta && (safeParse(m.meta) as ActionNote[]).some?.((a) => a.tool === "draft_group_message"))
-    ? messages[0]?.created_at ?? null : null;
   // Files found / signed in this chat get preview cards (only if this chat looked for or signed a file).
   const filesSince = messages.some((m) => m.meta && (safeParse(m.meta) as ActionNote[]).some?.((a) => a.tool === "find_email_files" || a.tool === "sign_document"))
     ? messages[0]?.created_at ?? null : null;
@@ -214,8 +210,6 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
             {sending && <Thinking />}
           </div>
         )}
-        {inConversation&&groupDraftSince&&<GroupDraftApprovals refreshKey={refreshKey} onChanged={onDataChanged} since={groupDraftSince}/>}
-        <MeetingPrepConfirmations refreshKey={refreshKey} onChanged={onDataChanged}/>
         {error && <p className="text-danger text-sm mt-2">{error}</p>}
         {actionMessage && <p role="status" className="text-accent text-sm mt-2">{actionMessage}</p>}
         <div ref={endRef} />
@@ -288,10 +282,6 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
               onDismiss={dismissAction(n) ? () => dismiss(n) : undefined}>
               {n.type === "review" ? <>
                 <div className="text-[14px]"><Markdown text={n.body} /></div>
-                <Chips n={n} onAct={performAction} />
-              </> : n.type === "idea" ? <>
-                <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>
-                <a href="/?tab=ideas" className="inline-block text-[14px] font-medium text-accent">Open the idea → pick next steps</a>
                 <Chips n={n} onAct={performAction} />
               </> : n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
                 {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}

@@ -14,8 +14,7 @@ import {HABIT_CATALOG,analyzeJournals,emptyJournal,habitKey,localDate,suggestedD
 import {getProvider,type ModelProvider,type ToolDef} from './ai';
 import {transcribeAudio} from './transcribe';
 import {daynoteConnection,disconnectHealth,healthConnect,healthSync} from './daynote-google';
-import {makeSubjectTopic,subjectFor} from './telegram-topics';
-import {tgConfig,say} from './telegram-api';
+import {sendPush} from './push';
 
 export async function daynoteHabits(env:Env):Promise<Habit[]>{
  const rows=await all<any>(env,'SELECT * FROM daynote_habits');const map=new Map(HABIT_CATALOG.map(h=>[h.id,{...h}]));
@@ -153,7 +152,6 @@ export async function daynoteRoute(req:Request,env:Env):Promise<Response>{
  const note=path.match(/^\/notes\/([^/]+)(?:\/(retry|confirm))?$/);
  if(note){if(method==='DELETE'){await run(env,"DELETE FROM daynote_relationships WHERE source_note=?",note[1]);await run(env,'DELETE FROM daynote_relationship_scans WHERE note_id=?',note[1]);await run(env,'DELETE FROM daynote_notes WHERE id=?',note[1]);return json({ok:true});}if(method==='POST'&&note[2]==='retry')return json(await processDaynoteNote(env,note[1]));if(method==='POST'&&note[2]==='confirm')return json(await confirmObservation(env,note[1],await body()));}
  if(path==='/preferences'&&method==='PUT'){const p=await body();if(p.wake_time!==null&&p.wake_time!==undefined&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(p.wake_time))throw new HttpError(400,'Choose a valid wake time.');if(!/^\d{2}:\d{2}$/.test(p.reminder_time)||+p.reminder_time.slice(0,2)>23||+p.reminder_time.slice(3)>59)throw new HttpError(400,'Choose a valid reminder time.');await run(env,"INSERT OR REPLACE INTO daynote_settings(key,value) VALUES('preferences',?)",JSON.stringify({reminders:!!p.reminders,weekly_summary:!!p.weekly_summary,reminder_time:p.reminder_time,wake_time:p.wake_time||null}));return json(await daynotePreferences(env));}
- if(path==='/telegram'&&method==='POST')return json(await makeSubjectTopic(env,{subject:'health'}));
  if(path==='/google/connect'&&method==='POST')return healthConnect(env,req);
  if(path==='/google/sync'&&method==='POST')return json(await healthSync(env,true));
  if(path==='/google/disconnect'&&method==='POST'){await disconnectHealth(env);return json({ok:true});}
@@ -168,7 +166,6 @@ export function daynoteTools(env:Env):ToolDef[]{return[
  {name:'get_health_journal',readOnly:true,description:'Read confirmed Health Journal records and CODE-CALCULATED comparisons. Personal model estimates are explicitly labelled, experimental and calculated in code; never call them Google or WHOOP scores, guarantees, diagnoses or causal effects. Morning ratings refer to that morning. Open /daynote/ to log/edit or confirm a note.',input_schema:{type:'object',properties:{}},handler:async()=>({entries:(await daynoteEntries(env)).slice(0,60),analysis:await daynoteAnalysis(env),recovery_dashboard:await recoveryDashboard(env),connection:await daynoteConnection(env),url:'https://health.gremiercoffee.co.il/daynote/'})},
  {name:'propose_health_note',description:'Extract a health journal text note for review. Never silently enables questions or saves unconfirmed observations. Tell the owner to review the summary in Health Journal.',input_schema:{type:'object',properties:{date:{type:'string'},text:{type:'string'}},required:['text']},handler:async p=>{const n=await extractDaynoteNote(env,{date:validDate(p.date)?p.date:suggestedDate(),text:String(p.text),source:'telegram'});return{id:n.id,observations:n.observations,status:'awaiting_confirmation',url:`${HEALTH_URL}?note=${n.id}`};}},
 ];}
-export async function healthTopicAllowed(env:Env,owner:number,chat:number,thread?:number){const c=await tgConfig(env);return owner===c.owner_id&&chat===c.group_id&&(await subjectFor(env,chat,thread))?.feature==='health';}
 export async function weeklyHealthSummary(env:Env){
  const [analysis,habits]=await Promise.all([daynoteAnalysis(env),daynoteHabits(env)]);
  const vitals=analysis.weekly.filter(w=>w.metric==='hrv_ms'||w.metric==='resting_hr').map(w=>{const label=w.metric==='hrv_ms'?'HRV':'Resting heart rate',unit=w.metric==='hrv_ms'?'ms':'bpm';return `${label}: ${w.recent_mean===null?'no readings':w.recent_mean.toFixed(1)+' '+unit+' (n='+w.recent_n+')'}; previous week ${w.previous_mean===null?'no readings':w.previous_mean.toFixed(1)+' '+unit+' (n='+w.previous_n+')'}.`;});
@@ -177,9 +174,8 @@ export async function weeklyHealthSummary(env:Env){
 }
 export async function healthReminders(env:Env){
  const p=await daynotePreferences(env);if(!p.reminders&&!p.weekly_summary)return;
- const c=await tgConfig(env);if(!c.group_id)return;const rows=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='telegram_subjects'");const topic=Object.entries(rows?JSON.parse(rows.value):{}).find(([key,v]:any)=>key.startsWith(c.group_id+':')&&v.feature==='health');if(!topic)return;
  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date()),time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
  const key=p.reminders&&time>=p.reminder_time&&!((await getEntry(env,date))?.completed)?'reminder:'+date:p.weekly_summary&&new Date(date+'T12:00Z').getUTCDay()===0&&time>='19:00'?'summary:'+date:null;if(!key)return;
  const claim=await first(env,'INSERT INTO daynote_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING RETURNING key','sent:'+key,now());if(!claim)return;
- try{const entries=await daynoteEntries(env);await say(env,c.group_id,key.startsWith('reminder')?'Health Journal: your daily journal is ready. https://health.gremiercoffee.co.il/daynote/':await weeklyHealthSummary(env),{thread:Number(topic[0].split(':')[1])});}catch(e){await run(env,'DELETE FROM daynote_settings WHERE key=?','sent:'+key);throw e;}
+ try{const summary=key.startsWith('reminder')?null:await weeklyHealthSummary(env);await sendPush(env,{title:summary?'Health Journal · weekly review':'Health Journal',body:summary?summary.split(String.fromCharCode(10)).slice(1,4).join(' · '):'Your daily journal is ready.',url:'https://health.gremiercoffee.co.il/daynote/',tag:'daynote'});}catch(e){await run(env,'DELETE FROM daynote_settings WHERE key=?','sent:'+key);throw e;}
 }

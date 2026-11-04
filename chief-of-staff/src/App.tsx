@@ -1,4 +1,3 @@
-import {MeetingsPage} from './components/MeetingPrep';
 import { useEffect, useState, type ReactNode } from "react";
 import type { Conversation, Item, ItemKind, Settings as S } from "../shared/types";
 import { api, getToken, setToken } from "./api";
@@ -7,12 +6,11 @@ import ItemSheet from "./components/ItemSheet";
 import Home from "./pages/Home";
 import Shopping from './pages/Shopping';
 import Today from "./pages/Today";
-import BrainDump from "./pages/BrainDump";
 import Lists from "./pages/Lists";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
-import Library, { Trackers, type LibraryTab } from "./pages/Library";
+import Library from "./pages/Library";
 import Replies from "./pages/Replies";
 import Schedule from "./pages/Schedule";
 import Groups from "./pages/Groups";
@@ -20,14 +18,13 @@ import NotifBanner from "./components/NotifBanner";
 import ZoomControl from "./components/ZoomControl";
 import MyDetails from "./pages/MyDetails";
 import Tasks from "./pages/Tasks";
-import ReportReader from "./components/ReportReader";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
 import { PinnedResearch, ResearchChat } from "./components/ResearchChats";
 import type { JobChatRow } from "./api";
 
-type View = "research" | "meetings" | "home" | "today" | "dump" | "lists" | "projects" | "settings" | "search" | "library" | "missions" | "replies" | "tasks" | "people" | "trackers" | "schedule" | "groups" | "shopping" | "details";
-const VIEW_TITLES: Record<View, string> = { research: "Research", details: "My details", meetings:"Meetings", home: "Chief of Staff", today: "Today", dump: "Library", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", missions: "Tasks", replies: "Replies", tasks: "Tasks", people: "Settings", trackers: "Tasks", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
+type View = "research" | "home" | "today" | "lists" | "projects" | "settings" | "search" | "library" | "replies" | "tasks" | "people" | "schedule" | "groups" | "shopping" | "details";
+const VIEW_TITLES: Record<View, string> = { research: "Research", details: "My details", home: "Chief of Staff", today: "Today", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", replies: "Replies", tasks: "Tasks", people: "Settings", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -36,10 +33,10 @@ export default function App() {
   const [health, setHealth] = useState<{ configured: boolean; model: boolean; transcription: boolean } | null>(null);
   const params = new URLSearchParams(location.search);
   const legacyTab = params.get("tab");
-  const [view, setView] = useState<View>(params.get("job") ? "research" : legacyTab === "review" || legacyTab === "ideas" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
+  const [view, setView] = useState<View>(params.get("job") ? "research" : legacyTab === "review" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
   // Shared from another app (Android share sheet): hand it to the Chief of Staff to file.
   const shared = [params.get("share_title"), params.get("share_text"), params.get("share_url")].filter(Boolean).join("\n");
-  const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? (shared ? `I'm sharing this with you:\n${shared}\n\nFile it where it belongs (to-do, idea, tracker, memory, list) and tell me in one line what you did.` : undefined));
+  const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? (shared ? `I'm sharing this with you:\n${shared}\n\nFile it where it belongs (to-do, reminder, memory, list) and tell me in one line what you did.` : undefined));
   const [startVoice] = useState(params.get("voice") === "1");
   const [startTyping] = useState(params.get("type") === "1");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -53,15 +50,9 @@ export default function App() {
   const [sheet, setSheet] = useState<{ item: Item | null; kind?: ItemKind } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
-  const [libraryTab, setLibraryTab] = useState<LibraryTab>(legacyTab === "review" ? "memory" : "ideas");
   const [rescheduling, setRescheduling] = useState<Item | null>(null);
   const [toast, setToast] = useState("");
-  // A task report opened from a notification (?report=id&mode=read|brief) or the Tasks page.
-  const [report, setReport] = useState<{ id: string; mode: "read" | "brief" } | null>(() => {
-    const id = params.get("report");
-    return id ? { id, mode: params.get("mode") === "brief" ? "brief" : "read" } : null;
-  });
-  // Text to pre-fill in the composer (e.g. "About my mission …: "), without sending it.
+  // Text to pre-fill in the composer, without sending it.
   const [draft, setDraft] = useState<string | undefined>();
   const setTyping = (text: string) => setDraft(text);
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null);
@@ -82,7 +73,7 @@ export default function App() {
     const onInstall = (e: Event) => { e.preventDefault(); setInstall(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", onInstall);
     // Links like ?ask= are one-shot; keep the address bar clean.
-    if (params.get("ask") || params.get("share_text") || params.get("share_url") || params.get("share_title") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("report") || params.get("job")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
+    if (params.get("ask") || params.get("share_text") || params.get("share_url") || params.get("share_title") || params.get("voice") || params.get("type") || params.get("item") || params.get("reschedule") || params.get("job")) history.replaceState(null, "", location.pathname + (legacyTab ? `?tab=${legacyTab}` : ""));
     return () => { window.removeEventListener("cos:unauthorised", onUnauth); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
 
@@ -178,7 +169,7 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  const go = (v: View) => { setView(v === "missions" ? "tasks" : v); setDrawer(false); };
+  const go = (v: View) => { setView(v); setDrawer(false); };
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
   const goHome = () => openConversation(null);
   const openItem = (item: Item) => setSheet({ item });
@@ -206,14 +197,13 @@ export default function App() {
             <div className="px-2 space-y-0.5">
               <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
               <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
-              <DrawerItem active={view === "meetings"} onClick={() => go("meetings")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M7 12h10M7 16h6" /></>} label="Meetings" />
               <DrawerItem active={view === "schedule"} onClick={() => go("schedule")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>} label="Schedule" />
               <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
               <DrawerItem active={view === "groups"} onClick={() => go("groups")} icon={<><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/></>} label="Groups" />
               <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("projects")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Projects & tasks" />
               <DrawerItem active={view === 'shopping'} onClick={() => go('shopping')} icon={<><path d="M3 3h2l3 12h10l3-9H6M9 20h.01M18 20h.01" /></>} label="Shopping lists" />
               <DrawerItem active={view === 'details'} onClick={() => go('details')} icon={<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>} label="My details" />
-              <DrawerItem active={view === "tasks" || view === "missions" || view === "trackers"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks & trackers" />
+              <DrawerItem active={view === "tasks"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks" />
             </div>
             <PinnedResearch jobs={jobs} activeId={view === "research" ? jobId : null} onOpen={openResearch} />
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
@@ -281,20 +271,11 @@ export default function App() {
         {view === "search" && (
           <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
         )}
-        {(view === "tasks" || view === "trackers") && (
-          <Switch value={view} onChange={(v) => setView(v as View)} options={[["tasks", "Tasks"], ["trackers", "Trackers"]]} />
-        )}
-        {view === "tasks" && <Tasks refreshKey={refreshKey} jobs={jobs} onOpenResearch={openResearch} onJobsChanged={loadJobs} onOpenReport={(id, mode) => setReport({ id, mode })} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
-        {view === "trackers" && <div className="mt-4"><Trackers refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} /></div>}
+        {view === "tasks" && <Tasks refreshKey={refreshKey} jobs={jobs} onOpenResearch={openResearch} onJobsChanged={loadJobs} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "groups" && <Groups refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
-        {view === "meetings" && <MeetingsPage refreshKey={refreshKey} onChanged={refresh} onAsk={p=>{openConversation(null);setAsk(undefined);setTimeout(()=>setTyping(p),0);}} />}
         {view === "schedule" && <Schedule refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
         {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
-        {(view === "library" || view === "dump") && (
-          <Library tab={view === "dump" ? "ideas" : libraryTab} onTab={(t) => { setLibraryTab(t); setView("library"); }} onOpenItem={openItem} refreshKey={refreshKey}
-            brainDump={<BrainDump serverTranscription={!!health?.transcription} onDataChanged={refresh} />}
-            onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />
-        )}
+        {view === "library" && <Library refreshKey={refreshKey} />}
         {(view === "settings" || view === "people") && settings && (
           <Settings settings={settings} onSaved={setSettings}
             installPrompt={install ? () => { install.prompt(); setInstall(null); } : null} />
@@ -310,14 +291,6 @@ export default function App() {
         </div>
       )}
 
-      {report && (
-        <ReportReader id={report.id} autoBrief={report.mode === "brief"} onClose={() => setReport(null)}
-          onBrief={(r) => {
-            setReport(null);
-            openConversation(null);
-            setAsk(`Tell me about my report "${r.name}" (report id ${r.id}): the key points, what changed, and what I should do about it.`);
-          }} />
-      )}
       {rescheduling && (
         <Reschedule item={rescheduling} onClose={() => setRescheduling(null)}
           onSaved={(msg) => { setRescheduling(null); refresh(); setToast(msg); setTimeout(() => setToast(""), 2500); }} />
@@ -379,7 +352,7 @@ function Login({ health, onDone }: { health: { configured: boolean } | null; onD
   );
 }
 
-/** Small two-option switch at the top of paired pages (Lists/Projects, Recurring/Missions). */
+/** Small two-option switch at the top of paired pages (Projects / All tasks). */
 function Switch({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
     <div className="flex gap-1 p-1 mb-4 rounded-full bg-sunken w-fit">

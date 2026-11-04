@@ -5,7 +5,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 
 // Emails from a research chat: Codex writes them, the user taps Send, Codex sends exactly that from Gmail,
-// and replies are tracked in the chat. Fake model, fake Telegram, fake Gmail thread reads.
+// and replies are tracked in the chat. Fake model, fake Gmail thread reads.
 globalThis.__model=[];globalThis.__tg=[];globalThis.__threads={};globalThis.__bgs=[];
 const out=await build({entryPoints:['worker/jobs.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'fakes',setup(b){
  b.onLoad({filter:/[\\/]worker[\\/]ai\.ts$/},()=>({contents:`export function getProvider(){return {
@@ -17,17 +17,19 @@ const out=await build({entryPoints:['worker/jobs.ts'],bundle:true,write:false,fo
 }}]});
 const jobs=await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
 globalThis.fetch=async(url,init)=>{const method=String(url).split('/').pop();const body=JSON.parse(init.body);globalThis.__tg.push({method,body});
- return new Response(JSON.stringify({ok:true,result:method==='createForumTopic'?{message_thread_id:77}:{}}),{headers:{'content-type':'application/json'}});};
+ return new Response(JSON.stringify({ok:true,result:{}}),{headers:{'content-type':'application/json'}});};
 
 function env(){
  const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
  db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('timezone','"Asia/Jerusalem"');
- db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('telegram',JSON.stringify({owner_id:1,group_id:-100}));
+ globalThis.__db=db;
  db.prepare("INSERT INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:1,secondary:1}));
  const prepare=sql=>{let args=[];return{bind(...v){args=v;return this},async first(){return db.prepare(sql).get(...args)??null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){return{meta:{changes:Number(db.prepare(sql).run(...args).changes)}}}}};
- return {db,env:{DB:{prepare},TELEGRAM_BOT_TOKEN:'fixture'}};
+ return {db,env:{DB:{prepare}}};
 }
-const posts=()=>globalThis.__tg.filter(t=>t.method==='sendMessage').map(t=>t.body);
+// What the chat shows in the app: the bot's messages with their buttons (buttons a press already used are cleared).
+const posts=()=>globalThis.__db.prepare("SELECT text,buttons FROM job_messages WHERE role='bot' ORDER BY rowid").all()
+ .map(r=>({text:r.text,reply_markup:r.buttons?{inline_keyboard:JSON.parse(r.buttons).map(row=>row.map(b=>({text:b.text,callback_data:b.data})))}:undefined}));
 async function researched(e,db){
  const {id}=await jobs.createJob(e,{title:'Bottle suppliers',instructions:'Find 1L PET bottle suppliers in Israel.',kind:'once',engine:'codex'});
  await jobs.pressButton(e,`start:${id}`);

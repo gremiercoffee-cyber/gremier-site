@@ -51,19 +51,6 @@ test('every Codex research run and email draft receives current brief, owner dec
  const result=await m.nextCodexRun(h.env,{device:'fixture'});assert.match(result.run.prompt,/New price 8/);assert.match(result.run.prompt,/Use blue print/);
  const j=h.db.prepare("SELECT * FROM jobs WHERE id='job'").get();assert.match(await m.emailPrompt(h.env,j,{mode:'email_draft',ask:'Ask suppliers'}),/New price 8/);
 });
-test('Telegram uses a single pinned message and never posts briefs to General or a different group',async()=>{
- const h=setup();h.env.TELEGRAM_BOT_TOKEN='fixture-only';h.db.exec("INSERT INTO settings(key,value) VALUES('telegram','{\"owner_id\":1,\"group_id\":-100}')");await m.saveBrief(h.env,'job',1,doc());
- const methods=[];await withFetch(async(url,opts)=>{const body=JSON.parse(opts.body);methods.push({method:String(url).split('/').at(-1),body});return reply({message_id:42});},async()=>{
-  assert.equal(await m.publishBrief(h.env,'job'),false);assert.equal(methods.length,0);
-  h.db.exec("UPDATE jobs SET chat_id=-100,topic_id=99 WHERE id='job'");assert.equal(await m.publishBrief(h.env,'job'),true);assert.equal(await m.publishBrief(h.env,'job'),true);
-  h.email();await m.saveBrief(h.env,'job',2,doc('Updated quote'));assert.equal(await m.publishBrief(h.env,'job'),true);
- });
- assert.equal(methods.filter(x=>x.method==='sendMessage').length,1);assert.equal(methods.filter(x=>x.method==='editMessageText').length,1);assert.equal(methods.find(x=>x.method==='sendMessage').body.message_thread_id,99);
-});
-test('Telegram permission failures are visible and never claim a successful mirror',async()=>{
- const h=setup();h.env.TELEGRAM_BOT_TOKEN='fixture';h.db.exec("INSERT INTO settings(key,value) VALUES('telegram','{\"owner_id\":1,\"group_id\":-100}')");h.db.exec("UPDATE jobs SET chat_id=-100,topic_id=99 WHERE id='job'");await m.saveBrief(h.env,'job',1,doc());
- await withFetch(async()=>new Response(JSON.stringify({ok:false,description:'Forbidden'})),async()=>assert.equal(await m.publishBrief(h.env,'job'),false));const k=await m.jobKnowledge(h.env,'job');assert.equal(k.telegram.synced,false);assert.match(k.telegram.error,/permissions/);
-});
 test('failed email sends are uncertain and cannot silently become retryable drafts',async()=>{
  const h=setup();h.email();h.db.exec("UPDATE job_emails SET status='sending' WHERE id='e'");await m.emailRunFailed(h.env,{mode:'email_send',ask:'[\"e\"]'});assert.equal(h.db.prepare("SELECT status FROM job_emails WHERE id='e'").get().status,'uncertain');assert.equal((await m.jobKnowledge(h.env,'job')).state,'Needs you');
 });

@@ -17,8 +17,6 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "reply_batch": // rate-limited catch-up windows for the Replies sheet
     case "digest":      // the check-ins themselves
     case "briefing":
-    case "mission_ask": // a mission is stuck until the user answers
-    case "routine_alert": // a task the user asked to be alerted about
     case "situation":   // you're in yeshiva / at an event now: this is the moment
     case "wrapup":      // a block just ended: quick "did you get to these?"
     case "watch":       // a WhatsApp watch rule matched

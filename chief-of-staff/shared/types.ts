@@ -117,14 +117,6 @@ export interface ApprovalCard {
   created_at: string;
 }
 
-export interface BrainDump {
-  id: string;
-  raw: string;
-  summary: string;
-  status: string;
-  result: string | null;
-  created_at: string;
-}
 
 export interface Settings {
   name: string;
