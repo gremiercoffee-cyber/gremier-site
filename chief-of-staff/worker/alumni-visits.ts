@@ -92,6 +92,8 @@ export async function decideAlumni(env:Env,id:string,p:{decision?:string;approva
  if(!event||event.approval_hash!==p.approval_hash)throw Error('Proposal changed or is no longer awaiting approval');
  if(!['approve','reject'].includes(p.decision??''))throw Error('approve or reject required');
  await run(env,"UPDATE alumni_visit_events SET status=?,approved_at=? WHERE id=? AND status='awaiting_approval' AND approval_hash=?",p.decision==='approve'?'approved':'rejected',p.decision==='approve'?now():null,id,p.approval_hash);
+ // Decided here, on Today or from the phone: its notification goes away everywhere.
+ await run(env,"UPDATE nudges SET dismissed=1 WHERE type='alumni_visit' AND item_id=?",id);
  return{status:p.decision==='approve'?'approved':'rejected',id};
 }
 async function enabled(env:Env){return JSON.parse((await first<{value:string}>(env,"SELECT value FROM settings WHERE key='alumni_visit_sheet_workflow'"))?.value??'{}').enabled===true;}
@@ -204,7 +206,7 @@ export async function processAlumni(env:Env){
    if(!e.approved_at){
     const plan=JSON.stringify(cells),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(e.id+plan)))).map(v=>v.toString(16).padStart(2,'0')).join('');
     await run(env,"UPDATE alumni_visit_events SET status='awaiting_approval',plan=?,approval_hash=?,result='Waiting for owner confirmation; no sheet write' WHERE id=?",plan,hash,e.id);
-    await notify(env,'watch',`Add to alumni sheet? ${o.name}`,[[o.arrival&&`arrives ${o.arrival}`,o.leaving&&`leaves ${o.leaving}`].filter(Boolean).join(' · ')||'no dates yet',o.uncertain&&o.reason?`Check: ${o.reason}`:'',`"${e.text.slice(0,160)}"`].filter(Boolean).join('\n'),null,'/');
+    await notify(env,'alumni_visit',`Add to alumni sheet? ${o.name}`,[[o.arrival&&`arrives ${o.arrival}`,o.leaving&&`leaves ${o.leaving}`].filter(Boolean).join(' · ')||'no dates yet',o.uncertain&&o.reason?`Check: ${o.reason}`:'',`"${e.text.slice(0,160)}"`].filter(Boolean).join('\n'),e.id,'/?tab=today');
     continue;
    }
    // Recheck enablement immediately before an approved write, including after an in-flight pause.

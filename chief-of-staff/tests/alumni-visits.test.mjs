@@ -41,3 +41,12 @@ test('broad capture: no trigger words, own messages as context, groups only with
  assert.equal((await m.captureAlumni(h.env,{...message,messageId:'g1',chat:'Alumni group',text:'G-d Willing landing at 1:30pm on the 23rd'})).kept,true,'group with a date');
  assert.equal((await m.captureAlumni(h.env,{...message,messageId:'g2',chat:'Alumni group',text:'mazal tov!!'})).kept,false);
  h.db.close();});
+
+test('the phone notification is tied to the proposal and has Add / Reject buttons; deciding clears it',async()=>{const h=setup(),rows=[headers];fakeGoogle(rows);globalThis.alumniNotices=[];globalThis.alumniModel=()=>JSON.stringify({aish_visit:true,confirmed:true,name:'Daniel Rose'});
+ await m.captureAlumni(h.env,message);await m.processAlumni(h.env);const p=h.db.prepare('SELECT * FROM alumni_visit_events').get();
+ const n=globalThis.alumniNotices.at(-1);assert.equal(n[1],'alumni_visit');assert.equal(n[4],p.id);
+ const b=await build({entryPoints:['worker/actions.ts'],bundle:true,write:false,format:'esm',platform:'node'});const actions=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
+ assert.deepEqual(actions.actionsFor({type:'alumni_visit',item_id:p.id}).map(a=>a.id),['alumni_add','alumni_reject']);
+ h.db.prepare("INSERT INTO nudges(id,type,title,body,item_id,created_at) VALUES('n1','alumni_visit','t','b',?,?)").run(p.id,new Date().toISOString());
+ await m.decideAlumni(h.env,p.id,{decision:'reject',approval_hash:p.approval_hash});
+ assert.equal(h.db.prepare("SELECT dismissed FROM nudges WHERE id='n1'").get().dismissed,1);h.db.close();});

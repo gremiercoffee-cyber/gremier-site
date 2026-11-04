@@ -20,6 +20,7 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "situation":   // you're in yeshiva / at an event now: this is the moment
     case "wrapup":      // a block just ended: quick "did you get to these?"
     case "watch":       // a WhatsApp watch rule matched
+    case "alumni_visit": // "add this alumni visit to the sheet?": Add / Reject
     case "prep":        // "meeting soon: want to prep?"
     case "meeting_notes":
     case "helper":      // the computer helper needs you, or finished

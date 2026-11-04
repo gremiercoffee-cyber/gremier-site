@@ -51,7 +51,7 @@ export async function announceApprovals(env:Env){
  const mark=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='approvals_announced'");
  const since=mark?.value??new Date(Date.now()-10*60_000).toISOString();
  if(isShabbat((await getSettings(env)).timezone||'Asia/Jerusalem'))return 0;
- const fresh=(await listApprovals(env)).filter(c=>String(c.created_at)>since);
+ const fresh=(await listApprovals(env)).filter(c=>c.source!=='alumni'&&String(c.created_at)>since);
  await run(env,"INSERT OR REPLACE INTO settings (key,value) VALUES ('approvals_announced',?)",new Date().toISOString());
  if(!fresh.length)return 0;
  const title=fresh.length===1?`Needs your OK: ${fresh[0].title}`:`${fresh.length} things need your OK`;

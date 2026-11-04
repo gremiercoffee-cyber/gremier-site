@@ -39,6 +39,7 @@ export async function actionsForNudge(env: Env, n: Pick<Nudge, "type" | "item_id
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
   if (n.type === "prep") return [];
+  if (n.type === "alumni_visit") return [{ id: "alumni_add", title: "✓ Add to sheet" }, { id: "alumni_reject", title: "✗ Reject" }];
   if (n.type === "meeting") return [{ id: "ok", title: "Got it" }, { id: "not_meeting", title: "Not a meeting" }];
   if (n.type === "helper_approve") return [{ id: "helper_allow", title: "✓ Allow" }, { id: "helper_deny", title: "✗ Deny" }];
   if (n.type === "helper") return [{ id: "helper_open", title: "Open", opens: true }, { id: "ok", title: "Dismiss" }];
@@ -119,6 +120,15 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       await dismissIt();
       return { ok: true, message: "Let's change it.", open: `/?ask=${encodeURIComponent(`Change the WhatsApp to ${row?.recipient}: "${row?.text}"`)}` };
     }
+  }
+  if (n.type === "alumni_visit" && n.item_id) {
+    const e = await first<{ approval_hash: string; status: string }>(env, "SELECT approval_hash,status FROM alumni_visit_events WHERE id = ?", n.item_id);
+    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
+    if (!e || e.status !== "awaiting_approval") return { ok: true, message: "Already handled." };
+    if (action !== "alumni_add" && action !== "alumni_reject") return { ok: true, message: "OK." };
+    const { decideAlumni } = await import("./alumni-visits");
+    await decideAlumni(env, n.item_id, { decision: action === "alumni_add" ? "approve" : "reject", approval_hash: e.approval_hash });
+    return { ok: true, message: action === "alumni_add" ? "Added. It's in the alumni sheet within 5 minutes." : "Rejected. Nothing was written." };
   }
   if (n.type === "prep") {
     await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
