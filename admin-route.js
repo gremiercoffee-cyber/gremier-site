@@ -124,48 +124,95 @@
     return state.order.map((k) => all.find((s) => s.key === k)).filter(Boolean);
   }
 
+  const PIN = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" fill="currentColor"/></svg>';
+  const FLAG = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 21V4h9l.6 2H20v9h-6.4l-.6-2H7v8z" fill="currentColor"/></svg>';
+  function dayWord(d) {
+    const t = today();
+    return d === t ? 'Today' : d === addDays(t, 1) ? 'Tomorrow' : d === addDays(t, -1) ? 'Yesterday'
+      : new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+  }
+  const stopAddress = (s) => s.address || (s.place?.source === 'pin' ? 'Pinned location' : 'No address');
+
   function stopRow(s, extra) {
-    const target = navTarget(s), on = state.order.includes(s.key), d = detailsLine(s.details);
-    const when = extra ? 'Extra stop' : `${pretty(s.date)}${s.time ? ' · ' + esc(s.time) : ''}${s.orderNumber ? ' · #' + esc(s.orderNumber) : ''}`;
+    const target = navTarget(s), idx = state.order.indexOf(s.key), on = idx >= 0, d = detailsLine(s.details);
+    const kind = extra ? 'Extra stop' : s.kind === 'store' ? 'Store' : s.kind === 'coffeebar' ? 'Coffee bar' : 'Delivery';
+    const chips = [
+      `<span class="rt-chip">${kind}</span>`,
+      !extra && state.all && s.date ? `<span class="rt-chip">${esc(pretty(s.date))}</span>` : '',
+      s.time ? `<span class="rt-chip strong">${esc(String(s.time).slice(0, 5))}</span>` : '',
+      s.orderNumber ? `<span class="rt-chip">#${esc(s.orderNumber)}</span>` : '',
+    ].join('');
     return `<div class="rt-stop${on ? ' on' : ''}${target ? '' : ' bad'}">
-      <label class="rt-check"><input type="checkbox" data-pick="${esc(s.key)}"${on ? ' checked' : ''}${target ? '' : ' disabled'}>
-      <span><b>${esc(s.name)}</b><small>${when}</small>
-      <span class="rt-addr">📍 ${esc(s.address || (s.place?.source === 'pin' ? 'Pinned location' : 'No address'))}</span>
-      ${d ? `<span class="rt-details">${esc(d)}</span>` : ''}
-      ${target ? '' : '<span class="rt-flag">⚠ Address needs review: no confirmed location</span>'}</span></label>
-      ${!target && s.jobId ? `<button class="btn btn-outline btn-sm" data-fix="${esc(s.key)}">Fix address</button>` : ''}
-      ${extra ? `<button class="btn btn-outline btn-sm" data-remove="${esc(s.key)}">Remove</button>` : ''}
-      ${state.fixing === s.key ? `<div class="rt-fix"><input class="form-input" id="rtFixInput" placeholder="Search the address"><button class="btn btn-sm" data-fixsave="${esc(s.key)}">Save location</button></div>` : ''}
+      <label class="rt-check">
+        <input type="checkbox" class="rt-cb" data-pick="${esc(s.key)}"${on ? ' checked' : ''}${target ? '' : ' disabled'}>
+        <span class="rt-num" aria-hidden="true">${on ? idx + 1 : ''}</span>
+        <span class="rt-info">
+          <b class="rt-name">${esc(s.name)}</b>
+          <span class="rt-chips">${chips}</span>
+          <span class="rt-addr">${PIN}<span>${esc(stopAddress(s))}</span></span>
+          ${d ? `<span class="rt-details">${esc(d)}</span>` : ''}
+          ${target ? '' : '<span class="rt-flag">⚠ No confirmed location yet. Fix the address to add this stop.</span>'}
+        </span>
+      </label>
+      ${!target && s.jobId ? `<button class="rt-btn amber" data-fix="${esc(s.key)}">Fix address</button>` : ''}
+      ${extra ? `<button class="rt-remove" data-remove="${esc(s.key)}" aria-label="Remove stop">✕</button>` : ''}
+      ${state.fixing === s.key ? `<div class="rt-fix"><input class="form-input" id="rtFixInput" placeholder="Search the address"><button class="rt-btn dark" data-fixsave="${esc(s.key)}">Save location</button></div>` : ''}
     </div>`;
   }
 
   function render() {
     const host = document.getElementById('routePlanner');
     if (!host) return;
-    const sel = selectedStops(), limit = stopLimit(state.end), over = sel.length > limit;
+    const sel = selectedStops(), limit = stopLimit(state.end), over = sel.length > limit, jobs = state.jobs;
+    const sub = host.querySelector('#rtSub');
+    if (sub) sub.textContent = sel.length ? `${sel.length} stop${sel.length === 1 ? '' : 's'} on this route` : 'Pick the stops you are taking now';
+    const seg = (name, value, label, cur) => `<label class="rt-seg-opt"><input type="radio" name="${name}" value="${value}"${cur === value ? ' checked' : ''}><span>${label}</span></label>`;
+    const noneLabel = state.all ? 'pending' : dayWord(state.date) === 'Today' ? 'today' : 'on ' + pretty(state.date);
     host.querySelector('.rt-body').innerHTML = `
-      <div class="rt-dates"><button class="btn btn-outline btn-sm" data-day="-1">‹</button><input type="date" class="form-input" id="rtDate" value="${state.date}"${state.all ? ' disabled' : ''}><button class="btn btn-outline btn-sm" data-day="1">›</button>
-        <label class="rt-all"><input type="checkbox" id="rtAll"${state.all ? ' checked' : ''}> All pending</label></div>
-      <h3>Deliveries${state.jobs ? ` · ${state.jobs.length}` : ''}</h3>
-      ${!state.jobs ? '<p class="rt-muted">Loading…</p>' : state.jobs.length ? state.jobs.map((s) => stopRow(s)).join('') : `<p class="rt-muted">No pending deliveries ${state.all ? '' : 'on ' + pretty(state.date)}.</p>`}
-      <h3>Extra stops</h3>
-      ${state.extras.map((s) => stopRow(s, true)).join('')}
-      <div class="rt-add"><input class="form-input" id="rtExtraName" placeholder="Name (optional), e.g. Supplier"><input class="form-input" id="rtExtraInput" placeholder="Search an address"><button class="btn btn-outline btn-sm" id="rtExtraAdd">+ Add stop</button></div>
-      <h3>Start</h3>
-      <label class="rt-radio"><input type="radio" name="rtStart" value="here"${state.start === 'here' ? ' checked' : ''}> My current location</label>
-      <label class="rt-radio"><input type="radio" name="rtStart" value="custom"${state.start === 'custom' ? ' checked' : ''}> Another place</label>
-      <div class="rt-pick"${state.start === 'custom' ? '' : ' hidden'}><input class="form-input" id="rtStartInput" placeholder="Search the start address"></div>
-      <h3>Finish</h3>
-      <label class="rt-radio"><input type="radio" name="rtEnd" value="last"${state.end === 'last' ? ' checked' : ''}> At the last delivery</label>
-      <label class="rt-radio"><input type="radio" name="rtEnd" value="return"${state.end === 'return' ? ' checked' : ''}> Back to the start</label>
-      <label class="rt-radio"><input type="radio" name="rtEnd" value="custom"${state.end === 'custom' ? ' checked' : ''}> Somewhere else</label>
-      <div class="rt-pick"${state.end === 'custom' ? '' : ' hidden'}><input class="form-input" id="rtEndInput" placeholder="Search the finish address"></div>
-      <h3>Review · ${sel.length} of ${limit} stops</h3>
-      ${sel.length ? `<ol class="rt-review">${sel.map((s) => `<li><b>${esc(s.name)}</b> <span>${esc(s.address || 'Pinned location')}</span>${detailsLine(s.details) ? `<small>${esc(detailsLine(s.details))}</small>` : ''}</li>`).join('')}</ol>` : '<p class="rt-muted">Nothing selected yet. Tick the deliveries you are taking now.</p>'}
-      ${over ? `<p class="rt-error">Google Maps takes up to ${limit} stops ${state.end === 'last' ? '' : 'plus the finish '}in one route. Remove ${sel.length - limit}, or split this run into two routes.</p>` : ''}
-      ${sel.length > BROWSER_MIDDLE_MAX + 1 ? '<p class="rt-muted">Opens in the Google Maps app, which takes all these stops. A phone browser only takes 3 stops in the middle, so keep the Maps app installed.</p>' : ''}
-      <p class="rt-muted">Maps opens in route preview: drag the stops into the order you want, then start. Opening Maps doesn't mark anything delivered.</p>`;
+      <div class="rt-datebar">
+        <button class="rt-arrow" data-day="-1" aria-label="Previous day"${state.all ? ' disabled' : ''}>‹</button>
+        <label class="rt-datepill${state.all ? ' off' : ''}">
+          <b>${state.all ? 'All pending' : esc(dayWord(state.date))}</b>
+          <small>${state.all ? 'Every delivery not yet done' : esc(pretty(state.date))}</small>
+          <input type="date" id="rtDate" value="${state.date}"${state.all ? ' disabled' : ''} aria-label="Delivery date">
+        </label>
+        <button class="rt-arrow" data-day="1" aria-label="Next day"${state.all ? ' disabled' : ''}>›</button>
+        <label class="rt-allpill"><input type="checkbox" id="rtAll"${state.all ? ' checked' : ''}><span>All</span></label>
+      </div>
+
+      <section class="rt-sec">
+        <div class="rt-sec-h"><h3>Deliveries</h3>${jobs ? `<span class="rt-count">${jobs.length}</span>` : ''}</div>
+        ${!jobs ? '<div class="rt-skel"></div><div class="rt-skel"></div>'
+          : jobs.length ? jobs.map((s) => stopRow(s)).join('')
+          : `<div class="rt-empty"><span class="rt-empty-ico" aria-hidden="true">🚚</span><b>No deliveries ${esc(noneLabel)}</b><small>You can still route extra stops below.</small>${state.all ? '' : '<button class="rt-link" id="rtShowAll">Show every pending delivery</button>'}</div>`}
+        ${state.extras.map((s) => stopRow(s, true)).join('')}
+        ${state.addOpen
+          ? '<div class="rt-addcard"><input class="form-input" id="rtExtraInput" placeholder="Search an address"><input class="form-input" id="rtExtraName" placeholder="Name (optional), e.g. Supplier"><div class="rt-addrow"><button class="rt-btn ghost" id="rtAddToggle">Cancel</button><button class="rt-btn dark" id="rtExtraAdd">Add stop</button></div></div>'
+          : '<button class="rt-addbtn" id="rtAddToggle"><span aria-hidden="true">＋</span> Add a stop <small>supplier, pickup, anything</small></button>'}
+      </section>
+
+      <section class="rt-sec">
+        <div class="rt-sec-h"><h3>Your trip</h3><span class="rt-count${over ? ' warn' : ''}">${sel.length} / ${limit} stops</span></div>
+        <div class="rt-trip">
+          <div class="rt-leg"><span class="rt-dot start" aria-hidden="true"></span><div class="rt-leg-main">
+            <span class="rt-leg-label">Start</span>
+            <div class="rt-seg">${seg('rtStart', 'here', '📍 My location', state.start)}${seg('rtStart', 'custom', 'Another place', state.start)}</div>
+            <div class="rt-pick"${state.start === 'custom' ? '' : ' hidden'}><input class="form-input" id="rtStartInput" placeholder="Search the start address"></div>
+          </div></div>
+          ${sel.length ? sel.map((s, i) => `<div class="rt-leg"><span class="rt-dot n" aria-hidden="true">${i + 1}</span><div class="rt-leg-main"><b>${esc(s.name)}</b><small>${esc(stopAddress(s))}${detailsLine(s.details) ? ' · ' + esc(detailsLine(s.details)) : ''}</small></div></div>`).join('')
+            : '<div class="rt-leg"><span class="rt-dot ghost" aria-hidden="true"></span><div class="rt-leg-main"><small class="rt-hint">Tick deliveries above to add them to the route.</small></div></div>'}
+          <div class="rt-leg"><span class="rt-dot end" aria-hidden="true">${FLAG}</span><div class="rt-leg-main">
+            <span class="rt-leg-label">Finish</span>
+            <div class="rt-seg">${seg('rtEnd', 'last', 'Last stop', state.end)}${seg('rtEnd', 'return', 'Round trip', state.end)}${seg('rtEnd', 'custom', 'Elsewhere', state.end)}</div>
+            <div class="rt-pick"${state.end === 'custom' ? '' : ' hidden'}><input class="form-input" id="rtEndInput" placeholder="Search the finish address"></div>
+          </div></div>
+        </div>
+        ${over ? `<p class="rt-error">Google Maps takes up to ${limit} stops ${state.end === 'last' ? '' : 'plus the finish '}in one route. Remove ${sel.length - limit}, or split this run into two routes.</p>` : ''}
+        ${sel.length > BROWSER_MIDDLE_MAX + 1 ? '<p class="rt-note">Opens in the Google Maps app, which takes all these stops. A phone browser only takes 3 stops in the middle, so keep the Maps app installed.</p>' : ''}
+        <p class="rt-note">Maps opens in route preview, where you can drag stops into any order. Opening Maps doesn't mark anything delivered.</p>
+      </section>`;
     host.querySelector('#rtOpen').disabled = !sel.length || over;
+    host.querySelector('#rtGoLabel').textContent = sel.length ? `Start route · ${sel.length} stop${sel.length === 1 ? '' : 's'}` : 'Pick stops to start';
     attachPickers();
   }
 
@@ -211,7 +258,10 @@
   }
 
   function onClick(e) {
-    const t = e.target;
+    if (e.target.id === 'rtDate' && e.target.showPicker) { try { e.target.showPicker(); } catch (_) {} return; }
+    const t = e.target.closest('[data-day],[data-fix],[data-fixsave],[data-remove],#rtExtraAdd,#rtOpen,#rtClose,#rtAddToggle,#rtShowAll') || e.target;
+    if (t.id === 'rtAddToggle') { state.addOpen = !state.addOpen; render(); if (state.addOpen) setTimeout(() => document.getElementById('rtExtraInput')?.focus(), 0); return; }
+    if (t.id === 'rtShowAll') { state.all = true; reload(); return; }
     if (t.dataset.day) { state.date = addDays(state.date, Number(t.dataset.day)); reload(); }
     else if (t.dataset.fix) { state.fixing = t.dataset.fix; render(); }
     else if (t.dataset.fixsave) saveFix(t.dataset.fixsave);
@@ -222,7 +272,7 @@
       const name = document.getElementById('rtExtraName').value.trim() || v.text || 'Extra stop';
       const key = 'extra:' + Date.now();
       state.extras.push({ key, name, address: v.text, place: v.place, details: null });
-      state.order.push(key); render();
+      state.order.push(key); state.addOpen = false; render();
     } else if (t.id === 'rtOpen') openMaps();
     else if (t.id === 'rtClose' || t.id === 'routePlanner') close();
   }
@@ -237,29 +287,86 @@
 
   function open() {
     // Nothing is preselected: tick the deliveries you are taking now.
-    state = { date: today(), all: false, jobs: null, extras: [], order: [], start: 'here', end: 'last', startValue: null, endValue: null, fixing: null };
+    state = { date: today(), all: false, jobs: null, extras: [], order: [], start: 'here', end: 'last', startValue: null, endValue: null, fixing: null, addOpen: false };
     if (!document.getElementById('rt-style')) {
       const st = document.createElement('style'); st.id = 'rt-style';
-      st.textContent = `.rt-overlay{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
-.rt-overlay[hidden]{display:none}.rt-sheet{background:#fff;width:100%;max-width:560px;max-height:94vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column}
-.rt-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #eee}.rt-head h2{margin:0;font-size:1.1rem}
-.rt-body{overflow:auto;padding:4px 16px 16px;-webkit-overflow-scrolling:touch}.rt-body h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;color:#666;margin:18px 0 8px}
-.rt-foot{padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid #eee}.rt-foot .btn{width:100%;min-height:48px;font-size:1rem}
-.rt-dates{display:flex;gap:6px;align-items:center;margin-top:10px}.rt-dates input[type=date]{flex:1}.rt-all{display:flex;gap:4px;align-items:center;font-size:.85rem;white-space:nowrap}
-.rt-stop{border:1px solid #e3e3e3;border-radius:12px;padding:10px 12px;margin-bottom:8px}.rt-stop.on{border-color:#1a1a1a;background:#fafafa}.rt-stop.bad{border-color:#f0d49a;background:#fffaf0}
-.rt-check{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.rt-check input{width:22px;height:22px;margin-top:2px;flex:none}
-.rt-check span{display:flex;flex-direction:column;gap:2px;min-width:0}.rt-check small{color:#777}.rt-addr{font-size:.85rem;color:#3f7fc4}.rt-details{font-size:.85rem;color:#333}
-.rt-flag{font-size:.8rem;color:#9a6b00;font-weight:600}.rt-stop>.btn{margin-top:8px}.rt-fix,.rt-add,.rt-pick{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.rt-radio{display:flex;gap:8px;align-items:center;padding:6px 0}.rt-radio input{width:20px;height:20px}
-.rt-review{padding-inline-start:20px;margin:0}.rt-review li{margin-bottom:6px}.rt-review span,.rt-review small{display:block;font-size:.85rem;color:#555}
-.rt-error{color:#b3261e;font-weight:600}.rt-muted{color:#777;font-size:.85rem}body.rt-open{overflow:hidden}`;
+      st.textContent = `.rt-overlay{position:fixed;inset:0;z-index:9000;background:rgba(15,18,24,.5);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center}
+.rt-overlay[hidden]{display:none}
+.rt-sheet{background:#f4f5f7;width:100%;max-width:560px;max-height:94vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 40px rgba(0,0,0,.25);animation:rtUp .24s ease-out}
+@keyframes rtUp{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media (min-width:700px){.rt-overlay{align-items:center}.rt-sheet{border-radius:24px;max-height:90vh}}
+.rt-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 16px 14px;background:linear-gradient(135deg,#111827,#1f2a44);color:#fff}
+.rt-title{display:flex;align-items:center;gap:12px;min-width:0}.rt-title h2{margin:0;font-size:1.15rem;font-weight:800;color:#fff;letter-spacing:-.01em}.rt-title small{display:block;font-size:.78rem;color:rgba(255,255,255,.65);margin-top:1px}
+.rt-logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#1a73e8;color:#fff;flex:none;box-shadow:0 6px 16px rgba(26,115,232,.45)}
+.rt-x{width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:1rem;cursor:pointer;flex:none}
+.rt-body{overflow:auto;padding:12px 14px 18px;-webkit-overflow-scrolling:touch}
+.rt-datebar{display:flex;align-items:center;gap:8px;background:#fff;border-radius:18px;padding:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.rt-arrow{width:40px;height:44px;border-radius:12px;border:0;background:#f1f3f6;font-size:1.4rem;line-height:1;color:#111;cursor:pointer;flex:none}.rt-arrow:disabled{opacity:.35;cursor:default}
+.rt-datepill{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 6px;border-radius:12px;cursor:pointer;text-align:center}
+.rt-datepill b{font-size:1rem;color:#111;font-weight:800}.rt-datepill small{font-size:.74rem;color:#6b7280}.rt-datepill.off{cursor:default}
+.rt-datepill input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
+.rt-allpill{display:flex;align-items:center;cursor:pointer;flex:none;position:relative}.rt-allpill input{position:absolute;opacity:0;pointer-events:none}
+.rt-allpill span{padding:11px 14px;border-radius:12px;background:#f1f3f6;font-size:.82rem;font-weight:700;color:#374151}
+.rt-allpill input:checked+span{background:#111827;color:#fff}.rt-allpill input:focus-visible+span{outline:2px solid #1a73e8}
+.rt-sec{margin-top:18px}.rt-sec-h{display:flex;align-items:center;gap:8px;margin:0 4px 10px}
+.rt-sec-h h3{margin:0;font-size:1.02rem;font-weight:800;color:#111;letter-spacing:-.01em}
+.rt-count{font-size:.74rem;font-weight:700;padding:2px 9px;border-radius:999px;background:#e5e7eb;color:#374151}.rt-count.warn{background:#fde2e1;color:#b3261e}
+.rt-stop{position:relative;background:#fff;border:2px solid transparent;border-radius:18px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:border-color .15s,box-shadow .15s}
+.rt-stop.on{border-color:#1a73e8;box-shadow:0 6px 18px rgba(26,115,232,.16)}
+.rt-stop.bad{background:#fffaf0;border-color:#f3dca8}
+.rt-check{display:flex;gap:12px;align-items:flex-start;cursor:pointer}.rt-stop.bad .rt-check{cursor:default}
+.rt-cb{position:absolute;opacity:0;pointer-events:none}
+.rt-num{width:32px;height:32px;border-radius:50%;flex:none;display:grid;place-items:center;border:2px solid #cfd4dc;font-weight:800;font-size:.9rem;color:#fff;margin-top:1px;transition:all .15s}
+.rt-stop.on .rt-num{background:#1a73e8;border-color:#1a73e8}
+.rt-cb:focus-visible~.rt-num{outline:2px solid #1a73e8;outline-offset:2px}
+.rt-info{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;padding-right:24px}
+.rt-name{font-size:1rem;color:#111;font-weight:800;line-height:1.25}
+.rt-chips{display:flex;flex-wrap:wrap;gap:5px}.rt-chip{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#f1f3f6;color:#4b5563}.rt-chip.strong{background:#111827;color:#fff}
+.rt-addr{display:flex;gap:5px;align-items:flex-start;font-size:.86rem;color:#1f2937;line-height:1.35}.rt-addr svg{color:#ea4335;flex:none;margin-top:2px}
+.rt-details{font-size:.8rem;color:#6b7280;padding-left:19px}
+.rt-flag{font-size:.8rem;color:#9a6b00;font-weight:700}
+.rt-btn{border:0;border-radius:12px;padding:10px 16px;font:inherit;font-size:.86rem;font-weight:700;cursor:pointer}
+.rt-btn.dark{background:#111827;color:#fff}.rt-btn.ghost{background:#f1f3f6;color:#374151}.rt-btn.amber{background:#f6c453;color:#3b2a00;margin:10px 0 0 44px}
+.rt-remove{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:50%;border:0;background:#f1f3f6;color:#6b7280;cursor:pointer}
+.rt-fix,.rt-addcard{display:flex;flex-direction:column;gap:8px}.rt-fix{margin:10px 0 0 44px}
+.rt-addcard{background:#fff;border-radius:18px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}.rt-addrow{display:flex;gap:8px;justify-content:flex-end}
+.rt-addbtn{width:100%;display:flex;align-items:center;gap:8px;padding:14px 16px;border-radius:18px;border:2px dashed #cfd4dc;background:transparent;font:inherit;font-weight:700;font-size:.92rem;color:#374151;cursor:pointer}
+.rt-addbtn span{font-size:1.2rem;color:#1a73e8}.rt-addbtn small{font-weight:500;color:#9ca3af;margin-left:auto;font-size:.76rem}
+.rt-empty{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;background:#fff;border-radius:18px;padding:22px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.rt-empty-ico{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#eef4fe;font-size:1.5rem;margin-bottom:4px}
+.rt-empty b{font-size:.98rem;color:#111}.rt-empty small{font-size:.82rem;color:#6b7280}
+.rt-link{margin-top:8px;border:0;background:none;color:#1a73e8;font:inherit;font-weight:700;font-size:.86rem;cursor:pointer}
+.rt-skel{height:86px;border-radius:18px;margin-bottom:10px;background:linear-gradient(90deg,#e9ebef,#f6f7f9,#e9ebef);background-size:200% 100%;animation:rtSk 1.1s linear infinite}
+@keyframes rtSk{to{background-position:-200% 0}}
+.rt-trip{background:#fff;border-radius:18px;padding:14px 14px 6px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.rt-leg{position:relative;display:flex;gap:12px;padding-bottom:14px}
+.rt-leg:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:2px;border-left:2px dotted #c7ccd4}
+.rt-dot{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:.8rem;font-weight:800;color:#fff;position:relative;z-index:1;box-sizing:border-box}
+.rt-dot.start{background:#fff;border:7px solid #34a853}.rt-dot.end{background:#ea4335}.rt-dot.n{background:#1a73e8}.rt-dot.ghost{background:#fff;border:2px dashed #c7ccd4}
+.rt-leg-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding-top:4px}
+.rt-leg-main b{font-size:.92rem;color:#111}.rt-leg-main small{font-size:.8rem;color:#6b7280;line-height:1.35}
+.rt-leg-label{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6b7280}
+.rt-hint{font-style:italic}
+.rt-seg{display:flex;gap:4px;background:#f1f3f6;border-radius:12px;padding:4px}
+.rt-seg-opt{flex:1;min-width:0;cursor:pointer;position:relative}.rt-seg-opt input{position:absolute;opacity:0;pointer-events:none}
+.rt-seg-opt span{display:block;text-align:center;padding:9px 6px;border-radius:9px;font-size:.82rem;font-weight:700;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rt-seg-opt input:checked+span{background:#fff;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.rt-seg-opt input:focus-visible+span{outline:2px solid #1a73e8}
+.rt-pick{display:flex;flex-direction:column}.rt-pick[hidden]{display:none}
+.rt-error{margin:10px 4px 0;padding:10px 12px;border-radius:12px;background:#fde2e1;color:#b3261e;font-weight:700;font-size:.85rem}
+.rt-note{margin:10px 6px 0;color:#6b7280;font-size:.78rem;line-height:1.45}
+.rt-foot{padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #e5e7eb}
+.rt-go{width:100%;min-height:56px;display:flex;align-items:center;justify-content:center;gap:10px;border:0;border-radius:16px;background:#1a73e8;color:#fff;font:inherit;font-size:1.05rem;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(26,115,232,.35);transition:transform .12s}
+.rt-go:active{transform:scale(.99)}.rt-go:disabled{background:#d6dae0;color:#6b7280;box-shadow:none;cursor:default}
+.rt-go-ico{display:grid;place-items:center}
+body.rt-open{overflow:hidden}`;
       document.head.append(st);
     }
     let host = document.getElementById('routePlanner');
     if (!host) {
       host = document.createElement('div');
       host.id = 'routePlanner'; host.className = 'rt-overlay';
-      host.innerHTML = '<div class="rt-sheet" role="dialog" aria-label="Plan a delivery route"><div class="rt-head"><h2>🧭 Plan a route</h2><button class="btn btn-outline btn-sm" id="rtClose">Close</button></div><div class="rt-body"></div><div class="rt-foot"><button class="btn" id="rtOpen">Open in Google Maps</button></div></div>';
+      host.innerHTML = '<div class="rt-sheet" role="dialog" aria-modal="true" aria-label="Plan a delivery route"><div class="rt-head"><div class="rt-title"><span class="rt-logo" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2 4.5 20.3l.7.7L12 18l6.8 3 .7-.7z" fill="currentColor"/></svg></span><div><h2>Plan a route</h2><small id="rtSub">Pick the stops you are taking now</small></div></div><button class="rt-x" id="rtClose" aria-label="Close">✕</button></div><div class="rt-body"></div><div class="rt-foot"><button class="rt-go" id="rtOpen"><span class="rt-go-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2 4.5 20.3l.7.7L12 18l6.8 3 .7-.7z" fill="currentColor"/></svg></span><span id="rtGoLabel">Open in Google Maps</span></button></div></div>';
       host.addEventListener('click', onClick); host.addEventListener('change', onChange);
       document.body.append(host);
     }
