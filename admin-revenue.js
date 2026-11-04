@@ -141,14 +141,16 @@
  }
  // Shared operational sales basis for Dashboard and Stats: store statements/deliveries,
  // and non-store receipts plus paid orders, matched once across all dates.
+ // Store sales belong to the month they were DELIVERED (that month's statements). A store paying later
+ // never adds to the month it pays in, or the same delivery would count twice. Only months before the
+ // first statement existed fall back to store payments, since that's the only record there.
  function operationalMonths(data,y,bills,businessDate,through='9999-12-31'){
   const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
   const revenue=keys.map(m=>channels(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate)));
-  const statements=keys.map(m=>bills.filter(b=>!b.cancelled_at&&b.year+'-'+String(b.month).padStart(2,'0')===m));
-  const payments=revenue.reduce((n,r,i)=>n+(statements[i].length?r.stores:0),0);
-  const settled=bills.filter(b=>!b.cancelled_at&&b.paid_at&&Number(b.year)===Number(y)).reduce((n,b)=>n+minor(b.total||0),0);
-  const late=payments?Math.max(0,payments-settled)/payments:0;
-  return keys.map((month,i)=>({month,stores:statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0)+Math.round(revenue[i].stores*late):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
+  const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
+  const firstStatement=live.reduce((m,b)=>!m||monthOf(b)<m?monthOf(b):m,'');
+  const statements=keys.map(m=>live.filter(b=>monthOf(b)===m));
+  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?statements[i].reduce((n,b)=>n+minor(b.total||0),0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
  }
  function operationalSales(data,r,businessDate,partialStore=null){
   if(Number(r.start.slice(0,4))<2026){

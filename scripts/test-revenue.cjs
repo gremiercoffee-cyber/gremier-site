@@ -175,3 +175,16 @@ test('a FinBot copy of a website receipt counts on the payment date, not its lat
  const aug=m.income(d,'2026-08-01','2026-08-31',s=>s.slice(0,10));assert.equal(aug.total_minor,45000);assert.equal(aug.rows.length,1);
  d.orderReceipts=[];assert.equal(m.income(d,'2026-10-15','2026-10-31',s=>s.slice(0,10)).total_minor,0,'no app receipt: the order date (2 Oct), not the issue date (20 Oct)');assert.equal(m.income(d,'2026-10-01','2026-10-14',s=>s.slice(0,10)).total_minor,45000);
 });
+
+test('store sales count in the month delivered: a later payment never adds to the month it is paid in',()=>{
+ const d=base();d.orders=[];
+ // October deliveries (statement ₪1,000), paid by the store in November.
+ d.businessReceipts=[{id:'r1',status:'issued',store_id:'s',amount_minor:100000,payment_date:'2026-11-03',customer_snapshot:{name:'Good Store'}}];
+ const bills=[{id:'b',store_id:'s',year:2026,month:10,total:1000,paid_at:'2026-11-03'}],day=v=>String(v).slice(0,10);
+ const rows=m.operationalMonths(d,2026,bills,day,'2026-11-04');
+ assert.equal(rows.find(r=>r.month==='2026-10').stores,100000);
+ assert.equal(rows.find(r=>r.month==='2026-11').stores,0);
+ // Before the first statement existed, payments are the only record and still count.
+ const early=m.operationalMonths({...d,businessReceipts:[{...d.businessReceipts[0],payment_date:'2026-05-10'}]},2026,[{...bills[0],month:6}],day);
+ assert.equal(early.find(r=>r.month==='2026-05').stores,100000);
+});
