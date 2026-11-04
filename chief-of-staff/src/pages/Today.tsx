@@ -5,7 +5,7 @@ import NudgeActions from '../components/NudgeActions';
 import TaskActions from '../components/TaskActions';
 import Approvals from '../components/Approvals';
 import { api } from "../api";
-import { BriefingView, Button, Card, Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
+import { Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
 
 export default function Today({ name, onOpenItem, goChat, refreshKey }: {
   name: string; onOpenItem: (i: Item) => void; goChat: (prompt?: string) => void; refreshKey: number;
@@ -54,12 +54,11 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         <Section key={title} title={title} count={list.length}>
           {list.map((n) => (
             <div key={n.id} className="flex items-start gap-2 py-2">
-              <span className={`mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 ${n.type === "briefing" ? "bg-accent" : "bg-accent/60"}`} />
+              <span className="mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 bg-accent/60" />
               <div className="flex-1 min-w-0">
                 <p className="text-[15px] leading-snug">{cleanTitle(n.title)}</p>
-                <p className="text-xs text-muted">{[n.type !== "briefing" && n.body?.split("\n")[0], timeAgo(n.updated_at ?? n.created_at)].filter(Boolean).join(" · ")}</p>
+                <p className="text-xs text-muted">{[n.body?.split("\n")[0], timeAgo(n.updated_at ?? n.created_at)].filter(Boolean).join(" · ")}</p>
                 {n.type === "learn" && <a href="/?tab=review" className="text-sm text-accent font-medium">Review now →</a>}
-                {n.type === "briefing" && n.body && <div className="mt-2"><BriefingView text={n.body} /></div>}
                 {n.items?.filter(i=>!completion.hidden.has(i.id)).map(i=><div key={i.id} className="mt-2 rounded-xl bg-sunken p-3"><p>{i.title}</p><TaskActions id={i.id} onChanged={load} onClose={status=>completion.complete(i.id,()=>api.updateItem(i.id,{status}),load)}/></div>)}
                 <NudgeActions n={n} onAct={act}/>
               </div>
@@ -147,13 +146,11 @@ function Section({ title, count, danger, children }: { title: string; count?: nu
 }
 
 const GROUPS: [string, (n: Dashboard["nudges"][number]) => boolean][] = [
-  ["Briefing", (n) => n.type === "briefing"],
   ["To review", (n) => n.type === "learn"],
   ["Right now", (n) => n.type === "situation"],
   ["Don't forget", (n) => /^don't forget/i.test(n.title) || n.type === "reminder"],
   ["Coming up", (n) => /^coming up/i.test(n.title) || n.type === "deadline"],
   ["Waiting on others", (n) => n.type === "waiting"],
-  ["Done for you", (n) => n.type === "auto_done"],
 ];
 
 function groupNudges(nudges: Dashboard["nudges"]) {

@@ -142,11 +142,6 @@ export default function Settings({ settings, onSaved, installPrompt }: {
             </select>
           </label>
           <div className="grid grid-cols-2 gap-2">
-            <label className="block text-xs text-muted space-y-1"><span>Morning briefing at</span>
-              <select className={field} value={form.briefing_hour} onChange={(e) => setForm({ ...form, briefing_hour: Number(e.target.value) })}>
-                {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
-              </select>
-            </label>
             <label className="block text-xs text-muted space-y-1"><span>Voice</span>
               <select className={field} value={form.voice_name} onChange={(e) => setForm({ ...form, voice_name: e.target.value })}>
                 <option value="">Default (Marin)</option>

@@ -220,20 +220,6 @@ export async function runSituations(env: Env) {
         await run(env, "UPDATE situations SET last_fired = ? WHERE id = ?", date, s.id);
       }
     }
-    // Block just ended: one tap per item to say what got done (what's left rolls on).
-    if (!isDrivingBlock(s) && !s.keywords.startsWith('wa-meet:') && onDay(s, date, dow) && s.end_time && s.last_fired === date && s.last_wrapped !== date) {
-      const end = minutes(s.end_time);
-      if (mins >= end && mins < end + 90) {
-        await run(env, "UPDATE situations SET last_wrapped = ? WHERE id = ?", date, s.id);
-        const left = (await itemsFor(env, s)).filter((i) => !isWaiting(i));
-        if (left.length) {
-          await run(env, "UPDATE nudges SET dismissed = 1 WHERE dismissed = 0 AND type = 'situation' AND title LIKE ?", `%${s.name}%`);
-          await notify(env, "wrapup", `🏁 ${s.name} is over: did you get to these?`,
-            left.map((i) => `• ${i.title}`).join("\n"), null, "/", {topic:`block:${s.id}`,itemIds:left.map(i=>i.id)});
-          n++;
-        }
-      }
-    }
     // Calendar triggers: entries starting from 15 min ago to 10 min ahead.
     const cal = words(s.calendar_keywords);
     if (cal.length) {

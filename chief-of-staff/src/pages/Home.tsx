@@ -9,7 +9,7 @@ import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import type { FoundFile } from "../api";
 import { api } from "../api";
 import { useAreas } from "../areas";
-import { BriefingView, DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
+import { DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
 import Celebration from "../components/Celebration";
@@ -253,7 +253,6 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
   const nowIds=new Set((dash?.now_block?.items??[]).map(i=>i.id));
   const freshUpdates=allNudges.filter(n=>currentHomeUpdate(n.updated_at||n.created_at,dash?.timezone||'Asia/Jerusalem')&&!['situation','wrapup'].includes(n.type)&&!(n.item_id&&nowIds.has(n.item_id)));
   const nudges=showUpdates?freshUpdates:freshUpdates.slice(0,2);
-  const briefing = area==='all'?dash?.nudges.find((n) => n.type === "briefing"&&currentHomeUpdate(n.updated_at||n.created_at,dash?.timezone||'Asia/Jerusalem')):undefined;
   const [nowVisibleCount,setNowVisibleCount]=useState<number|null>(null);
   const nowBlock = dash?.now_block;
   const nowItems = (nowBlock?.items??[]).filter(i=>inArea(i.category));
@@ -281,16 +280,9 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
       </section>
 
       {completion.error&&<p role="alert" className="text-sm text-danger">{completion.error}</p>}
-      {(briefing || nudges.length > 0) && (
+      {nudges.length > 0 && (
         <details className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
-          <summary className="cursor-pointer flex items-center justify-between px-4 py-3 text-sm font-medium"><span>☀️ Today’s updates</span><span className="text-xs text-muted">{freshUpdates.length+(briefing?1:0)} ▸</span></summary>
-          {briefing && (
-            <Row icon="☀️" title="Today's briefing" time={briefing.created_at}
-              onDismiss={dismissAction(briefing) ? () => dismiss(briefing) : undefined}>
-              <BriefingView text={briefing.body} />
-              <Chips n={briefing} onAct={performAction} />
-            </Row>
-          )}
+          <summary className="cursor-pointer flex items-center justify-between px-4 py-3 text-sm font-medium"><span>☀️ Today’s updates</span><span className="text-xs text-muted">{freshUpdates.length} ▸</span></summary>
           {nudges.map((n) => (
             <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}
               onDismiss={dismissAction(n) ? () => dismiss(n) : undefined}>

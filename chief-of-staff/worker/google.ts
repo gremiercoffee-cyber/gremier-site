@@ -374,8 +374,6 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
       if (!replied && !answered) continue;
       await updateItem(env, item.id, { status: "done" });
       completed++;
-      if (alerts) await notify(env, "auto_done", `Done: ${item.title}`,
-        replied ? `You replied to ${counterpart}. Tap Undo if it isn't finished.` : `${counterpart} got back to you.`, item.id);
     }
 
     // 2. Model triage of the latest exchange: skipped when an open item already tracks the thread,
@@ -405,7 +403,6 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
       if (!item) continue;
       await updateItem(env, id, { status: "done" });
       completed++;
-      if (alerts) await notify(env, "auto_done", `Looks done: ${item.title}`, `Based on your email "${subject}". Tap Undo if not.`, id);
     }
     // The other side is the user themselves (another connected account, or their own name): not a real "waiting on".
     const own = await accountEmails(env);

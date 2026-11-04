@@ -716,10 +716,7 @@ route("POST", "/api/nudges/:id/undo", async (_req, env, [id]) => {
   await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", id);
   return json({ ok: true });
 });
-route("POST", "/api/proactive/run", async (req, env) => {
-  const b = await body<{ briefing?: boolean }>(req).catch(() => ({ briefing: false }));
-  return json(await runProactive(env, { forceBriefing: !!b.briefing }));
-});
+route("POST", "/api/proactive/run", async (_req, env) => json(await runProactive(env)));
 route('GET', '/api/ai-job-approvals', async (_req, env) => json(await all(env,"SELECT * FROM pending_actions WHERE action LIKE 'ai_%' AND status='pending' ORDER BY created_at DESC")));
 route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => json(await decidePendingAction(env, id, decision)));
 route("GET", "/api/approvals", async (_req, env) => json(await (await import("./approvals")).listApprovals(env)));

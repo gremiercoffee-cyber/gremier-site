@@ -209,7 +209,7 @@ export const api = {
   }>("GET", `/api/search?q=${encodeURIComponent(q)}`),
   deletePerson: (id: string) => request("DELETE", `/api/people/${id}`),
   dismissNudge: (id: string) => request("POST", `/api/nudges/${id}/dismiss`),
-  runProactive: (briefing = false) => request("POST", "/api/proactive/run", { briefing }),
+  runProactive: () => request("POST", "/api/proactive/run", {}),
   decide: (id: string, decision: "approve" | "reject") => request<{ outcome: string }>("POST", `/api/actions/${id}/${decision}`),
   approvals: () => request<ApprovalCard[]>("GET", "/api/approvals"),
   decideApproval: (source: string, id: string, decision: "approve" | "reject") => request<{ outcome?: string }>("POST", `/api/approvals/${source}/${id}/${decision}`),
