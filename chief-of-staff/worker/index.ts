@@ -761,10 +761,11 @@ export default {
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
     // New approvals buzz the phone once; the cards live on Today.
     ctx.waitUntil(import("./approvals").then((a) => a.announceApprovals(env)).catch((e) => console.error("approvals", e)));
+    // Alumni visit cards: every 5 minutes, so a message becomes an "Add to sheet?" card quickly.
+    ctx.waitUntil(processAlumni(env).catch(e=>console.error('alumni visits',e instanceof Error?e.message:'processing failed')));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     ctx.waitUntil(healthSync(env).catch(()=>{}));
     ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));
-    ctx.waitUntil(processAlumni(env).catch(e=>console.error('alumni visits',e instanceof Error?e.message:'processing failed')));
     ctx.waitUntil(syncWhoop(env).catch(()=>{}));
     ctx.waitUntil(healthReminders(env).catch(()=>{}));
     // Pull Google first so new emails and meetings are in place before reminders.
