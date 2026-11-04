@@ -23,7 +23,9 @@ const SCOPES = [
   "https://www.googleapis.com/auth/documents",
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/contacts.readonly", // look up people's numbers for one-tap WhatsApps (read only)
+  "https://www.googleapis.com/auth/calendar.events", // add events the owner asks for (ChatGPT / chat)
 ];
+export const CALENDAR_WRITE_SCOPE = SCOPES[9];
 /** Calendar + Gmail are required; Docs/Sheets/Drive and Contacts are optional per account (added later). */
 const CORE_SCOPES = SCOPES.slice(2, 5);
 export const WORKSPACE_SCOPES = SCOPES.slice(5, 8);
@@ -542,6 +544,21 @@ export async function createDraft(env: Env, opts: { threadId?: string; to?: stri
     body: JSON.stringify({ message: { raw, ...(opts.threadId ? { threadId: opts.threadId } : {}) } }),
   });
   return { draft_id: d.id, from_account: auth.email, to, subject, open_in_gmail: `https://mail.google.com/mail/?authuser=${encodeURIComponent(auth.email)}#drafts` };
+}
+
+/** Adds an event to the owner's primary calendar. Needs the calendar.events permission (reconnect Google once). */
+export async function addCalendarEvent(env: Env, e: { title: string; start: string; end: string; all_day?: boolean; location?: string; description?: string; account?: string }) {
+  const rows = await all<{ email: string; scopes: string | null }>(env, "SELECT email, scopes FROM google_accounts ORDER BY rowid");
+  const pick = rows.find((r) => r.email === e.account) ?? rows[0];
+  if (!pick) throw new Error("Google isn't connected.");
+  if (!(pick.scopes ?? "").includes(CALENDAR_WRITE_SCOPE)) throw new Error(`Chief of Staff can only read ${pick.email}'s calendar. Reconnect that Google account in Chief of Staff Settings to allow adding events.`);
+  const tz = (await getSettings(env)).timezone || "Asia/Jerusalem";
+  const when = (v: string) => e.all_day ? { date: v.slice(0, 10) } : { dateTime: new Date(v).toISOString(), timeZone: tz };
+  const ev = await gapi<{ id: string; htmlLink?: string; summary?: string }>(await accessToken(env, pick.email), "https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ summary: e.title, start: when(e.start), end: when(e.end), ...(e.location ? { location: e.location } : {}), ...(e.description ? { description: e.description } : {}) }),
+  });
+  return { event_id: ev.id, calendar: pick.email, link: ev.htmlLink ?? null };
 }
 
 /** Sends an existing Gmail draft as it is now (the owner may have edited it in Gmail). Only called after approval. */

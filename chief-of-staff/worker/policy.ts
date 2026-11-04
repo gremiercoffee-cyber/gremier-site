@@ -29,6 +29,8 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "suggest":     // "saw this on WhatsApp, add it?"
     case "meeting":     // a meeting you just arranged on WhatsApp
     case "review":      // the weekly review
+    case "approval":    // something new needs the owner's OK
+    case "broken":      // a connection or helper stopped working
       return "now";
     case "overdue":
     case "headsup":

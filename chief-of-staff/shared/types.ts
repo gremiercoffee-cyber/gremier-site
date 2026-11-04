@@ -103,6 +103,20 @@ export interface PendingAction {
   created_at: string;
 }
 
+/** One card on the approvals list (pending actions, WhatsApps to send, alumni sheet updates). */
+export interface ApprovalCard {
+  id: string;
+  source: "action" | "whatsapp" | "alumni";
+  kind: "email" | "whatsapp" | "alumni" | "ai" | "share" | "delete" | "other";
+  title: string;
+  detail?: string;
+  preview?: string;
+  meta?: string;
+  link?: string;
+  approve: string;
+  created_at: string;
+}
+
 export interface BrainDump {
   id: string;
   raw: string;

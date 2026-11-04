@@ -722,6 +722,8 @@ route("POST", "/api/proactive/run", async (req, env) => {
 });
 route('GET', '/api/ai-job-approvals', async (_req, env) => json(await all(env,"SELECT * FROM pending_actions WHERE action LIKE 'ai_%' AND status='pending' ORDER BY created_at DESC")));
 route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => json(await decidePendingAction(env, id, decision)));
+route("GET", "/api/approvals", async (_req, env) => json(await (await import("./approvals")).listApprovals(env)));
+route("POST", "/api/approvals/:source/:id/:decision", async (_req, env, [source, id, decision]) => json(await (await import("./approvals")).decideApproval(env, source, id, decision)));
 
 // ---- Settings, usage, notifications foundation ------------------------------
 route("GET", "/api/settings", async (_req, env) => json(await getSettings(env)));
@@ -946,11 +948,12 @@ export default {
     // Every 5 minutes: jobs (start what's due, collect results). Everything else keeps its 15-minute rhythm
     // (one schedule: the account allows no more).
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
-    // Approvals made in the background are asked in Telegram too.
-    ctx.waitUntil(import("./telegram-notices").then((t) => t.pendingCards(env)).catch((e) => console.error("telegram approvals", e)));
+    // New approvals buzz the phone once; the cards live on Today.
+    ctx.waitUntil(import("./approvals").then((a) => a.announceApprovals(env)).catch((e) => console.error("approvals", e)));
     ctx.waitUntil(import("./worksession").then((w) => w.tickWorkSession(env)).catch((e) => console.error("work session", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     ctx.waitUntil(healthSync(env).catch(()=>{}));
+    ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));
     ctx.waitUntil(processAlumni(env).catch(e=>console.error('alumni visits',e instanceof Error?e.message:'processing failed')));
     ctx.waitUntil(syncWhoop(env).catch(()=>{}));
     ctx.waitUntil(healthReminders(env).catch(()=>{}));

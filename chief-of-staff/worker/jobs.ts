@@ -416,6 +416,7 @@ async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
     // codex: stays queued until the runner on the home computer takes it.
   } catch (e) {
     console.error("job dispatch", e);
+    if (engine === "claude") await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('claude_routine_error', ?)", JSON.stringify(now())).catch(() => {});
     if (engine !== "api") return dispatch(env, j, r, [...avoid, engine]);
     await failRun(env, j, r.id, (e as Error).message);
   }

@@ -81,8 +81,6 @@ async function encrypt(payload: Uint8Array, p256dh: string, auth: string): Promi
 /** Sends to every registered device; drops subscriptions the push service says are gone. */
 export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: number; failed: number }> {
   if (!pushConfigured(env)) return { sent: 0, failed: 0 };
-  // The user gets notifications in Telegram instead (settings app_push = false; only while Telegram is connected).
-  if (!msg.force && !(await appPushOn(env))) return { sent: 0, failed: 0 };
   const subs = await all<{ endpoint: string; subscription: string }>(env, "SELECT endpoint, subscription FROM push_subscriptions");
   const packed = { ...msg, body: (msg.body ?? "").slice(0, 300),
     notification_updates:msg.notification_updates?.slice(0,6).map(n=>({...n,title:n.title.slice(0,90),body:n.body.slice(0,180)})),
@@ -117,14 +115,6 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
   return { sent, failed };
 }
 
-/** App (phone) notifications: off when the user chose Telegram for them and Telegram is connected. */
-export async function appPushOn(env: Env) {
-  const off = (await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'app_push'"))?.value === "false";
-  if (!off) return true;
-  const tg = await first<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'telegram'");
-  const c = tg ? JSON.parse(tg.value) as { group_id?: number; private_id?: number } : {};
-  return !(env.TELEGRAM_BOT_TOKEN && (c.group_id || c.private_id));
-}
 
 /**
  * Records a nudge (home screen, widget, next briefing) and buzzes the phone only when the
@@ -151,8 +141,6 @@ export async function notify(env: Env, type: string, title: string, body = "", i
     nudge_id: id, sig: await signNudge(env, id),
     actions: (await actionsForNudge(env, { type, item_id: itemId, topic_key:topic, body })).map((a) => ({ action: a.id, title: a.title, opens: a.opens })),
   });
-  // The same notice, with its buttons, in Telegram (so nothing needs the app).
-  const inTelegram = await import("./telegram-notices").then((t) => t.noticeToTelegram(env, { id, type, title, body, item_id: itemId, topic_key: topic })).catch((e) => { console.error("telegram notice", e); return false; });
-  if (delivered.sent || inTelegram) await run(env, "UPDATE nudges SET pushed_at = ? WHERE id = ?", now(),id);
+  if (delivered.sent) await run(env, "UPDATE nudges SET pushed_at = ? WHERE id = ?", now(),id);
   return id;
 }

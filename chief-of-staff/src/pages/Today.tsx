@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CalendarEvent, Dashboard, Item, Nudge } from "../../shared/types";
 import NudgeActions from '../components/NudgeActions';
 import TaskActions from '../components/TaskActions';
+import Approvals from '../components/Approvals';
 import { api } from "../api";
 import { BriefingView, Button, Card, Empty, ItemRow, KIND_META, timeAgo } from "../components/ui";
 
@@ -12,7 +13,6 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
   const [data, setData] = useState<Dashboard | null>(null);
   const completion=useImmediateCompletions((data?.nudges??[]).flatMap(n=>[...(n.item_id?[n.item_id]:[]),...(n.items??[]).map(i=>i.id)]));
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const execute = async (n:Nudge, action:string) => {
     const r=await api.actNudge(n.id,action);setNotice(r.message);
@@ -31,12 +31,6 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  const briefing = async () => {
-    setBusy(true);
-    try { await api.runProactive(true); load(); } catch (e) { setError((e as Error).message); }
-    setBusy(false);
-  };
-
   if (error) return <p className="text-danger text-sm">{error}</p>;
   if (!data) return <p className="text-muted text-sm">Loading…</p>;
 
@@ -54,19 +48,7 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
         Ask your Chief of Staff anything…
       </button>
 
-      {data.pending.length > 0 && (
-        <Card title="Needs your approval">
-          <div className="space-y-2">
-            {data.pending.map((a) => (
-              <div key={a.id} className="flex items-center gap-2">
-                <p className="flex-1 text-[15px]">{a.description}</p>
-                <Button variant="soft" onClick={async () => { await api.decide(a.id, "reject"); load(); }}>Decline</Button>
-                <Button onClick={async () => { await api.decide(a.id, "approve"); load(); }}>Approve</Button>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <Approvals refreshKey={refreshKey} onChanged={load} />
 
       {groupNudges(data.nudges.filter(n=>!completion.hidden.has(n.item_id??''))).map(([title, list]) => (
         <Section key={title} title={title} count={list.length}>
@@ -132,10 +114,6 @@ export default function Today({ name, onOpenItem, goChat, refreshKey }: {
             <div className="text-[10px] text-muted leading-tight">{k === "todo" ? "To-do" : KIND_META[k].plural}</div>
           </div>
         ))}
-      </div>
-
-      <div className="flex justify-center">
-        <Button variant="ghost" onClick={briefing} disabled={busy}>{busy ? "Preparing…" : "Brief me now"}</Button>
       </div>
     </div>
   );

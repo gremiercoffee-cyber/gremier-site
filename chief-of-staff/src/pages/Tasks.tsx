@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { api, type RoutineRow, type RoutineSchedule, type SituationRow } from "../api";
 import { Button, Card, Empty, Markdown, timeAgo } from "../components/ui";
 import Missions from "./Missions";
-import AiJobApprovals from '../components/AiJobApprovals';
 import HelperJobs from '../components/HelperJobs';
 import { ResearchList } from "../components/ResearchChats";
 import type { JobChatRow } from "../api";
@@ -45,7 +44,6 @@ export default function Tasks({ onAsk, onOpenReport, refreshKey, jobs, onOpenRes
   return (
     <div className="space-y-4">
       <HelperJobs refreshKey={refreshKey} />
-      <AiJobApprovals refreshKey={refreshKey} onChanged={load} />
       <ResearchList jobs={jobs} onOpen={onOpenResearch} onChanged={onJobsChanged} onNew={() => onAsk("Research ")} />
       <Missions embedded refreshKey={refreshKey} onAsk={onAsk} />
       {list.length > 0 && (

@@ -1,5 +1,6 @@
 import type {HashgachaCampaign} from '../shared/hashgacha';
 import type {MeetingPrepState} from '../shared/meeting-prep';
+import type { ApprovalCard } from "../shared/types";
 import type {
   ShoppingConfig, ShoppingState,
 } from '../shared/shopping';
@@ -210,6 +211,8 @@ export const api = {
   dismissNudge: (id: string) => request("POST", `/api/nudges/${id}/dismiss`),
   runProactive: (briefing = false) => request("POST", "/api/proactive/run", { briefing }),
   decide: (id: string, decision: "approve" | "reject") => request<{ outcome: string }>("POST", `/api/actions/${id}/${decision}`),
+  approvals: () => request<ApprovalCard[]>("GET", "/api/approvals"),
+  decideApproval: (source: string, id: string, decision: "approve" | "reject") => request<{ outcome?: string }>("POST", `/api/approvals/${source}/${id}/${decision}`),
   settings: () => request<Settings>("GET", "/api/settings"),
   saveSettings: (s: Partial<Settings>) => request<Settings>("PUT", "/api/settings", s),
   usage: (since?: string) => request<{ model: string; purpose: string; calls: number; input_tokens: number; output_tokens: number; cached_tokens: number }[]>("GET", `/api/usage${since ? `?since=${encodeURIComponent(since)}` : ""}`),

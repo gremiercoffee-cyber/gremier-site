@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync,readdirSync} from 'node:fs';import {build} from 'esbuild';import {createHash} from 'node:crypto';
 import {promptFor,THREAD} from '../runner/chief-chat-relay.mjs';
-const buildResult=await build({stdin:{contents:"export {chatgptRelayRoute,RELAY_ORIGIN,RELAY_RESOURCE} from './worker/chatgpt-relay';export {default as worker} from './worker/index';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
+const buildResult=await build({stdin:{contents:"export {chatgptRelayRoute,RELAY_ORIGIN,RELAY_RESOURCE} from './worker/chatgpt-relay';export {listApprovals,decideApproval} from './worker/approvals';export {findProblems,checkBroken} from './worker/broken';export {default as worker} from './worker/index';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
 const m=await import('data:text/javascript;base64,'+Buffer.from(buildResult.outputFiles[0].text).toString('base64'));
 const O=m.RELAY_ORIGIN,R=m.RELAY_RESOURCE,callback='https://chatgpt.com/connector_platform_oauth_redirect';
 function setup(){
@@ -23,7 +23,7 @@ const tool=(h,token,name,args={})=>h.call('/api/mcp','POST',{jsonrpc:'2.0',id:5,
 test('MCP discovery is public but every private tool requires a separate OAuth grant',async()=>{
  const h=setup(),meta=await h.call('/.well-known/oauth-protected-resource');assert.equal(meta.data.resource,R);
  const hello=await h.call('/api/mcp','POST',{id:1,method:'initialize'});assert.equal(hello.data.result.serverInfo.name,'chief-of-staff');
- const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_my_day','get_reminders','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_alumni_visits','get_projects','find_research','draft_email','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
+ const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_my_day','get_reminders','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_alumni_visits','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
  assert.equal((await tool(h,null,'chief_of_staff_connection')).status,401);assert.equal((await tool(h,'owner-fixture','chief_of_staff_connection')).status,401);
  assert.ok(!JSON.stringify(tools.data).includes('owner-fixture'));assert.ok(tools.data.result.tools.every(t=>['cos.relay','cos.tasks.read','cos.tasks.write','cos.life.read','cos.drafts.write'].includes(t.securitySchemes[0].scopes[0])));
 });
@@ -124,5 +124,63 @@ test('when Codex cannot take relay work it goes to the Claude routine, answers o
   // Backup set to the API: never fired at Claude.
   h.db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_backup','api')").run();h.db.prepare('UPDATE cos_relay_status SET seen_at=0').run();
   assert.equal((await tool(h,g.access_token,'ask_chief_of_staff',{message:'Other',request_key:'c3'})).data.result.structuredContent.state,'queued');assert.equal(fired.length,1);
+ }finally{globalThis.fetch=original;}
+});
+
+test('ChatGPT saves what the owner says into Chief of Staff: memories, item changes and watch rules, retry-safe',async()=>{
+ const h=setup(),g=await grant(h,'cos.relay cos.tasks.read cos.tasks.write cos.life.read cos.drafts.write');
+ const original=globalThis.fetch;globalThis.fetch=async()=>{throw Error('no network');};
+ try{
+  const mem={content:'Our bottle supplier is Dana at Glasspack',category:'business',area:'coffee',request_key:'m1'};
+  const a=await tool(h,g.access_token,'remember',mem);assert.equal(a.data.result.structuredContent.saved,true);await tool(h,g.access_token,'remember',mem);
+  assert.equal(h.db.prepare("SELECT count(*) n FROM memories WHERE content LIKE '%Glasspack%'").get().n,1);
+  const t=new Date().toISOString();h.db.prepare("INSERT INTO items(id,kind,title,status,priority,category,source,created_at,updated_at) VALUES('i1','task','Call Dana','open',2,'coffee','test',?,?)").run(t,t);
+  const found=(await tool(h,g.access_token,'find_items',{query:'Dana'})).data.result.structuredContent.items;assert.equal(found[0].item_id,'i1');
+  assert.equal((await tool(h,g.access_token,'update_item',{item_id:'i1',expected_title:'Wrong',status:'done',request_key:'u0'})).data.result.isError,true);
+  const up=await tool(h,g.access_token,'update_item',{item_id:'i1',expected_title:'Call Dana',title:'Call Dana about bottles',due_at:'2099-01-02T10:00:00+02:00',request_key:'u1'});
+  assert.equal(up.data.result.structuredContent.item.title,'Call Dana about bottles');assert.equal(h.db.prepare("SELECT due_at FROM items WHERE id='i1'").get().due_at,'2099-01-02T08:00:00.000Z');
+  await tool(h,g.access_token,'update_item',{item_id:'i1',expected_title:'Call Dana about bottles',status:'done',request_key:'u2'});
+  assert.equal(h.db.prepare("SELECT status,completion_source FROM items WHERE id='i1'").get().completion_source,'chatgpt');
+  const w=await tool(h,g.access_token,'watch_for',{instruction:'an alumnus says he is visiting',action:'notify',request_key:'w1'});
+  assert.equal(w.data.result.isError,true,'keyword generation needs the model; failure must not save a half rule');
+  assert.equal(h.db.prepare('SELECT count(*) n FROM watches').get().n,0);
+  const cal=await tool(h,g.access_token,'add_calendar_event',{title:'Meet Dana',start:'2099-01-03T15:00:00+02:00',request_key:'c1'});assert.equal(cal.data.result.isError,true);
+  assert.match(cal.data.result.content[0].text,/Google/);
+  assert.equal(h.db.prepare('SELECT count(*) n FROM cos_relay_requests').get().n,0);
+ }finally{globalThis.fetch=original;}
+});
+test('approvals: one list of short cards across emails, WhatsApps and alumni updates; deciding goes to the owning system',async()=>{
+ const h=setup(),t=new Date().toISOString();
+ h.db.prepare("INSERT INTO pending_actions(id,action,payload,description,created_at) VALUES('a1','send_gmail_draft',?, 'Send email to dana@x.com: Prices',?)").run(JSON.stringify({draft_id:'d1',account:'me@gmail.com',to:'dana@x.com',subject:'Prices for 1L bottles',preview:'Hi Dana, could you send prices'}),t);
+ h.db.prepare("INSERT INTO pending_actions(id,action,payload,description,created_at) VALUES('a2','delete_item','{\"id\":\"zz\"}','Delete the task “Old thing”',?)").run(t);
+ h.db.prepare("INSERT INTO whatsapp_outbox(id,recipient,text,status,created_at,updated_at) VALUES('w1','Moshe','See you at 5','pending',?,?)").run(t,t);
+ const cards=await m.listApprovals(h.env);
+ const email=cards.find(c=>c.id==='a1');assert.equal(email.kind,'email');assert.equal(email.title,'Email to dana@x.com');assert.equal(email.detail,'Prices for 1L bottles');assert.equal(email.approve,'Send');assert.ok(email.link.includes('#drafts'));
+ assert.equal(cards.find(c=>c.id==='w1').title,'WhatsApp to Moshe');assert.equal(cards.find(c=>c.id==='a2').kind,'delete');
+ assert.ok(cards.every(c=>c.title.length<=100));
+ const r=await m.decideApproval(h.env,'whatsapp','w1','reject');assert.match(r.outcome,/Nothing was sent/);assert.equal(h.db.prepare("SELECT status FROM whatsapp_outbox WHERE id='w1'").get().status,'cancelled');
+ await m.decideApproval(h.env,'action','a2','reject');assert.equal(h.db.prepare("SELECT status FROM pending_actions WHERE id='a2'").get().status,'rejected');
+ await assert.rejects(()=>m.decideApproval(h.env,'nope','x','approve'));
+ const api=await h.call('/api/approvals','GET',undefined,{authorization:'Bearer owner-fixture'});assert.equal(api.status,200);assert.equal(api.data.length,1);
+});
+test('broken alerts: only real breakage, computer-off is quiet, one alert per problem that clears when fixed',async()=>{
+ const h=setup(),now=Date.parse('2026-11-04T10:00:00Z'),iso=ms=>new Date(ms).toISOString();
+ const set=(k,v)=>h.db.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)').run(k,JSON.stringify(v));
+ // Computer off: every helper silent for hours, nothing is "broken".
+ set('bridge_last_seen',iso(now-5*3600_000));set('codex_runner',{seen_at:iso(now-5*3600_000)});
+ assert.deepEqual(await m.findProblems(h.env,now),[]);
+ // Computer on (Codex reporting) but the WhatsApp helper stopped an hour ago.
+ set('codex_runner',{seen_at:iso(now-60_000)});
+ const p=await m.findProblems(h.env,now);assert.deepEqual(p.map(x=>x.key),['helper:whatsapp']);
+ const original=globalThis.fetch;globalThis.fetch=async()=>new Response('',{status:201});
+ try{
+  assert.equal((await m.checkBroken(h.env,now)).sent,1);
+  set('codex_runner',{seen_at:iso(now+14*60_000)});assert.equal((await m.checkBroken(h.env,now+15*60_000)).sent,0);
+  // Computer goes off: the alert neither clears nor repeats.
+  await m.checkBroken(h.env,now+5*3600_000);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='broken' AND dismissed=0").get().n,1);
+  set('codex_runner',{seen_at:iso(now+29*60_000)});
+  assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='broken' AND dismissed=0").get().n,1);
+  set('bridge_last_seen',iso(now+20*60_000));await m.checkBroken(h.env,now+30*60_000);
+  assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='broken' AND dismissed=0").get().n,0);
  }finally{globalThis.fetch=original;}
 });

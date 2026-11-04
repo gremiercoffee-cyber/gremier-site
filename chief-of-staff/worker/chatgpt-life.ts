@@ -5,7 +5,9 @@
 import type {Env} from './env';
 import {all,first,run,now,uid,createItem,getSettings,HttpError} from './db';
 import {assistantTaskBrief} from './assistant-quick';
-import {calendarLookup,searchEmail,readThread,createDraft} from './google';
+import {calendarLookup,searchEmail,readThread,createDraft,addCalendarEvent} from './google';
+import {updateItem} from './db';
+import {recallMemories} from './memory';
 import {TASK_WRITE} from './chatgpt-tasks';
 
 export const LIFE_READ='cos.life.read',DRAFT_WRITE='cos.drafts.write';
@@ -26,6 +28,14 @@ export const lifeTools=[
  {name:'get_alumni_visits',title:'Alumni visit replies',scope:LIFE_READ,description:'Status of the alumni Yeshiva-visit tracker: counts by status, replies awaiting the owner\'s approval, and recent captured replies. Read-only; approving or writing to the sheet happens in Chief of Staff. '+UNTRUSTED,inputSchema:obj({}),annotations:ro},
  {name:'get_projects',title:'My projects',scope:LIFE_READ,description:'Active and paused projects with their area and number of open tasks.',inputSchema:obj({}),annotations:ro},
  {name:'find_research',title:'Find saved research and reports',scope:LIFE_READ,description:'Find finished research results and reports already saved in Chief of Staff (research chats and scheduled reports), optionally matching text. Use this before queueing new research with ask_chief_of_staff.',inputSchema:obj({query:{type:'string',maxLength:120},limit:{type:'integer',minimum:1,maximum:8}}),annotations:ro},
+ {name:'remember',title:'Remember this',scope:TASK_WRITE,description:'Save a lasting fact, decision, preference or piece of context the owner tells you ("my supplier is Dana", "we decided to price the 1L at 45"). Saved to Chief of Staff memory so every future chat can recall it. If it has a time, also use add_reminder or add_calendar_event. One fact per call; pass memory_id to correct an existing memory.',inputSchema:obj({content:{type:'string',maxLength:1000},category:{type:'string',enum:['fact','preference','person','business','personal']},area:{type:'string',enum:CATS},memory_id:{type:'string',maxLength:100},request_key:key},['content','request_key']),annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}},
+ {name:'recall',title:'Recall from memory',scope:LIFE_READ,description:'Search everything Chief of Staff remembers (facts, decisions, preferences, people). Use it whenever the owner refers to something from before, or before answering about his business, people or plans.',inputSchema:obj({query:{type:'string',maxLength:200}},['query']),annotations:ro},
+ {name:'find_items',title:'Find tasks, reminders and waiting items',scope:LIFE_READ,description:'Search all Chief of Staff items (tasks, reminders, commitments, waiting-for, ideas) by text, including done or dropped ones. Use it to get an item_id before update_item.',inputSchema:obj({query:{type:'string',maxLength:160},status:{type:'string',enum:['open','done','dropped','any']}},['query']),annotations:ro},
+ {name:'update_item',title:'Change a task, reminder or waiting item',scope:TASK_WRITE,description:'Change one item the owner identified: rename, reschedule (due_at), mark done or dropped, reopen, move area or project, set the person, add notes, or turn it into a waiting-for. Use its real item_id and current title from get_tasks/find_items; never guess.',inputSchema:obj({item_id:{type:'string',maxLength:100},expected_title:{type:'string',maxLength:300},title:{type:'string',maxLength:180},due_at:{type:['string','null'],description:'ISO with timezone offset, or null to clear'},status:{type:'string',enum:['open','done','dropped']},kind:{type:'string',enum:['task','reminder','commitment','waiting','idea']},category:{type:'string',enum:CATS},project:{type:'string',maxLength:120,description:'Project name; empty string removes it'},person:{type:'string',maxLength:120},notes:{type:'string',maxLength:2000},request_key:key},['item_id','expected_title','request_key']),annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:false}},
+ {name:'add_calendar_event',title:'Add to my calendar',scope:TASK_WRITE,description:'Add an event to the owner\'s Google Calendar when he asks ("put a meeting with Dana tomorrow at 3"). If the day or time is ambiguous, confirm in one short line first. Default length 1 hour.',inputSchema:obj({title:{type:'string',maxLength:200},start:{type:'string',description:'ISO with timezone offset (YYYY-MM-DD when all_day)'},end:{type:'string',description:'ISO with timezone offset; default start + 1h'},all_day:{type:'boolean'},location:{type:'string',maxLength:300},notes:{type:'string',maxLength:2000},account:{type:'string',description:'Which Google account; default the first'},request_key:key},['title','start','request_key']),annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true}},
+ {name:'watch_for',title:'Watch my WhatsApp for something',scope:TASK_WRITE,description:'Create or change a standing rule: Chief of Staff watches incoming WhatsApp messages for what the owner describes ("tell me when an alumnus says he\'s coming in January", "add a task when someone asks for a price") and either notifies him or adds a task. To turn one off pass its watch_id (from get_watches) with active=false.',inputSchema:obj({instruction:{type:'string',maxLength:500},action:{type:'string',enum:['notify','todo']},task_title:{type:'string',maxLength:180,description:'For todo, e.g. "Reply to {name} about prices"'},category:{type:'string',enum:CATS},watch_id:{type:'string',maxLength:100},active:{type:'boolean'},request_key:key},['instruction','action','request_key']),annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}},
+ {name:'get_watches',title:'My WhatsApp watch rules',scope:LIFE_READ,description:'Standing WhatsApp watch rules, whether each is on, and how often it matched.',inputSchema:obj({}),annotations:ro},
+ {name:'get_approvals',title:'What needs my OK',scope:LIFE_READ,description:'Everything waiting for the owner\'s approval in Chief of Staff: emails to send, WhatsApps, alumni sheet updates, AI jobs. Read-only: approving happens only in the Chief of Staff app (Today screen).',inputSchema:obj({}),annotations:ro},
  {name:'draft_email',title:'Draft an email for approval',scope:DRAFT_WRITE,description:'Only when the owner asks to write/send an email. Saves a Gmail draft and puts a "Send this email?" approval in Chief of Staff (app and Telegram). Nothing is sent until the owner taps Approve there; tell them that, and show the draft text. For a reply pass thread_id; for a new email pass to and subject. Write in the owner\'s voice and language.',inputSchema:obj({to:{type:'string',maxLength:300},subject:{type:'string',maxLength:300},body:{type:'string',maxLength:20000},thread_id:{type:'string',maxLength:100},account:{type:'string',description:'Which Google account to send from (new emails)'},request_key:key},['body','request_key']),annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true}},
 ];
 export const lifeToolNames=new Set(lifeTools.map(t=>t.name));
@@ -33,6 +43,8 @@ export const lifeToolNames=new Set(lifeTools.map(t=>t.name));
 const str=(v:unknown,max:number)=>typeof v==='string'&&v.trim()?v.trim().slice(0,max):undefined;
 const iso=(v:unknown)=>{if(typeof v!=='string'||!/(?:Z|[+-]\d{2}:\d{2})$/.test(v)||!Number.isFinite(Date.parse(v)))throw new HttpError(400,'An exact date and time with timezone is required.');return new Date(v).toISOString();};
 const cut=(v:unknown,n:number)=>typeof v==='string'&&v.length>n?v.slice(0,n)+'…':v;
+/** Google failures the owner can act on (not connected, reconnect needed) are shown as they are. */
+const google=async<T>(p:Promise<T>)=>{try{return await p;}catch(e){const m=(e as Error).message||'';if(m.length<300&&!/[{}<]/.test(m)&&/google|reconnect|connected|calendar|gmail/i.test(m))throw new HttpError(400,m);throw e;}};
 const digest=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(n=>n.toString(16).padStart(2,'0')).join('');
 
 /** Same receipt table as the task tools: a retry with the same key returns the first result instead of repeating. */
@@ -84,8 +96,8 @@ export async function lifeCall(env:Env,grant:string,name:string,a:Record<string,
    return once(env,grant,a,{name,title,category,due},async()=>{const i=await createItem(env,{title,category,due_at:due,kind:'reminder',source:'chatgpt'} as never);return {saved:true,item:{id:i.id,title:i.title,kind:i.kind,due_at:i.due_at,due_local:local(new Date(i.due_at!))}};});
   }
   case 'get_waiting':return waiting(env);
-  case 'search_email':{const q=str(a.query,300);if(!q)throw new HttpError(400,'What should I search for?');return {threads:await searchEmail(env,q,str(a.account,200),8),note:UNTRUSTED};}
-  case 'read_email_thread':{const t=str(a.thread_id,100);if(!t)throw new HttpError(400,'thread_id is required.');return {thread:await readThread(env,t,str(a.account,200)),note:UNTRUSTED};}
+  case 'search_email':{const q=str(a.query,300);if(!q)throw new HttpError(400,'What should I search for?');return {threads:await google(searchEmail(env,q,str(a.account,200),8)),note:UNTRUSTED};}
+  case 'read_email_thread':{const t=str(a.thread_id,100);if(!t)throw new HttpError(400,'thread_id is required.');return {thread:await google(readThread(env,t,str(a.account,200))),note:UNTRUSTED};}
   case 'search_whatsapp':return (await import('./whatsapp')).searchWhatsApp(env,{query:str(a.query,160),chat:str(a.chat,120),days:Number(a.days)||7});
   case 'get_alumni_visits':{const s:any=await (await import('./alumni-visits')).alumniStatus(env,false);return {enabled:s.enabled,counts:s.counts,awaiting_your_approval:s.proposals,recent:s.recent,note:'Approvals and sheet writes happen in Chief of Staff. '+UNTRUSTED};}
   case 'get_projects':return {projects:await all(env,"SELECT p.id,p.name,p.area,p.status,substr(p.description,1,300) AS description,(SELECT count(*) FROM items i WHERE i.project_id=p.id AND i.status='open') AS open_items FROM projects p WHERE p.status!='done' ORDER BY p.updated_at DESC LIMIT 40")};
@@ -96,14 +108,51 @@ export async function lifeCall(env:Env,grant:string,name:string,a:Record<string,
    const each=Math.floor(12000/Math.max(1,chats.length+reports.length));
    return {research_chats:chats.map(c=>({...c,result:cut(c.result,each)})),reports:reports.map(r=>({...r,report:cut(r.report,each)}))};
   }
+  case 'remember':{
+   const content=str(a.content,1000);if(!content)throw new HttpError(400,'What should I remember?');
+   const category=['fact','preference','person','business','personal'].includes(String(a.category))?String(a.category):'fact',area=CATS.includes(String(a.area))?String(a.area):null,mid=str(a.memory_id,100);
+   return once(env,grant,a,{name,content,category,area,mid},async()=>{const t=now();
+    if(mid){const r=await run(env,'UPDATE memories SET content=?,updated_at=? WHERE id=?',content,t,mid);if(!r.meta.changes)throw new HttpError(404,'That memory was not found.');return {saved:true,updated:true,memory_id:mid};}
+    const id=uid();await run(env,'INSERT INTO memories (id,category,content,importance,status,area,question,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',id,category,content,2,'confirmed',area,null,t,t);return {saved:true,memory_id:id};});
+  }
+  case 'recall':{const q=str(a.query,200);if(!q)throw new HttpError(400,'What should I look for?');const m=await recallMemories(env,q,15);return {memories:m.map((x:any)=>({memory_id:x.id,content:x.content,category:x.category,area:x.area,updated_at:x.updated_at}))};}
+  case 'find_items':{
+   const q=str(a.query,160);if(!q)throw new HttpError(400,'What should I look for?');const st=['open','done','dropped'].includes(String(a.status))?String(a.status):null,like=`%${q}%`;
+   return {items:await all(env,`SELECT i.id AS item_id,i.kind,i.title,i.status,i.due_at,i.person,i.category,p.name AS project FROM items i LEFT JOIN projects p ON p.id=i.project_id WHERE (i.title LIKE ? OR i.notes LIKE ? OR i.person LIKE ?) ${st?'AND i.status=?':''} ORDER BY i.status='open' DESC,i.updated_at DESC LIMIT 25`,like,like,like,...(st?[st]:[]))};
+  }
+  case 'update_item':{
+   const id=str(a.item_id,100)??'',cur=await first<any>(env,'SELECT id,title FROM items WHERE id=?',id);
+   if(!cur||cur.title!==a.expected_title)throw new HttpError(409,'The item changed or could not be identified. Find it again first.');
+   const patch:Record<string,unknown>={};
+   for(const f of ['title','status','kind','category','person','notes'] as const)if(a[f]!==undefined)patch[f]=a[f];
+   if(a.due_at!==undefined)patch.due_at=a.due_at===null?null:iso(a.due_at);
+   if(a.project!==undefined){const pn=String(a.project).trim();if(!pn)patch.project_id=null;else{const pr=await first<{id:string}>(env,"SELECT id FROM projects WHERE lower(name)=lower(?) AND status!='done'",pn)??await first<{id:string}>(env,"SELECT id FROM projects WHERE name LIKE ? AND status!='done' ORDER BY updated_at DESC LIMIT 1",`%${pn}%`);if(!pr)throw new HttpError(404,`No active project called "${pn}".`);patch.project_id=pr.id;}}
+   if(!Object.keys(patch).length)throw new HttpError(400,'Nothing to change.');
+   return once(env,grant,a,{name,id,patch},async()=>{const i=await updateItem(env,id,patch as never);if(patch.status==='done')await run(env,"UPDATE items SET completion_source='chatgpt' WHERE id=?",id);return {saved:true,item:{item_id:i.id,title:i.title,kind:i.kind,status:i.status,due_at:i.due_at,category:i.category}};});
+  }
+  case 'add_calendar_event':{
+   const title=str(a.title,200);if(!title)throw new HttpError(400,'The event needs a title.');
+   const all_day=a.all_day===true,start=all_day?String(a.start??'').slice(0,10):iso(a.start);
+   if(all_day&&!/^\d{4}-\d{2}-\d{2}$/.test(start))throw new HttpError(400,'An all-day event needs a YYYY-MM-DD date.');
+   const end=all_day?(a.end?String(a.end).slice(0,10):new Date(Date.parse(start)+86400_000).toISOString().slice(0,10)):(a.end?iso(a.end):new Date(Date.parse(start)+3600_000).toISOString());
+   if(!all_day&&Date.parse(end)<=Date.parse(start))throw new HttpError(400,'The end must be after the start.');
+   return once(env,grant,a,{name,title,start,end,all_day},async()=>({saved:true,...await google(addCalendarEvent(env,{title,start,end,all_day,location:str(a.location,300),description:str(a.notes,2000),account:str(a.account,200)})),start_local:all_day?start:local(new Date(start))}));
+  }
+  case 'watch_for':{
+   const instruction=str(a.instruction,500);if(!instruction)throw new HttpError(400,'What should I watch for?');
+   const w={id:str(a.watch_id,100),instruction,action:a.action==='notify'?'notify':'todo',todo_title:str(a.task_title,180),category:CATS.includes(String(a.category))?String(a.category):undefined,active:a.active!==false};
+   return once(env,grant,a,{name,...w},async()=>{const {saveWatch}=await import('./watches');const r=await saveWatch(env,w);return {saved:true,watch_id:r.watch.id,active:!!r.watch.active,action:r.watch.action};});
+  }
+  case 'get_watches':return {watches:await all(env,'SELECT id AS watch_id,instruction,action,todo_title,category,active,hits FROM watches ORDER BY active DESC,created_at DESC LIMIT 40')};
+  case 'get_approvals':{const {listApprovals}=await import('./approvals');return {approvals:(await listApprovals(env)).map(c=>({kind:c.kind,title:c.title,detail:c.detail,preview:c.preview})),note:'Approve or decline these in the Chief of Staff app (Today screen). They cannot be approved from ChatGPT.'};}
   case 'draft_email':{
    const body=str(a.body,20000);if(!body)throw new HttpError(400,'The email needs a body.');
    const opts={threadId:str(a.thread_id,100),to:str(a.to,300),subject:str(a.subject,300),body,account:str(a.account,200)};
    if(!opts.threadId&&(!opts.to||!opts.subject))throw new HttpError(400,'A new email needs to and subject (or pass thread_id for a reply).');
    return once(env,grant,a,{name,...opts},async()=>{
-    const d=await createDraft(env,opts);
-    const id=uid(),desc=`Send email from ${d.from_account} to ${d.to}: “${d.subject}” (drafted in ChatGPT; review it in Gmail Drafts)`;
-    await run(env,'INSERT INTO pending_actions (id,action,payload,description,created_at) VALUES (?,?,?,?,?)',id,'send_gmail_draft',JSON.stringify({draft_id:d.draft_id,account:d.from_account,to:d.to,subject:d.subject}),desc,now());
+    const d=await google(createDraft(env,opts));
+    const id=uid(),desc=`Send email to ${d.to}: ${d.subject}`;
+    await run(env,'INSERT INTO pending_actions (id,action,payload,description,created_at) VALUES (?,?,?,?,?)',id,'send_gmail_draft',JSON.stringify({draft_id:d.draft_id,account:d.from_account,to:d.to,subject:d.subject,preview:body.slice(0,400)}),desc,now());
     return {saved_as_draft:true,sent:false,approval_id:id,status:'waiting_for_owner_approval',from:d.from_account,to:d.to,subject:d.subject,open_in_gmail:d.open_in_gmail,next:'Approve "Send" in Chief of Staff (app or Telegram) to send it, or edit/send it yourself from Gmail Drafts.'};
    });
   }
