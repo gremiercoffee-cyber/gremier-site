@@ -21,7 +21,7 @@ import { activeProjects } from "./projectmatch";
 import { prepareWhatsApps } from "./contacts";
 import { createJob } from "./browser";
 import { fileForModel, fileInfo, fillForm, findEmailFiles, recentFiles, saveVault, signFile, vaultSummary } from "./documents";
-import { hubCall, saveCoffeeRule, setCoffeeStock } from "./hub";
+import { coffeeChange, hubCall, saveCoffeeRule } from "./hub";
 import { findGroup, groupsSummary, members, saveGroup } from "./groups";
 
 export const SYSTEM_PROMPT = `You are the user's personal Chief of Staff. You are one consistent assistant across text and voice, with a shared memory of their life and work.
@@ -449,9 +449,9 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "coffee_app",
-      description: "Read the Gremier Coffee admin app (live business data): outlook (how long each coffee lasts from actual deliveries, not hand-typed stock: fine / brew by a day / brew now, counting concentrate + bottles already made against the usual pace and scheduled deliveries; what to bottle; beans to order: use it for any 'do I need to brew?' or planning question), summary (today's jobs, next delivery, orders to fulfil, unpaid, money owed, concentrate, beans), schedule (jobs between dates), orders (to_fulfil|unpaid), stock, stores (with phone & prices), activity (timeline of deliveries/orders since a date). Read-only.",
+      description: "Read the Gremier Coffee admin app (live business data): outlook (how long each coffee lasts from actual deliveries, not hand-typed stock: fine / brew by a day / brew now, counting concentrate + bottles already made against the usual pace and scheduled deliveries; what to bottle; beans to order: use it for any 'do I need to brew?' or planning question), summary (today's jobs, next delivery, orders to fulfil, unpaid, money owed, concentrate, beans), schedule (jobs between dates), orders (to_fulfil|unpaid), stock, stores (with phone & prices), activity (timeline of deliveries/orders since a date), production_people (who can be credited with production work), marketing_products / marketing_sales (paid website sales per product per day, from/to) / marketing_inventory. Read-only.",
       input_schema: { type: "object", properties: {
-        action: { type: "string", enum: ["outlook", "summary", "schedule", "orders", "stock", "stores", "activity"] },
+        action: { type: "string", enum: ["outlook", "summary", "schedule", "orders", "stock", "stores", "activity", "production_people", "marketing_products", "marketing_sales", "marketing_inventory"] },
         from: { type: "string", description: "schedule: YYYY-MM-DD" }, to: { type: "string", description: "schedule: YYYY-MM-DD" },
         status: { type: "string", enum: ["to_fulfil", "unpaid"] }, since: { type: "string", description: "activity: ISO date" }, limit: { type: "integer" },
       }, required: ["action"] },
@@ -462,17 +462,18 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "coffee_update",
-      description: "Change the Gremier Coffee admin app when the user tells you what happened or what they have (text or voice): set_stock (\"I have 20 Classic liters\", \"14 liters of decaf concentrate\": the new amount), log_bottling (bottled: product, units; adds bottles, uses concentrate), log_labeling, start_brew (product, kg), complete_drain (product or job_id; adds concentrate), log_store_delivery (store, quantities {product_key: n}, date), complete_delivery (job_id or the next one due; quantities if different; a website order is marked fulfilled), adjust_stock (kind, product, delta), log_note (text). Product keys: classic_liter, sweetened_classic, house_blend, colombia_liter, decaf_liter, unfiltered_liter, classic_mini, vanilla_mini, original_mini, caramel_mini, house_blend_mini, dairy_free_mini, jerry_can, jerry_can_houseblend, jerry_can_colombia, jerry_can_decaf, jerry_can_unfiltered, syrups (vanilla_syrup…), dispenser. Coffees: classic, unfiltered, houseBlend, colombia, decaf. The app is updated at once.",
+      description: "Change the Gremier Coffee admin app when the user tells you what happened or what they have (text or voice): set_stock (\"I have 20 Classic liters\", \"14 liters of decaf concentrate\": the new amount), log_bottling (bottled: product, units; adds bottles, uses concentrate), log_labeling, start_brew (product, kg), complete_drain (product or job_id; adds concentrate), log_store_delivery (happened: store, quantities {product_key: n}, date), schedule_store_delivery (future: store, quantities, date, time), reschedule_job (job_id from schedule; new date/time, or new planned quantities), complete_delivery (job_id or the next one due; quantities if different; a website order is marked fulfilled), adjust_stock (kind, product, delta, reason), production_clock_in (worker_id) / production_clock_out (shift_id), log_note (text). Brew, drain, bottling and labeling are credited to the owner unless the user names someone else: then pass worker_id from production_people (never guess one). Product keys: classic_liter, sweetened_classic, house_blend, colombia_liter, decaf_liter, unfiltered_liter, classic_mini, vanilla_mini, original_mini, caramel_mini, house_blend_mini, dairy_free_mini, jerry_can, jerry_can_houseblend, jerry_can_colombia, jerry_can_decaf, jerry_can_unfiltered, syrups (vanilla_syrup…), dispenser. Coffees: classic, unfiltered, houseBlend, colombia, decaf. The app is updated at once.",
       input_schema: { type: "object", properties: {
-        action: { type: "string", enum: ["set_stock", "log_bottling", "log_labeling", "start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"] },
+        action: { type: "string", enum: ["set_stock", "log_bottling", "log_labeling", "start_brew", "complete_drain", "log_store_delivery", "schedule_store_delivery", "reschedule_job", "complete_delivery", "adjust_stock", "production_clock_in", "production_clock_out", "log_note"] },
         kind: { type: "string", enum: ["inventory", "concentrate", "beans", "labeled"], description: "set_stock / adjust_stock: bottles (inventory, default), concentrate liters, beans kg, labeled empties" },
         product: { type: "string" }, value: { type: "number", description: "set_stock: the amount they have now" },
         units: { type: "integer" }, kg: { type: "number" }, delta: { type: "number" }, job_id: { type: "string" },
-        store: { type: "string" }, quantities: { type: "object", additionalProperties: { type: "integer" } }, date: { type: "string" }, text: { type: "string" },
+        store: { type: "string" }, quantities: { type: "object", additionalProperties: { type: "integer" } }, date: { type: "string" }, time: { type: "string", description: "HH:MM" }, text: { type: "string" },
+        reason: { type: "string" }, worker_id: { type: "string" }, shift_id: { type: "string" },
       }, required: ["action"] },
       handler: async (input) => {
         const { action, ...args } = input as Record<string, unknown>;
-        const r = action === "set_stock" ? await setCoffeeStock(env, args as never) : await hubCall(env, String(action), args);
+        const r = await coffeeChange(env, String(action), args);
         note("coffee_update", `☕ App updated: ${String(action).replace(/_/g, " ")}`);
         return { done: true, app_updated: true, result: r };
       },
@@ -1123,7 +1124,7 @@ const GROUP_INFO: Record<string, string> = {
 };
 /** Rules that only matter with their tools: sent with the group, never otherwise. */
 const GROUP_RULES: Record<string, string> = {
-  coffee: "Coffee app: questions → coffee_app (outlook for anything about brewing, bottling or running low). When the user says what happened or what they have (\"bottled 24 classic\", \"delivered to Good Store: 6 classic, 4 vanilla\", \"I have 20 classic liters\", \"started a decaf brew\"), update the app with coffee_update right away, no approval; if the product or amount is unclear, ask first. Then confirm in one line what changed in the app (e.g. \"Done, app updated: Classic liters 30 → 20\"). How they run stock (\"decaf only to order, keep 2\") → coffee_rule, and mention the outlook now follows it.",
+  coffee: "Coffee app: questions → coffee_app (outlook for anything about brewing, bottling or running low). When the user says what happened or what they have (\"bottled 24 classic\", \"delivered to Good Store: 6 classic, 4 vanilla\", \"I have 20 classic liters\", \"started a decaf brew\"), update the app with coffee_update right away, no approval; if the product, store, amount or person is unclear, ask first, never guess. If the app refuses because stock changed, read it again and ask. Then confirm in one line what changed in the app (e.g. \"Done, app updated: Classic liters 30 → 20\"). How they run stock (\"decaf only to order, keep 2\") → coffee_rule, and mention the outlook now follows it.",
   worktime: "Free time (\"I'm here, I have 40 minutes, what should I do?\", \"I have time this afternoon\"): first look at what they usually do in that part of the day (their time blocks and areas in the context, and what they've told you), and at the coffee business: call coffee_app outlook and treat its summary (brew / bottle / order beans) as real tasks when it says so, including the honest \"you're fine for ~N days\" when nothing is needed. Then suggest 3-6 numbered options from their open tasks (search_items if they aren't in the context) and those coffee jobs that fit the time: overdue/due-soon and important first, then quick wins; each one line with a rough time (~15m). Skip things they're only waiting on others for (a long-quiet one can be \"follow up with X\"). Add one line on what's coming up next (meeting, deadline). Ask which they'll do. Things they tell you about how they like to use their time (\"afternoons are for coffee\") go to remember.",
   email: "When they want an email SENT to someone (\"email the suppliers\", \"send Dana an email asking…\"), use email_with_codex: Codex writes it and sends it from their Gmail after they tap Send in its chat. draft_email only when they just want a Gmail draft.",
   shopping: "Shopping goes only to the shopping-list tools (Store is the default list), never to tasks.",

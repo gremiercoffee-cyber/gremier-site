@@ -11,9 +11,11 @@ import { first, now, run } from "./db";
 import { notify } from "./push";
 
 const DEFAULT_URL = "https://ayuzmwpmhncxrugsyxmw.supabase.co/functions/v1/hub-api";
-export const HUB_READ_ACTIONS = ["summary", "outlook", "schedule", "orders", "stock", "stores", "activity"] as const;
+export const HUB_READ_ACTIONS = ["summary", "outlook", "schedule", "orders", "stock", "stores", "activity", "production_people", "marketing_products", "marketing_sales", "marketing_inventory"] as const;
 /** Changes, made only when the user asks in the chat; each is recorded in the app's timeline as Chief of Staff. */
-export const HUB_WRITE_ACTIONS = ["log_bottling", "log_labeling", "start_brew", "complete_drain", "log_store_delivery", "complete_delivery", "adjust_stock", "log_note"] as const;
+export const HUB_WRITE_ACTIONS = ["log_bottling", "log_labeling", "start_brew", "complete_drain", "log_store_delivery", "schedule_store_delivery", "reschedule_job", "complete_delivery", "set_stock", "adjust_stock", "production_clock_in", "production_clock_out", "log_note"] as const;
+/** Production steps the admin app attributes to a person ("owner" or a worker id from production_people). */
+const NEEDS_WORKER = ["start_brew", "complete_drain", "log_bottling", "log_labeling"];
 
 export interface CoffeeRule { mode?: "on_demand" | "normal"; keep?: number; note?: string }
 export async function coffeeRules(env: Env): Promise<Record<string, CoffeeRule>> {
@@ -39,18 +41,26 @@ export async function saveCoffeeRule(env: Env, input: { key?: string; mode?: str
   return { saved: !input.remove, key, rule: rules[key] ?? null, all_rules: rules };
 }
 
-/** "I have 20 Classic liters": sets stock to what the user has (the app takes changes, so this works out the difference). */
-export async function setCoffeeStock(env: Env, input: { kind?: string; product?: string; value?: number }) {
+/** "I have 20 Classic liters": reads the current amount, then sets the count. The app refuses it if stock moved in between. */
+export async function setCoffeeStock(env: Env, input: { kind?: string; product?: string; value?: number; qty?: number; reason?: string }) {
   const kind = ["inventory", "concentrate", "beans", "labeled"].includes(String(input.kind)) ? String(input.kind) : "inventory";
-  const product = String(input.product ?? "").trim(), value = Number(input.value);
+  const product = String(input.product ?? "").trim(), value = Number(input.value ?? input.qty);
   if (!product || !Number.isFinite(value) || value < 0) throw new Error("Say what and how much, e.g. 20 Classic liters.");
   const s = await hubCall(env, "stock") as { inventory: { product: string; qty: number }[]; concentrate_l: { type: string; liters: number }[]; beans_kg: { type: string; kg: number }[]; labeled: { product: string; qty: number }[] };
   const list = kind === "inventory" ? s.inventory.map((r) => [r.product, r.qty]) : kind === "concentrate" ? s.concentrate_l.map((r) => [r.type, r.liters])
     : kind === "beans" ? s.beans_kg.map((r) => [r.type, r.kg]) : s.labeled.map((r) => [r.product, r.qty]);
   const before = Number((list.find(([k]) => k === product) ?? [product, 0])[1]) || 0;
-  const delta = Math.round((value - before) * 1000) / 1000;
-  if (delta) await hubCall(env, "adjust_stock", { kind, product, delta });
-  return { app_updated: !!delta, kind, product, before, now: value, change: delta };
+  if (before === value) return { app_updated: false, kind, product, before, now: value, change: 0 };
+  await hubCall(env, "set_stock", { kind, product, qty: value, expected: before, reason: input.reason || "Counted (told Chief of Staff)" });
+  return { app_updated: true, kind, product, before, now: value, change: Math.round((value - before) * 1000) / 1000 };
+}
+
+/** One entry point for every coffee change (the chat and ChatGPT): set_stock reads first; production steps default to the owner. */
+export async function coffeeChange(env: Env, action: string, args: Record<string, unknown>) {
+  if (!(HUB_WRITE_ACTIONS as readonly string[]).includes(action)) throw new Error(`Not a coffee change: ${action}`);
+  if (action === "set_stock") return setCoffeeStock(env, args as never);
+  if (NEEDS_WORKER.includes(action) && !args.worker_id) args = { ...args, worker_id: "owner" };
+  return hubCall(env, action, args);
 }
 
 /** The coffee to-dos right now (brew / bottle / order beans), worked out from deliveries. [] when all is fine or not connected. */
