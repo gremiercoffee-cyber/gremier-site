@@ -21,13 +21,13 @@ export async function listApprovals(env:Env):Promise<ApprovalCard[]>{
  const [actions,whatsapps,alumni]=await Promise.all([
   all<any>(env,"SELECT id,action,payload,description,created_at FROM pending_actions WHERE status='pending' ORDER BY created_at DESC LIMIT 50"),
   all<any>(env,"SELECT id,recipient,text,created_at FROM whatsapp_outbox WHERE status='pending' ORDER BY created_at DESC LIMIT 50").catch(()=>[]),
-  all<any>(env,"SELECT id,sender,said_at,observation FROM alumni_visit_events WHERE status='awaiting_approval' ORDER BY said_at LIMIT 50").catch(()=>[]),
+  all<any>(env,"SELECT id,sender,said_at,observation,text FROM alumni_visit_events WHERE status='awaiting_approval' ORDER BY said_at LIMIT 50").catch(()=>[]),
  ]);
  const cards:ApprovalCard[]=[
   ...actions.map(actionCard),
   ...whatsapps.map(w=>({id:w.id,source:'whatsapp' as const,kind:'whatsapp' as const,title:`WhatsApp to ${short(w.recipient,60)}`,preview:short(w.text,280),approve:'Send',created_at:w.created_at})),
   ...alumni.map(e=>{const o=json(e.observation);const when=[o.arrival&&`arrives ${date(o.arrival)}`,o.leaving&&`leaves ${date(o.leaving)}`].filter(Boolean).join(' · ');
-   return{id:e.id,source:'alumni' as const,kind:'alumni' as const,title:`Alumni visit: ${short(o.name||e.sender,60)}`,detail:when||undefined,meta:'Updates the alumni sheet',approve:'Update sheet',created_at:e.said_at};}),
+   return{id:e.id,source:'alumni' as const,kind:'alumni' as const,title:`Alumni visit: ${short(o.name||e.sender,60)}`,detail:[when||'No dates yet',o.uncertain&&o.reason?`Check: ${short(o.reason,120)}`:''].filter(Boolean).join(' · '),preview:short(e.text,280),meta:'Adds to the alumni sheet',approve:'Add to sheet',created_at:e.said_at};}),
  ];
  return cards.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
 }
