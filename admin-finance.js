@@ -40,7 +40,7 @@
    const drawer=document.querySelector('.nav-drawer-item[onclick*="reports"]');if(drawer){const b=document.createElement('button');b.className='nav-drawer-item';b.textContent=icon+' '+label;b.onclick=()=>{root.showTab(id);root.closeNavDrawer?.();};drawer.insertAdjacentElement('afterend',b);}
   }
   get('tab-finance').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Receipts &amp; invoices</h1><p class="rc-sub">קבלות וחשבוניות</p></div><span data-action-menu="Receipt tools"><button class="btn btn-outline" id="financeReload">Refresh</button></span></div></header><p class="fw-note" id="financeStatus" role="status"></p>
-   <section class="fw-panel rc-new"><h2>New document</h2>
+   <section class="fw-panel rc-new"><details class="rc-fold" open id="manualDocFold"><summary><span class="rc-sec-ico" aria-hidden="true">✍️</span><h2>New document</h2></summary>
    <div id="manualReceiptForm">
    <div class="rc-step"><div class="rc-step-h"><span class="rc-num">1</span><b>Who is it for?</b></div>
     <label class="rc-search"><span aria-hidden="true">🔍</span><input class="form-input" id="receiptCustomerSearch" placeholder="Search name, store or ח.פ." aria-label="Search customers" autocomplete="off"></label>
@@ -62,7 +62,7 @@
     <label class="rc-toggle"><input type="checkbox" id="manualEmail"><span class="rc-switch" aria-hidden="true"></span><span>Email the PDF to the customer</span></label>
     <button class="rc-review" id="manualPreview">Review document →</button>
    </div>
-   </div></div><div id="manualReceiptReview" class="rc-reviewbox"></div><p class="fw-note" id="manualReceiptStatus" role="status"></p></section>
+   </div></div><div id="manualReceiptReview" class="rc-reviewbox"></div><p class="fw-note" id="manualReceiptStatus" role="status"></p></details></section>
    <section class="fw-panel"><details id="financeCustomerEditor"><summary>Saved customers & store details</summary><div class="fw-form"><label>Edit customer<select class="form-input" id="customerEdit"></select></label><label>Linked store<select class="form-input" id="customerStore"></select></label>${field('Official name','customerName','text','maxlength="100" autocomplete="off-customer" data-lpignore="true" data-1p-ignore')}${field('ח.פ. / עוסק · 9 digits','customerTax','text','inputmode="numeric" maxlength="9" autocomplete="off-customer" data-lpignore="true" data-1p-ignore')}${field('Email for receipts · optional','customerEmail','email','maxlength="50" autocomplete="off-customer" data-lpignore="true" data-1p-ignore')}${field('Phone · optional','customerPhone','tel','autocomplete="off-customer" data-lpignore="true" data-1p-ignore')}${field('Address · optional','customerAddress','text','maxlength="100" autocomplete="off-customer" data-lpignore="true" data-1p-ignore')}</div><div class="fw-actions"><button class="btn btn-outline" id="customerSave">Save customer</button><button class="btn btn-outline" id="customerNew">New customer</button><span data-action-menu="Customer actions"><button class="btn btn-red" id="customerArchive">Archive customer</button></span></div><p id="customerStatus" class="fw-note" role="status"></p></details></section>
    <section class="fw-panel"><details id="financeReceiptHistory"><summary>Receipt history</summary><div class="fw-form">${field('Filter customer / order','financeReceiptSearch')}${field('Payment year','financeReceiptYear','number','min="2020" max="2100"')}</div><p class="fw-note" id="financeReceiptTotal"></p><div class="table-wrap" id="financeReceiptList"></div><details class="fw-help"><summary>About this history</summary><p class="fw-note">Online and manually issued receipts, by payment date. Invoices and delivery estimates are excluded. Older FinBot-only receipts remain in the Stats snapshot; their PDFs are not synced here.</p></details></details></section>`;
   get('financeReload').onclick=loadFinance;
@@ -381,6 +381,7 @@
   await loadFinance();
   const c=customers.find(c=>c.store_id===storeId);
   if(!c)throw Error('Store customer details are unavailable. Save the store details and try again.');
+  if(get('manualDocFold'))get('manualDocFold').open=true;
   get('receiptCustomerSearch').value='';customerOptions();get('manualCustomer').value=c.id;
   await loadCustomerBills();setDocType('invoice_receipt');
   const wanted=new Set(billingIds);
