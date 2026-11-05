@@ -492,6 +492,8 @@ window.loadHtml2Canvas = function () {
     .bsc-card .bill-storehead-actions .btn { border-color:var(--border); color:var(--text2); }
     .bsc-sub span, .bsc-closed > summary span { background:#f1f1f3; }
     .bsc-thumb { width:30px; height:38px; }
+    .bsc-inv { flex:1 1 100%; border:1px solid #1c1c1c; background:#fff; color:#1c1c1c; border-radius:12px; padding:10px 14px; font:inherit; font-weight:800; font-size:.86rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .bsc-inv span { font-size:.72rem; font-weight:700; background:#f1f1f3; border-radius:99px; padding:2px 8px; }
     .bill-storehead { background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 16px; margin:20px 0 10px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
     .bill-storehead-top { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; }
     .bill-storehead-top b { font-size:1.05rem; font-weight:800; color:var(--cream); }
@@ -1218,7 +1220,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           </button>
         </div>
         <h2 class="ord-sec-h">Orders &amp; deliveries <span class="ord-sec-n" id="ordersOpenCount"></span>
-          <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="window.GremierRoute?.open()">🧭 Navigate</button><button type="button" class="ord-sec-btn" onclick="window.__gremierOpenLog?.({mode:'schedule'})">＋ Delivery</button></span></h2>
+          <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="window.GremierRoute?.open()">🧭 Navigate</button><button type="button" class="ord-sec-btn" onclick="window.__gremierOpenLog?.({mode:'schedule'})">＋ Delivery</button><button type="button" class="ord-sec-btn" onclick="window.GremierFinance?.openReceipt().catch(e=>alert(e.message))">🧾 Receipt</button></span></h2>
         <div class="oc-list" id="ordersBody"><div class="plk-empty"><div class="spinner"></div></div></div>
         <!-- Payment links still waiting for payment (hidden when none); create button is in the header. -->
         <div class="plk" id="ordersPayLinks">
@@ -7816,6 +7818,7 @@ function billStoreCard(storeId, list) {
     ${dots ? `<div class="bill-dots" aria-label="Last 12 months">${dots}</div>` : ''}
     <div class="bill-storehead-actions">
       <button type="button" class="bill-send" data-bill-share="${escAttr(storeId)}" ${owed > 0 ? '' : 'disabled'}>💬 ${owed > 0 ? 'Send unpaid' : 'Nothing unpaid'}</button>
+      <button type="button" class="bsc-inv" onclick="window.GremierStoreInvoices?.open('${escAttr(storeId)}',this)">🧾 Invoices &amp; receipts${open.length ? ` <span>${open.length} open</span>` : ''}</button>
       <button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(storeId)}">Pick months…</button>
       <button type="button" class="btn btn-outline btn-sm" onclick="openBillingDocuments('${escAttr(storeId)}')">Documents</button>
     </div>
@@ -10359,10 +10362,10 @@ PayMe goes back to charging on the regular billing day.`)) return;
 </script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261103-2"/>
 <script src="/admin-financials.js?v=20261103-5"></script>
-<link rel="stylesheet" href="/admin-finance.css?v=20261105-3"/>
+<link rel="stylesheet" href="/admin-finance.css?v=20261105-4"/>
 <script src="/admin-expense-cache.js?v=20261025-1"></script>
-<script src="/admin-finance.js?v=20261105-2"></script>
-<script src="/admin-store-invoices.js?v=20261105-3"></script>
+<script src="/admin-finance.js?v=20261105-3"></script>
+<script src="/admin-store-invoices.js?v=20261105-4"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
 <script src="/admin-revenue.js?v=20261104-1"></script>

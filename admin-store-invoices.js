@@ -1,4 +1,4 @@
-/* Store tax invoices (חשבונית מס) on the Receipts screen: one invoice per store per month, VAT on top.
+/* Store tax invoices (חשבונית מס): a drawer opened from each store's billing card. VAT on top of store prices.
    The store's official details are edited here and saved to the store. Issuing is official, so it
    always shows the invoices first and asks for confirmation. */
 (function(root){
@@ -18,65 +18,47 @@
   return r.data;
  }
  let current=null;
- function setup(){
-  const host=get('tab-finance');if(!host||get('storeInvoices'))return false;
-  const section=document.createElement('section');section.className='fw-panel';section.id='storeInvoices';
-  section.innerHTML=`<details class="rc-fold" open><summary><span class="rc-sec-ico" aria-hidden="true">🏪</span><h2>Store tax invoices</h2><span class="rc-sec-count" id="storeInvoiceCount"></span></summary><p class="fw-note">One invoice per month for each store, VAT (18%) on top. Tap a store to invoice it. When a store pays, issue its receipt below for the months paid.</p><p class="fw-note" id="storeInvoiceStatus" role="status"></p><div id="storeInvoiceList"></div><div id="storeInvoicePreview"></div><details class="fw-help"><summary>Issued invoices</summary><div id="storeInvoiceIssued"></div></details></details>`;
-  host.querySelector('.page-header')?.after(section);if(!section.parentNode)host.prepend(section);
-  drawer(section);
-  return true;
- }
- // One store's invoices open in a drawer (bottom sheet on phones). It shows while #storeInvoicePreview has content,
- // so every existing "close" path (Close, issued, combined) closes it too.
- function drawer(section){
-  const fresh=section.querySelector('#storeInvoicePreview');
-  if(get('sinvDrawer')){fresh?.remove();return;}
+ // The drawer: opened from a store's card (Stores → Billing). It shows while #storeInvoicePreview has content,
+ // so every "close" path (✕, outside tap, Esc, handing over to the receipt drawer) closes it.
+ function drawer(){
+  if(get('sinvDrawer'))return;
   const d=document.createElement('div');d.id='sinvDrawer';d.className='rc-drawer';d.hidden=true;
-  d.innerHTML='<div class="rc-drawer-bg"></div><aside class="rc-drawer-sheet" role="dialog" aria-modal="true" aria-label="Store tax invoices"><p class="rc-drawer-status" id="sinvDrawerStatus" role="status"></p></aside>';
-  d.querySelector('aside').prepend(fresh);document.body.append(d);
-  const close=()=>{const c=get('storeInvoiceCancel');if(c)c.click();else fresh.innerHTML='';};
+  d.innerHTML='<div class="rc-drawer-bg"></div><aside class="rc-drawer-sheet" role="dialog" aria-modal="true" aria-label="Store invoices and receipts"><div id="storeInvoicePreview"></div><p class="rc-drawer-status" id="storeInvoiceStatus" role="status"></p></aside>';
+  document.body.append(d);
+  const box=get('storeInvoicePreview'),close=()=>{current=null;box.innerHTML='';get('storeInvoiceStatus').textContent='';};
   d.querySelector('.rc-drawer-bg').onclick=close;
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!d.hidden)close();});
-  const mirror=()=>{const s=get('storeInvoiceStatus');get('sinvDrawerStatus').textContent=d.hidden?'':(s?.textContent||'');};
-  new MutationObserver(()=>{const open=!!fresh.firstChild;d.hidden=!open;document.body.classList.toggle('rc-drawer-open',open);mirror();}).observe(fresh,{childList:true});
-  const watch=()=>{const s=get('storeInvoiceStatus');if(s&&!s.dataset.mirrored){s.dataset.mirrored='1';new MutationObserver(mirror).observe(s,{childList:true,characterData:true,subtree:true});}};
-  watch();setInterval(watch,2000);
+  new MutationObserver(()=>{const open=!!box.firstChild;d.hidden=!open;document.body.classList.toggle('rc-drawer-open',open||get('rcDrawer')?.hidden===false);}).observe(box,{childList:true});
  }
- async function load(){
-  setup();const status=get('storeInvoiceStatus');if(!status)return;
-  try{
-   const [bills,customers,invoices]=await Promise.all([
-    sbc().from('store_billing').select('id,store_id,year,month,total,tax_invoice_id,stores(name)').is('paid_at',null).is('cancelled_at',null).gt('total',0).order('year').order('month'),
-    sbc().from('receipt_customers').select('store_id,name,tax_id,email').not('store_id','is',null).is('archived_at',null),
-    sbc().from('store_tax_invoices').select('id,store_id,customer_snapshot,billing_snapshot,net_minor,vat_minor,gross_minor,status,document_number,pdf_path,error_code,email_sent_at,email_error,issued_at,created_at').order('created_at',{ascending:false}).limit(200)]);
-   if(bills.error||customers.error||invoices.error)throw Error('Could not load store invoices.');
-   const byStore=new Map();
-   for(const b of bills.data.filter(b=>!b.tax_invoice_id)){const s=byStore.get(b.store_id)||{name:b.stores?.name||'Store',months:[]};s.months.push(b);byStore.set(b.store_id,s);}
-   const rows=[...byStore].map(([id,s])=>{const net=s.months.reduce((n,b)=>n+Math.round(Number(b.total)*100),0),c=customers.data.find(c=>c.store_id===id);return {id,...s,net,customer:c};}).sort((a,b)=>b.net-a.net);
-   get('storeInvoiceList').innerHTML=rows.length?`<div class="rc-inv-list">${rows.map(r=>`<div class="rc-inv-card"><div class="rc-inv-top"><b>${esc(r.name)}</b>${r.customer?.tax_id?'':'<span class="rc-tag">Needs ח.פ.</span>'}</div><div class="rc-inv-months">${r.months.map(m=>`<span>${esc(month(m))}</span>`).join('')}</div><div class="rc-inv-foot"><span><small>Before VAT</small>${money(r.net)}</span><span><small>With VAT</small><b>${money(r.months.reduce((n,b)=>{const x=Math.round(Number(b.total)*100);return n+x+vatOn(x);},0))}</b></span><button class="rc-inv-open" data-invoice-open="${esc(r.id)}">${r.customer?.tax_id?'Open →':'Add details →'}</button></div></div>`).join('')}</div>`:'<div class="rc-allclear">Every unpaid month is already invoiced.</div>';
-   if(get('storeInvoiceCount'))get('storeInvoiceCount').textContent=rows.length?rows.length+' to invoice':'all done';
-   get('storeInvoiceList').querySelectorAll('[data-invoice-open]').forEach(b=>b.onclick=()=>open(b.dataset.invoiceOpen,b));
-   const label=i=>(i.billing_snapshot||[]).map(month).join(', ');
-   get('storeInvoiceIssued').innerHTML=invoices.data.length?invoices.data.map(i=>`<div class="fw-row-card"><div><b>${esc(i.customer_snapshot?.name||'Store')}</b> · ${esc(label(i))} · ${money(i.gross_minor)} <small>${esc(i.status==='issued'?'חשבונית מס '+(i.document_number||'· number not read'):i.status==='needs_review'?'Needs review: '+(i.error_code||''):i.status)}${i.email_sent_at?' · emailed':i.email_error?' · email failed':''}</small></div><div class="fw-actions">${i.status==='issued'?`<button class="btn btn-outline btn-sm" data-invoice-pdf="${esc(i.id)}">Open PDF</button>`:''}${i.status==='issued'&&!i.document_number?`<button class="btn btn-outline btn-sm" data-invoice-number="${esc(i.id)}">Enter invoice number</button>`:''}${i.status==='needs_review'&&i.error_code!=='released'?`<button class="btn btn-outline btn-sm" data-invoice-release="${esc(i.id)}">Not in FinBot · free its month</button>`:''}</div></div>`).join(''):'<p class="fw-note">None yet.</p>';
-   const act=(sel,fn)=>get('storeInvoiceIssued').querySelectorAll(sel).forEach(b=>b.onclick=async()=>{b.disabled=true;try{await fn(Object.values(b.dataset)[0]);}catch(e){status.textContent=e.message;b.disabled=false;}});
-   act('[data-invoice-pdf]',async id=>{const r=await call({action:'pdf',id});root.open(r.url,'_blank','noopener');});
-   act('[data-invoice-number]',async id=>{const n=root.prompt('Invoice number as shown on the PDF (חשבונית מס …)');if(!n)return;await call({action:'set_number',id,number:n.trim()});await load();});
-   act('[data-invoice-release]',async id=>{if(!root.confirm('Only do this after checking in FinBot that this invoice was NOT created. Free its month for a new invoice?'))return;await call({action:'release',id,confirm_not_in_finbot:true});await load();});
-  }catch(e){status.textContent=e.message;}
+ // This store's issued tax invoices, with the follow-up tools (PDF, missing number, refused invoice).
+ async function issued(storeId){
+  const host=get('sinvIssued');if(!host)return;
+  const r=await sbc().from('store_tax_invoices').select('id,billing_snapshot,gross_minor,status,document_number,error_code,email_sent_at,email_error,created_at').eq('store_id',storeId).order('created_at',{ascending:false}).limit(60);
+  if(r.error){host.innerHTML='<p class="fw-note">Could not load issued invoices.</p>';return;}
+  const label=i=>(i.billing_snapshot||[]).map(month).join(', ');
+  if(get('sinvIssuedCount'))get('sinvIssuedCount').textContent=r.data.length||'';
+  host.innerHTML=r.data.length?r.data.map(i=>`<div class="sdw-inv"><div><b>${esc(label(i)||'Invoice')}</b><small>${esc(i.status==='issued'?'חשבונית מס '+(i.document_number||'· number not read'):i.status==='needs_review'?'Needs review: '+(i.error_code||''):i.status)}${i.email_sent_at?' · emailed':i.email_error?' · email failed':''}</small></div><strong>${money(i.gross_minor)}</strong><div class="sdw-inv-actions">${i.status==='issued'?`<button class="btn btn-outline btn-sm" data-invoice-pdf="${esc(i.id)}">PDF</button>`:''}${i.status==='issued'&&!i.document_number?`<button class="btn btn-outline btn-sm" data-invoice-number="${esc(i.id)}">Enter number</button>`:''}${i.status==='needs_review'&&i.error_code!=='released'?`<button class="btn btn-outline btn-sm" data-invoice-release="${esc(i.id)}">Not in FinBot · free its month</button>`:''}</div></div>`).join(''):'<p class="fw-note">No tax invoices for this store yet.</p>';
+  const status=get('storeInvoiceStatus');
+  const act=(sel,fn)=>host.querySelectorAll(sel).forEach(b=>b.onclick=async()=>{b.disabled=true;try{await fn(Object.values(b.dataset)[0]);b.disabled=false;}catch(e){status.textContent=e.message;b.disabled=false;}});
+  act('[data-invoice-pdf]',async id=>{const x=await call({action:'pdf',id});root.open(x.url,'_blank','noopener');});
+  act('[data-invoice-number]',async id=>{const n=root.prompt('Invoice number as shown on the PDF (חשבונית מס …)');if(!n)return;await call({action:'set_number',id,number:n.trim()});await issued(storeId);});
+  act('[data-invoice-release]',async id=>{if(!root.confirm('Only do this after checking in FinBot that this invoice was NOT created. Free its month for a new invoice?'))return;await call({action:'release',id,confirm_not_in_finbot:true});await open(storeId);});
  }
  // One store: its official details (saved to the store) and an invoice per unpaid month.
  async function open(storeId,button){
-  const status=get('storeInvoiceStatus'),box=get('storeInvoicePreview');if(button)button.disabled=true;status.textContent='Loading…';current=null;
+  drawer();const status=get('storeInvoiceStatus'),box=get('storeInvoicePreview');if(button)button.disabled=true;current=null;
+  if(!box.firstChild)box.innerHTML='<div class="sdw"><div class="sdw-body"><div class="plk-empty"><div class="spinner"></div></div></div></div>';
   try{
    const r=await sbc().from('receipt_customers').select('id,name,tax_id,email,address').eq('store_id',storeId).is('archived_at',null).maybeSingle();
-   if(r.error)throw Error('Could not load the store\'s details.');if(!r.data)throw Error(errors.store_customer_missing);
-   const c=r.data;let p=null;
-   if(c.tax_id){try{p=(await call({action:'preview',id:crypto.randomUUID(),store_id:storeId})).preview;}catch(e){if(e.message!==errors.no_unpaid_months)throw e;}}
+   if(r.error)throw Error('Could not load the store\'s details.');
+   const storeName=(typeof allStores!=='undefined'?allStores:[]).find(s=>s.id===storeId)?.name||'Store';
+   const c=r.data||{id:null,name:storeName,tax_id:'',email:'',address:''};let p=null;
+   if(c.id&&c.tax_id){try{p=(await call({action:'preview',id:crypto.randomUUID(),store_id:storeId})).preview;}catch(e){if(e.message!==errors.no_unpaid_months)throw e;}}
    const field=(id,label,value,attrs='')=>`<label>${label}<input class="form-input" id="${id}" value="${esc(value||'')}" ${attrs}></label>`;
    box.innerHTML=`<div class="sdw">
-    <header class="sdw-head"><span class="sdw-av" aria-hidden="true">${esc((c.name||'?').trim()[0]||'?')}</span><div class="sdw-title"><small>Store tax invoices · חשבוניות מס</small><b>${esc(c.name||'Store')}</b></div><button type="button" class="plx-close" id="storeInvoiceCancel" aria-label="Close">✕</button></header>
+    <header class="sdw-head"><span class="sdw-av" aria-hidden="true">${esc((c.name||'?').trim()[0]||'?')}</span><div class="sdw-title"><small>Invoices &amp; receipts · חשבוניות וקבלות</small><b>${esc(c.name||'Store')}</b></div><button type="button" class="plx-close" id="storeInvoiceCancel" aria-label="Close">✕</button></header>
     <div class="sdw-body">
-     <details class="sdw-sec"${c.tax_id?'':' open'}><summary><span class="sdw-ico" aria-hidden="true">🏢</span><span class="sdw-sec-t"><b>Official details</b><small>${c.tax_id?'ח.פ. '+esc(c.tax_id)+(c.email?' · '+esc(c.email):''):'Add the ח.פ. to invoice this store'}</small></span></summary>
+     <details class="sdw-sec"${c.tax_id&&c.id?'':' open'}><summary><span class="sdw-ico" aria-hidden="true">🏢</span><span class="sdw-sec-t"><b>Official details</b><small>${c.tax_id?'ח.פ. '+esc(c.tax_id)+(c.email?' · '+esc(c.email):''):'Add the ח.פ. to issue invoices and receipts'}</small></span></summary>
       <p class="fw-note">Exactly as they'll appear on the invoices. Saved to the store.</p>
       <div class="fw-form">${field('sinvName','Official name',c.name,'maxlength="100"')}${field('sinvTax','ח.פ. / עוסק',c.tax_id,'inputmode="numeric" maxlength="9"')}${field('sinvEmail','Email · for sending',c.email,'type="email" maxlength="50"')}${field('sinvAddress','Address · optional',c.address,'maxlength="100"')}</div>
       <button class="btn btn-outline btn-sm" id="sinvSave">Save details</button></details>
@@ -92,10 +74,18 @@
       <p class="sdw-next" id="sinvNext"></p>
       <div id="sinvIssueOpts"><label class="rc-toggle"><input type="checkbox" id="storeInvoiceEmail" ${p.customer.email?'':'disabled'}><span class="rc-switch" aria-hidden="true"></span><span>Email to ${esc(p.customer.email||'the store (add an email above)')}</span></label>
       <label class="fw-check sdw-confirm"><input type="checkbox" id="storeInvoiceOk"> I checked the store's name, ח.פ. and amounts. This creates official, numbered tax invoices in FinBot.</label></div></section>`:'<p class="sdw-empty">Add the store\'s ח.פ. above and save to see the months to invoice.</p>'}
-     <div class="sdw-alt"><span class="sdw-ico" aria-hidden="true">💸</span><span class="sdw-sec-t"><b>Already received payment?</b><small>One חשבונית מס/קבלה for the total received, without picking months. Only when no tax invoice was issued for it.</small></span><button type="button" class="btn btn-outline btn-sm" id="storeInvoiceCombined">Combined →</button></div>
+     <div class="sdw-alt sdw-pay"><span class="sdw-ico" aria-hidden="true">💰</span><span class="sdw-sec-t"><b>Store paid you?</b><small>Issue the קבלה and tick the months paid. It links to their tax invoices automatically.</small></span><button type="button" class="btn btn-outline btn-sm" id="sinvRecordPayment"${c.id?'':' disabled'}>Record payment · קבלה →</button></div>
+     <div class="sdw-alt"><span class="sdw-ico" aria-hidden="true">💸</span><span class="sdw-sec-t"><b>Already received payment?</b><small>One חשבונית מס/קבלה for the total received, without picking months. Only when no tax invoice was issued for it.</small></span><button type="button" class="btn btn-outline btn-sm" id="storeInvoiceCombined"${c.id?'':' disabled'}>Combined →</button></div>
+     <details class="sdw-sec"><summary><span class="sdw-ico" aria-hidden="true">🗂️</span><span class="sdw-sec-t"><b>Issued tax invoices <span class="rc-sec-count" id="sinvIssuedCount"></span></b><small>PDFs, missing numbers and refused invoices</small></span></summary><div id="sinvIssued"></div></details>
     </div>
     ${p?'<footer class="sdw-foot"><button class="rc-review" id="storeInvoiceIssue" disabled>Choose months</button></footer>':''}
    </div>`;
+   get('sinvRecordPayment').onclick=async()=>{
+    const b=get('sinvRecordPayment');b.disabled=true;
+    try{await root.GremierFinance.openReceipt({storeId});box.innerHTML='';current=null;status.textContent='';}
+    catch(e){status.textContent=e.message;b.disabled=false;}
+   };
+   issued(storeId);
    get('storeInvoiceCombined').onclick=async()=>{
     if(box.dataset.dirty==='1'){status.textContent='Save the edited store details first.';return;}
     const b=get('storeInvoiceCombined');b.disabled=true;
@@ -114,7 +104,7 @@
     if(get('sinvPicked'))get('sinvPicked').textContent=n?n+' of '+current.months.length+' ticked':'';
     get('sinvIssueOpts').hidden=mode==='paid';
     get('sinvNext').textContent=mode==='paid'?'When they pay later, nothing else is needed: the receipt is part of this document.'
-     :'When the store pays, issue a קבלה (New document below) and tick the same months: it links to '+(mode==='combined'&&n>1?'this invoice':'their invoices')+' automatically.';
+     :'When the store pays, tap “Record payment” below and tick the same months: the קבלה links to '+(mode==='combined'&&n>1?'this invoice':'their invoices')+' automatically.';
     let text='Choose months',ready=n>0&&!dirty;
     if(n&&mode==='paid')text='Continue · invoice + receipt for '+n+' month'+(n>1?'s':'')+' →';
     else if(n&&!ok.checked){text='Tick the check above to issue';ready=false;}
@@ -135,9 +125,9 @@
     if(!validTax(v.tax_id))return status.textContent='That ח.פ./עוסק number isn\'t valid (9 digits). Check for a mistyped digit.';
     if(v.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email))return status.textContent='That email doesn\'t look right.';
     get('sinvSave').disabled=true;
-    const u=await sbc().from('receipt_customers').update({...v,updated_at:new Date().toISOString()}).eq('id',c.id);
+    const u=c.id?await sbc().from('receipt_customers').update({...v,updated_at:new Date().toISOString()}).eq('id',c.id):await sbc().from('receipt_customers').insert({...v,store_id:storeId,updated_at:new Date().toISOString()});
     if(u.error){get('sinvSave').disabled=false;return status.textContent='Could not save the details. Try again.';}
-    await open(storeId);load();status.textContent='Details saved.';
+    await open(storeId);status.textContent='Details saved.';
    };
    get('storeInvoiceCancel').onclick=()=>{current=null;box.innerHTML='';status.textContent='';};
    if(issueBtn)issueBtn.onclick=async()=>{
@@ -159,10 +149,9 @@
    status.textContent=`Issuing one tax invoice for ${label}… don't close this page.`;
    const r=await call({action:'issue',id:crypto.randomUUID(),store_id:current.store_id,billing_ids:list.map(m=>m.id),gross_minor:net+vatOn(net),email_requested:!!get('storeInvoiceEmail')?.checked,confirm:true});
    if(r.invoice?.status!=='issued')throw Error(`${label}: needs review. Check FinBot before trying again.`);
-   status.textContent=`Issued one tax invoice for ${label}: ${r.invoice.document_number||'number not read'}.`;
-   get('storeInvoicePreview').innerHTML='';current=null;
+   const store=current.store_id;await open(store);
+   status.textContent=`✓ Issued one tax invoice for ${label}: ${r.invoice.document_number||'number not read'}.`;
   }catch(e){status.textContent=e.message+' Do not issue these months again before checking FinBot.';}
-  await load();
  }
  // One invoice per month, one at a time; stops at the first problem so nothing is issued twice.
  async function issue(list){
@@ -175,12 +164,9 @@
     if(r.invoice?.status!=='issued')throw Error(`${m.label}: needs review. Check FinBot before trying again.`);
     done.push(`${m.label}: ${r.invoice.document_number||'number not read'}`);
    }
-   status.textContent=`Issued ${done.length} tax invoice${done.length>1?'s':''}: ${done.join(' · ')}.`;
-   get('storeInvoicePreview').innerHTML='';current=null;
+   const store=current.store_id;await open(store);
+   status.textContent=`✓ Issued ${done.length} tax invoice${done.length>1?'s':''}: ${done.join(' · ')}.`;
   }catch(e){status.textContent=(done.length?`Issued: ${done.join(' · ')}. `:'')+e.message+' Do not issue that month again before checking FinBot.';}
-  await load();
  }
- const original=root.GremierFinance?.load;
- if(root.GremierFinance&&original)root.GremierFinance.load=async(...a)=>{const r=await original(...a);load();return r;};
- const show=root.showTab;root.showTab=function(tab,...args){const r=show?.call(this,tab,...args);if(tab==='finance')load();return r;};
+ root.GremierStoreInvoices={open};
 })(window);

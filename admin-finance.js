@@ -42,7 +42,7 @@
   get('tab-finance').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Receipts &amp; invoices</h1><p class="rc-sub">קבלות וחשבוניות</p></div><span data-action-menu="Receipt tools"><button class="btn btn-outline" id="financeReload">Refresh</button></span></div></header><p class="fw-note" id="financeStatus" role="status"></p>
    <section class="fw-panel rc-new"><details class="rc-fold" open id="manualDocFold"><summary><span class="rc-sec-ico" aria-hidden="true">✍️</span><h2>New document</h2></summary>
    <div id="manualReceiptForm">
-   <div class="rc-step"><div class="rc-step-h"><span class="rc-num">1</span><b>Who is it for?</b></div>
+   <div class="rc-step"><div class="rc-step-h"><span class="rc-num">1</span><b>Who is it for?</b></div><div id="rcJobs"></div>
     <label class="rc-search"><span aria-hidden="true">🔍</span><input class="form-input" id="receiptCustomerSearch" placeholder="Search name, store or ח.פ." aria-label="Search customers" autocomplete="off"></label>
     <label class="sd-pickbtn big"><span class="sd-pickico" aria-hidden="true">👤</span><span class="sd-picktext"><small>Customer</small><b id="manualCustomerLabel">Choose customer / store</b></span><span class="sd-chev" aria-hidden="true">▾</span><select id="manualCustomer" aria-label="Customer"></select></label>
     <div class="fw-actions fw-customer-actions"><button class="btn btn-outline" id="receiptAddCustomer">+ Add new customer</button><button class="btn btn-outline" id="receiptEditCustomer" hidden disabled>Edit details</button></div><div id="manualCustomerDetails" class="fw-note"></div>
@@ -86,7 +86,19 @@
   get('customerStore').onchange=()=>{const s=stores.find(s=>s.id===get('customerStore').value);if(s&&!get('customerEdit').value){get('customerName').value=s.name;get('customerPhone').value=s.phone||'';}};
   get('customerSave').onclick=saveCustomer;get('customerArchive').onclick=archiveCustomer;
   get('financeReceiptSearch').oninput=renderReceipts;get('financeReceiptYear').oninput=renderReceipts;
-  const delivery=get('tab-storedeliveries')?.querySelector('.page-header');if(delivery){const b=document.createElement('button');b.id='storeReceiptButton';b.className='btn btn-outline btn-sm';b.textContent='Issue store document';b.onclick=()=>{root.showTab('finance');status('manualReceiptStatus','Select a store, then choose receipt or combined tax invoice + receipt.');};const actions=delivery.querySelector('.header-actions');if(actions)actions.append(b);else delivery.append(b);}
+  // Issuing lives in a drawer: Orders, each store's card and this page all open it.
+  const rd=document.createElement('div');rd.id='rcDrawer';rd.className='rc-drawer rc-drawer-wide';rd.hidden=true;
+  rd.innerHTML='<div class="rc-drawer-bg"></div><aside class="rc-drawer-sheet" role="dialog" aria-modal="true" aria-label="Issue a receipt or invoice"><header class="sdw-head"><span class="sdw-av" aria-hidden="true">🧾</span><div class="sdw-title"><small>Receipts &amp; invoices · קבלות וחשבוניות</small><b>Issue a document</b></div><button type="button" class="plx-close" id="rcDrawerClose" aria-label="Close">✕</button></header><div class="sdw-body" id="rcDrawerBody"></div></aside>';
+  document.body.append(rd);
+  get('rcDrawerBody').append(get('manualReceiptForm').closest('section'),get('financeCustomerEditor').closest('section'));
+  if(get('manualDocFold'))get('manualDocFold').open=true;
+  const hero=document.createElement('section');hero.className='fw-panel rc-hero';
+  hero.innerHTML='<span class="rc-sec-ico" aria-hidden="true">🧾</span><div class="rc-hero-t"><b>Issue a receipt or invoice</b><small>For customers who aren\'t stores: a coffee bar, an event or a delivery you scheduled yourself. Store invoices and payments are on each store\'s card in Stores → Billing.</small></div><button type="button" class="rc-review" id="rcOpenDrawer">New receipt →</button>';
+  get('financeStatus').after(hero);
+  get('rcOpenDrawer').onclick=()=>openReceipt();
+  get('rcDrawerClose').onclick=closeReceipt;rd.querySelector('.rc-drawer-bg').onclick=closeReceipt;
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!rd.hidden)closeReceipt();});
+  const delivery=get('tab-storedeliveries')?.querySelector('.page-header');if(delivery){const b=document.createElement('button');b.id='storeReceiptButton';b.className='btn btn-outline btn-sm';b.textContent='🧾 Issue receipt';b.onclick=()=>openReceipt();const actions=delivery.querySelector('.header-actions');if(actions)actions.append(b);else delivery.append(b);}
   setupExpenses();
  }
  function customerOptions(){
@@ -143,7 +155,7 @@
  async function archiveCustomer(){const id=get('customerEdit').value;if(!id)return;const restore=!!allCustomers.find(c=>c.id===id)?.archived_at;try{const r=await sbc().from('receipt_customers').update({archived_at:restore?null:new Date().toISOString()}).eq('id',id);if(r.error)throw Error('Could not update customer');await loadFinance();editCustomer();status('customerStatus',restore?'Customer restored.':'Customer archived; issued receipt records are preserved.');}catch(e){status('customerStatus',e.message);}}
  async function loadCustomerBills(){
   const c=customers.find(c=>c.id===get('manualCustomer').value);bills=[];preview=null;get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualBills').innerHTML='';get('manualEmail').checked=!!c?.email;get('manualEmail').disabled=!c?.email;get('manualAmount').value='';get('manualDescription').value=c?'Payment from '+c.name:'';
-  showCustomerDetails();get('manualAddress').value=c?.address||'';get('manualReference').value='';get('manualAdjustment').value='';
+  showCustomerDetails();get('manualAddress').value=c?.address||'';get('manualReference').value='';get('manualAdjustment').value='';applyJobPrefill();
   for(const id of ['manualCheckBank','manualCheckBranch','manualCheckAccount','manualCheckNumber'])get(id).value='';get('manualCheckDate').value=get('manualDate').value||today();
   status('manualReceiptStatus','');updateSettlement();
   // Stores pay monthly bills with a קבלה; others are invoiced and paid at once once VAT applies.
@@ -241,7 +253,7 @@
    const receipt=r.receipt,c=receipt.customer_snapshot,settledMonths=preview?.billing_ids?.length||0;requestId=crypto.randomUUID();preview=null;
    get('manualReceiptReview').innerHTML=`<h3>${DOC_NAMES[receipt.document_type]||'קבלה'}${receipt.document_number?' #'+esc(receipt.document_number):''} issued · ${esc(money(receipt.amount_minor))}</h3>${receipt.document_type==='tax_invoice'&&!receipt.document_number?'<p class="fw-note">The invoice number couldn\'t be read from the PDF. Add it in the history (Set number) so a קבלה can link to it.</p>':''}<p class="fw-note">${settledMonths?settledMonths+' month'+(settledMonths===1?'':'s')+' marked paid. ':'Saved in FinBot. '}${receipt.email_sent_at?'PDF email accepted for delivery to '+esc(c.email):receipt.email_requested?'Email pending; use Retry email in the receipt history.':'No email requested.'}</p><div class="fw-actions"><button class="btn btn-outline" id="issuedReceiptOpen">Open official PDF</button><button class="btn btn-outline" id="issuedReceiptShare">Prepare WhatsApp PDF</button><button class="btn btn-outline" id="issuedReceiptNew">New receipt</button></div>`;
    get('issuedReceiptOpen').onclick=()=>openReceipt('business',receipt.id);get('issuedReceiptShare').onclick=()=>prepareReceiptShare(receipt,'issuedReceiptShare');get('issuedReceiptNew').onclick=()=>{get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualAmount').value='';get('manualAdjustment').value='';get('manualReference').value='';loadCustomerBills();};
-   status('manualReceiptStatus','');await loadFinance();
+   status('manualReceiptStatus','');await loadFinance();linkJobs(receipt.id);
   }catch(e){status('manualReceiptStatus',e.message+' Check the receipt history before starting another request.');}
  }
  async function openReceipt(kind,id){try{const r=await call(kind==='order'?'finbot-receipts':'business-receipts',{action:'pdf',...(kind==='order'?{order_id:id}:{id})});root.open(r.url,'_blank','noopener');}catch(e){status('financeStatus',e.message);}}
@@ -376,8 +388,66 @@
   sbc()?.auth.getSession().then(({data})=>restore(data.session));
   sbc()?.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_IN')restore(session);});
  }
+ function openDrawer(){const d=get('rcDrawer');if(!d)return;d.hidden=false;document.body.classList.add('rc-drawer-open');}
+ function closeReceipt(){
+  const d=get('rcDrawer');if(!d)return;
+  if(/^Issuing/.test(get('manualReceiptStatus')?.textContent||''))return; // never hide an official request in flight
+  d.hidden=true;document.body.classList.toggle('rc-drawer-open',get('sinvDrawer')?.hidden===false);
+ }
+ // Open the receipt drawer. opts.storeId: a store paying its months. opts.jobId: tick that scheduled delivery.
+ async function openReceipt(opts={}){
+  setup();openDrawer();
+  await loadFinance();
+  if(opts.storeId){
+   const c=customers.find(c=>c.store_id===opts.storeId);
+   if(!c){closeReceipt();throw Error('Save the store\'s official details first.');}
+   get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;preview=null;
+   get('receiptCustomerSearch').value='';customerOptions();get('manualCustomer').value=c.id;jobPick.clear();await loadCustomerBills();
+  }
+  await renderJobs(opts.jobId);
+ }
+ // Deliveries and coffee bars scheduled by hand (no website order) that have no receipt yet.
+ let jobs=[];const jobPick=new Set();
+ const jobName=j=>(j.delivery_type==='coffeebar'?j.cb_name:j.private_name)||'Customer';
+ const jobWhat=j=>(j.delivery_type==='coffeebar'?'Coffee bar':'Coffee delivery')+' · '+new Date(j.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+ async function renderJobs(preselect){
+  const host=get('rcJobs');if(!host)return;
+  const since=new Date(Date.now()-120*864e5).toISOString().slice(0,10);
+  const r=await sbc().from('jobs').select('id,date,delivery_type,private_name,cb_name,customer_phone,private_address,cb_address').eq('type','delivery').in('delivery_type',['private','coffeebar']).is('website_order_id',null).is('receipt_id',null).gte('date',since).order('date',{ascending:false}).limit(30);
+  if(r.error){host.innerHTML='';return;}
+  jobs=r.data||[];
+  for(const id of [...jobPick])if(!jobs.some(j=>j.id===id))jobPick.delete(id);
+  if(preselect&&jobs.some(j=>j.id===preselect))jobPick.add(preselect);
+  if(!jobs.length){host.innerHTML='';return;}
+  host.innerHTML=`<div class="rc-jobs"><div class="rc-jobs-h"><b>From a scheduled delivery</b><small>${jobs.length} scheduled without a receipt yet. Tick to fill in the customer; it's linked when the receipt is issued.</small></div><div class="rc-joblist">${jobs.map(j=>`<label class="rc-job"><input type="checkbox" value="${esc(j.id)}"${jobPick.has(j.id)?' checked':''}><span class="rc-job-ico" aria-hidden="true">${j.delivery_type==='coffeebar'?'☕':'🚚'}</span><span class="rc-job-main"><b>${esc(jobName(j))}</b><small>${esc(jobWhat(j))}${j.private_address||j.cb_address?' · '+esc(j.private_address||j.cb_address):''}</small></span></label>`).join('')}</div><div id="rcJobNote"></div><div class="rc-or"><span>or choose a saved customer</span></div></div>`;
+  host.querySelectorAll('.rc-job input').forEach(i=>i.onchange=()=>{if(i.checked)jobPick.add(i.value);else jobPick.delete(i.value);pickJobs();});
+  if(jobPick.size)pickJobs();
+ }
+ async function pickJobs(){
+  const note=get('rcJobNote');if(!note)return;const picked=jobs.filter(j=>jobPick.has(j.id));
+  if(!picked.length){note.innerHTML='';return;}
+  const j=picked[0],name=jobName(j),digits=String(j.customer_phone||'').replace(/\D/g,'').slice(-9);
+  const c=customers.find(c=>!c.store_id&&((digits.length>=9&&String(c.phone||'').replace(/\D/g,'').slice(-9)===digits)||c.name.trim().toLowerCase()===name.trim().toLowerCase()));
+  if(c){
+   note.innerHTML=`<p class="rc-jobnote ok">✓ ${esc(c.name)} selected · ${picked.length>1?picked.length+' deliveries':'this delivery'} will be linked to the receipt.</p>`;
+   if(get('manualCustomer').value!==c.id){get('receiptCustomerSearch').value='';customerOptions();get('manualCustomer').value=c.id;await loadCustomerBills();}else applyJobPrefill();
+  }else{
+   note.innerHTML=`<p class="rc-jobnote">${esc(name)} isn't a saved customer yet.</p><button type="button" class="btn btn-outline btn-sm" id="rcJobAddCustomer">＋ Save “${esc(name)}” as a customer</button>`;
+   get('rcJobAddCustomer').onclick=()=>{startCustomer();get('customerName').value=name;get('customerPhone').value=j.customer_phone||'';get('customerAddress').value=j.private_address||j.cb_address||'';};
+  }
+ }
+ function applyJobPrefill(){
+  const picked=jobs.filter(j=>jobPick.has(j.id));if(!picked.length||!get('manualCustomer').value)return;
+  get('manualDescription').value=picked.map(jobWhat).join(', ').slice(0,200);
+ }
+ async function linkJobs(receiptId){
+  const ids=[...jobPick];if(!ids.length||!receiptId)return;
+  const r=await sbc().from('jobs').update({receipt_id:receiptId}).in('id',ids);
+  if(r.error){status('manualReceiptStatus','The receipt was issued, but the scheduled deliveries could not be linked to it.');return;}
+  jobPick.clear();renderJobs();
+ }
  async function openStoreCombined(storeId,billingIds=[]){
-  setup();
+  setup();openDrawer();
   await loadFinance();
   const c=customers.find(c=>c.store_id===storeId);
   if(!c)throw Error('Store customer details are unavailable. Save the store details and try again.');
@@ -395,7 +465,7 @@
   get('manualReceiptForm').scrollIntoView?.({behavior:'smooth',block:'start'});
   get('manualAmount').focus({preventScroll:true});
  }
- root.GremierFinance={load:loadFinance,loadExpenses,openExpenseBatch,openStoreCombined};
+ root.GremierFinance={load:loadFinance,loadExpenses,openExpenseBatch,openStoreCombined,openReceipt};
  const expenseSession=session=>{
   const owner=session?.user?.id||'';
   if(owner!==expenseOwner){expenseOwner=owner;batch=null;get('expensePrepared').innerHTML='';}
