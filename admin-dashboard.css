@@ -64,3 +64,69 @@
 @media(max-width:600px) { #tab-dashboard .dash-panel { padding:18px; } #tab-dashboard .dash-metric { padding:16px; } #tab-dashboard .dash-metrics { gap:10px; } #tab-dashboard .dash-coverage { flex-direction:column; align-items:flex-start; } #tab-dashboard .dash-coverage-status { flex-direction:row; flex-wrap:wrap; } #tab-dashboard .dash-section-head { flex-wrap:wrap; } #tab-dashboard .dash-trend-panel .dash-section-head { margin-bottom:16px; } }
 
 #tab-dashboard .dash-bar-other,#tab-dashboard .dash-other-dot{background:#8e7e70}#dashMonthLabel,#dashYearLabel{font-size:12px;display:flex;gap:8px;align-items:center}#dashMonthLabel[hidden],#dashYearLabel[hidden]{display:none!important}#dashYear{width:100px}
+
+/* 2026-11 redesign: app-style dashboard */
+#tab-dashboard .dash-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#tab-dashboard .dash-refresh{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:1.2rem;cursor:pointer;color:var(--cream)}
+#tab-dashboard .dash-refresh:disabled{opacity:.5;animation:dashspin 1s linear infinite}
+@keyframes dashspin{to{transform:rotate(360deg)}}
+#tab-dashboard .dash-periods{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;margin:0 0 6px;scrollbar-width:none}
+#tab-dashboard .dash-chip{position:relative;flex:none;display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);background:#fff;border-radius:999px;padding:10px 16px;font:inherit;font-size:.86rem;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
+#tab-dashboard .dash-chip.on{background:#1c1c1c;border-color:#1c1c1c;color:#fff}
+#tab-dashboard .dash-chip-pick input,#tab-dashboard .dash-chip-pick select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;font-size:16px}
+#tab-dashboard .dash-chip .sd-chev{font-size:.7rem;opacity:.7}
+#tab-dashboard .dash-updated{margin:4px 0 14px}
+#tab-dashboard .dash-total{background:linear-gradient(145deg,#1d1b19,#2e2a25);color:#fff;border:0;border-radius:22px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+#tab-dashboard .dash-total-label{color:rgba(255,255,255,.75);font-weight:600}
+#tab-dashboard .dash-total-label span{color:rgba(255,255,255,.55)}
+#tab-dashboard .dash-total-value{color:#fff;font-weight:800;margin:8px 0 14px}
+#tab-dashboard .dash-total .dash-skeleton{background:rgba(255,255,255,.15)}
+#tab-dashboard .dash-split{display:flex;gap:3px;height:12px;border-radius:99px;overflow:hidden;margin-bottom:14px;background:rgba(255,255,255,.12)}
+#tab-dashboard .dash-split i{display:block;height:100%}
+#tab-dashboard .ds-online{background:#e8b04b}#tab-dashboard .ds-store{background:#7fb7e6}#tab-dashboard .ds-other{background:#b9a593}
+#tab-dashboard .dash-total-breakdown{gap:8px;color:rgba(255,255,255,.8)}
+#tab-dashboard .ds-chip{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.1);border-radius:999px;padding:7px 12px;font-size:.78rem}
+#tab-dashboard .ds-chip i{width:9px;height:9px;border-radius:50%;display:block}
+#tab-dashboard .ds-chip b{color:#fff;font-weight:800}
+#tab-dashboard .dash-metrics{gap:12px;margin:14px 0 6px}
+#tab-dashboard .dash-tile{position:relative;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:20px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:transform .12s,border-color .12s}
+#tab-dashboard button.dash-tile:hover{border-color:var(--cream);transform:translateY(-1px)}
+#tab-dashboard .dash-tile-ico{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:12px;background:var(--bg3);display:grid;place-items:center;font-size:1.1rem}
+#tab-dashboard .dash-metric-label{font-weight:700;color:var(--text2);opacity:1;padding-right:40px}
+#tab-dashboard .dash-metric-value{font-weight:800;color:var(--cream)}
+#tab-dashboard .dash-attn{display:grid;gap:10px;margin-bottom:22px}
+#tab-dashboard .dash-attn .dash-action{border:1px solid var(--border);border-radius:18px;padding:14px 16px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+#tab-dashboard .dash-attn .dash-action[data-urgent=true]{background:#fff8e6;border-color:#f0d58a}
+#tab-dashboard .dash-action-ico{font-size:1.4rem;width:28px;text-align:center}
+#tab-dashboard .dash-action-count{font-weight:800;color:var(--cream);background:var(--bg3)}
+#tab-dashboard .dash-action[data-urgent=true] .dash-action-count{background:#f3c64e;color:#1c1c1c}
+#tab-dashboard .dash-action-title{font-size:.95rem;font-weight:800;color:var(--cream)}
+#tab-dashboard .dash-action-arrow{font-size:1.1rem}
+#tab-dashboard .dash-allclear{display:flex;align-items:center;gap:12px;background:#eef8f1;border:1px solid #bfe3cb;border-radius:18px;padding:16px;color:#256b45;font-weight:700}
+#tab-dashboard .dash-allclear::before{content:'✓';width:34px;height:34px;border-radius:50%;background:#3f9a6b;color:#fff;display:grid;place-items:center;font-weight:800;flex:none}
+#tab-dashboard .dash-panel{border-radius:20px;background:#fff}
+#tab-dashboard .dash-panel h2{font-weight:800}
+#tab-dashboard .dash-bar{border-radius:6px 6px 0 0;overflow:hidden}
+#tab-dashboard .dash-list{display:grid;gap:8px;margin-bottom:22px}
+#tab-dashboard .dash-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid var(--border);border-radius:16px;background:#fff;padding:12px 14px;font:inherit;color:inherit;cursor:pointer}
+#tab-dashboard .dash-row:hover{border-color:var(--cream)}
+#tab-dashboard .dash-av{flex:none;width:40px;height:40px;border-radius:13px;background:linear-gradient(145deg,#f3d9a4,#e2b866);color:#5a3d0c;display:grid;place-items:center;font-weight:800}
+#tab-dashboard .dash-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+#tab-dashboard .dash-row-main b{font-weight:800;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tab-dashboard .dash-row-main small{font-size:.76rem;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tab-dashboard .dash-row>strong{font-weight:800;color:var(--cream);white-space:nowrap}
+#tab-dashboard .dash-row-skel{cursor:default}#tab-dashboard .dash-row-skel b{width:60%}
+#tab-dashboard .dash-pill{align-self:flex-start;font-size:.66rem;font-weight:800;border-radius:99px;padding:3px 8px;margin-top:2px}
+#tab-dashboard .dp-open{background:#fff1c9;color:#8a6100}#tab-dashboard .dp-done{background:#e3f4ea;color:#256b45}#tab-dashboard .dp-unpaid{background:#f1f2f4;color:var(--text2)}
+#tab-dashboard .dash-storebar{display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;border:1px solid var(--border);border-radius:16px;background:#fff;padding:14px 16px;font:inherit;color:inherit;cursor:pointer}
+#tab-dashboard .dash-storebar-top{display:flex;justify-content:space-between;gap:10px}
+#tab-dashboard .dash-storebar-top b,#tab-dashboard .dash-storebar-top strong{font-weight:800;color:var(--cream)}
+#tab-dashboard .dash-storebar-track{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden}
+#tab-dashboard .dash-storebar-track i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#e2b866,#c98d1f)}
+#tab-dashboard .dash-storebar small{font-size:.76rem;color:var(--text2)}
+#tab-dashboard .dash-links{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 24px}
+#tab-dashboard .dash-links button{flex:1;min-width:120px;border:1px solid var(--border);background:#fff;border-radius:16px;padding:14px;font:inherit;font-weight:700;color:var(--cream);cursor:pointer}
+@media(max-width:600px){#tab-dashboard .dash-total{padding:18px}#tab-dashboard .dash-metric{padding:14px}}
+#tab-dashboard{--dash-accent:#e8b04b;--dash-secondary:#7fb7e6}
+#tab-dashboard .dash-bar-other,#tab-dashboard .dash-other-dot{background:#b9a593}
+#tab-dashboard .dash-legend i{border-radius:50%}

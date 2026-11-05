@@ -73,3 +73,61 @@
 .fw-doc-types button b{font-size:.92rem}.fw-doc-types button small{font-size:.72rem;color:#6a7078}
 .fw-doc-types button.on{border-color:#34755a;background:#eef6f1;box-shadow:0 0 0 1px #34755a inset}
 @media(max-width:650px){.fw-doc-types{grid-template-columns:1fr}}
+
+/* 2026-11 redesign: step-by-step receipt form */
+#tab-finance .rc-sub{margin:2px 0 0;font-size:.9rem;color:var(--text2);direction:rtl;text-align:left}
+#tab-finance .fw-panel{border-radius:20px;background:#fff}
+#tab-finance .fw-panel h2{font-weight:800;font-size:1.2rem}
+.rc-step{border:1px solid var(--border);border-radius:18px;padding:16px;margin:12px 0;background:#fcfcfd}
+.rc-step-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.rc-step-h b{font-size:1rem;font-weight:800;color:var(--cream)}
+.rc-num{width:28px;height:28px;border-radius:50%;background:#1c1c1c;color:#fff;display:grid;place-items:center;font-size:.85rem;font-weight:800;flex:none}
+.rc-search{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:0 12px;margin-bottom:10px}
+.rc-search .form-input{border:0;background:none;padding:12px 0;font-size:16px;box-shadow:none}
+.rc-new .sd-pickbtn{display:flex}
+.rc-new .fw-customer-actions{margin:10px 0 0}
+.rc-new .fw-doc-types{gap:10px}
+.rc-new .fw-doc-types button{position:relative;border-radius:16px;padding:14px;background:#fff;gap:4px;min-height:96px;transition:border-color .12s,box-shadow .12s}
+.rc-new .fw-doc-types button b{font-size:1rem;font-weight:800;color:var(--cream)}
+.rc-new .fw-doc-types button small{font-size:.74rem;color:var(--text2)}
+.rc-new .fw-doc-types button.on{border:2px solid #1c1c1c;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.rc-new .fw-doc-types button.on::after{content:'✓';position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:#1c1c1c;color:#fff;font-size:.75rem;display:grid;place-items:center}
+.rc-docico{font-size:1.4rem}
+.rc-amount label{font-weight:700}
+.rc-amount #manualAmount{font-size:1.5rem;font-weight:800;padding:12px 14px;border-radius:14px}
+.rc-amount #manualDate{padding:12px 14px;border-radius:14px;font-size:16px}
+.rc-method{margin:4px 0 12px}.rc-method>small{display:block;font-size:.77rem;color:var(--text2);margin-bottom:7px}
+.rc-seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;background:var(--bg3);border-radius:14px}
+.rc-seg button{border:0;background:none;padding:11px 4px;border-radius:11px;font:inherit;font-size:.82rem;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
+.rc-seg button.on{background:#fff;color:var(--cream);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.rc-new .fw-month{border-radius:14px;padding:13px 14px;background:#fff}
+.rc-new .fw-month:has(input:checked),.rc-monthcards .fw-month:has(input:checked){border-color:#1c1c1c;background:#fffaf0}
+.rc-monthcards .fw-month span{flex:1;display:flex;flex-direction:column;gap:2px;font-weight:700}
+.rc-monthcards .fw-month small{font-weight:500;color:var(--text2);font-size:.72rem}
+.rc-toggle{display:flex;align-items:center;gap:12px;font-size:.9rem;font-weight:600;cursor:pointer;margin:2px 0 14px}
+.rc-toggle input{position:absolute;opacity:0;pointer-events:none}
+.rc-switch{width:46px;height:28px;border-radius:99px;background:#d5d8dd;position:relative;flex:none;transition:background .15s}
+.rc-switch::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.rc-toggle input:checked+.rc-switch{background:#1fa855}.rc-toggle input:checked+.rc-switch::after{transform:translateX(18px)}
+.rc-toggle input:disabled~span{opacity:.5}
+.rc-toggle input:focus-visible+.rc-switch{outline:2px solid #1c1c1c;outline-offset:2px}
+.rc-review{width:100%;border:0;border-radius:16px;padding:16px;font:inherit;font-size:1.05rem;font-weight:800;background:#1c1c1c;color:#fff;cursor:pointer}
+.rc-review:disabled{opacity:.6}
+.rc-reviewbox:not(:empty){border:2px solid #1c1c1c;border-radius:20px;padding:18px;margin:12px 0;background:#fff}
+.rc-reviewbox .fw-review-amount{font-size:2.2rem;font-weight:800;color:var(--cream)}
+.rc-reviewbox .fw-check{background:#fcfcfd;border:1px solid var(--border);border-radius:14px;padding:12px 14px}
+.rc-reviewbox .fw-actions .btn{flex:1;padding:14px;border-radius:14px;font-weight:800;font-size:.95rem}
+.rc-inv-list{display:grid;gap:10px;margin:12px 0}
+.rc-inv-card{border:1px solid var(--border);border-radius:18px;padding:14px 16px;background:#fff}
+.rc-inv-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.rc-inv-top b{font-size:1.02rem;font-weight:800;color:var(--cream)}
+.rc-tag{font-size:.7rem;font-weight:800;background:#fff1c9;color:#8a6100;border-radius:99px;padding:3px 9px}
+.rc-inv-months{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.rc-inv-months span{font-size:.74rem;font-weight:700;background:var(--bg3);border-radius:99px;padding:5px 10px;color:var(--text2)}
+.rc-inv-foot{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.rc-inv-foot>span{display:flex;flex-direction:column;font-size:.85rem}.rc-inv-foot small{font-size:.68rem;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.rc-inv-foot b{font-weight:800;font-size:1rem;color:var(--cream)}
+.rc-inv-open{margin-left:auto;border:0;border-radius:12px;padding:10px 16px;font:inherit;font-weight:800;background:#1c1c1c;color:#fff;cursor:pointer}
+.rc-inv-open:disabled{opacity:.5}
+.rc-allclear{display:flex;align-items:center;gap:10px;background:#eef8f1;border:1px solid #bfe3cb;border-radius:16px;padding:14px;color:#256b45;font-weight:700;margin:12px 0}
+.rc-allclear::before{content:'✓';width:28px;height:28px;border-radius:50%;background:#3f9a6b;color:#fff;display:grid;place-items:center;flex:none}
+@media(max-width:650px){.rc-new .fw-doc-types{grid-template-columns:1fr}.rc-new .fw-doc-types button{min-height:0;display:grid;grid-template-columns:34px 1fr;column-gap:10px;align-items:center}.rc-new .fw-doc-types button .rc-docico{grid-row:span 2}.rc-step{padding:14px}}

@@ -89,19 +89,31 @@
   const empty = text => `<div class="dash-empty">${esc(text)}</div>`;
   const metric = (label,value,sub) => `<div class="dash-metric"><div class="dash-metric-label">${esc(label)}</div><div class="dash-metric-value">${esc(value)}</div>${sub?`<div class="dash-metric-sub">${esc(sub)}</div>`:""}</div>`;
   const row = (label,value) => `<div class="dash-money-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`;
+  // Split bar under the total: online / stores / events, each with its amount.
+  function heroSplit(m) {
+    const parts=[['online','Online',m.online],['store','Stores',m.store],['other','Events & other',m.other]];
+    const total=parts.reduce((s,p)=>s+(p[2]||0),0);
+    const bar=total>0&&parts.every(p=>p[2]!==null)?`<div class="dash-split" aria-hidden="true">${parts.filter(p=>p[2]>0).map(p=>`<i class="ds-${p[0]}" style="width:${(p[2]/total*100).toFixed(2)}%"></i>`).join('')}</div>`:'';
+    return bar+`<div class="dash-total-breakdown">${parts.map(p=>`<span class="ds-chip"><i class="ds-${p[0]}"></i>${p[1]} <b>${esc(money(p[2]))}</b></span>`).join('')}</div>`;
+  }
+  const tile=(icon,label,value,sub,target)=>`<button type="button" class="dash-metric dash-tile" data-dash-target="${target}"><span class="dash-tile-ico" aria-hidden="true">${icon}</span><div class="dash-metric-label">${esc(label)}</div><div class="dash-metric-value">${esc(value)}</div>${sub?`<div class="dash-metric-sub">${esc(sub)}</div>`:''}</button>`;
+  const initials=name=>esc((String(name||'?').trim()[0]||'?').toUpperCase());
+  const shortDate=v=>{const d=businessDate(v);return d?new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'}):'';};
+  const listRow=(avatar,title,sub,amount,target,extra='')=>`<button type="button" class="dash-row"${target?` data-dash-target="${target}"`:''}><span class="dash-av">${avatar}</span><span class="dash-row-main"><b>${title}</b><small>${sub}</small>${extra}</span><strong>${amount}</strong></button>`;
   function render(m, data, errors=[]) {
     const periodLabel = m.range.label;
     const legend=el('tab-dashboard')?.querySelector?.('.dash-legend');
     if(legend)legend.innerHTML=m.sales?.historical?'<span><i class="dash-other-dot"></i>Historical FinBot income</span>':'<span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span>';
-    set('dashSalesTotal',`<div class="dash-total-label">Total sales <span>${esc(periodLabel)}</span></div><div class="dash-total-value">${esc(money(m.totalSales))}</div><div class="dash-total-breakdown">${m.sales?.historical?'<span>Historical FinBot income · channel split unavailable</span>':`<span>Online ${esc(money(m.online))}</span>`}${m.sales?.historical?'':`<span>Stores ${esc(money(m.store))}</span><span>Direct events & other ${esc(money(m.other))}</span>`}</div>`);
-    set('dashKPIs', metric('Unpaid store bills',money(m.owed),'All dates')+metric('Paid orders to fulfil',m.waiting === null ? 'Unavailable' : m.waiting.length,'All dates'));
-    const action = (count,title,sub,target,urgent=false) => `<button type="button" class="dash-action" data-dash-target="${target}" data-urgent="${urgent}"><span class="dash-action-count">${esc(count)}</span><span><span class="dash-action-title">${esc(title)}</span>${sub?`<span class="dash-action-sub">${esc(sub)}</span>`:""}</span><span class="dash-action-arrow" aria-hidden="true">↗</span></button>`;
+    set('dashSalesTotal',`<div class="dash-total-label">Total sales <span>${esc(periodLabel)}</span></div><div class="dash-total-value">${esc(money(m.totalSales))}</div>${m.sales?.historical?'<div class="dash-total-breakdown"><span>Historical FinBot income · channel split unavailable</span></div>':heroSplit(m)}`);
+    set('dashKPIs', tile('🧾','Unpaid store bills',money(m.owed),'Tap to see who owes','billing-owed')+tile('📦','Paid orders to fulfil',m.waiting === null ? 'Unavailable' : m.waiting.length,'Tap to open Orders','orders'));
+    const icons={schedule:'🚚',orders:'📦','billing-owed':'💰','billing-unbilled':'🧾'};
+    const action = (count,title,sub,target,urgent=false) => `<button type="button" class="dash-action" data-dash-target="${target}" data-urgent="${urgent}"><span class="dash-action-ico" aria-hidden="true">${icons[target]||'•'}</span><span class="dash-action-count">${esc(count)}</span><span><span class="dash-action-title">${esc(title)}</span>${sub?`<span class="dash-action-sub">${esc(sub)}</span>`:""}</span><span class="dash-action-arrow" aria-hidden="true">↗</span></button>`;
     let actions='';
     if (m.jobs?.length) actions+=action(m.jobs.length,'Due & overdue tasks',`${m.jobs.filter(j=>j.date<m.range.today).length} overdue`,'schedule',true);
     if (m.waiting?.length) actions+=action(m.waiting.length,'Orders to fulfil','','orders',true);
     if (m.owed > 0) actions+=action(m.bills.filter(b=>b.billed_at).length,'Store payments due',money(m.owed),'billing-owed');
     if (m.unbilled > 0) actions+=action(m.bills.filter(b=>!b.billed_at).length,'Bills to send',money(m.unbilled),'billing-unbilled');
-    set('dashAttention', actions || empty(errors.some(e=>['jobs','backlog','bills'].includes(e)) ? 'Some action sources could not load. Refresh to check what needs attention.' : 'Nothing pending.'));
+    set('dashAttention', actions || empty(errors.some(e=>['jobs','backlog','bills'].includes(e)) ? 'Some action sources could not load. Refresh to check what needs attention.' : 'Nothing pending.').replace('class="dash-empty"', errors.some(e=>['jobs','backlog','bills'].includes(e))?'class="dash-empty"':'class="dash-empty dash-allclear"'));
     set('dashMoney',(m.sales?.historical?row('Historical FinBot income',money(m.totalSales)):row('Online payments',money(m.online))+row('Stores',money(m.store))+row('Direct events & other',money(m.other)))+row('Unpaid store bills · all dates',money(m.owed))+row('Unsent bills · all dates',money(m.unbilled))+'<details class="dash-footnote"><summary>Calculation details</summary><p>Same sales basis as Stats: linked orders and receipts count once; direct event and other payments are included. Stores use statement value, paid or not, with earlier-delivery payments retained as in Stats; a 7-day view uses delivered value. Bills and fulfilment counts cover all dates. These totals are sales, not bank cash flow or profit.</p></details>');
     el('dashTrendTitle').textContent=periodLabel;
     if(m.sales?.historical&&m.totalSales===null)set('dashTrend',empty('No saved accounting report for this period.'));
@@ -114,11 +126,15 @@
     }
     set('dashChart',m.sales?.historical?row('Historical FinBot income',money(m.totalSales)):row('Online sales',money(m.online))+row('Stores',money(m.store))+row('Direct events & other',money(m.other)));
     const rawOrders=data.orders === null ? null : data.orders.filter(o=>eligible(o) && within(businessDate(o.created_at),m.range));
-    set('dashRecentOrders', rawOrders === null ? '<tr><td colspan="4">Orders unavailable. Try Refresh.</td></tr>' : rawOrders.slice(0,8).map(o=>`<tr><td>${esc(o.order_number)}</td><td>${esc(o.customer_name)}</td><td>${esc(money(num(o.total)))}</td><td>${esc(o.payment_status)} · ${esc(o.status)}</td></tr>`).join('') || '<tr><td colspan="4">No orders in this period.</td></tr>');
-    set('dashRecentDeliveries',m.deliveries === null ? '<tr><td colspan="4">Deliveries unavailable. Try Refresh.</td></tr>' : m.deliveries.slice(0,8).map(d=>`<tr><td>${esc(d.store_name || data.stores?.find(s=>s.id===d.store_id)?.name || 'Store')}</td><td>${esc(num(d.qty_large))}</td><td>${esc(num(d.qty_small))}</td><td>${esc(money(data.stores === null ? null : deliveryValue(d,data.stores)))}</td></tr>`).join('') || '<tr><td colspan="4">No deliveries in this period.</td></tr>');
+    const statusWord=o=>o.payment_status!=='paid'?'Not paid':['fulfilled','completed'].includes(o.status)?'Done':'To fulfil';
+    set('dashRecentOrders', rawOrders === null ? empty('Orders unavailable. Try Refresh.') : rawOrders.slice(0,6).map(o=>listRow(initials(o.customer_name),esc(o.customer_name||'Customer'),`#${esc(o.order_number)} · ${esc(shortDate(o.created_at))}`,esc(money(num(o.total))),'orders',`<span class="dash-pill dp-${o.payment_status!=='paid'?'unpaid':['fulfilled','completed'].includes(o.status)?'done':'open'}">${statusWord(o)}</span>`)).join('') || empty('No orders in this period.'));
+    const qtyLine=d=>[['large','large'],['small','small'],['dairy_free','dairy free'],['unfiltered','unfiltered'],['syrup','syrup']].filter(([f])=>num(d['qty_'+f])).map(([f,w])=>num(d['qty_'+f])+' '+w).join(' · ')||'No bottles';
+    const storeName=d=>d.store_name || data.stores?.find(s=>s.id===d.store_id)?.name || 'Store';
+    set('dashRecentDeliveries',m.deliveries === null ? empty('Deliveries unavailable. Try Refresh.') : m.deliveries.slice(0,6).map(d=>listRow(initials(storeName(d)),esc(storeName(d)),`${esc(shortDate(d.delivery_date))} · ${esc(qtyLine(d))}`,esc(money(data.stores === null ? null : deliveryValue(d,data.stores))),'storedeliveries')).join('') || empty('No deliveries in this period.'));
     const groups=new Map();
     (m.deliveries || []).forEach(d=> { if (!groups.has(d.store_id)) groups.set(d.store_id,{...d, total:0, missing:false, qty_large:0,qty_small:0,qty_dairy_free:0,qty_unfiltered:0,qty_syrup:0}); const g=groups.get(d.store_id); quantityFields.forEach(f=>g['qty_'+f]+=num(d['qty_'+f])); const value=data.stores === null ? null : deliveryValue(d,data.stores); g.missing ||= value === null; g.total+=num(value); });
-    set('dashStoreBreakdown',m.deliveries === null ? '<tr><td colspan="7">Deliveries unavailable.</td></tr>' : [...groups.values()].map(g=>`<tr><td>${esc(g.store_name || data.stores?.find(s=>s.id===g.store_id)?.name || 'Store')}</td>${quantityFields.map(f=>`<td>${esc(g['qty_'+f])}</td>`).join('')}<td>${esc(money(g.missing ? null : g.total))}</td></tr>`).join('') || '<tr><td colspan="7">No deliveries in this period.</td></tr>');
+    const ranked=[...groups.values()].sort((a,b)=>b.total-a.total),top=Math.max(...ranked.map(g=>g.total),1);
+    set('dashStoreBreakdown',m.deliveries === null ? empty('Deliveries unavailable.') : ranked.map(g=>`<button type="button" class="dash-storebar" data-dash-target="storedeliveries"><span class="dash-storebar-top"><b>${esc(storeName(g))}</b><strong>${esc(money(g.missing ? null : g.total))}</strong></span><span class="dash-storebar-track"><i style="width:${Math.max(4,g.total/top*100).toFixed(1)}%"></i></span><small>${esc(qtyLine(g))}</small></button>`).join('') || empty('No store deliveries in this period.'));
     if (m.orders !== null && m.deliveries !== null && typeof renderDashboardBottlesSold === 'function') renderDashboardBottlesSold(m.orders,m.deliveries);
     else set('dashBottlesSold',empty('Product totals unavailable until both sales sources load.'));
     el('dashUpdated').textContent=errors.length ? `Some data couldn’t load (${errors.join(', ')}). Affected values show Unavailable. Try Refresh.` : `Updated ${new Date().toLocaleTimeString('en-IL',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})}`;
@@ -137,10 +153,10 @@
   function loadingState(){
     api.refreshPurpose=null;
     set('dashSalesTotal','<div class="dash-total-label">Total sales</div><div class="dash-total-value dash-skeleton" aria-label="Loading">&nbsp;</div>');
-    set('dashKPIs',['Unpaid store bills','Paid orders to fulfil'].map(label=>`<div class="dash-metric"><div class="dash-metric-label">${label}</div><div class="dash-metric-value dash-skeleton" aria-label="Loading">&nbsp;</div></div>`).join(''));
+    set('dashKPIs',['Unpaid store bills','Paid orders to fulfil'].map(label=>`<div class="dash-metric dash-tile"><div class="dash-metric-label">${label}</div><div class="dash-metric-value dash-skeleton" aria-label="Loading">&nbsp;</div></div>`).join(''));
     set('dashAttention',empty('Loading…'));
     ['dashMoney','dashTrend','dashChart','dashStoreBreakdown','dashBottlesSold','dashOnlineRevenue'].forEach(id=>set(id,''));
-    ['dashRecentOrders','dashRecentDeliveries'].forEach(id=>set(id,'<tr><td colspan="4">Loading…</td></tr>'));
+    ['dashRecentOrders','dashRecentDeliveries','dashStoreBreakdown'].forEach(id=>set(id,'<div class="dash-row dash-row-skel"><span class="dash-av dash-skeleton"></span><span class="dash-row-main"><b class="dash-skeleton">&nbsp;</b></span></div>'.repeat(2)));
     set('dashOnlineRevenue','<h2>Sales by purpose</h2>'+['Events / groups','Personal / retail','Needs review'].map(label=>`<div class="fin-row"><span>${label}</span><span class="dash-skeleton">&nbsp;</span></div>`).join(''));
   }
   // Fetch every page: PostgREST's default 1,000-row limit must never silently lower totals.
@@ -186,9 +202,10 @@
       if (token===request) el('dashUpdated').textContent='Could not load the dashboard. Check your connection and try Refresh.';
     } finally { if (token===request) el('dashRefresh').disabled=false; }
   };
-  root.loadDashboard=function(){const selected=el('dashPeriod')?.value||'month';if(el('dashMonthLabel'))el('dashMonthLabel').hidden=selected!=='pickmonth';if(el('dashYearLabel'))el('dashYearLabel').hidden=selected!=='pickyear';let r;try{r=range(selected,new Date(),{month:el('dashMonth')?.value,year:el('dashYear')?.value});}catch(e){el('dashUpdated').textContent=e.message;return Promise.resolve();}const key=owner()+'/'+r.start+'/'+r.end+'/'+r.period;if(requestedKey===key&&flights.has(key))return flights.get(key);requestedKey=key;const task=refreshDashboard(r).finally(()=>{if(flights.get(key)===task)flights.delete(key);});flights.set(key,task);return task;};
+  root.loadDashboard=function(){const selected=el('dashPeriod')?.value||'month';root.dashSyncPeriodUI?.();if(el('dashMonthLabel'))el('dashMonthLabel').hidden=selected!=='pickmonth';if(el('dashYearLabel'))el('dashYearLabel').hidden=selected!=='pickyear';let r;try{r=range(selected,new Date(),{month:el('dashMonth')?.value,year:el('dashYear')?.value});}catch(e){el('dashUpdated').textContent=e.message;return Promise.resolve();}const key=owner()+'/'+r.start+'/'+r.end+'/'+r.period;if(requestedKey===key&&flights.has(key))return flights.get(key);requestedKey=key;const task=refreshDashboard(r).finally(()=>{if(flights.get(key)===task)flights.delete(key);});flights.set(key,task);return task;};
   api.load=root.loadDashboard;
   if(el('dashMonth')){el('dashMonth').value=businessDate(new Date()).slice(0,7);el('dashMonth').max=businessDate(new Date()).slice(0,7);}
+  if(el('dashYear')?.tagName==='SELECT'&&!el('dashYear').options.length){const y=Number(businessDate(new Date()).slice(0,4));for(let n=y;n>=2023;n--)el('dashYear').add(new Option(String(n),String(n)));}
   if(el('dashYear')){el('dashYear').value=businessDate(new Date()).slice(0,4);el('dashYear').max=businessDate(new Date()).slice(0,4);}
   el('tab-dashboard')?.addEventListener('click',event=> {
     const button=event.target.closest('[data-dash-target]');

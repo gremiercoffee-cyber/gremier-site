@@ -409,6 +409,24 @@ window.loadHtml2Canvas = function () {
     .sd-billfilters { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
     .sd-billfilters .sd-pickbtn { flex:1 1 160px; }
     #sdBillingView > .flex-between h3 { font-size:1.25rem !important; font-weight:800; }
+    .bill-storehead { background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 16px; margin:20px 0 10px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .bill-storehead-top { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; }
+    .bill-storehead-top b { font-size:1.05rem; font-weight:800; color:var(--cream); }
+    .bill-dots { display:grid; grid-template-columns:repeat(auto-fill,minmax(30px,1fr)); gap:8px 4px; padding:12px 0 4px; }
+    .bill-dot { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:.66rem; font-weight:600; color:var(--text2); }
+    .bill-dot i, .bill-legend i { width:22px; height:22px; border-radius:50%; display:block; background:#e4e6ea; }
+    .bill-legend { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.72rem; color:var(--text2); margin:4px 0 2px; }
+    .bill-legend span { display:flex; align-items:center; gap:6px; }
+    .bill-legend i { width:12px; height:12px; }
+    .bd-paid i { background:#3f9a6b; }
+    .bd-owed i { background:#e0a21b; box-shadow:0 0 0 3px rgba(224,162,27,.22); }
+    .bd-unbilled i { background:#fff; border:2px dashed #b7bcc4; box-sizing:border-box; }
+    .bd-cancelled i { background:repeating-linear-gradient(45deg,#d5d8dd 0 3px,#eef0f2 3px 6px); }
+    .bill-storehead-actions { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .bill-send { flex:1; min-width:180px; border:0; border-radius:14px; padding:12px 16px; font:inherit; font-weight:800; font-size:.95rem; background:#1fa855; color:#fff; cursor:pointer; }
+    .bill-send:disabled { background:var(--bg3); color:var(--text2); cursor:default; }
+    .bill-paid { border:0; border-radius:12px; padding:9px 14px; font:inherit; font-weight:800; font-size:.85rem; background:#1c1c1c; color:#fff; cursor:pointer; }
+    .bill-group-h { font-size:1rem; font-weight:800; color:var(--cream); margin:20px 0 8px; }
     .sd-pickbtn.big { padding:12px 14px; }
     .sd-pickbtn.big .sd-pickico { width:42px; height:42px; }
     .sd-pickbtn.big .sd-picktext b { font-size:1.05rem; }
@@ -1035,7 +1053,7 @@ window.gremierUiCacheSave = function (key, ids) {
   } catch {}
 };
 </script>
-<link rel="stylesheet" href="/admin-dashboard.css?v=20261102-1">
+<link rel="stylesheet" href="/admin-dashboard.css?v=20261105-1">
 <link rel="stylesheet" href="/admin-surfaces.css?v=20261026-2"/>
 </head>
 <body>
@@ -1479,7 +1497,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </select>
       </label>
     </div>
-    <div id="billStoreShare" class="fw-actions" style="margin:10px 0"></div>
+    <div class="bill-legend" aria-hidden="true"><span class="bd-paid"><i></i>Paid</span><span class="bd-owed"><i></i>Billed, not paid</span><span class="bd-unbilled"><i></i>Not billed</span><span class="bd-cancelled"><i></i>Written off</span></div>
+    <div id="billStoreShare" style="margin:10px 0"></div>
     <div id="billAllSummary" class="stat-grid" style="display:none"></div>
     <div id="sdBillingBody"><div class="loading"><div class="spinner"></div></div></div>
   </div>
@@ -1487,103 +1506,55 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
 <!-- DASHBOARD TAB -->
 <div id="tab-dashboard" class="tab-content" style="display:none">
-  <div class="page-header">
-    <div class="flex-between">
-      <div>
-
-        <h1 class="page-title">Dashboard</h1>
-
-      </div>
-      <div class="header-actions">
-        <select class="form-input" style="width:auto" id="dashPeriod" aria-label="Dashboard reporting period" onchange="loadDashboard()">
-          <option value="month" selected>This Month</option>
-          <option value="lastmonth">Last Month</option>
-          <option value="week">Last 7 Days</option>
-          <option value="year">This Year</option>
-
-          <option value="pickmonth">Choose month…</option>
-          <option value="pickyear">Choose year…</option>
-</select>
-        <label id="dashMonthLabel" hidden>Month <input type="month" id="dashMonth" class="form-input" aria-label="Dashboard month" onchange="loadDashboard()"></label>
-        <label id="dashYearLabel" hidden>Year <input type="number" id="dashYear" class="form-input" aria-label="Dashboard year" min="2000" max="2100" step="1" onchange="loadDashboard()"></label>
-        <button type="button" class="app-icon-button" id="dashRefresh" title="Refresh" aria-label="Refresh dashboard" onclick="loadDashboard()">↻</button>
-      </div>
-    </div>
+  <div class="page-header dash-head">
+    <h1 class="page-title">Dashboard</h1>
+    <button type="button" class="dash-refresh" id="dashRefresh" title="Refresh" aria-label="Refresh dashboard" onclick="loadDashboard()">↻</button>
   </div>
+  <div class="dash-periods" role="group" aria-label="Period">
+    <button type="button" class="dash-chip" data-dash-period="month" onclick="dashPickPeriod('month')">This month</button>
+    <button type="button" class="dash-chip" data-dash-period="lastmonth" onclick="dashPickPeriod('lastmonth')">Last month</button>
+    <button type="button" class="dash-chip" data-dash-period="week" onclick="dashPickPeriod('week')">7 days</button>
+    <button type="button" class="dash-chip" data-dash-period="year" onclick="dashPickPeriod('year')">This year</button>
+    <label class="dash-chip dash-chip-pick" data-dash-period="pickmonth"><span aria-hidden="true">📅</span> <span id="dashMonthChip">Pick month</span> <span class="sd-chev" aria-hidden="true">▾</span>
+      <input type="month" id="dashMonth" aria-label="Dashboard month" onchange="dashPickPeriod('pickmonth')" onclick="try{this.showPicker()}catch(_){}"></label>
+    <label class="dash-chip dash-chip-pick" data-dash-period="pickyear"><span aria-hidden="true">🗓️</span> <span id="dashYearChip">Pick year</span> <span class="sd-chev" aria-hidden="true">▾</span>
+      <select id="dashYear" aria-label="Dashboard year" onchange="dashPickPeriod('pickyear')"></select></label>
+  </div>
+  <select id="dashPeriod" hidden aria-hidden="true" tabindex="-1">
+    <option value="month" selected>This Month</option><option value="lastmonth">Last Month</option><option value="week">Last 7 Days</option><option value="year">This Year</option><option value="pickmonth">Choose month…</option><option value="pickyear">Choose year…</option>
+  </select>
 
   <p id="dashUpdated" role="status" aria-live="polite" class="dash-updated">Loading business data…</p>
   <section id="dashSalesTotal" class="dash-total" aria-label="Total sales"></section>
   <div id="dashKPIs" class="dash-metrics"></div>
   <section id="dashOpenOrders" aria-label="Orders to fulfill" hidden></section>
-  <section id="dashOnlineRevenue" class="dash-panel"><h2>Sales by purpose</h2><div class="fin-row"><span>Store sales</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Personal orders</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Events</span><span class="dash-skeleton">&nbsp;</span></div></section>
+
+  <h2 class="ord-sec-h">Needs your attention</h2>
+  <div id="dashAttention" class="dash-attn"></div>
+
+  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2>Sales · <span id="dashTrendTitle">This month</span></h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span></div></div><div id="dashTrend"></div></section>
   <div class="dash-overview-grid">
-    <section class="dash-panel"><div class="dash-section-head"><div><h2>Needs your attention</h2></div></div><div id="dashAttention"></div></section>
+  <section id="dashOnlineRevenue" class="dash-panel"><h2>Sales by purpose</h2><div class="fin-row"><span>Store sales</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Personal orders</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Events</span><span class="dash-skeleton">&nbsp;</span></div></section>
     <section class="dash-panel dash-money-panel"><h2>Sales &amp; payments</h2><div id="dashMoney"></div></section>
   </div>
-  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2 id="dashTrendTitle">This month</h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span></div></div><div id="dashTrend"></div></section>
-  <section class="dash-panel dash-coverage"><div><h2>Accounts &amp; expenses</h2></div><div class="dash-coverage-status"><button class="btn btn-outline btn-sm" onclick="showTab('reports')">Stats</button><button class="btn btn-outline btn-sm" onclick="showTab('expenses')">Expense inbox</button></div></section>
 
-  <!-- Revenue chart -->
-  <div class="card collapse-card" data-collapse-key="dash_chart" data-collapse-default="collapsed" style="margin-bottom:24px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Sales detail</h3>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0 20px 20px" id="dashChart">
-      <div class="loading"><div class="spinner"></div></div>
-    </div>
-  </div>
+  <h2 class="ord-sec-h">Recent orders <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('orders')">See all</button></span></h2>
+  <div id="dashRecentOrders" class="dash-list"></div>
 
-  <!-- Recent orders (full width) -->
-  <div style="margin-bottom:24px" id="dashCols">
-    <div>
-      <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream);margin-bottom:12px">Recent Orders</h3>
-      <div class="card" style="padding:0">
-        <table>
-          <thead><tr><th>#</th><th>Customer</th><th class="cell-total">Total</th><th class="cell-status">Status</th></tr></thead>
-          <tbody id="dashRecentOrders"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+  <h2 class="ord-sec-h">Stores · this period <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('storedeliveries')">Open stores</button></span></h2>
+  <div id="dashStoreBreakdown" class="dash-list"></div>
 
-  <!-- Recent store deliveries -->
-  <div class="card collapse-card" data-collapse-key="dash_recent_deliveries" data-collapse-default="collapsed" style="margin-bottom:24px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Recent Store Deliveries</h3>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0">
-      <table>
-        <thead><tr><th>Store</th><th class="cell-num">🫙L</th><th class="cell-num">🫙S</th><th class="cell-total">₪</th></tr></thead>
-        <tbody id="dashRecentDeliveries"></tbody>
-      </table>
-    </div>
-  </div>
+  <h2 class="ord-sec-h">Recent store deliveries</h2>
+  <div id="dashRecentDeliveries" class="dash-list"></div>
 
-  <!-- Store monthly breakdown -->
-  <div class="card collapse-card" data-collapse-key="dash_store_totals" data-collapse-default="collapsed" style="margin-bottom:24px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Store totals · selected period</h3>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Store</th><th>Large</th><th>Small</th><th>Dairy Free</th><th>Unfiltered</th><th>Syrup</th><th class="cell-total">Value</th></tr></thead>
-          <tbody id="dashStoreBreakdown"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+  <h2 class="ord-sec-h">Bottles sold</h2>
+  <section class="dash-panel" id="dashBottlesSold"></section>
+  <div id="dashChart" hidden></div>
 
-  <!-- Bottles sold this month -->
-  <div class="card collapse-card" data-collapse-key="dash_bottles" data-collapse-default="collapsed" style="margin-bottom:24px">
-    <div class="collapse-head">
-      <h3 class="collapse-head-title">Bottles sold · selected period</h3>
-      <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapse-body" style="padding:0 20px 16px" id="dashBottlesSold"></div>
+  <div class="dash-links">
+    <button type="button" onclick="showTab('reports')"><span aria-hidden="true">📊</span> Stats</button>
+    <button type="button" onclick="showTab('expenses')"><span aria-hidden="true">📥</span> Expense inbox</button>
+    <button type="button" onclick="showTab('finance')"><span aria-hidden="true">🧾</span> Receipts</button>
   </div>
 </div>
 
@@ -2216,7 +2187,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
-<script src="/admin-dashboard.js?v=20261102-2"></script>
+<script src="/admin-dashboard.js?v=20261105-1"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
 <script>
   function escHtml(s) {
@@ -7657,8 +7628,8 @@ function billingCardHtml(r, showMonth) {
       </div>
       <button class="btn btn-outline btn-sm" onclick="openBillingDocuments('${r.store_id}')">Documents</button>
       ${closed ? '' : `<div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-amber btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'}>💬 Send via WhatsApp</button>
-        <button class="btn btn-outline btn-sm" onclick="markBillingPaid('${r.id}')">Mark Paid</button>
+        <button class="bill-paid" onclick="markBillingPaid('${r.id}')">✓ Mark paid</button>
+        <button class="btn btn-outline btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'}>💬 This month</button>
         <span data-action-menu="Bill actions"><button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download balance image</button>
         <button class="btn btn-red btn-sm" onclick="markBillingCancelled('${r.id}')" title="Write this month off for this store">Write off month</button></span>
       </div>`}
@@ -7737,6 +7708,25 @@ async function loadBillingAll() {
   renderBillingAll();
 }
 function billKey(r) { return `${r.year}-${String(r.month).padStart(2, '0')}`; }
+// Store header for the billing list: name, unpaid total, a dot per month (last 12), one send button.
+function billStoreHead(storeId, name, unpaidHtml) {
+  const months = billingAllRows.filter(r => r.store_id === storeId).sort((a, b) => billKey(a).localeCompare(billKey(b))).slice(-12);
+  const word = { paid: 'paid', owed: 'billed, not paid', unbilled: 'not billed yet', cancelled: 'written off' };
+  const dots = months.map(r => {
+    const st = billingStatus(r);
+    const short = new Date(r.year, r.month - 1, 1).toLocaleDateString('en-GB', { month: 'short' });
+    return `<span class="bill-dot bd-${st}" title="${escAttr(billMonthLabel(r) + ' · ' + word[st] + ' · ₪' + Number(r.total || 0).toFixed(2))}"><i></i>${short}</span>`;
+  }).join('');
+  const hasUnpaid = billingAllRows.some(r => r.store_id === storeId && billingStatus(r) === 'owed');
+  return `<div class="bill-storehead">
+    <div class="bill-storehead-top"><b>${escHtml(name)}</b>${unpaidHtml}</div>
+    ${dots ? `<div class="bill-dots" aria-label="Months">${dots}</div>` : ''}
+    <div class="bill-storehead-actions">
+      <button type="button" class="bill-send" data-bill-share="${escAttr(storeId)}" ${hasUnpaid ? '' : 'disabled'}>💬 ${hasUnpaid ? 'Send unpaid' : 'Nothing unpaid'}</button>
+      <span data-action-menu="More statement options"><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(storeId)}">Pick months…</button></span>
+    </div>
+  </div>`;
+}
 function renderBillingAll() {
   const body = document.getElementById('sdBillingBody');
   const group = document.getElementById('billStore')?.value ? 'month' : 'store';
@@ -7753,7 +7743,7 @@ function renderBillingAll() {
   const share = document.getElementById('billStoreShare');
   if (share) {
     const scoped = billingAllRows.filter(r => r.store_id===store && (!month || billKey(r)===month));
-    share.innerHTML = store ? `<h4 style="display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:0">${escHtml(scoped[0]?.stores?.name || allStores.find(s=>s.id===store)?.name || 'Store')} ${unpaidLabel(scoped)}</h4><button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(store)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(store)}">Share multiple statements</button>` : '';
+    share.innerHTML = store ? billStoreHead(store, scoped[0]?.stores?.name || allStores.find(s=>s.id===store)?.name || 'Store', unpaidLabel(scoped)) : '';
   }
   const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
   const rows = billingAllRows.filter(r => {
@@ -7787,7 +7777,8 @@ function renderBillingAll() {
     const title = group === 'status' ? BILL_STATUS_META[k].label
       : group === 'month' ? billMonthLabel(list[0])
       : group === 'store' ? escHtml(k) : '';
-    const head = title ? `<div class="flex-between" style="gap:10px;margin:18px 0 8px"><h4 style="display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;font-size:.95rem;color:var(--cream);margin:0">${title} ${group==='store'?unpaidLabel(list):''}</h4>${group==='store'?`<button type="button" class="btn btn-outline btn-sm" data-bill-share="${escAttr(list[0].store_id)}">Share all unpaid statements</button><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(list[0].store_id)}">Share multiple statements</button>`:''}</div>` : '';
+    const head = group === 'store' ? billStoreHead(list[0].store_id, k, unpaidLabel(list))
+      : title ? `<h4 class="bill-group-h">${title}</h4>` : '';
     return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
   }).join('');
 }
@@ -8874,6 +8865,18 @@ Return JSON:
     window.__dashBriefingLoading = false;
     if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   }
+}
+function dashPickPeriod(period) {
+  const sel = document.getElementById('dashPeriod'); if (!sel) return;
+  sel.value = period; loadDashboard();
+}
+function dashSyncPeriodUI() {
+  const period = document.getElementById('dashPeriod')?.value || 'month';
+  document.querySelectorAll('[data-dash-period]').forEach(c => { const on = c.dataset.dashPeriod === period; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on); });
+  const m = document.getElementById('dashMonth')?.value, y = document.getElementById('dashYear')?.value;
+  const mc = document.getElementById('dashMonthChip'), yc = document.getElementById('dashYearChip');
+  if (mc) mc.textContent = period === 'pickmonth' && m ? new Date(m + '-01T12:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'Pick month';
+  if (yc) yc.textContent = period === 'pickyear' && y ? y : 'Pick year';
 }
 async function loadDashboard() {
   window.GremierOpenOrders?.load();   // paid orders still to fulfill, under the top cards
