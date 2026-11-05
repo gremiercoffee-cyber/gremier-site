@@ -18,7 +18,7 @@
   const premium = () => all().find((p) => addonsOf(p).some((a) => a.per_liter || a.group)) || all().find((p) => /premium/i.test(p.name_en || ''));
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, lids: false, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {}, deliveryMode: 'event', deliveryDate: '', deliveryTime: '' };
+  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, lids: false, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {}, deliveryMode: 'event', deliveryDate: '', deliveryTime: '', deliveryPicked: false };
   // Everyday products that can ride along with the bar at their full price.
   const extraProduct = (id) => all().find((p) => String(p.id) === String(id) && p.is_active !== false && !p.is_coffee_bar && ['bottles', 'minis', 'bulk'].includes(p.category));
   // The 5L jugs on their own (not the 3-jug pack): an extra jerry can of coffee for the bar.
@@ -29,7 +29,7 @@
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
 
   // A bar's choices as a short link code, and back. Only known fields with sane values are taken.
-  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,d:[state.deliveryMode,state.deliveryDate,state.deliveryTime]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,d:[state.deliveryMode,state.deliveryDate,state.deliveryTime,state.deliveryPicked?1:0]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
   function fromCode(code){
     try{
       const j=JSON.parse(decodeURIComponent(escape(atob(String(code).replace(/-/g,'+').replace(/_/g,'/')))));
@@ -38,6 +38,8 @@
       return {guests:Math.max(5,n(j.g,500)),milk:['dairy','parve','all_parve'].includes(j.m)?j.m:'dairy',milkMix:j.mm&&typeof j.mm==='object'?j.mm:null,
        mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,syrups:counts(j.s,['caramel','vanilla','sugar'],20),
        deliveryMode:['before','pickup'].includes(j.d?.[0])?j.d[0]:'event',deliveryDate:/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||'')?j.d[1]:'',deliveryTime:/^\d{2}:\d{2}$/.test(j.d?.[2]||'')?j.d[2]:'',
+       // Older links have no flag: a non-default type or a date means it was chosen.
+       deliveryPicked:j.d?.[3]===1||['before','pickup'].includes(j.d?.[0])||/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||''),
        extras:Object.fromEntries(Object.entries(j.e&&typeof j.e==='object'?j.e:{}).filter(([k])=>/^[\w-]{1,64}$/.test(k)).map(([k,v])=>[k,n(v,20)]).filter(([,v])=>v>0))};
     }catch{return null;}
   }
@@ -88,16 +90,16 @@
   // When checkout opens for a coffee bar, it starts with the delivery chosen here.
   function fillCheckoutDelivery(){
     const d=(()=>{try{return JSON.parse(localStorage.getItem('gremier_bar_delivery')||'null');}catch{return null;}})();
-    if(!d||!d.date||typeof cart==='undefined'||!cart.some(i=>i.is_coffee_bar||all().find(p=>String(p.id)===String(i.base_product_id||i.id))?.is_coffee_bar))return;
+    if(!d||!d.ship||typeof cart==='undefined'||!cart.some(i=>i.is_coffee_bar||all().find(p=>String(p.id)===String(i.base_product_id||i.id))?.is_coffee_bar))return;
     const set=(id,v)=>{const el=$(id);if(el)el.value=v||'';};
     const radio=$(d.ship==='event'?'shipEvent':d.ship==='pickup'?'shipPickup':d.ship==='expedited'?'shipExpedited':'shipRegular');if(!radio||radio.disabled)return;
     radio.checked=true;
     // Pickup has no date field at checkout: the date goes in the order notes.
-    if(d.ship==='pickup'){const n=$('coNotes'),line=T(`Pickup on ${d.date}`,`איסוף ב-${d.date}`);if(n&&!n.value.includes(line))n.value=n.value?`${line}
+    if(d.ship==='pickup'&&d.date){const n=$('coNotes'),line=T(`Pickup on ${d.date}`,`איסוף ב-${d.date}`);if(n&&!n.value.includes(line))n.value=n.value?`${line}
 ${n.value}`:line;}
-    else if(d.ship==='event'){set('coEventDate',d.date);set('coEventTime',d.time);}
+    else if(d.ship==='event'){if(d.date)set('coEventDate',d.date);if(d.time)set('coEventTime',d.time);}
     else if(d.ship==='expedited'){const p=$('priorityDate');if(p)p.checked=true;set('coDeliveryDate',d.date);if(typeof toggleDatePicker==='function')toggleDatePicker();}
-    else set('coRegularDate',d.date);
+    else if(d.ship==='regular'&&d.date)set('coRegularDate',d.date);
     if(typeof toggleExpeditedOptions==='function')toggleExpeditedOptions();
     if(d.ship==='expedited'&&typeof toggleDatePicker==='function')toggleDatePicker();
     if(typeof updateDeliveryPrice==='function')updateDeliveryPrice();
@@ -323,8 +325,9 @@ ${n.value}`:line;}
     if (!plan || typeof openProductDrawer !== 'function') return;
     const chosen=!!state.deliveryDate&&(state.deliveryMode!=='event'||!!state.deliveryTime);
     // Opening the same checkout link again: the bar is already in the cart, just go to checkout.
+    if(options.deliveryAtCheckout){try{if(state.deliveryPicked)localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));else localStorage.removeItem('gremier_bar_delivery');}catch{}}
     if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total))){if(typeof openCheckout==='function')openCheckout();return;}
-    if(!chosen&&options.deliveryAtCheckout){try{localStorage.removeItem('gremier_bar_delivery');}catch{}}
+    if(!chosen&&options.deliveryAtCheckout){/* a checkout link: checkout asks for whatever is missing */}
     else if(!chosen){
       if(!document.querySelector('#planner .bb-delivery')){bstep='delivery';render();}
       const q=document.querySelector('#planner .bb-delivery');q?.scrollIntoView({behavior:'smooth',block:'center'});q?.classList.add('bb-attention');setTimeout(()=>q?.classList.remove('bb-attention'),1600);
@@ -705,11 +708,12 @@ ${n.value}`:line;}
     if (!b) return;
     const key = b.parentElement.dataset.key, v = b.dataset.v;
     state[key] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v;
+    if (key === 'deliveryMode') state.deliveryPicked = true;
     render();
     if(key==='guests'&&bstep==='guests'){clearTimeout(goStep.t);goStep.t=setTimeout(()=>goStep('bar'),450);}
   });
   document.addEventListener('change',(e)=>{
-    if(e.target.id==='plDelDate'){state.deliveryDate=e.target.value;render();}
+    if(e.target.id==='plDelDate'){state.deliveryDate=e.target.value;state.deliveryPicked=true;render();}
     else if(e.target.id==='plDelTime'){state.deliveryTime=e.target.value;render();}
   });
   document.addEventListener('input', (e) => {
