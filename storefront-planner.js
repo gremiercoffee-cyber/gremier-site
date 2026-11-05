@@ -531,8 +531,11 @@ ${n.value}`:line;}
       <h2>${T('How many guests do you have?', 'כמה אורחים יהיו?')}</h2>
       <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div>
       <small class="bb-q-hint">${T('Pick the closest number, or type your own.', 'בחרו את המספר הקרוב, או הקלידו.')}</small>
-      ${plan ? `<button type="button" class="bbx-cta" data-go="bar"><span>${T('See my coffee bar', 'לבר הקפה שלי')}</span><b>₪${plan.total} ›</b></button>
-      <button type="button" class="bbx-options" data-go="opt-coffee"><span class="bbx-spark" aria-hidden="true">✨</span><span><strong>${T('Show me more options', 'הראו לי עוד אפשרויות')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><i aria-hidden="true">›</i></button>` : ''}</div>`;
+      ${plan ? `<div class="bbx-standard"><h3>${T(`What comes standard for ${plan.tier.guests} guests`, `מה מגיע בבר הבסיסי ל-${plan.tier.guests} אורחים`)}</h3>
+      ${includedHtml(plan)}
+      ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}</div>
+      <button type="button" class="bbx-cta bbx-build" data-go="opt-coffee"><span><strong>${T('Build the rest of your coffee bar', 'בנו את שאר בר הקפה')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><b aria-hidden="true">›</b></button>
+      <button type="button" class="bbx-soft" data-go="delivery"><span>${T('Order now, as is', 'להזמין עכשיו, כמו שזה')}</span><b>₪${plan.total} ›</b></button>` : ''}</div>`;
     const total = `₪<span id="bbTotal">${plan.total}</span>`;
     const back = (to, label) => `<button type="button" class="bbx-back" data-go="${to}">‹ ${label}</button>`;
     if (bstep === 'bar') return `<div class="bbx-step" data-step="bar">
@@ -540,8 +543,8 @@ ${n.value}`:line;}
       <p class="bbx-lead">${T('Everything you need, ready to pour:', 'כל מה שצריך, מוכן למזיגה:')}</p>
       ${includedHtml(plan)}
       ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
-      <button type="button" class="bbx-cta" data-go="delivery"><span>${T('Looks perfect, let’s book it', 'נראה מושלם, בואו נזמין')}</span><b>${total} ›</b></button>
-      <button type="button" class="bbx-options" data-go="opt-coffee"><span class="bbx-spark" aria-hidden="true">✨</span><span><strong>${T('Show me more options', 'הראו לי עוד אפשרויות')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><i aria-hidden="true">›</i></button>
+      <button type="button" class="bbx-cta bbx-build" data-go="opt-coffee"><span><strong>${T('Build the rest of your coffee bar', 'בנו את שאר בר הקפה')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><b aria-hidden="true">›</b></button>
+      <button type="button" class="bbx-soft" data-go="delivery"><span>${T('Order now, as is', 'להזמין עכשיו, כמו שזה')}</span><b>${total} ›</b></button>
       <div class="bbx-actions bbx-only-back">${back('guests', T('Guests', 'אורחים'))}</div></div>`;
     // Options: three short pages, each moving on to the next, then delivery.
     const OPTS = ['opt-coffee', 'opt-milk', 'opt-extras'];
@@ -572,7 +575,7 @@ ${n.value}`:line;}
       ${deliveryHtml()}
       ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
-      <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
+      <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : prevStep === 'guests' ? 'guests' : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
       <button type="button" class="bbx-share" onclick="plannerShare()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>${T('Share this bar', 'שיתוף הבר')}</button></div>`;
   }
 
@@ -623,7 +626,7 @@ ${n.value}`:line;}
     const plan = suggestion(); if (!plan) return '';
     const milk = state.milk === 'dairy' ? 'dairy milk' : plan.milk.map((m) => `${m.liters}L ${m.addon?.name || m.key}`).join(', ') || state.milk;
     const del = state.deliveryMode === 'event' ? `delivered to the event${state.deliveryDate ? ` on ${state.deliveryDate}${state.deliveryTime ? ' at ' + state.deliveryTime : ''}` : ''}` : state.deliveryMode === 'pickup' ? `pickup${state.deliveryDate ? ' on ' + state.deliveryDate : ''} (free)` : `delivered before the event${state.deliveryDate ? ' on ' + state.deliveryDate : ''}`;
-    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included), choosing between booking it and seeing more options' : bstep === 'delivery' ? 'choosing delivery, then booking (with an optional take-home coffee add-on)' : bstep === 'opt-coffee' ? 'choosing coffee types and serving stations' : bstep === 'opt-milk' ? 'choosing the milk' : 'choosing extra syrups and domed lids';
+    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests; under it they see what comes standard for that count, a main "Build the rest of your coffee bar" button and a smaller "Order now, as is" button' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included), choosing between booking it and seeing more options' : bstep === 'delivery' ? 'choosing delivery, then booking (with an optional take-home coffee add-on)' : bstep === 'opt-coffee' ? 'choosing coffee types and serving stations' : bstep === 'opt-milk' ? 'choosing the milk' : 'choosing extra syrups and domed lids';
     return [`Guests: ${state.guests} (package tier ${plan.tier.guests})`, `Coffee: ${plan.jugs} × 5L jerry cans (${plan.classic} Classic${Object.entries(plan.mix).map(([k, n]) => `, ${n} ${k}`).join('')})`,
       `Milk: ${milk} (${plan.milkLiters}L)`, `Serving stations: ${plan.stations}`, `Domed lids: ${state.lids ? 'yes' : 'no'}`, `Syrups: caramel ${plan.syrupCounts.caramel}, vanilla ${plan.syrupCounts.vanilla}, sugar ${plan.syrupCounts.sugar} (one of each included)`,
       `Delivery: ${del}`, `Total so far: ₪${plan.total}`, `The customer is ${where}.`].join('\n');
@@ -710,7 +713,6 @@ ${n.value}`:line;}
     state[key] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v;
     if (key === 'deliveryMode') state.deliveryPicked = true;
     render();
-    if(key==='guests'&&bstep==='guests'){clearTimeout(goStep.t);goStep.t=setTimeout(()=>goStep('bar'),450);}
   });
   document.addEventListener('change',(e)=>{
     if(e.target.id==='plDelDate'){state.deliveryDate=e.target.value;state.deliveryPicked=true;render();}

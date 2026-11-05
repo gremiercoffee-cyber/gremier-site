@@ -547,3 +547,16 @@ body.bb-world-on .bb-confirm { z-index:3200; color-scheme:light; }
 }
 @media(min-width:861px) { .bb-world .bbx { align-items:center; } .bb-world .bbx-scene.bb-tray { position:relative; top:auto; align-self:center; } }
 @media(min-width:861px) { .bb-world .bbx-panel .bbx-book { position:sticky; bottom:0; z-index:2; } }
+
+/* Guests step: the standard bar, then "Build the rest" (main) and "Order now" (softer) */
+.planner .bbx-standard { margin:16px 0 6px; padding:14px 16px 2px; background:#fdfaf5; border:1px solid #f1e6d6; border-radius:16px; animation:bbxIn .3s ease; }
+.planner .bbx-standard h3 { margin:0 0 10px; font:700 15px 'DM Sans',sans-serif; color:#1a1a1a; }
+.planner .bbx-standard .bbx-included { margin-bottom:12px; }
+@keyframes bbxIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+.planner .bbx-build { text-align:start; margin-top:14px; }
+.planner .bbx-build strong { display:block; font:700 16px 'DM Sans',sans-serif; }
+.planner .bbx-build small { display:block; font:500 12px 'DM Sans',sans-serif; color:rgba(255,255,255,.7); margin-top:3px; line-height:1.4; }
+.planner .bbx-build b { font-size:22px; }
+.planner .bbx-soft { width:100%; display:flex; justify-content:space-between; align-items:center; gap:12px; background:#fff; color:#1a1a1a; border:1px solid #d9d3ca; border-radius:14px; padding:12px 18px; margin:0 0 10px; cursor:pointer; font:600 14.5px 'DM Sans',sans-serif; transition:border-color .15s, background .15s; }
+.planner .bbx-soft:hover { border-color:#1a1a1a; background:#faf8f5; }
+.planner .bbx-soft b { font-weight:700; white-space:nowrap; }
