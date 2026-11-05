@@ -31,7 +31,8 @@ export function urgencyFor(type: string, priority?: number | null): Urgency {
     case "approval":    // something new needs the owner's OK
     case "broken":      // a connection or helper stopped working
       return "now";
-    case "overdue":
+    case "overdue":     // a due time the user set
+      return "now";
     case "headsup":
     case "email":
     case "whatsapp":

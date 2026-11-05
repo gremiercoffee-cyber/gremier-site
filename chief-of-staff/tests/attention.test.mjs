@@ -19,7 +19,7 @@ test('schedule-bound work waits for its window; skips, muted and snoozed items r
 test('meetings and stale Now cards do not surface early or return on the next recurring day',()=>{const b={...block,id:'meet',date:'2026-10-18',keywords:'wa-meet:A'},state={at:morning,tz,blocks:new Map([['meet',b],['evening',block]]),items:new Map()};const n={type:'meeting',item_id:'meet',created_at:morning.toISOString()};assert.equal(timing.actionableNotice(n,state),false);assert.equal(timing.actionableNotice(n,{...state,at:evening}),true);assert.equal(timing.actionableNotice(n,{...state,at:new Date('2026-10-18T19:00:00Z')}),false);const now={type:'situation',topic_key:'block:evening',created_at:'2026-10-15T17:15:00Z'};assert.equal(timing.actionableNotice(now,{...state,at:evening}),false);assert.equal(timing.actionableNotice({...now,updated_at:evening.toISOString()},{...state,at:evening}),true);});
 test('dashboard hides the prepared next-month reminder and early meeting without losing records or the full-day view',async t=>{t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();h.item('monthly');h.item('later-today','reminder','2026-10-18T17:15:00.000Z');h.item('normal','task',null);h.saveBlock('meet','2026-10-18','wa-meet:A');await notifications.recordNotification(h.env,'meeting','Meet A','With A','meet','/');const response=await worker.fetch(new Request('https://fixture/api/dashboard',{headers:{authorization:'Bearer fixture-only'}}),h.env,{waitUntil(){}});assert.equal(response.status,200);const d=await response.json();assert.deepEqual(d.todo.map(i=>i.id),['normal']);assert.equal(d.nudges.some(n=>n.type==='meeting'),false);assert.equal(d.today.some(i=>i.id==='later-today'),true,'daily overview keeps the full day');assert.equal(h.db.prepare("SELECT status FROM items WHERE id='monthly'").get().status,'open');assert.deepEqual(await notifications.activeNotificationIds(h.env,h.db.prepare('SELECT id FROM nudges').all().map(n=>n.id)),[]);});
 test('time block suggestions exclude next-month reminders and wrapups retain unfinished attached tasks',async t=>{t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();h.item('monthly');h.item('attached','task',null,'evening');const b=h.db.prepare("SELECT * FROM situations WHERE id='evening'").get();const items=await situations.itemsFor(h.env,b);assert.deepEqual(items.map(i=>i.id),['attached']);const after=new Date('2026-10-18T18:20:00Z'),state=await timing.attentionState(h.env,after);assert.equal(timing.actionableNoticeItem(state.items.get('attached'),{type:'wrapup',topic_key:'block:evening'},state),true);});
-test('a scheduled meeting emits one at-time notification and none before or after its window',async t=>{t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();h.saveBlock('meet','2026-10-18','wa-meet:A');assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare('SELECT count(*) n FROM nudges').get().n,0);t.mock.timers.setTime(evening.getTime());assert.equal(await situations.runSituations(h.env),1);assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='meeting'").get().n,1);t.mock.timers.setTime(new Date('2026-10-18T19:00:00Z').getTime());assert.deepEqual(await notifications.activeNotificationIds(h.env,h.db.prepare('SELECT id FROM nudges').all().map(n=>n.id)),[]);});
+test.skip('Off in the bare-bones version (Nov 2026): a scheduled meeting emits one at-time notification and none before or after its window',async t=>{t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();h.saveBlock('meet','2026-10-18','wa-meet:A');assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare('SELECT count(*) n FROM nudges').get().n,0);t.mock.timers.setTime(evening.getTime());assert.equal(await situations.runSituations(h.env),1);assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='meeting'").get().n,1);t.mock.timers.setTime(new Date('2026-10-18T19:00:00Z').getTime());assert.deepEqual(await notifications.activeNotificationIds(h.env,h.db.prepare('SELECT id FROM nudges').all().map(n=>n.id)),[]);});
 
 const actions = await load('worker/actions.ts');
 const itemDb = await load('worker/db.ts');
@@ -27,7 +27,7 @@ const dashboard = async h => {
  const response=await worker.fetch(new Request('https://fixture/api/dashboard',{headers:{authorization:'Bearer fixture-only'}}),h.env,{waitUntil(){}});
  assert.equal(response.status,200);return response.json();
 };
-test('a repeating block note has a removal action even with no tasks; hiding only lasts for that alert',async t=>{
+test.skip('Off in the bare-bones version (Nov 2026): a repeating block note has a removal action even with no tasks; hiding only lasts for that alert',async t=>{
  t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();
  h.db.prepare("UPDATE situations SET note='Inventory fixture' WHERE id='evening'").run();
  const record=()=>notifications.recordNotification(h.env,'situation','Night yeshiva: a reminder','📝 Inventory fixture',null,'/',{topic:'block:evening',itemIds:[]});
@@ -39,7 +39,7 @@ test('a repeating block note has a removal action even with no tasks; hiding onl
  assert.equal(h.db.prepare("SELECT note FROM situations WHERE id='evening'").get().note,'');
  assert.equal((await dashboard(h)).nudges.length,0);assert.equal(await situations.runSituations(h.env),0);
 });
-test('removing a repeating note preserves real tasks and stale phone actions cannot remove a newer note',async t=>{
+test.skip('Off in the bare-bones version (Nov 2026): removing a repeating note preserves real tasks and stale phone actions cannot remove a newer note',async t=>{
  t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();h.item('real','task',null,'evening');
  h.db.prepare("UPDATE situations SET note='Old note' WHERE id='evening'").run();
  const n=await notifications.recordNotification(h.env,'situation','1 thing for now','📝 Old note\n• Task real',null,'/',{topic:'block:evening',itemIds:['real']});
@@ -59,7 +59,7 @@ test('Done and Not needed close work everywhere while Later leaves it intact unt
  await actions.applyAction(h.env,a.id,'done');const d=await dashboard(h);
  assert.equal(d.nudges.some(n=>n.item_id==='a'||n.items?.some(i=>i.id==='a')),false);
  assert.equal(h.db.prepare("SELECT status FROM items WHERE id='a'").get().status,'done');
- assert.deepEqual(d.nudges.flatMap(n=>n.items??[]).map(i=>i.id),['b']);
+ // (Digests no longer exist in the bare-bones version, so there is no group list left to check.)
  const b=await notifications.recordNotification(h.env,'reminder','Task b','','b','/');await actions.applyAction(h.env,b.id,'notneeded');
  assert.equal(h.db.prepare("SELECT status FROM items WHERE id='b'").get().status,'dropped');assert.equal((await dashboard(h)).nudges.length,0);
  await itemDb.updateItem(h.env,'b',{status:'open'});assert.equal(h.db.prepare("SELECT status FROM items WHERE id='b'").get().status,'open');
@@ -115,13 +115,13 @@ test('a drive selects calls across all areas and explicit voice work, excluding 
  assert.equal(h.db.prepare("SELECT status FROM items WHERE id='print'").get().status,'open');
  assert.equal(contexts.drivingSuitable({title:'Phone charger'}),false);assert.equal(contexts.drivingSuitable({title:'Call for proposals'}),false);assert.equal(contexts.drivingSuitable({title:'להתקשר לאבא'}),true);
 });
-test('unsuitable reminders and summaries stay quiet while driving, then become actionable at the destination',async t=>{
+test.skip('Off in the bare-bones version (Nov 2026): unsuitable reminders and summaries stay quiet while driving, then become actionable at the destination',async t=>{
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-19T05:30:00Z')});const h=setup();await commuteFixture(h);h.item('desk','task','2026-10-19T05:00:00Z');h.db.prepare("UPDATE items SET execution_mode='desk',category='yeshiva' WHERE id='desk'").run();
  const notice=await notifications.recordNotification(h.env,'overdue','Do desk work','','desk','/');const briefing=await notifications.recordNotification(h.env,'briefing','Today','Full day',null,'/');
  let d=await dashboard(h);assert.equal(d.now_block.items.length,0);assert.equal(d.nudges.length,0);assert.deepEqual(await notifications.activeNotificationIds(h.env,[notice.id,briefing.id]),[]);
  t.mock.timers.setTime(new Date('2026-10-19T06:20:00Z').getTime());d=await dashboard(h);assert.equal(d.now_block.name,'At yeshiva');assert.equal(d.now_block.items[0].id,'desk');assert.equal(d.nudges.some(n=>n.id===briefing.id),true);
 });
-test('commutes emit one relevant checklist, no destination overview or end-of-drive wrapup, and stay silent without calls',async t=>{
+test.skip('Off in the bare-bones version (Nov 2026): commutes emit one relevant checklist, no destination overview or end-of-drive wrapup, and stay silent without calls',async t=>{
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-19T05:30:00Z')});const h=setup(),drive=await commuteFixture(h);
  h.db.prepare("UPDATE situations SET note='General work overview' WHERE id=?").run(drive.id);h.item('physical','task',null);h.db.prepare("UPDATE items SET title='Print papers',category='yeshiva' WHERE id='physical'").run();
  assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare('SELECT count(*) n FROM nudges').get().n,0);
@@ -130,7 +130,7 @@ test('commutes emit one relevant checklist, no destination overview or end-of-dr
  const n=h.db.prepare("SELECT * FROM nudges WHERE type='situation'").get();assert.equal(n.body,'• Call Dad');
  t.mock.timers.setTime(new Date('2026-10-19T06:20:00Z').getTime());await situations.runSituations(h.env);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='wrapup'").get().n,0);
 });
-test('overlapping equivalent work blocks only emit the same checklist once',async t=>{
+test.skip('Off in the bare-bones version (Nov 2026): overlapping equivalent work blocks only emit the same checklist once',async t=>{
  t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock('one');h.saveBlock('two');h.item('work','task',null);h.db.prepare("UPDATE items SET category='yeshiva' WHERE id='work'").run();
  assert.equal(await situations.runSituations(h.env),1);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='situation'").get().n,1);
 });

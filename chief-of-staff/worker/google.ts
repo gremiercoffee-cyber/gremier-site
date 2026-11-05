@@ -286,6 +286,8 @@ export async function syncCalendar(env: Env, token: string, alerts: boolean, acc
 }
 
 // ---- Gmail -------------------------------------------------------------------
+/** Off: emails never turn into tasks, waiting items or commitments unless the user asks in chat. */
+const AUTO_EMAIL_TASKS = false as boolean;
 interface GPart { mimeType: string; body?: { data?: string }; parts?: GPart[]; headers?: { name: string; value: string }[] }
 interface GMessage { id: string; threadId: string; labelIds?: string[]; internalDate: string; snippet: string; payload: GPart }
 interface GThread { id: string; historyId: string; messages: GMessage[] }
@@ -376,7 +378,9 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
       completed++;
     }
 
-    // 2. Model triage of the latest exchange: skipped when an open item already tracks the thread,
+    // 2. Emails no longer become tasks on their own: only what the user asks for is a task.
+    if (!AUTO_EMAIL_TASKS) { await run(env, "UPDATE gmail_threads SET analyzed_msg_id = ? WHERE thread_id = ?", last.id, threadId); continue; }
+    // (Off) Model triage of the latest exchange: skipped when an open item already tracks the thread,
     //    when the free pre-filter says it's not personal mail, or when today's AI budget is spent.
     const stillTracked = await first(env, "SELECT 1 FROM items WHERE status = 'open' AND ext_source = 'gmail' AND ext_ref = ?", threadId);
     if (stillTracked || skipReason(last, me, bodyText(last))) {

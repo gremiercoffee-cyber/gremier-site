@@ -24,7 +24,7 @@ import { PinnedResearch, ResearchChat } from "./components/ResearchChats";
 import type { JobChatRow } from "./api";
 
 type View = "research" | "home" | "today" | "lists" | "projects" | "settings" | "search" | "library" | "replies" | "tasks" | "people" | "schedule" | "groups" | "shopping" | "details";
-const VIEW_TITLES: Record<View, string> = { research: "Research", details: "My details", home: "Chief of Staff", today: "Today", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", replies: "Replies", tasks: "Tasks", people: "Settings", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
+const VIEW_TITLES: Record<View, string> = { research: "Research", details: "My details", home: "Chief of Staff", today: "Today", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", replies: "Replies", tasks: "Research", people: "Settings", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -196,14 +196,10 @@ export default function App() {
             </form>
             <div className="px-2 space-y-0.5">
               <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
-              <DrawerItem active={view === "today"} onClick={() => go("today")} icon={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} label="Today" />
-              <DrawerItem active={view === "schedule"} onClick={() => go("schedule")} icon={<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>} label="Schedule" />
-              <DrawerItem active={view === "replies"} onClick={() => go("replies")} icon={<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12zM8 11h8M8 14h5" />} label="Replies" />
               <DrawerItem active={view === "groups"} onClick={() => go("groups")} icon={<><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/></>} label="Groups" />
-              <DrawerItem active={view === "lists" || view === "projects"} onClick={() => go("projects")} icon={<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />} label="Projects & tasks" />
               <DrawerItem active={view === 'shopping'} onClick={() => go('shopping')} icon={<><path d="M3 3h2l3 12h10l3-9H6M9 20h.01M18 20h.01" /></>} label="Shopping lists" />
               <DrawerItem active={view === 'details'} onClick={() => go('details')} icon={<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>} label="My details" />
-              <DrawerItem active={view === "tasks"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Tasks" />
+              <DrawerItem active={view === "tasks"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Research" />
             </div>
             <PinnedResearch jobs={jobs} activeId={view === "research" ? jobId : null} onOpen={openResearch} />
             <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}

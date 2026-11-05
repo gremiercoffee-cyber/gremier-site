@@ -97,6 +97,12 @@ export async function createJob(env: Env, input: JobInput) {
   await run(env, `INSERT INTO jobs (id, title, instructions, kind, every_minutes, weekday, time, until_at, engine, only_changes, status, chat_id, topic_id, created_at, updated_at, model)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, j.id, j.title, j.instructions, j.kind, j.every_minutes, j.weekday, j.time, j.until_at, j.engine, j.only_changes, j.status, j.chat_id, j.topic_id, j.created_at, j.updated_at, j.model);
   if(input.project_id)await linkJobProject(env,j.id,input.project_id);
+  // A one-off the user asked for starts right away; repeating ones still wait for Start.
+  if (j.kind === "once") {
+    await post(env, j, `**${title}**\n${instructions}`, [[{ text: "✗ Cancel", data: `cancel:${j.id}` }]]);
+    await start(env, j);
+    return { id: j.id, title, schedule: await describeJob(env, j), where: "a research chat pinned in the side panel", status: "started" };
+  }
   await post(env, j, `**${title}**\n${instructions}\n\n${await describeJob(env, j)}`,
     [[{ text: j.kind === "weekly" ? "▶ Start (and run the first one now)" : "▶ Start", data: `start:${j.id}` }, { text: "✗ Cancel", data: `cancel:${j.id}` }]]);
   return { id: j.id, title, schedule: await describeJob(env, j), where: "a research chat pinned in the side panel", status: "waiting for Start" };

@@ -172,10 +172,9 @@ test('in the app: the chat keeps every message, buttons work from it, and unread
  const {id}=await jobs.createJob(e,{title:'Bean prices',instructions:'Arabica price now.',kind:'once',engine:'api'});
  let list=await jobs.listJobChats(e);assert.equal(list[0].pinned,true);assert.equal(list[0].unread,1);
  let chat=await jobs.jobChat(e,id);
- assert.equal(chat.messages[0].role,'bot');const start=chat.messages[0].buttons[0][0].data;assert.match(start,/^start:/);
+ assert.equal(chat.messages[0].role,'bot');assert.match(chat.messages[0].buttons[0][0].data,/^cancel:/,'a one-off you asked for starts by itself: no Start tap');
  assert.equal((await jobs.listJobChats(e))[0].unread,0,'opened = read');
- await jobs.pressButton(e,start);
- chat=await jobs.jobChat(e,id);assert.equal(chat.messages[0].buttons,null,'a used button is gone');assert.equal(chat.busy,true);
+ chat=await jobs.jobChat(e,id);assert.equal(chat.busy,true);
  globalThis.__done={bg1:{done:true,text:'286¢/lb.'}};await jobs.tickJobs(e);
  globalThis.__model.push(JSON.stringify({changes:{},run_now:false,reply:'It was 286¢ per pound.'}));
  const j=(await jobs.jobChat(e,id));

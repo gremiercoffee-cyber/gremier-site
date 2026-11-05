@@ -120,7 +120,14 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
  * Records a nudge (home screen, widget, next briefing) and buzzes the phone only when the
  * interruption rule says it can't wait (policy.ts). Never buzzes on Shabbat.
  */
+/** Bare-bones rule: the app only notifies about things the user asked for (reminders and due times they set,
+ * watches they set up, messages they asked to send, approvals before acting for them, the hashgacha reports),
+ * and when something is broken. Everything else (suggestions, heads-ups, "still waiting", meeting prep,
+ * situations, reply batches, learning prompts…) is not recorded or sent at all. */
+export const ALLOWED_NOTIFICATIONS = new Set(["reminder", "checkin", "overdue", "watch", "wa_send", "wa_sent", "wa_failed",
+  "approval", "broken", "hashgacha", "hashgacha_auto"]);
 export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null, url = "/", options: NotificationOptions = {}) {
+  if (!ALLOWED_NOTIFICATIONS.has(type)) return "";
   const { id, topic } = await recordNotification(env,type,title,body,itemId,url,options);
   const reconciled = await reconcileNotificationGroups(env);
   const current=await first<Nudge&{dismissed:number;revision:number}>(env,"SELECT * FROM nudges WHERE id=?",id);

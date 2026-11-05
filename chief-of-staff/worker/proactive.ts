@@ -17,9 +17,8 @@ import { customersDue, hubCall } from "./hub";
 import { tidyConversations } from "./tidy";
 
 const WAITING_NUDGE_DAYS = 4;
-const POSTPONED_AFTER = 3;
 
-export async function runProactive(env: Env) {
+export async function runProactive(env: Env, opts: { remindersOnly?: boolean } = {}) {
   await run(env, "INSERT OR REPLACE INTO settings (key, value) VALUES ('last_cron', ?)", now()).catch(() => {});
   const settings = await getSettings(env);
   if (!settings.proactive) return { skipped: true };
@@ -36,10 +35,7 @@ export async function runProactive(env: Env) {
     `SELECT items.*, (SELECT r.link FROM recurring_reminder_months m JOIN recurring_reminders r ON r.id=m.reminder_id WHERE m.item_id=items.id) AS reminder_link FROM items WHERE status = 'open' AND muted = 0 AND kind IN ('reminder','task','commitment')
        AND due_at IS NOT NULL AND due_at <= ? AND reminded_at IS NULL LIMIT 50`, t);
   for (const item of due.filter(eligible)) {
-    if (item.snooze_count >= POSTPONED_AFTER) {
-      await notify(env, "postponed", `You've pushed "${item.title}" ${item.snooze_count} times`,
-        "Do it now, break it into steps, hand it off, or drop it?", item.id);
-    } else {
+    {
       const checkin = item.kind === "reminder" && /^(did|have|has|is|are) /i.test(item.title);
       const title = checkin ? item.title
         : item.kind === "reminder" ? `Don't forget: ${item.title}`
@@ -51,6 +47,8 @@ export async function runProactive(env: Env) {
     await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", t, item.id);
     created++;
   }
+
+  if (opts.remindersOnly) return { created };
 
   // 2. Heads-up before deadlines: within 24h (quietly on Today), or within 3h for important ones (buzz).
   const soon = await all<Item>(env,

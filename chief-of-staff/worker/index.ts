@@ -41,7 +41,7 @@ import { hubConfigured } from "./hub";
 import { members, saveGroup, type Group } from "./groups";
 import { actionsForNudge, applyAction, tomorrowMorning, verifyNudge } from "./actions";
 import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOutbox, takeOutbox } from "./whatsapp";
-import { pushConfigured, sendPush } from "./push";
+import { ALLOWED_NOTIFICATIONS, pushConfigured, sendPush } from "./push";
 import { activeNotificationIds, reconcileNotificationGroups } from "./notifications";
 import { findPeople, recallMemories } from "./memory";
 import { batchReplyInstructions, dismissReply,saveReplyDraft,markWhatsAppReplied,replyQueue, sendReply, draftReply } from "./replies";
@@ -192,7 +192,7 @@ route("GET", "/api/dashboard", async (_req, env) => {
     `SELECT id, name FROM projects WHERE id IN (${listIds.map(() => "?").join(",")})`, ...listIds) : [];
   // One row per to-do: the newest reminder about it wins.
   const seenItems = new Set<string>();
-  const liveAll = await liveNudges(env, nudges.filter(n=>actionableNotice(n,attention)));
+  const liveAll = await liveNudges(env, nudges.filter(n=>ALLOWED_NOTIFICATIONS.has(n.type)&&actionableNotice(n,attention)));
   // A to-do already listed in a "Now" card (time block) doesn't also get its own row.
   const inBlocks = new Set(liveAll.flatMap((n) => (n.items ?? []).map((i) => i.id)));
   const live = liveAll.filter((n) => !n.item_id || (!inBlocks.has(n.item_id) && (seenItems.has(n.item_id) ? false : (seenItems.add(n.item_id), true))));
@@ -761,8 +761,8 @@ export default {
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
     // New approvals buzz the phone once; the cards live on Today.
     ctx.waitUntil(import("./approvals").then((a) => a.announceApprovals(env)).catch((e) => console.error("approvals", e)));
-    // Alumni visit cards: every 5 minutes, so a message becomes an "Add to sheet?" card quickly.
-    ctx.waitUntil(processAlumni(env).catch(e=>console.error('alumni visits',e instanceof Error?e.message:'processing failed')));
+    // Reminders and due times the user set: every 5 minutes, so they arrive on time.
+    ctx.waitUntil(runProactive(env, { remindersOnly: true }).catch((e) => console.error("reminders", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     ctx.waitUntil(healthSync(env).catch(()=>{}));
     ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));
@@ -773,11 +773,9 @@ export default {
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))
       .then(() => archiveFinishedProjects(env)).catch((e) => console.error("projects", e))
       .then(() => syncContactsDaily(env)).catch((e) => console.error("contacts", e))
-      .then(() => expireJobs(env)).catch((e) => console.error("helper", e))
       .then(() => processPendingShopping(env)).catch((e) => console.error('shopping', e))
       .then(() => scanNewWatches(env)).catch((e) => console.error("watches", e))
-      .then(() => processSelfNotes(env)).catch((e) => console.error("self notes", e))
-      .then(() => learnPass(env)).catch((e) => console.error("learn", e)).then(() => undefined));
+      .then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
 

@@ -1,4 +1,3 @@
-import {currentHomeUpdate} from '../../shared/home-focus';
 import HashgachaReports from '../components/HashgachaReports';
 import HomeWork from '../components/HomeWork';
 import {useImmediateCompletions} from '../useImmediateCompletions';
@@ -6,7 +5,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import type { FoundFile } from "../api";
 import { api } from "../api";
-import { useAreas } from "../areas";
 import { DictateButton, Markdown, MicIcon, timeAgo } from "../components/ui";
 import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
@@ -14,7 +12,6 @@ import Celebration from "../components/Celebration";
 import ChatFiles from "../components/ChatFiles";
 import Chips from "../components/NudgeActions";
 import TaskActions from "../components/TaskActions";
-import NowChecklist from '../components/NowChecklist';
 import { startRecording } from "../voice";
 
 type LiveState = "off" | LiveStatus;
@@ -227,56 +224,28 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   );
 }
 
-function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: {
+function Presence({ greeting, live, dash, onAct, onReply, onChanged }: {
   greeting: string; live: LiveState; dash: Dashboard | null;
   onAct: (n: Nudge, a: string) => Promise<void>; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
 }) {
-  const [area, setAreaState] = useState<string>(() => { try { return localStorage.getItem("cos.area") || "all"; } catch { return "all"; } });
-  const setArea = (a: string) => { setAreaState(a); try { localStorage.setItem("cos.area", a); } catch { /* fine */ } };
-  const areas = useAreas();
-  const ICON: Record<string, string> = Object.fromEntries(areas.map((a) => [a.key, a.icon]));
-  // A nudge's area: its item's area, else the area icon in its title (time-block reminders).
-  const nudgeArea = (n: Nudge) => n.area ?? Object.entries(ICON).find(([, i]) => n.title.includes(i))?.[0] ?? null;
-  const inArea = (a: string | null | undefined) => area === "all" || a === area;
   const dismissAction = (n: Nudge) => !n.item_id && !n.items?.length && !n.actions?.some(a=>a.id==='clear_note') ? (n.actions ?? []).find(a=>a.id==='ok') : undefined;
   const dismiss = (n: Nudge) => { const a = dismissAction(n); if (a) void onAct(n, a.id).catch(()=>{}); };
   const completion=useImmediateCompletions((dash?.nudges??[]).flatMap(n=>[...(n.item_id?[n.item_id]:[]),...(n.items??[]).map(i=>i.id)]));
   const performAction=(n:Nudge,action:string)=>n.item_id&&['done','notneeded'].includes(action)?completion.complete(n.item_id,()=>onAct(n,action),()=>{}):onAct(n,action);
-  const [showUpdates,setShowUpdates]=useState(false);
-  const allNudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??'') && n.type !== "briefing" && (n.type !== "helper" || n.title.includes("needs you")) && (area === "all" || nudgeArea(n) === area));
-  const nowIds=new Set((dash?.now_block?.items??[]).map(i=>i.id));
-  const freshUpdates=allNudges.filter(n=>currentHomeUpdate(n.updated_at||n.created_at,dash?.timezone||'Asia/Jerusalem')&&!['situation','wrapup'].includes(n.type)&&!(n.item_id&&nowIds.has(n.item_id)));
-  const nudges=showUpdates?freshUpdates:freshUpdates.slice(0,2);
-  const [nowVisibleCount,setNowVisibleCount]=useState<number|null>(null);
-  const nowBlock = dash?.now_block;
-  const nowItems = (nowBlock?.items??[]).filter(i=>inArea(i.category));
+  // Notifications: only things you asked for (the server sends nothing else). All of them, newest first.
+  const nudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??''));
 
   return (
     <div className="pt-4 space-y-5">
-      <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <div><h1 className="font-semibold tracking-tight text-[23px] leading-tight">{greeting}</h1><p className="text-xs text-muted mt-1">{live==='off'?'A little focus for right now.':"I'm listening."}</p></div>
+        <h1 className="font-semibold tracking-tight text-[23px] leading-tight">{greeting}</h1>
         {live!=='off'?<div className="scale-50 w-16 h-16"><Orb state={live}/></div>:<ReadAloud/>}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar" aria-label="Life areas">
-        {[["all", "All"], ...areas.map(a=>[a.key,`${a.icon} ${a.label}`])].map(([k,label])=><button key={k} aria-pressed={area===k} onClick={()=>setArea(k)} className={`shrink-0 rounded-full px-3 py-2 text-[13px] ${area===k?'bg-ink text-bg shadow-sm':'bg-surface border border-line/70 text-muted'}`}>{label}</button>)}
-      </div>
-
-      <section aria-label="Now" className="rounded-3xl border border-accent/15 bg-gradient-to-br from-accent/10 to-surface px-5 py-4 shadow-card">
-          <div className="text-[14px] flex items-center gap-2">
-            <span className="text-accent font-semibold">Now</span>
-            <span className="flex-1 truncate">{ICON[nowBlock?.category ?? ""] ? `${ICON[nowBlock?.category ?? ""]} ` : ""}{nowBlock?.name??"Ready to work on"}
-              {nowBlock?.until && <span className="text-muted"> · until {nowBlock?.until}</span>}</span>
-            {(nowVisibleCount??nowItems.length) > 0 && <span className="text-xs text-muted">{nowVisibleCount??nowItems.length} thing{(nowVisibleCount??nowItems.length) > 1 ? "s" : ""}</span>}
-          </div>
-          <NowChecklist key={area} items={nowItems} onChanged={onChanged} onCountChange={setNowVisibleCount}/>
-          {!nowItems.length && <p className="mt-2 text-sm text-muted">{dash?"Nothing needs doing right now.":"Loading your next steps…"}</p>}
-      </section>
 
       {completion.error&&<p role="alert" className="text-sm text-danger">{completion.error}</p>}
       {nudges.length > 0 && (
-        <details className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
-          <summary className="cursor-pointer flex items-center justify-between px-4 py-3 text-sm font-medium"><span>☀️ Today’s updates</span><span className="text-xs text-muted">{freshUpdates.length} ▸</span></summary>
+        <section aria-label="Notifications" className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
+          <h2 className="flex items-center justify-between px-4 py-3 text-sm font-medium"><span>🔔 Notifications</span><span className="text-xs text-muted">{nudges.length}</span></h2>
           {nudges.map((n) => (
             <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}
               onDismiss={dismissAction(n) ? () => dismiss(n) : undefined}>
@@ -301,18 +270,11 @@ function Presence({ greeting, live, dash, onAct, onReply, onNudge, onChanged }: 
               </>}
             </Row>
           ))}
-          {freshUpdates.length>2&&<button className="w-full px-4 py-3 text-sm text-accent" onClick={()=>setShowUpdates(!showUpdates)}>{showUpdates?'Show fewer updates':`Show ${freshUpdates.length-2} more updates`}</button>}
-        </details>
+        </section>
       )}
 
-      {!!dash?.attention_cards?.length && <section aria-label="Needs your attention" className="space-y-2">
-        <h2 className="px-1 text-[11px] font-medium text-muted uppercase tracking-[0.14em]">Needs your attention</h2>
-        <div className="rounded-[20px] bg-surface border border-line divide-y divide-line">{dash.attention_cards.slice(0,2).map(card=><a key={card.id} href={card.url} className="block px-4 py-3"><p className="text-[15px] font-medium">{card.title} →</p><p className="text-xs text-muted mt-1 line-clamp-2">{card.body}</p></a>)}</div>
-        {dash.attention_cards.length>2&&<details className="rounded-2xl border border-line bg-surface p-3"><summary className="cursor-pointer text-xs text-muted">{dash.attention_cards.length-2} more needing attention</summary>{dash.attention_cards.slice(2).map(card=><a key={card.id} href={card.url} className="block py-3 text-sm border-t border-line mt-2">{card.title} →</a>)}</details>}
-      </section>}
-      {!!dash?.hashgacha?.length&&inArea('yeshiva')&&<details className="rounded-2xl border border-line bg-surface p-4"><summary className="cursor-pointer text-sm font-medium">📚 Hashgacha reports</summary><div className="mt-3"><HashgachaReports campaigns={dash.hashgacha} onChanged={onChanged}/></div></details>}
-      {dash && <HomeWork tasks={dash.home_tasks??[]} projects={dash.home_projects??[]} inArea={inArea} onChanged={onChanged} focusIds={(dash.now_block?.items??[]).map(i=>i.id)}/>}
-      </div>
+      {!!dash?.hashgacha?.length&&<details className="rounded-2xl border border-line bg-surface p-4"><summary className="cursor-pointer text-sm font-medium">📚 Hashgacha reports</summary><div className="mt-3"><HashgachaReports campaigns={dash.hashgacha} onChanged={onChanged}/></div></details>}
+      {dash && <HomeWork tasks={dash.home_tasks??[]} projects={dash.home_projects??[]} onChanged={onChanged}/>}
     </div>
   );
 }

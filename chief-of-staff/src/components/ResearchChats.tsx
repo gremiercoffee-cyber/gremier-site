@@ -6,11 +6,12 @@ import { Button, Empty, Markdown, timeAgo } from "./ui";
 
 /** Research chats pinned in the side panel: tap one to open it; the dot means new answers. */
 export function PinnedResearch({ jobs, activeId, onOpen }: { jobs: JobChatRow[]; activeId: string | null; onOpen: (id: string) => void }) {
-  const sections=jobSections(jobs.filter(j=>j.pinned));
+  // The side panel shows research while it's going (or has an answer you haven't read); finished ones leave it.
+  const sections=jobSections(jobs.filter(j=>['active','pending','running'].includes(j.status)||(j.pinned&&j.unread>0)));
   if(!sections.active.length&&!sections.paused.length&&!sections.finished.length)return null;
   const row=(j:JobChatRow)=><button key={j.id} onClick={()=>onOpen(j.id)} className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left ${activeId===j.id?'bg-sunken':'hover:bg-sunken'}`}><span className="flex-1 min-w-0 truncate">{j.title}</span>{j.unread>0&&<span className="h-2 w-2 rounded-full bg-accent shrink-0" aria-label="New"/>}</button>;
-  return <nav className="px-2 pt-3 space-y-1" aria-label="Projects and jobs">
-    <p className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted">Projects & jobs</p>
+  return <nav className="px-2 pt-3 space-y-1" aria-label="Research">
+    <p className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted">Research</p>
     {sections.active.map(g=><details key={g.id} open={sections.active.length<=2||g.jobs.some(j=>j.id===activeId)}><summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">{g.title} <span className="opacity-60">{g.jobs.length}</span></summary><div className="ml-2 border-l border-line">{g.jobs.map(row)}</div></details>)}
     {!!sections.paused.length&&<details open={sections.paused.some(j=>j.id===activeId)}><summary className="cursor-pointer px-3 py-2 text-xs text-muted">Paused ({sections.paused.length})</summary>{sections.paused.map(row)}</details>}
     {!!sections.finished.length&&<details open={sections.finished.some(j=>j.id===activeId)}><summary className="cursor-pointer px-3 py-2 text-xs text-muted">Finished & stopped ({sections.finished.length})</summary>{sections.finished.map(row)}</details>}
