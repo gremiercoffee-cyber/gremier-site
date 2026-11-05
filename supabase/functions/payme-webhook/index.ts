@@ -730,6 +730,44 @@ async function verifySubscriptionWithPayMe(subPaymeId: string): Promise<Verified
   }
 }
 
+/**
+ * PayMe sends "sub-active" (no sale id) and "sub-iteration-success" (with the sale id) for
+ * the same first charge. Whichever lands first marks the order paid; if that was sub-active,
+ * the order holds only the subscription id and the receipt can't be issued. When the notice
+ * with the sale id arrives, store it, but only if PayMe confirms that sale is completed for
+ * the order's exact amount and is linked to this subscription.
+ */
+async function fillFirstChargeSaleId(
+  supabase: ReturnType<typeof createClient>,
+  parent: { id: string },
+  staleInfo: Record<string, unknown>,
+  payload: PaymePayload,
+): Promise<void> {
+  try {
+    const saleId = String(payload.payme_sale_id || "").trim();
+    if (!/^SALE/i.test(saleId)) return;
+    const { data: order } = await supabase.from("orders").select("id,total,delivery_info").eq("id", parent.id).single();
+    const info = (order?.delivery_info || staleInfo) as Record<string, unknown>;
+    const stored = String(info.payme_sale_id || "").trim();
+    if (stored && !/^SUB/i.test(stored)) return; // already has a real sale id
+    const sub = String(info.payme_subscription_id || stored || "");
+    const { queryPayMeSubscriptionFirstSale } = await import("../_shared/payme-query.ts");
+    const total = Math.round(Number(order?.total) * 100);
+    const first = await queryPayMeSubscriptionFirstSale(sub, total);
+    if (!first || first.paymeSaleId !== saleId) {
+      console.warn("subscription first charge: sale id not confirmed by PayMe", { orderId: parent.id });
+      return;
+    }
+    await supabase.from("orders").update({ delivery_info: { ...info, payme_sale_id: saleId } })
+      .eq("id", parent.id).eq("delivery_info->>payme_sale_id", stored);
+    // A receipt attempt that already gave up for the missing id may try again.
+    await supabase.from("receipt_catchup_queue").update({ status: "pending", error_code: null, updated_at: new Date().toISOString() })
+      .eq("order_id", parent.id).eq("status", "needs_review").eq("error_code", "missing_payment_reference");
+  } catch (e) {
+    console.error("fillFirstChargeSaleId failed:", e);
+  }
+}
+
 async function adminAlert(
   supabase: ReturnType<typeof createClient>,
   title: string,
@@ -835,7 +873,10 @@ async function handleSubscriptionCallback(
       }).eq("id", parent.id)
         .is("delivery_info->>subscription_first_iteration_key", null)
         .select("id");
-      if (!claimed || claimed.length === 0) return json({ ok: true, duplicate_first: true });
+      if (!claimed || claimed.length === 0) {
+        await fillFirstChargeSaleId(supabase, parent, info, payload);
+        return json({ ok: true, duplicate_first: true });
+      }
 
       // Loyalty points are settled inside fulfillPaidOrder (once per order).
       await fulfillPaidOrder(supabase, parent.id, { skip_payme_check: true });
@@ -844,6 +885,7 @@ async function handleSubscriptionCallback(
 
     // Parent already paid → this is either a duplicate of the first charge, or a renewal.
     if (key && key === String(info.subscription_first_iteration_key || "")) {
+      await fillFirstChargeSaleId(supabase, parent, info, payload);
       return json({ ok: true, duplicate_first: true });
     }
     if (key) {

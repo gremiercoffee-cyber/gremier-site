@@ -139,6 +139,79 @@ export async function queryPayMeSale(paymeSaleId: string): Promise<PayMeSaleInfo
   return sale ? toSaleInfo(sale) : null;
 }
 
+/** PayMe timestamps ("YYYY-MM-DD HH:MM:SS", same clock for sales and subscriptions) → ms. */
+function paymeTime(value: unknown): number {
+  const m = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
+}
+
+/**
+ * The first completed charge of a PayMe subscription, for exactly this amount.
+ * PayMe's first notice for a new subscription ("sub-active") carries no sale id, and the
+ * charge itself (a sale with an empty transaction_id) doesn't name the subscription. So
+ * the sale is matched on PayMe's own records only: the subscription must show exactly one
+ * completed charge, and there must be exactly one completed sale for the exact amount,
+ * with no transaction_id, created within 60s of the subscription's charge time.
+ */
+export async function queryPayMeSubscriptionFirstSale(subPaymeId: string, priceAgorot: number): Promise<PayMeSaleInfo | null> {
+  const sub = String(subPaymeId || "").trim();
+  const sellerId = Deno.env.get("PAYME_SELLER_ID") || "";
+  if (!/^SUB/i.test(sub) || !sellerId || !Number.isSafeInteger(priceAgorot) || priceAgorot <= 0) return null;
+  try {
+    const res = await fetch(`${getPayMeBase()}api/get-subscriptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seller_payme_id: sellerId, sub_payme_id: sub }),
+    });
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const record = (Array.isArray(data.items) ? data.items as Record<string, unknown>[] : [])
+      .find((s) => String(s.sub_payme_id || "") === sub && String(s.seller_payme_id || "") === sellerId);
+    if (!record || Number(record.sub_iterations_completed) !== 1 || Number(record.sub_price) !== priceAgorot) return null;
+    const chargedAt = paymeTime(record.sub_prev_date);
+    if (!Number.isFinite(chargedAt)) return null;
+    const matches = ((await fetchPayMeSales({})) || [])
+      .filter((s) => !String(s.transaction_id || "").trim() && Math.abs(paymeTime(s.sale_created) - chargedAt) <= 60_000)
+      .map(toSaleInfo)
+      .filter((s) => s.isCompleted && s.priceAgorot === priceAgorot && /^SALE/i.test(s.paymeSaleId));
+    return matches.length === 1 ? matches[0] : null;
+  } catch (e) {
+    console.error("queryPayMeSubscriptionFirstSale failed:", e);
+    return null;
+  }
+}
+
+/**
+ * Is this sale a charge of this subscription? Subscription charges have an empty
+ * transaction_id, so saleBelongsTo can't tie them to an order. Accept only when PayMe shows
+ * the sale completed for the exact amount, with no transaction_id, created within 60s of the
+ * subscription's latest charge (sub_prev_date) at the same price.
+ */
+export async function verifyPayMeSubscriptionSale(subPaymeId: string, saleId: string, priceAgorot: number): Promise<PayMeSaleInfo | null> {
+  const sub = String(subPaymeId || "").trim(), id = String(saleId || "").trim();
+  const sellerId = Deno.env.get("PAYME_SELLER_ID") || "";
+  if (!/^SUB/i.test(sub) || !/^SALE/i.test(id) || !sellerId || !Number.isSafeInteger(priceAgorot) || priceAgorot <= 0) return null;
+  try {
+    const raw = ((await fetchPayMeSales({ sale_payme_id: id })) || []).find((s) => String(s.sale_payme_id || "") === id);
+    if (!raw || String(raw.transaction_id || "").trim()) return null;
+    const info = toSaleInfo(raw);
+    if (!info.isCompleted || info.priceAgorot !== priceAgorot) return null;
+    const res = await fetch(`${getPayMeBase()}api/get-subscriptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seller_payme_id: sellerId, sub_payme_id: sub }),
+    });
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const record = (Array.isArray(data.items) ? data.items as Record<string, unknown>[] : [])
+      .find((s) => String(s.sub_payme_id || "") === sub && String(s.seller_payme_id || "") === sellerId);
+    if (!record || Number(record.sub_price) !== priceAgorot) return null;
+    const gap = Math.abs(paymeTime(raw.sale_created) - paymeTime(record.sub_prev_date));
+    return gap <= 60_000 ? info : null;
+  } catch (e) {
+    console.error("verifyPayMeSubscriptionSale failed:", e);
+    return null;
+  }
+}
+
 /** Sale generated with exactly this transaction_id (prefers a completed one). */
 export async function queryPayMeSaleByTransaction(transactionId: string): Promise<PayMeSaleInfo | null> {
   const txn = String(transactionId || "").trim();

@@ -7,7 +7,17 @@ async function eligibleReceiptOrder(order:any) {
   }
   // Some restored historical orders lost the sale ID. Recover only through PayMe's
   // verified order/link transaction lookup and exact amount, never names or dates.
-  const {resolvePayMePaymentStatus}=await import('./payme-query.ts');
+  const {resolvePayMePaymentStatus,queryPayMeSubscriptionFirstSale}=await import('./payme-query.ts');
+  // A subscription's first charge can be stored with only the subscription id (SUB…).
+  const sub=String(order.delivery_info?.payme_sale_id||'').trim();
+  if(/^SUB/i.test(sub)&&!order.delivery_info?.recurring_child){
+    const first=await queryPayMeSubscriptionFirstSale(sub,amountMinor(order.total));
+    if(first?.isCompleted&&first.priceAgorot===amountMinor(order.total)){
+      order.delivery_info={...order.delivery_info,payme_sale_id:first.paymeSaleId};
+      eligibleOrder(order);
+      return order;
+    }
+  }
   const verified=await resolvePayMePaymentStatus('',[order.id,order.delivery_info?.payment_link_code?'pl_'+order.delivery_info.payment_link_code:'']);
   if(!verified?.isCompleted||verified.priceAgorot!==amountMinor(order.total))throw Error('missing_payment_reference');
   order.delivery_info={...order.delivery_info,payme_sale_id:verified.paymeSaleId};
@@ -16,10 +26,13 @@ async function eligibleReceiptOrder(order:any) {
 }
 export async function receiptPaymentMetadata(db:any,orderId:string) {
   const order=await eligibleReceiptOrder(await receiptOrder(db,orderId));
-  const {resolvePayMePaymentStatus,getPayMeBase}=await import('./payme-query.ts');
+  const {resolvePayMePaymentStatus,verifyPayMeSubscriptionSale,getPayMeBase}=await import('./payme-query.ts');
   const saleId=String(order.delivery_info?.payme_sale_id||''),seller=Deno.env.get('PAYME_SELLER_ID');
   const expected=[orderId,order.delivery_info?.payment_link_code?'pl_'+order.delivery_info.payment_link_code:''];
-  const verified=await resolvePayMePaymentStatus(saleId,expected);
+  let verified=await resolvePayMePaymentStatus(saleId,expected);
+  // Subscription charges carry no transaction_id; verify them against the subscription instead.
+  const sub=String(order.delivery_info?.payme_subscription_id||'');
+  if(!verified?.isCompleted&&sub)verified=await verifyPayMeSubscriptionSale(sub,saleId,amountMinor(order.total));
   if(!verified?.isCompleted||verified.priceAgorot!==amountMinor(order.total))throw Error('payment_verification_required');
   // A retried checkout may have paid a replacement sale rather than the stored original.
   const verifiedSaleId=verified.paymeSaleId;
