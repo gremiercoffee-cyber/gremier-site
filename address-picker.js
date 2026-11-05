@@ -201,7 +201,16 @@
     return api;
   }
 
-  const GremierPlaces = { attach, parseCoords, placeReady };
+  /** A chosen Google place as a short address line: "Yam Suf St 5, Jerusalem". */
+  function shortLabel(place) { return String(place?.label || '').replace(/,\s*(Israel|ישראל)\s*$/, ''); }
+  /** The one-line address for emails and receipts: the place (or what was typed) + apartment, floor, entrance. */
+  function composeAddress(value, details) {
+    const base = value?.place?.source === 'google' && value.place.label ? shortLabel(value.place) : String(value?.text || '').trim();
+    const d = details || {};
+    return [base, d.apartment && 'Apt ' + d.apartment, d.floor && 'Floor ' + d.floor, d.entrance && 'Entrance ' + d.entrance].filter(Boolean).join(', ');
+  }
+
+  const GremierPlaces = { attach, parseCoords, placeReady, shortLabel, composeAddress };
   if (typeof module !== 'undefined' && module.exports) module.exports = GremierPlaces;
   root.GremierPlaces = GremierPlaces;
 })(typeof window !== 'undefined' ? window : globalThis);

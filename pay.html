@@ -17,6 +17,7 @@
   <link rel="icon" type="image/png" href="logo.png"/>
 
   <script src="/vendor/supabase-js.min.js"></script>
+  <script src="/address-picker.js?v=20261106-1"></script>
 
   <style>
 
@@ -126,6 +127,10 @@
     }
 
     .pay-field input::placeholder, .pay-field textarea::placeholder { color: #666; }
+    .pay-address-row { display: flex; gap: 8px; }
+    .pay-address-row .pay-field { flex: 1; min-width: 0; }
+    .pay-field .gp-card input[type=checkbox] { width: auto; flex: none; }
+    .pay-field .gp-card label { font-size: 13px; letter-spacing: 0; text-transform: none; color: inherit; margin: 8px 0 0; }
 
     .pay-field-hint { font-size: .72rem; color: #777; margin-top: 5px; line-height: 1.4; }
 
@@ -557,11 +562,59 @@ function getPayDeliveryInfo() {
 }
 
 /** Blocks checkout until the delivery choice is complete. Returns an error string or ''. */
+/* The street field uses the same Google search as website checkout, so the order gets a map location.
+   If search is down everyone can carry on. If it's up but the address can't be found, we ask once and
+   a second tap on Pay goes through: the order then shows "no map location" in the admin to fix by hand. */
+let payAddressPicker = null, payAddressAskedFor = null;
+function attachPayAddress(link) {
+  const input = document.getElementById('payAddress');
+  if (!input) return;
+  const info = link?.address_info && typeof link.address_info === 'object' ? link.address_info : null;
+  const text = (info && info.address_entered) || link?.delivery_address || '';
+  const d = (info && info.address_details) || {};
+  [['payApt', d.apartment], ['payFloor', d.floor], ['payEntrance', d.entrance]].forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v || ''; });
+  payAddressPicker = window.GremierPlaces ? window.GremierPlaces.attach(input, { lang: () => (/[\u0590-\u05FF]/.test(input.value) ? 'he' : 'en') }) : null;
+  if (payAddressPicker) payAddressPicker.set({ text, place: (info && info.address_place) || null });
+  else input.value = text;
+}
+function payAddressIsPickup() {
+  const preset = payShippingPreset();
+  return preset ? preset.delivery_type === 'pickup' : payDeliveryType === 'pickup';
+}
+function payAddressValue() {
+  const input = document.getElementById('payAddress');
+  if (!input) return null;
+  return payAddressPicker ? payAddressPicker.value() : { text: input.value.trim(), place: null };
+}
+function getPayAddressDetails() {
+  const out = {};
+  [['apartment', 'payApt'], ['floor', 'payFloor'], ['entrance', 'payEntrance']].forEach(([key, id]) => {
+    const v = (document.getElementById(id)?.value || '').trim();
+    if (v) out[key] = v;
+  });
+  return out;
+}
+/** Sent to create-payment; the server checks it before saving it on the order. */
+function getPayAddressInfo() {
+  if (payAddressIsPickup()) return null;
+  const v = payAddressValue();
+  if (!v || !v.text) return null;
+  const place = v.place && window.GremierPlaces?.placeReady(v.place) ? v.place : null;
+  return { address_entered: v.text, address_place: place, address_details: getPayAddressDetails() };
+}
+function payAddressProblem() {
+  if (!payAddressPicker || payAddressPicker.ready()) return '';
+  const text = payAddressPicker.value().text;
+  if (payAddressAskedFor === text) return '';
+  payAddressAskedFor = text;
+  return payAddressPicker.problem() + ". Can't find it? Tap Pay again and we'll confirm the address with you.";
+}
+
 function validatePayDelivery() {
   const preset = payShippingPreset();
   if (preset) {
     if (preset.delivery_type === 'pickup') return '';
-    return (document.getElementById('payAddress')?.value || '').trim() ? '' : 'Please enter your street address';
+    return (document.getElementById('payAddress')?.value || '').trim() ? payAddressProblem() : 'Please enter your street address';
   }
   if (payDeliveryType === 'pickup') return '';
   syncPayCity();
@@ -570,6 +623,8 @@ function validatePayDelivery() {
     return 'Please select a matching city from the suggestions';
   }
   if (!(document.getElementById('payAddress')?.value || '').trim()) return 'Please enter your street address';
+  const addressProblem = payAddressProblem();
+  if (addressProblem) return addressProblem;
   if (payDeliveryType === 'event') {
     const d = document.getElementById('payEventDate')?.value;
     const t = document.getElementById('payEventTime')?.value;
@@ -587,6 +642,8 @@ document.addEventListener('click', e => {
 
 async function callCreatePayment({ linkCode, orderId, deliveryAddress, customerName, customerEmail, customerPhone } = {}) {
   const body = { language: 'en' };
+  const addressInfo = getPayAddressInfo();
+  if (addressInfo) body.address = addressInfo;
   if (orderId) body.order_id = orderId;
   if (linkCode) body.payment_link_code = linkCode;
   if (!body.order_id && !body.payment_link_code) throw new Error('Payment setup error');
@@ -745,11 +802,9 @@ function payInputValue(value) {
   }
 
   function getPayDeliveryAddress() {
-
-    const el = document.getElementById('payAddress');
-
-    return el ? el.value.trim() : '';
-
+    const v = payAddressValue();
+    if (!v || !v.text) return '';
+    return window.GremierPlaces ? window.GremierPlaces.composeAddress(v, getPayAddressDetails()) : v.text;
   }
 
 
@@ -1152,7 +1207,12 @@ function renderCheckout(link) {
           </div>
           <div class="pay-field">
             <label for="payAddress">Street address <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
-            <input type="text" id="payAddress" placeholder="Street, number, apartment, floor" value="${esc(link.delivery_address || '')}"/>
+            <input type="text" id="payAddress" placeholder="Start typing your street and number"/>
+          </div>
+          <div class="pay-address-row">
+            <div class="pay-field"><label for="payApt">Apartment</label><input type="text" id="payApt" maxlength="20"/></div>
+            <div class="pay-field"><label for="payFloor">Floor</label><input type="text" id="payFloor" maxlength="20"/></div>
+            <div class="pay-field"><label for="payEntrance">Entrance</label><input type="text" id="payEntrance" maxlength="40"/></div>
           </div>
           <div class="pay-field" id="payEventWrap" style="display:none">
             <label for="payEventDate">Date &amp; time <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label>
@@ -1170,6 +1230,7 @@ function renderCheckout(link) {
 
       <div class="pay-error" id="payError" style="display:none"></div>`;
 
+    attachPayAddress(link);
     // Delivery chooser needs zones + city list; render it once the card exists.
     initPayDelivery().then(() => selectPayDelivery(payDeliveryType));
   }
@@ -1273,7 +1334,7 @@ if (!customerName) {
 
       let payData;
       try {
-        payData = await callCreatePayment({ orderId, linkCode: paymentLink.link_code, customerName, customerEmail, customerPhone });
+        payData = await callCreatePayment({ orderId, linkCode: paymentLink.link_code, deliveryAddress: deliveryAddress || undefined, customerName, customerEmail, customerPhone });
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
         if (msg.includes('already paid')) {

@@ -2166,7 +2166,12 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
               <input class="form-input" id="plPhone" placeholder="Phone 05X-XXXXXXX" aria-label="Phone (for WhatsApp)"/>
             </div>
             <input class="form-input" id="plEmail" type="email" placeholder="Email for the order confirmation" aria-label="Email"/>
-            <input class="form-input" id="plAddress" placeholder="Street address (they can add it when paying)" aria-label="Delivery address"/>
+            <input class="form-input" id="plAddress" placeholder="Search the street (they can add it when paying)" aria-label="Delivery address"/>
+            <div style="display:flex;gap:8px">
+              <input class="form-input" id="plApt" style="flex:1;min-width:0" placeholder="Apt" aria-label="Apartment"/>
+              <input class="form-input" id="plFloor" style="flex:1;min-width:0" placeholder="Floor" aria-label="Floor"/>
+              <input class="form-input" id="plEntrance" style="flex:1;min-width:0" placeholder="Entrance" aria-label="Entrance"/>
+            </div>
             <input class="form-input" id="plLinkName" placeholder="Link name, only you see it" aria-label="Link name"/>
           </div>
         </details>
@@ -5057,7 +5062,8 @@ function plCustomerSummary() {
   el.textContent = [name, phone].filter(Boolean).join(' · ') || 'optional';
 }
 function plResetForm() {
-  ['plEditLinkId', 'plLinkName', 'plCustomer', 'plPhone', 'plEmail', 'plAddress', 'plProductSearch', 'plCustomItemName', 'plCustomItemPrice', 'plFinalPrice', 'plDiscountNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  window.GremierLinkAddress?.set(null);
+  ['plEditLinkId', 'plLinkName', 'plCustomer', 'plPhone', 'plEmail', 'plApt', 'plFloor', 'plEntrance', 'plAddress', 'plProductSearch', 'plCustomItemName', 'plCustomItemPrice', 'plFinalPrice', 'plDiscountNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('plCustomItemQty').value = '1';
   document.getElementById('plCreateOrderNow').checked = false;
   document.getElementById('plProductResults').innerHTML = '';
@@ -5118,7 +5124,7 @@ async function editPayLink(id) {
   document.getElementById('plCustomer').value = link.customer_name || '';
   document.getElementById('plPhone').value = link.customer_phone || '';
   document.getElementById('plEmail').value = link.customer_email || '';
-  document.getElementById('plAddress').value = link.delivery_address || '';
+  if (window.GremierLinkAddress) window.GremierLinkAddress.set(link); else document.getElementById('plAddress').value = link.delivery_address || '';
   document.getElementById('plDiscountNote').value = link.discount_note || '';
   document.getElementById('plCustomerBox').open = !!(link.customer_name || link.customer_phone || link.customer_email || link.delivery_address || link.link_name);
   document.getElementById('plAdjust').open = !!link.discount_note || Number(link.discount) > 0;
@@ -5388,6 +5394,7 @@ async function insertPaymentLink(linkData, deliveryAddress) {
   if (deliveryAddress) extras.delivery_address = deliveryAddress;
   if (linkData.customer_email) extras.customer_email = linkData.customer_email;
   if (linkData.delivery_info) extras.delivery_info = linkData.delivery_info;
+  if (linkData.address_info) extras.address_info = linkData.address_info;
   if (linkData.created_by) extras.created_by = linkData.created_by;
   if (linkData.reusable) {
     extras.reusable = true;
@@ -5430,7 +5437,8 @@ async function generatePayLink() {
   const customerName = document.getElementById('plCustomer').value.trim() || null;
   const customerPhone = document.getElementById('plPhone').value.trim() || null;
   const customerEmail = document.getElementById('plEmail').value.trim() || null;
-  const deliveryAddress = document.getElementById('plAddress').value.trim() || null;
+  const linkAddress = window.GremierLinkAddress ? window.GremierLinkAddress.read() : { text: document.getElementById('plAddress').value.trim() || null, info: null };
+  const deliveryAddress = linkAddress.text;
   if (plShip.type === 'event' && (!plShip.date || !plShip.time)) { plSetLinkError('Choose the event date and arrival time under Shipping.'); return; }
   // Shipping set here: shown as included on the pay page, never charged again there.
   const shipZone = plZone();
@@ -5473,6 +5481,7 @@ async function generatePayLink() {
     created_by: adminUser?.id || session.user?.id || null,
     reusable,
     delivery_info: shipInfo,
+    address_info: linkAddress.info,
   };
  let saveError = null;
 
@@ -5483,6 +5492,7 @@ if (plEditingLinkId) {
     customer_phone: customerPhone,
     customer_email: customerEmail,
     delivery_address: deliveryAddress,
+    address_info: linkAddress.info,
     items: linkItems,
     subtotal: Number(subtotal),
     discount,
@@ -5524,7 +5534,7 @@ if (saveError) {
       payment_status: 'unpaid',
       payment_method: 'payme',
       source: 'payment_link',
-      delivery_info: { ...(shipInfo || {}), payment_link_code: linkCode, created_from_admin: true },
+      delivery_info: { ...(shipInfo || {}), ...(linkAddress.info || {}), payment_link_code: linkCode, created_from_admin: true },
       notes: linkData.discount_note,
     };
     const { data: order, error: orderErr } = await sb.from('orders').insert(orderData).select('id, order_number').single();
@@ -9877,7 +9887,8 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-zoom.js?v=20261022-1"></script>
 <script src="/admin-billing-share.js?v=20261029-1"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
-<script src="/address-picker.js?v=20261104-2"></script>
+<script src="/address-picker.js?v=20261106-1"></script>
+<script src="/admin-link-address.js?v=20261106-1"></script>
 <script src="/admin-route.js?v=20261106-1"></script>
 <link rel="stylesheet" href="/admin-order-detail.css?v=20261106-1"/>
 <script src="/admin-order-detail.js?v=20261106-1"></script>

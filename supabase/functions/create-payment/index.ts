@@ -1,4 +1,5 @@
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
+import { pickAddress } from "../_shared/delivery-address.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { quoteDeliveryFee, loadDeliveryPricingTables } from "../_shared/delivery-pricing.ts";
 import { shippingSetByAdmin } from "../_shared/link-shipping.ts";
@@ -682,6 +683,12 @@ serve(async (req) => {
     if (addr) orderPatch.delivery_address = addr;
     if (email) orderPatch.customer_email = email;
     if (phone) orderPatch.customer_phone = phone;
+    // Pay page: the address as chosen now replaces any earlier location, so an edited address never keeps an old map pin.
+    if (body.address && typeof body.address === "object") {
+      const { address_entered: _e, address_place: _p, address_details: _d, ...rest } = (row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {}) as Record<string, unknown>;
+      row.delivery_info = { ...rest, ...pickAddress(body.address) };
+      orderPatch.delivery_info = row.delivery_info;
+    }
     if (Object.keys(orderPatch).length > 1) {
       await supabase.from("orders").update(orderPatch).eq("id", row.id);
       if (name) row.customer_name = name;
