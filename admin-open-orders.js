@@ -11,7 +11,7 @@
     if (document.getElementById('dash-open-css')) return;
     const st = document.createElement('style');
     st.id = 'dash-open-css';
-    st.textContent = `#dashOpenOrders{margin:0 0 22px;border:1px solid var(--border);border-radius:16px;background:var(--card,#fff);overflow:hidden}
+    st.textContent = `#dashOpenOrders{margin:4px 0 22px}
 #dashOpenOrders[hidden]{display:none}
 .dso-head{display:flex;align-items:baseline;justify-content:space-between;padding:16px 18px 8px}
 .dso-head h2{margin:0;font-size:1rem;font-weight:700;color:var(--cream)}
@@ -37,20 +37,19 @@
   function render() {
     const el = document.getElementById('dashOpenOrders');
     if (!el) return;
+    rows = rows.filter((o) => !['fulfilled', 'cancelled', 'completed'].includes(String(o.status || '').toLowerCase()));
     if (!rows.length) { el.hidden = true; el.innerHTML = ''; return; }
     css();
     el.hidden = false;
-    el.innerHTML = `<div class="dso-head"><h2>To fulfill</h2><span>${rows.length} order${rows.length === 1 ? '' : 's'}</span></div>` +
-      rows.map((o) => {
-        const items = (o.items || []).filter((i) => i.category !== 'delivery_fee').map((i) => `${(i.qty || 1) > 1 ? i.qty + '× ' : ''}${i.name_en || i.name || 'Item'}`).join(', ');
-        const sub = [when(o), items].filter(Boolean).join(' · ');
-        return `<button type="button" class="dso-row" data-order="${esc(o.id)}">
-          <span class="dso-no">#${esc(o.order_number || String(o.id).slice(0, 6))}</span>
-          <span class="dso-main"><b>${esc(o.customer_name || 'Customer')}</b><small>${esc(sub)}</small></span>
-          <span class="dso-total">₪${Math.round(Number(o.total) || 0)}</span><span class="dso-go" aria-hidden="true">›</span>
-        </button>`;
-      }).join('');
+    // Same order cards as the Orders screen. Their buttons look orders up in allOrders.
+    if (typeof allOrders !== 'undefined') rows.forEach((o) => { if (!allOrders.some((x) => x.id === o.id)) allOrders.push(o); });
+    const card = typeof orderRowHtml === 'function' ? orderRowHtml : null;
+    el.innerHTML = `<h2 class="ord-sec-h">To fulfill <span class="ord-sec-n">${rows.length}</span><span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('orders')">Open Orders</button></span></h2>` +
+      `<div class="oc-list">${rows.map((o) => card ? card(o) : `<button type="button" class="dso-row" data-order="${esc(o.id)}"><span class="dso-no">#${esc(o.order_number || '')}</span><span class="dso-main"><b>${esc(o.customer_name || 'Customer')}</b><small>${esc(when(o))}</small></span><span class="dso-total">₪${Math.round(Number(o.total) || 0)}</span></button>`).join('')}</div>`;
   }
+
+  // Fulfilled from a card: take it off the list straight away.
+  function drop(id) { rows = rows.filter((o) => o.id !== id); render(); }
 
   async function open(id) {
     const o = rows.find((r) => r.id === id);
@@ -72,5 +71,5 @@
     const row = e.target.closest?.('#dashOpenOrders .dso-row');
     if (row) open(row.dataset.order);
   });
-  root.GremierOpenOrders = { load, render };
+  root.GremierOpenOrders = { load, render, drop };
 })(window);

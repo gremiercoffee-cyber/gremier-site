@@ -409,6 +409,66 @@ window.loadHtml2Canvas = function () {
     .sd-billfilters { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
     .sd-billfilters .sd-pickbtn { flex:1 1 160px; }
     #sdBillingView > .flex-between h3 { font-size:1.25rem !important; font-weight:800; }
+    .bh-top { display:flex; align-items:center; gap:10px; margin:6px 0 14px; }
+    .bh-top .sd-billseg { flex:1; margin:0; max-width:none; }
+    .bh-gen { flex:none; border:0; border-radius:14px; padding:12px 14px; font:inherit; font-size:.85rem; font-weight:800; background:linear-gradient(135deg,#f6d27a,#e5a72a); color:#3d2a05; cursor:pointer; box-shadow:0 4px 12px rgba(229,167,42,.3); }
+    .bh-hero { background:linear-gradient(145deg,#1d1b19,#2e2a25); color:#fff; border-radius:22px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.18); margin-bottom:12px; }
+    .bh-hero-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+    .bh-hero-top small { display:block; font-size:.8rem; font-weight:600; color:rgba(255,255,255,.7); }
+    .bh-hero-top b { display:block; font-size:2.3rem; font-weight:800; letter-spacing:-.03em; line-height:1.15; margin:4px 0 2px; }
+    .bh-hero-top span { font-size:.8rem; color:rgba(255,255,255,.7); }
+    .bh-hero-top em { font-style:normal; font-size:.74rem; font-weight:700; background:rgba(255,255,255,.12); border-radius:99px; padding:5px 10px; white-space:nowrap; }
+    .bh-bar { display:flex; gap:3px; height:10px; border-radius:99px; overflow:hidden; background:rgba(255,255,255,.12); margin:16px 0 12px; }
+    .bh-bar i { display:block; height:100%; }
+    .bh-bar .p, .bh-chips .p { background:#5cc48a; } .bh-bar .o, .bh-chips .o { background:#f3c64e; } .bh-bar .u, .bh-chips .u { background:rgba(255,255,255,.35); }
+    .bh-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .bh-chips span { display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.1); border-radius:99px; padding:6px 11px; font-size:.76rem; color:rgba(255,255,255,.8); }
+    .bh-chips i { width:8px; height:8px; border-radius:50%; display:block; }
+    .bh-chips b { color:#fff; font-weight:800; }
+    .bh-filters { display:flex; flex-wrap:wrap; gap:8px; padding:2px 0 6px; margin-bottom:6px; scrollbar-width:none; }
+    .bh-chip { position:relative; flex:none; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); background:#fff; border-radius:999px; padding:10px 14px; font-size:.85rem; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .bh-chip b { font-weight:700; color:var(--cream); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bh-chip .sd-chev { font-size:.7rem; color:var(--text2); }
+    .bh-chip select { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; font-size:16px; }
+    .bh-chip.set { background:#1c1c1c; border-color:#1c1c1c; } .bh-chip.set b, .bh-chip.set .sd-chev { color:#fff; }
+    .bsc-list { display:grid; gap:16px; margin-top:12px; }
+    .bsc-card { background:#fff; border:1px solid var(--border); border-radius:22px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+    .bsc-card.owes { box-shadow:inset 0 4px 0 #e0a21b, 0 2px 10px rgba(0,0,0,.05); }
+    .bsc-head { display:flex; align-items:center; gap:12px; }
+    .bsc-av { width:48px; height:48px; border-radius:15px; flex:none; display:grid; place-items:center; font-weight:800; font-size:1.25rem; color:#5a3d0c; background:linear-gradient(145deg,#f3d9a4,#e2b866); }
+    .bsc-title { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+    .bsc-title b { font-size:1.1rem; font-weight:800; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .bsc-title small { font-size:.76rem; color:var(--text2); }
+    .bsc-badge { flex:none; font-size:.74rem; font-weight:800; border-radius:99px; padding:6px 10px; white-space:nowrap; }
+    .bsc-badge.owe { background:#fff1c9; color:#8a6100; } .bsc-badge.wait { background:#eef0f3; color:var(--text2); } .bsc-badge.ok { background:#e3f4ea; color:#256b45; }
+    .bsc-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:14px 0 4px; }
+    .bsc-stat { background:var(--bg2,#f6f7f9); border-radius:14px; padding:10px; min-width:0; }
+    .bsc-stat small { display:block; font-size:.66rem; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.03em; }
+    .bsc-stat b { display:block; font-size:.98rem; font-weight:800; color:var(--cream); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .bsc-stat em { display:block; font-style:normal; font-size:.68rem; color:var(--text2); margin-top:2px; }
+    .bsc-stat.owe { background:#fff6dd; } .bsc-stat.paid { background:#eef8f1; }
+    .bsc-sub, .bsc-closed > summary { display:flex; align-items:center; gap:8px; font-size:.85rem; font-weight:800; color:var(--cream); margin:16px 0 8px; }
+    .bsc-sub span, .bsc-closed > summary span { background:var(--bg3); border-radius:99px; padding:1px 8px; font-size:.72rem; color:var(--text2); }
+    .bsc-closed > summary { cursor:pointer; list-style:none; }
+    .bsc-closed > summary::after { content:'▾'; margin-left:auto; color:var(--text2); }
+    .bsc-closed[open] > summary::after { transform:rotate(180deg); }
+    .bsc-rows { display:grid; gap:8px; }
+    .bsc-row { display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:4px 10px; border:1px solid var(--border); border-radius:16px; padding:10px 12px; }
+    .bsc-row.bd-owed { background:#fffaf0; border-color:#f0d58a; }
+    .bsc-row.bd-paid, .bsc-row.bd-cancelled { background:#fafbfc; }
+    .bsc-row-dot i { width:14px; height:14px; border-radius:50%; display:block; background:#e4e6ea; }
+    .bsc-row:not(:has(.bsc-thumb)) .bsc-row-main { grid-column:span 2; }
+    .bsc-thumb { width:34px; height:44px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer; }
+    .bsc-row-main { min-width:0; display:flex; flex-direction:column; gap:3px; }
+    .bsc-row-main b { font-weight:800; color:var(--cream); font-size:.95rem; }
+    .bsc-row-amt { font-weight:800; color:var(--cream); white-space:nowrap; }
+    .bsc-row-actions { grid-column:1 / -1; display:flex; gap:8px; align-items:center; margin-top:6px; }
+    .bsc-row-actions .bill-paid { flex:1; }
+    .bsc-pill { font-size:.7rem; font-weight:800; border-radius:99px; padding:2px 8px; }
+    .bsc-pill.owe { background:#fff1c9; color:#8a6100; } .bsc-pill.wait { background:#eef0f3; color:var(--text2); } .bsc-pill.ok { background:#e3f4ea; color:#256b45; } .bsc-pill.off { background:#eef0f3; color:var(--text2); text-decoration:line-through; }
+    .bsc-undo { font-size:.7rem; color:var(--text2); text-decoration:underline; margin-left:4px; }
+    .bsc-card .bill-storehead-actions .btn { border-radius:12px; flex:1; padding:10px; }
+    .bsc-card .bill-storehead-actions .bill-send { flex:1 1 100%; }
     .bill-storehead { background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 16px; margin:20px 0 10px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
     .bill-storehead-top { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; }
     .bill-storehead-top b { font-size:1.05rem; font-weight:800; color:var(--cream); }
@@ -418,7 +478,7 @@ window.loadHtml2Canvas = function () {
     .bill-legend { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.72rem; color:var(--text2); margin:4px 0 2px; }
     .bill-legend span { display:flex; align-items:center; gap:6px; }
     .bill-legend i { width:12px; height:12px; }
-    .bd-paid i { background:#3f9a6b; }
+    .bd-paid i, .bsc-row.bd-paid .bsc-row-dot i { background:#3f9a6b; }
     .bd-owed i { background:#e0a21b; box-shadow:0 0 0 3px rgba(224,162,27,.22); }
     .bd-unbilled i { background:#fff; border:2px dashed #b7bcc4; box-sizing:border-box; }
     .bd-cancelled i { background:repeating-linear-gradient(45deg,#d5d8dd 0 3px,#eef0f2 3px 6px); }
@@ -1462,44 +1522,31 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
   <!-- Monthly Billing board (toggle view) -->
   <div id="sdBillingView" style="display:none">
-    <div class="flex-between" style="margin-bottom:6px">
-      <h3 style="font-family:'DM Sans',sans-serif;font-size:1.1rem;color:var(--cream)">Monthly Billing</h3>
-      <button class="btn btn-outline btn-sm" onclick="generateMonthlyBillingImages()" id="billingGenBtn">Generate statements</button>
+    <div class="bh-top">
+      <div class="sd-viewseg sd-billseg" role="tablist" aria-label="Billing view">
+        <button type="button" role="tab" id="billModeAll" onclick="setBillingMode('all')">Bills</button>
+        <button type="button" role="tab" id="billModeDocuments" onclick="setBillingMode('documents')">Documents</button>
+      </div>
+      <button type="button" class="bh-gen" onclick="generateMonthlyBillingImages()" id="billingGenBtn" title="Make the statement images for this month">✨ Make statements</button>
     </div>
-    <div class="sd-viewseg sd-billseg" role="tablist" aria-label="Billing view">
-      <button type="button" role="tab" id="billModeAll" onclick="setBillingMode('all')">Bills</button>
-      <button type="button" role="tab" id="billModeDocuments" onclick="setBillingMode('documents')">Documents</button>
-    </div>
-    <div id="billAllFilters" class="sd-billfilters">
-      <label class="sd-pickbtn">
-        <span class="sd-pickico" aria-hidden="true">📅</span>
-        <span class="sd-picktext"><small>Period</small><b data-pick-label="billMonth">All time</b></span>
-        <span class="sd-chev" aria-hidden="true">▾</span>
-        <select id="billMonth" onchange="renderBillingAll()" aria-label="Period"><option value="">All time</option></select>
-      </label>
-      <label class="sd-pickbtn">
-        <span class="sd-pickico" aria-hidden="true">🏪</span>
-        <span class="sd-picktext"><small>Store</small><b data-pick-label="billStore">All stores</b></span>
-        <span class="sd-chev" aria-hidden="true">▾</span>
-        <select id="billStore" onchange="billFocusStore=this.value;renderBillingAll()" aria-label="Store"><option value="">All stores</option></select>
-      </label>
-      <label class="sd-pickbtn">
-        <span class="sd-pickico" aria-hidden="true">🏷️</span>
-        <span class="sd-picktext"><small>Status</small><b data-pick-label="billStatus">All statuses</b></span>
-        <span class="sd-chev" aria-hidden="true">▾</span>
-        <select id="billStatus" onchange="renderBillingAll()" aria-label="Status">
+    <div id="billAllSummary" class="bh-hero" style="display:none"></div>
+    <div id="billAllFilters" class="bh-filters" role="group" aria-label="Filters">
+      <label class="bh-chip"><span aria-hidden="true">📅</span><b data-pick-label="billMonth">All time</b><span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="billMonth" onchange="renderBillingAll()" aria-label="All time"><option value="">All time</option></select></label>
+      <label class="bh-chip"><span aria-hidden="true">🏪</span><b data-pick-label="billStore">All stores</b><span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="billStore" onchange="billFocusStore=this.value;renderBillingAll()" aria-label="All stores"><option value="">All stores</option></select></label>
+      <label class="bh-chip"><span aria-hidden="true">🏷️</span><b data-pick-label="billStatus">All statuses</b><span class="sd-chev" aria-hidden="true">▾</span>
+        <select id="billStatus" onchange="renderBillingAll()" aria-label="All statuses">
         <option value="all">All statuses</option>
         <option value="owed">Billed and unpaid</option>
         <option value="paid">Paid</option>
         <option value="unbilled">Not billed yet</option>
         <option value="open">All unpaid</option>
         <option value="cancelled">Cancelled</option>
-      </select>
-      </label>
+      </select></label>
     </div>
     <div class="bill-legend" aria-hidden="true"><span class="bd-paid"><i></i>Paid</span><span class="bd-owed"><i></i>Billed, not paid</span><span class="bd-unbilled"><i></i>Not billed</span><span class="bd-cancelled"><i></i>Written off</span></div>
-    <div id="billStoreShare" style="margin:10px 0"></div>
-    <div id="billAllSummary" class="stat-grid" style="display:none"></div>
+    <div id="billStoreShare"></div>
     <div id="sdBillingBody"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
@@ -4522,9 +4569,11 @@ async function markOrderFulfilled(orderId, forceEmail, skipToast) {
     renderOrdersTable(allOrders);
     if (modalOpen()) openOrderDetail(orderId);
   }
+  window.GremierOpenOrders?.drop?.(orderId);
   if (!skipToast) showToast(o?.customer_email ? 'Fulfilled ✓ · emailing the customer…' : 'Fulfilled ✓');
   const undo = (msg) => {
     if (o) { o.status = before; renderOrdersTable(allOrders); if (modalOpen()) openOrderDetail(orderId); }
+    window.GremierOpenOrders?.load();
     showToast(msg, 8000);
   };
   try {
@@ -7656,7 +7705,7 @@ function syncBillingModeUI() {
   const archive = document.getElementById('billingDocumentFilters'); if (archive) archive.hidden = !documents;
   const docButton = document.getElementById('billModeDocuments'); if (docButton) { docButton.classList.toggle('on', documents); docButton.setAttribute('aria-selected', documents); }
   const bills = document.getElementById('billModeAll'); if (bills) { bills.classList.toggle('on', !documents); bills.setAttribute('aria-selected', !documents); }
-  document.querySelectorAll('#billAllFilters [data-pick-label]').forEach(b => { const sel = document.getElementById(b.dataset.pickLabel); b.textContent = sel?.selectedOptions[0]?.textContent || ''; });
+  document.querySelectorAll('#billAllFilters [data-pick-label]').forEach(b => { const sel = document.getElementById(b.dataset.pickLabel); b.textContent = sel?.selectedOptions[0]?.textContent || ''; b.closest('.bh-chip')?.classList.toggle('set', !!sel && sel.selectedIndex > 0); });
   document.getElementById('billAllFilters').style.display = documents ? 'none' : 'flex';
   document.getElementById('billAllSummary').style.display = documents ? 'none' : '';
   document.getElementById('billStoreShare').style.display = documents ? 'none' : '';
@@ -7708,23 +7757,71 @@ async function loadBillingAll() {
   renderBillingAll();
 }
 function billKey(r) { return `${r.year}-${String(r.month).padStart(2, '0')}`; }
-// Store header for the billing list: name, unpaid total, a dot per month (last 12), one send button.
-function billStoreHead(storeId, name, unpaidHtml) {
-  const months = billingAllRows.filter(r => r.store_id === storeId).sort((a, b) => billKey(a).localeCompare(billKey(b))).slice(-12);
+// Billing: one card per store. Avatar, money owed, a dot per month (last 12), one send button,
+// then its months as rows (open months first; paid months folded underneath).
+function billStoreCard(storeId, list) {
+  const all = billingAllRows.filter(r => r.store_id === storeId);
+  const name = list[0]?.stores?.name || allStores.find(s => s.id === storeId)?.name || 'Store';
+  const phone = list[0]?.stores?.phone || '';
+  const money = n => '₪' + Number(n || 0).toLocaleString('en-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const whole = n => '₪' + Math.round(Number(n || 0)).toLocaleString('en-IL');
+  const sumBy = st => all.filter(r => billingStatus(r) === st).reduce((t, r) => t + Number(r.total || 0), 0);
+  const owed = sumBy('owed'), unbilled = sumBy('unbilled');
+  const year = String(new Date().getFullYear());
+  const paidYear = all.filter(r => billingStatus(r) === 'paid' && String(r.year) === year).reduce((t, r) => t + Number(r.total || 0), 0);
   const word = { paid: 'paid', owed: 'billed, not paid', unbilled: 'not billed yet', cancelled: 'written off' };
-  const dots = months.map(r => {
+  const dots = all.slice().sort((x, y) => billKey(x).localeCompare(billKey(y))).slice(-12).map(r => {
     const st = billingStatus(r);
     const short = new Date(r.year, r.month - 1, 1).toLocaleDateString('en-GB', { month: 'short' });
-    return `<span class="bill-dot bd-${st}" title="${escAttr(billMonthLabel(r) + ' · ' + word[st] + ' · ₪' + Number(r.total || 0).toFixed(2))}"><i></i>${short}</span>`;
+    return `<span class="bill-dot bd-${st}" title="${escAttr(billMonthLabel(r) + ' · ' + word[st] + ' · ' + money(r.total))}"><i></i>${short}</span>`;
   }).join('');
-  const hasUnpaid = billingAllRows.some(r => r.store_id === storeId && billingStatus(r) === 'owed');
-  return `<div class="bill-storehead">
-    <div class="bill-storehead-top"><b>${escHtml(name)}</b>${unpaidHtml}</div>
-    ${dots ? `<div class="bill-dots" aria-label="Months">${dots}</div>` : ''}
-    <div class="bill-storehead-actions">
-      <button type="button" class="bill-send" data-bill-share="${escAttr(storeId)}" ${hasUnpaid ? '' : 'disabled'}>💬 ${hasUnpaid ? 'Send unpaid' : 'Nothing unpaid'}</button>
-      <span data-action-menu="More statement options"><button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(storeId)}">Pick months…</button></span>
+  const open = list.filter(r => ['owed', 'unbilled'].includes(billingStatus(r))).sort((x, y) => billKey(x).localeCompare(billKey(y)));
+  const closed = list.filter(r => !['owed', 'unbilled'].includes(billingStatus(r))).sort((x, y) => billKey(y).localeCompare(billKey(x)));
+  const oldest = all.filter(r => billingStatus(r) === 'owed').sort((x, y) => billKey(x).localeCompare(billKey(y)))[0];
+  const state = owed > 0 ? `<span class="bsc-badge owe">Owes ${money(owed)}</span>` : unbilled > 0 ? '<span class="bsc-badge wait">Bills to send</span>' : '<span class="bsc-badge ok">✓ All paid</span>';
+  return `<section class="bsc-card${owed > 0 ? ' owes' : ''}" aria-label="${escAttr(name)}">
+    <header class="bsc-head">
+      <span class="bsc-av" aria-hidden="true">${escHtml((name.trim()[0] || '?').toUpperCase())}</span>
+      <div class="bsc-title"><b>${escHtml(name)}</b><small>${phone ? escHtml(phone) + ' · ' : ''}${all.length} month${all.length === 1 ? '' : 's'} of bills</small></div>
+      ${state}
+    </header>
+    <div class="bsc-stats">
+      <div class="bsc-stat owe"><small>Owed</small><b>${whole(owed)}</b>${oldest ? `<em>since ${escHtml(new Date(oldest.year, oldest.month - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }))}</em>` : '<em>nothing owed</em>'}</div>
+      <div class="bsc-stat"><small>Not billed</small><b>${whole(unbilled)}</b></div>
+      <div class="bsc-stat paid"><small>Paid ${year}</small><b>${whole(paidYear)}</b></div>
     </div>
+    ${dots ? `<div class="bill-dots" aria-label="Last 12 months">${dots}</div>` : ''}
+    <div class="bill-storehead-actions">
+      <button type="button" class="bill-send" data-bill-share="${escAttr(storeId)}" ${owed > 0 ? '' : 'disabled'}>💬 ${owed > 0 ? 'Send unpaid' : 'Nothing unpaid'}</button>
+      <button type="button" class="btn btn-outline btn-sm" data-bill-select="${escAttr(storeId)}">Pick months…</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="openBillingDocuments('${escAttr(storeId)}')">Documents</button>
+    </div>
+    ${open.length ? `<h4 class="bsc-sub">Open months <span>${open.length}</span></h4><div class="bsc-rows">${open.map(billMonthRow).join('')}</div>` : ''}
+    ${closed.length ? `<details class="bsc-closed"${open.length ? '' : ' open'}><summary>Paid &amp; closed months <span>${closed.length}</span></summary><div class="bsc-rows">${closed.map(billMonthRow).join('')}</div></details>` : ''}
+  </section>`;
+}
+function billMonthRow(r) {
+  const st = billingStatus(r);
+  const d = v => new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const undo = fn => ` <a href="#" class="bsc-undo" onclick="event.preventDefault();${fn}('${r.id}')">undo</a>`;
+  const pill = {
+    owed: `<span class="bsc-pill owe">Billed ${d(r.billed_at)}</span>${undo('unmarkBillingBilled')}`,
+    unbilled: '<span class="bsc-pill wait">Not billed</span>',
+    paid: `<span class="bsc-pill ok">✓ Paid ${d(r.paid_at)}</span>${undo('undoBillingPaid')}`,
+    cancelled: `<span class="bsc-pill off">Written off</span>${undo('undoBillingCancelled')}`,
+  }[st];
+  const closed = st === 'paid' || st === 'cancelled';
+  return `<div class="bsc-row bd-${st}">
+    <span class="bsc-row-dot"><i></i></span>
+    ${r.image_url ? `<img class="bsc-thumb" src="${escAttr(r.image_url)}" alt="Statement" onclick="window.open(this.src,'_blank')"/>` : ''}
+    <div class="bsc-row-main"><b>${billMonthLabel(r)}</b><span>${pill}</span></div>
+    <strong class="bsc-row-amt">₪${Number(r.total || 0).toFixed(2)}</strong>
+    ${closed ? '' : `<div class="bsc-row-actions">
+      <button type="button" class="bill-paid" onclick="markBillingPaid('${r.id}')">✓ Mark paid</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'} title="Send this month on WhatsApp">💬</button>
+      <span data-action-menu="More for ${escAttr(billMonthLabel(r))}"><button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download balance image</button>
+      <button class="btn btn-red btn-sm" onclick="markBillingCancelled('${r.id}')" title="Write this month off for this store">Write off month</button></span>
+    </div>`}
   </div>`;
 }
 function renderBillingAll() {
@@ -7743,7 +7840,7 @@ function renderBillingAll() {
   const share = document.getElementById('billStoreShare');
   if (share) {
     const scoped = billingAllRows.filter(r => r.store_id===store && (!month || billKey(r)===month));
-    share.innerHTML = store ? billStoreHead(store, scoped[0]?.stores?.name || allStores.find(s=>s.id===store)?.name || 'Store', unpaidLabel(scoped)) : '';
+    share.innerHTML = '';
   }
   const inScope = r => (!store || r.store_id === store) && (!month || billKey(r) === month);
   const rows = billingAllRows.filter(r => {
@@ -7754,33 +7851,26 @@ function renderBillingAll() {
   });
   const sum = list => list.reduce((t, r) => t + Number(r.total || 0), 0);
   const owed = billingAllRows.filter(r => inScope(r) && billingStatus(r) === 'owed');
-  document.getElementById('billAllSummary').innerHTML = `<div class="stat-card"><div class="stat-label">Billed and unpaid</div><div class="stat-value">₪${sum(owed).toFixed(2)}</div></div>`;
+  {
+    const scoped = billingAllRows.filter(inScope), by = st => scoped.filter(r => billingStatus(r) === st);
+    const tOwed = sum(by('owed')), tUnbilled = sum(by('unbilled')), tPaid = sum(by('paid')), all = tOwed + tUnbilled + tPaid;
+    const owingStores = new Set(by('owed').map(r => r.store_id)).size;
+    const fmt = n => '₪' + Math.round(n).toLocaleString('en-IL');
+    const pct = n => all ? (n / all * 100).toFixed(2) : 0;
+    const scopeLabel = month ? billMonthLabel({ year: +month.slice(0, 4), month: +month.slice(5, 7) }) : 'All time';
+    document.getElementById('billAllSummary').innerHTML = `
+      <div class="bh-hero-top"><div><small>Waiting to be paid</small><b>${fmt(tOwed)}</b><span>${owingStores ? `from ${owingStores} store${owingStores === 1 ? '' : 's'}` : 'Nobody owes you right now 🎉'}</span></div><em>${escHtml(scopeLabel)}</em></div>
+      ${all ? `<div class="bh-bar" aria-hidden="true"><i class="p" style="width:${pct(tPaid)}%"></i><i class="o" style="width:${pct(tOwed)}%"></i><i class="u" style="width:${pct(tUnbilled)}%"></i></div>` : ''}
+      <div class="bh-chips"><span><i class="p"></i>Paid <b>${fmt(tPaid)}</b></span><span><i class="o"></i>Owed <b>${fmt(tOwed)}</b></span><span><i class="u"></i>Not billed <b>${fmt(tUnbilled)}</b></span></div>`;
+  }
   if (!rows.length) { body.innerHTML = '<div class="empty-state">Nothing matches these filters.</div>'; return; }
 
-  const statusOrder = r => BILL_STATUS_META[billingStatus(r)].order;
-  // Inside a group: unpaid first, paid (green) at the bottom; oldest first within each.
-  const within = (a, b) => statusOrder(a) - statusOrder(b) || billKey(a).localeCompare(billKey(b)) || Number(b.total || 0) - Number(a.total || 0);
-  let groups;
-  if (group === 'none') {
-    groups = [['', rows.slice().sort((a, b) => Number(b.total || 0) - Number(a.total || 0))]];
-  } else {
-    const gk = r => group === 'status' ? billingStatus(r) : group === 'month' ? billKey(r) : (r.stores?.name || 'Unknown store');
-    const map = new Map();
-    for (const r of rows) { const k = gk(r); if (!map.has(k)) map.set(k, []); map.get(k).push(r); }
-    groups = [...map.entries()].sort(([a], [b]) =>
-      group === 'status' ? BILL_STATUS_META[a].order - BILL_STATUS_META[b].order
-      : group === 'month' ? b.localeCompare(a) : a.localeCompare(b));
-    groups.forEach(([, list]) => list.sort(within));
-  }
-  body.innerHTML = groups.map(([k, list]) => {
-    const open = list.filter(r => ['owed', 'unbilled'].includes(billingStatus(r)));
-    const title = group === 'status' ? BILL_STATUS_META[k].label
-      : group === 'month' ? billMonthLabel(list[0])
-      : group === 'store' ? escHtml(k) : '';
-    const head = group === 'store' ? billStoreHead(list[0].store_id, k, unpaidLabel(list))
-      : title ? `<h4 class="bill-group-h">${title}</h4>` : '';
-    return head + list.map(r => billingCardHtml(r, group !== 'month')).join('');
-  }).join('');
+  // One card per store holding all of its months; stores that owe the most come first.
+  const byStore = new Map();
+  for (const r of rows) { if (!byStore.has(r.store_id)) byStore.set(r.store_id, []); byStore.get(r.store_id).push(r); }
+  const owedOf = list => list.filter(r => billingStatus(r) === 'owed').reduce((t, r) => t + Number(r.total || 0), 0);
+  const cards = [...byStore.entries()].sort(([, x], [, y]) => owedOf(y) - owedOf(x) || (x[0].stores?.name || '').localeCompare(y[0].stores?.name || ''));
+  body.innerHTML = '<div class="bsc-list">' + cards.map(([id, list]) => billStoreCard(id, list)).join('') + '</div>';
 }
 
 
@@ -9753,7 +9843,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
 <script src="/address-picker.js?v=20261104-2"></script>
 <script src="/admin-route.js?v=20261105-1"></script>
-<script src="/admin-open-orders.js?v=20261105-1"></script>
+<script src="/admin-open-orders.js?v=20261105-2"></script>
 <script src="/admin-orders-board.js?v=20261104-1"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
 <script src="/admin-react-1.js?v=af629a4288"></script>
