@@ -469,6 +469,29 @@ window.loadHtml2Canvas = function () {
     .bsc-undo { font-size:.7rem; color:var(--text2); text-decoration:underline; margin-left:4px; }
     .bsc-card .bill-storehead-actions .btn { border-radius:12px; flex:1; padding:10px; }
     .bsc-card .bill-storehead-actions .bill-send { flex:1 1 100%; }
+
+    /* calmer store cards */
+    .bsc-card { box-shadow:0 1px 4px rgba(0,0,0,.05); padding:18px; }
+    .bsc-av { background:#f1efeb; color:var(--cream); width:44px; height:44px; border-radius:14px; font-size:1.1rem; }
+    .bsc-stats { gap:0; background:#f6f6f7; border-radius:16px; padding:4px; }
+    .bsc-stat, .bsc-stat.owe, .bsc-stat.paid { background:none; border-radius:12px; padding:10px 12px; }
+    .bsc-stat + .bsc-stat { border-left:1px solid #e6e6e8; border-radius:0; }
+    .bsc-stat.owe b { color:#b7790a; }
+    .bsc-stat small { text-transform:none; letter-spacing:0; font-size:.72rem; font-weight:600; }
+    .bsc-row, .bsc-row.bd-owed, .bsc-row.bd-paid, .bsc-row.bd-cancelled { background:#fff; border-color:var(--border); }
+    .bsc-row { grid-template-columns:auto 1fr auto; padding:12px 14px; }
+    .bsc-row:not(:has(.bsc-thumb)) .bsc-row-main { grid-column:auto; }
+    .bsc-row:not(:has(.bsc-thumb)) { grid-template-columns:1fr auto; }
+    .bsc-pill, .bsc-pill.owe, .bsc-pill.wait, .bsc-pill.ok, .bsc-pill.off { background:none; padding:0; font-weight:600; color:var(--text2); }
+    .bsc-pill.owe { color:#b7790a; } .bsc-pill.ok { color:#2f8a57; }
+    .bsc-pill.owe::before, .bsc-pill.wait::before { content:''; display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:1px; background:currentColor; }
+    .bsc-row-actions { justify-content:flex-end; }
+    .bsc-markpaid { flex:1; border:1px solid #1c1c1c; background:#fff; color:#1c1c1c; border-radius:12px; padding:9px 14px; font:inherit; font-weight:800; font-size:.85rem; cursor:pointer; }
+    .bsc-markpaid:hover { background:#1c1c1c; color:#fff; }
+    .bsc-card .bill-send { padding:13px 16px; border-radius:14px; }
+    .bsc-card .bill-storehead-actions .btn { border-color:var(--border); color:var(--text2); }
+    .bsc-sub span, .bsc-closed > summary span { background:#f1f1f3; }
+    .bsc-thumb { width:30px; height:38px; }
     .bill-storehead { background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 16px; margin:20px 0 10px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
     .bill-storehead-top { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; }
     .bill-storehead-top b { font-size:1.05rem; font-weight:800; color:var(--cream); }
@@ -7778,11 +7801,11 @@ function billStoreCard(storeId, list) {
   const open = list.filter(r => ['owed', 'unbilled'].includes(billingStatus(r))).sort((x, y) => billKey(x).localeCompare(billKey(y)));
   const closed = list.filter(r => !['owed', 'unbilled'].includes(billingStatus(r))).sort((x, y) => billKey(y).localeCompare(billKey(x)));
   const oldest = all.filter(r => billingStatus(r) === 'owed').sort((x, y) => billKey(x).localeCompare(billKey(y)))[0];
-  const state = owed > 0 ? `<span class="bsc-badge owe">Owes ${money(owed)}</span>` : unbilled > 0 ? '<span class="bsc-badge wait">Bills to send</span>' : '<span class="bsc-badge ok">✓ All paid</span>';
-  return `<section class="bsc-card${owed > 0 ? ' owes' : ''}" aria-label="${escAttr(name)}">
+  const state = owed > 0 || unbilled > 0 ? '' : '<span class="bsc-badge ok">✓ All paid</span>';
+  return `<section class="bsc-card" aria-label="${escAttr(name)}">
     <header class="bsc-head">
       <span class="bsc-av" aria-hidden="true">${escHtml((name.trim()[0] || '?').toUpperCase())}</span>
-      <div class="bsc-title"><b>${escHtml(name)}</b><small>${phone ? escHtml(phone) + ' · ' : ''}${all.length} month${all.length === 1 ? '' : 's'} of bills</small></div>
+      <div class="bsc-title"><b>${escHtml(name)}</b><small>${all.length} month${all.length === 1 ? '' : 's'} of bills</small></div>
       ${state}
     </header>
     <div class="bsc-stats">
@@ -7812,14 +7835,13 @@ function billMonthRow(r) {
   }[st];
   const closed = st === 'paid' || st === 'cancelled';
   return `<div class="bsc-row bd-${st}">
-    <span class="bsc-row-dot"><i></i></span>
     ${r.image_url ? `<img class="bsc-thumb" src="${escAttr(r.image_url)}" alt="Statement" onclick="window.open(this.src,'_blank')"/>` : ''}
     <div class="bsc-row-main"><b>${billMonthLabel(r)}</b><span>${pill}</span></div>
     <strong class="bsc-row-amt">₪${Number(r.total || 0).toFixed(2)}</strong>
     ${closed ? '' : `<div class="bsc-row-actions">
-      <button type="button" class="bill-paid" onclick="markBillingPaid('${r.id}')">✓ Mark paid</button>
-      <button type="button" class="btn btn-outline btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'} title="Send this month on WhatsApp">💬</button>
-      <span data-action-menu="More for ${escAttr(billMonthLabel(r))}"><button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download balance image</button>
+      <button type="button" class="bsc-markpaid" onclick="markBillingPaid('${r.id}')">✓ Mark paid</button>
+      <span data-action-menu="More for ${escAttr(billMonthLabel(r))}"><button class="btn btn-outline btn-sm" onclick="shareInvoiceWhatsApp('${r.id}')" ${r.image_url ? '' : 'disabled'}>💬 Send this month</button>
+      <button class="btn btn-outline btn-sm" onclick="downloadOutstandingBalancePNG('${r.store_id}')">Download balance image</button>
       <button class="btn btn-red btn-sm" onclick="markBillingCancelled('${r.id}')" title="Write this month off for this store">Write off month</button></span>
     </div>`}
   </div>`;
@@ -10337,10 +10359,10 @@ PayMe goes back to charging on the regular billing day.`)) return;
 </script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261103-2"/>
 <script src="/admin-financials.js?v=20261103-5"></script>
-<link rel="stylesheet" href="/admin-finance.css?v=20261103-2"/>
+<link rel="stylesheet" href="/admin-finance.css?v=20261105-1"/>
 <script src="/admin-expense-cache.js?v=20261025-1"></script>
-<script src="/admin-finance.js?v=20261103-8"></script>
-<script src="/admin-store-invoices.js?v=20261103-4"></script>
+<script src="/admin-finance.js?v=20261105-1"></script>
+<script src="/admin-store-invoices.js?v=20261105-1"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
 <script src="/admin-revenue.js?v=20261104-1"></script>
