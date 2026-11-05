@@ -492,6 +492,43 @@ window.loadHtml2Canvas = function () {
     .bsc-card .bill-storehead-actions .btn { border-color:var(--border); color:var(--text2); }
     .bsc-sub span, .bsc-closed > summary span { background:#f1f1f3; }
     .bsc-thumb { width:30px; height:38px; }
+    .oh { background:#fff; border:1px solid var(--border); border-radius:20px; padding:16px; margin:28px 0 20px; }
+    .oh-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+    .oh-ico { width:40px; height:40px; border-radius:12px; background:#f4f4f5; display:grid; place-items:center; font-size:1.2rem; flex:none; }
+    .oh-title { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+    .oh-title b { font-size:1.05rem; font-weight:800; color:var(--cream); }
+    .oh-title small { font-size:.76rem; color:var(--text2); }
+    .oh-export { border:1px solid var(--border); background:#fff; border-radius:99px; padding:7px 12px; font:inherit; font-size:.78rem; font-weight:700; color:var(--cream); cursor:pointer; }
+    .oh-row-label { font-size:.68rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); margin:10px 0 6px; }
+    .oh-chips { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
+    .oh-chips::-webkit-scrollbar { display:none; }
+    .oh-chips button { flex:none; border:1px solid var(--border); background:#fff; border-radius:99px; padding:8px 13px; font:inherit; font-size:.8rem; font-weight:700; color:var(--cream); cursor:pointer; white-space:nowrap; }
+    .oh-chips button.on { background:#1c1c1c; border-color:#1c1c1c; color:#fff; }
+    .oh-pickers { display:flex; gap:8px; flex-wrap:wrap; }
+    .oh-pickers .form-input { width:auto; margin-top:8px; }
+    .oh-kind { margin-top:12px; }
+    .oh-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:14px 0 10px; }
+    .oh-stat { background:#f6f6f7; border-radius:12px; padding:8px 10px; min-width:0; }
+    .oh-stat small { display:block; font-size:.66rem; color:var(--text2); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .oh-stat b { display:block; font-size:.98rem; font-weight:800; color:var(--cream); white-space:nowrap; }
+    .oh-list { display:grid; gap:6px; }
+    .oh-item { border:1px solid var(--border); border-radius:14px; background:#fff; }
+    .oh-item[open] { border-color:#1c1c1c; }
+    .oh-item > summary { list-style:none; display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; }
+    .oh-item > summary::-webkit-details-marker { display:none; }
+    .oh-num { font-size:.74rem; font-weight:800; color:var(--text2); min-width:38px; }
+    .oh-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+    .oh-main b { font-size:.9rem; font-weight:800; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .oh-main small { font-size:.72rem; color:var(--text2); }
+    .oh-end { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+    .oh-end b { font-size:.9rem; font-weight:800; color:var(--cream); }
+    .oh-pill { font-size:.64rem; font-weight:800; border-radius:99px; padding:2px 8px; background:#f1f1f3; color:#555; }
+    .oh-pill.fulfilled { background:#e8f5ec; color:#256b45; }
+    .oh-pill.cancelled, .oh-pill.refunded { background:#fbeaea; color:#9a2c2c; }
+    .oh-pill.confirmed, .oh-pill.pending { background:#fff4dc; color:#8a5a00; }
+    .oh-detail:not(:empty) { padding:0 8px 8px; }
+    .oh-empty { font-size:.85rem; color:var(--text2); text-align:center; padding:18px 0; margin:0; }
+    .oh-more { border:0; background:#f4f4f5; border-radius:12px; padding:11px; font:inherit; font-size:.82rem; font-weight:700; color:var(--cream); cursor:pointer; }
     .bsc-inv { flex:1 1 100%; border:1px solid #1c1c1c; background:#fff; color:#1c1c1c; border-radius:12px; padding:10px 14px; font:inherit; font-weight:800; font-size:.86rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
     .bsc-inv span { font-size:.72rem; font-weight:700; background:#f1f1f3; border-radius:99px; padding:2px 8px; }
     .bill-storehead { background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 16px; margin:20px 0 10px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
@@ -1241,64 +1278,46 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
           </div>
         </div>
         <section id="ops-schedule-extras-root" aria-label="Monthly schedule and completed tasks"></section>
-        <!-- Order filters and tools follow the schedule and orders. -->
-        <div>
-        <h2 class="ord-sec-h">Filters &amp; tools</h2>
-        <div class="card collapse-card" data-collapse-key="orders_filters" data-collapse-default="collapsed" style="margin-bottom:16px">
-          <div class="collapse-head">
-            <h3 class="collapse-head-title">Filters</h3>
-            <span class="collapse-summary" id="orderFilterSummary"></span>
-            <button type="button" class="app-icon-button" title="Export orders CSV" aria-label="Export orders CSV" onclick="event.stopPropagation();exportOrdersCSV()">⬇</button>
-            <span class="collapse-chevron">▾</span>
+        <div id="recoverOrdersPanel" style="display:none"></div>
+        <div id="abandonedOrdersPanel" style="margin-bottom:20px"></div>
+        <!-- Order history: filters only change this list, never the work lists above. Moved to the end of the page by orderHistoryToEnd(). -->
+        <section id="orderHistory" class="oh" aria-label="Order history">
+          <div class="oh-head">
+            <span class="oh-ico" aria-hidden="true">🗂️</span>
+            <div class="oh-title"><b>Order history</b><small id="orderFilterSummary"></small></div>
+            <button type="button" class="oh-export" title="Export these orders as CSV" aria-label="Export these orders as CSV" onclick="exportOrdersCSV()">⬇ CSV</button>
           </div>
-          <div class="collapse-body" style="padding:0 16px 14px">
-        <div class="filter-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:0">
-          <select class="form-input" style="width:auto" onchange="onOrderPeriodChange()" id="orderPeriod">
-            <option value="month">This Month</option>
-            <option value="today">Today</option>
-            <option value="week">This Week</option>
-            <option value="year">This Year</option>
-            <option value="all" selected>All Time</option>
-            <option value="pickmonth">Specific month…</option>
-            <option value="pickyear">Specific year…</option>
-            <option value="custom">Custom range…</option>
+          <div class="oh-row-label">When</div>
+          <div class="oh-chips" id="orderPeriodChips">
+            <button type="button" data-period="today">Today</button><button type="button" data-period="week">7 days</button><button type="button" data-period="month">This month</button><button type="button" data-period="year">This year</button><button type="button" data-period="all">All time</button><button type="button" data-period="pickmonth">Pick month…</button><button type="button" data-period="custom">Pick dates…</button>
+          </div>
+          <select id="orderPeriod" hidden onchange="onOrderPeriodChange()">
+            <option value="month" selected>This month</option><option value="today">Today</option><option value="week">7 days</option><option value="year">This year</option><option value="all">All time</option><option value="pickmonth">Specific month</option><option value="pickyear">Specific year</option><option value="custom">Custom range</option>
           </select>
-          <input type="month" class="form-input" style="width:auto;display:none" id="orderMonth" onchange="onOrderMonthChange()" title="Pick month"/>
-          <input type="number" class="form-input" style="width:88px;display:none" id="orderYear" min="2020" max="2099" placeholder="Year" onchange="onOrderYearChange()"/>
-          <span id="orderCustomRange" style="display:none;gap:6px;align-items:center">
-            <input type="date" class="form-input" style="width:auto" id="orderDateFrom" onchange="filterOrders()"/>
-            <span style="color:var(--text2);font-size:.8rem">–</span>
-            <input type="date" class="form-input" style="width:auto" id="orderDateTo" onchange="filterOrders()"/>
-          </span>
-          <select class="form-input" style="width:auto" onchange="filterOrders()" id="orderStatus">
-            <option value="all">All Status</option>
-            <option value="awaiting_payment">Awaiting payment</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="fulfilled">Fulfilled</option>
-            <option value="cancelled">Cancelled</option>
+          <div class="oh-pickers">
+            <input type="month" class="form-input" style="display:none" id="orderMonth" onchange="onOrderMonthChange()" title="Pick month"/>
+            <input type="number" class="form-input" style="display:none" id="orderYear" min="2020" max="2099" placeholder="Year" onchange="onOrderYearChange()"/>
+            <span id="orderCustomRange" style="display:none;gap:6px;align-items:center">
+              <input type="date" class="form-input" id="orderDateFrom" onchange="filterOrders()"/>
+              <span style="color:var(--text2);font-size:.8rem">–</span>
+              <input type="date" class="form-input" id="orderDateTo" onchange="filterOrders()"/>
+            </span>
+          </div>
+          <div class="oh-row-label">Status</div>
+          <div class="oh-chips" id="orderStatusChips">
+            <button type="button" data-status="all">All</button><button type="button" data-status="open">To fulfill</button><button type="button" data-status="fulfilled">Fulfilled</button><button type="button" data-status="cancelled">Cancelled</button>
+          </div>
+          <select id="orderStatus" hidden onchange="filterOrders()">
+            <option value="all" selected>All statuses</option><option value="open">To fulfill</option><option value="fulfilled">Fulfilled</option><option value="cancelled">Cancelled</option>
           </select>
-          <div class="seg-control" id="orderKindToggle">
+          <div class="seg-control oh-kind" id="orderKindToggle">
             <button type="button" class="seg-btn kind-btn active" data-kind="all" onclick="setOrderKind('all')">All</button>
             <button type="button" class="seg-btn kind-btn" data-kind="subscriptions" onclick="setOrderKind('subscriptions')">Subscriptions</button>
             <button type="button" class="seg-btn kind-btn" data-kind="regular" onclick="setOrderKind('regular')">One-time</button>
           </div>
-        </div>
-
-          </div>
-        </div>
-        <div id="recoverOrdersPanel" style="display:none"></div>
-        <div id="abandonedOrdersPanel" style="margin-bottom:20px"></div>
-        <div class="card collapse-card" data-collapse-key="orders_stats" data-collapse-default="collapsed" style="margin-bottom:20px">
-          <div class="collapse-head">
-            <h3 class="collapse-head-title">Stats</h3>
-            <span class="collapse-chevron">▾</span>
-          </div>
-          <div class="collapse-body" style="padding:0 16px 16px">
-            <div class="stat-grid" id="orderStats" style="margin-bottom:0"></div>
-          </div>
-        </div>
-        </div>
+          <div class="oh-stats" id="orderStats"></div>
+          <div class="oh-list" id="orderHistoryList"></div>
+        </section>
       </div>
       <!-- PRODUCTS -->
       <div id="tab-products" class="tab-content" style="display:none">
@@ -1626,7 +1645,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div class="dash-links">
     <button type="button" onclick="showTab('reports')"><span aria-hidden="true">📊</span> Stats</button>
     <button type="button" onclick="showTab('expenses')"><span aria-hidden="true">📥</span> Expense inbox</button>
-    <button type="button" onclick="showTab('finance')"><span aria-hidden="true">🧾</span> Receipts</button>
+    <button type="button" onclick="showTab('finance')"><span aria-hidden="true">🧾</span> Receipt history</button>
   </div>
 </div>
 
@@ -4308,68 +4327,93 @@ async function loadOrders() {
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
     const cachedRaw = JSON.parse(cached);
-    allOrders = applyClientOrderFilters(cachedRaw);
+    allOrders = visibleOrdersOnly(cachedRaw);
     renderOrdersTable(allOrders);
-    renderOrderStats(allOrders);
+    renderOrderHistory();
     renderAbandonedOrders(cachedRaw);
   }
-  const period = document.getElementById('orderPeriod').value;
-  const status = document.getElementById('orderStatus').value;
+  const query = sb.from('orders').select('*').order('created_at', { ascending: false });
+  const { data } = await query;
+  const rawOrders = data || [];
+  await loadOrderCouponDetails(rawOrders);
+  allOrders = visibleOrdersOnly(rawOrders);
+  localStorage.setItem(cacheKey, JSON.stringify(rawOrders));
+  renderOrdersTable(allOrders);
+  renderOrderHistory();
+  renderAbandonedOrders(rawOrders);
+  await loadRecoverableOrdersUI();
+}
+function filterOrders() { updateOrderFilterSummary(); renderOrderHistory(); }
+// Orders matching the history filters (period, status, kind). Never used for the work lists.
+function historyOrders() {
+  const period = document.getElementById('orderPeriod')?.value || 'month';
+  const status = document.getElementById('orderStatus')?.value || 'all';
   const monthVal = document.getElementById('orderMonth')?.value || '';
   const yearVal = document.getElementById('orderYear')?.value || '';
   const fromVal = document.getElementById('orderDateFrom')?.value || '';
   const toVal = document.getElementById('orderDateTo')?.value || '';
-
-  let query = sb.from('orders').select('*').order('created_at', { ascending: false });
   const now = new Date();
-
-  if (monthVal) {
-    const [y, m] = monthVal.split('-').map(Number);
-    query = query.gte('created_at', new Date(y, m - 1, 1).toISOString());
-    query = query.lt('created_at', new Date(y, m, 1).toISOString());
-  } else if (yearVal) {
-    const y = parseInt(yearVal, 10);
-    query = query.gte('created_at', new Date(y, 0, 1).toISOString());
-    query = query.lt('created_at', new Date(y + 1, 0, 1).toISOString());
-  } else if (period === 'custom' && fromVal) {
-    const start = new Date(fromVal);
-    start.setHours(0, 0, 0, 0);
-    query = query.gte('created_at', start.toISOString());
-    if (toVal) {
-      const end = new Date(toVal);
-      end.setHours(23, 59, 59, 999);
-      query = query.lte('created_at', end.toISOString());
-    }
-  } else if (period === 'today') {
-    const d = new Date(now); d.setHours(0, 0, 0, 0);
-    query = query.gte('created_at', d.toISOString());
-  } else if (period === 'week') {
-    const d = new Date(now); d.setDate(d.getDate() - 7);
-    query = query.gte('created_at', d.toISOString());
-  } else if (period === 'month') {
-    query = query.gte('created_at', new Date(now.getFullYear(), now.getMonth(), 1).toISOString());
-  } else if (period === 'year') {
-    query = query.gte('created_at', new Date(now.getFullYear(), 0, 1).toISOString());
-  }
-
-  if (status !== 'all') query = query.eq('status', status);
-  const { data } = await query;
-  const rawOrders = data || [];
-  await loadOrderCouponDetails(rawOrders);
-  allOrders = applyClientOrderFilters(rawOrders);
-  localStorage.setItem(cacheKey, JSON.stringify(rawOrders));
-  renderOrdersTable(allOrders);
-  renderOrderStats(allOrders);
-  renderAbandonedOrders(rawOrders);
-  await loadRecoverableOrdersUI();
+  let from = null, to = null;
+  if (period === 'pickmonth' && monthVal) { const [y, m] = monthVal.split('-').map(Number); from = new Date(y, m - 1, 1); to = new Date(y, m, 1); }
+  else if (period === 'pickyear' && yearVal) { const y = parseInt(yearVal, 10); from = new Date(y, 0, 1); to = new Date(y + 1, 0, 1); }
+  else if (period === 'custom') { if (fromVal) { from = new Date(fromVal); from.setHours(0, 0, 0, 0); } if (toVal) { to = new Date(toVal); to.setHours(23, 59, 59, 999); } }
+  else if (period === 'today') { from = new Date(now); from.setHours(0, 0, 0, 0); }
+  else if (period === 'week') { from = new Date(now); from.setDate(from.getDate() - 7); }
+  else if (period === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1);
+  else if (period === 'year') from = new Date(now.getFullYear(), 0, 1);
+  let list = (allOrders || []).filter(o => {
+    const t = new Date(o.created_at);
+    return (!from || t >= from) && (!to || t < to);
+  });
+  const st = o => String(o.status || '').toLowerCase();
+  if (status === 'open') list = list.filter(o => !CLOSED_ORDER_STATUSES.includes(st(o)));
+  else if (status === 'cancelled') list = list.filter(o => st(o) === 'cancelled' || st(o) === 'refunded');
+  else if (status !== 'all') list = list.filter(o => st(o) === status);
+  if (orderKindFilter === 'subscriptions') list = list.filter(isSubscriptionOrder);
+  else if (orderKindFilter === 'regular') list = list.filter(o => !isSubscriptionOrder(o));
+  return list;
 }
-function filterOrders() { updateOrderFilterSummary(); loadOrders(); }
+let orderHistoryShown = 25;
+// Panels added later (e.g. receipts) go above the history, which stays last.
+document.addEventListener('DOMContentLoaded', () => { const tab = document.getElementById('tab-orders'); if (tab) new MutationObserver(orderHistoryToEnd).observe(tab, { childList: true }); });
+function orderHistoryToEnd() {
+  const tab = document.getElementById('tab-orders'), sec = document.getElementById('orderHistory');
+  if (tab && sec && tab.lastElementChild !== sec) tab.append(sec);
+}
+function renderOrderHistory(resetPaging = true) {
+  const host = document.getElementById('orderHistoryList');
+  if (!host) return;
+  orderHistoryToEnd();
+  if (resetPaging) orderHistoryShown = 25;
+  const period = document.getElementById('orderPeriod')?.value || 'month';
+  const status = document.getElementById('orderStatus')?.value || 'all';
+  document.querySelectorAll('#orderPeriodChips [data-period]').forEach(b => b.classList.toggle('on', b.dataset.period === period));
+  document.querySelectorAll('#orderStatusChips [data-status]').forEach(b => b.classList.toggle('on', b.dataset.status === status));
+  const list = historyOrders();
+  renderOrderStats(list);
+  if (!list.length) { host.innerHTML = '<p class="oh-empty">No orders match these filters.</p>'; return; }
+  const pill = o => { const s = String(o.status || '').toLowerCase(); const label = { fulfilled: 'Fulfilled', cancelled: 'Cancelled', refunded: 'Refunded', confirmed: 'To fulfill', pending: 'To fulfill' }[s] || s; return `<span class="oh-pill ${escAttr(s)}">${escHtml(label)}</span>`; };
+  const when = o => new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
+  host.innerHTML = list.slice(0, orderHistoryShown).map(o => `<details class="oh-item" data-order="${escAttr(o.id)}"><summary><span class="oh-num">#${escHtml(String(o.order_number ?? ''))}</span><span class="oh-main"><b>${escHtml(o.customer_name || 'Customer')}</b><small>${escHtml(when(o))}${isSubscriptionOrder(o) ? ' · 🔁 Subscription' : ''}</small></span><span class="oh-end"><b>₪${Number(o.total || 0).toFixed(0)}</b>${pill(o)}</span></summary><div class="oh-detail"></div></details>`).join('')
+    + (list.length > orderHistoryShown ? `<button type="button" class="oh-more" onclick="orderHistoryShown += 25; renderOrderHistory(false)">Show more (${list.length - orderHistoryShown} left)</button>` : '');
+  host.querySelectorAll('.oh-item').forEach(d => d.addEventListener('toggle', () => {
+    const box = d.querySelector('.oh-detail');
+    if (d.open && !box.innerHTML) { const o = allOrders.find(x => x.id === d.dataset.order); box.innerHTML = o ? orderRowHtml(o) : ''; }
+  }));
+}
+document.addEventListener('click', e => {
+  const p = e.target.closest?.('#orderPeriodChips [data-period]');
+  if (p) { const sel = document.getElementById('orderPeriod'); sel.value = p.dataset.period; onOrderPeriodChange(); return; }
+  const s = e.target.closest?.('#orderStatusChips [data-status]');
+  if (s) { document.getElementById('orderStatus').value = s.dataset.status; filterOrders(); }
+});
 function updateOrderFilterSummary() {
   const el = document.getElementById('orderFilterSummary');
   if (!el) return;
   const periodEl = document.getElementById('orderPeriod');
   const periodLabels = { month:'This month', today:'Today', week:'This week', year:'This year', all:'All time', custom:'Custom range', pickmonth:'Specific month', pickyear:'Specific year' };
   let period = periodLabels[periodEl?.value] || 'This month';
+  if (periodEl?.value === 'week') period = 'Last 7 days';
   if (periodEl?.value === 'pickmonth') { const mv = document.getElementById('orderMonth')?.value; if (mv) period = mv; }
   if (periodEl?.value === 'pickyear') { const yv = document.getElementById('orderYear')?.value; if (yv) period = yv; }
   const statusEl = document.getElementById('orderStatus');
@@ -4386,10 +4430,10 @@ function renderOrderStats(orders) {
   const subs = paidOrders.filter(isSubscriptionOrder).length;
   const fulfilled = paidOrders.filter(o=>o.status==='fulfilled').length;
   document.getElementById('orderStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Paid Orders</div><div class="stat-value">${paidOrders.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-value">₪${total.toFixed(0)}</div></div>
-    <div class="stat-card"><div class="stat-label">Subscriptions</div><div class="stat-value">${subs}</div></div>
-    <div class="stat-card"><div class="stat-label">Fulfilled</div><div class="stat-value">${fulfilled}</div></div>
+    <div class="oh-stat"><small>Orders</small><b>${paidOrders.length}</b></div>
+    <div class="oh-stat"><small>Revenue</small><b>₪${Math.round(total).toLocaleString('en-US')}</b></div>
+    <div class="oh-stat"><small>Subscriptions</small><b>${subs}</b></div>
+    <div class="oh-stat"><small>Fulfilled</small><b>${fulfilled}</b></div>
   `;
 }
 const CLOSED_ORDER_STATUSES = ['fulfilled','cancelled','refunded'];
@@ -4932,7 +4976,7 @@ async function refundGiftCardOrder(orderId) {
 }
 function exportOrdersCSV() {
   const rows = [['Order#','Customer','Phone','Email','Address','Items','Subtotal','Discount','Total','Status','Payment','Date']];
-  allOrders.forEach(o=>{
+  historyOrders().forEach(o=>{
     const items = (o.items||[]).map(i=>`${i.name_en} x${i.qty}`).join('; ');
     rows.push([o.order_number,o.customer_name,o.customer_phone,o.customer_email,o.delivery_address,items,o.subtotal,o.discount,o.total,o.status,o.payment_status,new Date(o.created_at).toLocaleDateString()]);
   });
@@ -10362,9 +10406,9 @@ PayMe goes back to charging on the regular billing day.`)) return;
 </script>
 <link rel="stylesheet" href="/admin-financials.css?v=20261103-2"/>
 <script src="/admin-financials.js?v=20261103-5"></script>
-<link rel="stylesheet" href="/admin-finance.css?v=20261105-4"/>
+<link rel="stylesheet" href="/admin-finance.css?v=20261105-5"/>
 <script src="/admin-expense-cache.js?v=20261025-1"></script>
-<script src="/admin-finance.js?v=20261105-3"></script>
+<script src="/admin-finance.js?v=20261105-4"></script>
 <script src="/admin-store-invoices.js?v=20261105-4"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>

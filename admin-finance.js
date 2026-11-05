@@ -36,6 +36,7 @@
   const original=get('tab-reports');if(!original||get('tab-finance'))return;
   for(const [id,label,icon] of [['finance','Receipts','🧾'],['expenses','Expenses','📥']]){
    const tab=document.createElement('div');tab.id='tab-'+id;tab.className='tab-content';tab.style.display='none';original.insertAdjacentElement('afterend',tab);
+   if(id==='finance')continue; // reached from the receipt drawer and the dashboard, not the menu
    const nav=document.createElement('div');nav.id='nav-'+id;nav.className='nav-item';nav.innerHTML=`<span class="icon">${icon}</span><span>${label}</span>`;nav.onclick=()=>root.showTab(id);get('nav-reports')?.insertAdjacentElement('afterend',nav);
    const drawer=document.querySelector('.nav-drawer-item[onclick*="reports"]');if(drawer){const b=document.createElement('button');b.className='nav-drawer-item';b.textContent=icon+' '+label;b.onclick=()=>{root.showTab(id);root.closeNavDrawer?.();};drawer.insertAdjacentElement('afterend',b);}
   }
@@ -88,7 +89,7 @@
   get('financeReceiptSearch').oninput=renderReceipts;get('financeReceiptYear').oninput=renderReceipts;
   // Issuing lives in a drawer: Orders, each store's card and this page all open it.
   const rd=document.createElement('div');rd.id='rcDrawer';rd.className='rc-drawer rc-drawer-wide';rd.hidden=true;
-  rd.innerHTML='<div class="rc-drawer-bg"></div><aside class="rc-drawer-sheet" role="dialog" aria-modal="true" aria-label="Issue a receipt or invoice"><header class="sdw-head"><span class="sdw-av" aria-hidden="true">🧾</span><div class="sdw-title"><small>Receipts &amp; invoices · קבלות וחשבוניות</small><b>Issue a document</b></div><button type="button" class="plx-close" id="rcDrawerClose" aria-label="Close">✕</button></header><div class="sdw-body" id="rcDrawerBody"></div></aside>';
+  rd.innerHTML='<div class="rc-drawer-bg"></div><aside class="rc-drawer-sheet" role="dialog" aria-modal="true" aria-label="Issue a receipt or invoice"><header class="sdw-head"><span class="sdw-av" aria-hidden="true">🧾</span><div class="sdw-title"><small>Receipts &amp; invoices · קבלות וחשבוניות</small><b>Issue a document</b></div><button type="button" class="plx-close" id="rcDrawerClose" aria-label="Close">✕</button></header><div class="sdw-body" id="rcDrawerBody"></div><footer class="rc-drawer-foot"><button type="button" class="rc-history-link" id="rcHistoryLink">🗂️ Receipt history · PDFs, WhatsApp, email →</button></footer></aside>';
   document.body.append(rd);
   get('rcDrawerBody').append(get('manualReceiptForm').closest('section'),get('financeCustomerEditor').closest('section'));
   if(get('manualDocFold'))get('manualDocFold').open=true;
@@ -96,6 +97,7 @@
   hero.innerHTML='<span class="rc-sec-ico" aria-hidden="true">🧾</span><div class="rc-hero-t"><b>Issue a receipt or invoice</b><small>For customers who aren\'t stores: a coffee bar, an event or a delivery you scheduled yourself. Store invoices and payments are on each store\'s card in Stores → Billing.</small></div><button type="button" class="rc-review" id="rcOpenDrawer">New receipt →</button>';
   get('financeStatus').after(hero);
   get('rcOpenDrawer').onclick=()=>openReceipt();
+  get('rcHistoryLink').onclick=()=>{closeReceipt();root.showTab('finance');};
   get('rcDrawerClose').onclick=closeReceipt;rd.querySelector('.rc-drawer-bg').onclick=closeReceipt;
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!rd.hidden)closeReceipt();});
   const delivery=get('tab-storedeliveries')?.querySelector('.page-header');if(delivery){const b=document.createElement('button');b.id='storeReceiptButton';b.className='btn btn-outline btn-sm';b.textContent='🧾 Issue receipt';b.onclick=()=>openReceipt();const actions=delivery.querySelector('.header-actions');if(actions)actions.append(b);else delivery.append(b);}
