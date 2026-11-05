@@ -499,6 +499,11 @@ window.loadHtml2Canvas = function () {
     .oh-title b { font-size:1.05rem; font-weight:800; color:var(--cream); }
     .oh-title small { font-size:.76rem; color:var(--text2); }
     .oh-export { border:1px solid var(--border); background:#fff; border-radius:99px; padding:7px 12px; font:inherit; font-size:.78rem; font-weight:700; color:var(--cream); cursor:pointer; }
+    .oh-search { display:flex; align-items:center; gap:8px; background:#f6f6f7; border:1px solid var(--border); border-radius:14px; padding:0 12px; margin-bottom:4px; }
+    .oh-search:focus-within { border-color:#1c1c1c; background:#fff; }
+    .oh-search input { flex:1; min-width:0; border:0; background:none; font:inherit; font-size:16px; padding:12px 0; color:var(--cream); outline:none; }
+    .oh-chips.oh-off button.on { background:#fff; border-color:var(--border); color:var(--cream); }
+    .oh-chips.oh-off { opacity:.55; }
     .oh-row-label { font-size:.68rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); margin:10px 0 6px; }
     .oh-chips { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
     .oh-chips::-webkit-scrollbar { display:none; }
@@ -1287,7 +1292,8 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
             <div class="oh-title"><b>Order history</b><small id="orderFilterSummary"></small></div>
             <button type="button" class="oh-export" title="Export these orders as CSV" aria-label="Export these orders as CSV" onclick="exportOrdersCSV()">⬇ CSV</button>
           </div>
-          <div class="oh-row-label">When</div>
+          <label class="oh-search"><span aria-hidden="true">🔍</span><input type="search" id="orderSearch" placeholder="Search name, phone, email or order #" autocomplete="off" oninput="clearTimeout(window.__ohT);window.__ohT=setTimeout(filterOrders,200)"/></label>
+          <div class="oh-row-label" id="orderWhenLabel">When</div>
           <div class="oh-chips" id="orderPeriodChips">
             <button type="button" data-period="today">Today</button><button type="button" data-period="week">7 days</button><button type="button" data-period="month">This month</button><button type="button" data-period="year">This year</button><button type="button" data-period="all">All time</button><button type="button" data-period="pickmonth">Pick month…</button><button type="button" data-period="custom">Pick dates…</button>
           </div>
@@ -4361,7 +4367,17 @@ function historyOrders() {
   else if (period === 'week') { from = new Date(now); from.setDate(from.getDate() - 7); }
   else if (period === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1);
   else if (period === 'year') from = new Date(now.getFullYear(), 0, 1);
+  // A search looks through all time: you're looking for a person, not a period.
+  const q = (document.getElementById('orderSearch')?.value || '').trim().toLowerCase();
+  const digits = q.replace(/\D/g, '');
   let list = (allOrders || []).filter(o => {
+    if (q) {
+      const text = [o.customer_name, o.customer_email, o.delivery_address, o.notes].map(x => String(x || '').toLowerCase()).join(' ');
+      const phone = String(o.customer_phone || '').replace(/\D/g, '');
+      const num = String(o.order_number ?? '');
+      const words = q.replace(/^#/, '').split(/\s+/).filter(Boolean);
+      return words.every(w => text.includes(w)) || (digits.length >= 3 && (phone.includes(digits) || phone.includes(digits.replace(/^0/, '')))) || (/^#?\d{1,5}$/.test(q) && num === q.replace('#', ''));
+    }
     const t = new Date(o.created_at);
     return (!from || t >= from) && (!to || t < to);
   });
@@ -4387,11 +4403,13 @@ function renderOrderHistory(resetPaging = true) {
   if (resetPaging) orderHistoryShown = 25;
   const period = document.getElementById('orderPeriod')?.value || 'month';
   const status = document.getElementById('orderStatus')?.value || 'all';
+  const searching = !!(document.getElementById('orderSearch')?.value || '').trim();
+  document.getElementById('orderPeriodChips')?.classList.toggle('oh-off', searching);
   document.querySelectorAll('#orderPeriodChips [data-period]').forEach(b => b.classList.toggle('on', b.dataset.period === period));
   document.querySelectorAll('#orderStatusChips [data-status]').forEach(b => b.classList.toggle('on', b.dataset.status === status));
   const list = historyOrders();
   renderOrderStats(list);
-  if (!list.length) { host.innerHTML = '<p class="oh-empty">No orders match these filters.</p>'; return; }
+  if (!list.length) { host.innerHTML = `<p class="oh-empty">${searching ? 'No orders found for this search.' : 'No orders match these filters.'}</p>`; return; }
   const pill = o => { const s = String(o.status || '').toLowerCase(); const label = { fulfilled: 'Fulfilled', cancelled: 'Cancelled', refunded: 'Refunded', confirmed: 'To fulfill', pending: 'To fulfill' }[s] || s; return `<span class="oh-pill ${escAttr(s)}">${escHtml(label)}</span>`; };
   const when = o => new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
   host.innerHTML = list.slice(0, orderHistoryShown).map(o => `<details class="oh-item" data-order="${escAttr(o.id)}"><summary><span class="oh-num">#${escHtml(String(o.order_number ?? ''))}</span><span class="oh-main"><b>${escHtml(o.customer_name || 'Customer')}</b><small>${escHtml(when(o))}${isSubscriptionOrder(o) ? ' · 🔁 Subscription' : ''}</small></span><span class="oh-end"><b>₪${Number(o.total || 0).toFixed(0)}</b>${pill(o)}</span></summary><div class="oh-detail"></div></details>`).join('')
@@ -4403,7 +4421,7 @@ function renderOrderHistory(resetPaging = true) {
 }
 document.addEventListener('click', e => {
   const p = e.target.closest?.('#orderPeriodChips [data-period]');
-  if (p) { const sel = document.getElementById('orderPeriod'); sel.value = p.dataset.period; onOrderPeriodChange(); return; }
+  if (p) { const sel = document.getElementById('orderPeriod'); const s = document.getElementById('orderSearch'); if (s) s.value = ''; sel.value = p.dataset.period; onOrderPeriodChange(); return; }
   const s = e.target.closest?.('#orderStatusChips [data-status]');
   if (s) { document.getElementById('orderStatus').value = s.dataset.status; filterOrders(); }
 });
@@ -4420,6 +4438,8 @@ function updateOrderFilterSummary() {
   const status = statusEl && statusEl.value !== 'all'
     ? (statusEl.options[statusEl.selectedIndex]?.text || statusEl.value)
     : 'All statuses';
+  const searchText = (document.getElementById('orderSearch')?.value || '').trim();
+  if (searchText) period = `“${searchText}” · all time`;
   const kindBtn = document.querySelector('#orderKindToggle .kind-btn.active');
   const kind = kindBtn && kindBtn.dataset.kind !== 'all' ? ' · ' + kindBtn.textContent : '';
   el.textContent = period + ' · ' + status + kind;
