@@ -101,11 +101,11 @@
   async function load() {
     const db = client();
     let q = db.from('jobs').select(JOB_COLS + ',delivery_location,delivery_details').eq('type', 'delivery').eq('done', false);
-    q = state.all ? q.gte('date', addDays(today(), -14)) : q.eq('date', state.date);
+    if (!state.all) q = q.eq('date', state.date);
     let { data: jobs, error } = await q.order('date').order('time');
     if (error && /delivery_location|delivery_details/.test(error.message || '')) {   // before the migration: plain addresses
       let q2 = db.from('jobs').select(JOB_COLS).eq('type', 'delivery').eq('done', false);
-      q2 = state.all ? q2.gte('date', addDays(today(), -14)) : q2.eq('date', state.date);
+      if (!state.all) q2 = q2.eq('date', state.date);
       ({ data: jobs, error } = await q2.order('date').order('time'));
     }
     if (error) throw error;
@@ -227,7 +227,11 @@
     const e = document.getElementById('rtEndInput');
     if (e) { state.endPicker = P.attach(e, { lang: langOf(e), onChange: (v) => { state.endValue = v; } }); if (state.endValue) state.endPicker.set(state.endValue); }
     const f = document.getElementById('rtFixInput');
-    if (f) state.fixPicker = P.attach(f, { lang: langOf(f) });
+    if (f) {
+      state.fixPicker = P.attach(f, { lang: langOf(f) });
+      const stop = state.jobs?.find((s) => s.key === state.fixing);
+      if (stop?.address) state.fixPicker.set({ text: stop.address, place: null });   // starts from what was typed and shows matches
+    }
   }
 
   async function reload() { state.jobs = null; render(); try { await load(); } catch (e) { state.jobs = []; toast('Could not load deliveries: ' + (e.message || e)); } render(); }
@@ -286,8 +290,8 @@
   }
 
   function open() {
-    // Nothing is preselected: tick the deliveries you are taking now.
-    state = { date: today(), all: false, jobs: null, extras: [], order: [], start: 'here', end: 'last', startValue: null, endValue: null, fixing: null, addOpen: false };
+    // Every pending delivery shows by default, whatever its date; nothing is preselected.
+    state = { date: today(), all: true, jobs: null, extras: [], order: [], start: 'here', end: 'last', startValue: null, endValue: null, fixing: null, addOpen: false };
     if (!document.getElementById('rt-style')) {
       const st = document.createElement('style'); st.id = 'rt-style';
       st.textContent = `.rt-overlay{position:fixed;inset:0;z-index:9000;background:rgba(15,18,24,.5);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center}

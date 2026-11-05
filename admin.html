@@ -4846,60 +4846,7 @@ function describeItemExtras(i) {
   if ((i && i.is_subscription) || box.length) segs.push(String(i.subscription_interval || 'monthly') === 'weekly' ? '🔁 weekly' : '🔁 monthly' + (i.subscription_window === 'early' ? ' · 1st–5th' : i.subscription_window === 'mid' ? ' · 15th–20th' : ''));
   return segs.join(' · ');
 }
-async function openOrderDetail(id) {
-  const o = allOrders.find(x=>x.id===id);
-  if (!o) return;
-  await loadOrderCouponDetails([o]);
-  const items = (o.items||[]).map(i=>{
-    const extras = describeItemExtras(i);
-    const extrasHtml = i.coffee_bar_configuration ? extras.split(' · ').map(escHtml).join('<br>') : escHtml(extras);
-    return `<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="min-width:0">${escHtml(i.name_en||'')} ×${i.qty}${extras?`<span style="display:block;color:var(--text2);font-size:.82rem;line-height:1.65;margin-top:6px">${extrasHtml}</span>`:''}</span><span style="color:var(--cream);white-space:nowrap">₪${i.price*i.qty}</span></div>`;
-  }).join('');
-  // Surface the delivery type the customer chose at checkout (stored in delivery_info by the storefront)
-  const di = (o.delivery_info && typeof o.delivery_info === 'object') ? o.delivery_info : {};
-  const DELIVERY_TYPE_LABELS = { regular:'Regular', expedited:'Expedited', event:'Event Delivery', pickup:'Pickup' };
-  const dTypeRaw = String(di.delivery_type || '').toLowerCase();
-  const dType = DELIVERY_TYPE_LABELS[dTypeRaw] || (di.delivery_type ? escHtml(String(di.delivery_type)) : '—');
-  const dWhen = [di.delivery_date ? String(di.delivery_date).slice(0,10) : '', di.event_time ? String(di.event_time).slice(0,5) : ''].filter(Boolean).join(' @ ');
-  document.getElementById('orderModalTitle').textContent = `Order #${o.order_number}`;
- document.getElementById('orderModalContent').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
-      <div><div class="form-label">Customer</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_name||'')}</div></div>
-      <div><div class="form-label">Phone</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_phone||'—')}</div></div>
-      <div><div class="form-label">Email</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.customer_email||'—')}</div></div>
-      <div><div class="form-label">Address</div><div style="font-size:.9rem;color:var(--cream)">${escHtml(o.delivery_address||'—')}</div></div>
-      <div><div class="form-label">Delivery Type</div><div style="font-size:.9rem;color:var(--cream)">${dType}${dWhen?`<br><small style="color:var(--text2)">${escHtml(dWhen)}</small>`:''}</div></div>
-      <div><div class="form-label">Status</div><span class="status-pill s-${escHtml(o.status||'')}">${escHtml(o.status||'')}</span></div>
-      <div><div class="form-label">Payment</div><span class="status-pill s-${escHtml(o.payment_status||'')}">${escHtml(o.payment_status||'')}</span></div>
-    </div>
-    ${o.notes?`<div style="background:var(--bg3);padding:10px 14px;border-radius:4px;font-size:.82rem;color:var(--text2);margin-bottom:16px">Notes: ${escHtml(o.notes)}</div>`:''}
-    <div>${items}</div>
-    ${orderDiscountLabel(o) ? `<div style="padding:10px 0;font-size:.85rem;color:var(--text2)">${escHtml(orderDiscountLabel(o))}${Number(o.discount)>0 ? ` · −₪${Number(o.discount).toFixed(2)}` : ''}</div>` : ''}
-    <div style="display:flex;justify-content:space-between;padding:12px 0;font-size:.95rem"><span style="color:var(--text2)">Total</span><span style="color:var(--cream);font-size:1.1rem">₪${o.total}</span></div>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <select class="form-input" style="flex:1" onchange="updateOrderStatus('${o.id}',this.value)">
-        <option ${o.status==='pending'?'selected':''}>pending</option>
-        <option ${o.status==='confirmed'?'selected':''}>confirmed</option>
-        <option ${o.status==='fulfilled'?'selected':''}>fulfilled</option>
-        <option ${o.status==='cancelled'?'selected':''}>cancelled</option>
-      </select>
-      <select class="form-input" style="flex:1" onchange="updatePaymentStatus('${o.id}',this.value)">
-        <option ${o.payment_status==='unpaid'?'selected':''}>unpaid</option>
-        <option ${o.payment_status==='paid'?'selected':''}>paid</option>
-      </select>
-    </div>
-    ${o.payment_status === 'paid' ? `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
-      ${o.status !== 'fulfilled' ? `<button class="btn btn-amber btn-sm" onclick="markOrderFulfilled('${o.id}')">Mark fulfilled + email customer</button>` : ''}
-      ${(o.delivery_info && o.delivery_info.fulfilled_notified_at) ? '<span style="font-size:.78rem;color:var(--text2)">✓ Fulfillment email sent</span>' : ''}
-      <button class="btn btn-sm btn-outline" onclick="sendOrderToGoogleSheet('${o.id}', ${(o.delivery_info && o.delivery_info.order_notified_at) ? 'true' : 'false'})">${(o.delivery_info && o.delivery_info.order_notified_at) ? 'Re-send paid email' : 'Send paid email (Resend)'}</button>
-      ${(o.delivery_info && o.delivery_info.payme_sale_id) ? `<button class="btn btn-sm btn-outline" onclick="openPayMeRefund('${o.delivery_info.payme_sale_id}')">↩ Refund via PayMe</button>` : ''}
-      ${o.payment_method === 'gift_card' && o.gift_card_code ? `<button class="btn btn-sm btn-outline" onclick="refundGiftCardOrder('${o.id}')">↩ Refund to Gift Card</button>` : ''}
-    </div>` : ''}
-    ${o.customer_email ? `<button class="btn btn-outline btn-sm" onclick="sendCustomerReceipt('${o.id}')" style="margin-top:14px">📄 Send Receipt to Customer</button>` : ''}
-    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px">${o.customer_phone || o.customer_email ? `<button class="btn btn-sm wa-btn" onclick="adminMessageOrder('${o.id}')">💬 Message customer</button>` : ''}
-    <button class="btn btn-red btn-sm" onclick="deleteOrder('${o.id}')">Delete Order</button></div>`;
-  document.getElementById('orderModal').classList.add('open');
-}
+// openOrderDetail(id): the order card lives in admin-order-detail.js.
 async function deleteLinkedWebDelivery(order) {
   if (!order) return;
   const deletes = [];
@@ -9931,7 +9878,9 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-billing-share.js?v=20261029-1"></script>
 <script src="/coffee-bar-order.js?v=20261025-1"></script>
 <script src="/address-picker.js?v=20261104-2"></script>
-<script src="/admin-route.js?v=20261105-1"></script>
+<script src="/admin-route.js?v=20261106-1"></script>
+<link rel="stylesheet" href="/admin-order-detail.css?v=20261106-1"/>
+<script src="/admin-order-detail.js?v=20261106-1"></script>
 <script src="/admin-open-orders.js?v=20261105-2"></script>
 <script src="/admin-orders-board.js?v=20261104-1"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
