@@ -82,11 +82,19 @@
       <button class="btn btn-outline btn-sm" id="sinvSave">Save details</button></details>
      ${p?`<section class="sdw-sec"><div class="sdw-sec-h"><span class="sdw-ico" aria-hidden="true">🗓️</span><span class="sdw-sec-t"><b>Months to invoice</b><small>Untick any month you don't want to invoice now</small></span></div>
       <div class="fw-months rc-monthcards">${p.months.map(m=>`<label class="fw-month"><input type="checkbox" class="sinv-month" value="${esc(m.id)}" checked aria-label="Invoice ${esc(m.label)}"><span>${esc(m.label)}<small>${money(m.net_minor)} + VAT ${money(m.vat_minor)}</small></span><strong>${money(m.gross_minor)}</strong></label>`).join('')}</div>
-      <label class="rc-toggle"><input type="checkbox" id="storeInvoiceEmail" ${p.customer.email?'':'disabled'}><span class="rc-switch" aria-hidden="true"></span><span>Email them to ${esc(p.customer.email||'the store (add an email above)')}</span></label>
-      <label class="fw-check sdw-confirm"><input type="checkbox" id="storeInvoiceOk"> I checked the store's name, ח.פ. and amounts. Each ticked month becomes an official, numbered tax invoice in FinBot.</label></section>`:'<p class="sdw-empty">Add the store\'s ח.פ. above and save to see the months to invoice.</p>'}
+      <div class="sdw-quick"><button type="button" data-sinv-all>Select all</button><button type="button" data-sinv-none>Clear</button><span id="sinvPicked"></span></div></section>
+     <section class="sdw-sec"><div class="sdw-sec-h"><span class="sdw-ico" aria-hidden="true">🧾</span><span class="sdw-sec-t"><b>How do you want to invoice them?</b><small>Pick one. The button at the bottom says exactly what will be issued.</small></span></div>
+      <div class="sdw-modes" role="radiogroup" aria-label="How to invoice">
+       <button type="button" role="radio" data-sinv-mode="separate"><span class="sdw-mode-ico" aria-hidden="true">📄</span><span><b>One invoice per month</b><small>Each ticked month gets its own חשבונית מס. Good when the store pays month by month.</small></span></button>
+       <button type="button" role="radio" data-sinv-mode="combined"><span class="sdw-mode-ico" aria-hidden="true">🗂️</span><span><b>One invoice for all ticked months</b><small>A single חשבונית מס that lists every ticked month and is titled with their names. Good when they pay several months at once.</small></span></button>
+       <button type="button" role="radio" data-sinv-mode="paid"><span class="sdw-mode-ico" aria-hidden="true">✅</span><span><b>Already paid · invoice + receipt</b><small>One חשבונית מס/קבלה for the ticked months, which are then marked paid. You review it on the next screen.</small></span></button>
+      </div>
+      <p class="sdw-next" id="sinvNext"></p>
+      <div id="sinvIssueOpts"><label class="rc-toggle"><input type="checkbox" id="storeInvoiceEmail" ${p.customer.email?'':'disabled'}><span class="rc-switch" aria-hidden="true"></span><span>Email to ${esc(p.customer.email||'the store (add an email above)')}</span></label>
+      <label class="fw-check sdw-confirm"><input type="checkbox" id="storeInvoiceOk"> I checked the store's name, ח.פ. and amounts. This creates official, numbered tax invoices in FinBot.</label></div></section>`:'<p class="sdw-empty">Add the store\'s ח.פ. above and save to see the months to invoice.</p>'}
      <div class="sdw-alt"><span class="sdw-ico" aria-hidden="true">💸</span><span class="sdw-sec-t"><b>Already received payment?</b><small>One חשבונית מס/קבלה for the total received, without picking months. Only when no tax invoice was issued for it.</small></span><button type="button" class="btn btn-outline btn-sm" id="storeInvoiceCombined">Combined →</button></div>
     </div>
-    ${p?'<footer class="sdw-foot"><button class="rc-review" id="storeInvoiceIssue" disabled>Separate tax invoices · one per month</button><button type="button" class="btn btn-outline" id="storeInvoiceTogether" disabled>Together · one חשבונית מס/קבלה</button></footer>':''}
+    ${p?'<footer class="sdw-foot"><button class="rc-review" id="storeInvoiceIssue" disabled>Choose months</button></footer>':''}
    </div>`;
    get('storeInvoiceCombined').onclick=async()=>{
     if(box.dataset.dirty==='1'){status.textContent='Save the edited store details first.';return;}
@@ -97,7 +105,27 @@
    if(p)current={store_id:storeId,months:p.months};
    const issueBtn=get('storeInvoiceIssue'),ok=get('storeInvoiceOk');
    const chosen=()=>[...box.querySelectorAll('.sinv-month:checked')].map(i=>current.months.find(m=>m.id===i.value));
-   const refresh=()=>{const together=get('storeInvoiceTogether');if(together)together.disabled=box.dataset.dirty==='1'||!chosen().length;if(!issueBtn)return;const list=chosen();issueBtn.textContent=!list.length?'Choose months':!ok.checked?'Tick the check above to issue':`Issue ${list.length} tax invoice${list.length>1?'s':''} · ${money(list.reduce((n,m)=>n+m.gross_minor,0))}`;issueBtn.disabled=!ok.checked||!list.length||box.dataset.dirty==='1';};
+   let mode='separate';
+   const refresh=()=>{
+    if(!issueBtn)return;
+    const list=chosen(),n=list.length,dirty=box.dataset.dirty==='1';
+    const net=list.reduce((s,m)=>s+m.net_minor,0),sumGross=list.reduce((s,m)=>s+m.gross_minor,0),oneGross=net+vatOn(net);
+    box.querySelectorAll('[data-sinv-mode]').forEach(b=>{const on=b.dataset.sinvMode===mode;b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on));});
+    if(get('sinvPicked'))get('sinvPicked').textContent=n?n+' of '+current.months.length+' ticked':'';
+    get('sinvIssueOpts').hidden=mode==='paid';
+    get('sinvNext').textContent=mode==='paid'?'When they pay later, nothing else is needed: the receipt is part of this document.'
+     :'When the store pays, issue a קבלה (New document below) and tick the same months: it links to '+(mode==='combined'&&n>1?'this invoice':'their invoices')+' automatically.';
+    let text='Choose months',ready=n>0&&!dirty;
+    if(n&&mode==='paid')text='Continue · invoice + receipt for '+n+' month'+(n>1?'s':'')+' →';
+    else if(n&&!ok.checked){text='Tick the check above to issue';ready=false;}
+    else if(n&&mode==='combined'&&n>1)text='Issue 1 tax invoice for '+n+' months · '+money(oneGross);
+    else if(n)text='Issue '+n+' tax invoice'+(n>1?'s':'')+' · '+money(sumGross);
+    if(dirty&&n)text='Save the store details first';
+    issueBtn.textContent=text;issueBtn.disabled=!ready;
+   };
+   box.querySelectorAll('[data-sinv-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.sinvMode;refresh();});
+   box.querySelector('[data-sinv-all]')?.addEventListener('click',()=>{box.querySelectorAll('.sinv-month').forEach(i=>i.checked=true);refresh();});
+   box.querySelector('[data-sinv-none]')?.addEventListener('click',()=>{box.querySelectorAll('.sinv-month').forEach(i=>i.checked=false);refresh();});
    box.dataset.dirty='0';
    for(const id of ['sinvName','sinvTax','sinvEmail','sinvAddress'])get(id).oninput=()=>{box.dataset.dirty='1';refresh();status.textContent='Save the details before issuing.';};
    box.querySelectorAll('.sinv-month').forEach(i=>i.onchange=refresh);if(ok)ok.onchange=refresh;refresh();
@@ -112,14 +140,29 @@
     await open(storeId);load();status.textContent='Details saved.';
    };
    get('storeInvoiceCancel').onclick=()=>{current=null;box.innerHTML='';status.textContent='';};
-   if(get('storeInvoiceTogether'))get('storeInvoiceTogether').onclick=async()=>{
-    const b=get('storeInvoiceTogether');b.disabled=true;
-    try{await root.GremierFinance.openStoreCombined(storeId,chosen().map(m=>m.id));box.innerHTML='';current=null;status.textContent='';}
-    catch(e){status.textContent=e.message;b.disabled=false;}
+   if(issueBtn)issueBtn.onclick=async()=>{
+    const list=chosen();if(!list.length)return;
+    if(mode==='separate')return issue(list);
+    if(mode==='combined')return list.length>1?issueCombined(list):issue(list);
+    issueBtn.disabled=true;
+    try{await root.GremierFinance.openStoreCombined(storeId,list.map(m=>m.id));box.innerHTML='';current=null;status.textContent='';}
+    catch(e){status.textContent=e.message;issueBtn.disabled=false;}
    };
-   if(issueBtn)issueBtn.onclick=()=>issue(chosen());
    status.textContent='';
   }catch(e){status.textContent=e.message;}finally{if(button)button.disabled=false;}
+ }
+ // One invoice for several months: a single request; VAT on their total, like the server.
+ async function issueCombined(list){
+  if(!current||!list.length)return;const status=get('storeInvoiceStatus'),btn=get('storeInvoiceIssue');btn.disabled=true;
+  const net=list.reduce((n,m)=>n+m.net_minor,0),label=list.map(m=>m.label).join(', ');
+  try{
+   status.textContent=`Issuing one tax invoice for ${label}… don't close this page.`;
+   const r=await call({action:'issue',id:crypto.randomUUID(),store_id:current.store_id,billing_ids:list.map(m=>m.id),gross_minor:net+vatOn(net),email_requested:!!get('storeInvoiceEmail')?.checked,confirm:true});
+   if(r.invoice?.status!=='issued')throw Error(`${label}: needs review. Check FinBot before trying again.`);
+   status.textContent=`Issued one tax invoice for ${label}: ${r.invoice.document_number||'number not read'}.`;
+   get('storeInvoicePreview').innerHTML='';current=null;
+  }catch(e){status.textContent=e.message+' Do not issue these months again before checking FinBot.';}
+  await load();
  }
  // One invoice per month, one at a time; stops at the first problem so nothing is issued twice.
  async function issue(list){

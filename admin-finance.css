@@ -194,3 +194,16 @@ body.rc-drawer-open{overflow:hidden}
 .rc-fold>summary h2{font-size:1.1rem!important;flex:1;min-width:0}
 .rc-sec-count{white-space:nowrap}
 .sdw-alt{flex-wrap:wrap}.sdw-alt .btn{flex:1 1 100%;padding:10px}
+.sdw-quick{display:flex;align-items:center;gap:8px;margin:-2px 0 2px}
+.sdw-quick button{border:1px solid var(--border);background:#fff;border-radius:99px;padding:6px 12px;font:inherit;font-size:.78rem;font-weight:700;color:var(--cream);cursor:pointer}
+.sdw-quick span{margin-left:auto;font-size:.76rem;color:var(--text2);font-weight:600}
+.sdw-modes{display:grid;gap:8px}
+.sdw-modes button{display:flex;gap:12px;align-items:flex-start;text-align:left;border:1px solid var(--border);background:#fff;border-radius:16px;padding:12px 14px;font:inherit;cursor:pointer;position:relative}
+.sdw-modes button b{display:block;font-size:.92rem;font-weight:800;color:var(--cream);margin-bottom:2px}
+.sdw-modes button small{display:block;font-size:.76rem;color:var(--text2);line-height:1.45}
+.sdw-mode-ico{font-size:1.25rem;line-height:1.2}
+.sdw-modes button.on{border:2px solid #1c1c1c;padding:11px 13px;background:#fcfcfd}
+.sdw-modes button.on::after{content:'✓';position:absolute;top:10px;right:10px;width:20px;height:20px;border-radius:50%;background:#1c1c1c;color:#fff;font-size:.7rem;display:grid;place-items:center}
+.sdw-modes button>span:last-child{padding-right:22px}
+.sdw-next{font-size:.78rem;color:var(--text2);background:#f6f6f7;border-radius:12px;padding:10px 12px;margin:10px 0}
+#sinvIssueOpts[hidden]{display:none}

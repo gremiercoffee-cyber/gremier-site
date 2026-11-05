@@ -1,6 +1,7 @@
 // Store tax invoices (חשבונית מס) through FinBot. Admin only.
 //   { action:'preview', id, store_id }  → each unpaid, not-yet-invoiced month's invoice; no document created
 //   { action:'issue', id, store_id, billing_id, gross_minor, email_requested?, confirm:true } → that month's invoice (once per id)
+//   { action:'issue', ..., billing_ids:[…] }  → ONE invoice listing those months (VAT on their total)
 //   { action:'pdf', id }                    → short-lived link to the original PDF
 //   { action:'set_number', id, number }     → the invoice number, when it couldn't be read from the PDF
 //   { action:'release', id, confirm_not_in_finbot:true } → a refused invoice gives its months back
@@ -89,8 +90,11 @@ Deno.serve(async req=>{
    return json({preview:{customer,months,vat_rate:VAT_RATE},creates_document:false});
   }
   if(raw.confirm!==true)return json({error:'confirm_required'},400);
-  const bill=b.data.find((x:any)=>x.id===raw.billing_id);if(!bill)throw Error('month_not_invoiceable');
-  const plan=invoiceBills([bill],raw.store_id),payload=invoicePayload(customer,plan.lines);
+  // One month, or several months on one invoice.
+  const ids:string[]=Array.isArray(raw.billing_ids)&&raw.billing_ids.length?raw.billing_ids.map(String):[String(raw.billing_id||'')];
+  if(ids.length>24||new Set(ids).size!==ids.length)throw Error('month_not_invoiceable');
+  const chosen=ids.map(id=>b.data.find((x:any)=>x.id===id));if(chosen.some((x:any)=>!x))throw Error('month_not_invoiceable');
+  const plan=invoiceBills(chosen,raw.store_id),payload=invoicePayload(customer,plan.lines);
   if(raw.gross_minor!==plan.gross_minor)throw Error('billing_changed_refresh_preview');
   const key=Deno.env.get('FINBOT_API_KEY');if(!key)throw Error('finbot_not_configured');
   const request_hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(payload))))).map(x=>x.toString(16).padStart(2,'0')).join('');
