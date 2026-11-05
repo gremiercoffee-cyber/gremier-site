@@ -37,16 +37,15 @@ test('the reporting week: this Sunday’s week all week, and on Sunday the week 
  assert.equal(ap.reportWeek('Asia/Jerusalem',at('2026-11-01T07:30:00Z')),'2026-10-25');
 });
 
-test('Thursday night reminder, thank-you on filing, Saturday-night and Sunday reminders only to whoever is still missing',async()=>{
+test('no extra Thursday reminder (the link email is it), thank-you on filing, Saturday-night and Sunday reminders only to whoever is still missing',async()=>{
  reset();const h=setup();
  h.file(1,'2026-10-29T10:00:00.000Z'); // Adler filed Thursday morning
  // Thursday 17:00 local: nothing due yet except Adler's thank-you.
  await ap.runHashgachaAutopilot(h.env,at('2026-10-29T15:00:00Z'));
  assert.deepEqual(h.sends(),['thanks:Rabbi Adler']);
- // Thursday 20:05 local: reminder to Baum and Cohen (not Adler, who filed; Dov has no email and is reported to the user).
- await ap.runHashgachaAutopilot(h.env,at('2026-10-29T18:05:00Z'));
- assert.deepEqual(h.sends().slice(1).sort(),['thursday:Rabbi Baum','thursday:Rabbi Cohen']);
- assert.ok(globalThis.__notes.at(-1).includes('No email on file for: Rabbi Dov'));
+ // Thursday 20:05 and 21:30 local: no reminder; the Hashgacha app's link email is Thursday's reminder.
+ await ap.runHashgachaAutopilot(h.env,at('2026-10-29T18:05:00Z'));await ap.runHashgachaAutopilot(h.env,at('2026-10-29T19:30:00Z'));
+ assert.deepEqual(h.sends(),['thanks:Rabbi Adler']);
  // The next cron run sends nothing again.
  const n=globalThis.__mail.length;await ap.runHashgachaAutopilot(h.env,at('2026-10-29T18:20:00Z'));assert.equal(globalThis.__mail.length,n);
  // Baum files on Friday morning: thanked within the next check.

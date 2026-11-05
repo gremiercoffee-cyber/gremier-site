@@ -1,7 +1,7 @@
 /**
  * Hashgacha autopilot: emails the night-seder rabbis about the weekly hashgacha report, on its own.
  *
- * - Thursday 20:00: reminder to everyone who hasn't filed this week's report yet.
+ * - Thursday: nothing extra (the Hashgacha app emails the report links at 21:00; that is the reminder).
  * - As soon as a report is received (checked every 15 minutes): a thank-you to that rabbi.
  * - Saturday night, once Shabbat is over (from 20:00): reminder to anyone still missing.
  * - Sunday 09:00-13:00: last reminder to anyone still missing (for the week that just ended).
@@ -76,7 +76,7 @@ export function reportWeek(tz: string, at: Date) {
 /** Which reminder is due right now, if any. */
 export function dueStep(tz: string, at: Date): Exclude<Kind, "thanks"> | null {
   const c = localClock(tz, at);
-  if (c.weekday === 4 && c.minutes >= 20 * 60) return "thursday";
+  // No Thursday reminder: the Hashgacha app's own Thursday 21:00 email with the report link is that reminder.
   if (c.weekday === 6 && c.minutes >= 20 * 60 && !isShabbat(tz, at)) return "saturday";
   if (c.weekday === 0 && c.minutes >= 9 * 60 && c.minutes < 13 * 60) return "sunday";
   return null;
