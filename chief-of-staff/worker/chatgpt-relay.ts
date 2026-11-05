@@ -5,7 +5,7 @@ import {engineStatus,backupEngine} from './jobs';
  * OAuth grants only relay access. It cannot call arbitrary CoS routes or approve actions.
  */
 import type {Env} from './env';
-import {all,first,run,uid,HttpError} from './db';
+import {all,first,run,uid,HttpError,waitFor} from './db';
 
 export const RELAY_ORIGIN='https://chief-of-staff.gremiercoffee.workers.dev';
 export const RELAY_RESOURCE=RELAY_ORIGIN+'/api/mcp';
@@ -104,13 +104,15 @@ async function desktopRoute(req:Request,env:Env,path:string){
  const p=await object(req),t=stamp();
  if(path==='/api/agent/relay/next'){
   const detail=typeof p.detail==='string'?p.detail.slice(0,300):'Unknown';
-  await run(env,'INSERT INTO cos_relay_status(id,seen_at,ready,detail) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET seen_at=excluded.seen_at,ready=excluded.ready,detail=excluded.detail',t,p.ready===true?1:0,detail);
+  // Persist liveness every 30s (online expires after 90s; a long poll can hold 50s), or immediately
+  // when readiness changes. Queue claims still run on every poll.
+  await run(env,'INSERT INTO cos_relay_status(id,seen_at,ready,detail) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET seen_at=excluded.seen_at,ready=excluded.ready,detail=excluded.detail WHERE cos_relay_status.seen_at<=? OR cos_relay_status.ready IS NOT excluded.ready OR cos_relay_status.detail IS NOT excluded.detail',t,p.ready===true?1:0,detail,t-30000);
   // A crashed/expired claim is uncertain, never automatically replayed into a chat.
   await run(env,"UPDATE cos_relay_requests SET state='uncertain',error='Desktop relay stopped before confirming delivery. Review before retrying.',updated_at=? WHERE state='claimed' AND claimed_at<?",t,t-120000);
   await run(env,"UPDATE cos_relay_requests SET state='uncertain',error='The chat has not returned a response receipt. Check the existing chat before retrying.',updated_at=? WHERE state='submitted' AND coalesce(engine,'codex')='codex' AND submitted_at<?",t,t-15*60000);
   if(p.ready!==true)return json({request:null});
   const claim=secret();
-  const row=await first<any>(env,"UPDATE cos_relay_requests SET state='claimed',claim_token=?,claimed_at=?,updated_at=? WHERE id=(SELECT r.id FROM cos_relay_requests r JOIN cos_oauth_grants g ON g.id=r.grant_id WHERE r.state='queued' AND g.revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM cos_relay_requests x WHERE x.state IN ('claimed','submitted') AND coalesce(x.engine,'codex')='codex') ORDER BY r.created_at LIMIT 1) AND state='queued' RETURNING id,message,thread_id,claim_token",claim,t,t);
+  const row=await waitFor(p.wait,()=>first<any>(env,"UPDATE cos_relay_requests SET state='claimed',claim_token=?,claimed_at=?,updated_at=? WHERE id=(SELECT r.id FROM cos_relay_requests r JOIN cos_oauth_grants g ON g.id=r.grant_id WHERE r.state='queued' AND g.revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM cos_relay_requests x WHERE x.state IN ('claimed','submitted') AND coalesce(x.engine,'codex')='codex') ORDER BY r.created_at LIMIT 1) AND state='queued' RETURNING id,message,thread_id,claim_token",claim,t,t));
   return json({request:row});
  }
  const m=path.match(/^\/api\/agent\/relay\/([^/]+)\/(submitted|result)$/);

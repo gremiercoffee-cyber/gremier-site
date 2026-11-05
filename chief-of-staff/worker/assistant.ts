@@ -19,7 +19,6 @@ import { resolveBlock, saveSituation, situationsSummary } from "./situations";
 import { areasText, saveArea } from "./areas";
 import { activeProjects } from "./projectmatch";
 import { prepareWhatsApps } from "./contacts";
-import { createJob } from "./browser";
 import { fileForModel, fileInfo, fillForm, findEmailFiles, recentFiles, saveVault, signFile, vaultSummary } from "./documents";
 import { coffeeChange, hubCall, saveCoffeeRule } from "./hub";
 import { findGroup, groupsSummary, members, saveGroup } from "./groups";
@@ -81,7 +80,7 @@ How this app fits together (you ARE this app; everything below is yours to use, 
 - Groups: contact groups (used to search email and WhatsApp from everyone in a group).
 - People: address book inside Settings.
 - Lists & projects: to-dos, reminders, commitments, waiting-for, grouped into projects.
-- Tasks: research chats and the computer helper's jobs.
+- Tasks: research chats.
 - Schedule: daily schedule, weekly extras, one-day changes.
 - Search: memories and reference material remain searchable. There is no Library in the navigation. Actionable work belongs in tasks and concrete projects, not passive notes.
 - Settings: connected accounts, notifications, usage.
@@ -653,12 +652,6 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async () => { const { jobsSummary } = await import("./jobs"); return jobsSummary(env); },
     },
     {
-      name: "computer_helper",
-      description: "Hand a job to the user's computer helper: Chrome on their home computer does it, signed in as them (e.g. 'enable the People API in Google Cloud', 'make a CoSend account', 'fill in this form'). Use only when the user asks for something done on a website. Write the instruction fully (which site, what to do, what counts as done); add start_url when known. It never types passwords or pays; it asks the user on their phone when it needs them, and sends a screenshot when done.",
-      input_schema: { type: "object", properties: { instruction: { type: "string" }, start_url: { type: "string" } }, required: ["instruction"] },
-      handler: async (input) => { const r = await createJob(env, { instruction: String(input.instruction), start_url: input.start_url as string | undefined, source: "you" }); note("computer_helper", "🖥️ Sent to your computer helper — follow it under Tasks"); return { ...r, note: "It starts within about a minute if the computer is on with Chrome open and the helper switched on." }; },
-    },
-    {
       name: "save_detail",
       description: "Save or update one of the user's details under My details (e.g. 'Business address', 'Business number', 'Home address', 'Wife's ID'), when they tell you one to keep, or when they answer a form's still_needed question (use the label fill_document gave; an existing label is updated, not duplicated). Saved details are listed under '## My details' and are what you use when they ask you to fill something in. Signatures are added by the user in the app (photo/screenshot), not here.",
       input_schema: { type: "object", properties: { label: { type: "string" }, text: { type: "string" } }, required: ["label", "text"] },
@@ -1106,7 +1099,6 @@ const TOOL_GROUPS: Record<string, string[]> = {
   recurring: ["get_recurring_reminders","save_recurring_reminder"],
   areas: ["save_area"],
   research: ["start_job", "list_jobs", "email_with_codex", "codex_backup"],
-  helper: ["computer_helper"],
   details: ["save_detail"],
   people: ["save_person"],
   jobs: ["start_job", "list_jobs", "email_with_codex", "codex_backup"],
@@ -1118,7 +1110,7 @@ const GROUP_INFO: Record<string, string> = {
   whatsapp: "WhatsApp messages", docs: "Google Docs, Sheets, Drive", groups: "contact groups",
   coffee: "Gremier Coffee business data",
   hashgacha: "Hashgacha report tracking", files: "find, fill and sign documents", recurring: "fixed monthly reminders",
-  areas: "add or rename life areas", research: "research chats (research once or on a schedule)", helper: "do something on a website (computer helper)",
+  areas: "add or rename life areas", research: "research chats (research once or on a schedule)",
   details: "save the user's details (My details)", people: "add or update people in the address book",
   jobs: "research or monitoring jobs (once, every N minutes, weekly)",
 };
@@ -1132,7 +1124,6 @@ const GROUP_RULES: Record<string, string> = {
   recurring: "Fixed monthly reminders (one or several days a month) use save_recurring_reminder, never a research chat; include any link. Marking a month done stops that month's remaining reminders.",
   research: "Research the user wants done is a research chat: start_job (kind once, or every/weekly when it repeats), with everything they asked for in instructions. It waits for their Start tap in the chat. Never pretend to have browsed.",
   details: "save_detail: one of the user's details (an existing label is updated). Signatures are added in the app, not here.",
-  helper: "computer_helper: only when they want something done on a website. Write the whole job: the site, what to do, what counts as done; start_url when known.",
   jobs: "start_job: for research or watching something over time. Put everything they said about what and how into instructions (their criteria, format, summary, action items). Hourly-style checks are kind every; regular reports are weekly. It runs on their Claude/Codex plans (engine auto); the API only if they ask for it. Tell them to tap Start in the research chat pinned in the side panel; changes later happen by writing in that chat.",
 };
 /**
@@ -1145,7 +1136,6 @@ const TOOL_TRIGGERS: Record<string, RegExp> = {
   recurring: /\b(every month|monthly|each month|recurring|every (\d+(st|nd|rd|th)?|first|last)\b)|כל חודש/i,
   areas: /\b(areas?|categor(y|ies))\b/i,
   research: /\b(research|look into|find out|look up|compare|options for|suppliers?|prices?)\b|מחקר|תבדוק/i,
-  helper: /\b(web ?sites?|sign ?up|account|log ?in|register|online|computer helper|browser|chrome|portal|console|enable)\b|אתר/i,
   details: /\b(my details|address|id number|vat|business number|licen[cs]e|osek|teudat)\b|ת"ז|תעודת זהות|כתובת|עוסק/i,
   people: /\b(is my|is our|works (at|for)|phone number|email address|contact|address book|supplier|accountant|lawyer|boss)\b/i,
   jobs: /\b(monitor|keep (an eye|checking|track)|every (\d+ )?(hour|minute)s?|hourly|updates? (on|about)|weekly report|report (on|every)|watch (for|the)|track|jobs?|codex|backup|fallback|runs? out|out of usage)\b|מעקב|כל שעה|עדכונים/i,

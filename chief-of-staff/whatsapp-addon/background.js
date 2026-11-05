@@ -62,14 +62,14 @@ chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'shopping-retry'
 async function remember(patch) {
   const cur = (await chrome.storage.local.get("cos")).cos || {};
   await chrome.storage.local.set({ cos: { ...cur, ...patch } });
-  // Health report to the Chief of Staff, at most every 5 s and always with the latest state
+  // Health report to the Chief of Staff, at most once a minute and always with the latest state
   // (status words, counts and sender names only, never message text).
   if (diagTimer) return;
   diagTimer = setTimeout(async () => {
     diagTimer = null;
     const { cos = {} } = await chrome.storage.local.get("cos");
     call("/api/bridge/diag", { mode: cos.mode, counts: cos.counts, last_seen: cos.last_seen, last_event: cos.last_event, error: cos.error, at: new Date().toISOString() }).catch(() => {});
-  }, 5000);
+  }, 60000);
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {

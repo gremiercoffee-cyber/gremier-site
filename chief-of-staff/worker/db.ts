@@ -7,6 +7,12 @@ export const now = () => new Date().toISOString();
 export const uid = () => crypto.randomUUID();
 
 /** Heartbeat precision is minutes, not every queue poll. Returns whether it wrote. */
+/** Long poll: a runner that sends {wait:N} is held up to N seconds (max 50) until there is work,
+ * so an idle helper makes one request a minute instead of one every few seconds. */
+export async function waitFor<T>(wait:unknown,check:()=>Promise<T|null|undefined>,every=3000):Promise<T|null>{
+ const until=Date.now()+Math.min(50,Math.max(0,Number(wait)||0))*1000;
+ for(;;){const r=await check();if(r)return r;if(Date.now()+every>until)return null;await new Promise(res=>setTimeout(res,every));}
+}
 export async function heartbeatSetting(env:Env,table:'settings'|'daynote_settings',key:string,value:unknown,path='$',interval=120000){
  const cutoff=new Date(Date.now()-interval).toISOString();
  return run(env,`INSERT INTO ${table}(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE COALESCE(json_extract(${table}.value,?), '')<?`,key,JSON.stringify(value),path,cutoff);

@@ -16,7 +16,7 @@ export function codexExe(){
 }
 export async function api(path,body){
  const key=process.env.COS_AGENT_KEY||readFileSync(join(homedir(),'.tokens','cos-agent-key.txt'),'utf8').trim();
- const r=await fetch(API+path,{method:'POST',headers:{'content-type':'application/json','x-agent-key':key},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+ const r=await fetch(API+path,{method:'POST',headers:{'content-type':'application/json','x-agent-key':key},body:JSON.stringify(body),signal:AbortSignal.timeout(body?.wait?70000:20000)});
  if(!r.ok)throw Error('Relay API HTTP '+r.status);return r.json();
 }
 export function promptFor(r){
@@ -34,8 +34,8 @@ export function queue(r,exe=codexExe()){
 }
 export async function tick(){
  let ready=false;try{ready=!!codexExe();}catch{}
- const {request:r}=await api('/api/agent/relay/next',{ready,detail:ready?'Can queue requests to the fixed Chief of Staff chat. Automatic desktop pickup is not yet verified.':'Codex is not installed on the relay computer.'});
- if(!r)return;
+ const {request:r}=await api('/api/agent/relay/next',{wait:50,ready,detail:ready?'Can queue requests to the fixed Chief of Staff chat. Automatic desktop pickup is not yet verified.':'Codex is not installed on the relay computer.'});
+ if(!r)return false;
  mkdirSync(claimDir,{recursive:true});
  // Persist before submission so a restart never blindly queues a request twice.
  const file=join(claimDir,r.id+'.json');
@@ -50,5 +50,5 @@ export async function tick(){
  }
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const loop=async()=>{do{try{await tick();}catch{console.error('Chief of Staff relay could not reach the service; will retry.');}if(process.argv.includes('--once'))break;await new Promise(r=>setTimeout(r,15000));}while(true);};await loop();
+ const loop=async()=>{do{const t0=Date.now();let busy=false;try{busy=(await tick())!==false;}catch{console.error('Chief of Staff relay could not reach the service; will retry.');}if(process.argv.includes('--once'))break;await new Promise(r=>setTimeout(r,busy||Date.now()-t0>20000?1000:30000));}while(true);};await loop();
 }

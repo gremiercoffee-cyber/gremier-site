@@ -1,4 +1,4 @@
-import {heartbeatSetting} from './db';
+import {heartbeatSetting,waitFor} from './db';
 import type {Env} from './env';
 import {first,run,now,uid,HttpError} from './db';
 import {getProvider,type ModelProvider,type AgentRequest,type AgentResult} from './ai';
@@ -14,7 +14,7 @@ export async function healthAIRunnerRoute(req:Request,env:Env){
   await run(env,'DELETE FROM daynote_ai_requests WHERE created_at<?',new Date(Date.now()-86400000).toISOString());
   }
   if(!p.codex&&!p.claude)return {request:null};
-  const r=await first<any>(env,"UPDATE daynote_ai_requests SET state='running',claim_token=? WHERE id=(SELECT id FROM daynote_ai_requests WHERE state='queued' AND expires_at>? ORDER BY created_at LIMIT 1) AND state='queued' RETURNING id,payload,claim_token,expires_at",uid(),now());
+  const r=await waitFor(p.wait,()=>first<any>(env,"UPDATE daynote_ai_requests SET state='running',claim_token=? WHERE id=(SELECT id FROM daynote_ai_requests WHERE state='queued' AND expires_at>? ORDER BY created_at LIMIT 1) AND state='queued' RETURNING id,payload,claim_token,expires_at",uid(),now()));
   return {request:r?{...r,payload:JSON.parse(r.payload)}:null};
  }
  const id=path.split('/').at(-2);if(!id||!path.endsWith('/result'))throw new HttpError(404,'Not found.');

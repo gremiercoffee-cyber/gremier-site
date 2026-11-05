@@ -33,7 +33,7 @@
     if (cfg && typeof cfg.enabled === 'boolean') shopping = cfg;
   }
   refreshShopping();
-  setInterval(refreshShopping, 60_000);
+  setInterval(refreshShopping, 5 * 60_000);
   async function watchShopping(m) {
     if (!shopping.enabled || m.isGroup || !m.messageId || !m.text || !m.chatId || !/@(c\.us|s\.whatsapp\.net|lid)$/.test(m.chatId)) return false;
     if (shopping.chat_id ? m.chatId !== shopping.chat_id : m.chat !== shopping.chat) return false;

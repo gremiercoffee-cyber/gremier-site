@@ -19,6 +19,18 @@ async function grant(h,scopes='cos.relay'){
  const form=new URLSearchParams({grant_type:'authorization_code',client_id:client,redirect_uri:callback,code,code_verifier:v,resource:R});
  const token=await h.call('/api/mcp/oauth/token','POST',form);assert.equal(token.status,200);return{...token.data,client,form};
 }
+
+test('idle relay polls persist one heartbeat, state changes immediately, and stale heartbeats refresh',async()=>{
+ const h=setup(),headers={'x-agent-key':'agent-fixture'};
+ const poll=(ready=true,detail='fixture')=>h.call('/api/agent/relay/next','POST',{ready,detail},headers);
+ await poll();const before=h.db.prepare('SELECT total_changes() n').get().n;
+ for(let i=0;i<100;i++)assert.equal((await poll()).data.request,null);
+ assert.equal(h.db.prepare('SELECT total_changes() n').get().n,before);
+ await poll(false);assert.equal(h.db.prepare('SELECT ready FROM cos_relay_status').get().ready,0);
+ await poll(true,'changed');assert.equal(h.db.prepare('SELECT detail FROM cos_relay_status').get().detail,'changed');
+ h.db.prepare('UPDATE cos_relay_status SET seen_at=?').run(Date.now()-61000);
+ await poll(true,'changed');assert.ok(h.db.prepare('SELECT seen_at FROM cos_relay_status').get().seen_at>Date.now()-1000);
+});
 const tool=(h,token,name,args={})=>h.call('/api/mcp','POST',{jsonrpc:'2.0',id:5,method:'tools/call',params:{name,arguments:args}},token?{authorization:'Bearer '+token}:{});
 test('MCP discovery is public but every private tool requires a separate OAuth grant',async()=>{
  const h=setup(),meta=await h.call('/.well-known/oauth-protected-resource');assert.equal(meta.data.resource,R);

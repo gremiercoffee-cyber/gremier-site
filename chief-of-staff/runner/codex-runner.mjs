@@ -183,5 +183,5 @@ for (;;) {
       continue;
     }
   } catch (e) { log(`problem: ${e.message}`); }
-  await sleep(30_000);
+  await sleep(60_000); // research jobs can wait a minute; halves idle requests
 }

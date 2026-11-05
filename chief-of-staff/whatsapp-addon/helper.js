@@ -181,5 +181,6 @@ async function helperTick() {
   finally { helperBusy = false; }
 }
 
-chrome.alarms.create("helper-poll", { periodInMinutes: 0.5 });
+// The computer helper is switched off: no polling (it made ~2,900 requests a day for jobs that never came).
+chrome.alarms.clear("helper-poll");
 chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "helper-poll") void helperTick(); });
