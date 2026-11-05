@@ -5892,8 +5892,9 @@ async function loadPayLinks() {
 
   // Open links first. Recurring links are no longer made; any old ones still work for customers
   // and sit with the older links, out of the way.
-  const oneTimeActive = oneTimeLinks.filter(l => !l.archived_at);
-  const older = [...oneTimeLinks.filter(l => l.archived_at), ...recurringLinks]
+  const isOpenLink = (l) => !l.archived_at && !['paid', 'fulfilled'].includes(String(l.status || '').toLowerCase());   // a paid link isn't waiting for anything
+  const oneTimeActive = oneTimeLinks.filter(isOpenLink);
+  const older = [...oneTimeLinks.filter(l => !isOpenLink(l)), ...recurringLinks]
     .sort((a, b) => new Date(b.archived_at || b.created_at) - new Date(a.archived_at || a.created_at));
 
   oneTimeBody.innerHTML = oneTimeActive.length
