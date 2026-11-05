@@ -689,6 +689,40 @@ serve(async (req) => {
       row.delivery_info = { ...rest, ...pickAddress(body.address) };
       orderPatch.delivery_info = row.delivery_info;
     }
+    // Pay page: the customer's delivery choice is priced here, never trusted from the client, on top of
+    // the link's own total, so changing the choice and retrying never adds the fee twice. Shipping the
+    // admin set on the link is already inside its total and is never priced again.
+    const totalBeforeDelivery = Number(row.total) || 0;
+    const chosenForOrder = pickDeliveryChoice(delivery_info);
+    const orderInfoNow = (row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {}) as Record<string, unknown>;
+    const orderLinkCode = String(orderInfoNow.payment_link_code || "");
+    if (row.source === "payment_link" && orderLinkCode && String(chosenForOrder.delivery_type || "")) {
+      const { data: orderLink, error: orderLinkError } = await supabase
+        .from("payment_links")
+        .select("total, items, delivery_info")
+        .eq("link_code", orderLinkCode)
+        .maybeSingle();
+      if (orderLinkError) throw new Error("Could not price delivery");
+      if (orderLink && !shippingSetByAdmin(orderLink)) {
+        const base = Number(orderLink.total) || 0;
+        const { zones, settings } = await loadDeliveryPricingTables(supabase);
+        const quote = quoteDeliveryFee(chosenForOrder, zones, settings, base);
+        const fee = Number(quote.fee) || 0;
+        const { delivery_date: _oldDate, event_time: _oldTime, ...keep } = orderInfoNow;
+        row.delivery_info = {
+          ...keep,
+          ...chosenForOrder,
+          delivery_fee: fee,
+          delivery_label: quote.typeLabel,
+          zone_name: quote.zone?.name_en || "",
+          pricing_source: quote.source,
+          server_priced: true,
+        };
+        row.total = base + fee;
+        orderPatch.delivery_info = row.delivery_info;
+        orderPatch.total = row.total;
+      }
+    }
     if (Object.keys(orderPatch).length > 1) {
       await supabase.from("orders").update(orderPatch).eq("id", row.id);
       if (name) row.customer_name = name;
@@ -715,7 +749,9 @@ serve(async (req) => {
     const storedSaleUrl = String(info.sale_url || "");
 
     // A card can only be saved on a fresh sale, so don't reuse an old one when saving.
-    if (storedSaleId && body.save_card !== true && info.save_card_requested !== true) {
+    // An open sale can only be reused at the amount it was made for (the delivery choice may have changed).
+    const storedSaleTotal = info.payme_sale_total != null ? Number(info.payme_sale_total) : totalBeforeDelivery;
+    if (storedSaleId && storedSaleTotal === totalShekels && body.save_card !== true && info.save_card_requested !== true) {
       const reused = await tryReuseExistingPayMeSale(
         paymeBase,
         storedSaleId,
@@ -833,6 +869,8 @@ serve(async (req) => {
       payme_sale_id: paymeSaleId,
 
       sale_url: checkoutUrl,
+
+      payme_sale_total: totalShekels,
 
       // Mark recurring orders and keep the PayMe subscription id under its own
       // key so the webhook can tell a subscription iteration from a plain sale.

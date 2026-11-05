@@ -97,6 +97,7 @@
         <div class="od-sec-h"><h3>Items</h3></div>
         ${items}
         ${discount ? `<div class="od-item muted"><span>${escHtml(discount)}</span><span>${Number(o.discount) > 0 ? '−₪' + Number(o.discount).toFixed(2) : ''}</span></div>` : ''}
+        ${Number(di.delivery_fee) > 0 && !(o.items || []).some((i) => i.category === 'delivery_fee') ? `<div class="od-item"><span>Delivery</span><span>₪${escHtml(di.delivery_fee)}</span></div>` : ''}
         <div class="od-total"><span>Total</span><span>₪${escHtml(o.total)}</span></div>
         ${o.notes ? `<p class="od-sub">Note: ${escHtml(o.notes)}</p>` : ''}
       </section>
