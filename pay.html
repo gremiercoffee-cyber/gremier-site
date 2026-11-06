@@ -334,19 +334,67 @@ const PAY_DELIVERY_OPTIONS = [
 ];
 
 /* Shipping set by the admin on this link (or an older link with a manual delivery fee line).
-   It is already inside the link total, so the customer isn't asked again and nothing is added. */
+   It is pre-filled and its fee is inside the link total. The customer can change it; the fee line then
+   comes off and the new choice is priced on the rest. The server does the same (link-shipping.ts). */
 function payShippingPreset() {
   const info = paymentLink?.delivery_info && typeof paymentLink.delivery_info === 'object' ? paymentLink.delivery_info : {};
   if (info.shipping_set_by_admin === true) return info;
   const line = (paymentLink?.items || []).find(i => i && i.category === 'delivery_fee');
   return line ? { delivery_type: 'delivery', delivery_label: 'Delivery', delivery_fee: Number(line.price || 0) * Number(line.qty || 1) } : null;
 }
-function payPresetLabel(p) {
-  if (p.delivery_type === 'pickup') return 'Pickup — no delivery';
-  const kind = { regular: 'Regular delivery', expedited: 'Expedited delivery', event: 'Delivery to your event' }[p.delivery_type] || p.delivery_label || 'Delivery';
-  const where = p.city_en || p.zone_name || '';
-  const when = p.delivery_type === 'event' && p.delivery_date ? ' · ' + p.delivery_date + (p.event_time ? ' ' + p.event_time : '') : '';
-  return kind + (where ? ' to ' + where : '') + when;
+function payPresetType() {
+  const p = payShippingPreset();
+  if (!p) return null;
+  return !p.delivery_type || p.delivery_type === 'delivery' ? 'regular' : p.delivery_type;
+}
+function payFeeLinesTotal() {
+  const sum = (paymentLink?.items || []).reduce((t, i) => t + (i && i.category === 'delivery_fee' ? (Number(i.price) || 0) * (Number(i.qty) || 1) : 0), 0);
+  return Math.round(sum * 100) / 100;
+}
+/** The link total without any delivery the admin added. */
+function payBaseTotal() {
+  return Math.round(Math.max(0, (Number(paymentLink?.total) || 0) - payFeeLinesTotal()) * 100) / 100;
+}
+function payPresetCity() {
+  const p = payShippingPreset();
+  if (!p || (!p.city_en && !p.city_he)) return null;
+  const en = payNormCity(p.city_en), he = String(p.city_he || '').trim();
+  return payCities.find(c => (en && payNormCity(c.en) === en) || (he && String(c.he || '').trim() === he))
+    || { en: p.city_en || '', he: p.city_he || '', code: null };
+}
+function payPresetHasCity() {
+  const p = payShippingPreset();
+  return !!(p && (p.city_en || p.city_he));
+}
+function payCityMatchesPreset() {
+  if (!payPresetHasCity()) return true;
+  if (!paySelectedCity) return false;
+  const p = payShippingPreset();
+  return (!!p.city_en && payNormCity(p.city_en) === payNormCity(paySelectedCity.en))
+    || (!!p.city_he && String(p.city_he).trim() === String(paySelectedCity.he || '').trim());
+}
+/** True while the customer's choice is still the delivery set on the link. */
+function payIsPresetChoice() {
+  if (payDeliveryType !== payPresetType()) return false;
+  return payDeliveryType === 'pickup' || payCityMatchesPreset();
+}
+/** Fills in the delivery set on the link, once. Everything stays editable. */
+let payPresetApplied = false;
+function applyPayPreset() {
+  if (payPresetApplied) return;
+  payPresetApplied = true;
+  const p = payShippingPreset();
+  if (!p) return;
+  payDeliveryType = payPresetType();
+  const city = payPresetCity();
+  if (city) {
+    paySelectedCity = city;
+    const input = document.getElementById('payCity');
+    if (input) input.value = city.he ? `${city.he} · ${city.en}` : city.en;
+  }
+  const date = document.getElementById('payEventDate'), time = document.getElementById('payEventTime');
+  if (date && p.delivery_date) date.value = p.delivery_date;
+  if (time && p.event_time) time.value = p.event_time;
 }
 
 async function initPayDelivery() {
@@ -366,23 +414,9 @@ async function initPayDelivery() {
 function renderPayDeliveryOptions() {
   const box = document.getElementById('payDeliveryOpts');
   if (!box) return;
-  const preset = payShippingPreset();
-  if (preset) {
-    payDeliveryType = preset.delivery_type === 'pickup' ? 'pickup' : 'preset';
-    const fee = Number(preset.delivery_fee || 0);
-    box.innerHTML = `
-    <div class="pay-delivery-opt selected" data-opt="preset">
-      <span class="pay-delivery-dot"></span>
-      <span class="pay-delivery-text">
-        <span class="pay-delivery-name">${esc(payPresetLabel(preset))}</span>
-        <span class="pay-delivery-hint">${preset.delivery_type === 'pickup' ? 'Arranged with Gremier' : 'Already included in your total'}</span>
-      </span>
-      <span class="pay-delivery-price">${preset.delivery_type === 'pickup' ? '' : (fee ? '₪' + fee : 'Free')}</span>
-    </div>`;
-    updatePayDeliveryQuote();
-    return;
-  }
-  box.innerHTML = PAY_DELIVERY_OPTIONS.map(o => `
+  applyPayPreset();
+  const presetNote = payShippingPreset() ? '<div class="pay-field-hint" style="margin:0 0 8px">We filled this in for you. You can change it.</div>' : '';
+  box.innerHTML = presetNote + PAY_DELIVERY_OPTIONS.map(o => `
     <label class="pay-delivery-opt ${o.id === payDeliveryType ? 'selected' : ''}" data-opt="${o.id}">
       <input type="radio" name="payDelivery" value="${o.id}" ${o.id === payDeliveryType ? 'checked' : ''}
              onchange="selectPayDelivery('${o.id}')"/>
@@ -397,18 +431,6 @@ function renderPayDeliveryOptions() {
 }
 
 function selectPayDelivery(id) {
-  const preset = payShippingPreset();
-  if (preset) {
-    // Only the street address is needed; the city and date were set with the link.
-    const fields = document.getElementById('payDeliveryFields');
-    if (fields) fields.style.display = preset.delivery_type === 'pickup' ? 'none' : 'block';
-    const cityWrap = document.querySelector('.pay-city-wrap');
-    if (cityWrap) cityWrap.style.display = 'none';
-    const ev = document.getElementById('payEventWrap');
-    if (ev) ev.style.display = 'none';
-    updatePayDeliveryQuote();
-    return;
-  }
   payDeliveryType = id;
   document.querySelectorAll('.pay-delivery-opt').forEach(el => {
     el.classList.toggle('selected', el.dataset.opt === id);
@@ -416,6 +438,9 @@ function selectPayDelivery(id) {
   const needsAddress = id !== 'pickup';
   const fields = document.getElementById('payDeliveryFields');
   if (fields) fields.style.display = needsAddress ? 'block' : 'none';
+  // An older link with a delivery fee but no city: the city is only needed once the choice changes.
+  const cityWrap = document.querySelector('.pay-city-wrap');
+  if (cityWrap) cityWrap.style.display = id === payPresetType() && !payPresetHasCity() ? 'none' : '';
   const ev = document.getElementById('payEventWrap');
   if (ev) ev.style.display = id === 'event' ? 'block' : 'none';
   updatePayDeliveryQuote();
@@ -450,51 +475,53 @@ function payFeeFor(type) {
     ? (zone.event_price != null ? Number(zone.event_price) : expedited)
     : (Number(payZoneSettings?.default_event_price) || 80);
   const freeAbove = zone?.free_above ? Number(zone.free_above) : null;
-  const base = Number(paymentLink?.total) || 0;
+  const base = payBaseTotal();
   if (type === 'expedited') return expedited;
   if (type === 'event') return eventPrice;
   return (freeAbove != null && base >= freeAbove) ? 0 : regular;
 }
 
+/** The fee for an option as things stand, or null until a city is chosen. */
+function payOptionFee(type) {
+  if (type === payPresetType() && (type === 'pickup' || payCityMatchesPreset())) return payFeeLinesTotal();
+  if (type === 'pickup') return 0;
+  return paySelectedCity ? payFeeFor(type) : null;
+}
+
 function updatePayDeliveryQuote() {
-  const base = Number(paymentLink?.total) || 0;
-  if (payShippingPreset()) {
-    const feeRow = document.getElementById('payFeeRow');
-    if (feeRow) feeRow.style.display = 'none';
-    const totalEl = document.getElementById('payTotalAmt');
-    if (totalEl) totalEl.textContent = '₪' + base;
-    return;
-  }
-  const hasCity = !!paySelectedCity;
+  const base = payBaseTotal();
 
   PAY_DELIVERY_OPTIONS.forEach(o => {
     const el = document.getElementById('payOptPrice_' + o.id);
     if (!el) return;
-    if (o.id === 'pickup') { el.textContent = '₪0'; return; }
-    el.textContent = hasCity ? ('₪' + payFeeFor(o.id)) : '';
+    const optionFee = payOptionFee(o.id);
+    el.textContent = optionFee === null ? '' : '₪' + optionFee;
   });
 
-  const fee = hasCity ? payFeeFor(payDeliveryType) : 0;
+  const quoted = payOptionFee(payDeliveryType);
+  const fee = quoted || 0;
   const feeRow = document.getElementById('payFeeRow');
   const feeAmt = document.getElementById('payFeeAmt');
   const feeLabel = document.getElementById('payFeeLabel');
   const totalEl = document.getElementById('payTotalAmt');
 
-  const show = payDeliveryType !== 'pickup' && hasCity;
+  const show = payDeliveryType !== 'pickup' && quoted !== null;
   if (feeRow) feeRow.style.display = show ? 'flex' : 'none';
   if (feeAmt) feeAmt.textContent = '₪' + fee;
   if (feeLabel) {
     const opt = PAY_DELIVERY_OPTIONS.find(o => o.id === payDeliveryType);
     feeLabel.textContent = 'Delivery — ' + (opt ? opt.name : '');
   }
-  if (totalEl) totalEl.textContent = '₪' + (base + (show ? fee : 0));
+  if (totalEl) totalEl.textContent = '₪' + (Math.round((base + fee) * 100) / 100);
 }
 
 function exactPayCity(value) {
   const q = payNormCity(value);
   if (!q) return null;
   const matches = payCities.filter(c => [c.en, c.he, `${c.he} · ${c.en}`].some(name => payNormCity(name) === q));
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length === 1) return matches[0];
+  const preset = payPresetCity();
+  return preset && [preset.en, preset.he, `${preset.he} · ${preset.en}`].some(name => payNormCity(name) === q) ? preset : null;
 }
 
 function syncPayCity() {
@@ -546,18 +573,18 @@ function choosePayCity(i) {
 
 /** What gets sent to create-payment; the server re-prices it. */
 function getPayDeliveryInfo() {
-  if (payShippingPreset()) return null;   // set on the link; the server keeps it
   if (payDeliveryType === 'pickup') return { delivery_type: 'pickup' };
-  if (!paySelectedCity) return null;
+  const eventWhen = {
+    delivery_date: payDeliveryType === 'event' ? (document.getElementById('payEventDate')?.value || null) : null,
+    event_time: payDeliveryType === 'event' ? (document.getElementById('payEventTime')?.value || null) : null,
+  };
+  if (!paySelectedCity) return payIsPresetChoice() ? { delivery_type: payDeliveryType, ...eventWhen } : null;
   return {
     delivery_type: payDeliveryType,
     city_en: paySelectedCity.en || '',
     city_he: paySelectedCity.he || '',
     city_code: paySelectedCity.code || null,
-    delivery_date: payDeliveryType === 'event'
-      ? (document.getElementById('payEventDate')?.value || null) : null,
-    event_time: payDeliveryType === 'event'
-      ? (document.getElementById('payEventTime')?.value || null) : null,
+    ...eventWhen,
   };
 }
 
@@ -578,8 +605,7 @@ function attachPayAddress(link) {
   else input.value = text;
 }
 function payAddressIsPickup() {
-  const preset = payShippingPreset();
-  return preset ? preset.delivery_type === 'pickup' : payDeliveryType === 'pickup';
+  return payDeliveryType === 'pickup';
 }
 function payAddressValue() {
   const input = document.getElementById('payAddress');
@@ -611,14 +637,9 @@ function payAddressProblem() {
 }
 
 function validatePayDelivery() {
-  const preset = payShippingPreset();
-  if (preset) {
-    if (preset.delivery_type === 'pickup') return '';
-    return (document.getElementById('payAddress')?.value || '').trim() ? payAddressProblem() : 'Please enter your street address';
-  }
   if (payDeliveryType === 'pickup') return '';
   syncPayCity();
-  if (!paySelectedCity) {
+  if (!paySelectedCity && !payIsPresetChoice()) {
     document.getElementById('payCity')?.focus();
     return 'Please select a matching city from the suggestions';
   }
@@ -1134,7 +1155,8 @@ function esc(s) {
 }
 
 function renderCheckout(link) {
-  const items = (link.items || []).map(i =>
+  // A delivery line shows in the delivery row below, which follows the customer's choice.
+  const items = (link.items || []).filter(i => i && i.category !== 'delivery_fee').map(i =>
     `<div class="pay-line"><span>${esc(i.name_en)} ×${esc(String(i.qty))}</span><span>₪${parseFloat(i.price * i.qty).toFixed(2)}</span></div>`
   ).join('');
   const discountLine = link.discount > 0

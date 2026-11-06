@@ -5035,9 +5035,9 @@ function renderPlShip() {
   const quote = plShipQuote(), z = plZone();
   document.getElementById('plShipHint').textContent =
     plShip.type === 'customer' ? 'They pick pickup or delivery and their city when paying. The delivery fee is added there.'
-    : plShip.type === 'pickup' ? 'No delivery fee. The pay page won’t ask about delivery.'
+    : plShip.type === 'pickup' ? 'No delivery fee. It’s filled in on the pay page; the customer can still change it.'
     : (plShip.fee != null && Number(plShip.fee) !== quote ? `Website price is ₪${quote}; you set ₪${plShipFee()}. ` : (quote === 0 && plShip.type === 'regular' && z?.free_above ? `Free: products are over ₪${z.free_above}. ` : ''))
-      + 'Included in the total. The customer won’t be charged delivery again.';
+      + 'Included in the total and filled in on the pay page. If the customer changes it, the total updates.';
 }
 
 function renderPlCats() {

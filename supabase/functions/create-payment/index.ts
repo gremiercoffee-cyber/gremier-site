@@ -2,7 +2,7 @@ import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { pickAddress } from "../_shared/delivery-address.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { quoteDeliveryFee, loadDeliveryPricingTables } from "../_shared/delivery-pricing.ts";
-import { shippingSetByAdmin } from "../_shared/link-shipping.ts";
+import { adminShippingInfo, choiceMatchesAdminShipping, linkTotalWithoutDelivery, shippingSetByAdmin } from "../_shared/link-shipping.ts";
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -689,9 +689,10 @@ serve(async (req) => {
       row.delivery_info = { ...rest, ...pickAddress(body.address) };
       orderPatch.delivery_info = row.delivery_info;
     }
-    // Pay page: the customer's delivery choice is priced here, never trusted from the client, on top of
-    // the link's own total, so changing the choice and retrying never adds the fee twice. Shipping the
-    // admin set on the link is already inside its total and is never priced again.
+    // Pay page: the customer's delivery choice is priced here, never trusted from the client, and always
+    // rebuilt from the link, so changing the choice and retrying never adds a fee twice. Shipping the admin
+    // set is a pre-filled default: kept as is, the link total stands; changed, its fee line comes off and
+    // the new choice is priced on the rest.
     const totalBeforeDelivery = Number(row.total) || 0;
     const chosenForOrder = pickDeliveryChoice(delivery_info);
     const orderInfoNow = (row.delivery_info && typeof row.delivery_info === "object" ? row.delivery_info : {}) as Record<string, unknown>;
@@ -703,22 +704,41 @@ serve(async (req) => {
         .eq("link_code", orderLinkCode)
         .maybeSingle();
       if (orderLinkError) throw new Error("Could not price delivery");
-      if (orderLink && !shippingSetByAdmin(orderLink)) {
-        const base = Number(orderLink.total) || 0;
-        const { zones, settings } = await loadDeliveryPricingTables(supabase);
-        const quote = quoteDeliveryFee(chosenForOrder, zones, settings, base);
-        const fee = Number(quote.fee) || 0;
-        const { delivery_date: _oldDate, event_time: _oldTime, ...keep } = orderInfoNow;
-        row.delivery_info = {
-          ...keep,
-          ...chosenForOrder,
-          delivery_fee: fee,
-          delivery_label: quote.typeLabel,
-          zone_name: quote.zone?.name_en || "",
-          pricing_source: quote.source,
-          server_priced: true,
-        };
-        row.total = base + fee;
+      if (orderLink) {
+        const setByAdmin = shippingSetByAdmin(orderLink);
+        const linkItems = (Array.isArray(orderLink.items) ? orderLink.items : []) as Array<Record<string, unknown>>;
+        const {
+          delivery_type: _t, delivery_label: _l, zone_name: _z, city_en: _e, city_he: _h, city_code: _c, delivery_date: _d,
+          event_time: _w, delivery_fee: _f, shipping_set_by_admin: _s, pricing_source: _p, server_priced: _v, ...keep
+        } = orderInfoNow;
+        if (choiceMatchesAdminShipping(orderLink, chosenForOrder)) {
+          const when = chosenForOrder.delivery_type === "event"
+            ? { delivery_date: chosenForOrder.delivery_date, event_time: chosenForOrder.event_time }
+            : {};
+          row.delivery_info = { ...keep, ...adminShippingInfo(orderLink), ...when };
+          row.total = Number(orderLink.total) || 0;
+          row.items = linkItems;
+          orderPatch.items = linkItems;
+        } else {
+          const base = linkTotalWithoutDelivery(orderLink);
+          const { zones, settings } = await loadDeliveryPricingTables(supabase);
+          const quote = quoteDeliveryFee(chosenForOrder, zones, settings, base);
+          const fee = Number(quote.fee) || 0;
+          row.delivery_info = {
+            ...keep,
+            ...chosenForOrder,
+            delivery_fee: fee,
+            delivery_label: quote.typeLabel,
+            zone_name: quote.zone?.name_en || "",
+            pricing_source: quote.source,
+            server_priced: true,
+          };
+          row.total = Math.round((base + fee) * 100) / 100;
+          if (setByAdmin) {
+            row.items = linkItems.filter((i) => i?.category !== "delivery_fee");
+            orderPatch.items = row.items;
+          }
+        }
         orderPatch.delivery_info = row.delivery_info;
         orderPatch.total = row.total;
       }
