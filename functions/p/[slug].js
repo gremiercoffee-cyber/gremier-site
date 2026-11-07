@@ -3,6 +3,11 @@
 import { SITE, products, slug, esc, image } from '../_catalog.js';
 
 const LEGACY_MINI_LINKS = new Map([
+  ['5l-classic-dark-roast', 'ef3b8323-14ee-43f2-a9a1-1614d00ad01a'],
+  ['5l-colombia-light-roast', '925b8f32-1c0d-4f5f-896a-04a0e1835032'],
+  ['5l-house-blend', 'd8cf4c7e-916c-41f2-b27b-af5f9ac865c2'],
+  ['3-5l-classic-dark-roast', '7fce55f8-6612-48e2-8f78-0b755acaf648'],
+
   ['caramel-cremier-4-pack', '1c28055f-79b8-4d99-b7f2-38c270b47af7'],
   ['vanilla-cremier-4-pack', '72aede63-74a3-4ea5-b638-6c91705b62e1'],
   ['original-cremier-4-pack', '5349f657-09bb-4624-8f55-96a694e1b08d'],

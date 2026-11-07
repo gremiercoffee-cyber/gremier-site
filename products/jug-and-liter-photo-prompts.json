@@ -1,0 +1,69 @@
+[
+  {
+    "name": "classic-liter",
+    "references": [
+      "hero/02-classic.webp",
+      "hero/05-sweetened.webp"
+    ],
+    "prompt": "Reference 1 supplies Classic bottle and yellow label. Reference 2 supplies glass styling. Keep bottle at x=50%, cap y=5%, base y=92%, tall slender real liter proportions. Beside it a tall iced latte with lovely natural milk swirls like reference 2, lower than bottle. A few beans and linen. Bottle contains black coffee.",
+    "sourceFilename": "exec-bac10e3e-6969-40a9-a633-cda9134acd48.png"
+  },
+  {
+    "name": "decaf-liter",
+    "references": [
+      "products/decaf-lifestyle-v1.webp",
+      "hero/05-sweetened.webp"
+    ],
+    "prompt": "Reference 1 supplies Decaf bottle and brown label. Reference 2 supplies glass styling. Keep bottle at x=50%, cap y=5%, base y=92%, tall slender real liter proportions. Beside it a tall iced latte with lovely natural milk swirls like reference 2, lower than bottle. A few beans and linen. Bottle contains black coffee.",
+    "sourceFilename": "exec-513e44a2-b5dc-4e8a-9f3c-b0dcec3b7bc0.png"
+  },
+  {
+    "name": "colombia-liter",
+    "references": [
+      "hero/04-colombia.webp"
+    ],
+    "prompt": "Recreate photograph consistently, but move camera closer: bottle centered x=50%, cap y=5%, base y=92%, tall slender real liter proportions, same scale as the other main bottle photos. Black iced coffee glass and small orange peel to the right. Few beans without large bowl. Preserve green Colombia label.",
+    "sourceFilename": "exec-39a2b18c-7088-41a6-88c1-d8e38b8201ec.png"
+  },
+  {
+    "name": "sweetened-liter",
+    "references": [
+      "hero/05-sweetened.webp"
+    ],
+    "prompt": "Recreate photograph consistently, but move camera closer: bottle centered x=50%, cap y=5%, base y=92%, tall slender real liter proportions, same scale as other main bottle photos. Keep beautiful tall milk-swirl iced latte to the left and small milk pitcher to right. Preserve unique black and yellow Sweetened Classic label.",
+    "sourceFilename": "exec-1328b5bb-68f6-4e50-93e6-2086bf38d743.png"
+  },
+  {
+    "name": "classic-jug",
+    "references": [
+      ".codex-artifacts/jug-refs/classic.jpg",
+      "hero/05-sweetened.webp"
+    ],
+    "prompt": "Reference 1 supplies EXACT 5L jug shape and label. Reference 2 only supplies lifestyle scene. Put the large jug on oak tabletop next to one tall iced latte with milk swirls, a few beans and linen. Jug substantially bigger than glass, translucent handle and yellow lid, very dark black coffee inside. Front label razor sharp, original colors and typography. Entire jug including lid occupies y=8% to y=90%, front-on slightly three-quarter, centered group. Preserve its real proportions and brand coffee-cup logo.",
+    "sourceFilename": "exec-ccec4c20-f1b3-4165-bcf3-758ecf584c63.png"
+  },
+  {
+    "name": "house-jug",
+    "references": [
+      ".codex-artifacts/jug-refs/house.jpg",
+      "hero/05-sweetened.webp"
+    ],
+    "prompt": "Reference 1 supplies EXACT 5L jug shape and label. Reference 2 only supplies lifestyle scene. Put the large jug on oak tabletop next to one tall iced latte with milk swirls, a few beans and linen. Jug substantially bigger than glass, translucent handle and yellow lid, very dark black coffee inside. Front label razor sharp, original colors and typography. Entire jug including lid occupies y=8% to y=90%, front-on slightly three-quarter, centered group. Preserve its real proportions and brand coffee-cup logo.",
+    "sourceFilename": "exec-68ae8bba-57f1-495e-a87e-166039553722.png"
+  },
+  {
+    "name": "colombia-jug",
+    "references": [
+      ".codex-artifacts/jug-refs/colombia.jpg",
+      "hero/05-sweetened.webp"
+    ],
+    "prompt": "Reference 1 supplies EXACT 5L jug shape and label. Reference 2 only supplies lifestyle scene. Put the large jug on oak tabletop next to one tall iced latte with milk swirls, a few beans and linen. Jug substantially bigger than glass, translucent handle and yellow lid, very dark black coffee inside. Front label razor sharp, original colors and typography. Entire jug including lid occupies y=8% to y=90%, front-on slightly three-quarter, centered group. Preserve its real proportions and brand coffee-cup logo.",
+    "sourceFilename": "exec-52a66eb2-97c4-4bab-b12f-17b5e27993c8.png"
+  },
+  {
+    "name": "classic-three-jugs",
+    "references": [],
+    "prompt": "Generate three identical 5L Classic jugs with yellow caps and original labels on warm oak, cream wall, soft daylight, one iced milk-swirl coffee beside them.",
+    "sourceFilename": "exec-a97b01aa-d97a-4d51-9753-0828e4071c61.png"
+  }
+]
