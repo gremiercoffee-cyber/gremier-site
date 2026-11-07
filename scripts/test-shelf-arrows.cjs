@@ -15,6 +15,8 @@ test('every shelf with more than four products has explicit previous and next co
     const html = render(count);
     assert.equal((html.match(/data-shelf-prev/g) || []).length, 1);
     assert.equal((html.match(/data-shelf-next/g) || []).length, 1);
+    assert.ok(html.indexOf('class="shelf-carousel"') < html.indexOf('class="shelf-arrows"'));
+    assert.ok(html.indexOf('</header>') < html.indexOf('class="shelf-arrows"'));
     assert.equal((html.match(/data-test-product=/g) || []).length, count);
     assert.equal((html.match(/class="shelf-page product-grid"/g) || []).length, Math.ceil(count / 4));
   }
