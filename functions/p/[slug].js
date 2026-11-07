@@ -2,13 +2,26 @@
 // description, preview image and price data in the page itself, so Google and link previews see it.
 import { SITE, products, slug, esc, image } from '../_catalog.js';
 
+const LEGACY_MINI_LINKS = new Map([
+  ['caramel-cremier-4-pack', '1c28055f-79b8-4d99-b7f2-38c270b47af7'],
+  ['vanilla-cremier-4-pack', '72aede63-74a3-4ea5-b638-6c91705b62e1'],
+  ['original-cremier-4-pack', '5349f657-09bb-4624-8f55-96a694e1b08d'],
+]);
+
 export async function onRequestGet({ params, request, env }) {
   const page = await env.ASSETS.fetch(new URL('/', request.url));
-  let p = null;
-  try { p = (await products()).find((x) => slug(x.name_en) === String(params.slug || '').toLowerCase() || String(x.id) === params.slug); } catch (_) {}
-  if (!p) {   // links from before the cups were renamed "XL cups"
-    const old = (await products().catch(() => [])).find((x) => slug(x.name_en).replace('-xl-', '-') === String(params.slug || '').toLowerCase());
-    if (old) return Response.redirect(`${SITE}/p/${slug(old.name_en)}`, 301);
+  const key = String(params.slug || '').toLowerCase();
+  const catalogue = await products().catch(() => []);
+  const p = catalogue.find(x => slug(x.name_en) === key || String(x.id) === key);
+  if (!p) {
+    const legacyId = LEGACY_MINI_LINKS.get(key);
+    const old = catalogue.find(x => String(x.id) === legacyId)
+      || catalogue.find(x => slug(x.name_en).replace('-xl-', '-') === key);
+    if (old) {
+      const destination = new URL(`/p/${slug(old.name_en)}`, SITE);
+      destination.search = new URL(request.url).search;
+      return Response.redirect(destination, 301);
+    }
   }
   if (!p) return new Response(page.body, { status: 404, headers: page.headers });
   const url = `${SITE}/p/${slug(p.name_en)}`;

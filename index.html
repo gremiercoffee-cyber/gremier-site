@@ -1804,11 +1804,16 @@ function coffeeBarEmptyHTML() {
 // Home "Most Popular" — IDs are stable; names are fallback if a product is recreated.
 const FEATURED_PRODUCT_IDS = [
   '5553dae1-d35d-4d02-b3a1-3633e9ca6bfc', // Classic Dark Roast
-  '1c28055f-79b8-4d99-b7f2-38c270b47af7', // Caramel Cremier 4 Pack
+  '1c28055f-79b8-4d99-b7f2-38c270b47af7', // Caramel Cream Latte
   'd14c3808-0f14-439d-b978-69bf6e35e9b4', // House Blend Medium Roast
   'd59ad233-5090-40bc-b984-ed326ca8460d', // Colombia Light Roast
 ];
-const featuredOrder = ['Classic Dark Roast','Caramel Cremier 4 Pack','House Blend Medium Roast','Colombia Light Roast'];
+const featuredOrder = ['Classic Dark Roast','Caramel Cream Latte','House Blend Medium Roast','Colombia Light Roast'];
+const MINI_LATTE_LEGACY_LINKS = new Map([
+  ['caramel-cremier-4-pack', '1c28055f-79b8-4d99-b7f2-38c270b47af7'],
+  ['vanilla-cremier-4-pack', '72aede63-74a3-4ea5-b638-6c91705b62e1'],
+  ['original-cremier-4-pack', '5349f657-09bb-4624-8f55-96a694e1b08d'],
+]);
 function normProductName(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -1816,12 +1821,9 @@ function findFeaturedProduct(name) {
   const exact = products.find(p => p.name_en === name);
   if (exact) return exact;
   const target = normProductName(name);
-  if (target.includes('caramel') && target.includes('cremier')) {
-    const cremier = products.find(p => {
-      const n = normProductName(p.name_en);
-      return n.includes('caramel') && n.includes('cremier');
-    });
-    if (cremier) return cremier;
+  if (target === 'caramel cream latte') {
+    const caramelMini = products.find(p => p.category === 'minis' && normProductName(p.name_en).includes('caramel'));
+    if (caramelMini) return caramelMini;
   }
   return products.find(p => {
     const n = normProductName(p.name_en);
@@ -2321,7 +2323,7 @@ function openProductDrawerUI(productId) {
   pdBarExtras = []; document.getElementById('pdBarExtras')?.replaceChildren();
   // Links can use the product id or a readable name (e.g. #product=classic-dark-roast, used in Status ads).
   const key = String(productId || '').toLowerCase();
-  const p = products.find(x => String(x.id) === String(productId))
+  const p = products.find(x => String(x.id) === (MINI_LATTE_LEGACY_LINKS.get(key) || String(productId)))
     || products.find(x => slugifyProductName(x.name_en) === key)
     || products.find(x => slugifyProductName(x.name_en).replace('-xl-', '-') === key);   // links from before the cups were renamed "XL cups"
   if (!p) return false;
@@ -4330,7 +4332,7 @@ function chatAddProduct(productId, name) {
   chatHistory.push({ role:'user', content: lang==='he' ? `הוסף ${name} לעגלה` : `Add ${name} to my cart` });
   const upsellMsg = lang==='he'
     ? `✓ ${name} נוסף לעגלה! רוצה להוסיף עוד? יש לנו גם 4-Pack Cremier מיני שמשתלב מעולה.`
-    : `✓ ${name} added! Want to add anything else? The Mini Cremier 4-Pack pairs great with it.`;
+    : `✓ ${name} added! Want to add anything else? The Original Cream Latte four-pack pairs great with it.`;
   appendBotMessage(upsellMsg, [], CHAT_QUICK_REPLIES.afterAdd);
   chatHistory.push({ role:'assistant', content: upsellMsg });
 }
@@ -4361,8 +4363,8 @@ function handleQuickReply(label) {
     appendUserMessage(label);
     closeChatbotUI(); openCheckoutFromChat(); return;
   }
-  if (lower.includes('mini') && lower.includes('cremier')) {
-    const p = products.find(x => x.name_en === 'Mini Cremier 4-Pack');
+  if ((lower.includes('mini') && lower.includes('cremier')) || lower.includes('original cream latte')) {
+    const p = products.find(x => x.id === MINI_LATTE_LEGACY_LINKS.get('original-cremier-4-pack'));
     if (p) { chatAddProduct(p.id, p.name_en); return; }
   }
   if (lower.includes('syrup') || lower.includes('סירופ')) {
