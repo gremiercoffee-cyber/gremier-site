@@ -14,15 +14,25 @@
   const isPaid = (o) => String(o.payment_status || '').toLowerCase() === 'paid';
   const pad = (n) => String(n).padStart(2, '0');
   const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  function dayLabel(key) {
-    if (key === 'overdue') return 'Overdue';
-    if (key === 'nodate') return 'No delivery date';
-    const now = new Date(), today = isoDay(now);
-    const tom = new Date(now); tom.setDate(now.getDate() + 1);
-    const pretty = new Date(key + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    if (key === today) return `Today · ${pretty}`;
-    if (key === isoDay(tom)) return `Tomorrow · ${pretty}`;
-    return pretty;
+  /** A day group's heading: the date big (weekday + day month), how far away it is, and the count.
+   *  It stays pinned while that day's cards scroll, so you always know which date you're looking at. */
+  function dayHeader(key, count) {
+    const n = `<span class="ob-dh-n">${count}</span>`;
+    if (key === 'overdue') return `<h3 class="ob-day-h"><span class="ob-dh-date">Overdue</span><span class="ob-dh-rel">Past date</span>${n}</h3>`;
+    if (key === 'nodate') return `<h3 class="ob-day-h"><span class="ob-dh-date">No delivery date</span>${n}</h3>`;
+    const d = new Date(key + 'T12:00:00'), today = new Date(isoDay(new Date()) + 'T12:00:00');
+    const days = Math.round((d - today) / 864e5);
+    const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
+    const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + (d.getFullYear() !== today.getFullYear() ? ' ' + d.getFullYear() : '');
+    const rel = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days === -1 ? 'Yesterday' : days > 1 ? `In ${days} days` : `${-days} days ago`;
+    const tone = days <= 0 ? ' now' : days === 1 ? ' soon' : '';
+    return `<h3 class="ob-day-h"><span class="ob-dh-date"><b>${esc(weekday)}</b> ${esc(date)}</span><span class="ob-dh-rel${tone}">${rel}</span>${n}</h3>`;
+  }
+  /** Pinned headings sit just under the phone header (which is itself pinned). */
+  function pinOffset() {
+    const h = document.querySelector('.mobile-header');
+    const top = h && getComputedStyle(h).display !== 'none' && getComputedStyle(h).position === 'sticky' ? h.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--ob-pin-top', Math.round(top) + 'px');
   }
 
   function productLabel(pid) {
@@ -116,8 +126,9 @@
       const keys = [...groups.keys()].sort((a, b) => (a === 'overdue' ? -1 : b === 'overdue' ? 1 : a === 'nodate' ? 1 : b === 'nodate' ? -1 : a.localeCompare(b)));
       body.innerHTML = keys.map((k) => {
         const list = groups.get(k).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-        return `<div class="ob-day${k === 'overdue' ? ' late' : ''}"><h3 class="ob-day-h">${esc(dayLabel(k))}<span>${list.length}</span></h3>${list.map((e) => e.html(k === 'overdue')).join('')}</div>`;
+        return `<div class="ob-day${k === 'overdue' ? ' late' : ''}">${dayHeader(k, list.length)}${list.map((e) => e.html(k === 'overdue')).join('')}</div>`;
       }).join('');
+      pinOffset();
     }
     renderUnpaid();
   }

@@ -37,7 +37,7 @@
 .od-sec .od-actions { margin-top:10px; }
 .od-sec .od-actions .primary { flex:1; }
 .od-row { display:flex; gap:8px; }
-.od-row > .od-field { flex:1; min-width:0; }
+.od-row > .od-field { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .od-field { display:block; margin-top:8px; }
 .od-field > span { display:block; margin-bottom:4px; font-size:.78rem; font-weight:600; color:#6b6f76; }
 .od-field .form-input { width:100%; box-sizing:border-box; border-radius:10px; font-size:16px; }
@@ -46,3 +46,17 @@
 .od-more summary { font-size:.88rem; font-weight:600; color:#3c3f44; cursor:pointer; padding:4px 0; }
 .od-more .od-actions { margin-top:12px; }
 .od-more .od-btn { min-height:40px; font-size:.84rem; }
+
+/* Orders list: each delivery day gets a big, pinned date bar (admin-orders-board.js dayHeader). */
+.ob-day > .ob-day-h { position:sticky; top:var(--ob-pin-top, 0px); z-index:6; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  margin:0 -4px; padding:10px 12px; border-radius:14px; background:var(--card, #fff); border:1px solid var(--border, #e3dccf);
+  box-shadow:0 4px 14px rgba(0,0,0,.08); text-transform:none; letter-spacing:0; color:var(--cream, #1a1a1a); font-weight:500; }
+.ob-day > .ob-day-h .ob-dh-date { padding:0; background:none; border-radius:0; color:inherit; letter-spacing:0; font-size:1.25rem; line-height:1.15; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ob-day > .ob-day-h .ob-dh-date b { font-weight:800; }
+.ob-day > .ob-day-h .ob-dh-rel { font-size:.78rem; font-weight:700; padding:4px 10px; border-radius:999px; background:var(--bg3, #eee8de); color:var(--cream2, #444); white-space:nowrap; }
+.ob-day > .ob-day-h .ob-dh-rel.now { background:#1a1a1a; color:#fff; }
+.ob-day > .ob-day-h .ob-dh-rel.soon { background:#c8873a; color:#fff; }
+.ob-day > .ob-day-h .ob-dh-n { font-size:.8rem; font-weight:700; min-width:28px; text-align:center; padding:4px 9px; border-radius:999px; background:var(--bg3, #eee8de); color:var(--cream2, #444); }
+.ob-day.late > .ob-day-h { color:#c0392b; border-color:#e9b4ae; background:#fdf1ef; }
+.ob-day.late > .ob-day-h .ob-dh-rel { background:#c0392b; color:#fff; }
+.ob-day + .ob-day { margin-top:26px; }
