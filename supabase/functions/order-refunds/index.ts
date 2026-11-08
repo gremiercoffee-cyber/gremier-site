@@ -15,7 +15,7 @@ import {originalPdf,receiptPaymentMetadata,receiptOrder,receiptRow,ensureReceipt
 import {pdfLines,documentNumber,showsAmount} from '../_shared/finbot-pdf-text.ts';
 import {getPayMeBase} from '../_shared/payme-query.ts';
 import {sendOrderEmails} from '../_shared/order-email.ts';
-import {checkRefundAmount,creditPayload,refundDocument,refundPlan,shekels} from '../_shared/order-refund-model.ts';
+import {checkRefundAmount,creditPayload,linkSerial,refundDocument,refundPlan,shekels} from '../_shared/order-refund-model.ts';
 
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(b:unknown,status=200)=>new Response(JSON.stringify(b),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -67,17 +67,17 @@ async function preview(db:any,orderId:string){
   const sale=await saleFor(db,order,refunds);
   const plan=refundPlan(sale.price_minor,refunds);
   const document=refundDocument(order,receipt);
-  const credit_check=document.kind==='credit'&&document.invoice_number?await validateCredit(order,Math.max(500,plan.left_minor||500),document.invoice_number):null;
+  const credit_check=document.kind!=='credit'?null:document.link_serial?await validateCredit(order,Math.max(500,plan.left_minor||500),document.link_serial):{ready:false,codes:['no_finbot_link']};
   return {credit_check,order:{id:order.id,order_number:order.order_number,customer_name:order.customer_name,has_email:!!order.customer_email,total:order.total},
     sale:{card_last4:sale.card_last4,status:sale.status},plan,document,refunds:refunds.map(safe),creates_nothing:true};
 }
 
 /** FinBot checks the credit invoice without making it: the customer name is left out, so it can't be
  *  issued. Ready when the missing name is the only complaint. Never throws. */
-async function validateCredit(order:any,amountMinor:number,invoiceNumber:string){
+async function validateCredit(order:any,amountMinor:number,serial:string){
   const key=(Deno.env.get('FINBOT_API_KEY')||'').trim();if(!key)return {ready:false,codes:['finbot_not_configured']};
   try{
-    const payload:any=creditPayload(order,amountMinor,invoiceNumber,null);payload.customer={...payload.customer,name:''};
+    const payload:any=creditPayload(order,amountMinor,serial,null);payload.customer={...payload.customer,name:''};
     const r=await fetch('https://api.finbotai.co.il/income',{method:'POST',headers:{'Content-Type':'application/json',secret:key},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
     const raw=(await r.text()).split(key).join('[redacted]');
     let list:any[]=[];try{const j=JSON.parse(raw);if(Array.isArray(j))list=j;}catch{/* not JSON */}
@@ -98,10 +98,21 @@ async function finishCreditPdf(db:any,row:any){
   return data||row;
 }
 
-async function issueCredit(db:any,row:any,order:any){
+/** The FinBot serial of the order's tax invoice, read from its saved link. */
+async function serialFor(db:any,orderId:string){return linkSerial((await receiptRow(db,orderId))?.document_url);}
+
+/** Validate, then issue; a link FinBot can't find leaves it for a hand-made credit invoice. */
+async function creditIfReady(db:any,row:any,order:any){
+  const serial=await serialFor(db,row.order_id);
+  const check=serial?await validateCredit(order,row.amount_minor,serial):{ready:false,codes:['125']};
+  if(check.ready)return {row:await issueCredit(db,row,order,serial!),check};
+  return {row,check,error:check.codes.includes('125')?'finbot_link_not_found':'finbot_check_failed '+check.codes.join(',')};
+}
+
+async function issueCredit(db:any,row:any,order:any,serial:string){
   const key=(Deno.env.get('FINBOT_API_KEY')||'').trim();
   if(!key){await db.from('order_refunds').update({credit_status:'rejected',credit_error:'finbot_not_configured'}).eq('id',row.id);return {...row,credit_status:'rejected',credit_error:'finbot_not_configured'};}
-  const payload=creditPayload(order,row.amount_minor,row.linked_document_number,row.reason);
+  const payload=creditPayload(order,row.amount_minor,serial,row.reason);
   // Claim before contacting FinBot; an unclear result is never resent automatically.
   const claim=await db.from('order_refunds').update({credit_status:'issuing',credit_error:null}).eq('id',row.id).in('credit_status',['pending','rejected']).select('*').single();
   if(claim.error)return row;
@@ -184,7 +195,7 @@ async function refund(db:any,req:Request,raw:any){
       await db.from('order_receipts').update({document_reference:typed}).eq('order_id',order.id).is('document_reference',null);
     }
     if(!invoiceNumber)throw Error('invoice_number_required');
-    creditPayload(order,amount,invoiceNumber,null); // fail before any money moves if the credit can't be built
+    creditPayload(order,amount,doc.link_serial||'0',null); // fail before any money moves if the credit can't be built
   }
   const reason=String(raw.reason||'').trim().slice(0,200)||null;
   const ins=await db.from('order_refunds').insert({id:raw.id,order_id:order.id,amount_minor:amount,reason,payme_sale_id:sale.sale_id,status:'refunding',
@@ -217,10 +228,8 @@ async function refund(db:any,req:Request,raw:any){
 
   // ── FinBot credit invoice, then the customer's email ──
   if(row.credit_status==='pending'){
-    const check=await validateCredit(order,row.amount_minor,row.linked_document_number);
-    if(check.ready)row=await issueCredit(db,row,order);
-    else{const code=check.codes.includes('125')?'finbot_link_not_found':'finbot_check_failed '+check.codes.join(',');
-      const u=await db.from('order_refunds').update({credit_status:'rejected',credit_error:code}).eq('id',row.id).select('*').single();row=u.data||row;}
+    const c=await creditIfReady(db,row,order);row=c.row;
+    if(c.error){const u=await db.from('order_refunds').update({credit_status:'rejected',credit_error:c.error}).eq('id',row.id).select('*').single();row=u.data||row;}
   }
   if(row.email_requested&&(['not_needed','rejected'].includes(row.credit_status)||(row.credit_status==='issued'&&row.credit_pdf_path&&!row.credit_error)))row=await emailCustomer(db,row,order,sale.card_last4);
   return {refund:safe(row),refunded:true};
@@ -244,8 +253,8 @@ Deno.serve(async req=>{
     }
     if(raw.action==='check_credit_format'){
       const {order,receipt}=await loadAll(db,String(raw.order_id||''));
-      const doc=refundDocument(order,receipt);if(doc.kind!=='credit'||!doc.invoice_number)return json({error:'no_tax_invoice_number',doc});
-      return json({...await validateCredit(order,Number(raw.amount_minor)||500,doc.invoice_number),creates_document:false});
+      const doc=refundDocument(order,receipt);if(doc.kind!=='credit'||!doc.link_serial)return json({error:'no_finbot_link',doc});
+      return json({...await validateCredit(order,Number(raw.amount_minor)||500,doc.link_serial),doc,creates_document:false});
     }
     if(!uuid(raw.id))throw Error('invalid_refund_id');
     const {data:row,error}=await db.from('order_refunds').select('*').eq('id',raw.id).single();
@@ -253,9 +262,8 @@ Deno.serve(async req=>{
     if(raw.action==='retry_credit'){
       if(row.status!=='refunded'||!['rejected','pending'].includes(row.credit_status))throw Error('credit_not_retryable');
       const order=await receiptOrder(db,row.order_id);
-      const check=await validateCredit(order,row.amount_minor,row.linked_document_number);
-      if(!check.ready)return json({refund:safe(row),error:check.codes.includes('125')?'finbot_link_not_found':'finbot_check_failed'});
-      return json({refund:safe(await issueCredit(db,row,order))});
+      const c=await creditIfReady(db,row,order);
+      return json({refund:safe(c.row),...(c.error?{error:c.error.startsWith('finbot_check_failed')?'finbot_check_failed':c.error}:{})});
     }
     if(raw.action==='email'){
       if(row.status!=='refunded')throw Error('not_refunded');
