@@ -1042,6 +1042,11 @@ const sigSecret = Deno.env.get("PAYME_SIGNATURE_SECRET") || "";
       const sb0 = createClient(Deno.env.get("SUPABASE_URL") ?? "", getServiceRoleKey());
       await sb0.from("alert_log").upsert({ key: `diag:cardfields:${String(payload.payme_sale_id || Date.now())}:${String(payload.notify_type || payload.sale_status || "")}`, first_sent_at: Object.keys(payload).filter((k) => /buyer|card|token|sale_status|notify_type|transaction_id/i.test(k)).join(","), follow_up_sent: !!payload.buyer_key });
     } catch (_) { /* diagnostics only */ }
+    // A refund's callback says payme_status "success" too: it is not a payment. Refunds are made and
+    // recorded by the order-refunds function.
+    if (/refund/.test(String(payload.notify_type || "").toLowerCase()) || /refund/.test(String(payload.sale_status || "").toLowerCase())) {
+      return new Response(JSON.stringify({ ok: true, ignored: "refund" }), { headers: { "Content-Type": "application/json" } });
+    }
     if (!isPaidEvent(payload)) {
 
       return new Response(JSON.stringify({ ok: true, ignored: true }), {

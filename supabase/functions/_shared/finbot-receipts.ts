@@ -1,6 +1,23 @@
 import {eligibleOrder,israelDate,paymentReference,amountMinor,receiptPayload,resultDocument} from './finbot-receipt-model.ts';
 
+import {pdfLines,documentNumber} from './finbot-pdf-text.ts';
+
 const bucket='order-receipts';
+// The official number printed on a receipt PDF (FinBot's API returns only a link).
+export async function receiptNumberFromPdf(bytes:Uint8Array):Promise<string|null> {
+  const lines=await pdfLines(bytes).catch(()=>[] as string[]);
+  return documentNumber(lines,'חשבונית מס קבלה')??documentNumber(lines,'קבלה');
+}
+/** Fills order_receipts.document_reference from the saved PDF when it's missing. Returns the number or null. */
+export async function ensureReceiptNumber(db:any,row:any):Promise<string|null> {
+  if(row?.document_reference)return String(row.document_reference);
+  if(row?.status!=='issued'||!row.pdf_path)return null;
+  const {data,error}=await db.storage.from(bucket).download(row.pdf_path);
+  if(error||!data)return null;
+  const number=await receiptNumberFromPdf(new Uint8Array(await data.arrayBuffer()));
+  if(number)await db.from('order_receipts').update({document_reference:number}).eq('order_id',row.order_id).eq('status','issued').is('document_reference',null);
+  return number;
+}
 async function eligibleReceiptOrder(order:any) {
   try {eligibleOrder(order);return order;} catch(e) {
     if(!(e instanceof Error)||e.message!=='missing_payment_reference')throw e;
@@ -139,7 +156,8 @@ async function savePdf(db:any,row:any) {
     const pdfPath=`${row.order_id}/receipt.pdf`;
     const {error}=await db.storage.from(bucket).upload(pdfPath,bytes,{contentType:'application/pdf',upsert:true});
     if(error)throw Error('pdf_storage_failed');
-    const {data,error:updateError}=await db.from('order_receipts').update({pdf_path:pdfPath,error_code:null}).eq('order_id',row.order_id).eq('status','issued').select('*').single();
+    const number=row.document_reference||await receiptNumberFromPdf(bytes);
+    const {data,error:updateError}=await db.from('order_receipts').update({pdf_path:pdfPath,error_code:null,...(number?{document_reference:number}:{})}).eq('order_id',row.order_id).eq('status','issued').select('*').single();
     if(updateError)throw Error('pdf_status_save_failed');
     return data;
   } catch(e) {

@@ -99,6 +99,7 @@
         ${discount ? `<div class="od-item muted"><span>${escHtml(discount)}</span><span>${Number(o.discount) > 0 ? '−₪' + Number(o.discount).toFixed(2) : ''}</span></div>` : ''}
         ${Number(di.delivery_fee) > 0 && !(o.items || []).some((i) => i.category === 'delivery_fee') ? `<div class="od-item"><span>Delivery</span><span>₪${escHtml(di.delivery_fee)}</span></div>` : ''}
         <div class="od-total"><span>Total</span><span>₪${escHtml(o.total)}</span></div>
+        ${Number(di.refunded_minor) > 0 ? `<div class="od-item muted"><span>Refunded</span><span>−₪${(Number(di.refunded_minor) / 100).toFixed(2).replace(/.00$/, '')}</span></div>` : ''}
         ${o.notes ? `<p class="od-sub">Note: ${escHtml(o.notes)}</p>` : ''}
       </section>
       <section class="od-sec">
@@ -124,7 +125,8 @@
         ${di.fulfilled_notified_at ? '<p class="od-sub">Fulfillment email sent</p>' : ''}
         <div class="od-actions">
           ${paid ? `<button type="button" class="od-btn" onclick="sendOrderToGoogleSheet('${o.id}', ${notified})">${notified ? 'Re-send paid email' : 'Send paid email'}</button>` : ''}
-          ${paid && di.payme_sale_id ? `<button type="button" class="od-btn" onclick="openPayMeRefund('${escAttr(di.payme_sale_id)}')">Refund via PayMe</button>` : ''}
+          ${paid && (di.payme_sale_id || o.payment_method === 'payme') && o.payment_method !== 'gift_card' ? `<button type="button" class="od-btn" onclick="GremierRefunds.open('${o.id}')">Refund…</button>` : ''}
+          ${paid && di.payme_sale_id ? `<button type="button" class="od-btn" onclick="openPayMeRefund('${escAttr(di.payme_sale_id)}')">Open in PayMe</button>` : ''}
           ${paid && o.payment_method === 'gift_card' && o.gift_card_code ? `<button type="button" class="od-btn" onclick="refundGiftCardOrder('${o.id}')">Refund to gift card</button>` : ''}
           <button type="button" class="od-btn danger" onclick="deleteOrder('${o.id}')">Delete order</button>
         </div>
