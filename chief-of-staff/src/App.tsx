@@ -183,7 +183,9 @@ export default function App() {
 
   const go = (v: View) => { setView(v); setMenu(false); };
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
-  const goHome = () => openConversation(null);
+  const [homeTick, setHomeTick] = useState(0);
+  const [chatOnOpen, setChatOnOpen] = useState(false);
+  const goHome = () => { openConversation(null); setHomeTick((t) => t + 1); };
   const openResearch = (id: string) => { setJobId(id); setView("research"); setMenu(false); };
   const askNew = (p: string) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); };
   useEffect(()=>{const url=new URL(location.href);if(view==='research'&&jobId)url.searchParams.set('job',jobId);else url.searchParams.delete('job');history.replaceState(null,'',url.pathname+url.search);},[view,jobId]);
@@ -227,7 +229,7 @@ export default function App() {
       <main className={`flex-1 min-h-0 px-4 ${view === "home" || view === "research" ? "pb-safe" : "overflow-y-auto pb-6"}`}>
         {view === "chats" && (
           <div className="space-y-6 pt-1">
-            <button onClick={goHome} className="w-full rounded-2xl bg-accent text-accent-ink py-3 text-[15px] font-medium">✏️ New conversation</button>
+            <button onClick={() => { setChatOnOpen(true); openConversation(null); setTimeout(() => setChatOnOpen(false), 0); }} className="w-full rounded-2xl bg-accent text-accent-ink py-3 text-[15px] font-medium">✏️ New conversation</button>
             <ResearchList jobs={jobs} onOpen={openResearch} onChanged={loadJobs} onNew={() => askNew("Research ")} />
             <section>
               <ConversationList conversations={conversations} activeId={null} onOpen={(id) => openConversation(id)}
@@ -239,8 +241,8 @@ export default function App() {
         {view === "home" && (
           <Home name={settings?.name ?? ""} conversationId={conversationId}
             onConversation={(id) => { setConversationId(id); loadConversations(); }}
-            initialAsk={ask} startVoice={startVoice} startTyping={startTyping || !!draft} draft={draft} onDraftUsed={() => setDraft(undefined)} serverTranscription={!!health?.transcription}
-            onDataChanged={refresh} refreshKey={refreshKey} onOpenChat={openResearch} />
+            initialAsk={ask} startVoice={startVoice} startTyping={startTyping || !!draft || chatOnOpen} draft={draft} onDraftUsed={() => setDraft(undefined)} serverTranscription={!!health?.transcription}
+            onDataChanged={refresh} refreshKey={refreshKey} onOpenChat={openResearch} homeTick={homeTick} />
         )}
         {view === "projects" && <Projects onOpenJob={openResearch} onOpenItem={(i) => setTask(i)} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
         {view === 'shopping' && <Shopping refreshKey={refreshKey} />}

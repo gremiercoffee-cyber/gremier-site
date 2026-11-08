@@ -34,6 +34,8 @@ export interface Project {
   status: "active" | "paused" | "done";
   created_at: string;
   updated_at: string;
+  /** The area this folder sits in (where most of its tasks are). */
+  section?: string | null;
   categories?: (string|null)[];
   open_count?: number;
   done_count?: number;

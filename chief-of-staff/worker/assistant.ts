@@ -1,6 +1,6 @@
 import {quickTaskReply} from './assistant-quick';
 import {hashgachaCampaigns,sourceReports,syncHashgacha,trackHashgacha} from './hashgacha';
-import {PROJECT_POLICY} from '../shared/project-policy';
+import {MAX_FOLDERS_PER_AREA,PROJECT_POLICY} from '../shared/project-policy';
 /** The single Chief of Staff assistant: prompt, context assembly and tools over the user's data. */
 import type { ActionNote, Conversation, Item, Memory, Message, Project } from "../shared/types";
 import type { Env } from "./env";
@@ -9,7 +9,7 @@ import { recurringReminders, saveRecurringReminder } from './reminders';
 import { addShoppingItems, saveShoppingList, shoppingState, updateShoppingItem } from './shopping';
 import { getProvider, type ToolDef, type Turn } from "./ai";
 import {
-  all, createItem, createProject, first, getSettings, HttpError, now, resolveProjectId, run, uid, updateItem,
+  all, areaFolders, createItem, createProject, first, getSettings, HttpError, now, resolveProjectId, run, uid, updateItem,
 } from "./db";
 import { calendarLookup, createDraft, googleStatus, readThread, searchEmail, sendDraft, upcomingEventsText } from "./google";
 import { bridgeStatus, queueWhatsApp } from "./whatsapp";
@@ -72,10 +72,10 @@ How to file things — keep these clearly separate:
 - commitment: a promise the user made to someone (set person; due_at if there is a deadline).
 - waiting: something the user is waiting on from someone else (set person). Never file "Wait for ..." as an actionable task. Keep it tracked as waiting, and offer a separate follow-up when appropriate; do not present waiting as work to do now.
 - idea: an idea worth keeping goes to remember (a lasting note), or a task when there is something to do about it.
-- Lists: shopping uses its dedicated tools. A deliberate batch for now/this afternoon is a dated session project, even across areas; create_project first, then create_item with its name. Other unrelated to-dos stay standalone. Never infer a weekly catch-all from deadlines alone.
+- Lists: shopping uses its dedicated tools. A batch of things for now/this afternoon is just tasks due today (no folder). Never infer a weekly catch-all from deadlines alone.
 
 How this app fits together (you ARE this app; everything below is yours to use, and things connect: a group's members are people, people have emails/WhatsApp names, items can belong to projects and time blocks):
-- Home: ✋ Needs your OK (approvals), 🔔 Updates, 📅 Today, 🔄 In progress (work you do for them: Hashgacha reports with who has filed, research jobs, replies they're waiting on; each has one Stop), 🗂️ Your tasks (folders by area and project), ✅ Done this week. Tapping a task gives Done / Change time / Cancel. Talk/dictate/type to you at the bottom. Other screens are in the ☰ menu at the top.
+- Home: ✋ Needs your OK (approvals), 🔔 Updates, ⚡ Do now (due today or late), 🔄 Working on it (Hashgacha reports with who has filed, research jobs; each has Stop), 📨 Waiting on (replies they're waiting for; each has Stop), then one card per area (☕ Coffee, 📚 Yeshiva, 🏠 Personal…) holding its folders and loose tasks, ✅ Done this week. Tapping a task gives Done / Change time / Cancel. This chat opens from the 💬 button at the bottom right. Other screens are in the ☰ menu at the top.
 - Groups: contact groups (used to search email and WhatsApp from everyone in a group).
 - Chats (☰ menu): research chats and past conversations.
 - Search: memories and reference material remain searchable. There is no Library in the navigation. Actionable work belongs in tasks and concrete projects, not passive notes.
@@ -795,13 +795,27 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "create_project",
-      description: "Create a project (an outcome, event or dated work session).",
+      description: "Create a folder (project) in an area. Only when the user asked for this folder or said yes when you asked in this conversation; otherwise it is not created and you get the area's folders to ask about.",
       input_schema: {
         type: "object",
-        properties: { name: { type: "string" }, description: { type: "string" }, area: { type: "string", enum: ["personal", "business"] } },
-        required: ["name"],
+        properties: {
+          name: { type: "string" }, description: { type: "string" }, area: { type: "string", enum: ["personal", "business"] },
+          section: { type: "string", description: "The area key the folder belongs to (coffee, yeshiva, personal…)" },
+          user_said_yes: { type: "boolean", description: "true only if the user explicitly asked for this new folder, or said yes to creating it, in this conversation" },
+        },
+        required: ["name", "section", "user_said_yes"],
       },
       handler: async (input) => {
+        const section = String(input.section ?? "").trim();
+        if (input.user_said_yes !== true) {
+          const folders = section ? await areaFolders(env, section) : [];
+          return {
+            created: false, area: section, existing_folders: folders.map((f) => f.name),
+            ask_user: folders.length
+              ? `Ask in one short line: put it in ${folders.map((f) => `"${f.name}"`).join(" or ")}, or start a new folder "${input.name}"${folders.length >= MAX_FOLDERS_PER_AREA ? " (a third folder in this area)" : ""}? Until they answer, save the task loose in its area.`
+              : `Ask in one short line whether to start a folder "${input.name}", or keep it as a loose task in this area. Until they answer, save the task loose in its area.`,
+          };
+        }
         const p = await createProject(env, input as never);
         note("create_project", `Created project: ${p.name}`);
         return { id: p.id };
@@ -1164,7 +1178,7 @@ function splitPrompt() {
 const PROMPT_PARTS = splitPrompt();
 
 /** The project rules for the chat, short. The full policy still guides the background project organizer. */
-const PROJECT_RULES = `a project is a named outcome, event or work session with several steps, not an area, person or topic. Create one when asked. A list of things to do now or in one sitting ("this afternoon I need to…") gets a dated session project (create_project, e.g. "Sunday afternoon — 18 October 2026") and each of them goes in it. Tasks that clearly serve the same outcome/event share one project; reuse an existing one only for the same goal and edition, move tasks with update_item, never duplicate them. A lone task stays standalone; if unsure, leave it and ask at most one short question.`;
+const PROJECT_RULES = `folders (projects) sit inside an area; keep each area to at most ${MAX_FOLDERS_PER_AREA}. Never create one yourself: file new work into an existing folder of its area when it clearly fits, otherwise leave it loose in the area. If it seems to need its own folder, ask in one line ("put it in A or B, or start a new folder?") and only create_project with user_said_yes after they agree. Things for now/this afternoon are just tasks due today. Move tasks with update_item, never duplicate them.`;
 const CHAT_CORE=`You are the user's personal Chief of Staff, by text and voice. Work out what they want and do it with tools; never claim a save without its tool. Answer questions directly.
 - Saving tasks, reminders, memories, projects and schedule changes, and deleting, need no permission. Sending messages, contacting people, sharing files, spending money and every AI research/background job go through approval; a pending approval is not done.
 - Use IDs and facts in context; batch independent calls. Use finish_reply only after ALL requested saves. Before saying work is unsaved, check recent saved work or search_items. Never repeat a successful save.

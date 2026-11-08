@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
-const bundle=await build({stdin:{contents:`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import HomeWork from './src/components/HomeWork';export {groupHomeWork} from './shared/home-work';export const render=(tasks,projects)=>renderToStaticMarkup(React.createElement(HomeWork,{tasks,projects,inArea:()=>true,onChanged(){}}));`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,format:'cjs',platform:'node',packages:'external',jsx:'automatic'});
+const bundle=await build({stdin:{contents:`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import HomeWork from './src/components/HomeWork';export {groupHomeWork} from './shared/home-work';export const render=(tasks,projects,part)=>renderToStaticMarkup(React.createElement(HomeWork,{tasks,projects,part,onChanged(){}}));`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,format:'cjs',platform:'node',packages:'external',jsx:'automatic'});
 const compiled={exports:{}};new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),compiled,compiled.exports);
 const {render,groupHomeWork}=compiled.exports;
 const task=(id,extra={})=>({id,title:'Work '+id,kind:'task',status:'open',priority:2,notes:null,due_at:null,created_at:new Date().toISOString(),...extra});
@@ -11,7 +11,15 @@ test('every open item has exactly one inventory location, with orphan projects f
  const grouped=groupHomeWork(tasks,[{id:'project',name:'Related outcome',status:'paused'}]);
  assert.deepEqual(grouped.projects[0].items.map(i=>i.id),['assigned']);assert.deepEqual(grouped.standalone.map(i=>i.id),['orphan','email','muted','later']);
 });
-test('Home retains every project and standalone task inside closed folders; today goes on top',()=>{
- const tasks=[task('first',{project_id:'project'}),task('second',{project_id:'project'}),...Array.from({length:15},(_,i)=>task('single'+i)),task('muted',{muted:1}),task('later',{nudge_after:'2099-01-01'}),task('today',{due_at:new Date(Date.now()-60000).toISOString()})];
- const html=render(tasks,[{id:'project',name:'Related outcome',status:'active'}]);assert.ok(html.includes('<details'));assert.ok(!html.includes('<details open=""'),'inventory folders start closed');assert.ok(html.includes('Related outcome'));for(const item of tasks)assert.ok(html.includes(item.title),item.id);assert.ok(html.indexOf('Today')<html.indexOf('<details'),'today first, outside the folders');assert.equal(html.includes('Upcoming events'),false);
+test('Home: Do now on top, then one closed card per area holding its folders and loose tasks; waiting items are not tasks',()=>{
+ const tasks=[task('first',{project_id:'project',category:'coffee'}),task('second',{project_id:'project',category:'coffee'}),...Array.from({length:15},(_,i)=>task('single'+i,{category:i%2?'yeshiva':null})),task('muted',{muted:1}),task('later',{nudge_after:'2099-01-01'}),task('today',{due_at:new Date(Date.now()-60000).toISOString()}),task('wait',{kind:'waiting',title:'Quote from supplier'})];
+ const projects=[{id:'project',name:'Related outcome',status:'active',section:'coffee'}];
+ const html=render(tasks,projects,'today')+render(tasks,projects,'areas');
+ assert.ok(html.includes('<details'));assert.ok(!html.includes('<details open=""'),'area cards start closed');assert.ok(html.includes('Related outcome'));
+ for(const item of tasks.filter(t=>t.kind!=='waiting'))assert.ok(html.includes(item.title),item.id);
+ assert.equal(html.includes('Quote from supplier'),false,'waiting items live in Waiting on');
+ assert.ok(html.indexOf('Do now')<html.indexOf('<details'),'Do now first, outside the areas');
+ assert.ok(html.indexOf('Coffee')<html.indexOf('Yeshiva')&&html.indexOf('Yeshiva')<html.indexOf('Other'),'areas in their order');
+ assert.ok(html.indexOf('Related outcome')<html.indexOf('Yeshiva'),'the folder sits in its own area');
+ assert.match(html,/1 folder/);
 });

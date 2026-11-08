@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { HomeJob } from "../../shared/types";
 import { api } from "../api";
 import { timeAgo } from "./ui";
-import { toast } from "./TaskSheet";
+import { openTask, toast } from "./TaskSheet";
 
 /** A thin progress bar: how much of the job is done. */
 function Bar({ done, total }: { done: number; total: number }) {
@@ -15,16 +15,17 @@ function Bar({ done, total }: { done: number; total: number }) {
 }
 
 /**
- * "In progress": work the Chief of Staff is doing for you. Each card shows how far along it is and what
- * happens next; tap it for the details and the one Stop button.
+ * "Working on it": work the Chief of Staff is doing for you in the background (Hashgacha, research).
+ * Each card shows how far along it is and what happens next; tap it for the details and the one Stop button.
  */
-export default function InProgress({ jobs, onChanged, onOpenChat }: { jobs: HomeJob[]; onChanged: () => void; onOpenChat: (id: string) => void }) {
+export default function InProgress({ jobs: all, onChanged, onOpenChat }: { jobs: HomeJob[]; onChanged: () => void; onOpenChat: (id: string) => void }) {
   const [open, setOpen] = useState<string | null>(null);
+  const jobs = all.filter((j) => j.kind !== "waiting");
   const job = jobs.find((j) => j.id === open) ?? null;
   if (!jobs.length) return null;
   return (
-    <section aria-label="In progress">
-      <h2 className="px-1 mb-2 flex items-center gap-2 text-[17px] font-semibold">🔄 In progress<span className="text-[13px] font-normal text-muted">{jobs.length}</span></h2>
+    <section aria-label="Working on it">
+      <h2 className="px-1 mb-2 flex items-center gap-2 text-[17px] font-semibold">🔄 Working on it<span className="text-[13px] font-normal text-muted">{jobs.length}</span></h2>
       <div className="grid gap-2.5 sm:grid-cols-2">
         {jobs.map((j) => (
           <button key={j.id} onClick={() => setOpen(j.id)} className="text-left rounded-[20px] bg-surface border border-line/70 shadow-card p-4 hover:border-accent/40 transition">
@@ -39,12 +40,45 @@ export default function InProgress({ jobs, onChanged, onOpenChat }: { jobs: Home
             {j.kind === "hashgacha" && j.rows.some((r) => r.icon !== "✅") && (
               <p className="mt-2 text-[13px] leading-snug"><span className="text-muted">Still out: </span>{j.rows.filter((r) => r.icon === "⏳" || r.icon === "❔").map((r) => r.label).join(", ") || "none"}</p>
             )}
-            {j.kind === "waiting" && <p className="mt-2 text-[13px] leading-snug text-muted line-clamp-2">{j.rows.slice(0, 3).map((r) => r.label).join(" · ")}{j.rows.length > 3 ? ` · +${j.rows.length - 3} more` : ""}</p>}
             {j.next && <p className="mt-2 text-[12.5px] leading-snug text-accent">⏭️ {j.next}</p>}
           </button>
         ))}
       </div>
       {job && <JobSheet job={job} onClose={() => setOpen(null)} onChanged={onChanged} onOpenChat={onOpenChat} />}
+    </section>
+  );
+}
+
+/** 📨 Waiting on: every reply you're waiting for, one line each. Tap to open it; ✕ stops waiting. */
+export function WaitingOn({ jobs, onChanged }: { jobs: HomeJob[]; onChanged: () => void }) {
+  const [all, setAll] = useState(false);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const rows = (jobs.find((j) => j.kind === "waiting")?.rows ?? []).filter((r) => !hidden.has(r.id));
+  if (!rows.length) return null;
+  const shown = all ? rows : rows.slice(0, 5);
+  const stop = async (id: string) => {
+    setHidden((h) => new Set(h).add(id));
+    try { const r = await api.stopHomeJob("waiting", id); toast(`⏹️ ${r.message}`); onChanged(); }
+    catch (e) { setHidden((h) => { const n = new Set(h); n.delete(id); return n; }); toast(`⚠️ ${(e as Error).message}`); }
+  };
+  return (
+    <section aria-label="Waiting on" className="rounded-[20px] bg-surface border border-line/70 shadow-card px-4 py-3">
+      <h2 className="flex items-center gap-2 text-[17px] font-semibold">📨 Waiting on<span className="text-[13px] font-normal text-muted">{rows.length}</span></h2>
+      <ul className="mt-1 divide-y divide-line/70">
+        {shown.map((r) => (
+          <li key={r.id} className="flex items-center gap-2">
+            <button onClick={() => openTask(r.id)} className="flex-1 min-w-0 flex items-center gap-3 py-2.5 text-left">
+              <span className="w-5 text-center text-[15px]" aria-hidden>{r.icon}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14.5px] leading-snug truncate" dir="auto">{r.label}</span>
+                {r.detail && <span className="block text-[12px] text-muted truncate" dir="auto">{r.detail}</span>}
+              </span>
+            </button>
+            <button onClick={() => void stop(r.id)} aria-label={`Stop waiting: ${r.label}`} title="Stop waiting" className="shrink-0 h-8 w-8 grid place-items-center rounded-full text-muted hover:bg-sunken hover:text-danger">✕</button>
+          </li>
+        ))}
+      </ul>
+      {rows.length > 5 && <button onClick={() => setAll(!all)} className="mt-1 text-[13px] text-accent font-medium">{all ? "Show fewer" : `Show all ${rows.length}`}</button>}
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import HomeWork from '../components/HomeWork';
-import InProgress from '../components/InProgress';
+import InProgress, { WaitingOn } from '../components/InProgress';
 import Approvals from '../components/Approvals';
 import WhatsAppsToSend from '../components/WhatsAppsToSend';
 import { openTask } from '../components/TaskSheet';
@@ -17,11 +17,13 @@ import { startRecording } from "../voice";
 type LiveState = "off" | LiveStatus;
 
 /**
- * The main screen: your Chief of Staff. With no conversation open it is a calm "I'm here" presence
- * with whatever needs you; once you talk or type it becomes the conversation.
+ * The main screen: the whole screen is home (what needs you, what's running, what you're waiting on,
+ * your areas). The chat stays out of the way behind the Chat button at the bottom right.
  */
-export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, draft, onDraftUsed, serverTranscription, onDataChanged, refreshKey, onOpenChat }: {
+export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, draft, onDraftUsed, serverTranscription, onDataChanged, refreshKey, onOpenChat, homeTick }: {
   onOpenChat: (jobId: string) => void;
+  /** Goes up each time the user goes home (logo / back): the chat closes. */
+  homeTick: number;
   name: string;
   conversationId: string | null;
   onConversation: (id: string | null) => void;
@@ -37,6 +39,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(!!startTyping);
+  const [chatOpen, setChatOpen] = useState(!!(startVoice || startTyping || initialAsk || draft || conversationId));
   // Files added to the next message (📎 or paste), and the files that belong to this chat.
   const [attached, setAttached] = useState<{ id: string; filename: string; mime: string }[]>([]);
   const [uploading, setUploading] = useState(false), [uploadError, setUploadError] = useState("");
@@ -72,6 +75,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   useEffect(() => {
     convoRef.current = conversationId;
     if (!conversationId) { setMessages([]); return; }
+    setChatOpen(true);
     api.conversationMessages(conversationId).then(setMessages).catch((e) => setError(e.message));
   }, [conversationId]);
   useEffect(() => { api.dashboard().then(setDash).catch(() => {}); }, [refreshKey]);
@@ -95,12 +99,15 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   useEffect(() => () => callRef.current?.hangUp(), []);
   useEffect(() => { if (startVoice) startLive(); }, [startVoice]);
   useEffect(() => { if (initialAsk) send(initialAsk); }, [initialAsk]);
-  useEffect(() => { if (draft) { setTyping(true); setInput(draft); onDraftUsed?.(); } }, [draft]);
+  useEffect(() => { if (draft) { setChatOpen(true); setTyping(true); setInput(draft); onDraftUsed?.(); } }, [draft]);
+  const firstTick = useRef(homeTick);
+  useEffect(() => { if (homeTick !== firstTick.current) closeChat(); }, [homeTick]);
 
   async function send(text: string, mode: "text" | "dictation" = "text") {
     const files = attachedRef.current;
     const t = text.trim() || (files.length ? "Here's a file." : "");
     if (!t) return;
+    setChatOpen(true);
     setAttached([]);
     setError("");
     setSending(true);
@@ -130,6 +137,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
 
   async function startLive() {
     if (callRef.current || connectingRef.current) return;
+    setChatOpen(true);
     setError("");
     connectingRef.current = true;
     cancelledRef.current = false;
@@ -163,6 +171,16 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     setLive("off");
   }
 
+  /** Back to the full home screen. The chat starts fresh next time (past chats are in the menu, Chats). */
+  function closeChat() {
+    stopLive();
+    setTyping(false);
+    setChatOpen(false);
+    setError("");
+    if (convoRef.current) onConversation(null);
+  }
+  const newChat = () => { stopLive(); setMessages([]); setError(""); setTyping(true); if (convoRef.current) onConversation(null); };
+
   const reloadDash = () => { api.dashboard().then(setDash).catch(() => {}); onDataChanged(); };
 
   const inConversation = messages.length > 0 || sending;
@@ -187,16 +205,44 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
+  if (!chatOpen) {
+    return (
+      <div className="relative h-full">
+        <div className="h-full overflow-y-auto overflow-x-hidden pb-28 no-scrollbar">
+          <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={live} dash={dash}
+            refreshKey={refreshKey} onChanged={reloadDash} onOpenChat={onOpenChat} />
+        </div>
+        {party && <Celebration name={party.name} done={party.done} onClose={endParty} />}
+        <button onClick={() => setChatOpen(true)} aria-label="Open chat"
+          className="fixed z-30 right-4 bottom-[calc(env(safe-area-inset-bottom)+18px)] flex items-center gap-2 rounded-full bg-accent text-accent-ink pl-2.5 pr-4 py-2.5 shadow-card active:scale-95 transition">
+          <img src="/logo-orb.png" alt="" width={24} height={24} className="h-6 w-6 rounded-full" />
+          <span className="text-[14.5px] font-medium">Chat</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 pb-2 border-b border-line/70">
+        <img src="/logo-orb.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
+        <span className="flex-1 font-medium text-[15px]">{inConversation ? "Chat" : "New chat"}</span>
+        {inConversation && <button onClick={newChat} className="rounded-full px-3 py-1.5 text-[13px] text-muted hover:bg-sunken">✏️ New</button>}
+        <button onClick={closeChat} aria-label="Close chat" className="rounded-full bg-sunken px-3 py-1.5 text-[13px] font-medium">✕ Close</button>
+      </div>
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-4 no-scrollbar">
-        {!inConversation ? (
-          <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={dictatingNow ? "listening" : live} dash={dash}
-            refreshKey={refreshKey} onChanged={reloadDash} onOpenChat={onOpenChat} />
-        ) : (
-          <div className="space-y-3 pt-2">
+        {inConversation ? (
+          <div className="space-y-3 pt-3">
             {messages.map((m) => <div key={m.id}><Bubble m={m} />{filesUnder.has(m.id) && <ChatFiles files={filesUnder.get(m.id)!} onChanged={loadChatFiles} />}</div>)}
             {sending && <Thinking />}
+          </div>
+        ) : (
+          <div className="h-full grid place-items-center text-center px-6">
+            <div>
+              <div className="mx-auto w-24 h-24"><Orb state={dictatingNow ? "listening" : live} /></div>
+              <p className="mt-4 text-[17px] font-medium">What can I do for you?</p>
+              <p className="mt-1 text-[13.5px] text-muted">Talk, dictate or type. Say "this is a task" to add one.</p>
+            </div>
           </div>
         )}
         {error && <p className="text-danger text-sm mt-2">{error}</p>}
@@ -221,8 +267,8 @@ const NOTE_ICON: Record<string, string> = { overdue: "🔴", reminder: "⏰", ch
 const cleanTitle = (t: string) => t.replace(/^(don't forget|coming up|still waiting|reminder|due soon|heads up|overdue)\s*:\s*/i, "");
 
 /**
- * The home screen, top to bottom: anything that needs your OK, updates, 📅 Today, 🔄 In progress,
- * 🗂️ Your tasks and ✅ Done this week. Tap any task for Done / Change time / Cancel; tap any job for Stop.
+ * The home screen, top to bottom: anything that needs your OK, updates, ⚡ Do now, 🔄 Working on it,
+ * 📨 Waiting on, 🗂️ Your areas (folders + loose tasks per area) and ✅ Done this week. Tap any task for Done / Change time / Cancel; tap any job for Stop.
  */
 function Presence({ greeting, live, dash, refreshKey, onChanged, onOpenChat }: {
   greeting: string; live: LiveState; dash: Dashboard | null; refreshKey: number; onChanged: () => void; onOpenChat: (id: string) => void;
@@ -268,7 +314,8 @@ function Presence({ greeting, live, dash, refreshKey, onChanged, onOpenChat }: {
 
       {dash && <HomeWork part="today" tasks={dash.home_tasks ?? []} projects={dash.home_projects ?? []} onChanged={onChanged} />}
       {dash && <InProgress jobs={dash.jobs ?? []} onChanged={onChanged} onOpenChat={onOpenChat} />}
-      {dash && <HomeWork part="folders" tasks={dash.home_tasks ?? []} projects={dash.home_projects ?? []} onChanged={onChanged} />}
+      {dash && <WaitingOn jobs={dash.jobs ?? []} onChanged={onChanged} />}
+      {dash && <HomeWork part="areas" tasks={dash.home_tasks ?? []} projects={dash.home_projects ?? []} onChanged={onChanged} />}
 
       {done.length > 0 && (
         <details className="rounded-[20px] bg-surface border border-line/70 px-4 py-3">

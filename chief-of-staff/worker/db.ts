@@ -197,6 +197,14 @@ export async function updateItem(env: Env, id: string, input: ItemInput): Promis
   return next;
 }
 
+/** A folder's area = the area most of its tasks are in (needs the projects table aliased as p). */
+export const PROJECT_SECTION_SQL = "(SELECT i.category FROM items i WHERE i.project_id=p.id AND i.category IS NOT NULL GROUP BY i.category ORDER BY SUM(i.status='open') DESC, COUNT(*) DESC LIMIT 1)";
+
+/** The active folders in one area, newest activity first. */
+export async function areaFolders(env: Env, section: string): Promise<{ id: string; name: string }[]> {
+  return all<{ id: string; name: string }>(env, `SELECT p.id, p.name FROM projects p WHERE p.status = 'active' AND ${PROJECT_SECTION_SQL} = ? ORDER BY p.updated_at DESC`, section);
+}
+
 export async function createProject(env: Env, input: Partial<Project>): Promise<Project> {
   const name = (input.name ?? "").trim();
   if (!name) throw new HttpError(400, "name is required");
