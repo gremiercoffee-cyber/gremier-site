@@ -139,7 +139,8 @@ export async function sendOrderEmails(params: {
   }
 
   const customer = String(params.customerEmail || "").trim();
-  if (customer && customer.toLowerCase() !== owner.toLowerCase()) {
+  // The owner's own address gets the customer copy only when the owner copy was skipped (no double email).
+  if (customer && (params.skipOwner || customer.toLowerCase() !== owner.toLowerCase())) {
     if (params.customerSubject && params.customerText) {
       // Every customer email is designed: its own HTML, or one made from its text.
       const html = params.customerHtml || designedFromText(params.customerText, { subject: params.customerSubject, items: params.customerItems, itemsTitle: params.customerItemsTitle, card: params.customerCard });
