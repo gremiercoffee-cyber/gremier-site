@@ -3,7 +3,7 @@ import InProgress from '../components/InProgress';
 import Approvals from '../components/Approvals';
 import WhatsAppsToSend from '../components/WhatsAppsToSend';
 import { openTask } from '../components/TaskSheet';
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import type { FoundFile } from "../api";
 import { api } from "../api";
@@ -80,13 +80,17 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     return ()=>clearInterval(timer);
   },[]);
   // A project just finished: confetti once, then it's marked as celebrated.
+  // Each project celebrates once per visit, even before the server has caught up (closing never brings it back).
   const [party, setParty] = useState<{ id: string; name: string; done: number } | null>(null);
+  const celebrated = useRef(new Set<string>());
   useEffect(() => {
-    const list = dash?.celebrate ?? [];
-    if (!list.length || party) return;
-    setParty(list[0]);
-    list.forEach((c) => api.projectCelebrated(c.id).catch(() => {}));
+    if (party) return;
+    const next = (dash?.celebrate ?? []).find((c) => !celebrated.current.has(c.id));
+    if (!next) return;
+    for (const c of dash?.celebrate ?? []) { celebrated.current.add(c.id); api.projectCelebrated(c.id).catch(() => {}); }
+    setParty(next);
   }, [dash, party]);
+  const endParty = useCallback(() => setParty(null), []);
   useEffect(() => { if(messages.length||sending)endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sending]);
   useEffect(() => () => callRef.current?.hangUp(), []);
   useEffect(() => { if (startVoice) startLive(); }, [startVoice]);
@@ -200,7 +204,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
         <div ref={endRef} />
       </div>
 
-      {party && <Celebration name={party.name} done={party.done} onClose={() => setParty(null)} />}
+      {party && <Celebration name={party.name} done={party.done} onClose={endParty} />}
 
       <Composer
         live={live} typing={typing} setTyping={setTyping} input={input} setInput={setInput} sending={sending}
