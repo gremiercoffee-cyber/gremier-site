@@ -16,6 +16,9 @@
   <title>Cold Brew Coffee in Israel | Gremier Coffee Co. · קולד ברו בישראל</title>
   <meta name="description" content="Cold brew coffee in Israel, slow-brewed in Jerusalem and delivered across the country: liter bottles, minis, 5L jugs and coffee bars for events. Kosher. · קולד ברו בישראל, בחליטה איטית בירושלים עם משלוח לכל הארץ: בקבוקי ליטר, מיני, ג׳ריקנים ובר קפה לאירועים. כשר.">
   <link rel="canonical" href="https://gremiercoffee.co.il/">
+  <link rel="alternate" hreflang="en" href="https://gremiercoffee.co.il/">
+  <link rel="alternate" hreflang="he" href="https://gremiercoffee.co.il/he">
+  <link rel="alternate" hreflang="x-default" href="https://gremiercoffee.co.il/">
   <meta property="og:type" content="website"><meta property="og:site_name" content="Gremier Coffee Co.">
   <meta property="og:title" content="Cold Brew Coffee in Israel | Gremier Coffee Co.">
   <meta property="og:description" content="Cold brew coffee slow-brewed in Jerusalem, delivered across Israel: for home, the office and events. Kosher.">
@@ -1103,7 +1106,7 @@
 <div id="coffeebarsPage" class="page" style="padding-top:64px">
   <div class="cbp-hero">
     <div class="eyebrow" style="color:rgba(255,255,255,.4)!important;margin-bottom:16px">Events & Occasions</div>
-    <h1 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h1>
+    <h2 class="cbp-hero-title">Gremier<br><em>Coffee Bars</em></h2>
     <p class="cbp-hero-sub" id="t-cbp-hero-sub">Premium cold brew for your birthday, corporate event, or any occasion — we'll help you choose the right amount for your guest count.</p>
     <div><a href="#cbpPackages" onclick="event.preventDefault();document.getElementById('cbpPackages').scrollIntoView({behavior:'smooth',block:'start'})" class="cbp-see-pkgs">See packages ↓</a></div>
   </div>
@@ -1582,6 +1585,7 @@ function tr(key) { return T[lang][key] || key; }
 function trCat(key) { return T[lang].cats[key] || key; }
 function applyTranslations() {
   document.body.classList.toggle('rtl', lang === 'he');
+  document.documentElement.lang = lang;
   for (const id of ['nav-locations','mm-locations']) {
     const link = document.getElementById(id);
     if (link) link.textContent = lang === 'he' ? 'איפה מוצאים אותנו' : 'Where to find us';
@@ -4632,7 +4636,7 @@ async function sendChatMessageText(text) {
   window.toggleLang = function () { const r = _toggleLang.apply(this, arguments); store.set(LK, lang); localizeCheckoutExtras(); localizeMemberBits(); return r; };
   window.addEventListener('load', () => setTimeout(() => {
     const saved = store.get(LK);
-    const wantHe = saved ? saved === 'he' : (navigator.languages || [navigator.language]).some(l => /^(he|iw)/i.test(l || ''));
+    const wantHe = window.GREMIER_FORCE_LANG === 'he' || (saved ? saved === 'he' : (navigator.languages || [navigator.language]).some(l => /^(he|iw)/i.test(l || '')));
     if ((wantHe && lang !== 'he') || (saved === 'en' && lang !== 'en')) _toggleLang();
     localizeCheckoutExtras(); localizeMemberBits();
   }, 300));

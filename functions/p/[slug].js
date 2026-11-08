@@ -46,7 +46,12 @@ export async function onRequestGet({ params, request, env }) {
 <script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
   return new HTMLRewriter()
     .on('title', { element(e) { e.setInnerContent(title); } })
-    .on('meta[name="description"], link[rel="canonical"], meta[property^="og:"]', { element(e) { e.remove(); } })
+    .on('meta[name="description"], link[rel="canonical"], link[rel="alternate"][hreflang], meta[property^="og:"]', { element(e) { e.remove(); } })
+    // The page's main heading is this product; the shop's own slogan stays on screen as ordinary text.
+    .on('h1#t-hero-title', { element(e) {
+      e.tagName = 'div';
+      e.before(`<h1 style="margin:0 0 6px;font:500 .95rem 'DM Sans',sans-serif;color:#1a1a1a">${esc(p.name_en)}${p.name_he ? ' · ' + esc(p.name_he) : ''}</h1>`, { html: true });
+    } })
     .on('head', { element(e) { e.append(meta, { html: true }); } })
     .transform(new Response(page.body, { status: 200, headers: page.headers }));
 }
