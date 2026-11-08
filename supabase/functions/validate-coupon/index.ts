@@ -57,6 +57,13 @@ Deno.serve(async (req) => {
 
     if (!coupon) return json({ valid: false, error: 'not_found', message: 'Coupon not found' });
     if (!coupon.is_active) return json({ valid: false, error: 'inactive', message: 'This coupon is no longer active' });
+    // Not yet (a birthday code works only in the birthday month).
+    if (coupon.starts_at && new Date(coupon.starts_at) > new Date()) {
+      const from = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'long' }).format(new Date(coupon.starts_at));
+      return json({ valid: false, error: 'not_started', message: /^BDAY-/.test(cleanCode)
+        ? `This is your birthday code. It works from ${from}, during your birthday month (one order).`
+        : `This code works from ${from}.` });
+    }
 
     // On a subscription only codes allowed for subscriptions work (their discount is on every charge).
     if (subscription && !coupon.for_subscriptions) {

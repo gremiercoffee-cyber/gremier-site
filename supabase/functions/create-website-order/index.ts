@@ -416,7 +416,7 @@ Deno.serve(async (req) => {
         const maxUses = coupon.max_uses != null ? Number(coupon.max_uses) : null;
         const usesCount = Number(coupon.uses_count) || 0;
         const notExhausted = maxUses === null || usesCount < maxUses;
-        const notExpired = !coupon.expires_at || new Date(coupon.expires_at) > new Date();
+        const notExpired = (!coupon.expires_at || new Date(coupon.expires_at) > new Date()) && (!coupon.starts_at || new Date(coupon.starts_at) <= new Date());
         // A code made for one email (e.g. a birthday code) works only with that email.
         const forThisEmail = coupon.user_id ? coupon.user_id === userId : !coupon.customer_email || String(coupon.customer_email).toLowerCase() === String(customerEmail || "").toLowerCase();
         if (isSubscriptionOrder && !coupon.for_subscriptions) {

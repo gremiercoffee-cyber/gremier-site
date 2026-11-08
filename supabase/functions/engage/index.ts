@@ -11,6 +11,7 @@
 //   { action: "birthday_save" | "birthday_get", month, day?, order_id? | invite? } → the birthday-month gift
 // Deploy with --no-verify-jwt.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { issueBirthdayCode } from "../_shared/birthday-code.ts";
 import { cancelSubscription, describe, MAX_PAUSE_MONTHS, ownsSubscription, pauseSubscription, resumeSubscription } from "../_shared/subscription-control.ts";
 import { ensureReferralCode, logReferralEvent, notifyOwner, REFERRAL_AMOUNT, referralByCode, signToken, SITE } from "../_shared/engage.ts";
 
@@ -179,7 +180,7 @@ Deno.serve(async (req) => {
           const { data } = await sb.from("customer_birthdays").select("month, day").eq("email", email).maybeSingle();
           return json({ birthday: data || null });
         }
-        // The month is what matters (the gift comes for the whole month); the day is optional.
+        // The month is what matters (the code works in that month); the day is optional.
         const month = Number(body.month), day = body.day == null || body.day === "" ? null : Number(body.day);
         const maxDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
         if (!Number.isInteger(month) || !maxDay || (day !== null && (!Number.isInteger(day) || day < 1 || day > maxDay))) return json({ error: "bad_date" }, 400);
@@ -191,7 +192,13 @@ Deno.serve(async (req) => {
         if (userId) row.user_id = userId;
         const { error } = await sb.from("customer_birthdays").upsert(row, { onConflict: "email" });
         if (error) { console.error("birthday_save:", error.message); return json({ error: "save_failed" }, 500); }
-        return json({ ok: true, month, day });
+        // The code for the next birthday month is made and emailed now (kept if they already have it).
+        let codeStatus = "failed";
+        try {
+          const { data: saved } = await sb.from("customer_birthdays").select("*").eq("email", email).maybeSingle();
+          if (saved) codeStatus = (await issueBirthdayCode(sb, saved)).status;
+        } catch (e) { console.error("birthday code:", (e as Error).message); }
+        return json({ ok: true, month, day, code: codeStatus });
       }
 
       case "my_subscriptions":

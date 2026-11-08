@@ -27,7 +27,7 @@
     $('coBirthday')?.remove();
     const row = document.createElement('div');
     row.className = 'form-group bday-row'; row.id = 'coBirthday';
-    row.innerHTML = `<label class="form-label">${T('Birthday', 'יום הולדת')} <span class="bday-opt">${T('optional · 5% off in your birthday month 🎂', 'לא חובה · 5% הנחה בחודש יום ההולדת 🎂')}</span></label><div class="bday-selects">${selects('coBday', get())}</div>`;
+    row.innerHTML = `<label class="form-label">${T('Birthday', 'יום הולדת')} <span class="bday-opt">${T('optional · 5% off one order in your birthday month 🎂', 'לא חובה · 5% הנחה על הזמנה אחת בחודש יום ההולדת 🎂')}</span></label><div class="bday-selects">${selects('coBday', get())}</div>`;
     (email.closest('.form-group') || email).after(row);
     row.addEventListener('change', () => { const b = read('coBday'); if (b) put({ ...b, pending: true }); });
   }
@@ -50,7 +50,7 @@
     anchor.insertAdjacentElement('afterend', el);
     const saved = await engage({ action: 'birthday_get' }).catch(() => null);
     const b = saved?.birthday ? { d: saved.birthday.day, m: saved.birthday.month } : get();
-    el.innerHTML = `<div><b>🎂 ${T('Your birthday', 'יום ההולדת שלכם')}</b><small>${T('We’ll email you 5% off in your birthday month.', 'נשלח לכם 5% הנחה במייל בחודש יום ההולדת.')}</small></div>
+    el.innerHTML = `<div><b>🎂 ${T('Your birthday', 'יום ההולדת שלכם')}</b><small>${T('We email you a 5% code for one order, to use in your birthday month.', 'נשלח לכם במייל קוד 5% הנחה להזמנה אחת, לשימוש בחודש יום ההולדת.')}</small></div>
       <div class="bday-selects">${selects('acBday', b)}<button type="button" class="btn btn-outline btn-sm" id="acBdaySave">${T('Save', 'שמירה')}</button></div><span class="bday-status" id="acBdayStatus" role="status"></span>`;
     $('acBdaySave').onclick = async () => {
       const v = read('acBday');
@@ -77,8 +77,8 @@
     wrap.innerHTML = r?.ok
       ? `<div class="bday-card"><button type="button" class="bday-x" aria-label="${T('Close', 'סגירה')}">×</button>
           <div class="bday-big">🎁</div><h3>${T('Your gift is set!', 'המתנה שמורה!')}</h3>
-          <p>${m === now ? T('Your birthday is this month! Your 5% code is on its way to your email within a day.', 'יום ההולדת שלכם החודש! קוד ה-5% יגיע אליכם במייל תוך יום.')
-            : T(`We’ll email you 5% off at the start of ${month}, good all month.`, `נשלח לכם 5% הנחה במייל בתחילת ${month}, בתוקף כל החודש.`)}</p>
+          <p>${m === now ? T('Your birthday is this month! Your 5% code is on its way to your email. Use it on one order this month.', 'יום ההולדת שלכם החודש! קוד ה-5% בדרך אליכם במייל. אפשר להשתמש בו בהזמנה אחת החודש.')
+            : T(`Your 5% code is on its way to your email. It works on one order during ${month}.`, `קוד ה-5% בדרך אליכם במייל. הוא בתוקף להזמנה אחת במהלך ${month}.`)}</p>
           <div class="bday-day"><label>${T('Want to add the day too? (optional)', 'רוצים להוסיף גם את היום? (לא חובה)')}</label>
             <div class="bday-selects"><select class="form-input" id="invDay"><option value="">${T('Day', 'יום')}</option>${Array.from({ length: [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1] }, (_, i) => `<option ${r.day === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>${month}</span></div>
             <span class="bday-status" id="invStatus" role="status"></span></div>

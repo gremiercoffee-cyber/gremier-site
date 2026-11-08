@@ -452,8 +452,8 @@ function birthdayInviteEmail(name: string, he: boolean, inviteId: string, optout
   const link = (m: number) => `${SITE}/?bday=${m}&inv=${inviteId}&l=${he ? "he" : "en"}&utm_source=birthday_invite`;
   const subject = he ? "🎁 מתנה ליום ההולדת שלכם, מגרמיר" : "🎁 A birthday gift from Gremier";
   const lead = he
-    ? `היי${first ? " " + first : ""}! נשמח לחגוג איתכם. ספרו לנו באיזה חודש יום ההולדת שלכם, ונשלח לכם מתנה: 5% הנחה על ההזמנה, כל החודש.`
-    : `Hi${first ? " " + first : ""}! We'd love to celebrate with you. Tell us which month your birthday is in, and we'll send you a gift: 5% off your order, all month long.`;
+    ? `היי${first ? " " + first : ""}! נשמח לחגוג איתכם. ספרו לנו באיזה חודש יום ההולדת שלכם, ונשלח לכם מתנה: קוד 5% הנחה על הזמנה אחת בחודש יום ההולדת.`
+    : `Hi${first ? " " + first : ""}! We'd love to celebrate with you. Tell us which month your birthday is in, and we'll send you a gift: a 5% code for one order in your birthday month.`;
   const pick = he ? "מתי יום ההולדת? לחצו על החודש:" : "When's your birthday? Tap your month:";
   const easy = he ? "לחיצה אחת וזהו. נשתמש בזה רק כדי לשלוח לכם את המתנה." : "One tap and you're done. We only use it to send you your gift.";
   const stop = he ? "להסרה מרשימת הדיוור" : "Unsubscribe";
@@ -466,9 +466,9 @@ function birthdayInviteEmail(name: string, he: boolean, inviteId: string, optout
   const grid = `<tr><td style="padding:0 0 18px">
       <div style="text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:bold;padding:0 0 10px">${pick}</div>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" dir="${he ? "rtl" : "ltr"}">${rows}</table></td></tr>`;
-  const html = designedEmailHtml({ he, preheader: he ? "ספרו לנו באיזה חודש, ותקבלו 5% הנחה כל החודש" : "Tell us your birthday month and get 5% off all month",
+  const html = designedEmailHtml({ he, preheader: he ? "ספרו לנו באיזה חודש, ותקבלו 5% הנחה על הזמנה אחת" : "Tell us your birthday month and get 5% off one order",
     hello: he ? "מתנה ליום ההולדת, עלינו 🎁" : "A birthday gift, on us 🎁", lead,
-    card: { label: he ? "מתנת יום הולדת" : "Your birthday gift", big: he ? "5% הנחה" : "5% off", codeLabel: he ? "על כל הזמנה בחודש יום ההולדת" : "Your order, all through your birthday month", note: he ? "הקוד יגיע אליכם במייל כשהחודש מתחיל" : "We'll email you the code when your month begins" },
+    card: { label: he ? "מתנת יום הולדת" : "Your birthday gift", big: he ? "5% הנחה" : "5% off", codeLabel: he ? "להזמנה אחת בחודש יום ההולדת" : "One order in your birthday month", note: he ? "הקוד יגיע אליכם במייל מיד" : "We'll email you the code right away" },
     bodyBlocks: [grid], small: [easy, stop], smallLinks: ["", optoutUrl], sign });
   return { subject, text, html };
 }
