@@ -1,4 +1,4 @@
-/** One approvals list for the app (and a read-only view for ChatGPT): emails, WhatsApps, alumni sheet updates,
+/** One approvals list for the app (and a read-only view for ChatGPT): emails, WhatsApps,
  * AI jobs and deletions, each as a short card. Deciding goes to the system that owns the approval, unchanged. */
 import type {Env} from './env';
 import {all,first,HttpError} from './db';
@@ -18,16 +18,13 @@ function actionCard(a:{id:string;action:string;payload:string;description:string
 }
 
 export async function listApprovals(env:Env):Promise<ApprovalCard[]>{
- const [actions,whatsapps,alumni]=await Promise.all([
+ const [actions,whatsapps]=await Promise.all([
   all<any>(env,"SELECT id,action,payload,description,created_at FROM pending_actions WHERE status='pending' ORDER BY created_at DESC LIMIT 50"),
   all<any>(env,"SELECT id,recipient,text,created_at FROM whatsapp_outbox WHERE status='pending' ORDER BY created_at DESC LIMIT 50").catch(()=>[]),
-  all<any>(env,"SELECT id,sender,said_at,observation,text FROM alumni_visit_events WHERE status='awaiting_approval' ORDER BY said_at LIMIT 50").catch(()=>[]),
  ]);
  const cards:ApprovalCard[]=[
   ...actions.map(actionCard),
   ...whatsapps.map(w=>({id:w.id,source:'whatsapp' as const,kind:'whatsapp' as const,title:`WhatsApp to ${short(w.recipient,60)}`,preview:short(w.text,280),approve:'Send',created_at:w.created_at})),
-  ...alumni.map(e=>{const o=json(e.observation);const when=[o.arrival&&`arrives ${date(o.arrival)}`,o.leaving&&`leaves ${date(o.leaving)}`].filter(Boolean).join(' · ');
-   return{id:e.id,source:'alumni' as const,kind:'alumni' as const,title:`Alumni visit: ${short(o.name||e.sender,60)}`,detail:[when||'No dates yet',o.uncertain&&o.reason?`Check: ${short(o.reason,120)}`:''].filter(Boolean).join(' · '),preview:short(e.text,280),meta:'Adds to the alumni sheet',approve:'Add to sheet',created_at:e.said_at};}),
  ];
  return cards.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
 }
@@ -36,12 +33,6 @@ export async function decideApproval(env:Env,source:string,id:string,decision:st
  if(!['approve','reject'].includes(decision))throw new HttpError(400,'decision must be approve or reject');
  if(source==='action'){const {decidePendingAction}=await import('./assistant');return decidePendingAction(env,id,decision);}
  if(source==='whatsapp'){const {decideOutbox}=await import('./whatsapp');return{ok:true,outcome:await decideOutbox(env,id,decision==='approve'?'approved':'cancelled')};}
- if(source==='alumni'){
-  const e=await first<{approval_hash:string}>(env,"SELECT approval_hash FROM alumni_visit_events WHERE id=? AND status='awaiting_approval'",id);
-  if(!e)throw new HttpError(409,'This update is no longer waiting for approval.');
-  const {decideAlumni}=await import('./alumni-visits');const r=await decideAlumni(env,id,{decision,approval_hash:e.approval_hash});
-  return{ok:true,outcome:r.status==='approved'?'Approved. The sheet updates on the next run.':'Declined. The sheet was not changed.'};
- }
  throw new HttpError(404,'Unknown approval.');
 }
 
@@ -51,7 +42,7 @@ export async function announceApprovals(env:Env){
  const mark=await first<{value:string}>(env,"SELECT value FROM settings WHERE key='approvals_announced'");
  const since=mark?.value??new Date(Date.now()-10*60_000).toISOString();
  if(isShabbat((await getSettings(env)).timezone||'Asia/Jerusalem'))return 0;
- const fresh=(await listApprovals(env)).filter(c=>c.source!=='alumni'&&String(c.created_at)>since);
+ const fresh=(await listApprovals(env)).filter(c=>String(c.created_at)>since);
  await run(env,"INSERT OR REPLACE INTO settings (key,value) VALUES ('approvals_announced',?)",new Date().toISOString());
  if(!fresh.length)return 0;
  const title=fresh.length===1?`Needs your OK: ${fresh[0].title}`:`${fresh.length} things need your OK`;

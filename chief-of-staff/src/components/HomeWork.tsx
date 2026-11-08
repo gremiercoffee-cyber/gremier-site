@@ -3,6 +3,7 @@ import type {Item,Project} from '../../shared/types';
 import {groupHomeWork} from '../../shared/home-work';
 import {useAreas} from '../areas';
 import {ItemRow} from './ui';
+import {openTask} from './TaskSheet';
 
 /** End of today, in the phone's own time. */
 const endOfToday=()=>{const d=new Date();d.setHours(23,59,59,999);return d.getTime();};
@@ -13,7 +14,7 @@ export const isForToday=(i:Item)=>!!i.due_at&&Date.parse(i.due_at)<=endOfToday()
  * Everything that needs doing, plainly: today's first, then one folder per area, then projects.
  * No "now" block, no "for later" sorting: every open task sits in exactly one place.
  */
-export default function HomeWork({tasks,projects,onChanged}:{tasks:Item[];projects:Project[];onChanged:()=>void}) {
+export default function HomeWork({tasks,projects,onChanged,part='all'}:{tasks:Item[];projects:Project[];onChanged:()=>void;part?:'all'|'today'|'folders'}) {
  const areas=useAreas();
  const open=tasks.filter(i=>i.status==='open');
  const today=open.filter(isForToday);
@@ -26,7 +27,7 @@ export default function HomeWork({tasks,projects,onChanged}:{tasks:Item[];projec
  const order=[...areas.map(a=>a.key),'other'];
  const folderList=[...folders.entries()].sort((a,b)=>(order.indexOf(a[0])+1||99)-(order.indexOf(b[0])+1||99));
  const label=(k:string)=>{const a=areas.find(x=>x.key===k);return a?{icon:a.icon,name:a.label}:{icon:'📋',name:'Other'};};
- const openItem=(i:Item)=>window.dispatchEvent(new CustomEvent('cos:reschedule',{detail:i.id}));
+ const openItem=(i:Item)=>openTask(i.id);
  const row=(i:Item)=><ItemRow key={i.id} item={i} onChange={onChanged} onOpen={openItem} compact/>;
  const folder=(key:string,icon:string,name:string,items:Item[],startOpen=false)=>
   <details key={key} open={startOpen||undefined} className="rounded-2xl bg-surface border border-line px-4 py-3">
@@ -34,6 +35,20 @@ export default function HomeWork({tasks,projects,onChanged}:{tasks:Item[];projec
    <div className="mt-2 divide-y divide-line">{items.map(row)}</div>
   </details>;
 
+ if(part==='today')return today.length?<section aria-label="Today" className="rounded-[20px] border border-accent/20 bg-accent/5 px-4 py-3">
+  <h2 className="flex items-center gap-2 text-[17px] font-semibold">📅 Today<span className="text-[13px] font-normal text-muted">{today.length}</span></h2>
+  <div className="mt-1 divide-y divide-line">{today.map(row)}</div>
+ </section>:null;
+ if(part==='folders'){
+  if(!folderList.length&&!inProjects.length)return <p className="px-1 text-sm text-muted">Nothing else on your list. Say "this is a task" when you want one added.</p>;
+  return <section aria-label="Your tasks" className="space-y-2">
+   <h2 className="px-1 flex items-center gap-2 text-[17px] font-semibold">🗂️ Your tasks<span className="text-[13px] font-normal text-muted">{loose.length+inProjects.reduce((n,p)=>n+p.items.length,0)}</span></h2>
+   <div className="grid gap-2 sm:grid-cols-2 items-start">
+    {folderList.map(([k,items])=>{const l=label(k);return folder(k,l.icon,l.name,items);})}
+    {inProjects.map(({project,items})=>folder('p:'+project.id,'📁',project.name,items))}
+   </div>
+  </section>;
+ }
  if(!open.length)return <p className="px-1 text-sm text-muted">Nothing on your list. Tell me when you want something added.</p>;
  return <div className="space-y-3">
   {!!today.length&&<section aria-label="Today" className="rounded-2xl border border-accent/20 bg-accent/5 px-4 py-3">

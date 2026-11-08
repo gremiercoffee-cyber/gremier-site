@@ -103,11 +103,11 @@ export interface PendingAction {
   created_at: string;
 }
 
-/** One card on the approvals list (pending actions, WhatsApps to send, alumni sheet updates). */
+/** One card on the approvals list (pending actions, WhatsApps to send). */
 export interface ApprovalCard {
   id: string;
-  source: "action" | "whatsapp" | "alumni";
-  kind: "email" | "whatsapp" | "alumni" | "ai" | "share" | "delete" | "other";
+  source: "action" | "whatsapp";
+  kind: "email" | "whatsapp" | "ai" | "share" | "delete" | "other";
   title: string;
   detail?: string;
   preview?: string;
@@ -140,7 +140,20 @@ export interface ChatResponse {
 
 export interface HomeAttention { id:string; title:string; body:string; url:string }
 
+/** One line inside an "In progress" card (a rabbi, a reply you're waiting on). */
+export interface HomeJobRow { id: string; icon: string; label: string; detail?: string | null; stoppable?: boolean }
+/** Work in progress on the home screen: progress and what happens next, never a task for you. */
+export interface HomeJob {
+  id: string; kind: "hashgacha" | "research" | "waiting"; icon: string; title: string;
+  progress?: { done: number; total: number }; status: string; next?: string | null; note?: string | null;
+  checked_at?: string; rows: HomeJobRow[]; can_stop: boolean; stop_label?: string;
+}
+
 export interface Dashboard {
+  /** "In progress": Hashgacha, research jobs, replies you're waiting on. */
+  jobs?: HomeJob[];
+  /** Finished in the last 7 days, newest first. */
+  done_week?: Item[];
   hashgacha?:HashgachaCampaign[];
   attention_cards?: HomeAttention[];
   home_tasks?: Item[];

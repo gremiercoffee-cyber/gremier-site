@@ -39,17 +39,6 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
       onSaved();
     } catch (e) { setError((e as Error).message); }
   };
-  const remove = async () => {
-    if (!item || !confirm("Delete this item?")) return;
-    await api.deleteItem(item.id);
-    onSaved();
-  };
-  const setStatus = async (status: Item['status']) => {
-    if (!item) return;
-    try { await api.updateItem(item.id, {status}); onSaved(); }
-    catch (e) { setError((e as Error).message); }
-  };
-
   const field = "w-full rounded-xl bg-sunken px-3 py-2.5 outline-none text-[15px] focus:ring-2 ring-accent/50";
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
@@ -102,14 +91,8 @@ export default function ItemSheet({ item, defaultKind = "task", onClose, onSaved
           </label>
         </div>
         {error && <p className="text-danger text-sm">{error}</p>}
-        {item && <div className="space-y-2 border-t border-line pt-3">
-          <p className="text-xs text-muted">{item.status === 'open' ? 'Finish this task or remove it from open work.' : item.status === 'done' ? 'Completed' : 'No longer needed'}</p>
-          <div className="flex gap-2">
-            {item.status === 'open' ? <><Button onClick={()=>setStatus('done')}>✓ Done</Button><Button variant="soft" onClick={()=>setStatus('dropped')}>Not needed</Button></> : <Button variant="soft" onClick={()=>setStatus('open')}>Reopen task</Button>}
-          </div>
-        </div>}
         <div className="flex justify-between pt-1">
-          {item ? <Button variant="danger" onClick={remove}>Delete</Button> : <span />}
+          <span />
           <div className="flex gap-2">
             <Button variant="soft" onClick={onClose}>Cancel</Button>
             <Button onClick={save} disabled={!form.title.trim()}>Save</Button>

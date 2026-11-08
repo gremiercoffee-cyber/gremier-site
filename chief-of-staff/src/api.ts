@@ -1,5 +1,5 @@
 import type {HashgachaCampaign} from '../shared/hashgacha';
-import type { ApprovalCard } from "../shared/types";
+import type { ApprovalCard, HomeJob } from "../shared/types";
 import type {
   ShoppingConfig, ShoppingState,
 } from '../shared/shopping';
@@ -9,7 +9,6 @@ import type {
   CalendarEvent, ChatResponse, Conversation, Dashboard, GoogleStatus, Item, Memory, Message, Project, Settings,
 } from "../shared/types";
 
-export interface HelperJob { id: string; instruction: string; start_url: string | null; source: string; status: string; question: string | null; result: string | null; screenshot: string | null; steps: number; log: string; created_at: string; updated_at: string; not_before?: string | null }
 export interface JobKnowledge {
  title:string; instructions:string; project_id:string|null; project_title:string|null; revision:number; state:string;
  stale:boolean; last_checked:string|null;
@@ -30,10 +29,6 @@ export interface AutopilotPreview { enabled: boolean; start_week: string | null;
 
 export interface WaDraft { id: string; batch_id: string; batch_title: string; name: string; phone: string; text: string; opened_at: string | null; created_at: string }
 
-export interface ReplyCard {
-  id: string; person: string | null; channel: "whatsapp" | "email"; said: string; subject?: string;
-  why: string | null; suggested: string | null; waiting_since: string; category: string | null; phone?:string|null; delivery_status?:string|null;
-}
 
 
 export interface GroupMember { id: string; name: string; email: string | null; phone: string | null; role: string }
@@ -93,6 +88,8 @@ export const api = {
   saveShoppingConfig: (input: ShoppingConfig) => request<ShoppingConfig>('POST', '/api/shopping/config', input),
   health: () => request<{ ok: boolean; configured: boolean; model: boolean; transcription: boolean }>("GET", "/api/health"),
   dashboard: () => request<Dashboard>("GET", "/api/dashboard"),
+  homeJobs: (force = false) => request<HomeJob[]>("GET", `/api/home/jobs${force ? "?force=1" : ""}`),
+  stopHomeJob: (id: string, row?: string) => request<{ ok: true; message: string }>("POST", `/api/home/jobs/${encodeURIComponent(id)}/stop`, { row }),
   messages: () => request<Message[]>("GET", "/api/messages"),
   chat: (text: string, mode: "text" | "voice" | "dictation" = "text", conversation_id: string | null = null, files: string[] = []) =>
     request<ChatResponse>("POST", "/api/chat", { text, mode, conversation_id, files }),
@@ -131,24 +128,15 @@ export const api = {
   memories: () => request<Memory[]>("GET", "/api/memories"),
   setKeyPerson: (id: string, key: boolean) => request("POST", `/api/people/${id}`, { key }),
   deleteMemory: (id: string) => request("DELETE", `/api/memories/${id}`),
-  reviewMemory: (id: string, action: "accept" | "edit" | "ignore", content?: string) => request("POST", `/api/memories/${id}/review`, { action, content }),
   groups: () => request<GroupRow[]>("GET", "/api/groups"),
   saveGroup: (g: Record<string, unknown>) => request<GroupRow>("POST", "/api/groups", g),
   deleteGroup: (id: string) => request("DELETE", `/api/groups/${id}`),
-  learnNow: () => request<{ learned?: number }>("POST", "/api/learn"),
   people: () => request<Person[]>("GET", "/api/people"),
   situations: () => request<SituationRow[]>("GET", "/api/situations"),
   saveSituation: (s: Record<string, unknown>) => request("POST", "/api/situations", s),
   deleteSituation: (id: string) => request("DELETE", `/api/situations/${id}`),
   whatsappChats: () => request<string[]>("GET", "/api/whatsapp/chats"),
   linkWhatsapp: (personId: string, chat: string) => request("POST", `/api/people/${personId}/whatsapp`, { chat }),
-  batchReplies:(text:string,cards:{id:string;number:number}[])=>request<{changed:{id:string;number:number;action:string;text?:string}[];clarification?:string}>('POST','/api/replies/batch',{text,cards}),
-  saveReplyDraft:(id:string,text:string)=>request('PUT',`/api/replies/${id}/draft`,{text}),
-  dismissReply:(id:string)=>request('POST',`/api/replies/${id}/dismiss`),
-  markReplied:(id:string)=>request('POST',`/api/replies/${id}/replied`),
-  replies: () => request<ReplyCard[]>("GET", "/api/replies"),
-  draftReply: (id: string, guidance: string) => request<{ text: string }>("POST", `/api/replies/${id}/draft`, { guidance }),
-  sendReply: (id: string, text: string) => request<{ ok: true; message: string }>("POST", `/api/replies/${id}/send`, { text }),
   search: (q: string) => request<{
     q: string; items: Item[]; memories: Memory[]; people: Person[]; projects: Project[]; events: CalendarEvent[];
     conversations: { conversation_id: string | null; title: string | null; role: string; content: string; created_at: string }[];
@@ -176,10 +164,6 @@ export const api = {
   jobProject: (id:string,project_id:string|null)=>request("POST",`/api/jobs/${id}/project`,{project_id}),
   jobPin: (id: string, pinned: boolean) => request<{ ok: boolean }>("POST", `/api/jobs/${id}/pin`, { pinned }),
   jobButton: (data: string) => request<{ ok: boolean }>("POST", "/api/jobs/button", { data }),
-  helperJobs: () => request<HelperJob[]>("GET", "/api/helper/jobs"),
-  helperStatus: () => request<{ last_seen: string | null }>("GET", "/api/helper/status"),
-  helperCreate: (instruction: string, start_url?: string) => request<{ id: string }>("POST", "/api/helper/jobs", { instruction, start_url }),
-  helperDecide: (id: string, decision: "approve" | "cancel" | "answer", answer?: string) => request("POST", `/api/helper/jobs/${id}/${decision}`, { answer }),
   vault: () => request<VaultItem[]>("GET", "/api/vault"),
   saveVault: (v: { id?: string; kind: "text" | "signature"; label: string; text?: string; image?: string }) => request<{ id: string }>("POST", "/api/vault", v),
   deleteVault: (id: string) => request("DELETE", `/api/vault/${id}`),

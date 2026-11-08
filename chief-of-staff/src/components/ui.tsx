@@ -97,6 +97,7 @@ export function ItemRow({ item, onChange, onOpen, compact }: { item: Item; onCha
       <button className="flex-1 min-w-0 text-left" onClick={() => onOpen?.(item)}>
         <div className={`text-[15px] leading-snug ${done ? "line-through text-muted" : ""}`}>{item.title}</div>
         <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-xs text-muted">
+          {areas.find((a) => a.key === item.category) && <span aria-label={areas.find((a) => a.key === item.category)!.label}>{areas.find((a) => a.key === item.category)!.icon}</span>}
           {item.priority === 1 && <span className="text-danger font-medium">High</span>}
           {due && <span className={due.overdue && !done ? "text-danger font-medium" : ""}>{due.text}</span>}
           {item.person && <span>{item.kind === "waiting" ? "from" : "with"} {item.person}</span>}

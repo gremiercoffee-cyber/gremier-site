@@ -416,7 +416,9 @@ async function syncGmail(env: Env, token: string, alerts: boolean, me: string, m
     const isSelf = own.some((e) => otherAddr.includes(e.toLowerCase())) || (!!userName && (who === userName || who.split(/\s+/)[0] === userName));
     if (isSelf && triage.action === "waiting") triage.action = "none";
     if (isSelf && triage.person) triage.person = null;
-    if (["task", "commitment", "waiting"].includes(triage.action) && triage.title) {
+    // Only "waiting" is tracked automatically (it shows as progress under In progress, not as a task).
+    // Tasks are added only when the user says so.
+    if (triage.action === "waiting" && triage.title) {
       const item = await createItem(env, {
         kind: triage.action, title: triage.title, person: triage.person ?? (counterpart || null), due_at: triage.due_at ?? null,
         priority: triage.priority, source: "gmail", category: triage.category,

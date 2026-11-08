@@ -6,7 +6,6 @@ import { Button } from "./ui";
 const ICONS: Record<ApprovalCard["kind"], { label: string; path: string }> = {
   email: { label: "Email to", path: "M4 6h16v12H4z M4 7l8 6 8-6" },
   whatsapp: { label: "WhatsApp to", path: "M5 19l1.3-3.6A7 7 0 1 1 9 18.3z" },
-  alumni: { label: "Alumni visit · sheet update", path: "M4 5h16v14H4z M4 10h16 M10 5v14" },
   ai: { label: "AI job", path: "M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3z M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z" },
   share: { label: "Share", path: "M8 12h8 M12 8l4 4-4 4 M4 4h7 M4 4v16h16v-7" },
   delete: { label: "Delete", path: "M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13" },
@@ -37,7 +36,7 @@ export default function Approvals({ refreshKey, onChanged }: { refreshKey?: numb
   if (!cards.length) return notice ? <p role="status" className="text-sm text-accent px-1">{notice}</p> : error ? <p role="alert" className="text-sm text-danger px-1">{error}</p> : null;
   return (
     <section aria-label="Needs your approval">
-      <h2 className="px-1 mb-2 font-display text-[21px] leading-tight">Needs your OK<span className="ml-2 font-sans text-[14px] text-muted">{cards.length}</span></h2>
+      <h2 className="px-1 mb-2 flex items-center gap-2 text-[17px] font-semibold">✋ Needs your OK<span className="text-[13px] font-normal text-muted">{cards.length}</span></h2>
       {notice && <p role="status" className="text-sm text-accent px-1 mb-2">{notice}</p>}
       {error && <p role="alert" className="text-sm text-danger px-1 mb-2">{error}</p>}
       <div className="space-y-2.5">
@@ -54,7 +53,7 @@ export default function Approvals({ refreshKey, onChanged }: { refreshKey?: numb
                   <p className="text-[11px] uppercase tracking-[0.12em] text-muted">{icon.label}</p>
                   <p className="text-[15px] font-medium leading-snug truncate">{title}</p>
                   {c.detail && <p className="text-sm text-muted leading-snug truncate">{c.detail}</p>}
-                  {c.meta && c.kind !== "alumni" && <p className="text-xs text-muted truncate mt-0.5">{c.meta}</p>}
+                  {c.meta && <p className="text-xs text-muted truncate mt-0.5">{c.meta}</p>}
                 </div>
               </div>
               {c.preview && (

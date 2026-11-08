@@ -1,4 +1,3 @@
-import {alumniStatus,processAlumni,backfillAlumniInbox,decideAlumni,prepareAlumniWriteCheck,confirmAlumniWriteCheck} from './alumni-visits';
 import {assistantTaskBrief} from './assistant-quick';
 import {healthAIRunnerRoute} from './daynote-ai';
 import {agentChatsRoute} from './agent-chats';
@@ -11,12 +10,11 @@ import {finishWhoopAuth,syncWhoop} from './daynote-whoop';
 import {daynoteRoute,healthReminders} from './daynote';
 import {finishHealthAuth,healthSync} from './daynote-google';
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
+import {homeJobs,stopHomeJob} from './home-jobs';
 import {autopilotPreview,runHashgachaAutopilot,saveAutopilot} from './hashgacha-autopilot';
 import { transcribeAudio } from "./transcribe";
 import { jobChat, listJobChats, messageJob, nextCodexRun, pressButton, replyWithToken, runResult, setPinned, tickJobs, type Job } from "./jobs";
-import { createJob, decideJob, expireJobs, finishJob, helperSeen, jobStatus, listJobs, nextAction, nextJob } from './browser';
 import { checkPlacement, chooseFile, deleteVault, fileBytes, fillForm, listVault, prepareSignedFile, recentFiles, recentSigned, saveVault, signFile, signedFileBytes, uploadFile } from './documents';
-import {homeAttention} from './home-attention';
 import {homeWork} from './home-work';
 import {attentionState,actionableItem,actionableNotice,actionableNoticeItem} from './attention';
 import {organizeProjects} from './projectorganization';
@@ -32,9 +30,7 @@ import {
   HttpError, all, archiveFinishedProjects, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, syncProject, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
-import { learnPass, reviewMemory } from "./learn";
 import { scanNewWatches } from "./watches";
-import { processSelfNotes, saveSelfNote } from "./meetingnotes";
 import { tidyConversations } from "./tidy";
 import { getAreas, removeArea, saveArea } from "./areas";
 import { hubConfigured } from "./hub";
@@ -44,7 +40,6 @@ import { bridgeAuthorised, bridgeStatus, handleIncoming, handleReplied, reportOu
 import { ALLOWED_NOTIFICATIONS, pushConfigured, sendPush } from "./push";
 import { activeNotificationIds, reconcileNotificationGroups } from "./notifications";
 import { findPeople, recallMemories } from "./memory";
-import { batchReplyInstructions, dismissReply,saveReplyDraft,markWhatsAppReplied,replyQueue, sendReply, draftReply } from "./replies";
 import { currentBlock, nowChecklist, describeSituation, saveSituation, type Situation } from "./situations";
 import { bridgeWatches, capture, knownChats, linkWhatsapp, markBackfilled, saveChatNames } from "./wa-bridge";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
@@ -105,14 +100,6 @@ route("POST", "/api/jobs/:id/brief/refresh", async (_req,env,[id])=>{await refre
 route("POST", "/api/jobs/:id/project", async (req,env,[id])=>json(await linkJobProject(env,id,(await body<{project_id:string|null}>(req)).project_id)));
 route("POST", "/api/jobs/:id/pin", async (req, env, [id]) => json(await setPinned(env, id, !!(await body<{ pinned?: boolean }>(req)).pinned)));
 route("POST", "/api/jobs/button", async (req, env) => { await pressButton(env, String((await body<{ data?: string }>(req)).data ?? "")); return json({ ok: true }); });
-route("GET", "/api/helper/jobs", async (_req, env) => json(await listJobs(env)));
-route("GET", "/api/helper/status", async (_req, env) => json(await helperSeen(env)));
-route("POST", "/api/helper/jobs", async (req, env) => { try { return json(await createJob(env, { ...(await body<{ instruction: string; start_url?: string }>(req)), source: "you" })); } catch (e) { throw new HttpError(400, (e as Error).message); } });
-route("POST", "/api/helper/jobs/:id/:decision", async (req, env, [id, decision]) => {
-  if (!["approve", "cancel", "answer"].includes(decision)) throw new HttpError(404, "not found");
-  const b = await body<{ answer?: string }>(req).catch(() => ({} as { answer?: string }));
-  try { return json(await decideJob(env, id, decision as "approve", b.answer)); } catch (e) { throw new HttpError(400, (e as Error).message); }
-});
 route("GET", "/api/vault", async (_req, env) => json(await listVault(env)));
 route("POST", "/api/vault", async (req, env) => { try { return json(await saveVault(env, await body(req))); } catch (e) { throw new HttpError(400, (e as Error).message); } });
 route("DELETE", "/api/vault/:id", async (_req, env, [id]) => { await deleteVault(env, id); return json({ ok: true }); });
@@ -139,6 +126,8 @@ route("GET", "/api/signed/:id", async (_req, env, [id]) => {
   try { const f = await signedFileBytes(env, id); return fileResponse(f.bytes, f.filename, "application/pdf"); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
 
+route('GET','/api/home/jobs',async(req,env)=>json(await homeJobs(env,{force:new URL(req.url).searchParams.get('force')==='1'})));
+route('POST','/api/home/jobs/:id/stop',async(req,env,[id])=>{const b=await body<{row?:string}>(req);try{return json(await stopHomeJob(env,id,b.row));}catch(e){throw new HttpError(400,(e as Error).message);}});
 route('GET','/api/hashgacha',async(_req,env)=>json(await hashgachaCampaigns(env)));
 route('POST','/api/hashgacha/refresh',async(_req,env)=>{await syncHashgacha(env,{remind:false});return json(await hashgachaCampaigns(env));});
 
@@ -201,7 +190,9 @@ route("GET", "/api/dashboard", async (_req, env) => {
     `SELECT p.id, p.name, (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done
      FROM projects p WHERE p.celebrate_at IS NOT NULL AND p.celebrate_at > ? ORDER BY p.celebrate_at`, new Date(Date.now() - 3 * 86400_000).toISOString());
   const data: Dashboard = {
-    hashgacha:await hashgachaCampaigns(env),now_block: nowBlock, celebrate, attention_cards:await homeAttention(env,attention,pending),
+    jobs: await homeJobs(env),
+    done_week: await all<Item>(env, "SELECT * FROM items WHERE status='done' AND completed_at >= ? ORDER BY completed_at DESC LIMIT 30", new Date(Date.now() - 7 * 86400_000).toISOString()),
+    hashgacha:await hashgachaCampaigns(env),now_block: nowBlock, celebrate, attention_cards:[],
     today, overdue:overdue.filter(browseEligible), waiting, pending, projects, events, home_tasks:work.tasks, home_projects:work.projects, timezone:settings.timezone, todo:todo.filter(browseEligible), lists,
     nudges: await Promise.all(live.map(async (n) => ({ ...n, actions: await actionsForNudge(env, n) }))),
     counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])),
@@ -420,10 +411,6 @@ route("DELETE", "/api/projects/:id", async (_req, env, [id]) => {
 // ---- Memory ----------------------------------------------------------------
 route("GET", "/api/memories", async (_req, env) =>
   json(await all<Memory>(env, "SELECT * FROM memories WHERE status != 'ignored' ORDER BY status = 'suggested' DESC, area, updated_at DESC")));
-route("POST", "/api/memories/:id/review", async (req, env, [id]) => {
-  const b = await body<{ action?: string; content?: string }>(req);
-  return json(await reviewMemory(env, id, String(b.action), b.content));
-});
 route("GET", "/api/groups", async (_req, env) => {
   const gs = await all<Group>(env, "SELECT * FROM contact_groups ORDER BY name");
   return json(await Promise.all(gs.map(async (g) => ({ ...g, members: await members(env, g.id) }))));
@@ -438,7 +425,6 @@ route("DELETE", "/api/groups/:id", async (_req, env, [id]) => {
   ]);
   return json({ ok: true });
 });
-route("POST", "/api/learn", async (_req, env) => json(await learnPass(env, true)));
 route("GET", "/api/people", async (_req, env) => json(await all(env, "SELECT * FROM people ORDER BY name")));
 route("POST", "/api/people/:id", async (req, env, [id]) => {
   const b = await body<{ key?: boolean }>(req);
@@ -498,21 +484,6 @@ route("DELETE", "/api/situations/:id", async (_req, env, [id]) => {
 });
 
 // ---- Replies: consolidated catch-up ------------------------------------------------
-route('POST','/api/replies/batch',async(req,env)=>{try{return json(await batchReplyInstructions(env,await body(req)));}catch(e){throw new HttpError(400,(e as Error).message);}});
-route('PUT','/api/replies/:id/draft',async(req,env,[id])=>{const b=await body<{text:string}>(req);return json(await saveReplyDraft(env,id,b.text??''));});
-route('POST','/api/replies/:id/dismiss',async(_req,env,[id])=>json(await dismissReply(env,id)));
-route('POST','/api/replies/:id/replied',async(_req,env,[id])=>json(await markWhatsAppReplied(env,id)));
-route("GET", "/api/replies", async (_req, env) => json(await replyQueue(env)));
-route("POST", "/api/replies/:id/draft", async (req, env, [id]) => {
-  const { guidance } = await body<{ guidance?: string }>(req);
-  try { return json(await draftReply(env, id, String(guidance ?? "").trim())); }
-  catch (e) { throw new HttpError(400, (e as Error).message); }
-});
-route("POST", "/api/replies/:id/send", async (req, env, [id]) => {
-  const { text } = await body<{ text?: string }>(req);
-  try { return json(await sendReply(env, id, String(text ?? ""))); }
-  catch (e) { throw new HttpError(400, (e as Error).message); }
-});
 
 // ---- Search everything ----------------------------------------------------------
 route("GET", "/api/search", async (req, env) => {
@@ -645,21 +616,10 @@ export default {
     if (url.pathname.startsWith("/api/agent/")) {
       const key = req.headers.get("x-agent-key") ?? "";
       if (!env.AGENT_KEY || !safeEqual(key, env.AGENT_KEY)) return json({ error: "unauthorised" }, 401);
-      if (url.pathname === "/api/agent/helper-jobs" && req.method === "POST") {
-        const b = (await req.json().catch(() => ({}))) as { instruction?: string; start_url?: string; from?: string;target_account?:string };
-        try { return json(await createJob(env, { instruction: String(b.instruction ?? ""), start_url: b.start_url,target_account:b.target_account, source: String(b.from || "An outside agent").replace(/^you$/i, "An outside agent") })); }
-        catch (e) { return json({ error: (e as Error).message }, 400); }
-      }
+      if (url.pathname.startsWith("/api/agent/helper-jobs")) return json({ error: "The computer helper has been removed." }, 410);
       try{
       const healthAIResponse=await healthAIRunnerRoute(req,env);if(healthAIResponse)return json(healthAIResponse);
       if(url.pathname==='/api/agent/health/sync'&&req.method==='POST')return json(await healthSync(env,true,true,url.searchParams.get('history_days')==='28'?28:7));
-      if(url.pathname==='/api/agent/alumni-visits/status'&&req.method==='GET')return json(await alumniStatus(env,url.searchParams.get('probe')==='1'));
-      if(url.pathname==='/api/agent/alumni-visits/write-check/prepare'&&req.method==='POST')return json(await prepareAlumniWriteCheck(env));
-      if(url.pathname==='/api/agent/alumni-visits/write-check/confirm'&&req.method==='POST'){const p=await req.json() as {approval_id?:string};return json(await confirmAlumniWriteCheck(env,String(p.approval_id??'')));}
-      const alumniDecision=url.pathname.match(/^\/api\/agent\/alumni-visits\/([a-f0-9]{64})\/decision$/);
-      if(alumniDecision&&req.method==='POST')return json(await decideAlumni(env,alumniDecision[1],await req.json()));
-      if(url.pathname==='/api/agent/alumni-visits/backfill'&&req.method==='POST')return json(await backfillAlumniInbox(env));
-      if(url.pathname==='/api/agent/alumni-visits/process'&&req.method==='POST'){await processAlumni(env);return json(await alumniStatus(env));}
       const agentChatResponse=await agentChatsRoute(req,env);if(agentChatResponse)return agentChatResponse;
       if(url.pathname.startsWith('/api/agent/cos/')){
         const target='/api/'+url.pathname.slice('/api/agent/cos/'.length);
@@ -681,9 +641,7 @@ export default {
       if (rm && req.method === "POST") return json(await runResult(env, rm[1], (await req.json().catch(() => ({}))) as Parameters<typeof runResult>[2]));
       // The coffee production outlook (read-only), as Chief of Staff sees it.
       if (url.pathname === "/api/agent/coffee/outlook" && req.method === "POST") { const { hubCall } = await import("./hub"); return json(await hubCall(env, "outlook")); }
-      const am = url.pathname.match(/^\/api\/agent\/helper-jobs\/([^/]+)$/);
-      if (am && req.method === "GET") { const j = (await listJobs(env)).find((x) => x.id === am[1]); return j ? json({ id: j.id, status: j.status, question: j.question, result: j.result }) : json({ error: "not found" }, 404); }
-      return json({ error: "not found" }, 404);
+                  return json({ error: "not found" }, 404);
     }
     // Desktop WhatsApp bridge: its own key, its own three routes.
     if (url.pathname.startsWith("/api/bridge/")) {
@@ -711,13 +669,8 @@ export default {
         await markBackfilled(env, bf[1], b.account === "business" ? "business" : "personal");
         return json({ ok: true });
       }
-      // Computer helper (only extensions with the helper switched on ask for jobs).
-      if (url.pathname === "/api/bridge/helper/next" && req.method === "POST") { const b = (await req.json().catch(() => ({}))) as { device?: string;account?:string }; return json(await nextJob(env, String(b.device ?? "computer").slice(0, 60),b.account)); }
-      const hm = url.pathname.match(/^\/api\/bridge\/helper\/([^/]+)\/(step|finish|status)$/);
-      if (hm && hm[2] === "status") return json(await jobStatus(env, hm[1]));
-      if (hm && hm[2] === "step" && req.method === "POST") return json(await nextAction(env, hm[1], await req.json()));
-      if (hm && hm[2] === "finish" && req.method === "POST") return json(await finishJob(env, hm[1], await req.json()));
-      if (url.pathname === "/api/bridge/selfnote" && req.method === "POST") return json(await saveSelfNote(env, await req.json()));
+      // Older add-ons may still ask for helper jobs or post self-notes; both features are gone.
+      if (url.pathname.startsWith("/api/bridge/helper/") || url.pathname === "/api/bridge/selfnote") return json({ ok: true, disabled: true });
       // Older add-ons still post conversations here; meeting detection is gone.
       if (url.pathname === "/api/bridge/convo" && req.method === "POST") return json({ ok: true, disabled: true, agreed: false });
       if (url.pathname === "/api/bridge/replied" && req.method === "POST") return json(await handleReplied(env, await req.json()));
@@ -762,7 +715,7 @@ export default {
     // New approvals buzz the phone once; the cards live on Today.
     ctx.waitUntil(import("./approvals").then((a) => a.announceApprovals(env)).catch((e) => console.error("approvals", e)));
     // Reminders and due times the user set: every 5 minutes, so they arrive on time.
-    ctx.waitUntil(runProactive(env, { remindersOnly: true }).catch((e) => console.error("reminders", e)));
+    ctx.waitUntil(runProactive(env).catch((e) => console.error("reminders", e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     ctx.waitUntil(healthSync(env).catch(()=>{}));
     ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));

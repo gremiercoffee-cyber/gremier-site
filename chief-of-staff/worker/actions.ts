@@ -3,67 +3,24 @@
  * Notification buttons call the public /api/act route with an HMAC signature per nudge, so the
  * service worker never needs the passcode.
  */
-import { decideSuggestion, suggestionChoices } from "./suggestions";
-import { assignProject } from "./projectmatch";
-import { decideJob } from "./browser";
 import type { Item, Nudge, NudgeAction } from "../shared/types";
-import { draftReply } from "./replies";
-import { queueWhatsApp } from "./whatsapp";
 import type { Env } from "./env";
 import { first, getSettings, localParts, run, updateItem } from "./db";
 import { decideOutbox } from "./whatsapp";
-import { createDraft } from "./google";
-import { now, uid } from "./db";
 
 /**
- * The buttons for one nudge. Most are fixed per type (actionsFor); the "which project?" ones depend on
- * the candidates stored for that question, so they're looked up here. The first three show on the lock screen.
+ * The buttons for one notification. Every task gets the same three, on the phone and in the app:
+ * Done, Later (choose a time) and Cancel. Anything without a task can only be hidden.
  */
-export async function actionsForNudge(env: Env, n: Pick<Nudge, "type" | "item_id"> & Partial<Pick<Nudge,'topic_key'|'body'>>): Promise<NudgeAction[]> {
-  if (n.type === 'situation' && n.topic_key?.startsWith('block:')) {
-    const block = await first<{note:string}>(env, 'SELECT note FROM situations WHERE id=?', n.topic_key.slice(6));
-    if (block?.note && n.body?.split('\n').includes(`📝 ${block.note}`)) {
-      return [{id:'clear_note',title:'Remove repeating note'}, {id:'ok',title:'Hide alert'}];
-    }
-  }
-  if (n.type === "suggest" && n.item_id) {
-    const c = await suggestionChoices(env, n.item_id);
-    if (c.project_id) return [{ id: "accept", title: `✓ Yes, add to ${c.project ?? "the project"}` }, { id: "accept_p:none", title: "Add, no project" }, { id: "decline", title: "✗ No" }];
-    if (c.candidates.length) return [...c.candidates.slice(0, 2).map((p) => ({ id: `accept_p:${p.id}`, title: `✓ Add to ${p.name}` })),
-      { id: "accept_p:none", title: "✓ Add, no project" }, { id: "decline", title: "✗ No" }];
-  }
+export async function actionsForNudge(_env: Env, n: Pick<Nudge, "type" | "item_id"> & Partial<Pick<Nudge,'topic_key'|'body'>>): Promise<NudgeAction[]> {
   return actionsFor(n);
 }
 
-/** Buttons per nudge type. The first two are what Android shows on the notification. */
 export function actionsFor(n: Pick<Nudge, "type" | "item_id">): NudgeAction[] {
   if (n.type === "wa_send") return [{ id: "send", title: "Send" }, { id: "edit", title: "Edit", opens: true }, { id: "cancel", title: "Cancel" }];
-  if (n.type === "prep") return [];
-  if (n.type === "alumni_visit") return [{ id: "alumni_add", title: "✓ Add to sheet" }, { id: "alumni_reject", title: "✗ Reject" }];
-  if (n.type === "meeting") return [{ id: "ok", title: "Got it" }, { id: "not_meeting", title: "Not a meeting" }];
-  if (n.type === "helper_approve") return [{ id: "helper_allow", title: "✓ Allow" }, { id: "helper_deny", title: "✗ Deny" }];
-  if (n.type === "helper") return [{ id: "helper_open", title: "Open", opens: true }, { id: "ok", title: "Dismiss" }];
-  if (n.type === "suggest") return [{ id: "accept", title: "✓ Yes, add it" }, { id: "decline", title: "✗ No" }];
   if (n.type === "auto_done") return [{ id: "ok", title: "Correct" }, { id: "undo", title: "Undo" }];
-  if (n.type === "postponed") return [{ id: "done", title: "Done ✓" }, { id: "reschedule", title: "Later…", opens: true },
-    { id: "notneeded", title: "Not needed" }, { id: "breakdown", title: "Break it down", opens: true }, { id: "delegate", title: "Hand it off", opens: true }];
-  if (!n.item_id) return [{ id: "ok", title: "Hide alert" }];
-  // Closing a task and hiding its current alert are deliberately distinct.
-  const done: NudgeAction = { id: "done", title: n.type === "checkin" ? "Yes, done ✓" : "Done ✓" };
-  const base: NudgeAction[] = [done, { id: "reschedule", title: "Later…", opens: true }, { id: "notneeded", title: "Not needed" }, { id: "ok", title: "Hide alert" }, { id: "ignore", title: "Mute alerts" }];
-  switch (n.type) {
-    case "unanswered":
-      // The notification shows the first three: draft it, put it off, or nothing needed. The rest are in the app.
-      return [{ id: "reply", title: "✍️ Draft…", opens: true }, { id: "reschedule", title: "Later…", opens: true }, { id: "notneeded", title: "No reply needed" },
-        { id: "reply_yes", title: "👍 Yes" }, { id: "reply_no", title: "👎 No" }, done, { id: "hold", title: "Holding reply" }];
-    case "whatsapp":
-    case "email":
-      return [...base, { id: "reply", title: "Reply…", opens: true }];
-    case "waiting":
-      return [...base, { id: "nudge", title: "Draft follow-up", opens: true }];
-    default:
-      return base;
-  }
+  if (!n.item_id) return [{ id: "ok", title: "Hide" }];
+  return [{ id: "done", title: "✓ Done" }, { id: "reschedule", title: "🕒 Later", opens: true }, { id: "notneeded", title: "✕ Cancel" }];
 }
 
 const enc = new TextEncoder();
@@ -97,18 +54,6 @@ export function tomorrowMorning(tz: string) {
 export async function applyAction(env: Env, nudgeId: string, action: string): Promise<{ ok: true; message: string; open?: string }> {
   const n = await first<Nudge>(env, "SELECT * FROM nudges WHERE id = ?", nudgeId);
   if (!n) return { ok: true, message: "Already handled." };
-  if (action === 'clear_note') {
-    if (n.type !== 'situation' || !n.topic_key?.startsWith('block:')) throw new Error('This alert has no repeating note.');
-    const blockId=n.topic_key.slice(6);
-    const block=await first<{note:string}>(env,'SELECT note FROM situations WHERE id=?',blockId);
-    // An old phone button must never remove a note edited since that notification.
-    if (!block?.note || !n.body.split('\n').includes(`📝 ${block.note}`)) return {ok:true,message:'The note changed. Refresh to review it.'};
-    await run(env,'UPDATE situations SET note=\'\',updated_at=? WHERE id=? AND note=?',now(),blockId,block.note);
-    const body=n.body.split('\n').filter(line=>line!==`📝 ${block.note}`).join('\n');
-    await run(env,'UPDATE nudges SET body=?,revision=revision+1 WHERE id=?',body,n.id);
-    if (!body.trim()) await run(env,'UPDATE nudges SET dismissed=1 WHERE id=?',n.id);
-    return {ok:true,message:'Repeating note removed. Other tasks are unchanged.'};
-  }
   if (n.type === "wa_send" && n.item_id) {
     // For send requests item_id points at the outbox row.
     const dismissIt = () => run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
@@ -120,40 +65,6 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
       await dismissIt();
       return { ok: true, message: "Let's change it.", open: `/?ask=${encodeURIComponent(`Change the WhatsApp to ${row?.recipient}: "${row?.text}"`)}` };
     }
-  }
-  if (n.type === "alumni_visit" && n.item_id) {
-    const e = await first<{ approval_hash: string; status: string }>(env, "SELECT approval_hash,status FROM alumni_visit_events WHERE id = ?", n.item_id);
-    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
-    if (!e || e.status !== "awaiting_approval") return { ok: true, message: "Already handled." };
-    if (action !== "alumni_add" && action !== "alumni_reject") return { ok: true, message: "OK." };
-    const { decideAlumni } = await import("./alumni-visits");
-    await decideAlumni(env, n.item_id, { decision: action === "alumni_add" ? "approve" : "reject", approval_hash: e.approval_hash });
-    return { ok: true, message: action === "alumni_add" ? "Added. It's in the alumni sheet within 5 minutes." : "Rejected. Nothing was written." };
-  }
-  if (n.type === "prep") {
-    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
-    return { ok: true, message: "OK." };
-  }
-  if (n.type === "meeting") {
-    // For meetings item_id is the Schedule block.
-    if (action === "not_meeting" && n.item_id) await run(env, "UPDATE situations SET active = 0 WHERE id = ?", n.item_id);
-    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
-    return { ok: true, message: action === "not_meeting" ? "Removed from your Schedule." : "OK." };
-  }
-  if ((n.type === "helper_approve" || n.type === "helper") && n.item_id) {
-    // For these item_id is the computer-helper job.
-    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
-    if (action === "helper_allow") { await decideJob(env, n.item_id, "approve"); return { ok: true, message: "Allowed. Your computer will start on it within a minute." }; }
-    if (action === "helper_deny") { await decideJob(env, n.item_id, "cancel"); return { ok: true, message: "Denied. Nothing was done." }; }
-    if (action === "helper_open") return { ok: true, message: "Opening…", open: "/?tab=tasks" };
-    return { ok: true, message: "OK." };
-  }
-  if (n.type === "suggest" && n.item_id) {
-    // For suggestions item_id is the suggestion id. "accept_p:<id>" = yes, in that project.
-    const message = await decideSuggestion(env, n.item_id, action === "accept" || action.startsWith("accept_p:"),
-      action.startsWith("accept_p:") ? action.slice("accept_p:".length) : undefined);
-    await run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
-    return { ok: true, message };
   }
   const item = n.item_id ? await first<Item>(env, "SELECT * FROM items WHERE id = ?", n.item_id) : null;
   const dismiss = () => run(env, "UPDATE nudges SET dismissed = 1 WHERE id = ?", nudgeId);
@@ -176,63 +87,15 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
         message = "Moved to tomorrow morning.";
       }
       break;
-    case "snooze2h":
-      if (item) { await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL, snooze_count = snooze_count + 1 WHERE id = ?", new Date(Date.now() + 2 * 3600_000).toISOString(), item.id); message = "I'll check again in 2 hours."; }
-      break;
     case "notneeded":
       if (item) {
         await updateItem(env, item.id, { status: "dropped" });
         await run(env, "UPDATE nudges SET dismissed = 1 WHERE item_id = ?", item.id);
-        message = n.type === "unanswered" ? "OK, you don't need to get back to them." : "Dropped.";
-      }
-      break;
-    case "hold":
-      if (item) message = await holdingReply(env, item);
-      break;
-    case "reply_yes":
-    case "reply_no":
-      if (item) {
-        const guidance = action === "reply_yes"
-          ? "Answer positively / say yes. Keep it short and warm."
-          : "Decline or say no politely. Keep it short and kind.";
-        const { text } = await draftReply(env, item.id, guidance);
-        if (item.source === "whatsapp") {
-          const chat = (await first<{ chat: string }>(env, "SELECT chat FROM whatsapp_inbox WHERE item_id = ? ORDER BY received_at DESC LIMIT 1", item.id))?.chat ?? item.person ?? "";
-          await queueWhatsApp(env, chat, text); // "Send to X: …?" notification with Send / Edit
-          message = "Drafted. Tap Send on the next notification.";
-        } else {
-          await createDraft(env, { threadId: item.ext_ref ?? undefined, body: text, account: item.ext_account ?? undefined });
-          message = "Saved as a Gmail draft. Send it from Gmail.";
-        }
-        await updateItem(env, item.id, { status: "done" });
-        await dismiss();
-      }
-      break;
-    case "snooze3d":
-      if (item) { await run(env, "UPDATE items SET reminded_at = ? WHERE id = ?", new Date(Date.now() - 86400_000).toISOString(), item.id); message = "I'll check again in 3 days."; }
-      break;
-    case "breakdown":
-      if (item) { open = `/?ask=${encodeURIComponent(`Help me break "${item.title}" into small steps I can actually do, and schedule them.`)}`; message = "Opening…"; }
-      break;
-    case "delegate":
-      if (item) { open = `/?ask=${encodeURIComponent(`I want to hand off "${item.title}" to someone else. Help me pick who and draft the message.`)}`; message = "Opening…"; }
-      break;
-    case "draft":
-    case "nudge":
-    case "reply":
-      if (item) {
-        const ask = action === "draft" ? `Draft a reply for: ${item.title}`
-          : action === "reply" ? `Help me reply ${item.source === "gmail" ? "by email" : "on WhatsApp"} to ${item.person ?? "them"}. ${item.notes}`
-          : `Draft a friendly follow-up to ${item.person ?? "them"} about: ${item.title}`;
-        open = `/?ask=${encodeURIComponent(ask)}`;
-        message = "Opening a draft…";
+        message = `Cancelled: ${item.title}`;
       }
       break;
     case "ok":
-      message = item ? "Alert hidden. Task is still open." : "Alert hidden. Unfinished tasks and repeating notes stay scheduled.";
-      break;
-    case "ignore":
-      if (item) { await run(env, "UPDATE items SET muted = 1 WHERE id = ?", item.id); message = "OK, no more alerts about this one. It's still on your list."; }
+      message = item ? "Hidden. The task is still on your list." : "Hidden.";
       break;
     case "reschedule":
       if (item) return {ok:true,open:`/?item=${encodeURIComponent(item.id)}&reschedule=1`,message:'Pick a new time…'};
@@ -242,24 +105,4 @@ export async function applyAction(env: Env, nudgeId: string, action: string): Pr
   }
   await dismiss();
   return { ok: true, message, open };
-}
-
-/** "Got it, I'll get back to you by tomorrow" in the person's language, then check again tomorrow. */
-async function holdingReply(env: Env, item: Item): Promise<string> {
-  const hebrew = /[\u0590-\u05FF]/.test(`${item.notes} ${item.title}`);
-  const text = hebrew ? "קיבלתי, אחזור אליך עד מחר 🙏" : "Got it, I'll get back to you by tomorrow.";
-  const tomorrow = tomorrowMorning((await getSettings(env)).timezone);
-  await run(env, "UPDATE items SET nudge_after = ?, reminded_at = NULL WHERE id = ?", tomorrow, item.id);
-  if (item.source === "whatsapp" && item.person) {
-    // The tap on "Holding reply" is the approval for this exact message.
-    const t = now();
-    await run(env, "INSERT INTO whatsapp_outbox (id, recipient, text, status, created_at, updated_at) VALUES (?, ?, ?, 'approved', ?, ?)",
-      uid(), item.person, text, t, t);
-    return `Sending "${text}" to ${item.person}. I'll remind you tomorrow.`;
-  }
-  if (item.source === "gmail" && item.ext_ref) {
-    await createDraft(env, { threadId: item.ext_ref, body: text, account: item.ext_account ?? undefined });
-    return "Holding reply saved in your Gmail drafts. Send it from there. I'll remind you tomorrow.";
-  }
-  return "I'll remind you tomorrow.";
 }

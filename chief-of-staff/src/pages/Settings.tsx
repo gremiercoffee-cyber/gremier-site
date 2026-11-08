@@ -4,6 +4,7 @@ import { setAreas, useAreas } from "../areas";
 import { api, setToken } from "../api";
 import { Button, Card, Empty } from "../components/ui";
 import HashgachaAutopilot from "../components/HashgachaAutopilot";
+import RecurringReminders from "../components/RecurringReminders";
 
 // OpenAI Realtime voices for live conversation.
 const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"];
@@ -308,6 +309,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
       </Card>
 
       <HashgachaAutopilot />
+      <Card title="🔁 Repeating reminders"><RecurringReminders refreshKey={0} onChanged={() => {}} /></Card>
 
       <Card title="AI usage">
         <div className="flex gap-1.5 mb-3">

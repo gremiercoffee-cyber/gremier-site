@@ -19,7 +19,6 @@ test('schedule-bound work waits for its window; skips, muted and snoozed items r
 test('meetings and stale Now cards do not surface early or return on the next recurring day',()=>{const b={...block,id:'meet',date:'2026-10-18',keywords:'wa-meet:A'},state={at:morning,tz,blocks:new Map([['meet',b],['evening',block]]),items:new Map()};const n={type:'meeting',item_id:'meet',created_at:morning.toISOString()};assert.equal(timing.actionableNotice(n,state),false);assert.equal(timing.actionableNotice(n,{...state,at:evening}),true);assert.equal(timing.actionableNotice(n,{...state,at:new Date('2026-10-18T19:00:00Z')}),false);const now={type:'situation',topic_key:'block:evening',created_at:'2026-10-15T17:15:00Z'};assert.equal(timing.actionableNotice(now,{...state,at:evening}),false);assert.equal(timing.actionableNotice({...now,updated_at:evening.toISOString()},{...state,at:evening}),true);});
 test('dashboard hides the prepared next-month reminder and early meeting without losing records or the full-day view',async t=>{t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();h.item('monthly');h.item('later-today','reminder','2026-10-18T17:15:00.000Z');h.item('normal','task',null);h.saveBlock('meet','2026-10-18','wa-meet:A');await notifications.recordNotification(h.env,'meeting','Meet A','With A','meet','/');const response=await worker.fetch(new Request('https://fixture/api/dashboard',{headers:{authorization:'Bearer fixture-only'}}),h.env,{waitUntil(){}});assert.equal(response.status,200);const d=await response.json();assert.deepEqual(d.todo.map(i=>i.id),['normal']);assert.equal(d.nudges.some(n=>n.type==='meeting'),false);assert.equal(d.today.some(i=>i.id==='later-today'),true,'daily overview keeps the full day');assert.equal(h.db.prepare("SELECT status FROM items WHERE id='monthly'").get().status,'open');assert.deepEqual(await notifications.activeNotificationIds(h.env,h.db.prepare('SELECT id FROM nudges').all().map(n=>n.id)),[]);});
 test('time block suggestions exclude next-month reminders and wrapups retain unfinished attached tasks',async t=>{t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();h.item('monthly');h.item('attached','task',null,'evening');const b=h.db.prepare("SELECT * FROM situations WHERE id='evening'").get();const items=await situations.itemsFor(h.env,b);assert.deepEqual(items.map(i=>i.id),['attached']);const after=new Date('2026-10-18T18:20:00Z'),state=await timing.attentionState(h.env,after);assert.equal(timing.actionableNoticeItem(state.items.get('attached'),{type:'wrapup',topic_key:'block:evening'},state),true);});
-test.skip('Off in the bare-bones version (Nov 2026): a scheduled meeting emits one at-time notification and none before or after its window',async t=>{t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();h.saveBlock('meet','2026-10-18','wa-meet:A');assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare('SELECT count(*) n FROM nudges').get().n,0);t.mock.timers.setTime(evening.getTime());assert.equal(await situations.runSituations(h.env),1);assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='meeting'").get().n,1);t.mock.timers.setTime(new Date('2026-10-18T19:00:00Z').getTime());assert.deepEqual(await notifications.activeNotificationIds(h.env,h.db.prepare('SELECT id FROM nudges').all().map(n=>n.id)),[]);});
 
 const actions = await load('worker/actions.ts');
 const itemDb = await load('worker/db.ts');
@@ -27,28 +26,6 @@ const dashboard = async h => {
  const response=await worker.fetch(new Request('https://fixture/api/dashboard',{headers:{authorization:'Bearer fixture-only'}}),h.env,{waitUntil(){}});
  assert.equal(response.status,200);return response.json();
 };
-test.skip('Off in the bare-bones version (Nov 2026): a repeating block note has a removal action even with no tasks; hiding only lasts for that alert',async t=>{
- t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();
- h.db.prepare("UPDATE situations SET note='Inventory fixture' WHERE id='evening'").run();
- const record=()=>notifications.recordNotification(h.env,'situation','Night yeshiva: a reminder','📝 Inventory fixture',null,'/',{topic:'block:evening',itemIds:[]});
- const first=await record();let d=await dashboard(h);
- assert.equal(d.nudges.length,1);assert.deepEqual(d.nudges[0].actions.map(a=>a.id),['clear_note','ok']);
- await actions.applyAction(h.env,first.id,'ok');assert.equal((await dashboard(h)).nudges.length,0);
- assert.equal(h.db.prepare("SELECT note FROM situations WHERE id='evening'").get().note,'Inventory fixture');
- const next=await record();await actions.applyAction(h.env,next.id,'clear_note');
- assert.equal(h.db.prepare("SELECT note FROM situations WHERE id='evening'").get().note,'');
- assert.equal((await dashboard(h)).nudges.length,0);assert.equal(await situations.runSituations(h.env),0);
-});
-test.skip('Off in the bare-bones version (Nov 2026): removing a repeating note preserves real tasks and stale phone actions cannot remove a newer note',async t=>{
- t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock();h.item('real','task',null,'evening');
- h.db.prepare("UPDATE situations SET note='Old note' WHERE id='evening'").run();
- const n=await notifications.recordNotification(h.env,'situation','1 thing for now','📝 Old note\n• Task real',null,'/',{topic:'block:evening',itemIds:['real']});
- h.db.prepare("UPDATE situations SET note='New note' WHERE id='evening'").run();
- await actions.applyAction(h.env,n.id,'clear_note');assert.equal(h.db.prepare("SELECT note FROM situations WHERE id='evening'").get().note,'New note');
- h.db.prepare("UPDATE situations SET note='Old note' WHERE id='evening'").run();await actions.applyAction(h.env,n.id,'clear_note');
- const d=await dashboard(h);assert.equal(d.nudges[0].items[0].id,'real');assert.equal(d.nudges[0].body,'• Task real');
- assert.equal(h.db.prepare("SELECT status FROM items WHERE id='real'").get().status,'open');
-});
 test('Done and Not needed close work everywhere while Later leaves it intact until a time is saved',async t=>{
  t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.item('a','task',null);h.item('b','task',null);
  const a=await notifications.recordNotification(h.env,'reminder','Task a','','a','/');
@@ -63,14 +40,6 @@ test('Done and Not needed close work everywhere while Later leaves it intact unt
  const b=await notifications.recordNotification(h.env,'reminder','Task b','','b','/');await actions.applyAction(h.env,b.id,'notneeded');
  assert.equal(h.db.prepare("SELECT status FROM items WHERE id='b'").get().status,'dropped');assert.equal((await dashboard(h)).nudges.length,0);
  await itemDb.updateItem(h.env,'b',{status:'open'});assert.equal(h.db.prepare("SELECT status FROM items WHERE id='b'").get().status,'open');
-});
-test('mute suppresses home and phone alerts while preserving the task in storage',async t=>{
- t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.item('a','task',null);
- const n=await notifications.recordNotification(h.env,'reminder','Task a','','a','/');await actions.applyAction(h.env,n.id,'ignore');
- const again=await notifications.recordNotification(h.env,'reminder','Task a','','a','/');
- assert.equal(h.db.prepare("SELECT status FROM items WHERE id='a'").get().status,'open');assert.equal((await dashboard(h)).nudges.length,0);
- assert.deepEqual(await notifications.activeNotificationIds(h.env,[again.id]),[]);
- assert.deepEqual(actions.actionsFor({type:'reminder',item_id:'a'}).slice(0,3).map(a=>a.id),['done','reschedule','notneeded']);
 });
 
 test('Now exposes the original task IDs under their project name and completing them updates the project without extra model calls',async t=>{
@@ -115,25 +84,6 @@ test('a drive selects calls across all areas and explicit voice work, excluding 
  assert.equal(h.db.prepare("SELECT status FROM items WHERE id='print'").get().status,'open');
  assert.equal(contexts.drivingSuitable({title:'Phone charger'}),false);assert.equal(contexts.drivingSuitable({title:'Call for proposals'}),false);assert.equal(contexts.drivingSuitable({title:'להתקשר לאבא'}),true);
 });
-test.skip('Off in the bare-bones version (Nov 2026): unsuitable reminders and summaries stay quiet while driving, then become actionable at the destination',async t=>{
- t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-19T05:30:00Z')});const h=setup();await commuteFixture(h);h.item('desk','task','2026-10-19T05:00:00Z');h.db.prepare("UPDATE items SET execution_mode='desk',category='yeshiva' WHERE id='desk'").run();
- const notice=await notifications.recordNotification(h.env,'overdue','Do desk work','','desk','/');const briefing=await notifications.recordNotification(h.env,'briefing','Today','Full day',null,'/');
- let d=await dashboard(h);assert.equal(d.now_block.items.length,0);assert.equal(d.nudges.length,0);assert.deepEqual(await notifications.activeNotificationIds(h.env,[notice.id,briefing.id]),[]);
- t.mock.timers.setTime(new Date('2026-10-19T06:20:00Z').getTime());d=await dashboard(h);assert.equal(d.now_block.name,'At yeshiva');assert.equal(d.now_block.items[0].id,'desk');assert.equal(d.nudges.some(n=>n.id===briefing.id),true);
-});
-test.skip('Off in the bare-bones version (Nov 2026): commutes emit one relevant checklist, no destination overview or end-of-drive wrapup, and stay silent without calls',async t=>{
- t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-19T05:30:00Z')});const h=setup(),drive=await commuteFixture(h);
- h.db.prepare("UPDATE situations SET note='General work overview' WHERE id=?").run(drive.id);h.item('physical','task',null);h.db.prepare("UPDATE items SET title='Print papers',category='yeshiva' WHERE id='physical'").run();
- assert.equal(await situations.runSituations(h.env),0);assert.equal(h.db.prepare('SELECT count(*) n FROM nudges').get().n,0);
- h.item('call','task',null);h.db.prepare("UPDATE items SET title='Call Dad',category='personal' WHERE id='call'").run();h.db.prepare('UPDATE situations SET last_fired=NULL WHERE id=?').run(drive.id);
- assert.equal(await situations.runSituations(h.env),1);assert.equal(await situations.runSituations(h.env),0);
- const n=h.db.prepare("SELECT * FROM nudges WHERE type='situation'").get();assert.equal(n.body,'• Call Dad');
- t.mock.timers.setTime(new Date('2026-10-19T06:20:00Z').getTime());await situations.runSituations(h.env);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='wrapup'").get().n,0);
-});
-test.skip('Off in the bare-bones version (Nov 2026): overlapping equivalent work blocks only emit the same checklist once',async t=>{
- t.mock.timers.enable({apis:['Date'],now:evening});const h=setup();h.saveBlock('one');h.saveBlock('two');h.item('work','task',null);h.db.prepare("UPDATE items SET category='yeshiva' WHERE id='work'").run();
- assert.equal(await situations.runSituations(h.env),1);assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='situation'").get().n,1);
-});
 test('execution mode persists through create/edit/dedup instead of changing projects or reminder times',async()=>{
  const h=setup();const item=await itemDb.createItem(h.env,{title:'Discuss the app plan',execution_mode:'voice'});assert.equal(item.execution_mode,'voice');
  await itemDb.updateItem(h.env,item.id,{notes:'More details'});assert.equal(h.db.prepare('SELECT execution_mode FROM items WHERE id=?').get(item.id).execution_mode,'voice');
@@ -156,12 +106,12 @@ test('active project folders and standalone scheduled tasks remain discoverable 
  h.item('project-step','task',null,'evening');h.db.prepare("UPDATE items SET project_id='scheduled',category='yeshiva' WHERE id='project-step'").run();h.item('standalone','task',null,'evening');h.item('future-reminder');
  const d=await dashboard(h);assert.ok(d.projects.some(p=>p.id==='empty'));assert.equal(d.projects.find(p=>p.id==='scheduled').items[0].id,'project-step');assert.ok(d.todo.some(i=>i.id==='standalone'));assert.equal(d.now_block.items.some(i=>['standalone','project-step'].includes(i.id)),false);assert.equal(d.todo.some(i=>i.id==='future-reminder'),false);
 });
-test('approvals and blocked jobs surface while reply and waiting tasks remain in the work inventory',async t=>{
+test('approving something never closes it, and reply and waiting tasks remain in the work inventory',async t=>{
  t.mock.timers.enable({apis:['Date'],now:morning});const h=setup();
  h.db.prepare("INSERT INTO pending_actions(id,action,payload,description,created_at) VALUES('approve','test','{}','Review a proposal','2026-10-18')").run();
  h.item('reply','task',null);h.db.prepare("UPDATE items SET source='whatsapp' WHERE id='reply'").run();h.item('waiting','waiting',null);h.db.prepare("UPDATE items SET updated_at='2026-10-01' WHERE id='waiting'").run();
- let d=await dashboard(h);assert.deepEqual(new Set(d.home_tasks.map(i=>i.id)),new Set(['reply','waiting']));assert.deepEqual(new Set(d.attention_cards.map(c=>c.id)),new Set(['approvals']));assert.equal(h.db.prepare("SELECT status FROM pending_actions WHERE id='approve'").get().status,'pending');
- h.db.prepare("UPDATE pending_actions SET status='rejected'").run();await itemDb.updateItem(h.env,'reply',{status:'done'});await itemDb.updateItem(h.env,'waiting',{status:'done'});d=await dashboard(h);assert.deepEqual(d.attention_cards,[]);
+ let d=await dashboard(h);assert.deepEqual(new Set(d.home_tasks.map(i=>i.id)),new Set(['reply','waiting']));assert.equal(h.db.prepare("SELECT status FROM pending_actions WHERE id='approve'").get().status,'pending');
+ h.db.prepare("UPDATE pending_actions SET status='rejected'").run();await itemDb.updateItem(h.env,'reply',{status:'done'});await itemDb.updateItem(h.env,'waiting',{status:'done'});
 });
 
 test('a dated event takes precedence over an overlapping recurring block',async t=>{

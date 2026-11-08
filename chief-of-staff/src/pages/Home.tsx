@@ -1,6 +1,8 @@
-import HashgachaReports from '../components/HashgachaReports';
 import HomeWork from '../components/HomeWork';
-import {useImmediateCompletions} from '../useImmediateCompletions';
+import InProgress from '../components/InProgress';
+import Approvals from '../components/Approvals';
+import WhatsAppsToSend from '../components/WhatsAppsToSend';
+import { openTask } from '../components/TaskSheet';
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ActionNote, Dashboard, Message, Nudge } from "../../shared/types";
 import type { FoundFile } from "../api";
@@ -10,8 +12,6 @@ import { startLiveCall, type LiveStatus } from "../realtime";
 import LiveOrb from "../components/LiveOrb";
 import Celebration from "../components/Celebration";
 import ChatFiles from "../components/ChatFiles";
-import Chips from "../components/NudgeActions";
-import TaskActions from "../components/TaskActions";
 import { startRecording } from "../voice";
 
 type LiveState = "off" | LiveStatus;
@@ -20,7 +20,8 @@ type LiveState = "off" | LiveStatus;
  * The main screen: your Chief of Staff. With no conversation open it is a calm "I'm here" presence
  * with whatever needs you; once you talk or type it becomes the conversation.
  */
-export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, draft, onDraftUsed, serverTranscription, onDataChanged, refreshKey }: {
+export default function Home({ name, conversationId, onConversation, initialAsk, startVoice, startTyping, draft, onDraftUsed, serverTranscription, onDataChanged, refreshKey, onOpenChat }: {
+  onOpenChat: (jobId: string) => void;
   name: string;
   conversationId: string | null;
   onConversation: (id: string | null) => void;
@@ -158,18 +159,7 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     setLive("off");
   }
 
-  const act = async (n: Nudge, action: string) => {
-    const r = await api.actNudge(n.id, action);
-    setActionMessage(r.message);
-    if (r.open?.includes("reschedule=1") && n.item_id) {
-      window.dispatchEvent(new CustomEvent("cos:reschedule", { detail: n.item_id }));
-    } else if (r.open) {
-      const ask = new URLSearchParams(r.open.split("?")[1] ?? "").get("ask");
-      if (ask) { onConversation(null); convoRef.current = null; setMessages([]); send(ask); }
-    }
-    api.dashboard().then(setDash).catch(() => {});
-    onDataChanged();
-  };
+  const reloadDash = () => { api.dashboard().then(setDash).catch(() => {}); onDataChanged(); };
 
   const inConversation = messages.length > 0 || sending;
   // Group drafts show in a chat only if this chat made one (not every pending draft in every chat).
@@ -197,10 +187,8 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-4 no-scrollbar">
         {!inConversation ? (
-          <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={dictatingNow ? "listening" : live} dash={dash} onAct={act}
-            onNudge={(ask) => { onConversation(null); convoRef.current = null; setMessages([]); send(ask); }}
-            onChanged={() => { api.dashboard().then(setDash).catch(() => {}); onDataChanged(); }}
-            onReply={(n) => { onConversation(null); convoRef.current = null; setTyping(true); setInput(`About "${n.title}": `); }} />
+          <Presence greeting={`${greeting}${name ? `, ${name}` : ""}.`} live={dictatingNow ? "listening" : live} dash={dash}
+            refreshKey={refreshKey} onChanged={reloadDash} onOpenChat={onOpenChat} />
         ) : (
           <div className="space-y-3 pt-2">
             {messages.map((m) => <div key={m.id}><Bubble m={m} />{filesUnder.has(m.id) && <ChatFiles files={filesUnder.get(m.id)!} onChanged={loadChatFiles} />}</div>)}
@@ -224,125 +212,76 @@ export default function Home({ name, conversationId, onConversation, initialAsk,
   );
 }
 
-function Presence({ greeting, live, dash, onAct, onReply, onChanged }: {
-  greeting: string; live: LiveState; dash: Dashboard | null;
-  onAct: (n: Nudge, a: string) => Promise<void>; onReply: (n: Nudge) => void; onNudge: (ask: string) => void; onChanged: () => void;
-}) {
-  const dismissAction = (n: Nudge) => !n.item_id && !n.items?.length && !n.actions?.some(a=>a.id==='clear_note') ? (n.actions ?? []).find(a=>a.id==='ok') : undefined;
-  const dismiss = (n: Nudge) => { const a = dismissAction(n); if (a) void onAct(n, a.id).catch(()=>{}); };
-  const completion=useImmediateCompletions((dash?.nudges??[]).flatMap(n=>[...(n.item_id?[n.item_id]:[]),...(n.items??[]).map(i=>i.id)]));
-  const performAction=(n:Nudge,action:string)=>n.item_id&&['done','notneeded'].includes(action)?completion.complete(n.item_id,()=>onAct(n,action),()=>{}):onAct(n,action);
-  // Notifications: only things you asked for (the server sends nothing else). All of them, newest first.
-  const nudges = (dash?.nudges ?? []).filter((n) => !completion.hidden.has(n.item_id??''));
+/** What a notification is about, as an emoji, so the list reads at a glance. */
+const NOTE_ICON: Record<string, string> = { overdue: "🔴", reminder: "⏰", checkin: "❓", watch: "👀", hashgacha_auto: "📚", routine: "📄", routine_alert: "📄", mission_ask: "🙋", review: "🗓️", customers: "☕", idea: "💡", tracker: "🗂️", wrapup: "🏁", project_ask: "🗂️" };
+const cleanTitle = (t: string) => t.replace(/^(don't forget|coming up|still waiting|reminder|due soon|heads up|overdue)\s*:\s*/i, "");
 
+/**
+ * The home screen, top to bottom: anything that needs your OK, updates, 📅 Today, 🔄 In progress,
+ * 🗂️ Your tasks and ✅ Done this week. Tap any task for Done / Change time / Cancel; tap any job for Stop.
+ */
+function Presence({ greeting, live, dash, refreshKey, onChanged, onOpenChat }: {
+  greeting: string; live: LiveState; dash: Dashboard | null; refreshKey: number; onChanged: () => void; onOpenChat: (id: string) => void;
+}) {
+  const [openNote, setOpenNote] = useState<string | null>(null);
+  const endToday = new Date().setHours(23, 59, 59, 999);
+  const todayIds = new Set((dash?.home_tasks ?? []).filter((i) => i.due_at && Date.parse(i.due_at) <= endToday).map((i) => i.id));
+  // A task already in Today doesn't get a second row; WhatsApps to send are under "Needs your OK".
+  const notes = (dash?.nudges ?? []).filter((n) => n.type !== "wa_send" && !(n.item_id && todayIds.has(n.item_id)));
+  const hide = async (n: Nudge) => { await api.actNudge(n.id, "ok").catch(() => {}); onChanged(); };
+  const done = dash?.done_week ?? [];
   return (
-    <div className="pt-4 space-y-5">
+    <div className="pt-3 space-y-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-semibold tracking-tight text-[23px] leading-tight">{greeting}</h1>
-        {live!=='off'?<div className="scale-50 w-16 h-16"><Orb state={live}/></div>:<ReadAloud/>}
+        {live !== "off" ? <div className="scale-50 w-16 h-16"><Orb state={live} /></div> : <ReadAloud />}
       </div>
 
-      {completion.error&&<p role="alert" className="text-sm text-danger">{completion.error}</p>}
-      {nudges.length > 0 && (
-        <section aria-label="Notifications" className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
-          <h2 className="flex items-center justify-between px-4 py-3 text-sm font-medium"><span>🔔 Notifications</span><span className="text-xs text-muted">{nudges.length}</span></h2>
-          {nudges.map((n) => (
-            <Row key={n.id} icon={n.type === "learn" ? "✨" : "•"} type={n.type} startOpen={n.type === "learn"} title={n.title} time={n.created_at}
-              onDismiss={dismissAction(n) ? () => dismiss(n) : undefined}>
-              {n.type === "review" ? <>
-                <div className="text-[14px]"><Markdown text={n.body} /></div>
-                <Chips n={n} onAct={performAction} />
-              </> : n.type === "learn" ? <LearnReview onChanged={onChanged} /> : n.items?.length ? <>
-                {n.body.split("\n").filter((l) => l.startsWith("📝")).map((l, k) => <p key={k} className="text-muted text-[14px]">{l}</p>)}
-                <ul className="space-y-1">
-                  {groupItems(n.items.filter(i=>!completion.hidden.has(i.id))).map(({ header, it }) => (
-                    <li key={it.id} className="text-[14px] rounded-xl bg-sunken/60 px-3 py-2">
-                      {header && <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">🗂️ {header}</p>}
-                      <p>{it.title}{it.person && <span className="text-muted"> ({it.person})</span>}</p>
-                      <TaskActions id={it.id} onChanged={onChanged} onClose={status=>completion.complete(it.id,()=>api.updateItem(it.id,{status}),onChanged)} />
-                    </li>
-                  ))}
-                </ul>
-                <Chips n={n} onAct={performAction} onReply={n.type === "wrapup" ? undefined : () => onReply(n)} />
-              </> : <>
-                {n.body && <p className="text-muted text-[14px] whitespace-pre-line">{n.body}</p>}
-                <Chips n={n} onAct={performAction} onReply={() => onReply(n)} />
-              </>}
-            </Row>
-          ))}
+      <Approvals refreshKey={refreshKey} onChanged={onChanged} />
+      <WhatsAppsToSend refreshKey={refreshKey} />
+
+      {notes.length > 0 && (
+        <section aria-label="Updates" className="rounded-[20px] bg-surface border border-line/70 shadow-card divide-y divide-line/70 overflow-hidden">
+          <h2 className="flex items-center gap-2 px-4 py-3 text-[15px] font-semibold">🔔 Updates<span className="text-[13px] font-normal text-muted">{notes.length}</span></h2>
+          {notes.map((n) => {
+            const expanded = openNote === n.id;
+            return (
+              <div key={n.id} className="flex items-start">
+                <button onClick={() => n.item_id ? openTask(n.item_id) : setOpenNote(expanded ? null : n.id)} className="flex-1 min-w-0 flex items-start gap-3 pl-4 pr-2 py-3 text-left">
+                  <span className="w-5 shrink-0 text-center text-[16px]" aria-hidden>{NOTE_ICON[n.type] ?? "🔔"}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className={`block text-[15px] leading-snug ${expanded ? "" : "truncate"}`} dir="auto">{cleanTitle(n.title)}</span>
+                    {expanded && n.body && <span className="block mt-1 text-[13.5px] text-muted whitespace-pre-line" dir="auto">{n.body}</span>}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-muted mt-1">{timeAgo(n.created_at)}</span>
+                </button>
+                {!n.item_id && <button onClick={() => void hide(n)} aria-label="Hide" title="Hide" className="shrink-0 h-9 w-9 mt-1.5 mr-2 grid place-items-center rounded-full text-muted hover:bg-sunken hover:text-ink">✕</button>}
+              </div>
+            );
+          })}
         </section>
       )}
 
-      {!!dash?.hashgacha?.length&&<details className="rounded-2xl border border-line bg-surface p-4"><summary className="cursor-pointer text-sm font-medium">📚 Hashgacha reports</summary><div className="mt-3"><HashgachaReports campaigns={dash.hashgacha} onChanged={onChanged}/></div></details>}
-      {dash && <HomeWork tasks={dash.home_tasks??[]} projects={dash.home_projects??[]} onChanged={onChanged}/>}
+      {dash && <HomeWork part="today" tasks={dash.home_tasks ?? []} projects={dash.home_projects ?? []} onChanged={onChanged} />}
+      {dash && <InProgress jobs={dash.jobs ?? []} onChanged={onChanged} onOpenChat={onOpenChat} />}
+      {dash && <HomeWork part="folders" tasks={dash.home_tasks ?? []} projects={dash.home_projects ?? []} onChanged={onChanged} />}
+
+      {done.length > 0 && (
+        <details className="rounded-[20px] bg-surface border border-line/70 px-4 py-3">
+          <summary className="cursor-pointer flex items-center gap-2 text-[15px] font-semibold">✅ Done this week<span className="text-[13px] font-normal text-muted">{done.length}</span></summary>
+          <ul className="mt-2 divide-y divide-line/70">
+            {done.map((i) => (
+              <li key={i.id}><button onClick={() => openTask(i.id)} className="w-full flex items-center gap-3 py-2 text-left">
+                <span className="text-ok" aria-hidden>✓</span><span className="flex-1 min-w-0 truncate text-[14px] text-muted line-through" dir="auto">{i.title}</span>
+                {i.completed_at && <span className="text-[11px] text-muted">{timeAgo(i.completed_at)}</span>}
+              </button></li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
-
-/** One compact line; tap to open its details and buttons. */
-/** What each kind of row is: an emoji, a short label and a color, so the list reads at a glance. */
-const KIND: Record<string, { emoji: string; label: string; tone: string }> = {
-  overdue: { emoji: "🔴", label: "Overdue", tone: "border-l-danger text-danger" },
-  reminder: { emoji: "⏰", label: "Reminder", tone: "border-l-amber-500 text-amber-700" },
-  checkin: { emoji: "❓", label: "Did you?", tone: "border-l-amber-500 text-amber-700" },
-  project_ask: { emoji: "🗂️", label: "Which project?", tone: "border-l-violet-500 text-violet-700" },
-  headsup: { emoji: "📅", label: "Coming up", tone: "border-l-sky-500 text-sky-700" },
-  event: { emoji: "🗓️", label: "Meeting", tone: "border-l-sky-500 text-sky-700" },
-  situation: { emoji: "📍", label: "Now", tone: "border-l-accent text-accent" },
-  unanswered: { emoji: "💬", label: "Reply", tone: "border-l-violet-500 text-violet-700" },
-  email: { emoji: "✉️", label: "Email", tone: "border-l-violet-500 text-violet-700" },
-  whatsapp: { emoji: "💬", label: "WhatsApp", tone: "border-l-emerald-500 text-emerald-700" },
-  waiting: { emoji: "⏳", label: "Waiting", tone: "border-l-line text-muted" },
-  auto_done: { emoji: "✅", label: "Done for you", tone: "border-l-emerald-500 text-emerald-700" },
-  digest: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
-  sweep: { emoji: "📋", label: "Check-in", tone: "border-l-line text-muted" },
-  learn: { emoji: "✨", label: "To review", tone: "border-l-accent text-accent" },
-  wrapup: { emoji: "🏁", label: "Wrap-up", tone: "border-l-amber-500 text-amber-700" },
-  reply_batch: {emoji:"💬",label:"Replies",tone:"border-l-sky-500 text-sky-700"},
-  prep: { emoji: "📋", label: "Meeting prep", tone: "border-l-sky-500 text-sky-700" },
-  meeting_notes: { emoji: "📝", label: "Meeting notes", tone: "border-l-emerald-500 text-emerald-700" },
-  suggest: { emoji: "📲", label: "Add this?", tone: "border-l-sky-500 text-sky-700" },
-  watch: { emoji: "👀", label: "Watch", tone: "border-l-violet-500 text-violet-700" },
-  meeting: { emoji: "📅", label: "Meeting", tone: "border-l-sky-500 text-sky-700" },
-  review: { emoji: "🗓️", label: "Weekly review", tone: "border-l-accent text-accent" },
-  customers: { emoji: "☕", label: "Customers due", tone: "border-l-emerald-500 text-emerald-700" },
-  idea: { emoji: "💡", label: "Idea", tone: "border-l-amber-500 text-amber-700" },
-  tracker: { emoji: "🗂️", label: "Tracker", tone: "border-l-sky-500 text-sky-700" },
-  routine: { emoji: "📄", label: "Report", tone: "border-l-sky-500 text-sky-700" },
-  routine_alert: { emoji: "📄", label: "Report", tone: "border-l-sky-500 text-sky-700" },
-  mission_ask: { emoji: "🙋", label: "Question", tone: "border-l-amber-500 text-amber-700" },
-};
-const kindOf = (type: string) => KIND[type] ?? { emoji: "•", label: "", tone: "border-l-line text-muted" };
-/** "Don't forget: Brew coffee" → "Brew coffee" (the label already says what it is). */
-const cleanTitle = (t: string) => t.replace(/^(don't forget|coming up|still waiting|reminder|due soon|heads up|overdue)\s*:\s*/i, "");
-
-function Row({ icon, title, time, children, startOpen, type, onDismiss }: {
-  icon: string; title: string; time?: string; children: ReactNode; startOpen?: boolean; type?: string; onDismiss?: () => void;
-}) {
-  const [open, setOpen] = useState(!!startOpen);
-  const k = type ? kindOf(type) : null;
-  return (
-    <div className={k ? `border-l-4 ${k.tone.split(" ")[0]}` : ""}>
-      <div className="flex items-center">
-        <button onClick={() => setOpen((v) => !v)} className="flex-1 min-w-0 flex items-center gap-2.5 pl-4 pr-2 py-3 text-left">
-          <span className="w-5 shrink-0 text-center text-[15px]">{k ? k.emoji : icon}</span>
-          <span className="flex-1 min-w-0">
-            {k?.label && <span className={`block text-[11px] font-semibold uppercase tracking-wide ${k.tone.split(" ")[1]}`}>{k.label}</span>}
-            <span className={`block text-[15px] leading-snug ${open ? "" : "truncate"}`}>{k ? cleanTitle(title) : title}</span>
-          </span>
-          {time && <span className="shrink-0 text-[11px] text-muted">{timeAgo(time)}</span>}
-        </button>
-        {/* One tap to clear it without opening it, so a whole pile can be cleared in one go. */}
-        {onDismiss && (
-          <button onClick={onDismiss} aria-label="Hide alert" title="Hide this alert; scheduled work stays open"
-            className="shrink-0 h-9 w-9 mr-2 grid place-items-center rounded-full text-muted hover:bg-sunken hover:text-ink">✕</button>
-        )}
-      </div>
-      {open && <div className="px-4 pb-3 pl-11 space-y-2">{children}</div>}
-    </div>
-  );
-}
-
 
 function FromCos({ children, time }: { children: ReactNode; time?: string }) {
   return (
@@ -536,45 +475,6 @@ const Thinking = () => (
   </FromCos>
 );
 
-/** What I picked up about your life, reviewed right here: That's right / Change / Ignore. */
-function LearnReview({ onChanged }: { onChanged: () => void }) {
-  const [list, setList] = useState<Awaited<ReturnType<typeof api.memories>> | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [text, setText] = useState("");
-  const load = () => api.memories().then((m) => setList(m.filter((x) => x.status === "suggested"))).catch(() => setList([]));
-  useEffect(() => { load(); }, []);
-  const act = async (id: string, action: "accept" | "edit" | "ignore", content?: string) => {
-    setList((l) => l?.filter((m) => m.id !== id) ?? null); setEditing(null);
-    await api.reviewMemory(id, action, content).catch(() => {});
-    if (list && list.length <= 1) onChanged();
-  };
-  if (!list) return <p className="text-sm text-muted">Loading…</p>;
-  if (!list.length) return <p className="text-sm text-muted">All reviewed. Thanks!</p>;
-  return (
-    <div className="space-y-2 -ml-6">
-      {list.map((m) => (
-        <div key={m.id} className="rounded-xl bg-sunken px-3 py-2.5">
-          {editing === m.id
-            ? <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} dir="auto" className="w-full rounded-lg border border-line bg-bg p-2 text-[14px]" />
-            : <p className="text-[14px] leading-snug" dir="auto">{m.content}</p>}
-          {m.question && editing !== m.id && <p className="text-[13px] text-muted mt-0.5">{m.question}</p>}
-          <div className="flex gap-1.5 mt-2">
-            {editing === m.id ? <>
-              <button onClick={() => act(m.id, "edit", text)} className="rounded-full bg-accent text-white px-3 py-1 text-[13px] font-medium">Save</button>
-              <button onClick={() => setEditing(null)} className="rounded-full px-3 py-1 text-[13px] text-muted">Cancel</button>
-            </> : <>
-              <button onClick={() => act(m.id, "accept")} className="rounded-full bg-accent text-white px-3 py-1 text-[13px] font-medium">That's right</button>
-              <button onClick={() => { setEditing(m.id); setText(m.content); }} className="rounded-full border border-line bg-bg px-3 py-1 text-[13px]">Change</button>
-              <button onClick={() => act(m.id, "ignore")} className="rounded-full px-3 py-1 text-[13px] text-muted">Ignore</button>
-            </>}
-          </div>
-        </div>
-      ))}
-      <a href="/?tab=review" className="block text-[13px] text-accent pt-1">See everything I know →</a>
-    </div>
-  );
-}
-
 let audioRef: HTMLAudioElement | null = null;
 
 /** 🔊 "Brief me": a short spoken rundown of today and the next few hours. Tap again to stop. */
@@ -612,20 +512,4 @@ function ReadAloud() {
       {state === "loading" ? "Getting your briefing…" : state === "speaking" ? "Stop" : "Brief me"}
     </button>
   );
-}
-
-/** Steps of the same project sit together under the project's name (shown once), not scattered through the list. */
-function groupItems<T extends { id: string; project_id?: string | null; project?: string | null }>(items: T[]) {
-  const size = new Map<string, number>();
-  for (const i of items) if (i.project_id) size.set(i.project_id, (size.get(i.project_id) ?? 0) + 1);
-  const first = new Map<string, number>();
-  items.forEach((i, idx) => { if (i.project_id && !first.has(i.project_id)) first.set(i.project_id, idx); });
-  const key = (i: T, idx: number) => (i.project_id && (size.get(i.project_id) ?? 0) > 1 ? first.get(i.project_id)! : idx);
-  return items
-    .map((it, idx) => ({ it, idx, k: key(it, idx) }))
-    .sort((a, b) => a.k - b.k || a.idx - b.idx)
-    .map(({ it, idx }, pos, arr) => ({
-      it,
-      header: it.project_id && (size.get(it.project_id) ?? 0) > 1 && (pos === 0 || arr[pos - 1].it.project_id !== it.project_id) && idx >= 0 ? it.project ?? null : null,
-    }));
 }

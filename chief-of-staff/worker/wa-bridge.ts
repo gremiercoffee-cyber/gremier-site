@@ -1,17 +1,13 @@
-/** What the WhatsApp add-on needs besides incoming messages: which chats to watch (the alumni visit workflow),
- *  the chat names it sees (for linking a person to their WhatsApp chat), and capture of the watched messages. */
-import {ALUMNI_TRACKER,alumniBridgeTrackers,captureAlumni} from './alumni-visits';
+/** What the WhatsApp add-on needs besides incoming messages: the chat names it sees (for linking a person to their WhatsApp chat). */
 import type { Env } from "./env";
 import { all, now, run } from "./db";
 
-export const bridgeWatches = (env: Env, account: string) => alumniBridgeTrackers(env, account);
+/** No chats are watched any more; older add-ons still ask. */
+export const bridgeWatches = async (_env: Env, _account: string) => [] as unknown[];
 
-export async function markBackfilled(env: Env, id: string, account: string) {
-  if (id === ALUMNI_TRACKER && account === 'personal') await run(env, "INSERT OR REPLACE INTO settings(key,value) VALUES('alumni_visits_backfilled','true')");
-}
+export async function markBackfilled(_env: Env, _id: string, _account: string) {}
 
-export async function capture(env: Env, m: { tracker_id?: string; chat?: string; sender?: string; text?: string; at?: string; account?: string; source?: string; chatId?: string; messageId?: string; fromMe?: boolean }) {
-  if (m.tracker_id === ALUMNI_TRACKER || m.tracker_id === ALUMNI_TRACKER + '-context') return captureAlumni(env, m);
+export async function capture(_env: Env, _m: { tracker_id?: string; chat?: string; sender?: string; text?: string; at?: string; account?: string; source?: string; chatId?: string; messageId?: string; fromMe?: boolean }) {
   return { kept: false, reason: "not watched" };
 }
 

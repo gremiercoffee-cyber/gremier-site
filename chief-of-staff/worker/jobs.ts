@@ -154,6 +154,15 @@ async function stop(env: Env, j: Job, why = "Stopped.", status: "stopped" | "pau
   await post(env, j, `⏹ ${why}`);
 }
 
+/** "Stop this job" on the home screen: no more runs; the chat and its results stay. */
+export async function stopJob(env: Env, id: string) {
+  const j = await first<Job>(env, "SELECT * FROM jobs WHERE id = ?", id);
+  if (!j || j.status === "cancelled") throw new Error("That job isn't there any more.");
+  if (j.status === "stopped" || j.status === "done") return { ok: true, message: `${j.title} was already stopped.` };
+  await stop(env, j, "Stopped from the home screen.");
+  return { ok: true, message: `Stopped: ${j.title}` };
+}
+
 /** Pinning is organization only. Pause/stop are explicit execution controls. */
 export async function setPinned(env: Env, id: string, pinned: boolean) {
  if(!await first(env,'SELECT id FROM jobs WHERE id=?',id))throw new Error("That job isn't there any more.");

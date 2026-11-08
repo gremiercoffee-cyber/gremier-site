@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 Error.stackTraceLimit=0;
-const result=await build({stdin:{contents:"export * from './shared/daynote';export * from './worker/daynote';export * from './worker/daynote-relationships';export * from './worker/daynote-google';export {default as worker} from './worker/index';export {sealGoogleToken} from './worker/google';export {assistantTools,chat} from './worker/assistant';export {learnPass} from './worker/learn';export {healthPlanChat} from './worker/daynote-chat';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
+const result=await build({stdin:{contents:"export * from './shared/daynote';export * from './worker/daynote';export * from './worker/daynote-relationships';export * from './worker/daynote-google';export {default as worker} from './worker/index';export {sealGoogleToken} from './worker/google';export {assistantTools,chat} from './worker/assistant';export {healthPlanChat} from './worker/daynote-chat';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
 const m=await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64'));
 function setup(){
  const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
@@ -160,8 +160,6 @@ test('Health conversations have only health tools, cannot reuse General, and are
   const sent=JSON.stringify(requests[0]);assert.ok(sent.includes('get_health_journal'));assert.ok(!sent.includes('\\"remember\\"'));assert.ok(!sent.includes('load_tools'));assert.equal(health.engine,'api','no plan runner online: the API answers');assert.equal(h.db.prepare('SELECT privacy_scope FROM conversations WHERE id=?').get(health.conversation.id).privacy_scope,'health');
   const general=await m.chat(h.env,'What should I do?','text',health.conversation.id,{defer:p=>deferred.push(p)});await Promise.all(deferred);assert.notEqual(general.conversation.id,health.conversation.id);
  });
- const learning=[];await withFetch(async(url,init)=>{learning.push(JSON.parse(init.body));return response({id:'learn-fixture',object:'response',status:'completed',output_text:'{"suggestions":[]}',output:[{type:'message',id:'m',role:'assistant',status:'completed',content:[{type:'output_text',text:'{"suggestions":[]}',annotations:[]}]}]});},async()=>{const learningResult=await m.learnPass(h.env,true);assert.equal(learningResult.error,undefined);});
- assert.ok(learning.length);assert.ok(!JSON.stringify(learning).includes('Sensitive health fixture'));
 });
 
 test('manual Google cardio load keeps native units, final status and missing versus zero across saves',async()=>{const h=setup(),j=h.journal('2026-11-01');j.cardio_load=175;j.cardio_load_final=true;j.readiness=65;const saved=await h.save(j);assert.equal(saved.entry.cardio_load,175);assert.equal(saved.entry.cardio_load_final,true);assert.equal(saved.entry.readiness,65);const zero={...saved.entry,cardio_load:0};const z=await h.save(zero,1,'zero-load');assert.equal(z.entry.cardio_load,0);const missing={...z.entry,cardio_load:null,cardio_load_final:false};assert.equal((await h.save(missing,2,'missing-load')).entry.cardio_load,null);await assert.rejects(h.save({...missing,cardio_load:-1},3,'invalid-load'));});

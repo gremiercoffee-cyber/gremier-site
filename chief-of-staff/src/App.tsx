@@ -1,30 +1,30 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { Conversation, Item, ItemKind, Settings as S } from "../shared/types";
 import { api, getToken, setToken } from "./api";
-import { Button, timeAgo } from "./components/ui";
+import { Button } from "./components/ui";
 import ItemSheet from "./components/ItemSheet";
+import TaskSheet, { toast } from "./components/TaskSheet";
 import Home from "./pages/Home";
 import Shopping from './pages/Shopping';
-import Today from "./pages/Today";
-import Lists from "./pages/Lists";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
-import Library from "./pages/Library";
-import Replies from "./pages/Replies";
-import Schedule from "./pages/Schedule";
 import Groups from "./pages/Groups";
 import NotifBanner from "./components/NotifBanner";
 import ZoomControl from "./components/ZoomControl";
 import MyDetails from "./pages/MyDetails";
-import Tasks from "./pages/Tasks";
 import Reschedule from "./components/Reschedule";
 import ConversationList from "./components/ConversationList";
-import { PinnedResearch, ResearchChat } from "./components/ResearchChats";
+import { ResearchChat, ResearchList } from "./components/ResearchChats";
 import type { JobChatRow } from "./api";
 
-type View = "research" | "home" | "today" | "lists" | "projects" | "settings" | "search" | "library" | "replies" | "tasks" | "people" | "schedule" | "groups" | "shopping" | "details";
-const VIEW_TITLES: Record<View, string> = { research: "Research", details: "My details", home: "Chief of Staff", today: "Today", lists: "All tasks", projects: "Projects", settings: "Settings", search: "Search", library: "Library", replies: "Replies", tasks: "Research", people: "Settings", schedule: "Schedule", groups: "Groups", shopping: 'Shopping lists' };
+type View = "home" | "research" | "chats" | "projects" | "groups" | "shopping" | "details" | "settings" | "search";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", research: "Research", chats: "Chats", projects: "Projects", groups: "Groups", shopping: "Shopping lists", details: "My details", settings: "Settings", search: "Search" };
+/** The top menu: everything that isn't the home screen. */
+const MENU: [View | "health", string, string][] = [
+  ["chats", "💬", "Chats"], ["projects", "📁", "Projects"], ["groups", "👥", "Groups"], ["shopping", "🛒", "Shopping lists"],
+  ["details", "🪪", "My details"], ["settings", "⚙️", "Settings"], ["health", "🌿", "Health Journal"],
+];
 
 interface BeforeInstallPromptEvent extends Event { prompt: () => Promise<void> }
 
@@ -33,7 +33,7 @@ export default function App() {
   const [health, setHealth] = useState<{ configured: boolean; model: boolean; transcription: boolean } | null>(null);
   const params = new URLSearchParams(location.search);
   const legacyTab = params.get("tab");
-  const [view, setView] = useState<View>(params.get("job") ? "research" : legacyTab === "review" ? "library" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : "home");
+  const [view, setView] = useState<View>(params.get("job") ? "research" : legacyTab && legacyTab in VIEW_TITLES ? (legacyTab as View) : legacyTab === "tasks" ? "chats" : "home");
   // Shared from another app (Android share sheet): hand it to the Chief of Staff to file.
   const shared = [params.get("share_title"), params.get("share_text"), params.get("share_url")].filter(Boolean).join("\n");
   const [ask, setAsk] = useState<string | undefined>(params.get("ask") ?? (shared ? `I'm sharing this with you:\n${shared}\n\nFile it where it belongs (to-do, reminder, memory, list) and tell me in one line what you did.` : undefined));
@@ -41,17 +41,18 @@ export default function App() {
   const [startTyping] = useState(params.get("type") === "1");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  // Research chats: the pinned ones sit in the side panel; ?job= (from a notification) opens one.
+  // Research chats: listed under Chats; ?job= (from a notification) opens one.
   const [jobs, setJobs] = useState<JobChatRow[]>([]);
   const [jobId, setJobId] = useState<string | null>(params.get("job"));
   const loadJobs = () => api.jobs().then(setJobs).catch(() => {});
-  const [drawer, setDrawer] = useState(false);
+  const [menu, setMenu] = useState(false);
   const [settings, setSettings] = useState<S | null>(null);
   const [sheet, setSheet] = useState<{ item: Item | null; kind?: ItemKind } | null>(null);
+  const [task, setTask] = useState<Item | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
   const [rescheduling, setRescheduling] = useState<Item | null>(null);
-  const [toast, setToast] = useState("");
+  const [note, setNote] = useState<{ text: string; undo?: () => Promise<unknown> | void } | null>(null);
   // Text to pre-fill in the composer, without sending it.
   const [draft, setDraft] = useState<string | undefined>();
   const setTyping = (text: string) => setDraft(text);
@@ -140,7 +141,18 @@ export default function App() {
       } catch { /* Settings still offers the manual button */ }
     })();
   }, [authed]);
-  useEffect(() => { if (drawer) loadConversations(); }, [drawer]);
+  useEffect(() => { if (view === "chats") { loadConversations(); loadJobs(); } }, [view]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const onToast = (e: Event) => { const d = (e as CustomEvent<{ text: string; undo?: () => Promise<unknown> | void }>).detail; setNote(d); clearTimeout(timer); timer = setTimeout(() => setNote(null), d.undo ? 5000 : 2500); };
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      api.items({ status: "all" }).then((all) => { const it = all.find((i) => i.id === id); if (it) setTask(it); }).catch(() => {});
+    };
+    window.addEventListener("cos:toast", onToast);
+    window.addEventListener("cos:open-item", onOpen);
+    return () => { clearTimeout(timer); window.removeEventListener("cos:toast", onToast); window.removeEventListener("cos:open-item", onOpen); };
+  }, []);
   // From the widget: open one item's details.
   useEffect(() => {
     const id = params.get("item");
@@ -148,7 +160,7 @@ export default function App() {
     const reschedule = params.get("reschedule") === "1";
     api.items({ status: "all" }).then((all) => {
       const it = all.find((i) => i.id === id);
-      if (it) reschedule ? setRescheduling(it) : setSheet({ item: it });
+      if (it) reschedule ? setRescheduling(it) : setTask(it);
     }).catch(() => {});
   }, [authed]);
 
@@ -169,75 +181,40 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  const go = (v: View) => { setView(v); setDrawer(false); };
+  const go = (v: View) => { setView(v); setMenu(false); };
   const openConversation = (id: string | null) => { setConversationId(id); setAsk(undefined); go("home"); };
   const goHome = () => openConversation(null);
-  const openItem = (item: Item) => setSheet({ item });
-  const openResearch = (id: string) => { setJobId(id); setView("research"); setDrawer(false); };
+  const openResearch = (id: string) => { setJobId(id); setView("research"); setMenu(false); };
+  const askNew = (p: string) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); };
   useEffect(()=>{const url=new URL(location.href);if(view==='research'&&jobId)url.searchParams.set('job',jobId);else url.searchParams.delete('job');history.replaceState(null,'',url.pathname+url.search);},[view,jobId]);
   const current = conversations.find((c) => c.id === conversationId);
-  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const on = () => setWide(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
+  const atHome = view === "home" && !conversationId;
 
   if (!authed) return <Login health={health} onDone={() => setAuthed(true)} />;
 
-  const navInner = (
-    <>
-            <button onClick={goHome} className="flex items-center gap-2.5 px-4 h-14 shrink-0 text-left"><Logo /><span className="font-medium">Chief of Staff</span><span className="ml-auto text-xs text-muted">Home</span></button>
-            <form className="px-3 pb-2" onSubmit={(e) => { e.preventDefault(); go("search"); }}>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} onFocus={() => { if (query) go("search"); }}
-                placeholder="🔍  Search everything" enterKeyHint="search"
-                className="w-full rounded-full bg-sunken px-4 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-accent/30" />
-            </form>
-            <div className="px-2 space-y-0.5">
-              <DrawerItem onClick={() => openConversation(null)} icon={<path d="M12 5v14M5 12h14" />} label="New conversation" />
-              <DrawerItem active={view === "groups"} onClick={() => go("groups")} icon={<><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5"/></>} label="Groups" />
-              <DrawerItem active={view === 'shopping'} onClick={() => go('shopping')} icon={<><path d="M3 3h2l3 12h10l3-9H6M9 20h.01M18 20h.01" /></>} label="Shopping lists" />
-              <DrawerItem active={view === 'details'} onClick={() => go('details')} icon={<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>} label="My details" />
-              <DrawerItem active={view === "tasks"} onClick={() => go("tasks")} icon={<path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" />} label="Research" />
-            </div>
-            <PinnedResearch jobs={jobs} activeId={view === "research" ? jobId : null} onOpen={openResearch} />
-            <ConversationList conversations={conversations} activeId={view === "home" ? conversationId : null}
-              onOpen={(id) => openConversation(id)}
-              onChanged={() => api.conversations().then((list) => {
-                setConversations(list);
-                if (conversationId && !list.some((c) => c.id === conversationId)) setConversationId(null);
-              }).catch(() => {})} />
-            <div className="px-2 pt-2 border-t border-line">
-              <DrawerItem active={view === "settings" || view === "people"} onClick={() => go("settings")}
-                icon={<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>} label="Settings" />
-              <a href="/daynote/?open=standalone" className="block px-5 py-3 text-sm">🌿 Health Journal · Health journal</a>
-            </div>
-    </>
-  );
-
   return (
-    <div className="h-full flex">
-      {wide && (
-        <aside className="w-72 shrink-0 h-full bg-surface border-r border-line flex flex-col pt-safe pb-safe">{navInner}</aside>
-      )}
-    <div className={`h-full flex flex-col flex-1 min-w-0 mx-auto ${wide ? (view === "home" ? "max-w-6xl" : "max-w-4xl") : "max-w-2xl"}`}>
-      <header className="pt-safe px-2 flex items-center gap-1 h-14 shrink-0">
-        <button onClick={() => setDrawer(true)} aria-label="Menu" className={`p-2.5 rounded-xl text-ink hover:bg-sunken ${wide ? "invisible" : ""}`}>
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
-        </button>
-        {view !== "home" || conversationId ? (
-          <button onClick={goHome} aria-label="Home" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
-            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10" /></svg>
-          </button>
-        ) : <span className="w-11" />}
-        <button onClick={goHome} className="flex-1 min-w-0 text-center font-medium truncate">
-          {view === "home" ? current?.title || "Chief of Staff" : view === "research" ? jobs.find((j) => j.id === jobId)?.title || "Research" : VIEW_TITLES[view]}
-        </button>
+    <div className="h-full flex flex-col mx-auto w-full max-w-3xl">
+      <header className="pt-safe px-2 flex items-center gap-1 h-14 shrink-0 relative">
+        {atHome
+          ? <button onClick={goHome} className="flex items-center gap-2 pl-2 pr-1 min-w-0"><Logo /><span className="font-semibold truncate">Chief of Staff</span></button>
+          : <button onClick={goHome} aria-label="Back to home" className="flex items-center gap-1 pl-1.5 pr-3 py-2 rounded-xl text-ink hover:bg-sunken min-w-0">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
+              <span className="font-medium truncate">{view === "home" ? current?.title || "Chat" : view === "research" ? jobs.find((j) => j.id === jobId)?.title || "Research" : VIEW_TITLES[view]}</span>
+            </button>}
+        <span className="flex-1" />
         <ZoomControl />
-        <button onClick={() => openConversation(null)} aria-label="New conversation" className="p-2.5 rounded-xl text-ink hover:bg-sunken">
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z" /></svg>
+        <button onClick={() => go("search")} aria-label="Search" className="p-2.5 rounded-xl text-ink hover:bg-sunken text-[18px] leading-none">🔍</button>
+        <button onClick={() => setMenu((m) => !m)} aria-label="Menu" aria-expanded={menu} className={`p-2.5 rounded-xl text-ink ${menu ? "bg-sunken" : "hover:bg-sunken"}`}>
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
         </button>
+        {menu && <>
+          <button aria-label="Close menu" className="fixed inset-0 z-40 cursor-default" onClick={() => setMenu(false)} />
+          <nav className="absolute right-2 top-14 z-50 w-60 rounded-2xl bg-surface border border-line shadow-card p-1.5 menu-in">
+            {MENU.map(([key, icon, label]) => key === "health"
+              ? <a key={key} href="/daynote/?open=standalone" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] hover:bg-sunken"><span className="text-[18px] w-6 text-center">{icon}</span>{label}</a>
+              : <button key={key} onClick={() => go(key)} className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-left ${view === key ? "bg-sunken" : "hover:bg-sunken"}`}><span className="text-[18px] w-6 text-center">{icon}</span>{label}</button>)}
+          </nav>
+        </>}
       </header>
 
       {view!=="research"&&view!=="home"&&<NotifBanner />}
@@ -248,66 +225,54 @@ export default function App() {
       )}
 
       <main className={`flex-1 min-h-0 px-4 ${view === "home" || view === "research" ? "pb-safe" : "overflow-y-auto pb-6"}`}>
+        {view === "chats" && (
+          <div className="space-y-6 pt-1">
+            <button onClick={goHome} className="w-full rounded-2xl bg-accent text-accent-ink py-3 text-[15px] font-medium">✏️ New conversation</button>
+            <ResearchList jobs={jobs} onOpen={openResearch} onChanged={loadJobs} onNew={() => askNew("Research ")} />
+            <section>
+              <ConversationList conversations={conversations} activeId={null} onOpen={(id) => openConversation(id)}
+                onChanged={() => api.conversations().then((list) => { setConversations(list); if (conversationId && !list.some((c) => c.id === conversationId)) setConversationId(null); }).catch(() => {})} />
+            </section>
+          </div>
+        )}
         {view === "research" && jobId && <ResearchChat id={jobId} onChanged={loadJobs} />}
         {view === "home" && (
           <Home name={settings?.name ?? ""} conversationId={conversationId}
             onConversation={(id) => { setConversationId(id); loadConversations(); }}
             initialAsk={ask} startVoice={startVoice} startTyping={startTyping || !!draft} draft={draft} onDraftUsed={() => setDraft(undefined)} serverTranscription={!!health?.transcription}
-            onDataChanged={refresh} refreshKey={refreshKey} />
+            onDataChanged={refresh} refreshKey={refreshKey} onOpenChat={openResearch} />
         )}
-        {view === "today" && <Today name={settings?.name ?? ""} onOpenItem={openItem} goChat={(p) => { openConversation(null); setAsk(p); }} refreshKey={refreshKey} />}
-        {(view === "lists" || view === "projects") && (
-          <Switch value={view} onChange={(v) => setView(v as View)} options={[["projects", "Projects"], ["lists", "All tasks"]]} />
-        )}
-        {view === "lists" && <Lists onOpenItem={openItem} onNew={(kind) => setSheet({ item: null, kind })} refreshKey={refreshKey} />}
-        {view === "projects" && <Projects onOpenJob={openResearch} onOpenItem={openItem} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
+        {view === "projects" && <Projects onOpenJob={openResearch} onOpenItem={(i) => setTask(i)} onNew={()=>setSheet({item:null,kind:"task"})} refreshKey={refreshKey} />}
         {view === 'shopping' && <Shopping refreshKey={refreshKey} />}
         {view === 'details' && <MyDetails />}
 
         {view === "search" && (
-          <Search query={query} onQuery={setQuery} onOpenItem={openItem} onOpenConversation={(id) => openConversation(id)} />
+          <Search query={query} onQuery={setQuery} onOpenItem={(i) => setTask(i)} onOpenConversation={(id) => openConversation(id)} />
         )}
-        {view === "tasks" && <Tasks refreshKey={refreshKey} jobs={jobs} onOpenResearch={openResearch} onJobsChanged={loadJobs} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
-        {view === "groups" && <Groups refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
-        {view === "schedule" && <Schedule refreshKey={refreshKey} onAsk={(p) => { openConversation(null); setAsk(undefined); setTimeout(() => setTyping(p), 0); }} />}
-        {view === "replies" && <Replies serverTranscription={!!health?.transcription} onDataChanged={refresh} refreshKey={refreshKey} />}
-        {view === "library" && <Library refreshKey={refreshKey} />}
-        {(view === "settings" || view === "people") && settings && (
+        {view === "groups" && <Groups refreshKey={refreshKey} onAsk={askNew} />}
+        {view === "settings" && settings && (
           <Settings settings={settings} onSaved={setSettings}
             installPrompt={install ? () => { install.prompt(); setInstall(null); } : null} />
         )}
       </main>
 
-      {drawer && !wide && (
-        <div className="fixed inset-0 z-40 flex">
-          <nav className="w-[82%] max-w-80 h-full bg-surface border-r border-line shadow-card flex flex-col pt-safe pb-safe drawer-in">
-            {navInner}
-          </nav>
-          <button aria-label="Close menu" className="flex-1 bg-black/40" onClick={() => setDrawer(false)} />
-        </div>
-      )}
-
       {rescheduling && (
         <Reschedule item={rescheduling} onClose={() => setRescheduling(null)}
-          onSaved={(msg) => { setRescheduling(null); refresh(); setToast(msg); setTimeout(() => setToast(""), 2500); }} />
+          onSaved={(msg) => { setRescheduling(null); refresh(); toast(`🕒 ${msg}`); }} />
       )}
-      {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 rounded-full bg-ink text-bg px-4 py-2 text-sm shadow-card">{toast}</div>}
+      {task && <TaskSheet item={task} onClose={() => setTask(null)} onChanged={refresh} onReschedule={setRescheduling} onEdit={(i) => setSheet({ item: i })} />}
+      {note && (
+        <div role="status" className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 rounded-full bg-ink text-bg pl-4 pr-2 py-2 text-sm shadow-card max-w-[92vw]">
+          <span className="truncate">{note.text}</span>
+          {note.undo && <button onClick={async () => { const u = note.undo!; setNote(null); try { await u(); toast("↩️ Undone"); } catch (e) { toast(`⚠️ ${(e as Error).message}`); } }} className="shrink-0 rounded-full bg-bg/15 px-3 py-1 font-medium">Undo</button>}
+        </div>
+      )}
 
       {sheet && (
         <ItemSheet item={sheet.item} defaultKind={sheet.kind} onClose={() => setSheet(null)}
           onSaved={() => { setSheet(null); refresh(); }} />
       )}
     </div>
-    </div>
-  );
-}
-
-function DrawerItem({ active, onClick, label, icon }: { active?: boolean; onClick: () => void; label: string; icon: ReactNode }) {
-  return (
-    <button onClick={onClick} className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-[14px] text-left ${active ? "bg-sunken" : "hover:bg-sunken"}`}>
-      <svg viewBox="0 0 24 24" className="h-5 w-5 text-muted" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
-      {label}
-    </button>
   );
 }
 
@@ -344,18 +309,6 @@ function Login({ health, onDone }: { health: { configured: boolean } | null; onD
           </>
         )}
       </form>
-    </div>
-  );
-}
-
-/** Small two-option switch at the top of paired pages (Projects / All tasks). */
-function Switch({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
-  return (
-    <div className="flex gap-1 p-1 mb-4 rounded-full bg-sunken w-fit">
-      {options.map(([k, label]) => (
-        <button key={k} onClick={() => onChange(k)}
-          className={`rounded-full px-4 py-1.5 text-sm ${value === k ? "bg-surface shadow-card text-ink" : "text-muted"}`}>{label}</button>
-      ))}
     </div>
   );
 }

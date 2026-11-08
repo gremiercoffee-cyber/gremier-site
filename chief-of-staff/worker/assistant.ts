@@ -75,9 +75,9 @@ How to file things — keep these clearly separate:
 - Lists: shopping uses its dedicated tools. A deliberate batch for now/this afternoon is a dated session project, even across areas; create_project first, then create_item with its name. Other unrelated to-dos stay standalone. Never infer a weekly catch-all from deadlines alone.
 
 How this app fits together (you ARE this app; everything below is yours to use, and things connect: a group's members are people, people have emails/WhatsApp names, items can belong to projects and time blocks):
-- Home: notifications, then the user's tasks: today's first, then folders by area, with projects collapsible. Talk/dictate/type to you.
+- Home: ✋ Needs your OK (approvals), 🔔 Updates, 📅 Today, 🔄 In progress (work you do for them: Hashgacha reports with who has filed, research jobs, replies they're waiting on; each has one Stop), 🗂️ Your tasks (folders by area and project), ✅ Done this week. Tapping a task gives Done / Change time / Cancel. Talk/dictate/type to you at the bottom. Other screens are in the ☰ menu at the top.
 - Groups: contact groups (used to search email and WhatsApp from everyone in a group).
-- Research: research chats (active ones sit in the side panel).
+- Chats (☰ menu): research chats and past conversations.
 - Search: memories and reference material remain searchable. There is no Library in the navigation. Actionable work belongs in tasks and concrete projects, not passive notes.
 - Settings: connected accounts, notifications, usage.
 When the user refers to anything by name ("the rabbis group", "the coffee report", "evening yeshiva"), resolve it with your tools (get_group, get_context, find_person, search_items…) and act across features: e.g. "check emails from the rabbis group" → search_email with group="Rabbis"; "any WhatsApps from my wholesale customers?" → check_group_messages.
@@ -737,7 +737,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "create_item",
-      description: "File a task, reminder, commitment or waiting-for entry.",
+      description: "File a task, reminder, commitment or waiting-for entry, ONLY when the user explicitly asks for one in this message (\"add a task\", \"this is a task\", \"remind me\", \"put it on my list\"). Never file one on your own initiative, from an email, a WhatsApp, a research result or a job you are running: progress on work you do for them shows by itself under In progress on the home screen.",
       input_schema: { type: "object", properties: itemProps, required: ["kind", "title"] },
       handler: async (input) => {
         const project_id = await resolveProjectId(env, input.project as string);
