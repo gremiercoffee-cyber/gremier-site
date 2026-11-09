@@ -904,6 +904,11 @@ async function handleSubscriptionCallback(
     delete childInfo.date_requested;
     delete childInfo.order_notified_at;
     delete childInfo.subscription_first_iteration_key;
+    delete childInfo.loyalty_settled_at; // each renewal earns its own points
+    // Items added to the subscription since it started: renew what the customer has now.
+    const current = childInfo.subscription_current as Record<string, any> | undefined;
+    delete childInfo.subscription_current;
+    if (current) childInfo.delivery_fee = current.delivery_fee;
     delete childInfo.sale_url;
     childInfo.recurring_child = true;
     childInfo.subscription_parent_order_id = parent.id;
@@ -919,10 +924,10 @@ async function handleSubscriptionCallback(
       customer_email: parent.customer_email,
       customer_phone: parent.customer_phone,
       delivery_address: parent.delivery_address,
-      items: parent.items || [],
-      subtotal: parent.subtotal,
+      items: current?.items || parent.items || [],
+      subtotal: current?.subtotal ?? parent.subtotal,
       discount: parent.discount || 0,
-      total: parent.total,
+      total: current?.total ?? parent.total,
       status: "confirmed",
       payment_status: "paid",
       payment_method: "payme",

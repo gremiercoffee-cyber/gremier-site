@@ -10,6 +10,7 @@
 //   { action: "subscription_pause", sub_payme_id, months } | "subscription_resume" | "subscription_cancel"
 //   { action: "birthday_save" | "birthday_get", month, day?, order_id? | invite? } → the birthday-month gift
 // Deploy with --no-verify-jwt.
+import { addToEveryBox, currentBox, nextBoxDate } from "../_shared/subscription-addon.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { issueBirthdayCode } from "../_shared/birthday-code.ts";
 import { cancelSubscription, describe, MAX_PAUSE_MONTHS, ownsSubscription, pauseSubscription, resumeSubscription } from "../_shared/subscription-control.ts";
@@ -204,7 +205,8 @@ Deno.serve(async (req) => {
       case "my_subscriptions":
       case "subscription_pause":
       case "subscription_resume":
-      case "subscription_cancel": {
+      case "subscription_cancel":
+      case "subscription_add_items": {
         // The customer's own subscriptions, from their login only.
         const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
         const { data: auth } = jwt && jwt !== Deno.env.get("SUPABASE_ANON_KEY") ? await sb.auth.getUser(jwt).catch(() => ({ data: { user: null } })) : { data: { user: null } };
@@ -212,7 +214,7 @@ Deno.serve(async (req) => {
         if (!user) return json({ error: "sign_in_required" }, 401);
         if (body.action === "my_subscriptions") {
           // Their orders by login, and by email (exact, case-insensitive: "_" and "%" are not wildcards).
-          const q = () => sb.from("orders").select("id, delivery_info, items, created_at").not("delivery_info->>payme_subscription_id", "is", null)
+          const q = () => sb.from("orders").select("id, delivery_info, items, subtotal, total, created_at").not("delivery_info->>payme_subscription_id", "is", null)
             .is("delivery_info->>subscription_parent_order_id", null).order("created_at", { ascending: false }).limit(20);
           const [a, b] = await Promise.all([q().eq("user_id", user.id), q().ilike("customer_email", user.email.replace(/[\%_]/g, (c) => "\\" + c))]);
           const rows = [...new Map([...(a.data || []), ...(b.data || [])].map((r: any) => [r.id, r])).values()];
@@ -220,13 +222,25 @@ Deno.serve(async (req) => {
           for (const r of rows) {
             const d = await describe(sb, String(r.delivery_info.payme_subscription_id));
             if (!d || d.status === "pending" && !r.delivery_info.subscription_first_iteration_key) continue;
-            const items = (r.items || []).flatMap((i: any) => i.subscription_items?.length ? i.subscription_items : [i]).map((i: any) => ({ name_en: i.name_en, name_he: i.name_he, qty: i.qty || 1 }));
-            out.push({ ...d, items, started: r.created_at, interval: r.delivery_info.subscription?.interval || "monthly" });
+            const box = currentBox(r), items = (box.items || []).flatMap((i: any) => i.subscription_items?.length ? i.subscription_items : [i]).map((i: any) => ({ name_en: i.name_en, name_he: i.name_he, qty: i.qty || 1 }));
+            const nextBox = (d as Record<string, any>).active ? await nextBoxDate(sb, String(r.delivery_info.payme_subscription_id), r.delivery_info, (d as Record<string, any>).next_date).catch(() => null) : null;
+            out.push({ ...d, items, started: r.created_at, interval: r.delivery_info.subscription?.interval || "monthly", next_box: nextBox?.date || null, can_add_every_box: !!box.items?.[0]?.subscription_items?.length });
           }
           return json({ subscriptions: out, max_pause_months: MAX_PAUSE_MONTHS });
         }
         const subId = String(body.sub_payme_id || "");
         if (!await ownsSubscription(sb, subId, user)) return json({ error: "not_found" }, 404);
+        if (body.action === "subscription_add_items") {
+          const added = await addToEveryBox(sb, subId, body.items, { commit: body.commit === true, expected: Number(body.expected_price) });
+          if (added.ok && body.commit === true) {
+            const a = added as Record<string, any>;
+            await notifyOwner(a.record_failed ? `⚠️ Subscription change needs fixing: ${user.email}` : `🔁 ${user.email} added to their subscription`,
+              `${user.email} added items to every delivery. New charge ₪${a.next} (was ₪${a.current}), from ${a.next_charge}.${a.record_failed ? ` PayMe was updated but the order record was not: ${a.record_failed}. Update the renewal by hand.` : ""}
+
+PayMe subscription: ${subId}`).catch(() => {});
+          }
+          return json(added, added.ok ? 200 : 400);
+        }
         const r = body.action === "subscription_pause" ? await pauseSubscription(sb, subId, Number(body.months), "customer")
           : body.action === "subscription_resume" ? await resumeSubscription(sb, subId, "customer")
           : await cancelSubscription(sb, subId, "customer");

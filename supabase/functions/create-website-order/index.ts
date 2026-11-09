@@ -10,6 +10,7 @@ import { shabbatGuaranteedZone, shabbatPromoActive } from "../_shared/weekly-pro
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { pickAddress } from "../_shared/delivery-address.ts";
 import { linkJourneyOrder } from "../_shared/web-journey-model.ts";
+import { subscriptionAddonOrder } from "../_shared/subscription-addon.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -244,13 +245,18 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const items = Array.isArray(body.items) ? body.items : [];
-    const customerName = cleanText(body.customer_name, 120);
-    const customerEmail = cleanText(body.customer_email, 200);
-    const customerPhone = cleanText(body.customer_phone, 40);
-    const deliveryAddress = cleanText(body.delivery_address, 300);
+    let customerName = cleanText(body.customer_name, 120);
+    let customerEmail = cleanText(body.customer_email, 200);
+    let customerPhone = cleanText(body.customer_phone, 40);
+    let deliveryAddress = cleanText(body.delivery_address, 300);
     // Only the customer's delivery choices — every other delivery_info field is server-set.
     // Plus the address pieces (typed street, selected Google place, apartment details), each validated.
-    const deliveryInfo = { ...pickDeliveryChoice(body.delivery_info), ...(body.delivery_info?.delivery_type === "pickup" ? {} : pickAddress(body.delivery_info)) };
+    let deliveryInfo: Record<string, unknown> = { ...pickDeliveryChoice(body.delivery_info), ...(body.delivery_info?.delivery_type === "pickup" ? {} : pickAddress(body.delivery_info)) };
+    // A subscriber's one-time extra: who and where come from their subscription, never from the browser.
+    const subscriptionAddon = body.subscription_addon
+      ? await subscriptionAddonOrder(createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } }), req, String(body.subscription_addon.sub_payme_id || ""))
+      : null;
+    if (subscriptionAddon) ({ customerName, customerEmail, customerPhone, deliveryAddress, deliveryInfo } = subscriptionAddon);
 
     if (!customerName || !customerEmail || !customerPhone || (deliveryInfo.delivery_type !== "pickup" && !deliveryAddress)) {
       return json({ error: "Missing customer details" }, 400);
@@ -290,6 +296,10 @@ Deno.serve(async (req) => {
     const productsById = new Map((fetchedRows || []).map((product: Record<string, unknown>) => [String(product.id), product]));
     // Only the products actually in the cart drive delivery pricing.
     const productRows = productIds.map((id) => productsById.get(id)).filter(Boolean) as Record<string, unknown>[];
+
+    if (subscriptionAddon && (items.length > 12 || items.some((item: Record<string, unknown>) => item.is_subscription === true || !subscriptionModel.eligible(productsById.get(String(item.product_id || "").trim()))))) {
+      return json({ error: "That item can't be added to a subscription." }, 400);
+    }
 
     // A subscription's order total becomes the monthly PayMe charge, so it must be
     // ordered on its own — anything else in the cart would be billed every month.
@@ -376,7 +386,7 @@ Deno.serve(async (req) => {
     const modernSubscription = isSubscriptionOrder && !!allowedItems[0].subscription_items?.length;
     const deliveryProducts = modernSubscription ? (allowedItems[0].subscription_items || []).map((c:any)=>productsById.get(String(c.product_id))) : productRows;
     const deliverySubtotal = modernSubscription ? subscriptionModel.quote(items[0].subscription_items,[...productsById.values()]).regular : subtotal;
-    const delivery = computeDeliveryFee(
+    const delivery = subscriptionAddon ? { fee: 0, source: "subscription_addon", zone: null as Record<string, unknown> | null } : computeDeliveryFee(
       deliveryProducts || [],
       deliverySubtotal,
       deliveryInfo,
@@ -385,7 +395,7 @@ Deno.serve(async (req) => {
     );
     // Tuesday/Wednesday: regular delivery to Jerusalem or Beit Shemesh is guaranteed to arrive before
     // Shabbat, free or paid (not subscriptions, which recur). The fee itself never changes.
-    const shabbatPromo = !isSubscriptionOrder && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && shabbatGuaranteedZone(delivery.zone?.name_en);
+    const shabbatPromo = !isSubscriptionOrder && !subscriptionAddon && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && shabbatGuaranteedZone(delivery.zone?.name_en);
 
     let discount = 0;
 
@@ -401,7 +411,7 @@ Deno.serve(async (req) => {
 
     // Check coupon code sent from client
     let appliedCouponCode: string | null = null;
-    const couponCode = String(body.coupon_code || "").trim().toUpperCase();
+    const couponCode = subscriptionAddon ? "" : String(body.coupon_code || "").trim().toUpperCase();
     // Referral (friend) codes: first paid order only, and not the person who shared it.
     const refProblem = couponCode ? await referralProblem(admin, couponCode, customerEmail) : null;
     if (couponCode && refProblem) return json({ error: refProblem }, 400);
@@ -438,7 +448,7 @@ Deno.serve(async (req) => {
     let giftCardId: string | null = null;
     let giftCardBalance = 0;
     let gcDiscount = 0;
-    const giftCardCode = String(body.gift_card_code || "").trim().toUpperCase();
+    const giftCardCode = subscriptionAddon ? "" : String(body.gift_card_code || "").trim().toUpperCase();
     if (giftCardCode) {
       const { data: giftCard } = await admin
         .from("gift_cards")
@@ -474,7 +484,7 @@ Deno.serve(async (req) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_address: deliveryAddress,
-      notes: [shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
+      notes: [subscriptionAddon?.note || "", shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
       items: allowedItems,
       subtotal,
       discount,

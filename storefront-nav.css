@@ -549,6 +549,15 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .subm-pause select { width:auto; padding:6px 8px; }
 .subm-cancel { background:none; border:0; color:#9a3a2a; font-size:.8rem; text-decoration:underline; cursor:pointer; margin-inline-start:auto; }
 .subm-status { font-size:.8rem; color:#2c6e49; margin-top:8px; }
+.subm-add { border-top:1px solid var(--border, #e6e4df); margin-top:14px; padding-top:12px; font-size:.86rem; }
+.subm-add p { color:#4a4a4a; margin:4px 0 10px; font-size:.8rem; line-height:1.5; }
+.subm-add-row { display:flex; align-items:center; gap:8px; padding:5px 0; }
+.subm-add-row span { flex:1; min-width:0; }
+.subm-add-row i { font-style:normal; color:#4a4a4a; }
+.subm-add-row em { font-style:normal; font-weight:600; min-width:18px; text-align:center; }
+.subm-add-row button { width:32px; height:32px; border-radius:50%; border:1px solid var(--border, #e6e4df); background:#fff; cursor:pointer; font-size:1rem; }
+.subm-add-row button:disabled { opacity:.35; cursor:default; }
+.subm-add-pay, .subm-add-every { margin-top:10px; width:100%; }
 
 /* Gremier's button colour: mostly black, with a soft warm glow at one edge, like the light on the opening
    logo graphic's paper. On hover the glow grows a little. */

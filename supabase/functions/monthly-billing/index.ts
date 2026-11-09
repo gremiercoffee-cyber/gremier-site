@@ -1,6 +1,7 @@
 import { forbidden, isServiceOrAdmin } from "../_shared/security.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { VAT_RATE } from "../_shared/vat.ts";
+import { applyReturnCredits } from "../_shared/store-return-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,12 +141,15 @@ Deno.serve(async (req) => {
         (store.qtyUnfiltered * store.unfilteredPrice);
 
       // A month already on a VAT invoice is fixed: don't regenerate it.
-      const { data: existingBill } = await sb.from("store_billing").select("tax_invoice_id").eq("store_id", store.id).eq("year", year).eq("month", month).maybeSingle();
+      const { data: existingBill } = await sb.from("store_billing").select("tax_invoice_id,billed_at,paid_at").eq("store_id", store.id).eq("year", year).eq("month", month).maybeSingle();
       if (existingBill?.tax_invoice_id) { results.push({ store: store.name, total: storeTotal, skipped: "already_invoiced" }); continue; }
+      // Returned bottles come off before VAT, so VAT is charged only on what the store really owes.
+      const creditMinor = await applyReturnCredits(sb, store.id, year, month, end, Math.round(storeTotal * 100), Boolean(existingBill?.billed_at || existingBill?.paid_at));
+      const billTotal = Math.round(storeTotal * 100 - creditMinor) / 100;
       // Osek Morshe: VAT on top of the store's price.
-      const vat = Math.round(storeTotal * VAT_RATE * 100) / 100;
+      const vat = Math.round(billTotal * VAT_RATE * 100) / 100;
 
-      grandTotal  += storeTotal;
+      grandTotal  += billTotal;
       totalLarge  += store.qtyLarge;
       totalSmall  += store.qtySmall;
       totalSyrup  += store.qtySyrup;
@@ -161,6 +165,8 @@ Deno.serve(async (req) => {
       if (store.qtyUnfiltered > 0) rows += `<tr><td>${store.qtyUnfiltered}</td><td>אנפילטרד ליטר</td><td>${store.unfilteredPrice.toFixed(2)}</td><td>${(store.qtyUnfiltered * store.unfilteredPrice).toFixed(2)}</td></tr>`;
       if (store.qtyDairyFree > 0) rows += `<tr><td>${store.qtyDairyFree}</td><td>ללא חלב</td><td>${store.dairyFreePrice.toFixed(2)}</td><td>${(store.qtyDairyFree * store.dairyFreePrice).toFixed(2)}</td></tr>`;
       if (store.qtySyrup > 0) rows += `<tr><td>${store.qtySyrup}</td><td>סירופ</td><td>${store.syrupPrice.toFixed(2)}</td><td>${(store.qtySyrup * store.syrupPrice).toFixed(2)}</td></tr>`;
+
+      if (creditMinor > 0) rows += `<tr><td></td><td>זיכוי עבור החזרות</td><td></td><td>-${(creditMinor / 100).toFixed(2)}</td></tr>`;
 
       const invoiceHTML = `<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -200,10 +206,10 @@ tbody td{padding:7px 10px;border-bottom:1px solid #eee}
   <tbody>${rows}</tbody>
 </table>
 <table class="totals">
-  <tr><td>סה"כ</td><td style="text-align:left">₪${storeTotal.toFixed(2)}</td></tr>
+  <tr><td>סה"כ</td><td style="text-align:left">₪${billTotal.toFixed(2)}</td></tr>
   <tr><td>הנחה</td><td style="text-align:left">₪0.00</td></tr>
   <tr><td>מע"מ ${Math.round(VAT_RATE * 100)}%</td><td style="text-align:left">₪${vat.toFixed(2)}</td></tr>
-  <tr class="grand"><td>סה"כ לתשלום</td><td style="text-align:left">₪${(storeTotal + vat).toFixed(2)}</td></tr>
+  <tr class="grand"><td>סה"כ לתשלום</td><td style="text-align:left">₪${(billTotal + vat).toFixed(2)}</td></tr>
 </table>
 <div class="notes"><p><strong>פרטים להעברה:</strong></p><p>${BIZ_BANK}</p></div>
 <div class="footer"><span>תאריך הפקה: ${today}</span><strong>מסמך ממוחשב חתום דיגיטלית</strong></div>
@@ -217,7 +223,8 @@ tbody td{padding:7px 10px;border-bottom:1px solid #eee}
       const { error: upsertErr } = await sb.from("store_billing").upsert({
         store_id: store.id,
         year, month,
-        total: storeTotal,
+        total: billTotal,
+        credit_minor: creditMinor,
         qty_large: store.qtyLarge,
         qty_small: store.qtySmall,
         qty_syrup: store.qtySyrup,
@@ -229,7 +236,7 @@ tbody td{padding:7px 10px;border-bottom:1px solid #eee}
       }, { onConflict: "store_id,year,month" });
       if (upsertErr) throw new Error(`store_billing upsert failed for ${store.name}: ${upsertErr.message}`);
 
-      results.push({ store: store.name, total: storeTotal, image_url: url });
+      results.push({ store: store.name, total: billTotal, credit: creditMinor / 100, image_url: url });
     }
 
     return new Response(

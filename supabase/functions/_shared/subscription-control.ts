@@ -67,6 +67,11 @@ async function record(sb: Sb, rows: Record<string, any>[], change: Record<string
   }
 }
 
+/** New price for future charges only: PayMe charges nothing now and keeps the billing date. */
+export async function setSubscriptionPrice(subId: string, agorot: number) {
+  return await payme(`subscriptions/${encodeURIComponent(subId)}/set-price`, "PATCH", { seller_payme_id: SELLER, sub_price: String(agorot) });
+}
+
 /** Does this subscription belong to this customer (their login's id or email)? */
 export async function ownsSubscription(sb: Sb, subId: string, user: { id: string; email: string }) {
   const rows = await subscriptionOrders(sb, subId);
