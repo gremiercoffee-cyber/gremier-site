@@ -2,7 +2,7 @@
 // list a Hebrew page for Hebrew searches ("קולד ברו") next to the English home page.
 import { SITE } from './_catalog.js';
 
-const TITLE = 'קולד ברו בישראל | גרמיר קפה · Gremier Coffee';
+const TITLE = 'קולד ברו בישראל: מוכן לשתייה, עד הבית | גרמיר קפה';
 const DESC = 'קולד ברו בחליטה איטית בירושלים, חלק ובלי מרירות, עם משלוח לכל הארץ: בקבוקי ליטר, מיני, ג׳ריקנים של 5 ליטר ובר קפה לאירועים. כשר.';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
@@ -18,6 +18,8 @@ export async function onRequestGet({ request, env }) {
     .on('html', { element(e) { e.setAttribute('lang', 'he'); } })
     .on('title', { element(e) { e.setInnerContent(TITLE); } })
     .on('meta[name="description"], link[rel="canonical"], meta[property^="og:"]', { element(e) { e.remove(); } })
+    .on('h1#t-hero-title', { element(e) { e.setInnerContent('קולד ברו<br><em id="t-hero-em" style="color:#1a1a1a;font-style:italic;">עם משלוח</em>', { html: true }); } })
+    .on('a[data-guide]', { element(e) { e.setAttribute('href', '/he' + e.getAttribute('data-guide')); e.setInnerContent(e.getAttribute('data-discovery-he') || ''); } })
     .on('head', { element(e) { e.append(meta, { html: true }); } })
     .transform(new Response(page.body, { status: 200, headers: page.headers }));
 }

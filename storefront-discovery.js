@@ -43,6 +43,7 @@
  function jump(category){const el=category==='all'?document.getElementById('catFilter'):document.getElementById('shop-shelf-'+category);if(el)el.scrollIntoView({block:'start',behavior:root.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
  function home(products,he,optimize){
   document.querySelectorAll('[data-discovery-en]').forEach(el=>el.textContent=el.getAttribute(he?'data-discovery-he':'data-discovery-en'));
+  document.querySelectorAll('a[data-guide]').forEach(a=>a.setAttribute('href',(he?'/he':'')+a.dataset.guide));
   const host=document.getElementById('discoveryBottles');if(!host)return;
   const names=['House Blend Medium Roast','Classic Dark Roast','Colombia Light Roast'];
   const selected=names.map(n=>products.find(p=>p.name_en===n&&p.images?.length)).filter(Boolean);

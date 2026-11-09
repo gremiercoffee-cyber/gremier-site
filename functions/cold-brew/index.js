@@ -1,0 +1,3 @@
+import { guideRoute } from '../_guides.js';
+
+export const onRequestGet = guideRoute('', 'en');

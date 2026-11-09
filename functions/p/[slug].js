@@ -30,7 +30,10 @@ export async function onRequestGet({ params, request, env }) {
   }
   if (!p) return new Response(page.body, { status: 404, headers: page.headers });
   const url = `${SITE}/p/${slug(p.name_en)}`;
-  const title = `${p.name_en}${p.name_he ? ' · ' + p.name_he : ''} | Gremier Coffee`;
+  // Coffee pages say "cold brew" in the title and heading, in both languages, so they can match those searches.
+  const isBrew = ['bottles', 'minis', 'bulk'].includes(p.category) && !/syrup/i.test(p.name_en);
+  const heading = isBrew ? `${p.name_en} Cold Brew${p.name_he ? ' · קולד ברו ' + p.name_he : ''}` : `${p.name_en}${p.name_he ? ' · ' + p.name_he : ''}`;
+  const title = `${heading} | Gremier Coffee`;
   const desc = [p.description_en, p.description_he].filter(Boolean).join(' · ') || `${p.name_en}: cold brew from Gremier Coffee, delivered in Israel.`;
   const price = Number((p.variations || []).find((v) => v.type === 'guest_count')?.options?.[0]?.price) || Number(p.price);
   const data = {
@@ -50,7 +53,7 @@ export async function onRequestGet({ params, request, env }) {
     // The page's main heading is this product; the shop's own slogan stays on screen as ordinary text.
     .on('h1#t-hero-title', { element(e) {
       e.tagName = 'div';
-      e.before(`<h1 style="margin:0 0 6px;font:500 .95rem 'DM Sans',sans-serif;color:#1a1a1a">${esc(p.name_en)}${p.name_he ? ' · ' + esc(p.name_he) : ''}</h1>`, { html: true });
+      e.before(`<h1 style="margin:0 0 6px;font:500 .95rem 'DM Sans',sans-serif;color:#1a1a1a">${esc(heading)}</h1>`, { html: true });
     } })
     .on('head', { element(e) { e.append(meta, { html: true }); } })
     .transform(new Response(page.body, { status: 200, headers: page.headers }));

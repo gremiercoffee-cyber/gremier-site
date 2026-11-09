@@ -11,7 +11,7 @@ export async function onRequestGet({ params }) {
   const delEn = price === 0 ? `Delivery to ${en} is free.` : `Delivery to ${en} is ₪${price}${free ? `, free on orders from ₪${free}` : ''}.`;
   const delHe = price === 0 ? `המשלוח ל${he} חינם.` : `משלוח ל${he}: ₪${price}${free ? `, חינם בהזמנה מ-₪${free}` : ''}.`;
   const coffees = list.filter((p) => ['bottles', 'minis', 'bulk'].includes(p.category)).slice(0, 12);
-  const card = (p) => `<a class="p" href="/p/${slug(p.name_en)}"><img src="${esc(image(p.images?.[0], 400))}" alt="" loading="lazy"><b>${esc(p.name_en)}</b><span dir="rtl">${esc(p.name_he || '')}</span><i>₪${Number(p.price)}</i></a>`;
+  const card = (p) => `<a class="p" href="/p/${slug(p.name_en)}"><img src="${esc(image(p.images?.[0], 400))}" alt="${esc(p.name_en)}" loading="lazy"><b>${esc(p.name_en)}</b><span dir="rtl">${esc(p.name_he || '')}</span><i>₪${Number(p.price)}</i></a>`;
   const title = `Cold brew delivery in ${en} · קולד ברו עם משלוח ב${he} | Gremier Coffee`;
   const desc = `Slow-brewed cold brew delivered in ${en}: liter bottles, minis, 5L jerry cans and coffee bars for events. ${delEn} · קולד ברו עם משלוח ב${he}. ${delHe}`;
   const data = { '@context': 'https://schema.org', '@type': 'Store', name: 'Gremier Coffee Co.', url: SITE, image: `${SITE}/icon-512.png`, areaServed: { '@type': 'City', name: en }, priceRange: '₪₪' };
@@ -38,7 +38,8 @@ h1{font-size:1.7rem;line-height:1.25;margin:0 0 6px}h2{font-size:1.15rem;margin:
 <div class="box">${esc(delEn)} Choose regular or expedited delivery, or pick a date.</div>
 <a class="cta" href="/#shop">Shop the coffee</a><a class="cta alt" href="/#coffeebars">Coffee bar for an event in ${esc(en)}</a></section>
 <h2>Our coffee · הקפה שלנו</h2><div class="grid">${coffees.map(card).join('')}</div>
-<div class="box he">☕ נחלט טרי באצוות קטנות · כשר בהשגחת הרב שמואל ויינער</div>
+<div class="box he">☕ נחלט טרי באצוות קטנות · <a href="/he/cold-brew/kosher">כשר בהשגחת הרב שמואל ויינער</a></div>
+<p class="he"><a href="/he/cold-brew">קולד ברו מוכן בבקבוק</a> · <a href="/he/cold-brew/events">קולד ברו לאירועים</a> · <a href="/he/cold-brew/office-and-wholesale">למשרד ולעסקים</a> · <a href="/he/cold-brew/what-is-cold-brew">מה זה קולד ברו?</a></p>
 </main><script src="/storefront-journeys.js?v=20261102-4"></script></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
 }
