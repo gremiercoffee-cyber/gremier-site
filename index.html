@@ -849,7 +849,7 @@
     <button class="btn btn-outline btn-full btn-sm" onclick="closePointsModal(); showPage('shop')">Shop Now</button>
   </div>
 </div>
-<script src="/subscription-model.js?v=20261102-1"></script>
+<script src="/subscription-model.js?v=20261109-2"></script>
 <script>
   const SUPABASE_URL = 'https://ayuzmwpmhncxrugsyxmw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_UDYvyCRXZl3Ci9zIRKJhVQ_XdYKcUdn';
@@ -2305,7 +2305,7 @@ function startProductSubscription(id) { openProductDrawer(id);pdSetSubscribe(tru
 function pdSubscriptionMessage(quote) {
   if(!quote.deliveryEligible)return lang==='he'?'איסוף עצמי בלבד — הוסיפו עוד פריט קפה או מכל 5 ליטר למשלוח.':'Pickup only — add another coffee item or a 5L container for delivery.';
   if(!pdSubArea)return lang==='he'?'המנוי מתאים למשלוח — בחרו אזור כדי לראות דמי משלוח.':'Your subscription qualifies for delivery — choose an area for the fee.';
-  const zone=deliveryZones.find(z=>z.id===pdSubArea),fee=zone?Number(zone.regular_price)||0:deliveryDefaults.default_regular_price,threshold=Number(zone?.free_above)||0;
+  const zone=deliveryZones.find(z=>z.id===pdSubArea),fee=GremierSubscriptionModel.deliveryFee(zone?Number(zone.regular_price)||0:deliveryDefaults.default_regular_price),threshold=Number(zone?.free_above)||0;
   if(!fee||(threshold&&quote.regular>=threshold))return lang==='he'?'המנוי מוכן — משלוח רגיל חינם!':'Your subscription is ready — free regular delivery!';
   const remaining=threshold?Math.max(0,threshold-quote.regular):0;
   return lang==='he'?`משלוח רגיל ₪${fee} בכל חיוב.${remaining?` הוסיפו ₪${remaining.toFixed(2)} לפני ההנחה למשלוח חינם.`:''}`:`Regular delivery ₪${fee} each cycle.${remaining?` Add ₪${remaining.toFixed(2)} before discount for free delivery.`:''}`;
@@ -3964,7 +3964,7 @@ function updateSubscriptionCheckoutNotice(){
  else if(document.getElementById('shipPickup').checked)node.textContent=lang==='he'?'המנוי מוכן לאיסוף עצמי.':'Your subscription is ready for pickup.';
  else if(!selectedCheckoutCity)node.textContent=lang==='he'?'בחרו ישוב לראות עלות משלוח בכל חיוב.':'Choose your city for the delivery fee each cycle.';
  else{const p=resolveDeliveryPricing(selectedCheckoutCity),remaining=p.freeAbove?Math.max(0,p.freeAbove-q.regular):null;
- node.textContent=lang==='he'?`משלוח רגיל בכל חיוב: ₪${remaining===0?0:p.regular}.${remaining?` הוסיפו ₪${remaining.toFixed(2)} לפני ההנחה למשלוח חינם.`:''}`:`Regular delivery each cycle: ₪${remaining===0?0:p.regular}.${remaining?` Add ₪${remaining.toFixed(2)} before discount for free delivery.`:''}`;}
+ node.textContent=lang==='he'?`משלוח רגיל בכל חיוב: ₪${remaining===0?0:GremierSubscriptionModel.deliveryFee(p.regular)}.${remaining?` הוסיפו ₪${remaining.toFixed(2)} לפני ההנחה למשלוח חינם.`:''}`:`Regular delivery each cycle: ₪${remaining===0?0:GremierSubscriptionModel.deliveryFee(p.regular)}.${remaining?` Add ₪${remaining.toFixed(2)} before discount for free delivery.`:''}`;}
  }catch{node.textContent=lang==='he'?'יש להוסיף קפה למנוי.':'Add coffee to your subscription.';}
 }
 function updateDeliveryPrice() {
@@ -4015,7 +4015,8 @@ function updateDeliveryPrice() {
   const zoneExpedited = pricing.expedited;
   const shabbatPromo = !subscriptionCart && shabbatPromoActive() && shabbatGuaranteedZone(pricing.zone?.name_en);
   const couponFreeDelivery = appliedRedeem?.kind === 'coupon' && !!appliedRedeem.free_delivery;
-  const regularFee = couponFreeDelivery ? 0 : (hasProductFee ? productFee : zoneRegular);
+  const standardFee = hasProductFee ? productFee : zoneRegular;
+  const regularFee = couponFreeDelivery ? 0 : (subscriptionCart ? GremierSubscriptionModel.deliveryFee(standardFee) : standardFee);
   const expeditedSurcharge = Math.max(0, zoneExpedited - pricing.regular);
   const expeditedFee = hasProductFee ? (productFee + expeditedSurcharge) : zoneExpedited;
   const isEvent = document.getElementById('shipEvent')?.checked;
@@ -5145,11 +5146,14 @@ async function sendChatMessageText(text) {
   function regularFee(city) {
     try {
       const pricing = resolveDeliveryPricing(city);
-      const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+      const sub = cart.find((i) => i.is_subscription);
+      let qualifying = cart.reduce((s, i) => s + i.price * i.qty, 0);
+      if (sub?.subscription_items?.length) { try { qualifying = GremierSubscriptionModel.quote(sub.subscription_items, products).regular; } catch (_) {} }
+      const priced = (fee) => (sub ? GremierSubscriptionModel.deliveryFee(fee) : fee);
       const fees = cart.map((i) => i.delivery_price).filter((v) => v !== null && v !== undefined && !isNaN(v));
-      if (fees.length) return Math.max(...fees);
-      if (pricing.freeAbove && cartTotal >= pricing.freeAbove) return 0;
-      return Number(pricing.regular) || 0;
+      if (fees.length) return priced(Math.max(...fees));
+      if (pricing.freeAbove && qualifying >= pricing.freeAbove) return 0;
+      return priced(Number(pricing.regular) || 0);
     } catch (_) { return null; }
   }
   function expressEligible() {
@@ -5461,7 +5465,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261103-1"></script>
-<script src="/storefront-subscribe.js?v=20261103-6"></script>
+<script src="/storefront-subscribe.js?v=20261109-2"></script>
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261109-1"></script>
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>

@@ -67,3 +67,4 @@ test('confirming changes PayMe, keeps the first order for the books, and sets wh
 });
 test('a stale confirmation changes nothing',async()=>{const f=forever(),r=await f.add([{product_id:'coffee',qty:1}],{commit:true,expected:100});assert.equal(r.ok,false);assert.equal(f.calls.set.length,0);});
 test('coffee bars cannot be added to every delivery',async()=>{const f=forever(),r=await f.add([{product_id:'bar',qty:1}],{commit:true,expected:1});assert.equal(r.ok,false);assert.equal(f.calls.set.length,0);});
+test('subscribers pay 19 instead of the standard 39; other delivery prices are unchanged',()=>{assert.equal(m.deliveryFee(39),19);assert.equal(m.deliveryFee(99),99);assert.equal(m.deliveryFee(0),0);});

@@ -393,6 +393,7 @@ Deno.serve(async (req) => {
       zonesResult.data || [],
       settingsResult.data || null,
     );
+    if (isSubscriptionOrder && String(deliveryInfo.delivery_type || "regular") === "regular") delivery.fee = subscriptionModel.deliveryFee(delivery.fee);
     // Tuesday/Wednesday: regular delivery to Jerusalem or Beit Shemesh is guaranteed to arrive before
     // Shabbat, free or paid (not subscriptions, which recur). The fee itself never changes.
     const shabbatPromo = !isSubscriptionOrder && !subscriptionAddon && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && shabbatGuaranteedZone(delivery.zone?.name_en);

@@ -17,5 +17,7 @@
   if(!coffeeCount)throw Error('Add coffee alongside your syrup subscription');
   return {contents,total:total/100,regular:regular/100,deliveryEligible:coffeeCount>=2||hasLarge,coffeeCount};
  }
- const api={syrup,eligible,large,quote};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.GremierSubscriptionModel=api;
+ // Subscribers pay less for the standard local delivery; every other delivery price stays as it is.
+ const deliveryFee=fee=>Number(fee)===39?19:Number(fee);
+ const api={syrup,eligible,large,quote,deliveryFee};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.GremierSubscriptionModel=api;
 })(typeof window==='undefined'?globalThis:window);

@@ -43,9 +43,9 @@
     const list = zones(), z = list.find((x) => x.id === state.area);
     const fallbackFee = typeof deliveryDefaults !== 'undefined' ? Number(deliveryDefaults.default_regular_price) || 0 : 0;
     if (state.area === 'other') return { fee: fallbackFee, free: 0, name: T('your area', 'האזור שלכם') };
-    if (z) return { fee: Number(z.regular_price) || 0, free: Number(z.free_above) || 0, name: (he() ? z.name_he : z.name_en) || '', chosen: true };
+    if (z) return { fee: M().deliveryFee(Number(z.regular_price) || 0), free: Number(z.free_above) || 0, name: (he() ? z.name_he : z.name_en) || '', chosen: true };
     const withFree = list.filter((x) => Number(x.free_above) > 0).sort((a, b) => Number(a.free_above) - Number(b.free_above));
-    return withFree.length ? { fee: Number(withFree[0].regular_price) || 0, free: Number(withFree[0].free_above), name: (he() ? withFree[0].name_he : withFree[0].name_en) || '' } : { fee: fallbackFee, free: 0, name: '' };
+    return withFree.length ? { fee: M().deliveryFee(Number(withFree[0].regular_price) || 0), free: Number(withFree[0].free_above), name: (he() ? withFree[0].name_he : withFree[0].name_en) || '' } : { fee: fallbackFee, free: 0, name: '' };
   }
   const title = (s) => (s && s === s.toUpperCase() ? s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : s);
 
