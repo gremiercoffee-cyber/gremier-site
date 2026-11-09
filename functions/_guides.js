@@ -279,9 +279,109 @@ ${c.barTable.en}
       en: [['Who gives the kosher supervision?', 'The Vaad HaKashrus of Rabbi Shmuel Weiner, Rav of Kehal Zichron Nosson Tzvi.'], ['Can a coffee bar come without regular milk?', 'Yes, you can swap to oat or almond milk.']],
     },
   },
+  coffee: {
+    root: true,
+    name: { he: 'קפה עד הבית', en: 'Coffee delivered' },
+    title: { he: 'קפה עד הבית בישראל: קפה מוכן לשתייה במשלוח | גרמיר קפה', en: 'Coffee in Israel, Delivered Ready to Drink | Gremier Coffee' },
+    desc: {
+      he: 'מחפשים קפה טוב בישראל? גרמיר חולטים קפה לאט בירושלים ושולחים עד הבית: בקבוקי ליטר, מיני וג׳ריקנים של 5 ליטר. כשר, בלי מכונה ובלי הכנה.',
+      en: 'Looking for good coffee in Israel? Gremier slow-brews coffee in Jerusalem and delivers it to your door: 1L bottles, minis and 5L jugs. Kosher, with no machine and no prep.',
+    },
+    h1: { he: 'קפה טוב עד הבית, מוכן לשתייה', en: 'Good coffee in Israel, delivered ready to drink' },
+    lead: {
+      he: 'גרמיר היא חברת קפה מירושלים. אנחנו חולטים את הקפה לאט במים קרים, ממלאים בקבוקים ושולחים לכל הארץ, כך שכל מה שנשאר לכם זה למזוג.',
+      en: 'Gremier is a coffee company from Jerusalem. We brew our coffee slowly in cold water, bottle it and deliver it across the country, so all that is left for you is to pour.',
+    },
+    products: isCoffee,
+    limit: 8,
+    body: {
+      he: (c) => `
+<h2>קפה בלי מכונה ובלי הכנה</h2>
+<p>הקפה שלנו כבר מוכן: מוציאים מהמקרר, מוזגים על קרח, ואם בא לכם מוסיפים חלב. אין צורך במכונה, בקפסולות או בפולים. רוצים להבין את השיטה? קראו <a href="/he/cold-brew/what-is-cold-brew">מה זה קולד ברו</a>.</p>
+<h2>מה אפשר להזמין?</h2>
+<ul>
+<li><b>בקבוק ליטר, ₪${c.bottle}:</b> קפה לכל השבוע במקרר.</li>
+<li><b>מארז מיני, ₪${c.mini}:</b> בקבוקונים של 250 מ״ל לתיק או לעבודה.</li>
+<li><b>ג׳ריקן 5 ליטר, מ-₪${c.jug}:</b> למשפחה גדולה, <a href="/he/cold-brew/office-and-wholesale">למשרד</a> או לאירוע.</li>
+<li><b>בר קפה:</b> <a href="/he/cold-brew/events">קפה קר לאורחים באירוע</a>.</li>
+</ul>
+<p>יש קלייה כהה, בלנד הבית, קולומביה בקלייה בהירה, נטול קפאין ולאטה קרם מתוק. שותים קפה באופן קבוע? מנוי חוסך 10% על הקפה.</p>
+<h2>משלוח קפה בכל הארץ</h2>
+<p>משלוח רגיל מגיע תוך 2–5 ימי עסקים, ומשלוח מהיר תוך 1–2 ימי עסקים. המחיר נקבע לפי העיר ומופיע בקופה. לפרטים לפי אזור: <a href="/delivery/jerusalem">ירושלים</a> ו<a href="/delivery/bet-shemesh">בית שמש</a>. מעדיפים לקנות בחנות? ראו <a href="/where-to-buy">איפה אנחנו נמכרים</a>.</p>
+<h2>קפה כשר</h2>
+<p>כל המוצרים <a href="/he/cold-brew/kosher">כשרים בהשגחה</a>. אוהבים קפה קר? יש לנו גם מדריך ל<a href="/he/iced-coffee">אייס קפה בבית</a>.</p>`,
+      en: (c) => `
+<h2>Coffee with no machine and no prep</h2>
+<p>Our coffee is already made: take it out of the fridge, pour it over ice, and add milk if you like. You don't need a machine, capsules or beans. Curious about the method? Read <a href="/cold-brew/what-is-cold-brew">what cold brew is</a>.</p>
+<h2>What can you order?</h2>
+<ul>
+<li><b>1-liter bottle, ₪${c.bottle}:</b> coffee in the fridge for the week.</li>
+<li><b>Pack of minis, ₪${c.mini}:</b> 250ml bottles for your bag or work.</li>
+<li><b>5-liter jug, from ₪${c.jug}:</b> for a big family, <a href="/cold-brew/office-and-wholesale">the office</a> or an event.</li>
+<li><b>Coffee bar:</b> <a href="/cold-brew/events">cold coffee for the guests at your event</a>.</li>
+</ul>
+<p>Choose from a dark roast, our House Blend, a light roast Colombia, decaf and sweet Cream Lattes. Drink it regularly? A subscription takes 10% off the coffee.</p>
+<h2>Coffee delivery across Israel</h2>
+<p>Regular delivery arrives in 2–5 business days and express in 1–2. The price depends on your city and appears at checkout. By area: <a href="/delivery/jerusalem">Jerusalem</a> and <a href="/delivery/bet-shemesh">Bet Shemesh</a>. Prefer a store? See <a href="/where-to-buy">where to find us</a>.</p>
+<h2>Kosher coffee</h2>
+<p>All our products are <a href="/cold-brew/kosher">kosher under supervision</a>. Like it cold? We also have a guide to <a href="/iced-coffee">iced coffee at home</a>.</p>`,
+    },
+    faq: {
+      he: [['אתם מוכרים פולי קפה או קפסולות?', 'לא. אנחנו מוכרים קפה קר מוכן לשתייה, בבקבוקים ובג׳ריקנים.'], ['לאן אתם שולחים?', 'לכל הארץ. המחיר נקבע לפי העיר ומופיע בקופה.'], ['הקפה כשר?', 'כן, בהשגחת ועד הכשרות של הרב שמואל ויינער.']],
+      en: [['Do you sell coffee beans or capsules?', 'No. We sell ready-to-drink cold coffee, in bottles and jugs.'], ['Where do you deliver?', 'Across Israel. The price depends on your city and appears at checkout.'], ['Is the coffee kosher?', 'Yes, under the Vaad HaKashrus of Rabbi Shmuel Weiner.']],
+    },
+  },
+  'iced-coffee': {
+    root: true,
+    name: { he: 'אייס קפה', en: 'Iced coffee' },
+    title: { he: 'אייס קפה וקפה קר מוכן לשתייה, עד הבית | גרמיר קפה', en: 'Iced Coffee in Israel: Ready to Pour, Delivered | Gremier Coffee' },
+    desc: {
+      he: 'אייס קפה בבית תוך דקה: קפה קר מוכן של גרמיר, קרח וחלב. בקבוקים, מיני ולאטה קרם מתוק, כשר ועם משלוח עד הבית בכל הארץ.',
+      en: 'Iced coffee at home in a minute: Gremier ready-to-pour cold coffee, ice and milk. Bottles, minis and sweet Cream Lattes, kosher and delivered across Israel.',
+    },
+    h1: { he: 'אייס קפה בבית, תוך דקה', en: 'Iced coffee at home, in a minute' },
+    lead: {
+      he: 'קפה קר טוב מתחיל בקפה שנחלט קר. הקולד ברו שלנו יוצא חלק ונשאר טעים גם כשמוזגים אותו על קרח.',
+      en: 'Good iced coffee starts with coffee brewed cold. Our cold brew comes out smooth, so it holds up beautifully over ice.',
+    },
+    products: isCoffee,
+    limit: 8,
+    body: {
+      he: (c) => `
+<h2>איך מכינים קפה קר?</h2>
+<ol>
+<li>ממלאים כוס בקרח.</li>
+<li>מוזגים קולד ברו עד שני שלישים מהכוס.</li>
+<li>משלימים בחלב, ואם רוצים מוסיפים סירופ או סוכר.</li>
+</ol>
+<h2>אייס קפה ישראלי, בבלנדר</h2>
+<p>אוהבים אותו גרוס ומתוק? טוחנים בבלנדר כוס קרח, חצי כוס קולד ברו, חצי כוס חלב וכף סירופ או סוכר, ומוזגים מיד.</p>
+<h2>כבר ממותק ומוכן</h2>
+<p>לא רוצים להכין כלום? הלאטה קרם (אוריג׳ינל, קרמל ווניל) והקלאסיק המתוק כבר מוכנים, רק למזוג על קרח. בקבוק ליטר עולה ₪${c.bottle} ומארז מיני ₪${c.mini}. אפשר <a href="/he/cold-brew">להזמין עד הבית</a>.</p>
+<h2>אייס קפה לאירוע</h2>
+<p>מארחים? <a href="/he/cold-brew/events">בר הקפה לאירועים</a> נותן לאורחים קפה קר בלי שתצטרכו לעמוד ולהכין.</p>`,
+      en: (c) => `
+<h2>How to make iced coffee</h2>
+<ol>
+<li>Fill a glass with ice.</li>
+<li>Pour cold brew two-thirds of the way up.</li>
+<li>Top with milk, and add syrup or sugar if you like.</li>
+</ol>
+<h2>Israeli-style blended iced coffee</h2>
+<p>Like it slushy and sweet? Blend a cup of ice, half a cup of cold brew, half a cup of milk and a spoonful of syrup or sugar, then pour right away.</p>
+<h2>Already sweet and ready</h2>
+<p>Don't want to make anything? The Cream Lattes (Original, Caramel and Vanilla) and the Sweetened Classic are ready to pour over ice. A 1-liter bottle is ₪${c.bottle} and a pack of minis is ₪${c.mini}. You can <a href="/cold-brew">order it to your door</a>.</p>
+<h2>Iced coffee for an event</h2>
+<p>Hosting? The <a href="/cold-brew/events">event coffee bar</a> gives your guests cold coffee without you standing there making it.</p>`,
+    },
+    faq: {
+      he: [['מה ההבדל בין אייס קפה לקולד ברו?', 'קולד ברו הוא שיטת חליטה במים קרים. אייס קפה הוא המשקה הקר, ואפשר להכין אותו מקולד ברו.'], ['יש קפה קר מתוק מוכן?', 'כן, הלאטה קרם והקלאסיק המתוק.'], ['יש אפשרות בלי קפאין?', 'כן, יש קולד ברו נטול קפאין.']],
+      en: [['What is the difference between iced coffee and cold brew?', 'Cold brew is a way of brewing in cold water. Iced coffee is the cold drink, and you can make it from cold brew.'], ['Do you have ready-made sweet iced coffee?', 'Yes, the Cream Lattes and the Sweetened Classic.'], ['Is there a decaf option?', 'Yes, we have a decaf cold brew.']],
+    },
+  },
 };
 
-export const guidePath = (key, lang) => `${lang === 'he' ? '/he' : ''}/cold-brew${key ? '/' + key : ''}`;
+export const guidePath = (key, lang) => `${lang === 'he' ? '/he' : ''}${GUIDES[key]?.root ? '/' + key : `/cold-brew${key ? '/' + key : ''}`}`;
 export const guidePaths = () => Object.keys(GUIDES).flatMap((k) => [guidePath(k, 'he'), guidePath(k, 'en')]);
 
 const json = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
@@ -324,7 +424,7 @@ export function guideRoute(key, lang) {
     const items = list.filter(g.products).slice(0, g.limit || 12);
     const card = (p) => `<a class="p" href="/p/${slug(p.name_en)}"><img src="${esc(image(p.images?.[0], 400))}" alt="${esc((he ? p.name_he : p.name_en) || p.name_en)}" loading="lazy" width="400" height="400"><b>${esc((he ? p.name_he : p.name_en) || p.name_en)}</b><i>₪${n(p.price)}</i></a>`;
     const faq = g.faq[lang];
-    const crumbs = [[he ? 'גרמיר קפה' : 'Gremier Coffee', SITE + home], ...(key ? [[GUIDES[''].name[lang], SITE + guidePath('', lang)]] : []), [g.name[lang], url]];
+    const crumbs = [[he ? 'גרמיר קפה' : 'Gremier Coffee', SITE + home], ...(key && !g.root ? [[GUIDES[''].name[lang], SITE + guidePath('', lang)]] : []), [g.name[lang], url]];
     const graph = [
       { '@type': 'BreadcrumbList', itemListElement: crumbs.map(([name, item], i) => ({ '@type': 'ListItem', position: i + 1, name, item })) },
       { '@type': 'FAQPage', mainEntity: faq.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) },
@@ -349,7 +449,7 @@ ${g.body[lang](c)}
 ${items.length ? `<h2>${he ? 'מהחנות שלנו' : 'From our shop'}</h2><div class="grid">${items.map(card).join('')}</div>` : ''}
 <h2>${he ? 'שאלות נפוצות' : 'Common questions'}</h2>${faq.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}
 </article>
-<h2>${he ? 'עוד על קולד ברו' : 'More about cold brew'}</h2><ul class="more">${related}</ul>
+<h2>${he ? 'עוד על הקפה שלנו' : 'More about our coffee'}</h2><ul class="more">${related}</ul>
 </main><script src="/storefront-journeys.js?v=20261102-4"></script></body></html>`;
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
   };
