@@ -21,7 +21,11 @@
   if(!session||Date.now()-session.last>30*60000||Date.now()-session.start>12*3600000){queue=[];session={id:crypto.randomUUID(),start:Date.now(),last:Date.now()};lastView='';}
   session.last=Date.now();write(SESSION,session,sessionStorage);return true;
  }
- function context(){return ensure()?{visitor_id:visitor,session_id:session.id}:null;}
+ // Which WhatsApp post brought this visit. Kept for the visit, or a week for people who accepted analytics.
+ const LINK='gremier_link_v1';
+ function captureLink(){try{const url=new URL(location.href),code=url.searchParams.get('l');if(!/^[a-z0-9]{6,12}$/.test(code||''))return;sessionStorage.setItem(LINK,code);if(allowed())write(LINK,{code,at:Date.now()});url.searchParams.delete('l');history.replaceState(history.state,'',url.pathname+url.search+url.hash);}catch{}}
+ function linkCode(){try{const now=sessionStorage.getItem(LINK);if(now)return now;}catch{}const saved=allowed()?read(LINK):null;return saved&&Date.now()-saved.at<7*86400000?saved.code:null;}
+ function context(){const base=ensure()?{visitor_id:visitor,session_id:session.id}:null,link_code=linkCode();return link_code?{...base,link_code}:base;}
  function track(kind,details={}){
   if(!ensure())return;
   const key=kind+JSON.stringify(details);
@@ -69,7 +73,7 @@
   const el=document.createElement('section');el.id='analyticsConsent';el.className='journey-consent';el.setAttribute('aria-label',T('Analytics choices','בחירת פרטיות'));
   el.innerHTML=`<strong>${T('Cookies & privacy','עוגיות ופרטיות')}</strong><p>${T('Allow cookies and similar storage for analytics? Signed-in visits may link to your account.','לאפשר עוגיות ואחסון דומה למדידת השימוש באתר? ביקורים בחיבור לחשבון עשויים להיות מקושרים אליו.')} <a href="/terms.html#privacy">${T('Privacy','פרטיות')}</a></p><div><button type="button" data-analytics-choice="accepted">${T('Accept','אישור')}</button><button type="button" data-analytics-choice="declined">${T('Decline','ללא מדידה')}</button></div>`;
   el.onclick=e=>{const choice=e.target.closest('[data-analytics-choice]')?.dataset.analyticsChoice;if(!choice)return;write(CONSENT,{value:choice,at:Date.now()});el.remove();
-   if(choice==='accepted'){lastView='';currentView();flush();}else{queue=[];visitor=null;session=null;remove(VISITOR);remove(SESSION,sessionStorage);lastView='';}
+   if(choice==='accepted'){lastView='';currentView();flush();}else{queue=[];visitor=null;session=null;remove(VISITOR);remove(SESSION,sessionStorage);remove(LINK);lastView='';}
   };document.body.append(el);
  }
  function wrap(name,after){const fn=root[name];if(typeof fn!=='function')return;root[name]=function(...args){const result=fn.apply(this,args);if(result?.then)return result.then(value=>{try{after(args,value);}catch{}return value;});try{after(args,result);}catch{}return result;};}
@@ -106,6 +110,7 @@
   const pref=read(CONSENT);if(pref&&Date.now()-pref.at>=180*86400000){remove(VISITOR);remove(SESSION,sessionStorage);visitor=null;session=null;}
   banner();if(allowed())currentView();
  }
+ captureLink();
  root.GremierJourneys={track,context,choices:()=>banner(true),flush};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })(window);

@@ -1,7 +1,7 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {isServiceOrAdmin} from '../_shared/security.ts';
 import {cleanJourney,dateRange,jerusalemMidnight,uuid} from '../_shared/web-journey-model.ts';
-const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info','Access-Control-Allow-Methods':'POST,OPTIONS'};
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info,x-link-key','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
 const key=()=>Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||Object.values(JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')||'{}'))[0] as string;
 Deno.serve(async req=>{
@@ -10,6 +10,28 @@ Deno.serve(async req=>{
  try{
   const body=await req.text();if(body.length>18000)return json({error:'batch_too_large'},413);
   const raw=JSON.parse(body),db=createClient(Deno.env.get('SUPABASE_URL')!,key(),{auth:{persistSession:false}});
+  if(raw.action==='link_click'){
+   if(!/^[a-z0-9]{6,12}$/.test(String(raw.code||'')))return json({error:'invalid_link'},400);
+   const hit=await db.rpc('tracking_link_click',{p_code:raw.code,p_count:raw.count!==false});
+   if(hit.error)throw Error('link_unavailable');
+   return json({target:hit.data});
+  }
+  if(raw.action==='link_register'){
+   const secret=Deno.env.get('LINK_REGISTER_KEY');
+   if(!secret||req.headers.get('x-link-key')!==secret)return json({error:'not_allowed'},403);
+   const text=(v:unknown,max:number)=>String(v||'').trim().slice(0,max);
+   if(!/^[a-z0-9]{6,12}$/.test(String(raw.code||''))||!['group','group_status','status'].includes(raw.channel)||!text(raw.label,120)||!/^https:\/\/gremiercoffee\.co\.il(?:[/?#]|$)/.test(String(raw.target||'')))return json({error:'invalid_link'},400);
+   const saved=await db.from('tracking_links').upsert({code:raw.code,channel:raw.channel,label:text(raw.label,120),detail:text(raw.detail,120),target:text(raw.target,500),ref:text(raw.ref,100)});
+   if(saved.error)throw Error('link_unavailable');
+   return json({ok:true});
+  }
+  if(raw.action==='link_report'){
+   if(!await isServiceOrAdmin(req))return json({error:'admin_only'},403);
+   const {start,end}=dateRange(raw);
+   const report=await db.rpc('tracking_link_report',{from_day:start,to_day:end});
+   if(report.error)throw Error('report_unavailable');
+   return json({links:report.data||[]});
+  }
   if(['report','visitor'].includes(raw.action)){
    if(!await isServiceOrAdmin(req))return json({error:'admin_only'},403);
    const {start,end}=dateRange(raw);

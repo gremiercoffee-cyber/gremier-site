@@ -14,7 +14,7 @@
   const el=document.createElement('section');el.id='websiteJourneyAnalytics';el.className='wj-root';
   el.innerHTML=`<header class="wj-heading"><div><h1>Website traffic</h1><p>Visits, shopping and the paths people take.</p></div><button class="btn btn-outline btn-sm" id="wjRefresh">Refresh</button></header>
    <div class="wj-filters"><label>From<input type="date" id="wjFrom" value="${before(6)}"></label><label>To<input type="date" id="wjTo" value="${today()}"></label><div>${[['today','Today'],['week','1 week'],['fortnight','2 weeks'],['threeweeks','3 weeks'],['month','1 month'],['year','1 year'],['calendar','This year']].map(([id,label])=>`<button type="button" class="btn btn-outline btn-sm" data-wj-period="${id}">${label}</button>`).join('')}</div></div>
-   <p class="wj-note" id="wjStatus" role="status">Loading…</p><div id="wjResults"></div><div id="wjDetail"></div>`;
+   <p class="wj-note" id="wjStatus" role="status">Loading…</p><div id="wjLinks"></div><div id="wjResults"></div><div id="wjDetail"></div>`;
   host.prepend(el);
   $('wjRefresh').onclick=load;$('wjFrom').onchange=$('wjTo').onchange=()=>{visitorOffset=0;load();};
   el.querySelectorAll('[data-wj-period]').forEach(b=>b.onclick=()=>{visitorOffset=0;$('wjTo').value=today();$('wjFrom').value=b.dataset.wjPeriod==='calendar'?today().slice(0,4)+'-01-01':before({today:0,week:6,fortnight:13,threeweeks:20,month:29,year:364}[b.dataset.wjPeriod]);load();});
@@ -24,6 +24,7 @@
  function table(title,rows,metric,label=x=>x.label){return `<section class="wj-card"><h3>${title}</h3>${rows.length?`<div class="table-wrap"><table><thead><tr><th>${title}</th><th>${metric}</th><th>Active time</th></tr></thead><tbody>${rows.sort((a,b)=>(b.visits||b.events)-(a.visits||a.events)).slice(0,20).map(r=>`<tr><td>${esc(label(r))}</td><td>${num(r.visits||r.events)}</td><td>${duration(r.seconds)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="wj-note">No recorded activity in this period.</p>'}</section>`;}
  async function load(){
   if(!mount())return;const seq=++serial;$('wjStatus').textContent='Loading…';
+  root.GremierLinkReport?.load($('wjFrom').value,$('wjTo').value);
   try{
    const data=await call({action:'report',from:$('wjFrom').value,to:$('wjTo').value,visitor_offset:visitorOffset});if(seq!==serial)return;
    last=data;loaded=true;const t=data.totals||{},visits=Number(t.visits||0),parts=data.breakdowns||[],products=new Map(data.products.map(p=>[p.id,p.name_en]));

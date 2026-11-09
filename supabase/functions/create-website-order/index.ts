@@ -503,6 +503,7 @@ Deno.serve(async (req) => {
         zone_name: delivery.zone?.name_en || "",
         pricing_source: delivery.source,
         site_lang: body.site_lang === "he" ? "he" : body.site_lang === "en" ? "en" : null,
+        ...(/^[a-z0-9]{6,12}$/.test(String(body.analytics_context?.link_code || "")) ? { link_code: body.analytics_context.link_code } : {}),
         ...(shabbatPromo ? { shabbat_promo: true } : {}),
         server_priced: true,
         gift_card_id: giftCardId,

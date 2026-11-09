@@ -450,7 +450,7 @@ ${items.length ? `<h2>${he ? 'מהחנות שלנו' : 'From our shop'}</h2><div
 <h2>${he ? 'שאלות נפוצות' : 'Common questions'}</h2>${faq.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}
 </article>
 <h2>${he ? 'עוד על הקפה שלנו' : 'More about our coffee'}</h2><ul class="more">${related}</ul>
-</main><script src="/storefront-journeys.js?v=20261102-4"></script></body></html>`;
+</main><script src="/storefront-journeys.js?v=20261109-1"></script></body></html>`;
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });
   };
 }
