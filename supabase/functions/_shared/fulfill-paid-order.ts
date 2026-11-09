@@ -39,9 +39,22 @@ async function issuePurchasedGiftCard(orderId: string): Promise<void> {
   }
 }
 
+/** A payment link isn't tied to a login, so a member paying one would earn nothing. The email on the link is
+ *  entered by us, so an order that matches exactly one member's email belongs to that member. */
+async function linkPaymentLinkOrderToMember(supabase: SupabaseClient, orderId: string): Promise<void> {
+  const { data: order } = await supabase.from("orders").select("user_id, customer_email, source, delivery_info").eq("id", orderId).maybeSingle();
+  const info = (order?.delivery_info || {}) as Record<string, unknown>;
+  const email = String(order?.customer_email || "").trim();
+  if (!order || order.user_id || !email || (order.source !== "payment_link" && !info.payment_link_code)) return;
+  const { data: members } = await supabase.from("profiles").select("id").ilike("email", email.replace(/[\\%_]/g, "\\$&")).limit(2);
+  if (members?.length !== 1) return;
+  await supabase.from("orders").update({ user_id: members[0].id }).eq("id", orderId).is("user_id", null);
+}
+
 /** Loyalty, once per paid order (whichever of the return page / PayMe callback comes first):
  *  1 point per ₪10 of the subtotal; 200 points become the 10% coupon; a coupon this order used is used up. */
 async function settleLoyalty(supabase: SupabaseClient, orderId: string): Promise<void> {
+  await linkPaymentLinkOrderToMember(supabase, orderId);
   const { data, error } = await supabase.rpc("claim_order_loyalty", { p_order_id: orderId });
   if (error) { console.error("claim_order_loyalty:", error.message); return; }
   const row = Array.isArray(data) ? data[0] : data;
