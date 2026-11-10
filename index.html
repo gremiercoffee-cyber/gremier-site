@@ -4222,6 +4222,33 @@ function showRedeemApplied(message, discount) {
   prepareCheckoutContent();
 }
  
+  // Regular delivery with a chosen date: up to 3 days out it's our best effort; later, it's a promise.
+  function regularDateNote() {
+    const reg = document.getElementById('coRegularDate'); if (!reg) return;
+    let note = document.getElementById('coRegularDateNote');
+    const v = reg.value, sub = cart.some(i => i.is_subscription);
+    if (!v || sub || v < reg.min) { note?.remove(); return; }
+    if (!note) { note = document.createElement('div'); note.id = 'coRegularDateNote'; note.setAttribute('role', 'status'); reg.after(note); }
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
+    const days = Math.round((Date.parse(v + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 864e5);
+    const soon = days <= 3, he = lang === 'he';
+    note.style.cssText = `margin-top:8px;padding:9px 12px;border-radius:3px;font-size:.8rem;line-height:1.45;border:1px solid ${soon ? '#d9a400' : '#2e8b57'};background:${soon ? '#fff7e0' : '#2e8b5714'};color:#1a1a1a`;
+    note.textContent = soon
+      ? (he ? 'נעשה כל מאמץ שזה יגיע אליכם עד התאריך שבחרתם.' : 'We\u2019ll do our best to get it to you by the date you\u2019ve chosen.')
+      : (he ? 'מעולה, נביא את זה אליכם בתאריך הזה.' : 'Great, we\u2019ll get it to you then.');
+  }
+  // When event delivery is offered, say how it differs from regular delivery.
+  function shippingExplainer() {
+    const evLabel = document.getElementById('shipEventLabel'), box = document.getElementById('regularOptions');
+    let ex = document.getElementById('coShipExplain');
+    const shown = evLabel && getComputedStyle(evLabel).display !== 'none' && !document.getElementById('shipPickup')?.checked;
+    if (!shown) { ex?.remove(); return; }
+    if (!ex) { ex = document.createElement('div'); ex.id = 'coShipExplain'; ex.style.cssText = 'margin-top:10px;padding:10px 12px;background:var(--bg3);border-radius:3px;font-size:.78rem;line-height:1.55;color:var(--text2)'; box.before(ex); }
+    const he = lang === 'he';
+    ex.innerHTML = he
+      ? '<b style="color:var(--cream)">משלוח רגיל:</b> נביא את ההזמנה בימים שלפני האירוע.<br><b style="color:var(--cream)">משלוח לאירוע:</b> נגיע בחלון זמן קצר שתבחרו, ממש לפני האירוע.'
+      : '<b style="color:var(--cream)">Regular delivery:</b> we bring it in the days before your event.<br><b style="color:var(--cream)">Event delivery:</b> we arrive in a short time window you choose, right before your event.';
+  }
   function toggleExpeditedOptions() {
   const isPickup = document.getElementById('shipPickup')?.checked;
   const addressFields = document.getElementById('coDeliveryAddressFields');
@@ -4263,6 +4290,7 @@ function showRedeemApplied(message, discount) {
         let note = document.getElementById('coRegularSoon');
         const tooSoon = reg.value && reg.value < reg.min;
         if (tooSoon) reg.value = '';
+        regularDateNote();
         if (!tooSoon) { note?.remove(); return; }
         if (!note) { note = document.createElement('div'); note.id = 'coRegularSoon'; note.setAttribute('role', 'alert'); note.style.cssText = 'margin-top:8px;padding:9px 12px;border:1px solid #c0392b;background:#c0392b14;color:#a5281b;border-radius:3px;font-size:.8rem;line-height:1.45'; reg.after(note); }
         note.innerHTML = (lang === 'he' ? 'משלוח רגיל לא יכול להגיע היום או מחר. צריכים את זה היום או מחר? ' : 'Regular delivery can’t arrive today or tomorrow. Need it today or tomorrow? ')
@@ -4270,6 +4298,8 @@ function showRedeemApplied(message, discount) {
       });
     }
   }
+  regularDateNote();
+  shippingExplainer();
   if (!isExpedited) {
     const dateRow = document.getElementById('datePickerRow');
     if (dateRow) dateRow.style.display = 'none';
