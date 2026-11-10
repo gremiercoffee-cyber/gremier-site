@@ -133,16 +133,26 @@ async function alertAdmins(sb: Sb, title: string, body: string, tag: string) {
 async function unpaidAlerts(sb: Sb) {
   const now = Date.now();
   const { data: rows, error } = await sb.from("orders")
-    .select("id, order_number, customer_name, total, created_at, delivery_info, payment_status, status")
+    .select("id, order_number, customer_name, customer_email, customer_phone, user_id, total, created_at, delivery_info, payment_status, status")
     .neq("payment_status", "paid")
     .neq("status", "cancelled")
     .gte("created_at", new Date(now - 6 * 3600e3).toISOString())
     .lte("created_at", new Date(now - 3600e3).toISOString())
     .limit(50);
   if (error) throw error;
+  // The same customer's orders since then: a later paid order (or a newer attempt) means this one isn't abandoned.
+  const digits = (v: unknown) => String(v || "").replace(/\D/g, "").slice(-9);
+  const sameCustomer = (a: any, b: any) => (a.user_id && a.user_id === b.user_id)
+    || (digits(a.customer_phone).length === 9 && digits(a.customer_phone) === digits(b.customer_phone))
+    || (a.customer_email && String(a.customer_email).toLowerCase() === String(b.customer_email || "").toLowerCase());
+  const earliest = (rows || []).reduce((m, o) => (o.created_at < m ? o.created_at : m), new Date(now).toISOString());
+  const { data: since } = (rows || []).length
+    ? await sb.from("orders").select("id, customer_email, customer_phone, user_id, created_at, payment_status, status").gt("created_at", earliest).neq("status", "cancelled").limit(500)
+    : { data: [] as any[] };
   let sent = 0;
   for (const o of rows || []) {
     const di = (o.delivery_info || {}) as Record<string, unknown>;
+    if ((since || []).some((x: any) => x.id !== o.id && x.created_at > o.created_at && sameCustomer(o, x))) continue;
     if (/^TEST/i.test(String(o.customer_name || "")) || Number(o.total) <= 0) continue;
     if (di.payme_subscription_id && o.payment_status !== "unpaid") continue;
     // Claim in alert_log (unique key) so each order alerts once, even across overlapping
@@ -303,6 +313,80 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
   }
   if (sent.length && !dryRun) await alertAdmins(sb, "🛒 Cart reminder sent", `${sent.length} abandoned-checkout reminder${sent.length > 1 ? "s" : ""} emailed.`, "cart-reminders");
   return { sent, skipped, ...(dryRun ? { preview } : {}) };
+}
+
+// ── Next-day thank-you offer ──
+// A day after someone pressed pay on a larger order and didn't finish, a personal one-use coupon
+// framed as "we value our customers" (the email never mentions the unfinished checkout). Kept rare
+// on purpose so nobody learns to wait for it: once per customer, ever; never if they bought or
+// tried again since; never for people who opted out of reminders. Off until the owner turns it on:
+// site_settings "cart_offer" = {"on":true,"amount":20,"min_total":150,"valid_hours":72}.
+const OFFER_DEFAULT = { on: false, amount: 20, min_total: 150, valid_hours: 72, after_hours: 22, max_age_hours: 48 };
+const OFFER_TAG = "Thank-you offer";
+
+async function offerSettings(sb: Sb) {
+  const { data } = await sb.from("site_settings").select("value").eq("key", "cart_offer").maybeSingle();
+  let v: Record<string, unknown> = {};
+  try { v = data?.value ? JSON.parse(String(data.value)) : {}; } catch { /* keep defaults */ }
+  return { ...OFFER_DEFAULT, ...v } as typeof OFFER_DEFAULT;
+}
+
+function offerEmail(o: Record<string, any>, he: boolean, code: string, amount: number, until: Date, minTotal: number) {
+  const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
+  const day = new Intl.DateTimeFormat(he ? "he-IL" : "en-GB", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long" }).format(until);
+  const link = `${SITE}/?coupon=${encodeURIComponent(code)}&utm_source=thanks_offer#shop`;
+  const subject = he ? `מתנה קטנה מגרמיר: ₪${amount} הנחה` : `A little thank-you from Gremier: ₪${amount} off`;
+  const text = he
+    ? `היי${first ? " " + first : ""},\n\nאנחנו מעריכים את הלקוחות שלנו, אז הכנו לך קוד אישי:\n\n${code}\n₪${amount} הנחה על הזמנה מעל ₪${minTotal}, לשימוש פעם אחת, עד ${day}.\n\n${link}\n\nתודה שבחרת בגרמיר ☕\nגרמיר קופי`
+    : `Hi${first ? " " + first : ""},\n\nWe value our customers, so here's a personal code for you:\n\n${code}\n₪${amount} off an order over ₪${minTotal}, one use, until ${day}.\n\n${link}\n\nThanks for choosing Gremier ☕\nGremier Coffee`;
+  return { subject, text };
+}
+
+async function cartOffers(sb: Sb, dryRun: boolean) {
+  const cfg = await offerSettings(sb);
+  if (!cfg.on && !dryRun) return { skipped_run: "off" };
+  if (!dryRun && quietNow()) return { skipped_run: "quiet_hours" };
+  const now = Date.now();
+  const { data: candidates } = await sb.from("orders")
+    .select("id, created_at, customer_email, customer_phone, customer_name, delivery_address, items, total, delivery_info, source")
+    .neq("payment_status", "paid").eq("status", "awaiting_payment").eq("source", "website")
+    .gte("total", cfg.min_total)
+    .gte("created_at", new Date(now - cfg.max_age_hours * 36e5).toISOString())
+    .lte("created_at", new Date(now - cfg.after_hours * 36e5).toISOString())
+    .not("customer_email", "is", null);
+  const sent: string[] = [], skipped: Record<string, number> = {}, done = new Set<string>();
+  const skip = (why: string) => { skipped[why] = (skipped[why] || 0) + 1; };
+  let preview: Record<string, string> | null = null;
+  for (const o of candidates || []) {
+    const email = String(o.customer_email || "").trim().toLowerCase();
+    if (!email || done.has(email)) { skip("same_person_this_run"); continue; }
+    if (email === (Deno.env.get("NOTIFY_EMAIL") || "gremiercoffee@gmail.com").trim().toLowerCase()) { skip("own_address"); continue; }
+    if ((o.delivery_info as any)?.thanks_offer_at) { skip("already_offered"); continue; }
+    if (/^test\b/i.test(o.customer_name || "")) { skip("test"); continue; }
+    // Bought or tried again since (same email or phone): nothing to win back.
+    const phone = String(o.customer_phone || "").replace(/\D/g, "").slice(-9);
+    const { data: later } = await sb.from("orders").select("id, customer_email, customer_phone").gt("created_at", o.created_at).neq("status", "cancelled").limit(200);
+    if ((later || []).some((x: any) => String(x.customer_email || "").toLowerCase() === email || (phone.length === 9 && String(x.customer_phone || "").replace(/\D/g, "").slice(-9) === phone))) { skip("ordered_again"); continue; }
+    const { data: optout } = await sb.from("cart_reminder_optouts").select("email").eq("email", email).maybeSingle();
+    if (optout) { skip("opted_out"); continue; }
+    // Once per customer, ever.
+    const { data: had } = await sb.from("coupons").select("id").ilike("customer_email", likeExact(email)).like("description", OFFER_TAG + "%").limit(1);
+    if (had?.length) { skip("offered_before"); continue; }
+    done.add(email);
+    const code = "THANKS-" + [...crypto.getRandomValues(new Uint8Array(6))].map((b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
+    const until = new Date(now + cfg.valid_hours * 36e5);
+    const { subject, text } = offerEmail(o, orderIsHe(o), code, cfg.amount, until, cfg.min_total);
+    if (dryRun) { sent.push(`(dry run) ${o.id}`); preview = preview || { to: email, subject, text }; continue; }
+    const { error: cErr } = await sb.from("coupons").insert({ code, discount_type: "fixed", discount_value: cfg.amount, applies_to: "all", min_order_amount: cfg.min_total,
+      max_uses: 1, one_time_per_user: true, is_active: true, customer_email: email, expires_at: until.toISOString(), description: `${OFFER_TAG} · ${email} · after unpaid checkout ${o.id}` });
+    if (cErr) { skip("coupon_failed"); continue; }
+    const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: subject, customerText: text });
+    if (!res.ok) { await sb.from("coupons").update({ is_active: false }).eq("code", code); skip("email_failed"); continue; }
+    await sb.from("orders").update({ delivery_info: { ...(o.delivery_info || {}), thanks_offer_at: new Date().toISOString(), thanks_offer_code: code } }).eq("id", o.id);
+    sent.push(`${o.id} ${code}`);
+  }
+  if (sent.length && !dryRun) await alertAdmins(sb, "🎁 Thank-you offer sent", `${sent.length} one-use ₪${cfg.amount} code${sent.length > 1 ? "s" : ""} emailed after unfinished checkouts.`, "cart-offers");
+  return { on: cfg.on, amount: cfg.amount, min_total: cfg.min_total, sent, skipped, ...(dryRun ? { preview } : {}) };
 }
 
 // ── Tuesday "order by Wednesday, delivered before Shabbat" email ──
@@ -807,8 +891,13 @@ Deno.serve(async (req) => {
           const to = String(body.preview_email || o.customer_email || "").trim().toLowerCase();
           return json(reminderEmail(o, he, `${Deno.env.get("SUPABASE_URL")}/functions/v1/admin-tools?optout=${encodeURIComponent(to)}&t=${await optoutToken(to)}`));
         }
-        return json(await cartReminders(sb, body.dry_run === true));
+        const reminders = await cartReminders(sb, body.dry_run === true);
+        // The rarer next-day offer runs with the same hourly cron (it checks its own on/off setting).
+        let offers: unknown = null;
+        try { offers = await cartOffers(sb, body.dry_run === true); } catch (e) { offers = { error: String((e as Error).message || e) }; }
+        return json({ ...reminders, offers });
       }
+      case "cart_offers": return json(await cartOffers(sb, body.dry_run === true));
       case "shabbat_promo_email": return json(await shabbatPromoEmail(sb, body));
       case "birthday_invite": return json(await birthdayInvite(sb, body));
       case "site_analytics": {

@@ -786,7 +786,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261110-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261110-1"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261110-3"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261105-1"/>
@@ -2830,7 +2830,13 @@ function openCheckout() {
   document.getElementById('cartDrawer').classList.remove('open');
   openCheckoutUI('form');
   (fromCart ? navReplace : navPush)({ page: appPage, layer: 'checkout', checkoutView: 'form' });
+  // A code from an emailed link (?coupon=CODE) fills itself in at checkout.
+  try {
+    const code = sessionStorage.getItem('gremier_link_coupon'), field = document.getElementById('coRedeemCode');
+    if (code && field && !field.value && !appliedRedeem) { field.value = code; sessionStorage.removeItem('gremier_link_coupon'); setTimeout(() => applyRedeemCode(), 300); }
+  } catch (_) {}
 }
+try { const c = new URLSearchParams(location.search).get('coupon'); if (c && /^[A-Z0-9-]{3,40}$/i.test(c)) sessionStorage.setItem('gremier_link_coupon', c.toUpperCase()); } catch (_) {}
 function closeCheckout(fromNav) {
   if (fromNav) {
     document.getElementById('checkoutOverlay').classList.remove('open');
@@ -5516,7 +5522,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261104-1"></script>
 <script src="/storefront-cart.js?v=20261103-2"></script>
-<script src="/storefront-engage.js?v=20261102-3"></script>
+<script src="/storefront-engage.js?v=20261110-3"></script>
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261103-1"></script>

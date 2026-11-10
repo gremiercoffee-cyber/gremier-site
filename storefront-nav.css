@@ -606,3 +606,14 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .nav-links a { white-space:nowrap; }
 @media (max-width:1320px) { .nav-links { gap:18px; } .nav-links a { letter-spacing:.06em; font-size:.76rem; } }
 @media (max-width:1120px) { .nav-links { display:none !important; } .hamburger { display:flex !important; align-items:center; } }
+
+/* "How was your order?" corner card on a later visit: one tap rates it */
+#fbCard { position:fixed; z-index:940; bottom:18px; left:50%; margin-left:max(-160px, calc(16px - 50vw)); width:min(320px, calc(100vw - 32px)); background:#fff; color:#1a1a1a; border:1px solid rgba(0,0,0,.12); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:14px 16px 12px; font-family:'DM Sans', sans-serif; display:grid; gap:4px; opacity:0; transform:translateY(12px); transition:opacity .25s, transform .25s; }
+#fbCard.in { opacity:1; transform:none; }
+#fbCard b { font-size:.95rem; padding-inline-end:22px; }
+#fbCard .fbc-sub { font-size:.78rem; color:#666; }
+#fbCard .fbc-x { position:absolute; top:6px; inset-inline-end:8px; background:none; border:0; font-size:1.3rem; line-height:1; color:#888; cursor:pointer; padding:4px; }
+#fbCard .fbc-faces { display:flex; justify-content:space-between; margin-top:6px; }
+#fbCard .fbc-faces button { font-size:1.7rem; background:none; border:0; cursor:pointer; padding:4px; border-radius:8px; transition:transform .12s; }
+#fbCard .fbc-faces button:hover, #fbCard .fbc-faces button:focus-visible { transform:scale(1.2); background:#f3f0eb; }
+@media (max-width:600px) { #fbCard { bottom:84px; } }

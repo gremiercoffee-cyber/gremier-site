@@ -106,7 +106,8 @@ Deno.serve(async (req) => {
       case "feedback_pending": {
         const ids = (Array.isArray(body.order_ids) ? body.order_ids : []).filter(isUuid).slice(0, 10);
         if (!ids.length) return json({ pending: [] });
-        const cutoff = Date.now() - 2 * 864e5;
+        // From half a day after delivery (they've had a chance to taste it) until 30 days.
+        const cutoff = Date.now() - 12 * 36e5;
         const { data: orders } = await sb.from("orders").select("id, order_number, status, delivery_info").in("id", ids);
         const { data: answered } = await sb.from("feedback").select("order_id").in("order_id", ids);
         const done = new Set((answered || []).map((r) => r.order_id));

@@ -240,9 +240,13 @@
     });
   }
 
-  // Next visit: one small card, once per delivered order, only if the email wasn't answered.
+  // Next visit: a small corner card with one-tap faces, for a delivered order nobody rated yet.
+  // Closed without answering, it comes back once on a visit at least a day later.
   async function feedbackCard() {
-    if ($('fbSheet')) return;
+    if ($('fbSheet') || $('fbCard')) return;
+    // Not on top of the cookie notice: wait until it's answered.
+    const consent = $('analyticsConsent');
+    if (consent && consent.getClientRects().length) { setTimeout(feedbackCard, 4000); return; }
     let ids = (get('gremier_order_history_v1') || []).map((o) => o.id);
     const u = typeof currentUser !== 'undefined' ? currentUser : null;
     if (u && typeof sb !== 'undefined') {
@@ -251,13 +255,32 @@
         ids = [...new Set([...(data || []).map((o) => o.id), ...ids])];
       } catch (_) {}
     }
-    ids = ids.filter((id) => !get('gremier_fb_done:' + id)).slice(0, 10);
+    const seen = (id) => get('gremier_fb_seen:' + id) || { n: 0, at: 0 };
+    ids = ids.filter((id) => !get('gremier_fb_done:' + id) && seen(id).n < 2 && Date.now() - seen(id).at > 864e5).slice(0, 10);
     if (!ids.length) return;
     const { pending } = await engage({ action: 'feedback_pending', order_ids: ids });
     const o = pending && pending[0];
-    if (!o || $('fbCard')) return;
-    put('gremier_fb_done:' + o.order_id, 1);   // shown once, answered or not
-    writeSheet(o.order_id, o.t, 0, 'site');
+    if (!o || $('fbCard') || $('fbSheet')) return;
+    const s = seen(o.order_id); put('gremier_fb_seen:' + o.order_id, { n: s.n + 1, at: Date.now() });
+    const el = document.createElement('div');
+    el.id = 'fbCard'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-labelledby', 'fbCardTitle');
+    const faces = ['', '😞', '😕', '😐', '🙂', '😍'];
+    el.innerHTML = `<button type="button" class="fbc-x" aria-label="${T('Close', 'סגירה')}">×</button>
+      <b id="fbCardTitle">${o.order_number != null ? T(`How was order #${esc(o.order_number)}?`, `איך הייתה הזמנה #${esc(o.order_number)}?`) : T('How was your last order?', 'איך הייתה ההזמנה האחרונה?')}</b>
+      <span class="fbc-sub">${T('One tap, it helps us a lot', 'לחיצה אחת, זה עוזר לנו מאוד')}</span>
+      <div class="fbc-faces" role="group" aria-label="${T('Rating', 'דירוג')}">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-r="${n}" aria-label="${n}/5">${faces[n]}</button>`).join('')}</div>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('in'));
+    el.querySelector('.fbc-x').onclick = () => el.remove();
+    el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => {
+      const r = Number(b.dataset.r);
+      put('gremier_fb_done:' + o.order_id, 1);
+      el.remove();
+      // The tap is the rating: save it now; the sheet only offers a comment (and, if happy, the referral link).
+      const saved = engage({ action: 'feedback', order_id: o.order_id, t: o.t, rating: r, source: 'site' }).catch(() => null);
+      writeSheet(o.order_id, o.t, r, 'site');
+      saved.then((res) => { const h = $('fbTitle'); if (res?.ok && h) h.textContent = T('Thanks! Your rating is saved ✓', 'תודה! הדירוג נשמר ✓'); });
+    });
   }
 
   function hook() {

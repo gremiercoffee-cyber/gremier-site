@@ -33,6 +33,8 @@ export function productionAlerts(stock:any,jobs:any[],today:string){
  return alerts;
 }
 export async function notifyProductionNeeds(sb:any,today:string){
+ // Switched off by the owner (site_settings low_stock_alerts = 'off'); set it to 'on' to bring them back.
+ const {data:flag}=await sb.from('site_settings').select('value').eq('key','low_stock_alerts').maybeSingle();if(String(flag?.value||'').toLowerCase()==='off')return {evaluated:0,created:0,pushSent:0,pushFailed:0,off:true};
  const tables=['beans','concentrate','inventory','jobs','products'];
  const result=await Promise.all(tables.map(t=>t==='jobs'?sb.from(t).select('*').eq('done',false):sb.from(t).select('*')));if(result.some(r=>r.error))throw Error('Production alert data unavailable');
  const stock=Object.fromEntries(tables.map((t,i)=>[t,result[i].data||[]]));
