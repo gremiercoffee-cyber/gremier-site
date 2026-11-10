@@ -784,7 +784,7 @@
   /* Preview badge */
 </style>
 
-<link rel="stylesheet" href="/subscriptions.css?v=20261110-1"/>
+<link rel="stylesheet" href="/subscriptions.css?v=20261110-2"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
@@ -2771,13 +2771,21 @@ function renderCheckoutSubWindow() {
     ? (he ? `מוכן לאיסוף בסביבות ${windowDate}, ${then}.` : `Ready for pickup around ${windowDate}, ${then}.`)
     : (he ? `משלוח ראשון בסביבות ${asked || windowDate}, ${then}. החיוב לפי מועד ההזמנה.` : `First delivery around ${asked || windowDate}, ${then}. Billing stays on your order date.`);
   first.appendChild(line);
+  // The later window chosen: make the wait unmistakable.
+  if (w !== nearest) {
+    const warn = document.createElement('div'); warn.className = 'co-window-warn'; warn.setAttribute('role', 'alert');
+    warn.textContent = pickup
+      ? (he ? `שימו לב: הקופסה הראשונה תהיה מוכנה לאיסוף רק בסביבות ${windowDate}.` : `Heads up: your first box won't be ready for pickup until around ${windowDate}.`)
+      : (he ? `שימו לב: לא תקבלו את המשלוח הראשון עד ${windowDate} בערך.` : `Heads up: you won't get your first delivery until around ${windowDate}.`);
+    first.appendChild(warn);
+  }
   if (!canSooner) return;
   const [y, m, d] = subscriptionToday().split('-').map(Number);
   const min = subscriptionIso(new Date(y, m - 1, d + 1)), wd = subscriptionWindowFirstDate(w), max = subscriptionIso(new Date(wd.getFullYear(), wd.getMonth(), wd.getDate() - 1));
   const sooner = document.createElement('div'); sooner.className = 'co-window-sooner';
   sooner.innerHTML = `<label><input type="checkbox" id="coSubSooner" ${sub.subscription_first_date ? 'checked' : ''}/> <span></span></label>
     <div id="coSubSoonerPick" ${sub.subscription_first_date ? '' : 'hidden'}><input type="date" class="form-input" id="coSubFirstDate" min="${min}" max="${max}" value="${sub.subscription_first_date || ''}" style="max-width:220px"/><small></small></div>`;
-  sooner.querySelector('label span').textContent = he ? `צריכים את הקופסה הראשונה לפני ${windowDate}?` : `Need your first box before ${windowDate}?`;
+  sooner.querySelector('label span').textContent = he ? `רוצים לקבל אותה מוקדם יותר? סמנו כאן ובחרו תאריך למשלוח הראשון (לפני ${windowDate}).` : `Want it sooner? Check this box to pick a date for your first delivery (before ${windowDate}).`;
   sooner.querySelector('small').textContent = he ? 'רק המשלוח הראשון מוקדם יותר. המשלוחים הבאים לפי המועד הקבוע.' : 'Only the first delivery comes sooner. After that, deliveries follow the schedule.';
   first.appendChild(sooner);
   sooner.querySelector('#coSubSooner').onchange = (e) => {
