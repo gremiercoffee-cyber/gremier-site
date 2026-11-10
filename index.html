@@ -4244,7 +4244,7 @@ function showRedeemApplied(message, discount) {
   const dateLabel=document.getElementById('t-co-regular-date'),dateHint=document.getElementById('t-co-regular-date-hint');
   if(dateLabel)dateLabel.textContent=subscription?(lang==='he'?'תאריך יעד למשלוח חוזר (אופציונלי)':'Recurring delivery target (optional)'):(lang==='he'?'תאריך משלוח מבוקש (אופציונלי)':'Requested delivery date (optional)');
   if(dateHint)dateHint.style.fontSize=subscription?'.8rem':'.72rem';
-  if(dateHint)dateHint.textContent=subscription?(lang==='he'?'ברירת המחדל היא לפי מועד החיוב. בחרו תאריך יעד ראשון: המשלוחים הבאים יחזרו באותו יום בחודש או בשבוע. המשלוח עשוי להגיע כמה ימים לפני או אחרי תאריך היעד. מועד החיוב לא משתנה.':'Leave blank to follow billing. A chosen date repeats monthly or weekly. Delivery may arrive a few days before or after; billing dates stay unchanged.'):(lang==='he'?'השאירו ריק למשלוח בהקדם (2–5 ימים).':'Leave blank for delivery as soon as possible (2–5 days).');
+  if(dateHint)dateHint.textContent=subscription?(lang==='he'?'ברירת המחדל היא לפי מועד החיוב. בחרו תאריך יעד ראשון: המשלוחים הבאים יחזרו באותו יום בחודש או בשבוע. המשלוח עשוי להגיע כמה ימים לפני או אחרי תאריך היעד. מועד החיוב לא משתנה.':'Leave blank to follow billing. A chosen date repeats monthly or weekly. Delivery may arrive a few days before or after; billing dates stay unchanged.'):(lang==='he'?'השאירו ריק למשלוח בהקדם (2–5 ימים). להיום או מחר בחרו משלוח מהיר.':'Leave blank for delivery as soon as possible (2–5 days). For today or tomorrow, choose expedited.');
 
   // Don't let the customer pick a date in the past.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
@@ -4252,6 +4252,24 @@ function showRedeemApplied(message, discount) {
     const el = document.getElementById(id);
     if (el && !el.min) el.min = today;
   });
+  // Regular delivery takes at least two days: the earliest date it can be asked for is the day after tomorrow.
+  const reg = document.getElementById('coRegularDate');
+  if (reg) {
+    const [y, m, d] = today.split('-').map(Number), e = new Date(y, m - 1, d + 2);
+    reg.min = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`;
+    if (!reg.dataset.soonCheck) {
+      reg.dataset.soonCheck = '1';
+      reg.addEventListener('change', () => {
+        let note = document.getElementById('coRegularSoon');
+        const tooSoon = reg.value && reg.value < reg.min;
+        if (tooSoon) reg.value = '';
+        if (!tooSoon) { note?.remove(); return; }
+        if (!note) { note = document.createElement('div'); note.id = 'coRegularSoon'; note.setAttribute('role', 'alert'); note.style.cssText = 'margin-top:8px;padding:9px 12px;border:1px solid #c0392b;background:#c0392b14;color:#a5281b;border-radius:3px;font-size:.8rem;line-height:1.45'; reg.after(note); }
+        note.innerHTML = (lang === 'he' ? 'משלוח רגיל לא יכול להגיע היום או מחר. צריכים את זה היום או מחר? ' : 'Regular delivery can’t arrive today or tomorrow. Need it today or tomorrow? ')
+          + `<a href="#" style="color:inherit;font-weight:700" onclick="event.preventDefault();const x=document.getElementById('shipExpedited');if(x){x.checked=true;x.dispatchEvent(new Event('change'));}document.getElementById('coRegularSoon')?.remove();">${lang === 'he' ? 'בחרו משלוח מהיר' : 'Choose expedited delivery'}</a>`;
+      });
+    }
+  }
   if (!isExpedited) {
     const dateRow = document.getElementById('datePickerRow');
     if (dateRow) dateRow.style.display = 'none';

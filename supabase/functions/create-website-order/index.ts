@@ -262,6 +262,14 @@ Deno.serve(async (req) => {
       return json({ error: "Missing customer details" }, 400);
     }
     if (!items.length) return json({ error: "Invalid order" }, 400);
+    // Regular delivery takes at least two days: today or tomorrow needs expedited delivery.
+    if (!subscriptionAddon && String(deliveryInfo.delivery_type || "regular") === "regular" && deliveryInfo.delivery_date) {
+      const todayIL = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+      const earliest = new Date(Date.parse(todayIL + "T12:00:00Z") + 2 * 864e5).toISOString().slice(0, 10);
+      if (String(deliveryInfo.delivery_date).slice(0, 10) < earliest) {
+        return json({ error: "Regular delivery can't arrive today or tomorrow. For today or tomorrow, choose expedited delivery." }, 400);
+      }
+    }
 
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
