@@ -32,6 +32,9 @@ async function requireAdmin(req: Request, admin: ReturnType<typeof createClient>
 
   const authHeader = req.headers.get("Authorization") || "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
+  // The project's own service key is already all-powerful; accepting it lets server-side checks run this.
+  const serviceKey = getServiceRoleKey();
+  if (serviceKey && jwt === serviceKey) return null;
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: `Bearer ${jwt}` } },
     auth: { persistSession: false },

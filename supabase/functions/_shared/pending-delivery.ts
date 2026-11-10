@@ -223,6 +223,29 @@ async function noteAutoScheduleFailure(
  * dashboard + reminder crons) and mark the pending row scheduled. Mirrors the
  * exact shape admin.html's confirmSchedule() writes so both paths look identical.
  */
+/** An order combined in admin with another that already has a delivery (e.g. paid later) goes out in
+ *  that delivery: its quantities are added there instead of making a second stop. Kept for undo. */
+async function joinCombinedDelivery(supabase: SupabaseClient, order: OrderRow, info: Record<string, unknown>, pendingId: string): Promise<boolean> {
+  const mainId = String(info.combined_into || (Array.isArray(info.combined_orders) && info.combined_orders.length ? order.id : ""));
+  if (!mainId) return false;
+  const { data: mainRow } = await supabase.from("orders").select("delivery_info").eq("id", mainId).maybeSingle();
+  const list = ((mainRow?.delivery_info as Record<string, unknown> | null)?.combined_orders || []) as unknown[];
+  const group = [mainId, ...list.map(String)].filter((id) => id && id !== order.id);
+  if (!group.length) return false;
+  const { data: jobs } = await supabase.from("jobs").select("id,quantities").in("website_order_id", group).eq("type", "delivery").eq("done", false).limit(1);
+  const job = jobs?.[0] as { id: string; quantities: Record<string, number> | null } | undefined;
+  if (!job) return false;
+  const items = Array.isArray(order.items) ? order.items : [];
+  const added = await resolveOpsQuantities(supabase, items);
+  const merged: Record<string, number> = { ...(job.quantities || {}) };
+  for (const [k, v] of Object.entries(added)) merged[k] = (Number(merged[k]) || 0) + (Number(v) || 0);
+  const { error } = await supabase.from("jobs").update({ quantities: merged }).eq("id", job.id);
+  if (error) { console.error("joinCombinedDelivery:", error.message); return false; }
+  await supabase.from("orders").update({ delivery_info: { ...info, combined_added: added, combined_added_job: job.id } }).eq("id", order.id);
+  await supabase.from("pending_website_deliveries").update({ status: "dismissed", notes: "Goes out with a combined order" }).eq("id", pendingId);
+  return true;
+}
+
 async function autoScheduleDelivery(
   supabase: SupabaseClient,
   order: OrderRow,
@@ -254,6 +277,7 @@ async function autoScheduleDelivery(
     console.log("autoScheduleDelivery: job already exists for order", order.id, "- skipping");
     return true;
   }
+  if (await joinCombinedDelivery(supabase, order, info, pendingId)) return true;
 
   const items = Array.isArray(order.items) ? order.items : [];
   const itemsLabel = items.map((i) => {

@@ -72,15 +72,16 @@
   // and kept for undo). Payments, receipts and totals stay as they were; fulfilling this order
   // fulfils both (notify-order-fulfilled), with one email listing everything.
   const digits = (p) => String(p || '').replace(/\D/g, '').slice(-9);
-  const isOpenPaid = (x) => String(x.payment_status || '').toLowerCase() === 'paid' && !CLOSED_ORDER_STATUSES.includes(String(x.status || '').toLowerCase());
+  const isOpen = (x) => !CLOSED_ORDER_STATUSES.includes(String(x.status || '').toLowerCase());
+  const isPaidOrder = (x) => String(x.payment_status || '').toLowerCase() === 'paid';
   const mainOf = (x) => infoOf(x).combined_into || null;
   const partsOf = (x) => (Array.isArray(infoOf(x).combined_orders) ? infoOf(x).combined_orders.map(String) : []);
   const shortItems = (x) => (x.items || []).filter((i) => i.category !== 'delivery_fee').map((i) => `${Number(i.qty) > 1 ? i.qty + '× ' : ''}${i.name_en || i.name_he || i.name || 'Item'}`).join(', ');
   const shortDay = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   function candidates(o) {
-    if (!isOpenPaid(o) || mainOf(o)) return [];
+    if (!isOpen(o) || mainOf(o)) return [];
     const email = String(o.customer_email || '').trim().toLowerCase(), phone = digits(o.customer_phone);
-    return allOrders.filter((x) => x.id !== o.id && isOpenPaid(x) && !mainOf(x) && !partsOf(x).length
+    return allOrders.filter((x) => x.id !== o.id && isOpen(x) && !mainOf(x) && !partsOf(x).length
       && ((email && String(x.customer_email || '').trim().toLowerCase() === email) || (phone.length === 9 && digits(x.customer_phone) === phone)));
   }
   async function openJob(orderId) {
@@ -109,7 +110,7 @@
       const m = cur.main;
       return `<section class="od-sec od-combined">
         <div class="od-sec-h"><h3>Combined</h3></div>
-        <p class="od-sub">Goes out with order <b>#${escHtml(infoOf(o).combined_into_number ?? m?.order_number ?? '')}</b>, on its delivery. It's marked fulfilled together with it.</p>
+        <p class="od-sub">Goes out with order <b>#${escHtml(infoOf(o).combined_into_number ?? m?.order_number ?? '')}</b>, on its delivery. ${isPaidOrder(o) ? 'It\u2019s marked fulfilled together with it.' : 'Not paid yet: once it\u2019s paid it joins that delivery and is fulfilled with it.'}</p>
         <div class="od-actions">
           <button type="button" class="od-btn" onclick="openOrderDetail('${escAttr(main)}')">Open #${escHtml(infoOf(o).combined_into_number ?? '')}</button>
           ${CLOSED_ORDER_STATUSES.includes(String(o.status || '').toLowerCase()) ? '' : `<button type="button" class="od-btn" onclick="GremierOrder.separate('${escAttr(main)}','${escAttr(o.id)}')">Separate again</button>`}
@@ -117,38 +118,41 @@
       </section>`;
     }
     const parts = cur.parts || [], closed = CLOSED_ORDER_STATUSES.includes(String(o.status || '').toLowerCase());
-    const partHtml = parts.map((p) => `<div class="od-item"><span><b>#${escHtml(p.order_number ?? '')}</b> · ${escHtml(shortItems(p) || 'No items')}<small>Ordered ${escHtml(shortDay(p.created_at))} · paid separately ₪${escHtml(p.total)}</small></span>
+    const partHtml = parts.map((p) => `<div class="od-item"><span><b>#${escHtml(p.order_number ?? '')}</b> · ${escHtml(shortItems(p) || 'No items')}<small>Ordered ${escHtml(shortDay(p.created_at))} · ${isPaidOrder(p) ? 'paid separately' : '<b>not paid yet</b>'} ₪${escHtml(p.total)}</small></span>
       ${closed ? '' : `<button type="button" class="od-link" onclick="GremierOrder.separate('${escAttr(o.id)}','${escAttr(p.id)}')">Separate</button>`}</div>`).join('');
     const options = closed ? [] : candidates(o);
-    const optHtml = options.map((x) => `<div class="od-item"><span><b>#${escHtml(x.order_number ?? '')}</b> · ${escHtml(shortItems(x) || 'No items')}<small>Ordered ${escHtml(shortDay(x.created_at))} · ₪${escHtml(x.total)}</small></span>
+    const optHtml = options.map((x) => `<div class="od-item"><span><b>#${escHtml(x.order_number ?? '')}</b> · ${escHtml(shortItems(x) || 'No items')}<small>Ordered ${escHtml(shortDay(x.created_at))} · ₪${escHtml(x.total)}${isPaidOrder(x) ? '' : ' · not paid yet'}</small></span>
       <button type="button" class="od-link" onclick="GremierOrder.combine('${escAttr(x.id)}')">Combine</button></div>`).join('');
     if (!partHtml && !optHtml) return '';
     return `<section class="od-sec od-combined">
-      ${partHtml ? `<div class="od-sec-h"><h3>Combined orders</h3></div>${partHtml}<p class="od-sub">They go out in this delivery and are fulfilled with it.</p>` : ''}
-      ${optHtml ? `<div class="od-sec-h"><h3>${partHtml ? 'Another open order' : 'Same customer, another open order'}</h3></div>${optHtml}<p class="od-sub">Combine to send them as one delivery, on this order's date and address. Payments stay separate.</p>` : ''}
+      ${partHtml ? `<div class="od-sec-h"><h3>Combined orders</h3></div>${partHtml}<p class="od-sub">Paid ones go out in this delivery and are fulfilled with it. An unpaid one joins once it\u2019s paid.</p>` : ''}
+      ${optHtml ? `<div class="od-sec-h"><h3>${partHtml ? 'Another open order' : 'Same customer, another open order'}</h3></div>${optHtml}<p class="od-sub">Combine to send them as one delivery. Payments stay separate.</p>` : ''}
     </section>`;
   }
   async function combine(otherId) {
-    const o = orderOf(), y = allOrders.find((x) => x.id === otherId);
+    let o = orderOf(), y = allOrders.find((x) => x.id === otherId);
     if (!o || !y) return;
-    if (!confirm(`Combine #${y.order_number} into #${o.order_number}?\n\nThey go out together as one delivery, on #${o.order_number}'s date and address, and the customer gets one "delivered" email. Payments and receipts stay separate. You can separate them again.`)) return;
     try {
-      const [jx, jy] = await Promise.all([openJob(o.id), openJob(y.id)]);
-      if (!jx || !jy) throw new Error('Both orders need a scheduled delivery that isn\u2019t done yet');
+      let [jx, jy] = await Promise.all([openJob(o.id), openJob(y.id)]);
+      // The order that already has a delivery is the main one (an unpaid order has none yet).
+      if (!jx && jy) { [o, y, jx, jy] = [y, o, jy, jx]; }
+      if (!confirm(`Combine #${y.order_number} into #${o.order_number}?\n\nThey go out together as one delivery${jx ? `, on #${o.order_number}'s date and address` : ''}, and the customer gets one "delivered" email.${isPaidOrder(y) && isPaidOrder(o) ? '' : ' An unpaid order joins the delivery once it\u2019s paid.'} Payments and receipts stay separate. You can separate them again.`)) return;
       const [ox, oy] = await Promise.all([readInfo(o.id), readInfo(y.id)]);
       if (ox.info.combined_into || oy.info.combined_into || (oy.info.combined_orders || []).length) throw new Error('One of these orders is already combined');
-      const merged = { ...(jx.quantities || {}) };
-      for (const [k, v] of Object.entries(jy.quantities || {})) merged[k] = (Number(merged[k]) || 0) + (Number(v) || 0);
       const now = new Date().toISOString();
       // The other order first keeps everything needed to undo, then the deliveries change.
-      await saveInfo(y.id, { ...oy.info, combined_into: o.id, combined_into_number: o.order_number ?? null, combined_at: now, combined_job: jy });
-      await setQuantities(jx.id, merged);
+      await saveInfo(y.id, { ...oy.info, combined_into: o.id, combined_into_number: o.order_number ?? null, combined_at: now, combined_job: jx && jy ? jy : null });
       await saveInfo(o.id, { ...ox.info, combined_orders: [...new Set([...(ox.info.combined_orders || []).map(String), y.id])] });
-      const { error } = await sb.from('jobs').delete().eq('id', jy.id);
-      if (error) throw error;
-      await sb.from('pending_website_deliveries').update({ status: 'dismissed' }).eq('order_id', y.id);
+      if (jx && jy) {
+        const merged = { ...(jx.quantities || {}) };
+        for (const [k, v] of Object.entries(jy.quantities || {})) merged[k] = (Number(merged[k]) || 0) + (Number(v) || 0);
+        await setQuantities(jx.id, merged);
+        const { error } = await sb.from('jobs').delete().eq('id', jy.id);
+        if (error) throw error;
+        await sb.from('pending_website_deliveries').update({ status: 'dismissed' }).eq('order_id', y.id);
+      }
       showToast(`Combined ✓ #${y.order_number} goes out with #${o.order_number}`);
-      await afterChange(o.id);
+      await afterChange(cur.id);
     } catch (e) {
       console.error('combine orders:', e);
       showToast('Could not combine: ' + (e.message || e), 7000);
@@ -161,6 +165,18 @@
       const [om, op] = await Promise.all([readInfo(mainId), readInfo(partId)]);
       if (CLOSED_ORDER_STATUSES.includes(String(op.status || '').toLowerCase())) throw new Error('That order is already fulfilled');
       const saved = op.info.combined_job, jx = await openJob(mainId);
+      let requeue = false;
+      if (!saved && op.info.combined_added && op.info.combined_added_job) {
+        // It joined the delivery when it was paid: take its quantities back out; it goes back to "to schedule".
+        const { data: js } = await sb.from('jobs').select('id,quantities,done').eq('id', op.info.combined_added_job).limit(1);
+        const j = js?.[0];
+        if (j && !j.done) {
+          const left = { ...(j.quantities || {}) };
+          for (const [k, v] of Object.entries(op.info.combined_added)) { const n = (Number(left[k]) || 0) - (Number(v) || 0); if (n > 0) left[k] = n; else delete left[k]; }
+          await setQuantities(j.id, left);
+        }
+        requeue = true;
+      }
       if (saved) {
         const { error } = await sb.from('jobs').insert({ ...saved, done: false });
         if (error) throw error;
@@ -170,11 +186,12 @@
           await setQuantities(jx.id, left);
         }
       }
-      const { combined_into, combined_into_number, combined_at, combined_job, ...rest } = op.info;
+      const { combined_into, combined_into_number, combined_at, combined_job, combined_added, combined_added_job, ...rest } = op.info;
       await saveInfo(partId, rest);
       await saveInfo(mainId, { ...om.info, combined_orders: (om.info.combined_orders || []).map(String).filter((x) => x !== partId) });
-      await sb.from('pending_website_deliveries').update({ status: 'scheduled' }).eq('order_id', partId);
-      showToast('Separated ✓ Each order has its own delivery again');
+      if (saved) await sb.from('pending_website_deliveries').update({ status: 'scheduled' }).eq('order_id', partId);
+      if (requeue) await sb.from('pending_website_deliveries').update({ status: 'pending_schedule' }).eq('order_id', partId);
+      showToast(requeue ? 'Separated ✓ Schedule its delivery from "To schedule"' : 'Separated ✓ Each order has its own delivery again');
       await afterChange(cur.id);
     } catch (e) {
       console.error('separate orders:', e);

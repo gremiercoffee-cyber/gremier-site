@@ -36,6 +36,9 @@ async function requireAdmin(req: Request, admin: ReturnType<typeof createClient>
 
   const authHeader = req.headers.get("Authorization") || "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
+  // The project's own service key is already all-powerful; accepting it lets server-side checks run this.
+  const serviceKey = getServiceRoleKey();
+  if (serviceKey && jwt === serviceKey) return null;
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: `Bearer ${jwt}` } },
     auth: { persistSession: false },
@@ -108,12 +111,18 @@ Deno.serve(async (req) => {
     const fromOps = body.ops_inventory_already_deducted === true;
     const alreadyNotified = Boolean(info.fulfilled_notified_at);
     const alreadyFulfilled = order.status === "fulfilled";
-    // Orders combined into this one (admin "Combine") go out in the same delivery: one email lists everything.
-    const combinedIds = Array.isArray(info.combined_orders) ? (info.combined_orders as unknown[]).map(String).filter(Boolean) : [];
-    const { data: combined } = combinedIds.length
-      ? await supabase.from("orders").select("*").in("id", combinedIds)
+    // Orders combined with this one (admin "Combine") go out in the same delivery: one email lists everything.
+    // The group is the main order plus everything combined into it, whichever of them this delivery belongs to.
+    // Only paid ones go with it; an unpaid one stays open under "Waiting for payment".
+    const mainId = String(info.combined_into || orderId);
+    const { data: mainRow } = mainId === orderId ? { data: order } : await supabase.from("orders").select("*").eq("id", mainId).maybeSingle();
+    const mainInfo = (mainRow?.delivery_info || {}) as Record<string, unknown>;
+    const groupIds = [mainId, ...(Array.isArray(mainInfo.combined_orders) ? (mainInfo.combined_orders as unknown[]).map(String) : [])].filter((id) => id && id !== orderId);
+    const { data: combined } = groupIds.length
+      ? await supabase.from("orders").select("*").in("id", groupIds)
       : { data: [] as Record<string, unknown>[] };
-    const combinedOrders = ((combined || []) as Record<string, any>[]).filter((c) => String(c.delivery_info?.combined_into || "") === orderId);
+    const combinedOrders = ((combined || []) as Record<string, any>[]).filter((c) =>
+      (c.id === mainId || String(c.delivery_info?.combined_into || "") === mainId) && String(c.payment_status || "").toLowerCase() === "paid");
     const allItems = [...(order.items || []), ...combinedOrders.flatMap((c) => c.items || [])];
 
     if (fromOps) {
