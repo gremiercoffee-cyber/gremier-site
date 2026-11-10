@@ -1,5 +1,5 @@
-// Orders screen "Active" list: paid orders still to fulfill and scheduled deliveries, together as one
-// card list grouped by delivery date. A delivery made for a website order shares that order's card.
+// Orders screen: paid orders still to fulfill and scheduled deliveries, on a calendar (admin-orders-calendar.js).
+// A delivery made for a website order shares that order's card; combined orders are one card.
 // Unpaid orders go under "Waiting for payment" with the payment links (unless a link already shows them).
 // When nothing is left, one green "All done" tick replaces the list.
 // Delivery jobs come from the schedule (react-1.jsx publishes window.__gremierDeliveries and
@@ -14,27 +14,6 @@
   const isPaid = (o) => String(o.payment_status || '').toLowerCase() === 'paid';
   const pad = (n) => String(n).padStart(2, '0');
   const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  /** A day group's heading: the date big (weekday + day month), how far away it is, and the count.
-   *  It stays pinned while that day's cards scroll, so you always know which date you're looking at. */
-  function dayHeader(key, count) {
-    const n = `<span class="ob-dh-n">${count}</span>`;
-    if (key === 'overdue') return `<h3 class="ob-day-h"><span class="ob-dh-date">Overdue</span><span class="ob-dh-rel">Past date</span>${n}</h3>`;
-    if (key === 'nodate') return `<h3 class="ob-day-h"><span class="ob-dh-date">No delivery date</span>${n}</h3>`;
-    const d = new Date(key + 'T12:00:00'), today = new Date(isoDay(new Date()) + 'T12:00:00');
-    const days = Math.round((d - today) / 864e5);
-    const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
-    const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + (d.getFullYear() !== today.getFullYear() ? ' ' + d.getFullYear() : '');
-    const rel = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days === -1 ? 'Yesterday' : days > 1 ? `In ${days} days` : `${-days} days ago`;
-    const tone = days <= 0 ? ' now' : days === 1 ? ' soon' : '';
-    return `<h3 class="ob-day-h"><span class="ob-dh-date"><b>${esc(weekday)}</b> ${esc(date)}</span><span class="ob-dh-rel${tone}">${rel}</span>${n}</h3>`;
-  }
-  /** Pinned headings sit just under the phone header (which is itself pinned). */
-  function pinOffset() {
-    const h = document.querySelector('.mobile-header');
-    const top = h && getComputedStyle(h).display !== 'none' && getComputedStyle(h).position === 'sticky' ? h.getBoundingClientRect().height : 0;
-    document.documentElement.style.setProperty('--ob-pin-top', Math.round(top) + 'px');
-  }
-
   function productLabel(pid) {
     const dyn = root.__OPS_DYNAMIC_PRODUCTS__ && root.__OPS_DYNAMIC_PRODUCTS__[pid];
     if (dyn && dyn.label) return dyn.label;
@@ -52,43 +31,6 @@
     }
     return (j.deliveryType === 'coffeebar' ? j.cbAddress : j.privateAddress) || j.privateAddress || j.cbAddress || '';
   }
-  const detailsLine = (d) => (root.GremierRoute && d ? root.GremierRoute.detailsLine(d) : '');
-
-  // A delivery with no website order behind it (store runs, coffee bars, private deliveries).
-  function jobCard(j, stores, overdue) {
-    const qty = Object.entries(j.quantities || {}).filter(([, n]) => Number(n) > 0);
-    const items = qty.map(([pid, n]) => `${Number(n) > 1 ? n + '× ' : ''}${productLabel(pid)}`).join(', ');
-    const thumbs = qty.slice(0, 3).map(([pid]) => (root.getProductImage ? root.getProductImage(pid) : '')).filter(Boolean);
-    const thumbHtml = thumbs.length ? thumbs.map((src) => `<img src="${esc(src)}" alt=""/>`).join('') : '<span>🚚</span>';
-    const kind = j.deliveryType === 'store' ? 'Store' : j.deliveryType === 'coffeebar' ? 'Coffee bar' : 'Delivery';
-    const tags = [
-      `<span class="plk-tag">${kind}</span>`,
-      j.time ? `<span>${esc(String(j.time).slice(0, 5))}</span>` : '',
-      j.deliveryType === 'coffeebar' && j.people ? `<span>· ${esc(j.people)} people</span>` : '',
-      overdue ? `<span class="plk-tag warn">Was due ${esc(new Date(j.date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))}</span>` : '',
-    ].join('');
-    const address = jobAddress(j, stores), details = detailsLine(j.deliveryDetails);
-    const wa = j.customerPhone && typeof whatsAppShareHref === 'function' ? whatsAppShareHref(j.customerPhone, '') : '';
-    const id = esc(j.id);
-    return `<div class="oc-card todo${overdue ? ' late' : ''}" data-job-id="${id}">
-      <div class="oc-top" onclick="GremierBoard.edit('${id}')" role="button" tabindex="0" title="Edit delivery">
-        <div class="plk-thumbs">${thumbHtml}</div>
-        <div class="oc-main">
-          <span class="oc-name">${esc(jobName(j))}</span>
-          <span class="oc-items">${esc(items || 'No items listed')}</span>
-          <span class="oc-tags">${tags}</span>
-        </div>
-      </div>
-      <div class="oc-actions">
-        ${wa ? `<a class="oc-btn wa" href="${esc(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
-        <button type="button" class="oc-btn" onclick="GremierBoard.edit('${id}')">✎ Edit</button>
-        <button type="button" class="oc-btn done" onclick="GremierBoard.checkoff('${id}')">✓ Delivered</button>
-        <button type="button" class="oc-btn icon" onclick="GremierBoard.remove('${id}')" aria-label="Delete delivery" title="Delete delivery">🗑</button>
-      </div>
-      ${address || details ? `<div class="oc-addr"><span aria-hidden="true">📍</span><span>${esc([address, details].filter(Boolean).join(' · '))}</span></div>` : ''}
-    </div>`;
-  }
-
   function render() {
     const body = document.getElementById('ordersBody');
     if (!body || orders === null) return;
@@ -107,36 +49,68 @@
     });
     const orderIds = new Set(paid.map((o) => o.id));
     const jobForOrder = new Map(jobs.filter((j) => j.websiteOrderId && orderIds.has(j.websiteOrderId)).map((j) => [j.websiteOrderId, j]));
+    const imgOf = (i) => (typeof orderItemImage === 'function' ? orderItemImage(i) : '');
+    const extras = (i) => (typeof describeItemExtras === 'function' ? describeItemExtras(i) : '');
+    // Everything to deliver, one line per product (the same product from combined orders adds up).
+    const mergeItems = (list) => {
+      const out = new Map();
+      // A subscription box or a pack is listed by what's inside it.
+      const flat = list.flatMap((i) => { const inside = Array.isArray(i.subscription_items) && i.subscription_items.length ? i.subscription_items : Array.isArray(i.pack_items) && i.pack_items.length ? i.pack_items : null; return inside ? inside.map((c) => ({ ...c, qty: (Number(c.qty) || 1) * (Number(i.qty) || 1) })) : [i]; });
+      for (const i of flat) {
+        if (i.category === 'delivery_fee') continue;
+        const label = i.name_en || i.name_he || i.name || 'Item', note = extras(i) || '', k = label + '|' + note;
+        const cur = out.get(k) || { label, note, qty: 0, img: imgOf(i) };
+        cur.qty += Number(i.qty) || 1; out.set(k, cur);
+      }
+      return [...out.values()];
+    };
+    const labelOf = (x) => (x.order_number != null ? '#' + x.order_number : 'Unpaid order');
     const entries = [
       ...paid.map((o) => {
-        const job = jobForOrder.get(o.id) || null;
-        const date = (job && job.date) || String((o.delivery_info && o.delivery_info.delivery_date) || '').slice(0, 10);
-        return { date, time: (job && job.time) || (o.delivery_info && o.delivery_info.event_time) || '', html: (late) => orderRowHtml(o, { job, stores, late }) };
+        const job = jobForOrder.get(o.id) || null, di = info(o), parts = partsFor(o);
+        const all = [o, ...parts.filter(isPaid)], waiting = parts.filter((p) => !isPaid(p));
+        const date = (job && job.date) || String(di.delivery_date || '').slice(0, 10);
+        const dType = String(di.delivery_type || '').toLowerCase();
+        const type = job?.deliveryType === 'coffeebar' ? 'coffeebar' : dType === 'pickup' && !(job && (job.privateAddress || job.cbAddress)) ? 'pickup' : 'delivery';
+        const address = (job && (job.deliveryType === 'coffeebar' ? job.cbAddress || job.privateAddress : job.privateAddress || job.cbAddress)) || o.delivery_address || all.map((x) => x.delivery_address).find(Boolean) || '';
+        const wa = o.customer_phone && typeof whatsAppShareHref === 'function' ? whatsAppShareHref(o.customer_phone, '') : '';
+        const needsFulfil = !['fulfilled', 'cancelled'].includes(String(o.status || '').toLowerCase());
+        return {
+          key: 'o:' + o.id, kind: 'order', type, date, time: (job && job.time) || di.event_time || '', name: o.customer_name || 'Customer',
+          address, city: [di.city_en, di.city_he], labels: all.map(labelOf).concat(waiting.map(labelOf)),
+          items: mergeItems(all.flatMap((x) => x.items || [])),
+          unpaidParts: waiting.length ? `${waiting.map(labelOf).join(', ')} (${waiting.reduce((s, x) => s + Number(x.total || 0), 0).toFixed(0)}₪) joins this delivery once it's paid.` : '',
+          actions: [
+            { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(o.id) },
+            wa ? { label: '💬 WhatsApp', cls: 'wa', href: wa } : null,
+            job ? { label: '✓ Delivered', cls: 'done', run: () => root.GremierBoard.checkoff(job.id) }
+              : needsFulfil && typeof confirmFulfillOrder === 'function' ? { label: '✓ Fulfilled', cls: 'done', run: () => confirmFulfillOrder(o.id) } : null,
+          ].filter(Boolean),
+        };
       }),
-      ...jobs.filter((j) => !(j.websiteOrderId && orderIds.has(j.websiteOrderId)))
-        .map((j) => ({ date: j.date || '', time: j.time || '', html: (late) => jobCard(j, stores, late) })),
+      ...jobs.filter((j) => !(j.websiteOrderId && orderIds.has(j.websiteOrderId))).map((j) => {
+        const qty = Object.entries(j.quantities || {}).filter(([, n]) => Number(n) > 0);
+        const wa = j.customerPhone && typeof whatsAppShareHref === 'function' ? whatsAppShareHref(j.customerPhone, '') : '';
+        return {
+          key: 'j:' + j.id, kind: 'job', type: j.deliveryType === 'store' ? 'store' : j.deliveryType === 'coffeebar' ? 'coffeebar' : 'delivery',
+          date: j.date || '', time: j.time || '', name: jobName(j), address: jobAddress(j, stores), city: [], labels: [],
+          items: qty.map(([pid, n]) => ({ label: productLabel(pid), qty: Number(n), img: root.getProductImage ? root.getProductImage(pid) : '' })),
+          unpaidParts: '',
+          actions: [
+            { label: '✎ Edit', cls: 'primary', run: () => root.GremierBoard.edit(j.id) },
+            wa ? { label: '💬 WhatsApp', cls: 'wa', href: wa } : null,
+            { label: '✓ Delivered', cls: 'done', run: () => root.GremierBoard.checkoff(j.id) },
+            { label: '🗑 Delete', cls: 'icon', run: () => root.GremierBoard.remove(j.id) },
+          ].filter(Boolean),
+        };
+      }),
     ];
+    for (const e of entries) e.late = !!e.date && e.date < today;
 
     const count = document.getElementById('ordersOpenCount');
     if (count) count.textContent = entries.length || '';
-    if (!entries.length) {
-      body.innerHTML = dl || waitedForDeliveries
-        ? `<div class="ob-done"><span class="ob-done-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>All done</b><small>No orders to fulfill and no deliveries scheduled.</small></div>`
-        : '<div class="plk-empty"><div class="spinner"></div></div>';
-    } else {
-      const groups = new Map();
-      for (const e of entries) {
-        const key = !e.date ? 'nodate' : e.date < today ? 'overdue' : e.date;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(e);
-      }
-      const keys = [...groups.keys()].sort((a, b) => (a === 'overdue' ? -1 : b === 'overdue' ? 1 : a === 'nodate' ? 1 : b === 'nodate' ? -1 : a.localeCompare(b)));
-      body.innerHTML = keys.map((k) => {
-        const list = groups.get(k).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-        return `<div class="ob-day${k === 'overdue' ? ' late' : ''}">${dayHeader(k, list.length)}${list.map((e) => e.html(k === 'overdue')).join('')}</div>`;
-      }).join('');
-      pinOffset();
-    }
+    if (!dl && !waitedForDeliveries && !entries.length) body.innerHTML = '<div class="plk-empty"><div class="spinner"></div></div>';
+    else if (root.GremierCalendar) root.GremierCalendar.render(body, entries);
     renderUnpaid();
   }
 
