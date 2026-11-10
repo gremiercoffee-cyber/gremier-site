@@ -97,7 +97,14 @@
     const jobs = dl ? dl.jobs.filter((j) => !j.done) : [];
     const today = isoDay(new Date());
 
-    const paid = orders.filter(isPaid);
+    // Combined orders (admin "Combine") show as one card: the main order with the others' items and totals.
+    const info = (o) => (o.delivery_info && typeof o.delivery_info === 'object' ? o.delivery_info : {});
+    const allPaid = orders.filter(isPaid), paidIds = new Set(allPaid.map((o) => o.id));
+    const partsFor = (o) => (Array.isArray(info(o).combined_orders) ? info(o).combined_orders : []).map((id) => allPaid.find((x) => x.id === id && info(x).combined_into === o.id)).filter(Boolean);
+    const paid = allPaid.filter((o) => !(info(o).combined_into && paidIds.has(info(o).combined_into))).map((o) => {
+      const parts = partsFor(o);
+      return parts.length ? { ...o, order_number: [o.order_number, ...parts.map((p) => p.order_number)].join(' + #'), items: [...(o.items || []), ...parts.flatMap((p) => p.items || [])], total: [o, ...parts].reduce((s, x) => s + Number(x.total || 0), 0) } : o;
+    });
     const orderIds = new Set(paid.map((o) => o.id));
     const jobForOrder = new Map(jobs.filter((j) => j.websiteOrderId && orderIds.has(j.websiteOrderId)).map((j) => [j.websiteOrderId, j]));
     const entries = [

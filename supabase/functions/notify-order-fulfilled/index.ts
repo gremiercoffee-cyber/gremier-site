@@ -108,6 +108,13 @@ Deno.serve(async (req) => {
     const fromOps = body.ops_inventory_already_deducted === true;
     const alreadyNotified = Boolean(info.fulfilled_notified_at);
     const alreadyFulfilled = order.status === "fulfilled";
+    // Orders combined into this one (admin "Combine") go out in the same delivery: one email lists everything.
+    const combinedIds = Array.isArray(info.combined_orders) ? (info.combined_orders as unknown[]).map(String).filter(Boolean) : [];
+    const { data: combined } = combinedIds.length
+      ? await supabase.from("orders").select("*").in("id", combinedIds)
+      : { data: [] as Record<string, unknown>[] };
+    const combinedOrders = ((combined || []) as Record<string, any>[]).filter((c) => String(c.delivery_info?.combined_into || "") === orderId);
+    const allItems = [...(order.items || []), ...combinedOrders.flatMap((c) => c.items || [])];
 
     if (fromOps) {
       await recordOpsInventoryFromClient(supabase, orderId, body.ops_job_id);
@@ -136,7 +143,7 @@ Deno.serve(async (req) => {
         customer_name: order.customer_name,
         order_number: order.order_number,
         delivery_address: order.delivery_address,
-      }, await emailItems(supabase, order.items, false).catch(() => []));
+      }, await emailItems(supabase, allItems, false).catch(() => []));
 
       emailed = emailResult.emailed;
       emailDetail = emailResult.detail;
@@ -167,6 +174,19 @@ Deno.serve(async (req) => {
 
     await syncPaymentLinkFromOrder(supabase, orderId);
 
+    // The combined orders are fulfilled with this one. Their stock was counted in this delivery
+    // (its quantities include theirs) and the customer got one email, so neither happens again.
+    for (const c of combinedOrders) {
+      if (c.status === "fulfilled" || c.status === "cancelled" || c.status === "refunded") continue;
+      const now = new Date().toISOString(), ci = { ...(c.delivery_info || {}) };
+      await supabase.from("orders").update({
+        status: "fulfilled", updated_at: now,
+        delivery_info: { ...ci, fulfilled_at: ci.fulfilled_at || now, fulfilled_notified_at: ci.fulfilled_notified_at || now, ops_inventory_deducted_at: ci.ops_inventory_deducted_at || now, fulfilled_with_order: orderId },
+      }).eq("id", c.id);
+      await supabase.from("pending_website_deliveries").update({ status: "delivered" }).eq("order_id", c.id);
+      await syncPaymentLinkFromOrder(supabase, String(c.id)).catch(() => {});
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       emailed,
@@ -174,6 +194,7 @@ Deno.serve(async (req) => {
       skipped: alreadyNotified && !force ? "already_notified" : undefined,
       ops_synced: true,
       ops_job_id: opsResult.jobId,
+      combined_fulfilled: combinedOrders.map((c) => c.order_number),
       ops_inventory_skipped: opsResult.inventorySkipped,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
