@@ -1,7 +1,7 @@
 // Orders screen calendar: every open order and delivery on its day.
 // Week (default): a vertical week, Sunday to Saturday, one row per day, square picture cards.
 // Month: the month as a grid of small pictures; tap a day to see it. Today: one day, bigger cards.
-// A card shows only pictures of what goes out; tapping it shows the address (street and number,
+// A card shows pictures of what goes out, with the name and the street on top; tapping it shows the address (street and number,
 // then the city), everything to deliver, and the usual buttons. "Full order" opens the order itself.
 // Entries come from admin-orders-board.js: { key, kind:'order'|'job', date, time, name, phone,
 // address, city, items:[{label, qty, img, note}], labels, total, late, unpaidParts, open(), actions:[…] }.
@@ -37,11 +37,14 @@
     const n = imgs.length;
     const inner = n ? imgs.map((src) => `<img src="${esc(src)}" alt="" loading="lazy"/>`).join('') : `<span class="ocal-ph">${e.kind === 'job' && e.type === 'store' ? '🏪' : e.type === 'coffeebar' ? '☕' : '📦'}</span>`;
     const qty = e.items.reduce((s, i) => s + (Number(i.qty) || 1), 0);
+    // Name top right, street and number bottom left (the city and the rest are in the preview).
+    const sp = e.type === 'pickup' ? { street: 'Pickup', city: '' } : splitAddress(e.address, e.city);
+    const where = sp.street || sp.city;
     const flags = [
       e.type === 'pickup' ? '<i class="ocal-flag" title="Pickup">🛍️</i>' : e.type === 'store' ? '<i class="ocal-flag" title="Store">🏪</i>' : e.type === 'coffeebar' ? '<i class="ocal-flag" title="Coffee bar">☕</i>' : '',
       e.labels.length > 1 ? `<i class="ocal-flag" title="${e.labels.length} orders combined">🔗</i>` : '',
     ].join('');
-    return `<span class="ocal-pics n${Math.min(n, 4)}">${inner}</span>${flags ? `<span class="ocal-flags">${flags}</span>` : ''}${e.time ? `<span class="ocal-time">${esc(String(e.time).slice(0, 5))}</span>` : ''}${qty > 1 ? `<span class="ocal-qty">×${qty}</span>` : ''}`;
+    return `<span class="ocal-pics n${Math.min(n, 4)}">${inner}</span>${flags ? `<span class="ocal-flags">${flags}</span>` : ''}<span class="ocal-name">${esc(e.name)}</span>${where ? `<span class="ocal-where">${esc(where)}</span>` : ''}${qty > 1 ? `<span class="ocal-qty">×${qty}</span>` : ''}`;
   }
   const card = (e) => `<button type="button" class="ocal-card${e.late ? ' late' : ''}${e.labels.length > 1 ? ' combined' : ''}" data-ocal="${esc(e.key)}" aria-label="${esc(e.name)}">${thumbs(e)}</button>`;
 

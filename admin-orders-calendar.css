@@ -1,6 +1,6 @@
 /* Orders calendar (admin-orders-calendar.js): vertical week, month grid, single day; square picture cards. */
-.ocal { --ocal-card: 84px; display: grid; gap: 10px; }
-@media (min-width: 700px) { .ocal { --ocal-card: 104px; } }
+.ocal { --ocal-card: 108px; display: grid; gap: 10px; }
+@media (min-width: 700px) { .ocal { --ocal-card: 124px; } }
 
 .ocal-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .ocal-views { display: inline-flex; background: var(--bg3); border-radius: 12px; padding: 3px; }
@@ -112,3 +112,18 @@
 .ocal-next-i small { font-size: .66rem; font-weight: 600; color: var(--text2); white-space: nowrap; max-width: var(--ocal-card); overflow: visible; }
 .ocal-next-row .ocal-card { border-radius: 10px; }
 .ocal-next-row .ocal-time { display: none; }
+
+/* On the card: name top right, street bottom left. */
+.ocal-name, .ocal-where { position: absolute; max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .68rem; font-weight: 700; line-height: 1.25; border-radius: 6px; padding: 1px 5px; }
+.ocal-name { top: 4px; right: 4px; max-width: calc(100% - 30px); background: #1a1a1a; color: #fff; }
+.ocal-where { bottom: 4px; left: 4px; max-width: calc(100% - 38px); background: rgba(255,255,255,.95); color: #1a1a1a; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.ocal-card .ocal-flags { top: 4px; left: 4px; inset-inline-start: auto; }
+.ocal-card .ocal-qty { right: 4px; inset-inline-end: auto; }
+.ocal-next-row .ocal-name, .ocal-next-row .ocal-where { display: none; }
+/* A short (empty) day keeps its weekday and number readable; black already marks today. */
+.ocal-week .ocal-row:has(.ocal-none) .ocal-day small { display: none; }
+/* The street gets the whole bottom edge (two lines if needed); the quantity sits under the name. */
+.ocal-card .ocal-where { max-width: calc(100% - 8px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: start; }
+.ocal-card .ocal-qty { bottom: auto; top: 26px; }
+.ocal-next-row .ocal-card .ocal-qty { top: auto; bottom: 3px; }
+.ocal-next-row .ocal-card .ocal-name, .ocal-next-row .ocal-card .ocal-where { display: none; }
