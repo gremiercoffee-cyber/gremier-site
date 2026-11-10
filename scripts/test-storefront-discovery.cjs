@@ -20,3 +20,10 @@ test('home uses the unified collection scene and catalogue loads cannot replace 
  vm.runInNewContext(fs.readFileSync('storefront-discovery.js','utf8'),context);
  context.GremierDiscovery.home([],false,src=>src);
 });
+test('collection scene styles preserve the existing product shelf controls',()=>{
+ const css=fs.readFileSync('storefront-discovery.css','utf8');
+ assert.match(css,/\.shelf-carousel \[data-shelf-prev\]/);
+ assert.match(css,/\.shelf-carousel \[data-shelf-next\]/);
+ assert.match(css,/\.shelf-tools \.shelf-pill/);
+ assert.match(css,/\.mini-product \.product-img-gradient/);
+});

@@ -27,3 +27,32 @@
 @media(max-width:640px){#homePage .hero{padding-top:18px;padding-bottom:22px}.discovery-routes{grid-template-columns:1fr;gap:14px;padding:0 16px;margin-bottom:20px}.discovery-route{display:block;min-height:230px;border-radius:18px}.discovery-copy{padding:20px 20px 0;max-width:59%}.discovery-copy h2{font-size:26px;line-height:1.16;max-width:215px}.discovery-copy p{font-size:11px;max-width:148px}.discovery-eye{font-size:9px}.discovery-visual{position:absolute;inset-inline-end:0;bottom:50px;width:42%;height:153px;z-index:1;opacity:.95}.discovery-bar .discovery-visual{margin:0;width:43%;inset-inline-end:12px;height:115px;overflow:hidden;opacity:1}.discovery-bar .discovery-visual img{width:100%;max-width:none;height:115px;object-position:bottom}.discovery-footer{position:absolute;inset-inline:0;bottom:0;padding:10px 20px;font-size:12px;background:#f6f2ebed}.discovery-bar .discovery-footer{background:#f6f2ebed}.discovery-arrow{width:27px;height:27px;font-size:19px}.discovery-peek{display:none}.shop-shelf{padding:17px 12px;margin-bottom:24px;border-radius:18px;scroll-margin-top:180px}.shelf-heading{gap:8px;align-items:flex-end;margin-bottom:16px}.shelf-heading h2{font-size:25px}.shelf-eyebrow{font-size:9px;line-height:1.4;max-width:180px}.shelf-actions{gap:8px;flex-direction:column}.shelf-expand{font-size:10px}.shelf-arrows button{width:29px;height:29px}.shelf-count{font-size:10px}#shopPage>.section{padding-inline:16px}#shopPage .shelf-page.product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.shelf-page .product-info{padding:11px}.shelf-page .product-name{font-size:14px}.shelf-page .product-desc{font-size:11px}.shop-bar-route{align-items:flex-start;flex-direction:column;padding:23px}.shop-bar-route h2{font-size:25px}#shopPage .category-filter{top:56px}body.has-banner #shopPage .category-filter{top:108px}}
 @media(prefers-reduced-motion:reduce){.discovery-route,.discovery-visual img,.discovery-peek,.discovery-arrow{transition:none!important}.discovery-route:hover{transform:none}}
 @media(max-width:640px){.discovery-shop{padding-bottom:50px}.discovery-shop .discovery-copy{max-width:none}.discovery-shop .discovery-copy p{max-width:280px}.discovery-shop .discovery-visual{position:relative;inset:auto;width:auto;height:auto;aspect-ratio:3/2;margin:10px 16px 18px}}
+
+/* Mini pack photography sits on plain white, without the warm image overlay. */
+.mini-product .product-img{background:#fff}.mini-product .product-img-gradient{display:none}
+
+/* Frame the event photo around the dispensers and the full tabletop. */
+.discovery-bar .discovery-visual{height:auto;width:min(380px,calc(100% - 46px));aspect-ratio:16/9;margin:12px auto 0;border-radius:12px 12px 0 0}
+.discovery-bar .discovery-visual img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 54%}
+@media(max-width:640px){.discovery-bar .discovery-visual{width:43%;margin:0;bottom:54px;border-radius:8px}}
+/* A stable action row: only the separate comparison panel expands. */
+html{scrollbar-gutter:stable}
+.shelf-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-width:560px;margin:2px 0 14px;align-items:stretch}
+.shelf-tools:empty{display:none}
+.shelf-tools .shelf-pill{display:flex !important;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;width:100% !important;min-width:0;height:52px;margin:0 !important;padding:8px 12px !important;border-radius:999px !important;background:#fff !important;border:1px solid #e6dfd4 !important;box-shadow:0 3px 12px rgba(40,28,16,.09);font:600 13px/18px 'DM Sans',sans-serif !important;color:#1a1a1a !important;text-align:center;cursor:pointer;transform:none;transition:box-shadow .15s,background .15s}
+.shelf-tools .shelf-pill:hover,.shelf-tools .shelf-pill:active{transform:none;box-shadow:0 4px 14px rgba(40,28,16,.13)}
+.shelf-compare-toggle>span{color:#9a948c;flex-shrink:0;transition:transform .15s}
+.shelf-compare-toggle[aria-expanded="true"]>span{transform:rotate(180deg)}
+.shelf-comparison-panel{margin:0 0 16px;min-width:0}
+.shelf-comparison-panel[hidden]{display:none}
+.shelf-comparison-panel .cmp-wrap{padding-inline:0}
+@media(max-width:640px){.shelf-tools .shelf-pill{font-size:12px !important;padding-inline:8px !important}}
+.shelf-dots button{width:6px;height:6px;padding:0;border:0;border-radius:99px;background:#d8d2c8;cursor:pointer;transition:width .2s,background .2s}
+.shelf-dots button.active{width:22px;background:#a8794a}
+.shelf-pill > span, .shelf-pack-link.shelf-pill > span:last-child { width:auto !important; height:auto !important; min-width:0 !important; padding:0 !important; border-radius:0 !important; background:none !important; display:inline !important; box-shadow:none !important; }
+.shelf-carousel{position:relative;min-width:0}
+.shelf-carousel .shelf-arrows{position:absolute;inset:0;display:block;pointer-events:none;z-index:3}
+.shelf-carousel .shelf-arrows button{position:absolute;top:50%;transform:translateY(-50%);pointer-events:auto;width:40px;height:40px;background:#fff;box-shadow:0 3px 12px #0002}
+.shelf-carousel [data-shelf-prev]{inset-inline-start:-20px}
+.shelf-carousel [data-shelf-next]{inset-inline-end:-20px}
+.shelf-carousel .shelf-arrows button:disabled{visibility:hidden}
