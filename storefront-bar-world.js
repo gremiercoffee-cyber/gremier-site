@@ -8,7 +8,7 @@
   for(const method of ['pushState','replaceState']){
     const original=history[method].bind(history);
     history[method]=function(state,title,url){
-      if(world&&!closing&&history.state?.bbBuild&&state?.page==='coffeebars')state={...state,bbBuild:true};
+      if(world&&!closing&&history.state?.bbBuild&&state?.page==='coffeebars')state={bbDirect:history.state.bbDirect,...state,bbBuild:true};
       return original(state,title,url);
     };
   }
@@ -40,7 +40,8 @@
   }
   function leave(done) {
     if(!world){done();return;}closing=true;restore();closing=false;done();
-    (document.querySelector('[data-bb-start]')||lastFocus)?.focus?.({preventScroll:true});
+    const start = document.querySelector('[data-bb-start]');
+    (lastFocus?.getClientRects().length ? lastFocus : start)?.focus?.({preventScroll:true});
   }
   function close() { if(world&&!closing)world.querySelector('[data-bb-exit]')?.click(); }
   addEventListener('keydown',e=>{

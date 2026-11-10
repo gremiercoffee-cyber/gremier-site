@@ -789,11 +789,11 @@
 <link rel="stylesheet" href="/storefront-nav.css?v=20261110-3"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261105-1"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
-<link rel="stylesheet" href="/storefront-discovery.css?v=20261107-5"/>
+<link rel="stylesheet" href="/storefront-discovery.css?v=20261110-1"/>
 <script src="/storefront-discovery.js?v=20261109-1"></script>
 <link rel="stylesheet" href="/storefront-reveal.css?v=20261029-3"/>
 <link rel="stylesheet" href="/storefront-journeys.css?v=20261102-2"/>
@@ -927,9 +927,9 @@
       <div class="discovery-peek"><strong data-discovery-en="A shelf for every favourite" data-discovery-he="מדף לכל קפה אהוב">A shelf for every favourite</strong><span data-discovery-en="Liter bottles · Mini packs · Wholesale · Syrups" data-discovery-he="בקבוקי ליטר · מארזי מיני · סיטונאי · סירופים">Liter bottles · Mini packs · Wholesale · Syrups</span></div>
       <div class="discovery-footer"><span id="t-hero-shop" data-discovery-en="Shop the collection" data-discovery-he="לכל הקולקציה">Shop the collection</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
     </a>
-    <a class="discovery-route discovery-bar" href="#coffeebars" onclick="event.preventDefault();showPage('coffeebars')">
+    <a class="discovery-route discovery-bar" href="#coffeebars/build" onclick="openCoffeeBarFromHome(event)">
       <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="Coffee bars" data-discovery-he="עמדות קפה">Coffee bars</div><h2 data-discovery-en="Make it a coffee bar." data-discovery-he="הפכו את זה לבר קפה.">Make it a coffee bar.</h2><p data-discovery-en="A complete setup, made for your guest count." data-discovery-he="כל מה שצריך, לפי מספר האורחים שלכם.">A complete setup, made for your guest count.</p></div>
-      <div class="discovery-visual"><div class="discovery-bar-scene"><div class="discovery-bar-table" aria-hidden="true"><img src="/bar/table-logo.webp" alt="" class="discovery-table-logo"></div><img class="discovery-bar-products" src="/bar/studio/bar-master-dark-v4.webp" alt="Gremier coffee bar on its wooden counter, with coffee, dispenser, syrups, milk, cups and straws" decoding="async"></div></div>
+      <div class="discovery-visual"><img src="/hero/09-coffee-bar-900.webp?v=20261103d" alt="Gremier coffee bar at an event with four dispensers, syrups, milk, cups and straws" decoding="async"></div>
       <div class="discovery-peek"><strong data-discovery-en="Start with your guests" data-discovery-he="מתחילים במספר האורחים">Start with your guests</strong><div class="discovery-guests"><b>25</b><b>50</b><b>75</b><b>100+</b></div><span data-discovery-en="Choose coffee · Pick milk · Add syrups" data-discovery-he="בחרו קפה · בחרו חלב · הוסיפו סירופים">Choose coffee · Pick milk · Add syrups</span></div>
       <div class="discovery-footer"><span id="t-hero-bars" data-discovery-en="Build your coffee bar" data-discovery-he="בנו את עמדת הקפה שלכם">Build your coffee bar</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
     </a>
@@ -1145,7 +1145,7 @@
       <div class="cbp-step">
         <div class="cbp-step-num">3</div>
         <div class="cbp-step-title" id="t-cbp-s3t">Fresh Delivery</div>
-        <div class="cbp-step-desc" id="t-cbp-s3d">We deliver fresh cold brew to your event — ready to pour and serve.</div>
+        <div class="cbp-step-desc" id="t-cbp-s3d">We deliver fresh cold brew and the coffee bar supplies. You assemble the bar at your event.</div>
       </div>
     </div>
   </div>
@@ -1497,13 +1497,13 @@ const T = {
     'w4t':'A coffee bar for your event','w4d':'Tell us how many guests and we\'ll put everything together: coffee, milk, cups and syrups.',
     'feat-eye':'Our Range','feat-title':'Best Sellers','view-all':'View All Products',
     'cb-eye':'Events','cb-title':'Coffee Bars',
-    'cb-desc':'Your guests pour their own iced coffee, and it\'s the thing they talk about. Choose your guest count and we\'ll put the bar together. Based in Jerusalem, for events across Israel.',
+    'cb-desc':'Your guests pour their own iced coffee, and it\'s the thing they talk about. Choose your guest count and we\'ll size the kit for your event. Based in Jerusalem, for events across Israel.',
     'cbp-eye':'Events & Occasions','cbp-title':'Coffee Bar Packages',
-    'cbp-intro':'Your guests pour their own iced coffee, and it\'s the thing they talk about. Choose your guest count and we\'ll put the bar together. Based in Jerusalem, for events across Israel.',
+    'cbp-intro':'Your guests pour their own iced coffee, and it\'s the thing they talk about. Choose your guest count and we\'ll size the kit for your event. Based in Jerusalem, for events across Israel.',
     'cbp-hero-sub':'Premium cold brew for your birthday, corporate event, or any occasion — we\'ll help you choose the right amount for your guest count.',
     'cbp-s1t':'Reach Out','cbp-s1d':'Message us on WhatsApp with your event date, expected guests, and what you\'re looking for.',
     'cbp-s2t':'We Plan Together','cbp-s2d':'We\'ll help you choose the right quantities and flavors for your guest count and event.',
-    'cbp-s3t':'Fresh Delivery','cbp-s3d':'We deliver fresh cold brew to your event — ready to pour and serve.',
+    'cbp-s3t':'Fresh Delivery','cbp-s3d':'We deliver fresh cold brew and the coffee bar supplies. You assemble the bar at your event.',
     'cb-empty':'Coffee bar packages coming soon',
     'about-eye':'Our Story','about-title':'Our story',
     'about-desc':'Gremier started with a founder who always loved coffee but couldn\'t find coffee in Israel that lived up to his standards. He dreamed of bringing unbelievably tasty coffee to everyone here, so he started brewing it in his basement. Today Gremier brings its cold brew all around the country.',
@@ -1550,13 +1550,13 @@ const T = {
     'w4t':'בר קפה לאירוע שלכם','w4d':'ספרו לנו כמה אורחים ונרכיב הכל: קפה, חלב, כוסות וסירופים.',
     'feat-eye':'המוצרים שלנו','feat-title':'הנמכרים ביותר','view-all':'לכל המוצרים',
     'cb-eye':'אירועים','cb-title':'בר קפה לאירועים',
-    'cb-desc':'האורחים מוזגים לעצמם קפה קר, וזה מה שכולם מדברים עליו. בחרו כמה אורחים ואנחנו נרכיב את הבר. מירושלים, לאירועים בכל הארץ.',
+    'cb-desc':'האורחים מוזגים לעצמם קפה קר, וזה מה שכולם מדברים עליו. בחרו את מספר האורחים ונתאים לכם את ערכת בר הקפה. מירושלים, לאירועים בכל הארץ.',
     'cbp-eye':'אירועים ואירועים מיוחדים','cbp-title':'חבילות בר קפה',
-    'cbp-intro':'האורחים מוזגים לעצמם קפה קר, וזה מה שכולם מדברים עליו. בחרו כמה אורחים ואנחנו נרכיב את הבר. מירושלים, לאירועים בכל הארץ.',
+    'cbp-intro':'האורחים מוזגים לעצמם קפה קר, וזה מה שכולם מדברים עליו. בחרו את מספר האורחים ונתאים לכם את ערכת בר הקפה. מירושלים, לאירועים בכל הארץ.',
     'cbp-hero-sub':'קולד ברו פרימיום ליום הולדת, אירוע עסקי או כל אירוע — נעזור לכם לבחור את הכמות הנכונה למספר האורחים.',
     'cbp-s1t':'יצירת קשר','cbp-s1d':'שלחו לנו הודעה בוואטסאפ עם תאריך האירוע, מספר האורחים הצפוי ומה שאתם מחפשים.',
     'cbp-s2t':'תכנון משותף','cbp-s2d':'נעזור לכם לבחור את הכמויות והטעמים המתאימים למספר האורחים ולסוג האירוע.',
-    'cbp-s3t':'משלוח טרי','cbp-s3d':'אנחנו מספקים קולד ברו טרי לאירוע — מוכן למזיגה והגשה.',
+    'cbp-s3t':'משלוח טרי','cbp-s3d':'אנחנו מספקים קולד ברו טרי ואת הציוד לבר הקפה. את הבר מרכיבים בעצמכם במקום האירוע.',
     'cb-empty':'חבילות בר קפה בקרוב',
     'about-eye':'הסיפור שלנו','about-title':'הסיפור שלנו',
     'about-desc':'גרמיר התחילה ממייסד שתמיד אהב קפה, אבל לא מצא בארץ קפה שעומד בסטנדרט שלו. הוא חלם להביא קפה טעים בטירוף לכולם כאן, והתחיל לחלוט אותו במרתף שלו. היום גרמיר מביאה את הקולד ברו שלה לכל רחבי הארץ.',
@@ -3439,6 +3439,7 @@ async function loadMyOrders() {
 let appPage = 'home';
 let navSkipPush = false;
 const APP_PAGES = new Set(['home', 'shop', 'coffeebars', 'myorders', 'giftcards']);
+const COFFEE_BAR_BUILDER_ROUTE = 'coffeebars/build';
   
 // Products have their own link, /p/<name>; it opens the product in its drawer over the home page.
 const productPath = () => (window.location.pathname.match(/^\/p\/([^/?#]+)/) || [])[1] || null;
@@ -3459,6 +3460,7 @@ function parsePageFromUrl() {
     };
   }
   if (raw === 'about') return { page: 'home', scrollTo: 'aboutSection' };
+  if (raw === COFFEE_BAR_BUILDER_ROUTE) return { page: 'coffeebars', bbBuild: true, bbDirect: 'link' };
   if (APP_PAGES.has(raw)) return { page: raw };
   return { page: 'home' };
 }
@@ -3476,6 +3478,7 @@ function buildNavUrl(state, stripSearch = false) {
     return `/p/${encodeURIComponent(productLinkName(state.productId))}${search}`;
   }
   if (state.scrollTo === 'aboutSection') return buildPageUrl('about', stripSearch);
+  if (state.page === 'coffeebars' && (state.bbDirect || history.state?.bbDirect)) return buildPageUrl(COFFEE_BAR_BUILDER_ROUTE, stripSearch);
   const page = state.page || 'home';
   return buildPageUrl(page, stripSearch);
 }
@@ -3490,6 +3493,13 @@ function navReplace(state, stripSearch = false) {
 }
 function navBack() {
   if (!navSkipPush) history.back();
+}
+function openCoffeeBarFromHome(event) {
+  if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !window.plannerStart) return;
+  event.preventDefault();
+  navPush({ page: 'coffeebars', layer: null, bbBuild: true, bbDirect: 'home' });
+  showPage('coffeebars', true);
+  window.plannerStart('guests');
 }
 function closeAllLayersUI() {
   if (document.getElementById('pdDrawer')?.classList.contains('open')) {
@@ -3685,7 +3695,8 @@ function handleAppPopState(e) {
     if (!e.state || e.state.__app !== 'gremier') {
       const parsed = parsePageFromUrl();
       const state = {
-        page: parsed.page,
+        ...parsed,
+        __app: 'gremier',
         layer: parsed.layer || null,
         productId: parsed.productId || null,
         scrollTo: parsed.scrollTo || null,
@@ -3702,14 +3713,15 @@ function handleAppPopState(e) {
 function restorePageFromUrl() {
   const parsed = parsePageFromUrl();
   const state = {
-    page: parsed.page,
+    ...parsed,
     layer: parsed.layer || null,
     productId: parsed.productId || null,
     scrollTo: parsed.scrollTo || null,
   };
+  if (parsed.bbDirect && history.state?.bbDirect === 'home') state.bbDirect = 'home';
   appPage = state.page;
-  showPage(state.page, true);
   navReplace(state);
+  showPage(state.page, true);
   if (state.scrollTo) setTimeout(() => scrollToSection(state.scrollTo), 120);
   if (state.layer === 'product' && state.productId) {
     setTimeout(() => openProductDrawerUI(state.productId), 80);
@@ -5580,8 +5592,8 @@ async function sendChatMessageText(text) {
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>
-<script src="/storefront-bar-world.js?v=20261101-layout2"></script>
-<script src="/storefront-planner.js?v=20261105-2"></script>
+<script src="/storefront-bar-world.js?v=20261110-1"></script>
+<script src="/storefront-planner.js?v=20261110-2"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
 <script src="/storefront-promo.js?v=20261103-4"></script>
 <script src="/storefront-together.js?v=20261103-2"></script>

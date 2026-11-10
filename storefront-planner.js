@@ -502,7 +502,9 @@ ${n.value}`:line;}
   // desktop and under it on phones. Three steps, fading between them: guests → your coffee bar (what's
   // included, delivery, Book) → upgrades (optional questions, one open at a time).
   let building = false, bstep = 'guests', prevStep = null, openUp = null, shownStep = null;
-  const building_ = () => building || !!history.state?.bbBuild;
+  const directBuilderRoute = () => /^#\/?coffeebars\/build$/i.test(location.hash);
+  const building_ = () => (typeof appPage === 'undefined' || appPage === 'coffeebars')
+    && (building || !!history.state?.bbBuild || directBuilderRoute());
   window.plannerStart = function (to = 'guests') {
     window.CoffeeBarWorld?.prepare();
     building = true; bstep = to; openUp = null;
@@ -512,13 +514,17 @@ ${n.value}`:line;}
   addEventListener('popstate', () => { building = !!history.state?.bbBuild; if (!building) shownStep = null; setTimeout(render, 0); });
   function goStep(to) { if (to === bstep) return; if (to === 'delivery') prevStep = bstep; openUp = null; bstep = to; render(); window.CoffeeBarWorld?.scrollTop(); }   // each new step starts at the top
 
+  function assemblyNote() {
+    return `<p class="bbx-assembly">${T('Self-assembly required at your event.', 'את בר הקפה מרכיבים בעצמכם במקום האירוע.')}</p>`;
+  }
   function introHtml(plan) {
     const from = plan ? Math.min(...tiersOf(plan.product).map((t) => t.price)) : null;
     return `<div class="bbx-intro">
       <img class="bbx-banner" src="/hero/09-coffee-bar-900.webp?v=20261103d" srcset="/hero/09-coffee-bar-900.webp?v=20261103d 900w, /hero/09-coffee-bar.webp?v=20261103d 1536w" sizes="(max-width:700px) 100vw, 640px" alt="${T('A Gremier coffee bar set up at an event', 'בר קפה של גרמיר באירוע')}" decoding="async">
       <ul class="bbx-points"><li>${T('Cold brew in 5-litre jerry cans, dispensers, milk, syrups, cups and straws', 'קולד ברו בג׳ריקנים של 5 ליטר, מתקנים, חלב, סירופים, כוסות וקשיות')}</li>
-        <li>${T('Sized for your guest count, ready to pour', 'לפי מספר האורחים, מוכן למזיגה')}</li>
+        <li>${T('Sized for your guest count', 'מותאם למספר האורחים')}</li>
         <li>${T('Delivered to your event, or free pickup', 'משלוח לאירוע, או איסוף עצמי חינם')}</li></ul>
+      ${assemblyNote()}
       <button type="button" class="bbx-start" data-bb-start>${T('Start building your coffee bar', 'התחילו לבנות את בר הקפה')}</button>
       ${from ? `<small class="bbx-from">${T(`From ₪${from} · takes about a minute`, `החל מ-₪${from} · לוקח בערך דקה`)}</small>` : ''}
     </div>`;
@@ -531,6 +537,7 @@ ${n.value}`:line;}
       <h2>${T('How many guests do you have?', 'כמה אורחים יהיו?')}</h2>
       <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div>
       <small class="bb-q-hint">${T('Pick the closest number, or type your own.', 'בחרו את המספר הקרוב, או הקלידו.')}</small>
+      ${assemblyNote()}
       ${plan ? `<div class="bbx-standard"><h3>${T(`What comes standard for ${plan.tier.guests} guests`, `מה מגיע בבר הבסיסי ל-${plan.tier.guests} אורחים`)}</h3>
       ${includedHtml(plan)}
       ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}</div>
@@ -540,7 +547,7 @@ ${n.value}`:line;}
     const back = (to, label) => `<button type="button" class="bbx-back" data-go="${to}">‹ ${label}</button>`;
     if (bstep === 'bar') return `<div class="bbx-step" data-step="bar">
       <h2>${T(`Your coffee bar for ${plan.tier.guests} guests`, `בר הקפה שלכם ל-${plan.tier.guests} אורחים`)}</h2>
-      <p class="bbx-lead">${T('Everything you need, ready to pour:', 'כל מה שצריך, מוכן למזיגה:')}</p>
+      <p class="bbx-lead">${T('Everything you need to set up your bar:', 'כל מה שצריך להקמת בר הקפה:')}</p>
       ${includedHtml(plan)}
       ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
       <button type="button" class="bbx-cta bbx-build" data-go="opt-coffee"><span><strong>${T('Build the rest of your coffee bar', 'בנו את שאר בר הקפה')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><b aria-hidden="true">›</b></button>
@@ -574,6 +581,7 @@ ${n.value}`:line;}
     return `<div class="bbx-step" data-step="delivery">
       ${deliveryHtml()}
       ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
+      ${assemblyNote()}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
       <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : prevStep === 'guests' ? 'guests' : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
       <button type="button" class="bbx-share" onclick="plannerShare()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>${T('Share this bar', 'שיתוף הבר')}</button></div>`;
@@ -669,7 +677,15 @@ ${n.value}`:line;}
     if(e.target.closest('[data-bb-start]')){window.plannerStart('guests');return;}
     const pk=e.target.closest('[data-picker]');
     if(pk&&(pk.dataset.picker==='open'||e.target===pk||pk.tagName==='BUTTON')){pickerOpen=pk.dataset.picker==='open';document.body.classList.toggle('bbx-sheet-on',pickerOpen);render();return;}
-    if(e.target.closest('[data-bb-exit]')){if(history.state?.bbBuild)history.back();else{building=false;render();}return;}
+    if(e.target.closest('[data-bb-exit]')){
+      if(directBuilderRoute() && history.state?.bbDirect !== 'home'){
+        building=false;
+        navReplace({page:'home',layer:null});
+        showPage('home',true);
+      }else if(history.state?.bbBuild)history.back();
+      else{building=false;render();}
+      return;
+    }
     const go=e.target.closest('[data-go]');
     if(go){goStep(go.dataset.go);return;}
     const up=e.target.closest('[data-up]');

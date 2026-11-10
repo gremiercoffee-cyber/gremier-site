@@ -30,16 +30,10 @@
 /* Mini pack photography sits on plain white, without the warm image overlay. */
 .mini-product .product-img{background:#fff}.mini-product .product-img-gradient{display:none}
 
-/* The home coffee-bar invitation shares the builder's counter and warm wall. */
-.discovery-bar .discovery-bar-scene{position:relative;width:100%;max-width:380px;aspect-ratio:1.8;flex-shrink:0;overflow:hidden;border-radius:12px 12px 0 0;background:#eee9df url('/bar/studio/venue-room-v1.webp') center 48%/cover no-repeat;isolation:isolate;container-type:inline-size;box-shadow:0 10px 18px -10px #49352560}
-.discovery-bar .discovery-visual{height:225px;overflow:visible}
-/* Use the builder's actual table layers. The photo has a 45px transparent tail
-   below its 352px baseline at 800px wide: compensate for it at every card size. */
-.discovery-bar .discovery-visual .discovery-bar-products{position:absolute;left:2%;top:auto;bottom:6.725cqw;width:96%;height:auto;max-width:none;object-fit:contain;z-index:2;filter:drop-shadow(0 1px 1px #0003)}
-.discovery-bar-table{position:absolute;inset:auto 0 0;height:13.5cqw;background:url('/bar/table-top.webp?v=1') 0 0/100% 2.5cqw no-repeat,url('/bar/table-edge.webp?v=1') 0 2.5cqw/100% 1cqw no-repeat,url('/bar/table-panel.webp?v=1') 0 3.5cqw/auto 10cqw repeat-x,#141414;border:0;box-shadow:0 2px 5px #0003;z-index:1}
-.discovery-bar-table::before{content:"";position:absolute;top:.8cqw;left:4%;width:92%;height:1.4cqw;background:radial-gradient(ellipse,#20170f50,transparent 70%);pointer-events:none}
-.discovery-bar .discovery-visual .discovery-table-logo{position:absolute;left:50%;top:auto;bottom:1cqw;transform:translateX(-50%);height:7.8cqw;width:auto;object-fit:contain}
-@media(max-width:640px){.discovery-bar .discovery-visual{height:auto;aspect-ratio:1.8;bottom:54px}.discovery-bar .discovery-visual .discovery-bar-products{height:auto}.discovery-bar .discovery-visual .discovery-table-logo{height:7.8cqw;width:auto}}
+/* Frame the event photo around the dispensers and the full tabletop. */
+.discovery-bar .discovery-visual{height:auto;width:min(380px,calc(100% - 46px));aspect-ratio:16/9;margin:12px auto 0;border-radius:12px 12px 0 0}
+.discovery-bar .discovery-visual img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 54%}
+@media(max-width:640px){.discovery-bar .discovery-visual{width:43%;margin:0;bottom:54px;border-radius:8px}}
 /* A stable action row: only the separate comparison panel expands. */
 html{scrollbar-gutter:stable}
 .shelf-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-width:560px;margin:2px 0 14px;align-items:stretch}
