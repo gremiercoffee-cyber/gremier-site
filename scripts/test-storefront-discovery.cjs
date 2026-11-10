@@ -11,3 +11,18 @@ test('storefront inline scripts parse after integrating real cards and routes',(
  const html=fs.readFileSync('index.html','utf8');for(const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g))if(!m[1].includes('application/ld+json')&&m[2].trim())new vm.Script(m[2]);
  assert.match(html,/GremierDiscovery\.renderShop\(grid,list,shopCategoryOf,productCardHTML/);assert.match(html,/href="#coffeebars\/build" onclick="openCoffeeBarFromHome\(event\)"/);
 });
+test('home collage retains three liter bottles and adds two lattes and a syrup',()=>{
+ const names=['House Blend Medium Roast','Original Cream Latte','Classic Dark Roast','Caramel Cream Latte','Colombia Light Roast','Vanilla Bean Syrup'];
+ const rows=names.map(name_en=>({name_en,is_active:true,images:['/'+name_en+'.webp']}));
+ rows[1].images.push('/products/original-cream-latte-single-v2.webp');
+ rows.push({name_en:'Dairy Free Cremier 4 pack',is_active:false,images:['/hidden.webp']});
+ const host={innerHTML:''};
+ const document={querySelectorAll:()=>[],getElementById:()=>host};
+ const context={document};
+ vm.runInNewContext(fs.readFileSync('storefront-discovery.js','utf8'),context);
+ context.GremierDiscovery.home(rows,false,src=>src);
+ assert.equal((host.innerHTML.match(/<img /g)||[]).length,6);
+ for(const name of names)assert.ok(host.innerHTML.includes(`alt="${name}"`));
+ assert.ok(host.innerHTML.includes('/products/original-cream-latte-single-v2.webp'));
+ assert.ok(!host.innerHTML.includes('hidden.webp'));
+});
