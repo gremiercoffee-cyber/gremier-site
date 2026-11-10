@@ -106,7 +106,7 @@
 .ocal-next-h { display: flex; align-items: baseline; gap: 8px; padding: 0 12px 8px; }
 .ocal-next-h b { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
 .ocal-next-h span { font-size: .78rem; color: var(--text2); }
-.ocal-next-row { --ocal-card: 60px; display: flex; gap: 6px; overflow-x: auto; padding: 2px 12px 4px; scrollbar-width: thin; }
+.ocal-next-row { --ocal-card: 88px; display: flex; gap: 6px; overflow-x: auto; padding: 2px 12px 4px; scrollbar-width: thin; }
 .ocal-next-i { flex: 0 0 auto; display: grid; gap: 3px; justify-items: start; }
 .ocal-next-i.first:not(:first-child) { margin-inline-start: 10px; padding-inline-start: 10px; border-inline-start: 1px solid var(--border); }
 .ocal-next-i small { font-size: .66rem; font-weight: 600; color: var(--text2); white-space: nowrap; max-width: var(--ocal-card); overflow: visible; }
@@ -119,11 +119,20 @@
 .ocal-where { bottom: 4px; left: 4px; max-width: calc(100% - 38px); background: rgba(255,255,255,.95); color: #1a1a1a; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
 .ocal-card .ocal-flags { top: 4px; left: 4px; inset-inline-start: auto; }
 .ocal-card .ocal-qty { right: 4px; inset-inline-end: auto; }
-.ocal-next-row .ocal-name, .ocal-next-row .ocal-where { display: none; }
 /* A short (empty) day keeps its weekday and number readable; black already marks today. */
 .ocal-week .ocal-row:has(.ocal-none) .ocal-day small { display: none; }
 /* The street gets the whole bottom edge (two lines if needed); the quantity sits under the name. */
 .ocal-card .ocal-where { max-width: calc(100% - 8px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: start; }
 .ocal-card .ocal-qty { bottom: auto; top: 26px; }
 .ocal-next-row .ocal-card .ocal-qty { top: auto; bottom: 3px; }
-.ocal-next-row .ocal-card .ocal-name, .ocal-next-row .ocal-card .ocal-where { display: none; }
+/* The address on a card: street and number, then the city on its own line. */
+.ocal-card .ocal-where { display: grid; gap: 0; -webkit-line-clamp: unset; }
+.ocal-card .ocal-where b, .ocal-card .ocal-where i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocal-card .ocal-where b { font-weight: 700; }
+.ocal-card .ocal-where i { font-style: normal; font-weight: 500; color: #555; font-size: .62rem; }
+/* Coming up: the name and the city only. */
+.ocal-next-row .ocal-card .ocal-where b { display: none; }
+.ocal-next-row .ocal-card .ocal-where i { color: #1a1a1a; font-weight: 700; }
+.ocal-next-row .ocal-card .ocal-name { max-width: calc(100% - 8px); font-size: .62rem; }
+.ocal-next-row .ocal-card .ocal-flags { display: none; }
+.ocal-next-row .ocal-card .ocal-qty { top: 22px; bottom: auto; }

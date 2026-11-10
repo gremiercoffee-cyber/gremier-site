@@ -37,14 +37,14 @@
     const n = imgs.length;
     const inner = n ? imgs.map((src) => `<img src="${esc(src)}" alt="" loading="lazy"/>`).join('') : `<span class="ocal-ph">${e.kind === 'job' && e.type === 'store' ? '🏪' : e.type === 'coffeebar' ? '☕' : '📦'}</span>`;
     const qty = e.items.reduce((s, i) => s + (Number(i.qty) || 1), 0);
-    // Name top right, street and number bottom left (the city and the rest are in the preview).
+    // Name top right; street and number, then the city, bottom left.
     const sp = e.type === 'pickup' ? { street: 'Pickup', city: '' } : splitAddress(e.address, e.city);
-    const where = sp.street || sp.city;
+    const where = sp.street || sp.city ? `<span class="ocal-where">${sp.street ? `<b>${esc(sp.street)}</b>` : ''}${sp.city ? `<i>${esc(sp.city)}</i>` : ''}</span>` : '';
     const flags = [
       e.type === 'pickup' ? '<i class="ocal-flag" title="Pickup">🛍️</i>' : e.type === 'store' ? '<i class="ocal-flag" title="Store">🏪</i>' : e.type === 'coffeebar' ? '<i class="ocal-flag" title="Coffee bar">☕</i>' : '',
       e.labels.length > 1 ? `<i class="ocal-flag" title="${e.labels.length} orders combined">🔗</i>` : '',
     ].join('');
-    return `<span class="ocal-pics n${Math.min(n, 4)}">${inner}</span>${flags ? `<span class="ocal-flags">${flags}</span>` : ''}<span class="ocal-name">${esc(e.name)}</span>${where ? `<span class="ocal-where">${esc(where)}</span>` : ''}${qty > 1 ? `<span class="ocal-qty">×${qty}</span>` : ''}`;
+    return `<span class="ocal-pics n${Math.min(n, 4)}">${inner}</span>${flags ? `<span class="ocal-flags">${flags}</span>` : ''}<span class="ocal-name">${esc(e.name)}</span>${where}${qty > 1 ? `<span class="ocal-qty">×${qty}</span>` : ''}`;
   }
   const card = (e) => `<button type="button" class="ocal-card${e.late ? ' late' : ''}${e.labels.length > 1 ? ' combined' : ''}" data-ocal="${esc(e.key)}" aria-label="${esc(e.name)}">${thumbs(e)}</button>`;
 
