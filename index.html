@@ -784,11 +784,11 @@
   /* Preview badge */
 </style>
 
-<link rel="stylesheet" href="/subscriptions.css?v=20261103-1"/>
+<link rel="stylesheet" href="/subscriptions.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
 <link rel="stylesheet" href="/storefront-nav.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
-<link rel="stylesheet" href="/storefront-subscribe.css?v=20261103-9"/>
+<link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261105-1"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
 <script src="/storefront-nav.js?v=20261026-1"></script>
@@ -1224,9 +1224,9 @@
       <div class="form-group"><label class="form-label" id="t-co-entrance">Entrance / building (optional)</label><input class="form-input" id="coEntrance" type="text" maxlength="40" placeholder="e.g. Building B, side entrance"/></div>
       <div class="form-group"><label class="form-label" id="t-co-instr">Delivery instructions (optional)</label><input class="form-input" id="coInstr" type="text" maxlength="200" placeholder="e.g. call on arrival, leave with the guard"/></div>
       </div>
-      <!-- Monthly subscriptions: required delivery window -->
+      <!-- Monthly subscriptions: delivery window (the nearer one by default) and an optional sooner first box -->
       <div class="form-group co-window-group" id="coSubWindow" hidden>
-        <label class="form-label" id="coSubWindowTitle">When should your monthly box arrive? *</label>
+        <label class="form-label" id="coSubWindowTitle">When your subscription arrives</label>
         <div class="co-window-opts">
           <label class="co-window"><input type="radio" name="subWindow" value="early" onchange="setCheckoutSubWindow(this.value)"/><span><b></b><small></small></span></label>
           <label class="co-window"><input type="radio" name="subWindow" value="mid" onchange="setCheckoutSubWindow(this.value)"/><span><b></b><small></small></span></label>
@@ -2724,31 +2724,75 @@ function subscriptionWindowLabel(w) {
   return w === 'early' ? (lang === 'he' ? '1–5 בחודש' : '1st–5th') : w === 'mid' ? (lang === 'he' ? '15–20 בחודש' : '15th–20th') : '';
 }
 function subscriptionWindowFirstDate(w) {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date()).split('-').map(Number);
+  const [y, m, d] = subscriptionToday().split('-').map(Number);
   const start = w === 'early' ? 1 : 15, end = w === 'early' ? 5 : 20;
   return d >= start && d <= end ? new Date(y, m - 1, d) : new Date(y, m - 1 + (d > end ? 1 : 0), start);
 }
+function subscriptionToday() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date()); }
+const subscriptionIso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+// The window that comes first is the default; the server picks the same one when none is sent.
+function nearestSubscriptionWindow() { return subscriptionWindowFirstDate('early') <= subscriptionWindowFirstDate('mid') ? 'early' : 'mid'; }
+// More than this many days to the nearest window, and the customer may ask for the first box sooner (the server checks the same).
+const SUBSCRIPTION_NEAR_DAYS = 5;
+function subscriptionDaysToWindow(w) { const [y, m, d] = subscriptionToday().split('-').map(Number); return Math.round((subscriptionWindowFirstDate(w) - new Date(y, m - 1, d)) / 86400000); }
 function renderCheckoutSubWindow() {
   const box = document.getElementById('coSubWindow'); if (!box) return;
   const sub = cart.find(i => i.is_subscription), show = !!sub && sub.subscription_interval !== 'weekly';
   box.hidden = !show; if (!show) return;
-  const he = lang === 'he', copy = { early: he ? ['תחילת החודש', 'בדרך כלל 1–5 בחודש'] : ['Start of the month', 'Usually the 1st–5th'], mid: he ? ['אמצע החודש', 'בדרך כלל 15–20 בחודש'] : ['Middle of the month', 'Usually the 15th–20th'] };
-  document.getElementById('coSubWindowTitle').textContent = he ? 'מתי להביא את המנוי החודשי? *' : 'When should your monthly box arrive? *';
+  // Default: the nearer window, until the customer picks one themselves.
+  const nearest = nearestSubscriptionWindow();
+  if (!sub.subscription_window || sub.subscription_window_auto) { sub.subscription_window = nearest; sub.subscription_window_auto = true; }
+  const he = lang === 'he', fmt = (dt) => dt.toLocaleDateString(he ? 'he-IL' : 'en-GB', { day: 'numeric', month: 'long' });
+  const copy = { early: he ? ['תחילת החודש', '1–5 בחודש'] : ['Start of the month', '1st–5th'], mid: he ? ['אמצע החודש', '15–20 בחודש'] : ['Middle of the month', '15th–20th'] };
+  document.getElementById('coSubWindowTitle').textContent = he ? 'מתי מגיע המנוי' : 'When your subscription arrives';
+  let intro = document.getElementById('coSubWindowIntro');
+  if (!intro) { intro = document.createElement('p'); intro.id = 'coSubWindowIntro'; intro.className = 'co-window-intro'; box.querySelector('.co-window-opts').before(intro); }
+  intro.textContent = he
+    ? 'משלוחי מנויים יוצאים פעמיים בחודש: ב־1–5 וב־15–20. בחרנו לכם את המועד הקרוב; אפשר לבחור את השני.'
+    : 'Subscription deliveries go out twice a month: the 1st–5th and the 15th–20th. We picked the sooner one for you; you can choose the other.';
   box.querySelectorAll('input[name="subWindow"]').forEach(input => {
-    input.checked = sub.subscription_window === input.value;
-    const label = input.nextElementSibling; label.querySelector('b').textContent = copy[input.value][0]; label.querySelector('small').textContent = copy[input.value][1];
+    const w = input.value, next = fmt(subscriptionWindowFirstDate(w));
+    input.checked = sub.subscription_window === w;
+    const label = input.nextElementSibling;
+    label.querySelector('b').textContent = copy[w][0] + ' · ' + copy[w][1];
+    label.querySelector('small').textContent = (he ? `הבא: ${next}` : `Next: ${next}`) + (w === nearest ? (he ? ' · הקרוב ביותר' : ' · soonest') : '');
   });
-  const first = document.getElementById('coSubWindowFirst'), w = sub.subscription_window;
-  if (!w) { first.textContent = he ? 'בחרו אחד כדי להמשיך.' : 'Choose one to continue.'; return; }
   box.classList.remove('missing');
-  const date = subscriptionWindowFirstDate(w).toLocaleDateString(he ? 'he-IL' : 'en-GB', { day: 'numeric', month: 'long' });
-  first.textContent = document.getElementById('shipPickup')?.checked
-    ? (he ? `מוכן לאיסוף בסביבות ${date}, ואז בכל חודש ב־${subscriptionWindowLabel(w)}.` : `Ready for pickup around ${date}, then every month around the ${subscriptionWindowLabel(w)}.`)
-    : (he ? `משלוח ראשון בסביבות ${date}, ואז בכל חודש ב־${subscriptionWindowLabel(w)}. החיוב לפי מועד ההזמנה.` : `First delivery around ${date}, then every month around the ${subscriptionWindowLabel(w)}. Billing stays on your order date.`);
+  const w = sub.subscription_window, pickup = document.getElementById('shipPickup')?.checked;
+  // The first box sooner: only on the nearest window, when it is still a while away, and for delivery.
+  const canSooner = !pickup && w === nearest && subscriptionDaysToWindow(w) > SUBSCRIPTION_NEAR_DAYS;
+  if (!canSooner) delete sub.subscription_first_date;
+  const first = document.getElementById('coSubWindowFirst'), windowDate = fmt(subscriptionWindowFirstDate(w));
+  const asked = sub.subscription_first_date ? fmt(new Date(sub.subscription_first_date + 'T12:00:00')) : '';
+  const then = he ? `ואז בכל חודש ב־${subscriptionWindowLabel(w)}` : `then every month around the ${subscriptionWindowLabel(w)}`;
+  first.innerHTML = '';
+  const line = document.createElement('div'); line.className = 'co-window-when';
+  line.textContent = pickup
+    ? (he ? `מוכן לאיסוף בסביבות ${windowDate}, ${then}.` : `Ready for pickup around ${windowDate}, ${then}.`)
+    : (he ? `משלוח ראשון בסביבות ${asked || windowDate}, ${then}. החיוב לפי מועד ההזמנה.` : `First delivery around ${asked || windowDate}, ${then}. Billing stays on your order date.`);
+  first.appendChild(line);
+  if (!canSooner) return;
+  const [y, m, d] = subscriptionToday().split('-').map(Number);
+  const min = subscriptionIso(new Date(y, m - 1, d + 1)), wd = subscriptionWindowFirstDate(w), max = subscriptionIso(new Date(wd.getFullYear(), wd.getMonth(), wd.getDate() - 1));
+  const sooner = document.createElement('div'); sooner.className = 'co-window-sooner';
+  sooner.innerHTML = `<label><input type="checkbox" id="coSubSooner" ${sub.subscription_first_date ? 'checked' : ''}/> <span></span></label>
+    <div id="coSubSoonerPick" ${sub.subscription_first_date ? '' : 'hidden'}><input type="date" class="form-input" id="coSubFirstDate" min="${min}" max="${max}" value="${sub.subscription_first_date || ''}" style="max-width:220px"/><small></small></div>`;
+  sooner.querySelector('label span').textContent = he ? `צריכים את הקופסה הראשונה לפני ${windowDate}?` : `Need your first box before ${windowDate}?`;
+  sooner.querySelector('small').textContent = he ? 'רק המשלוח הראשון מוקדם יותר. המשלוחים הבאים לפי המועד הקבוע.' : 'Only the first delivery comes sooner. After that, deliveries follow the schedule.';
+  first.appendChild(sooner);
+  sooner.querySelector('#coSubSooner').onchange = (e) => {
+    if (!e.target.checked) { delete sub.subscription_first_date; updateCartCount(); renderCheckoutSubWindow(); return; }
+    document.getElementById('coSubSoonerPick').hidden = false; document.getElementById('coSubFirstDate').focus();
+  };
+  sooner.querySelector('#coSubFirstDate').onchange = (e) => {
+    const v = e.target.value;
+    if (v && v >= min && v <= max) sub.subscription_first_date = v; else { delete sub.subscription_first_date; e.target.value = ''; }
+    updateCartCount(); renderCheckoutSubWindow();
+  };
 }
 function setCheckoutSubWindow(w) {
   const sub = cart.find(i => i.is_subscription); if (!sub) return;
-  sub.subscription_window = w; updateCartCount(); renderCheckoutSubWindow();
+  sub.subscription_window = w; sub.subscription_window_auto = false; delete sub.subscription_first_date; updateCartCount(); renderCheckoutSubWindow();
 }
 function subscriptionIntervalLabel(interval) {
   const labels = {
@@ -3060,6 +3104,7 @@ event_time: isEvent ? eventTime : null,
         subscription: cart.some(i => i.is_subscription) ? {
           interval: cart.find(i => i.is_subscription)?.subscription_interval || 'monthly',
           window: cart.find(i => i.is_subscription)?.subscription_window || null,
+          first_date: cart.find(i => i.is_subscription)?.subscription_first_date || null,
         } : null,
       },
       status: 'awaiting_payment', payment_status: 'unpaid', payment_method: 'payme', source: 'website'
@@ -5467,7 +5512,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261103-1"></script>
-<script src="/storefront-subscribe.js?v=20261109-2"></script>
+<script src="/storefront-subscribe.js?v=20261110-1"></script>
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261110-1"></script>
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>

@@ -25,3 +25,11 @@
 .co-window b{font-size:.85rem;font-weight:500;color:var(--cream)}
 .co-window small{font-size:.74rem;color:var(--text2)}
 .co-window-first{font-size:.78rem;color:var(--text2);margin-top:8px;line-height:1.5}
+.co-window-intro{font-size:.82rem;color:var(--text2);line-height:1.5;margin:2px 0 8px}
+.co-window-when{font-size:.84rem;line-height:1.5;margin-top:10px}
+.co-window-sooner{margin-top:10px;font-size:.84rem}
+.co-window-sooner label{display:flex;align-items:center;gap:8px;cursor:pointer}
+.co-window-sooner input[type=checkbox]{accent-color:#1a1a1a}
+#coSubSoonerPick{margin-top:8px;display:grid;gap:4px}
+#coSubSoonerPick[hidden]{display:none}
+#coSubSoonerPick small{color:var(--text2);font-size:.76rem}

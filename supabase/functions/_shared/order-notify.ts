@@ -286,6 +286,15 @@ function subscriptionWindowNote(info: Record<string, unknown>): string | null {
   if (window !== "early" && window !== "mid") return null;
   const target = subscriptionDeliveryTarget(info, new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date()));
   const m = String(target || "").match(/^(\d{4})-(\d{2})-(\d{2})/), when = m ? `${m[3]}/${m[2]}` : "";
+  const rule = (info.subscription as Record<string, unknown> | undefined)?.delivery_schedule as Record<string, unknown> | undefined;
+  // The customer asked for the first box before the window: say so, and when the boxes come after that.
+  if (when && !info.recurring_child && rule?.first_date_requested && rule.first_date === target) {
+    return window === "early"
+      ? `📅 Your first box arrives around ${when}, as you asked. After that your subscription arrives at the start of each month (usually the 1st–5th).
+📅 הקופסה הראשונה תגיע בסביבות ${when}, כפי שביקשתם. אחר כך המנוי מגיע בתחילת כל חודש (בדרך כלל 1–5 בחודש).`
+      : `📅 Your first box arrives around ${when}, as you asked. After that your subscription arrives in the middle of each month (usually the 15th–20th).
+📅 הקופסה הראשונה תגיע בסביבות ${when}, כפי שביקשתם. אחר כך המנוי מגיע באמצע כל חודש (בדרך כלל 15–20 בחודש).`;
+  }
   return window === "early"
     ? `📅 Your subscription arrives at the start of the month (usually the 1st–5th)${when ? `, so expect this delivery around ${when}` : ""}.
 📅 המנוי שלכם מגיע בתחילת החודש (בדרך כלל 1–5 בחודש)${when ? `, כך שהמשלוח הזה צפוי להגיע בסביבות ${when}` : ""}.`

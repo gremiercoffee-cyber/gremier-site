@@ -223,3 +223,4 @@ body.rtl .sb-fill { background:linear-gradient(270deg,#c27a3a,#7a4a22); }
   .ds-items img { height:62px; } .ds-items img:nth-child(2) { height:67px; }
 }
 @media (prefers-reduced-motion:reduce) { .ds-items img { transition:none; } }
+.sb-when-note{font-size:.82rem;line-height:1.5;opacity:.8;margin:-4px 0 10px}

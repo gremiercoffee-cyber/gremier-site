@@ -371,9 +371,9 @@ Deno.serve(async (req) => {
       };
     });
     const subscriptionInterval = isSubscriptionOrder ? allowedItems[0].subscription_interval : null;
-    // Monthly boxes arrive early (1st–5th) or mid-month (15th–20th); the customer must choose one.
+    // Monthly boxes arrive early (1st–5th) or mid-month (15th–20th): the nearer one unless the customer picks; the first box may be asked for sooner.
     const subscriptionWindow = isSubscriptionOrder ? String(body.delivery_info?.subscription?.window || subscriptionLines[0]?.subscription_window || "") : undefined;
-    const subscriptionSchedule = isSubscriptionOrder ? subscriptionDeliveryRule(subscriptionInterval, deliveryInfo.delivery_type === "pickup" ? null : deliveryInfo.delivery_date, new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date()), subscriptionWindow) : null;
+    const subscriptionSchedule = isSubscriptionOrder ? subscriptionDeliveryRule(subscriptionInterval, deliveryInfo.delivery_type === "pickup" ? null : deliveryInfo.delivery_date, new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date()), subscriptionWindow, deliveryInfo.delivery_type === "pickup" ? null : body.delivery_info?.subscription?.first_date) : null;
 
     const subtotal = allowedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
     const [zonesResult, settingsResult] = await Promise.all([

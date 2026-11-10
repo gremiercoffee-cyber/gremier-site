@@ -7,12 +7,28 @@ export function subscriptionWindowDate(window: string, today: string): string|nu
  if(day>=w.start&&day<=w.end)return today;
  return new Date(Date.UTC(base.getUTCFullYear(),base.getUTCMonth()+(day>w.end?1:0),w.start,12)).toISOString().slice(0,10);
 }
+/** The window whose next delivery date comes first: the default for new monthly subscriptions. */
+export function nearestSubscriptionWindow(today: string): string {
+ return (subscriptionWindowDate('early',today) as string)<=(subscriptionWindowDate('mid',today) as string)?'early':'mid';
+}
+/** A window this many days away (or fewer) is near: the first box simply comes in it. Further away, the customer may ask for it sooner. */
+export const SUBSCRIPTION_NEAR_DAYS=5;
+const daysBetween=(a:string,b:string)=>Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00:00Z'))/86400000);
 /** Delivery targets are independent of card billing dates and are not guaranteed appointments. */
-export function subscriptionDeliveryRule(interval: string, chosen: unknown, today: string, window?: unknown) {
- // New monthly subscriptions must pick a window (callers pass it); weekly ones keep the date rule below.
+export function subscriptionDeliveryRule(interval: string, chosen: unknown, today: string, window?: unknown, firstDate?: unknown) {
+ // New monthly subscriptions arrive in a window (callers pass it); weekly ones keep the date rule below.
  if(interval==='monthly'&&window!==undefined){
-  const w=String(window||'');if(!SUBSCRIPTION_WINDOWS[w])throw Error('Choose when your monthly delivery should arrive: the 1st–5th or the 15th–20th');
-  return {mode:'window',window:w,first_date:subscriptionWindowDate(w,today),interval};
+  // No choice sent: the window that comes first.
+  const w=String(window||'')||nearestSubscriptionWindow(today);if(!SUBSCRIPTION_WINDOWS[w])throw Error('Choose when your monthly delivery should arrive: the 1st–5th or the 15th–20th');
+  const windowFirst=subscriptionWindowDate(w,today) as string;
+  // When the nearest window is a while away, the customer may ask for the first box sooner. Later boxes follow the window.
+  const asked=String(firstDate||'').trim();
+  if(asked){
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(asked)||!Number.isFinite(Date.parse(asked+'T12:00:00Z'))||asked<today||asked>=windowFirst)throw Error('Choose a first delivery date before your regular delivery window');
+   if(w!==nearestSubscriptionWindow(today)||daysBetween(today,windowFirst)<=SUBSCRIPTION_NEAR_DAYS)throw Error('Your first delivery is already soon: it arrives in the next delivery window');
+   return {mode:'window',window:w,first_date:asked,first_date_requested:true,window_first_date:windowFirst,interval};
+  }
+  return {mode:'window',window:w,first_date:windowFirst,interval};
  }
  const date=String(chosen||'').trim();
  if(!date)return {mode:'billing'};
@@ -26,7 +42,11 @@ export function subscriptionDeliveryTarget(info: Record<string,unknown>, today: 
  const rule=subscription?.delivery_schedule as Record<string,unknown>|undefined;
  if(!rule)return null; // Older subscriptions retain their existing scheduling behavior.
  if(rule.mode==='billing')return today;
- if(rule.mode==='window')return subscriptionWindowDate(String(rule.window),today);
+ if(rule.mode==='window'){
+  // The first box may come sooner than the window when the customer asked; every later box follows the window.
+  if(!info.recurring_child&&rule.first_date_requested&&typeof rule.first_date==='string'&&rule.first_date>=today)return rule.first_date;
+  return subscriptionWindowDate(String(rule.window),today);
+ }
  if(rule.mode!=='preferred')return null;
  if(!info.recurring_child&&typeof rule.first_date==='string'&&rule.first_date>=today)return rule.first_date;
  const base=new Date(today+'T12:00:00Z');
