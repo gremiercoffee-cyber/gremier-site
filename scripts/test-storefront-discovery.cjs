@@ -13,7 +13,7 @@ test('storefront inline scripts parse after integrating real cards and routes',(
 });
 test('home uses the unified collection scene and catalogue loads cannot replace it',()=>{
  const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/src="\/hero\/shop-collection-v1.webp"/);
+ assert.match(html,/src="\/hero\/shop-collection-v4.webp"/);
  assert.doesNotMatch(html,/id="discoveryBottles"/);
  const document={querySelectorAll:()=>[]};
  const context={document};
