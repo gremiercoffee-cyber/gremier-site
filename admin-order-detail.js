@@ -77,6 +77,7 @@
   const mainOf = (x) => infoOf(x).combined_into || null;
   const partsOf = (x) => (Array.isArray(infoOf(x).combined_orders) ? infoOf(x).combined_orders.map(String) : []);
   const shortItems = (x) => (x.items || []).filter((i) => i.category !== 'delivery_fee').map((i) => `${Number(i.qty) > 1 ? i.qty + '× ' : ''}${i.name_en || i.name_he || i.name || 'Item'}`).join(', ');
+  const num = (x) => (x?.order_number != null ? '#' + x.order_number : 'the unpaid order');
   const shortDay = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   function candidates(o) {
     if (!isOpen(o) || mainOf(o)) return [];
@@ -118,10 +119,10 @@
       </section>`;
     }
     const parts = cur.parts || [], closed = CLOSED_ORDER_STATUSES.includes(String(o.status || '').toLowerCase());
-    const partHtml = parts.map((p) => `<div class="od-item"><span><b>#${escHtml(p.order_number ?? '')}</b> · ${escHtml(shortItems(p) || 'No items')}<small>Ordered ${escHtml(shortDay(p.created_at))} · ${isPaidOrder(p) ? 'paid separately' : '<b>not paid yet</b>'} ₪${escHtml(p.total)}</small></span>
+    const partHtml = parts.map((p) => `<div class="od-item"><span><b>${p.order_number != null ? '#' + escHtml(p.order_number) : 'Unpaid order'}</b> · ${escHtml(shortItems(p) || 'No items')}<small>Ordered ${escHtml(shortDay(p.created_at))} · ${isPaidOrder(p) ? 'paid separately' : '<b>not paid yet</b>'} ₪${escHtml(p.total)}</small></span>
       ${closed ? '' : `<button type="button" class="od-link" onclick="GremierOrder.separate('${escAttr(o.id)}','${escAttr(p.id)}')">Separate</button>`}</div>`).join('');
     const options = closed ? [] : candidates(o);
-    const optHtml = options.map((x) => `<div class="od-item"><span><b>#${escHtml(x.order_number ?? '')}</b> · ${escHtml(shortItems(x) || 'No items')}<small>Ordered ${escHtml(shortDay(x.created_at))} · ₪${escHtml(x.total)}${isPaidOrder(x) ? '' : ' · not paid yet'}</small></span>
+    const optHtml = options.map((x) => `<div class="od-item"><span><b>${x.order_number != null ? '#' + escHtml(x.order_number) : 'Unpaid order'}</b> · ${escHtml(shortItems(x) || 'No items')}<small>Ordered ${escHtml(shortDay(x.created_at))} · ₪${escHtml(x.total)}${isPaidOrder(x) ? '' : ' · not paid yet'}</small></span>
       <button type="button" class="od-link" onclick="GremierOrder.combine('${escAttr(x.id)}')">Combine</button></div>`).join('');
     if (!partHtml && !optHtml) return '';
     return `<section class="od-sec od-combined">
@@ -136,7 +137,7 @@
       let [jx, jy] = await Promise.all([openJob(o.id), openJob(y.id)]);
       // The order that already has a delivery is the main one (an unpaid order has none yet).
       if (!jx && jy) { [o, y, jx, jy] = [y, o, jy, jx]; }
-      if (!confirm(`Combine #${y.order_number} into #${o.order_number}?\n\nThey go out together as one delivery${jx ? `, on #${o.order_number}'s date and address` : ''}, and the customer gets one "delivered" email.${isPaidOrder(y) && isPaidOrder(o) ? '' : ' An unpaid order joins the delivery once it\u2019s paid.'} Payments and receipts stay separate. You can separate them again.`)) return;
+      if (!confirm(`Combine ${num(y)} into ${num(o)}?\n\nThey go out together as one delivery${jx ? `, on ${num(o)}'s date and address` : ''}, and the customer gets one "delivered" email.${isPaidOrder(y) && isPaidOrder(o) ? '' : ' An unpaid order joins the delivery once it\u2019s paid.'} Payments and receipts stay separate. You can separate them again.`)) return;
       const [ox, oy] = await Promise.all([readInfo(o.id), readInfo(y.id)]);
       if (ox.info.combined_into || oy.info.combined_into || (oy.info.combined_orders || []).length) throw new Error('One of these orders is already combined');
       const now = new Date().toISOString();
@@ -151,7 +152,7 @@
         if (error) throw error;
         await sb.from('pending_website_deliveries').update({ status: 'dismissed' }).eq('order_id', y.id);
       }
-      showToast(`Combined ✓ #${y.order_number} goes out with #${o.order_number}`);
+      showToast(`Combined ✓ ${num(y)} goes out with ${num(o)}`);
       await afterChange(cur.id);
     } catch (e) {
       console.error('combine orders:', e);
@@ -160,7 +161,7 @@
   }
   async function separate(mainId, partId) {
     const m = allOrders.find((x) => x.id === mainId) || cur.main, p = allOrders.find((x) => x.id === partId) || (cur.parts || []).find((x) => x.id === partId);
-    if (!confirm(`Separate #${p?.order_number ?? ''} from #${m?.order_number ?? ''}? It goes back to its own delivery, as it was before.`)) return;
+    if (!confirm(`Separate ${num(p)} from ${num(m)}? It goes back to its own delivery, as it was before.`)) return;
     try {
       const [om, op] = await Promise.all([readInfo(mainId), readInfo(partId)]);
       if (CLOSED_ORDER_STATUSES.includes(String(op.status || '').toLowerCase())) throw new Error('That order is already fulfilled');
@@ -232,7 +233,7 @@
       <header class="od-head">
         <div>
           <h2>${escHtml(o.customer_name || 'Customer')}</h2>
-          <p>#${escHtml(o.order_number ?? '')} · ${escHtml(ordered)} · <span class="od-pay${paid ? ' paid' : ''}">${paid ? 'Paid' : 'Not paid'}</span>${statusWord}</p>
+          <p>${o.order_number != null ? '#' + escHtml(o.order_number) + ' · ' : 'No number until paid · '}${escHtml(ordered)} · <span class="od-pay${paid ? ' paid' : ''}">${paid ? 'Paid' : 'Not paid'}</span>${statusWord}</p>
         </div>
         <button type="button" class="od-x" onclick="closeOrderModal()" aria-label="Close">✕</button>
       </header>

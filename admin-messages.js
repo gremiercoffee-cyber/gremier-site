@@ -68,7 +68,7 @@
   function render(refill) {
     const { o, lang, tpl } = state;
     $('msgTitle').textContent = `Message ${o.customer_name || 'customer'}`;
-    $('msgSub').textContent = [`Order #${o.order_number}`, o.customer_phone, o.customer_email].filter(Boolean).join(' · ');
+    $('msgSub').textContent = [o.order_number != null ? `Order #${o.order_number}` : 'Unpaid order', o.customer_phone, o.customer_email].filter(Boolean).join(' · ');
     $('msgTemplates').innerHTML = TEMPLATES.map((t) => `<button type="button" data-tpl="${t.key}" class="${t === tpl ? 'on' : ''}">${esc(t.label)}</button>`).join('');
     $('msgLang').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.lang === lang));
     const text = $('msgText');
@@ -98,7 +98,8 @@
     const toast = (m, ms) => typeof showToast === 'function' && showToast(m, ms);
     toast('Sending email…');
     try {
-      const subject = lang === 'he' ? `ההזמנה שלך מגרמיר קופי #${o.order_number}` : `Your Gremier Coffee order #${o.order_number}`;
+      const n = o.order_number != null ? ` #${o.order_number}` : '';
+      const subject = lang === 'he' ? `ההזמנה שלך מגרמיר קופי${n}` : `Your Gremier Coffee order${n}`;
       const { res, data } = await callAdminFunction('admin-tools', { action: 'message_customer', order_id: o.id, text, subject, template: state?.tpl?.key || null });
       if (!res.ok || !data.ok) throw new Error(data.error || data.detail || res.status);
       toast(`Emailed to ${o.customer_email} ✓`);

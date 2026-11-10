@@ -103,7 +103,7 @@
     const partsFor = (o) => (Array.isArray(info(o).combined_orders) ? info(o).combined_orders : []).map((id) => orders.find((x) => x.id === id && info(x).combined_into === o.id)).filter(Boolean);
     const paid = allPaid.filter((o) => !(info(o).combined_into && paidIds.has(info(o).combined_into))).map((o) => {
       const parts = partsFor(o), paidParts = parts.filter(isPaid);
-      return parts.length ? { ...o, order_number: [o.order_number, ...parts.map((p) => p.order_number + (isPaid(p) ? '' : ' (unpaid)'))].join(' + #'), items: [...(o.items || []), ...paidParts.flatMap((p) => p.items || [])], total: [o, ...paidParts].reduce((s, x) => s + Number(x.total || 0), 0) } : o;
+      return parts.length ? { ...o, order_label: [o, ...parts].map((p) => (p.order_number != null ? '#' + p.order_number : 'an order') + (isPaid(p) ? '' : ' (unpaid)')).join(' + '), items: [...(o.items || []), ...paidParts.flatMap((p) => p.items || [])], total: [o, ...paidParts].reduce((s, x) => s + Number(x.total || 0), 0) } : o;
     });
     const orderIds = new Set(paid.map((o) => o.id));
     const jobForOrder = new Map(jobs.filter((j) => j.websiteOrderId && orderIds.has(j.websiteOrderId)).map((j) => [j.websiteOrderId, j]));
@@ -146,7 +146,7 @@
     if (!box || orders === null) return;
     const shown = root.__plkOrderIds || new Set();
     const unpaid = orders.filter((o) => !isPaid(o) && !shown.has(o.id));
-    const label = (o) => { const d = o.delivery_info || {}; return d.combined_into ? { ...o, order_number: `${o.order_number} · goes with #${d.combined_into_number ?? ''}` } : o; };
+    const label = (o) => { const d = o.delivery_info || {}; return d.combined_into ? { ...o, order_label: `Goes with #${d.combined_into_number ?? ''}` } : o; };
     box.innerHTML = unpaid.map((o) => orderRowHtml(label(o), { unpaid: true })).join('');
     box.hidden = !unpaid.length;
     const head = document.getElementById('plkWaitingHead');

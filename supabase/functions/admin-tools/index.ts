@@ -149,7 +149,7 @@ async function unpaidAlerts(sb: Sb) {
     // cron runs — and without touching the order row the payment webhook also writes.
     const { error: claimErr } = await sb.from("alert_log").insert({ key: `unpaid:${o.id}`, first_sent_at: new Date().toISOString(), follow_up_sent: false });
     if (claimErr) continue;
-    await alertAdmins(sb, `⏳ Order #${o.order_number} not paid yet`,
+    await alertAdmins(sb, `⏳ Order${o.order_number != null ? ` #${o.order_number}` : ""} not paid yet`,
       `${o.customer_name || "A customer"} started checkout for ₪${o.total} over an hour ago and hasn't paid. Worth a WhatsApp?`,
       `unpaid-${o.id}`);
     sent++;
@@ -822,7 +822,7 @@ Deno.serve(async (req) => {
         if (!order) return json({ error: "order_not_found" }, 404);
         const text = String(body.text || "").trim().slice(0, 2000);
         if (!text || !order.customer_email) return json({ error: !text ? "empty_message" : "no_customer_email" }, 400);
-        const subject = String(body.subject || "").trim().slice(0, 120) || `Gremier Coffee · Order #${order.order_number ?? ""}`.trim();
+        const subject = String(body.subject || "").trim().slice(0, 120) || (order.order_number != null ? `Gremier Coffee · Order #${order.order_number}` : "Gremier Coffee · Your order");
         const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: order.customer_email, customerName: order.customer_name, customerSubject: subject, customerText: text });
         // The shop app too: a short notification (the full message is in the email).
         const n = order.order_number ?? "";

@@ -336,7 +336,7 @@ function buildRecurringPayload(
     ...template,
     seller_payme_id: opts.sellerId,
     sub_price: Math.round(opts.totalShekels * 100),
-    sub_description: `Gremier Coffee Subscription #${order.order_number ?? order.id.slice(0, 8)}`,
+    sub_description: `Gremier Coffee Subscription${order.order_number ? ` #${order.order_number}` : ""}`,
     sub_iteration_type: iterationType,
     sub_start_date: paymeStartDate(iterationType),
     subscription_id: order.id,
@@ -835,7 +835,7 @@ serve(async (req) => {
 
         ? "Gremier Coffee — Payment Link"
 
-        : `Gremier Coffee Order #${row.order_number ?? row.id.slice(0, 8)}`,
+        : `Gremier Coffee Order${row.order_number ? ` #${row.order_number}` : ""}`,
 
       installments: 1,
 

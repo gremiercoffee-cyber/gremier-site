@@ -3365,7 +3365,7 @@ async function loadMyOrders() {
     const itemsText = (order.items||[]).map(i=>`${lang==='he'?(i.name_he||i.name_en):i.name_en} ×${i.qty}`).join(', ');
     return `<div class="order-card">
       <div class="order-card-header">
-        <div><div class="order-num">${orderIndex === 0 ? (lang==='he'?'ההזמנה האחרונה · ':'Latest order · ') : ''}${lang==='he'?'הזמנה':'Order'} #${order.order_number}</div><div class="order-date">${date}</div></div>
+        <div><div class="order-num">${orderIndex === 0 ? (lang==='he'?'ההזמנה האחרונה · ':'Latest order · ') : ''}${order.order_number != null ? (lang==='he'?'הזמנה':'Order') + ' #' + order.order_number : (lang==='he'?'הזמנה שלא שולמה':'Unpaid order')}</div><div class="order-date">${date}</div></div>
         <span class="status-badge status-${order.status}">${statusLabel}</span>
       </div>
       <div class="order-items-list">${itemsText}</div>

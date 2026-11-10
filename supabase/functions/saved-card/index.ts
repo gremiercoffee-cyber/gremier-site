@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
         seller_payme_id: Deno.env.get("PAYME_SELLER_ID") || "",
         sale_price: Math.round(total * 100),
         currency: "ILS",
-        product_name: `Gremier Coffee Order #${order.order_number ?? orderId.slice(0, 8)}`,
+        product_name: `Gremier Coffee Order${order.order_number ? ` #${order.order_number}` : ""}`,
         transaction_id: `${orderId}_${Date.now()}`,
         installments: 1,
         buyer_key: card.buyer_key,

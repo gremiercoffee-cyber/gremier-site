@@ -4072,7 +4072,7 @@ async function restoreDeletedOrder(archiveId) {
   const { data: existing } = await sb.from('orders').select('id').eq('id', o.id).maybeSingle();
   if (existing) {
     await sb.from('deleted_orders').update({ restored_at: new Date().toISOString() }).eq('id', archiveId);
-    showToast(`Order #${o.order_number} is already in the system`);
+    showToast(`Order${o.order_number != null ? ' #' + o.order_number : ''} is already in the system`);
     return true;
   }
   const { error: insertErr } = await sb.from('orders').insert(o);
@@ -4086,7 +4086,7 @@ async function restoreDeletedOrder(archiveId) {
   if (linkCode) {
     await sb.from('payment_links').update({ order_id: o.id }).eq('link_code', linkCode);
   }
-  showToast(`Order #${o.order_number} restored ✓`);
+  showToast(`Order${o.order_number != null ? ' #' + o.order_number : ''} restored ✓`);
   if (document.getElementById('tab-orders').style.display !== 'none') await loadOrders();
   return true;
 }
@@ -4121,7 +4121,7 @@ async function recreateOrderFromPaymentLink(linkCode) {
   if (link.order_id) {
     const { data: existing } = await sb.from('orders').select('id, order_number').eq('id', link.order_id).maybeSingle();
     if (existing) {
-      showToast(`Order #${existing.order_number} already exists`);
+      showToast(`Order${existing.order_number != null ? ' #' + existing.order_number : ''} already exists`);
       return;
     }
   }
@@ -4158,7 +4158,7 @@ async function recreateOrderFromPaymentLink(linkCode) {
     order_id: inserted.id,
     status: paymentStatus === 'paid' ? 'paid' : link.status,
   }).eq('link_code', link.link_code);
-  showToast(`Order #${inserted.order_number} recreated ✓`);
+  showToast(`Order${inserted.order_number != null ? ' #' + inserted.order_number : ''} recreated ✓`);
   if (paymentStatus === 'paid') await sendOrderToGoogleSheet(inserted.id, false);
   await loadOrders();
   if (document.getElementById('tab-orders').style.display !== 'none') await loadPayLinks();
@@ -4209,7 +4209,7 @@ async function saveManualRestoredOrder() {
     return;
   }
   closeRestoreOrderModal();
-  showToast(`Order #${inserted.order_number} created ✓`);
+  showToast(`Order${inserted.order_number != null ? ' #' + inserted.order_number : ''} created ✓`);
   await loadOrders();
 }
 
@@ -4417,7 +4417,7 @@ function renderOrderHistory(resetPaging = true) {
   if (!list.length) { host.innerHTML = `<p class="oh-empty">${searching ? 'No orders found for this search.' : 'No orders match these filters.'}</p>`; return; }
   const pill = o => { const s = String(o.status || '').toLowerCase(); const label = { fulfilled: 'Fulfilled', cancelled: 'Cancelled', refunded: 'Refunded', confirmed: 'To fulfill', pending: 'To fulfill' }[s] || s; return `<span class="oh-pill ${escAttr(s)}">${escHtml(label)}</span>`; };
   const when = o => new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
-  host.innerHTML = list.slice(0, orderHistoryShown).map(o => `<details class="oh-item" data-order="${escAttr(o.id)}"><summary><span class="oh-num">#${escHtml(String(o.order_number ?? ''))}</span><span class="oh-main"><b>${escHtml(o.customer_name || 'Customer')}</b><small>${escHtml(when(o))}${isSubscriptionOrder(o) ? ' · 🔁 Subscription' : ''}</small></span><span class="oh-end"><b>₪${Number(o.total || 0).toFixed(0)}</b>${pill(o)}</span></summary><div class="oh-detail"></div></details>`).join('')
+  host.innerHTML = list.slice(0, orderHistoryShown).map(o => `<details class="oh-item" data-order="${escAttr(o.id)}"><summary><span class="oh-num">#${escHtml(String(o.order_number ?? '—'))}</span><span class="oh-main"><b>${escHtml(o.customer_name || 'Customer')}</b><small>${escHtml(when(o))}${isSubscriptionOrder(o) ? ' · 🔁 Subscription' : ''}</small></span><span class="oh-end"><b>₪${Number(o.total || 0).toFixed(0)}</b>${pill(o)}</span></summary><div class="oh-detail"></div></details>`).join('')
     + (list.length > orderHistoryShown ? `<button type="button" class="oh-more" onclick="orderHistoryShown += 25; renderOrderHistory(false)">Show more (${list.length - orderHistoryShown} left)</button>` : '');
   host.querySelectorAll('.oh-item').forEach(d => d.addEventListener('toggle', () => {
     const box = d.querySelector('.oh-detail');
@@ -4551,7 +4551,7 @@ function orderRowHtml(o, ctx = {}) {
   const dType = String((o.delivery_info && o.delivery_info.delivery_type) || '').toLowerCase();
   const typeTag = dType === 'event' ? 'Event' : dType === 'expedited' ? 'Expedited' : dType === 'pickup' ? 'Pickup' : '';
   const tags = [
-    `<span>#${escHtml(o.order_number ?? '')}</span>`,
+    `<span>${escHtml(o.order_label || (o.order_number != null ? '#' + o.order_number : 'No number until paid'))}</span>`,
     job?.time ? `<span>· ${escHtml(String(job.time).slice(0, 5))}</span>` : '',
     `<span>· ordered ${date}</span>`,
     isSubscriptionOrder(o) ? '<span class="plk-tag">Subscription</span>' : '',
@@ -4802,7 +4802,7 @@ async function queuePaymentLinkForOps(linkCode) {
 
   const result = await insertPendingForPaymentLink(link, order);
   if (result.already) showToast('Already in Ops queue ✓ — refresh Ops app');
-  else if (result.ok) showToast(`Order #${order.order_number} in Ops (awaiting payment) ✓`);
+  else if (result.ok) showToast(`Order${order.order_number != null ? ' #' + order.order_number : ''} in Ops (awaiting payment) ✓`);
   else showToast('Ops queue failed — run apply-db-migrations.bat if you have not yet');
   loadPayLinks();
 }
@@ -5546,9 +5546,9 @@ if (saveError) {
       await sb.from('payment_links').update({ order_id: order.id }).eq('link_code', linkCode);
       const pendingResult = await insertPendingForPaymentLink({ ...linkData, customer_phone: customerPhone, delivery_address: deliveryAddress, total }, order);
       if (!pendingResult.ok && !pendingResult.already) {
-        showToast(`Order #${order.order_number} created — Ops queue failed, check console`);
+        showToast(`Order${order.order_number != null ? ' #' + order.order_number : ''} created — Ops queue failed, check console`);
       } else {
-        showToast(`Order #${order.order_number} created — in Ops for scheduling ✓`);
+        showToast(`Order${order.order_number != null ? ' #' + order.order_number : ''} created — in Ops for scheduling ✓`);
       }
       loadOrders();
     }
@@ -6216,7 +6216,7 @@ function openMemberDetail(memberId) {
         const items = (o.items || []).map(i => `${i.name_en} ×${i.qty}`).join(', ');
         return `<div class="member-order-row" onclick="openOrderFromMember('${o.id}')">
           <div>
-            <div style="color:var(--cream);font-weight:500">#${escHtml(String(o.order_number))} · ${escHtml(date)}</div>
+            <div style="color:var(--cream);font-weight:500">#${escHtml(String(o.order_number ?? '—'))} · ${escHtml(date)}</div>
             <div class="member-order-meta">${escHtml(items)}</div>
             ${o.delivery_address ? `<div class="member-order-meta">${escHtml(o.delivery_address)}</div>` : ''}
           </div>
@@ -9103,7 +9103,7 @@ function renderDashboardRecentOrders(orders) {
   const recent = orders.slice(0, 8);
   body.innerHTML = recent.length
     ? recent.map(o => `<tr>
-        <td style="color:var(--cream);font-size:.78rem">#${o.order_number}</td>
+        <td style=\"color:var(--cream);font-size:.78rem\">#${o.order_number ?? '—'}</td>
         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;font-size:.78rem">${escHtml(o.customer_name||'')}</td>
         <td class="cell-total" style="color:var(--cream);font-size:.78rem">₪${o.total}</td>
         <td class="cell-status"><span class="status-pill s-${o.status}" style="font-size:.55rem">${o.status}</span></td>
@@ -9893,10 +9893,10 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-link-address.js?v=20261106-1"></script>
 <script src="/admin-route.js?v=20261106-1"></script>
 <link rel="stylesheet" href="/admin-order-detail.css?v=20261108-2"/>
-<script src="/admin-order-detail.js?v=20261110-2"></script>
+<script src="/admin-order-detail.js?v=20261110-3"></script>
 <script src="/admin-refunds.js?v=20261108-1"></script>
 <script src="/admin-open-orders.js?v=20261105-2"></script>
-<script src="/admin-orders-board.js?v=20261110-2"></script>
+<script src="/admin-orders-board.js?v=20261110-3"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
 <script src="/admin-react-1.js?v=af629a4288"></script>
 <script src="/admin-stock-numbers.js?v=20261026-1"></script>
@@ -10091,8 +10091,8 @@ PayMe goes back to charging on the regular billing day.`)) return;
     const paid = String(o.payment_status) === 'paid';
     const st = String(o.status || '').toLowerCase();
     if (!paid) return he
-      ? `היי ${first}, כאן גרמיר קופי ☕ ראינו שההזמנה שלך (#${o.order_number}, ₪${o.total}) לא הושלמה בתשלום. רוצה שנשלח לך קישור לתשלום?`
-      : `Hi ${first}, it's Gremier Coffee ☕ Looks like your order #${o.order_number} (₪${o.total}) didn't finish payment. Want me to send you a payment link?`;
+      ? `היי ${first}, כאן גרמיר קופי ☕ ראינו שההזמנה שלך (${o.order_number != null ? '#' + o.order_number + ', ' : ''}₪${o.total}) לא הושלמה בתשלום. רוצה שנשלח לך קישור לתשלום?`
+      : `Hi ${first}, it's Gremier Coffee ☕ Looks like your order (₪${o.total}) didn't finish payment. Want me to send you a payment link?`;
     if (st === 'fulfilled') return he
       ? `היי ${first}! מקווים שאתם נהנים מהקולד ברו ☕ נשמח לשמוע מה חשבתם!`
       : `Hi ${first}! Hope you're enjoying your cold brew ☕ We'd love to hear what you think!`;
@@ -10175,7 +10175,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
   function orderLine(o) {
     const items = (o.items || []).map((i) => `${i.name_en || i.name_he} ×${i.qty}`).join(', ');
     const pay = o.payment_status === 'paid' ? '' : ` · <span style="color:var(--red)">${esc(o.payment_status)}</span>`;
-    return `<div class="hub-row" onclick="hubOpenOrder('${o.id}')"><div class="t"><b>#${esc(o.order_number)} · ${esc(items)}</b><small>${short(o.created_at)} · ${esc(o.status)}${pay}</small></div><div class="r">${money(o.total)}</div></div>`;
+    return `<div class="hub-row" onclick="hubOpenOrder('${o.id}')"><div class="t"><b>#${esc(o.order_number ?? '—')} · ${esc(items)}</b><small>${short(o.created_at)} · ${esc(o.status)}${pay}</small></div><div class="r">${money(o.total)}</div></div>`;
   }
   window.hubOpenOrder = function (id) {
     const o = hubOrderIndex.get(id);
@@ -10272,7 +10272,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
       <div class="hub-kpi"><span>To fulfil</span><b>${toFulfil.length}</b></div>
       <div class="hub-kpi"><span>Last 7 days</span><b>${money(weekRevenue)}</b></div>`;
 
-    const orderRow = (o, right) => `<div class="hub-row" onclick="hubOpenOrder('${o.id}')"><div class="t"><b>#${esc(o.order_number)} · ${esc(o.customer_name || '')}</b><small>${esc((o.items || []).map((i) => `${i.name_en || i.name_he} ×${i.qty}`).join(', '))}</small></div><div class="r">${right}</div></div>`;
+    const orderRow = (o, right) => `<div class="hub-row" onclick="hubOpenOrder('${o.id}')"><div class="t"><b>#${esc(o.order_number ?? '—')} · ${esc(o.customer_name || '')}</b><small>${esc((o.items || []).map((i) => `${i.name_en || i.name_he} ×${i.qty}`).join(', '))}</small></div><div class="r">${right}</div></div>`;
     const card = (title, rows, empty, alert) => `<div class="hub-card${alert && rows.length ? ' alert' : ''}"><h3><span>${title}</span><span class="n">${rows.length}</span></h3>${rows.length ? rows.join('') : `<div class="hub-empty">${empty}</div>`}</div>`;
 
     grid.innerHTML = [
@@ -10400,7 +10400,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-sales-breakdown.js?v=20261031-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261025-1"/>
 <script src="/admin-visitors.js?v=20261025-1"></script>
-<script src="/admin-messages.js?v=20261023-2"></script>
+<script src="/admin-messages.js?v=20261110-3"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
 <script src="/admin-production.js?v=20261026-2"></script>
 <script src="/admin-stats-tabs.js?v=20261102-1"></script>
