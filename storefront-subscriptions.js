@@ -50,17 +50,42 @@
     const box = el.querySelector('.subm-add'), s = subsById.get(el.dataset.sub), out = el.querySelector('.subm-status');
     if (!box.hidden) { box.hidden = true; return; }
     const picks = {}, list = addable();
+    // A points, birthday or coupon code (or a gift card) for the one-time add-on, checked the same way as at checkout.
+    let code = null, codeText = '', codeMsg = '', codeOk = false;
     const total = () => list.reduce((sum, p) => sum + Number(p.price) * (picks[p.id] || 0), 0);
+    const toPay = () => Math.max(0, Math.round((total() - (code ? Number(code.discount) || 0 : 0)) * 100) / 100);
+    const applyCode = async () => {
+      const text = codeText.trim().toUpperCase();
+      code = null;
+      if (!text) { codeMsg = T('Enter a code', 'הזינו קוד'); codeOk = false; paint(); return; }
+      codeMsg = T('Checking…', 'בודקים…'); codeOk = true; paint();
+      const items = list.filter((p) => picks[p.id]).map((p) => ({ product_id: String(p.id), price: Number(p.price), qty: picks[p.id], category: p.category }));
+      const call = (fn, body) => fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, body: JSON.stringify(body) }).then((r) => r.json()).catch(() => ({}));
+      try {
+        const { data: { session } } = await getSessionSafe();
+        const c = await call('validate-coupon', { code: text, cart_total: total(), items, subscription: false, user_id: session?.user?.id || null, email: session?.user?.email || null });
+        if (c.valid) { code = { kind: 'coupon', code: c.code || text, discount: Number(c.discount) || 0 }; codeMsg = T(`Code applied: −₪${code.discount}`, `הקוד הופעל: −₪${code.discount}`); codeOk = true; paint(); return; }
+        const g = await call('validate-gift-card', { code: text, cart_total: total() });
+        if (g.valid) { code = { kind: 'gift_card', code: g.code || text, discount: Number(g.applied) || 0 }; codeMsg = T(`Gift card applied: −₪${code.discount}`, `כרטיס המתנה הופעל: −₪${code.discount}`); codeOk = true; paint(); return; }
+        codeMsg = c.message || g.message || T('That code isn’t valid', 'הקוד לא תקין'); codeOk = false;
+      } catch (_) { codeMsg = T('Couldn’t check the code. Try again.', 'לא הצלחנו לבדוק את הקוד. נסו שוב.'); codeOk = false; }
+      paint();
+    };
     const subTotal = () => Math.round(list.reduce((sum, p) => sum + (GremierSubscriptionModel.syrup(p) ? Number(p.price) : Number(p.price) * .9) * (picks[p.id] || 0), 0) * 100) / 100;
     const paint = () => {
       box.innerHTML = `<b>${T('What would you like to add?', 'מה להוסיף?')}</b>
         <p>${T(`Add it once and pay now: it comes with your next box, around ${day(s.next_box)}, with no delivery fee. Or add it to every delivery and save 10%; nothing is charged today.`, `אפשר להוסיף פעם אחת ולשלם עכשיו: זה יגיע עם הקופסה הבאה, בסביבות ${day(s.next_box)}, בלי דמי משלוח. או להוסיף לכל משלוח ולחסוך 10%; היום לא יחויב דבר.`)}</p>
         ${list.map((p) => `<div class="subm-add-row"><span>${esc(he() ? p.name_he || p.name_en : p.name_en)}</span><i>₪${Number(p.price)}</i>
           <button type="button" data-step="-1" data-id="${esc(p.id)}" aria-label="${T('Remove one', 'פחות אחד')}"${picks[p.id] ? '' : ' disabled'}>−</button><em>${picks[p.id] || 0}</em><button type="button" data-step="1" data-id="${esc(p.id)}" aria-label="${T('Add one', 'עוד אחד')}"${(picks[p.id] || 0) >= 20 ? ' disabled' : ''}>+</button></div>`).join('')}
-        <button type="button" class="btn btn-outline btn-sm subm-add-pay"${total() ? '' : ' disabled'}>${total() ? T(`This delivery only · pay ₪${total()}`, `רק למשלוח הבא · לתשלום ₪${total()}`) : T('Choose something to add', 'בחרו מה להוסיף')}</button>
+        ${total() ? `<div class="subm-code"><input class="form-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="${T('Points, birthday or gift card code', 'קוד נקודות, יום הולדת או כרטיס מתנה')}" value="${esc(codeText)}" aria-label="${T('Discount code for this delivery', 'קוד הנחה למשלוח הזה')}"><button type="button" class="btn btn-outline btn-sm subm-code-apply">${T('Apply', 'הפעלה')}</button></div>${codeMsg ? `<div class="subm-code-msg ${codeOk ? 'ok' : 'bad'}" role="status">${esc(codeMsg)}</div>` : ''}` : ''}
+        <button type="button" class="btn btn-outline btn-sm subm-add-pay"${total() ? '' : ' disabled'}>${total() ? T(`This delivery only · pay ₪${toPay()}`, `רק למשלוח הבא · לתשלום ₪${toPay()}`) : T('Choose something to add', 'בחרו מה להוסיף')}</button>
         ${s.can_add_every_box && total() ? `<button type="button" class="btn btn-primary btn-sm subm-add-every">${T(`Every delivery, 10% off · +₪${subTotal()}`, `בכל משלוח, 10% הנחה · +₪${subTotal()}`)}</button>` : ''}`;
-      box.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { picks[b.dataset.id] = Math.max(0, Math.min(20, (picks[b.dataset.id] || 0) + Number(b.dataset.step))); paint(); });
-      box.querySelector('.subm-add-pay').onclick = () => payAdd(el, picks, out);
+      box.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { picks[b.dataset.id] = Math.max(0, Math.min(20, (picks[b.dataset.id] || 0) + Number(b.dataset.step))); if (code && total()) applyCode(); else { code = null; codeMsg = ''; paint(); } });
+      const input = box.querySelector('.subm-code input');
+      if (input) { input.oninput = () => { codeText = input.value; }; input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } }; }
+      const apply = box.querySelector('.subm-code-apply');
+      if (apply) apply.onclick = () => applyCode();
+      box.querySelector('.subm-add-pay').onclick = () => payAdd(el, picks, out, code);
       const every = box.querySelector('.subm-add-every');
       if (every) every.onclick = () => addEvery(el, picks, out);
     };
@@ -84,7 +109,7 @@
     out.textContent = T(`Added ✓ New charge ₪${saved.next} from ${day(saved.next_charge)}`, `נוסף ✓ החיוב החדש ₪${saved.next} החל מ-${day(saved.next_charge)}`);
     setTimeout(place, 2500);
   }
-  async function payAdd(el, picks, out) {
+  async function payAdd(el, picks, out, code) {
     const items = Object.entries(picks).filter(([, qty]) => qty > 0).map(([product_id, qty]) => ({ product_id, qty }));
     const pay = el.querySelector('.subm-add-pay');
     pay.disabled = true;
@@ -93,9 +118,10 @@
       const { data: { session } } = await getSessionSafe();
       if (!session?.access_token) throw new Error(T('Please sign in again.', 'נא להתחבר שוב.'));
       const post = (fn, token, body) => fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }, body: JSON.stringify(body) }).then((r) => r.json().then((j) => ({ ok: r.ok, j })));
-      const order = await post('create-website-order', session.access_token, { items, subscription_addon: { sub_payme_id: el.dataset.sub }, site_lang: he() ? 'he' : 'en', analytics_context: window.GremierJourneys?.context() });
+      const order = await post('create-website-order', session.access_token, { items, subscription_addon: { sub_payme_id: el.dataset.sub }, coupon_code: code?.kind === 'coupon' ? code.code : null, gift_card_code: code?.kind === 'gift_card' ? code.code : null, site_lang: he() ? 'he' : 'en', analytics_context: window.GremierJourneys?.context() });
       if (!order.ok || !order.j.id) throw new Error(order.j.error || T('Please try again.', 'נסו שוב.'));
       try { localStorage.setItem('gremier_last_order_id', order.j.id); } catch (_) {}
+      if (order.j.paid) { out.textContent = T('Added ✓ Paid in full with your gift card. It comes with your next box.', 'נוסף ✓ שולם במלואו בכרטיס המתנה. זה יגיע עם הקופסה הבאה.'); el.querySelector('.subm-add').hidden = true; pay.disabled = false; return; }
       const payment = await post('create-payment', SUPABASE_ANON_KEY, { order_id: order.j.id, language: he() ? 'he' : 'en' });
       const url = payment.j.sale_url || payment.j.redirect_url;
       if (!payment.ok || !url) throw new Error(payment.j.error || T('Please try again.', 'נסו שוב.'));

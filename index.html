@@ -786,7 +786,7 @@
 
 <link rel="stylesheet" href="/subscriptions.css?v=20261103-1"/>
 <link rel="stylesheet" href="/storefront-cards.css?v=20261021-1"/>
-<link rel="stylesheet" href="/storefront-nav.css?v=20261109-1"/>
+<link rel="stylesheet" href="/storefront-nav.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261103-9"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261105-1"/>
@@ -1645,7 +1645,7 @@ function applyTranslations() {
   }
   renderGrids();
 }
-function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); applySiteImages(); }
+function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); applySiteImages(); window.coAddrPicker?.refresh(); }
 // ══ AUTH ══
 async function initAuth() {
   // Timeout-guarded: a stuck auth lock here blocked the whole init — signed-in visitors
@@ -4583,7 +4583,7 @@ async function sendChatMessageText(text) {
   // P6. Remember returning customers' details (this device only) and prefill from Google sign-in.
   const CK = 'gremier_checkout_details_v1';
   // The shared address picker on the street field (Google Places through our places function).
-  const attachAddrPicker = () => { if (window.GremierPlaces && document.getElementById('coAddr') && !window.coAddrPicker) window.coAddrPicker = GremierPlaces.attach(document.getElementById('coAddr'), { lang: () => (typeof lang !== 'undefined' ? lang : 'en') }); };
+  const attachAddrPicker = () => { if (window.GremierPlaces && document.getElementById('coAddr') && !window.coAddrPicker) window.coAddrPicker = GremierPlaces.attach(document.getElementById('coAddr'), { manual: true, lang: () => (typeof lang !== 'undefined' ? lang : 'en') }); };
   const _submit = window.submitOrder;
   window.submitOrder = function () {
     const v = id => (document.getElementById(id)?.value || '').trim();
@@ -5458,7 +5458,7 @@ async function sendChatMessageText(text) {
   }, 1500);
 })();
 </script>
-<script src="/address-picker.js?v=20261104-2"></script>
+<script src="/address-picker.js?v=20261109-1"></script>
 <script src="/storefront-checkout.js?v=20261023-2"></script>
 <script src="/storefront-coffee-bar-offers.js?v=20261025-2"></script>
 <script src="/storefront-addresses.js?v=20261104-1"></script>
@@ -5469,7 +5469,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-packs.js?v=20261103-1"></script>
 <script src="/storefront-subscribe.js?v=20261109-2"></script>
 <script src="/storefront-birthday.js?v=20261108-1"></script>
-<script src="/storefront-subscriptions.js?v=20261109-1"></script>
+<script src="/storefront-subscriptions.js?v=20261110-1"></script>
 <script src="/storefront-hero-stills.js?v=20261103-17"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261030-1"></script>

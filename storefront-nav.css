@@ -552,6 +552,11 @@ body.rtl .planner .bs-stage { transform:translateX(50%) scale(var(--z, 1)); left
 .subm-add { border-top:1px solid var(--border, #e6e4df); margin-top:14px; padding-top:12px; font-size:.86rem; }
 .subm-add p { color:#4a4a4a; margin:4px 0 10px; font-size:.8rem; line-height:1.5; }
 .subm-add-row { display:flex; align-items:center; gap:8px; padding:5px 0; }
+.subm-code { display:flex; gap:8px; margin:10px 0 4px; }
+.subm-code input { flex:1; min-width:0; font-size:16px; }
+.subm-code-msg { font-size:.8rem; margin:0 0 8px; }
+.subm-code-msg.ok { color:var(--green, #1f8f4e); }
+.subm-code-msg.bad { color:var(--red, #b3261e); }
 .subm-add-row span { flex:1; min-width:0; }
 .subm-add-row i { font-style:normal; color:#4a4a4a; }
 .subm-add-row em { font-style:normal; font-weight:600; min-width:18px; text-align:center; }

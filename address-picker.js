@@ -7,7 +7,7 @@
        place  — { source:'google', id, label, precision:'building'|'approximate', locality, confirmed, at }
                 or { source:'pin', lat, lng, confirmed, at } (a location they confirmed themselves)
                 or null
-       status — 'empty' | 'typing' | 'selected' | 'unavailable' (lookup not configured / down)
+       status — 'empty' | 'typing' | 'selected' | 'unavailable' (lookup not configured / down) | 'manual' (customer chose to type it)
    picker.set({ text, place })   picker.ready()   picker.problem()   picker.destroy()
 
    Rules: typing alone never selects a place; changing the text after a selection clears it; a result
@@ -26,7 +26,10 @@
 .gp-card .gp-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .gp-card button{padding:7px 10px;border-radius:8px;border:1px solid #c9bfae;background:#fff;font:inherit;font-size:12px;cursor:pointer}
 .gp-card label{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-weight:600;cursor:pointer}
-.gp-card small{display:block;color:#777;margin-top:4px}`;
+.gp-card small{display:block;color:#777;margin-top:4px}
+.gp-field{display:flex;gap:8px;align-items:stretch}.gp-field input{flex:1 1 auto;min-width:0;width:auto}
+.gp-manual-btn{flex:0 0 auto;max-width:112px;padding:6px 10px;border:1px solid #c9bfae;border-radius:12px;background:#fff;color:#1a1a1a;font:inherit;font-size:12px;font-weight:600;line-height:1.2;cursor:pointer}
+.gp-card.manual{background:#fdecea;border:1px solid #f1aca5;color:#a11d12;font-weight:600}`;
   const T = {
     building: ['Delivering to', 'משלוח אל'],
     edit: ['Not right? Change the street above to search again.', 'לא נכון? שנו את הרחוב למעלה כדי לחפש שוב.'],
@@ -44,6 +47,11 @@
     confirmNeeded: ['Confirm the delivery location', 'אשרו את מיקום המשלוח'],
     geoFail: ["Couldn't get your location. Allow location access, or paste a Google Maps link.", 'לא הצלחנו לקבל את המיקום. אשרו גישה למיקום, או הדביקו קישור מגוגל מפות.'],
     powered: ['Powered by Google', 'מופעל על ידי Google'],
+    manualBtn: ["I can't find my address", 'לא מוצאים את הכתובת?'],
+    manualBack: ['Search again', 'חיפוש מחדש'],
+    manualMsg: ["No problem, just type your full address here: street and house number. You don't need to choose from the list.", 'אין בעיה, פשוט הקלידו כאן את הכתובת המלאה: רחוב ומספר בית. אין צורך לבחור מהרשימה.'],
+    manualHint: ['Type your full address', 'הקלידו את הכתובת המלאה'],
+    pickOr: ["Choose your address from the list, or tap \"I can't find my address\"", 'בחרו את הכתובת מהרשימה, או לחצו על "לא מוצאים את הכתובת?"'],
   };
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const token = () => (root.crypto?.randomUUID ? root.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
@@ -93,19 +101,29 @@
     const box = document.createElement('div');
     box.className = 'gp-box';
     input.setAttribute('autocomplete', 'off');
-    input.after(box);
-    let place = null, status = input.value.trim() ? 'typing' : 'empty', session = null, list = [], active = -1, timer = 0, seq = 0, note = '';
+    // Checkout only: a button beside the field for an address Google doesn't list.
+    let manualBtn = null, field = null;
+    if (opts.manual) {
+      field = document.createElement('div'); field.className = 'gp-field';
+      input.before(field); field.append(input);
+      manualBtn = document.createElement('button'); manualBtn.type = 'button'; manualBtn.className = 'gp-manual-btn';
+      field.append(manualBtn);
+    }
+    (field || input).after(box);
+    let place = null, status = input.value.trim() ? 'typing' : 'empty', session = null, list = [], active = -1, timer = 0, seq = 0, note = '', manual = false, hint = input.placeholder;
 
     const value = () => ({ text: input.value.trim(), place, status });
     const changed = () => { render(); opts.onChange?.(value()); };
 
     function render() {
       let html = '';
+      if (manualBtn) { manualBtn.textContent = t(manual ? 'manualBack' : 'manualBtn'); if (manual) input.placeholder = t('manualHint'); }
       if (list.length) {
         html += '<div class="gp-list" role="listbox">' + list.map((s, i) => `<button type="button" class="gp-item${i === active ? ' on' : ''}" data-i="${i}" role="option"><b>${esc(s.main)}</b><small>${esc(s.secondary)}</small></button>`).join('')
           + `<div class="gp-attr">${t('powered')}</div></div>`;
       }
-      if (status === 'unavailable') html += `<div class="gp-card info">${t('unavailable')}</div>`;
+      if (manual) html += `<div class="gp-card manual">${t('manualMsg')}</div>`;
+      else if (status === 'unavailable') html += `<div class="gp-card info">${t('unavailable')}</div>`;
       else if (place?.source === 'google' && place.precision === 'building') {
         html += `<div class="gp-card ok">📍 ${t('building')}: <b>${esc(place.label)}</b><small>${t('edit')}</small></div>`;
       } else if (place) {
@@ -119,6 +137,7 @@
     }
 
     async function search() {
+      if (manual) return;
       const q = input.value.trim(), mine = ++seq;
       if (q.length < 2) { list = []; render(); return; }
       session = session || token();
@@ -150,12 +169,22 @@
       }
       changed();
     }
+    function leaveManual() { manual = false; input.placeholder = hint; }
+    function setManual(on) {
+      seq++; clearTimeout(timer); place = null; list = []; note = ''; active = -1; session = null;
+      if (on) { hint = input.placeholder; manual = true; status = 'manual'; }
+      else { leaveManual(); status = input.value.trim() ? 'typing' : 'empty'; }
+      changed(); input.focus();
+      if (!on) search();
+    }
+    manualBtn?.addEventListener('click', () => setManual(!manual));
     function setPin(c) {
       place = { source: 'pin', lat: c.lat, lng: c.lng, confirmed: false, at: new Date().toISOString() };
       status = 'selected'; list = []; changed();
     }
 
     input.addEventListener('input', () => {
+      if (manual) { opts.onChange?.(value()); return; }
       // Editing the street after a selection clears it: it has to be chosen (and confirmed) again.
       if (place || status === 'selected') { place = null; }
       status = input.value.trim() ? 'typing' : 'empty';
@@ -188,12 +217,14 @@
     const api = {
       value,
       set(v) {
+        if (manual) leaveManual();
         input.value = v?.text || ''; place = v?.place || null; status = place ? 'selected' : (input.value ? 'typing' : 'empty'); list = []; note = ''; render();
         // A saved address without a chosen place: show the matching suggestions so it can be picked.
         if (!place && input.value.trim().length >= 2) checkLookup().then(() => { if (lookup === 'up' && !place) search(); });
       },
-      ready() { return status === 'unavailable' || lookup !== 'up' || placeReady(place); },
-      problem() { return api.ready() ? '' : (place ? t('confirmNeeded') : t('pick')); },
+      ready() { return manual || status === 'unavailable' || lookup !== 'up' || placeReady(place); },
+      problem() { return api.ready() ? '' : (place ? t('confirmNeeded') : t(opts.manual ? 'pickOr' : 'pick')); },
+      refresh() { render(); },
       destroy() { box.remove(); },
     };
     render();

@@ -412,7 +412,8 @@ Deno.serve(async (req) => {
 
     // Check coupon code sent from client
     let appliedCouponCode: string | null = null;
-    const couponCode = subscriptionAddon ? "" : String(body.coupon_code || "").trim().toUpperCase();
+    // A one-time add-on is an ordinary one-time purchase, so codes work there (unlike the recurring subscription).
+    const couponCode = String(body.coupon_code || "").trim().toUpperCase();
     // Referral (friend) codes: first paid order only, and not the person who shared it.
     const refProblem = couponCode ? await referralProblem(admin, couponCode, customerEmail) : null;
     if (couponCode && refProblem) return json({ error: refProblem }, 400);
@@ -449,7 +450,7 @@ Deno.serve(async (req) => {
     let giftCardId: string | null = null;
     let giftCardBalance = 0;
     let gcDiscount = 0;
-    const giftCardCode = subscriptionAddon ? "" : String(body.gift_card_code || "").trim().toUpperCase();
+    const giftCardCode = String(body.gift_card_code || "").trim().toUpperCase();
     if (giftCardCode) {
       const { data: giftCard } = await admin
         .from("gift_cards")
