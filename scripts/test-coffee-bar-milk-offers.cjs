@@ -100,6 +100,22 @@ test('serving suggestions exclude subscriptions, complete bars, existing packs a
   for(const rows of [[{id:'jug',is_subscription:true}],[{id:FULL},{id:'jug'}],[{id:packs[0].id},{id:'jug'}],[{id:packs[1].id},{id:'jug'}],[{id:'syrup'}],[]])assert.deepEqual(offers.accessoryOffers(rows,[...catalog,...packs]),[]);
   assert.equal(offers.accessoryOffers([{id:'jug'}],[...catalog,...packs.map(p=>({...p,is_active:false}))]).length,0);
 });
+const lattes=['Original','Caramel','Vanilla'].map(flavour=>({id:'latte-'+flavour,name_en:flavour+' Cream Latte',category:'minis',price:59,is_active:true}));
+test('compact checkout offers keep both serving packs first and add two cream latte four-packs',()=>{
+ const picks=offers.checkoutOffers([{id:'jug'}],[...catalog,...packs,...lattes]);
+ assert.deepEqual(picks.map(p=>p.id),[...packs.map(p=>p.id),'latte-Original','latte-Caramel']);
+ assert.deepEqual(picks.map(p=>p.price),[59,19.99,59,59]);
+});
+test('latte suggestions skip hidden and already-added flavours and continue after adding cups',()=>{
+ const products=[...catalog,...packs,...lattes,{id:'dairy-free',name_en:'Dairy Free Cremier 4 pack',category:'minis',price:59,is_active:false}];
+ assert.deepEqual(offers.checkoutOffers([{id:'jug'},{id:packs[0].id},{id:'latte-Original'}],products).map(p=>p.id),['latte-Caramel','latte-Vanilla']);
+ assert.deepEqual(offers.checkoutOffers([{id:'jug'}],products.map(p=>p.id==='latte-Original'?{...p,is_active:false}:p)).map(p=>p.id),[...packs.map(p=>p.id),'latte-Caramel','latte-Vanilla']);
+});
+test('compact checkout suggestions omit subscription and syrup-only baskets',()=>{
+ const products=[...catalog,...packs,...lattes];
+ assert.deepEqual(offers.checkoutOffers([{id:'jug',is_subscription:true}],products),[]);
+ assert.deepEqual(offers.checkoutOffers([{id:'syrup'}],products),[]);
+});
 test('premium extras produce separate physical bottles and exact saved syrup totals',()=>{
  const p=JSON.parse(JSON.stringify(full));p.variations[1].items.push(...['caramel','vanilla','sugar'].map(key=>({name:key[0].toUpperCase()+key.slice(1)+' syrup',bar_syrup:key,price:59,max:6})));
  const config=model.buildCoffeeBarConfiguration(p,{selected_variations:{Guests:{label:'50'}},selected_addons:[{name:'Caramel syrup',qty:2},{name:'Sugar syrup',qty:1}]});

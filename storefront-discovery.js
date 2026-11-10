@@ -44,13 +44,6 @@
  function home(products,he,optimize){
   document.querySelectorAll('[data-discovery-en]').forEach(el=>el.textContent=el.getAttribute(he?'data-discovery-he':'data-discovery-en'));
   document.querySelectorAll('a[data-guide]').forEach(a=>a.setAttribute('href',(he?'/he':'')+a.dataset.guide));
-  const host=document.getElementById('discoveryBottles');if(!host)return;
-  const names=['House Blend Medium Roast','Original Cream Latte','Classic Dark Roast','Caramel Cream Latte','Colombia Light Roast','Vanilla Bean Syrup'];
-  const selected=names.map(n=>products.find(p=>p.name_en===n&&p.is_active!==false&&p.images?.length)).filter(Boolean);
-  if(selected.length)host.innerHTML=selected.map(p=>{
-   const photo=p.images.find(src=>src.includes('-single-v2.webp'))||p.images[0];
-   return `<span class="discovery-strip${p.name_en.includes('Cream Latte')?' discovery-latte':''}"><img src="${esc(optimize(photo,400))}" alt="${esc(he?(p.name_he||p.name_en):p.name_en)}" decoding="async" draggable="false"></span>`;
-  }).join('');
  }
  const api={groups,pages,renderShop,jump,home};
  if(typeof module==='object'&&module.exports)module.exports=api;else root.GremierDiscovery=api;

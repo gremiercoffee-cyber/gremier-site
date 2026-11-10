@@ -91,7 +91,7 @@
     const inCart = new Set(cart.map(baseId));
     const items = cart.map(productOf).filter(Boolean);
     if(items.some(p=>p.is_coffee_bar||(p.variations||[]).some(v=>v.type==='serving_pack')))return '';
-    const servingOffers=!!window.CoffeeBarOffers?.accessoryOffers(cart,all()).length;
+    if(window.CoffeeBarOffers?.checkoutOffers(cart,all()).length)return '';
 
     const hasCoffee = items.some(isCoffee), hasSyrup = items.some(isSyrup);
     const fresh = (p) => !inCart.has(String(p.id)) && p.is_active !== false && Number(p.price) > 0;
@@ -106,8 +106,6 @@
         <span class="n">${esc(o.label)} · ₪${o.total}</span>
         <button type="button" onclick="cxAddAll('${o.items.map((p) => esc(p.id)).join(',')}')">${o.items.length > 1 ? T('+ Add both', '+ הוספת שניהם') : T('+ Add', '+ הוספה')}</button>
       </div>`).join('')}</div>`;
-    } else if (servingOffers) {
-      return '';   // the cups & straws offer is already showing
     } else if (hasCoffee && !hasSyrup) {
       picks = all().filter((p) => isSyrup(p) && fresh(p));
       title = T('Goes great with your coffee', 'מתאים לקפה שלכם');

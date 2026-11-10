@@ -46,6 +46,15 @@
     const coffee=items.some(i=>{const p=catalog.find(p=>String(p.id)===id(i));return p&&['bottles','bulk','minis'].includes(p.category)&&!/syrup|סירופ/i.test((p.name_en||'')+(p.name_he||''));});
     return coffee?PACKS.map(key=>catalog.find(p=>p.id===key&&p.is_active!==false)).filter(Boolean):[];
   }
+  function checkoutOffers(items,catalog){
+    if(!items.length||items.some(i=>i.is_subscription))return [];
+    const inCart=new Set(items.map(id));
+    const coffee=items.some(i=>{const p=catalog.find(p=>String(p.id)===id(i));return p&&['bottles','bulk','minis'].includes(p.category)&&!/syrup|סירופ/i.test((p.name_en||'')+(p.name_he||''));});
+    if(!coffee)return [];
+    const flavours=['Original Cream Latte','Caramel Cream Latte','Vanilla Cream Latte'];
+    const lattes=flavours.map(name=>catalog.find(p=>p.name_en===name&&p.category==='minis'&&p.is_active!==false&&!inCart.has(String(p.id))&&Number(p.price)>0)).filter(Boolean).slice(0,2);
+    return [...accessoryOffers(items,catalog),...lattes];
+  }
   function createSession(){
     let pending=null;
     return {
@@ -80,16 +89,16 @@
   }
   function renderAccessories(){
     document.querySelectorAll('.serving-pack-offer').forEach(el=>el.remove());
-    const options=accessoryOffers(basket(),catalog());if(!options.length)return;
+    const options=checkoutOffers(basket(),catalog());if(!options.length)return;
     for(const parent of [document.getElementById('cartBody'),document.getElementById('checkoutFormView')]){
       if(!parent)continue;
       const card=document.createElement('section');card.className='serving-pack-offer';
-      card.innerHTML=`<h3>${T('Ready to serve?','מוכנים להגשה?')}</h3>${options.map(p=>`<div class="serving-pack-row"><img src="${esc(p.images?.[0]||'')}" alt=""><div><strong>${esc(he()?p.name_he:p.name_en)}</strong><p>${esc(he()?p.description_he:p.description_en)}</p><button type="button" data-serving-add="${esc(p.id)}">${T('Add','הוספה')} · ₪${Number(p.price).toFixed(Number(p.price)%1?2:0)}</button></div></div>`).join('')}`;
+      card.innerHTML=`<h3>${T('A little extra?','אולי עוד משהו קטן?')}</h3><div class="serving-pack-grid">${options.map(p=>`<div class="serving-pack-row"><img src="${esc(p.images?.[0]||'')}" alt=""><div><strong>${esc((he()?p.name_he:p.name_en)||p.name_en)}${p.category==='minis'?T(' · 4-pack',' · מארז 4'):''}</strong><button type="button" data-serving-add="${esc(p.id)}">${T('+ Add','+ הוספה')} · ₪${Number(p.price).toFixed(Number(p.price)%1?2:0)}</button></div></div>`).join('')}</div>`;
       if(parent.id==='cartBody')parent.append(card);else parent.prepend(card);
     }
   }
   function addServingPack(productId){
-    if(!accessoryOffers(basket(),catalog()).some(p=>p.id===productId))return;
+    if(!checkoutOffers(basket(),catalog()).some(p=>p.id===productId))return;
     if(typeof addToCart!=='function')return;
     // A changed basket invalidates the previous coupon quote; recalculate before payment.
     if(typeof appliedRedeem!=='undefined'&&appliedRedeem){
@@ -115,7 +124,7 @@
   }
   function completeUpgrade(p,items){const done=session.complete(p,items);if(done)document.querySelector('.bb-upgrade-return')?.remove();return done;}
   function mount(){
-    for(const key of ['renderCartDrawer','openCheckoutUI']){
+    for(const key of ['renderCartDrawer','openCheckoutUI','toggleLang']){
       const previous=window[key];if(typeof previous==='function')window[key]=function(){const result=previous.apply(this,arguments);render();return result;};
     }
     document.addEventListener('click',e=>{
@@ -129,5 +138,5 @@
       if(e.target.closest('[data-bar-dismiss]')){dismissed=fingerprint(basket());render();}
     });
   }
-  return {eligible,offers,accessoryOffers,createSession,mount,builderBanner,beforeAdd,completeUpgrade};
+  return {eligible,offers,accessoryOffers,checkoutOffers,createSession,mount,builderBanner,beforeAdd,completeUpgrade};
 });
