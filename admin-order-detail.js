@@ -130,20 +130,37 @@
       ${optHtml ? `<div class="od-sec-h"><h3>${partHtml ? 'Another open order' : 'Same customer, another open order'}</h3></div>${optHtml}<p class="od-sub">Combine to send them as one delivery. Payments stay separate.</p>` : ''}
     </section>`;
   }
+  // Pickup = no delivery address. Addresses compare without case, punctuation or "Apt 0, Floor 0".
+  const isPickup = (x) => String(infoOf(x).delivery_type || '').toLowerCase() === 'pickup' || !String(x.delivery_address || '').trim();
+  const sameAddr = (a, b) => { const n = (v) => String(v || '').toLowerCase().replace(/,?\s*(apt|floor)\s*0\b/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); return n(a) === n(b); };
   async function combine(otherId) {
     let o = orderOf(), y = allOrders.find((x) => x.id === otherId);
     if (!o || !y) return;
     try {
       let [jx, jy] = await Promise.all([openJob(o.id), openJob(y.id)]);
-      // The order that already has a delivery is the main one (an unpaid order has none yet).
-      if (!jx && jy) { [o, y, jx, jy] = [y, o, jy, jx]; }
-      if (!confirm(`Combine ${num(y)} into ${num(o)}?\n\nThey go out together as one delivery${jx ? `, on ${num(o)}'s date and address` : ''}, and the customer gets one "delivered" email.${isPaidOrder(y) && isPaidOrder(o) ? '' : ' An unpaid order joins the delivery once it\u2019s paid.'} Payments and receipts stay separate. You can separate them again.`)) return;
+      // The main order: the one that already has a delivery (an unpaid order has none yet);
+      // otherwise the one with an address, whichever order was opened.
+      if ((!jx && jy) || (!!jx === !!jy && isPickup(o) && !isPickup(y))) { [o, y, jx, jy] = [y, o, jy, jx]; }
+      // A pickup combined with a delivery always goes to the address.
+      const moveToAddress = isPickup(o) && !isPickup(y);
+      const where = moveToAddress ? y.delivery_address : isPickup(o) ? 'pickup' : o.delivery_address;
+      if (!isPickup(o) && !isPickup(y) && !sameAddr(o.delivery_address, y.delivery_address)) {
+        if (!confirm(`These orders go to different addresses:\n\n${num(o)}: ${o.delivery_address}\n${num(y)}: ${y.delivery_address}\n\nAre you sure you want to combine them? Both would go to ${o.delivery_address}.`)) return;
+      }
+      if (!confirm(`Combine ${num(y)} into ${num(o)}?\n\nThey go out together as one delivery${jx ? `, on ${num(o)}'s date` : ''}${where === 'pickup' ? ' (pickup)' : `, to ${where}`}, and the customer gets one "delivered" email.${isPaidOrder(y) && isPaidOrder(o) ? '' : ' An unpaid order joins the delivery once it\u2019s paid.'} Payments and receipts stay separate. You can separate them again.`)) return;
       const [ox, oy] = await Promise.all([readInfo(o.id), readInfo(y.id)]);
       if (ox.info.combined_into || oy.info.combined_into || (oy.info.combined_orders || []).length) throw new Error('One of these orders is already combined');
       const now = new Date().toISOString();
       // The other order first keeps everything needed to undo, then the deliveries change.
       await saveInfo(y.id, { ...oy.info, combined_into: o.id, combined_into_number: o.order_number ?? null, combined_at: now, combined_job: jx && jy ? jy : null });
-      await saveInfo(o.id, { ...ox.info, combined_orders: [...new Set([...(ox.info.combined_orders || []).map(String), y.id])] });
+      // The main delivery was a pickup: it now goes to the other order's address (undone on separate).
+      const addressSwap = moveToAddress && jx ? { job_id: jx.id, part: y.id, private_address: jx.private_address ?? null, cb_address: jx.cb_address ?? null } : null;
+      await saveInfo(o.id, { ...ox.info, combined_orders: [...new Set([...(ox.info.combined_orders || []).map(String), y.id])], ...(addressSwap ? { combined_address_restore: addressSwap } : {}) });
+      if (addressSwap) {
+        const patch = jx.delivery_type === 'coffeebar' ? { cb_address: y.delivery_address } : { private_address: y.delivery_address };
+        const { error } = await sb.from('jobs').update(patch).eq('id', jx.id);
+        if (error) throw error;
+      }
       if (jx && jy) {
         const merged = { ...(jx.quantities || {}) };
         for (const [k, v] of Object.entries(jy.quantities || {})) merged[k] = (Number(merged[k]) || 0) + (Number(v) || 0);
@@ -189,7 +206,14 @@
       }
       const { combined_into, combined_into_number, combined_at, combined_job, combined_added, combined_added_job, ...rest } = op.info;
       await saveInfo(partId, rest);
-      await saveInfo(mainId, { ...om.info, combined_orders: (om.info.combined_orders || []).map(String).filter((x) => x !== partId) });
+      // The main delivery took this order's address: back to how it was (pickup).
+      const swap = om.info.combined_address_restore;
+      if (swap && swap.part === partId) {
+        const { error } = await sb.from('jobs').update({ private_address: swap.private_address, cb_address: swap.cb_address }).eq('id', swap.job_id).eq('done', false);
+        if (error) throw error;
+      }
+      const { combined_address_restore, ...mainRest } = om.info;
+      await saveInfo(mainId, { ...(swap && swap.part === partId ? mainRest : om.info), combined_orders: (om.info.combined_orders || []).map(String).filter((x) => x !== partId) });
       if (saved) await sb.from('pending_website_deliveries').update({ status: 'scheduled' }).eq('order_id', partId);
       if (requeue) await sb.from('pending_website_deliveries').update({ status: 'pending_schedule' }).eq('order_id', partId);
       showToast(requeue ? 'Separated ✓ Schedule its delivery from "To schedule"' : 'Separated ✓ Each order has its own delivery again');

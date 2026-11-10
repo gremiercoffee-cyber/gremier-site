@@ -320,8 +320,12 @@ async function cartReminders(sb: Sb, dryRun: boolean) {
 // framed as "we value our customers" (the email never mentions the unfinished checkout). Kept rare
 // on purpose so nobody learns to wait for it: once per customer, ever; never if they bought or
 // tried again since; never for people who opted out of reminders. Off until the owner turns it on:
-// site_settings "cart_offer" = {"on":true,"amount":20,"min_total":150,"valid_hours":72}.
-const OFFER_DEFAULT = { on: false, amount: 20, min_total: 150, valid_hours: 72, after_hours: 22, max_age_hours: 48 };
+// site_settings "cart_offer". Checkouts from ₪250: under ₪400 → 5% off, ₪400 and up → ₪20 off; one use, valid a week.
+const OFFER_DEFAULT = { on: false, min_total: 250, big_total: 400, small_percent: 5, big_amount: 20, valid_hours: 168, after_hours: 22, max_age_hours: 48 };
+/** The offer for a checkout of this size: 5% under ₪400, ₪20 from ₪400. */
+const offerFor = (cfg: typeof OFFER_DEFAULT, total: number) => Number(total) >= cfg.big_total
+  ? { type: "fixed", value: cfg.big_amount, en: `₪${cfg.big_amount} off`, he: `₪${cfg.big_amount} הנחה` }
+  : { type: "percent", value: cfg.small_percent, en: `${cfg.small_percent}% off`, he: `${cfg.small_percent}% הנחה` };
 const OFFER_TAG = "Thank-you offer";
 
 async function offerSettings(sb: Sb) {
@@ -331,14 +335,14 @@ async function offerSettings(sb: Sb) {
   return { ...OFFER_DEFAULT, ...v } as typeof OFFER_DEFAULT;
 }
 
-function offerEmail(o: Record<string, any>, he: boolean, code: string, amount: number, until: Date, minTotal: number) {
+function offerEmail(o: Record<string, any>, he: boolean, code: string, offer: ReturnType<typeof offerFor>, until: Date, minTotal: number) {
   const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
   const day = new Intl.DateTimeFormat(he ? "he-IL" : "en-GB", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long" }).format(until);
   const link = `${SITE}/?coupon=${encodeURIComponent(code)}&utm_source=thanks_offer#shop`;
-  const subject = he ? `מתנה קטנה מגרמיר: ₪${amount} הנחה` : `A little thank-you from Gremier: ₪${amount} off`;
+  const subject = he ? `מתנה קטנה מגרמיר: ${offer.he}` : `A little thank-you from Gremier: ${offer.en}`;
   const text = he
-    ? `היי${first ? " " + first : ""},\n\nאנחנו מעריכים את הלקוחות שלנו, אז הכנו לך קוד אישי:\n\n${code}\n₪${amount} הנחה על הזמנה מעל ₪${minTotal}, לשימוש פעם אחת, עד ${day}.\n\n${link}\n\nתודה שבחרת בגרמיר ☕\nגרמיר קופי`
-    : `Hi${first ? " " + first : ""},\n\nWe value our customers, so here's a personal code for you:\n\n${code}\n₪${amount} off an order over ₪${minTotal}, one use, until ${day}.\n\n${link}\n\nThanks for choosing Gremier ☕\nGremier Coffee`;
+    ? `היי${first ? " " + first : ""},\n\nאנחנו מעריכים את הלקוחות שלנו, אז הכנו לך קוד אישי:\n\n${code}\n${offer.he} על הזמנה מעל ₪${minTotal}, לשימוש פעם אחת, עד ${day}.\n\n${link}\n\nתודה שבחרת בגרמיר ☕\nגרמיר קופי`
+    : `Hi${first ? " " + first : ""},\n\nWe value our customers, so here's a personal code for you:\n\n${code}\n${offer.en} an order over ₪${minTotal}, one use, until ${day}.\n\n${link}\n\nThanks for choosing Gremier ☕\nGremier Coffee`;
   return { subject, text };
 }
 
@@ -375,9 +379,10 @@ async function cartOffers(sb: Sb, dryRun: boolean) {
     done.add(email);
     const code = "THANKS-" + [...crypto.getRandomValues(new Uint8Array(6))].map((b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
     const until = new Date(now + cfg.valid_hours * 36e5);
-    const { subject, text } = offerEmail(o, orderIsHe(o), code, cfg.amount, until, cfg.min_total);
+    const offer = offerFor(cfg, Number(o.total));
+    const { subject, text } = offerEmail(o, orderIsHe(o), code, offer, until, cfg.min_total);
     if (dryRun) { sent.push(`(dry run) ${o.id}`); preview = preview || { to: email, subject, text }; continue; }
-    const { error: cErr } = await sb.from("coupons").insert({ code, discount_type: "fixed", discount_value: cfg.amount, applies_to: "all", min_order_amount: cfg.min_total,
+    const { error: cErr } = await sb.from("coupons").insert({ code, discount_type: offer.type, discount_value: offer.value, applies_to: "all", min_order_amount: cfg.min_total,
       max_uses: 1, one_time_per_user: true, is_active: true, customer_email: email, expires_at: until.toISOString(), description: `${OFFER_TAG} · ${email} · after unpaid checkout ${o.id}` });
     if (cErr) { skip("coupon_failed"); continue; }
     const res = await sendOrderEmails({ ownerSubject: "", ownerText: "", skipOwner: true, customerEmail: email, customerName: o.customer_name, customerSubject: subject, customerText: text });
@@ -385,8 +390,8 @@ async function cartOffers(sb: Sb, dryRun: boolean) {
     await sb.from("orders").update({ delivery_info: { ...(o.delivery_info || {}), thanks_offer_at: new Date().toISOString(), thanks_offer_code: code } }).eq("id", o.id);
     sent.push(`${o.id} ${code}`);
   }
-  if (sent.length && !dryRun) await alertAdmins(sb, "🎁 Thank-you offer sent", `${sent.length} one-use ₪${cfg.amount} code${sent.length > 1 ? "s" : ""} emailed after unfinished checkouts.`, "cart-offers");
-  return { on: cfg.on, amount: cfg.amount, min_total: cfg.min_total, sent, skipped, ...(dryRun ? { preview } : {}) };
+  if (sent.length && !dryRun) await alertAdmins(sb, "🎁 Thank-you offer sent", `${sent.length} one-use thank-you code${sent.length > 1 ? "s" : ""} emailed after unfinished checkouts.`, "cart-offers");
+  return { on: cfg.on, min_total: cfg.min_total, big_total: cfg.big_total, sent, skipped, ...(dryRun ? { preview } : {}) };
 }
 
 // ── Tuesday "order by Wednesday, delivered before Shabbat" email ──
