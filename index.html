@@ -2563,7 +2563,11 @@ function pdServesHtml(p) {
   const note = sweet
     ? (he ? '*כשמערבבים כמו שצריך עם חלב.' : '*When mixed properly with milk.')
     : (he ? '*כשמערבבים כמו שצריך עם חלב וסוכר.' : '*When mixed properly with milk and sugar.');
-  return `<b>${head}</b><small>${note}</small>`;
+  // Price per cup from the current price: 8 cups a liter (a 6-pack is 48 cups).
+  const cups = pack ? 48 : 8, price = Number(p.price) || 0;
+  const per = price > 0 ? '₪' + (Math.round(price / cups * 100) / 100).toFixed(2) : '';
+  const perText = per ? (he ? ` · ${per} לכוס` : ` · ${per} a cup`) : '';
+  return `<b>${head.replace(/\*$/, '')}${perText}*</b><small>${note}</small>`;
 }
 function getProductDescription(p, langOverride) {
   const L = langOverride || lang;
