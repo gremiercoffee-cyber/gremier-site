@@ -192,3 +192,11 @@ test('store sales count in the month delivered: a later payment never adds to th
  const early=m.operationalMonths({...d,businessReceipts:[{...d.businessReceipts[0],payment_date:'2026-05-10'}]},2026,[{...bills[0],month:6}],day);
  assert.equal(early.find(r=>r.month==='2026-05').stores,100000);
 });
+test('imported receipts without a website order number never match an unpaid order (which has no number)',()=>{
+ const d=base();
+ d.orders=[...d.orders,{id:'unpaid-1',order_number:null,created_at:'2026-11-10T10:00:00Z',total:50,payment_status:'pending',status:'pending',items:[]},{id:'unpaid-2',order_number:null,created_at:'2026-11-10T11:00:00Z',total:60,payment_status:'pending',status:'pending',items:[]}];
+ d.imported=['A','B','C'].map((customer_name,i)=>({document_reference:String(20113+i),document_date:'2026-0'+(i+1)+'-08',amount_minor:100000,customer_name,website_order_number:null}));
+ const rows=m.receipts(d).filter(r=>r.imported);
+ assert.equal(rows.length,3,'every imported receipt counts');
+ assert.deepEqual(rows.map(r=>r.date),['2026-01-08','2026-02-08','2026-03-08'],'dated by the receipt, not an unrelated order');
+});

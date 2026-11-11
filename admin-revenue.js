@@ -35,7 +35,7 @@
  }
  function online(orders,products,from,to,date,overrides=[]){const purposes=new Map(overrides.map(o=>[o.source_key,o.category])),totals=empty();(orders||[]).filter(o=>eligible(o)&&date(o.created_at)>=from&&date(o.created_at)<=to).forEach(o=>{const parts=splitOrder(o,products,purposes.get('order-purpose:'+o.id));categories.forEach(k=>totals[k]+=parts[k]);});return totals;}
  function receipts(data){
-  const byNumber=new Map(data.orders.map(o=>[String(o.order_number),o])),byId=new Map(data.orders.map(o=>[String(o.id),o]));
+  const byNumber=new Map(data.orders.filter(o=>o.order_number!=null).map(o=>[String(o.order_number),o])),byId=new Map(data.orders.map(o=>[String(o.id),o]));
   const webByRef=new Map(data.orderReceipts.filter(r=>r.document_reference).map(r=>[ref(r.document_reference),r]));
   const manualByRef=new Map(data.businessReceipts.filter(r=>r.document_reference).map(r=>[ref(r.document_reference),r]));
   const appReceiptByOrder=new Map(data.orderReceipts.filter(r=>['issued','external'].includes(r.status)&&!r.is_test).map(r=>[String(r.order_id),r]));
@@ -60,7 +60,7 @@
    rows.push({...r,parts,basis,estimated});
   }
   data.imported.filter(r=>r.source_kind!=='legacy_website_summary').forEach(r=>{
-   const id=ref(r.document_reference),w=webByRef.get(id),b=manualByRef.get(id),order=w?byId.get(String(w.order_id)):byNumber.get(String(r.website_order_number));
+   const id=ref(r.document_reference),w=webByRef.get(id),b=manualByRef.get(id),order=w?byId.get(String(w.order_id)):r.website_order_number!=null?byNumber.get(String(r.website_order_number)):undefined;
    // A website order's receipt counts when the order was paid, not when FinBot issued it (many were caught up in October).
    const paid=w?.payment_date||b?.payment_date||(order&&appReceiptByOrder.get(String(order.id))?.payment_date)||(order?.created_at?String(order.created_at).slice(0,10):null)||r.document_date;
    add({key:'finbot:'+id,reference:r.document_reference,name:r.customer_name,description:b?.description||r.description||'',date:paid,amount_minor:w?.amount_minor??b?.amount_minor??Number(r.amount_minor),store_id:b?.store_id,taxInvoice:!!b?.tax_invoice_id,order,website_order_number:r.website_order_number??(w?'missing':null),imported:true});
