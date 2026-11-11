@@ -3,6 +3,7 @@
 //   { action: "ref_event", code, kind }          → "share" | "open"; the owner gets an email
 //   { action: "feedback", order_id, t, rating, comment?, source? } → save / update an answer
 //   { action: "feedback_pending", order_ids }    → which of these delivered orders still have no answer
+//   { action: "order_experience", order_id, rating, comment? } → right after paying: how was ordering (1-5)
 //   { action: "track", sid, kind }               → anonymous funnel step (cart_add | checkout_open | pay_click)
 //   { action: "push_subscribe", subscription, lang, order_id? } → shop-app notifications on this device
 //   { action: "push_unsubscribe", endpoint }     → turn them off
@@ -101,6 +102,31 @@ Deno.serve(async (req) => {
         // Happy customers are the moment to offer their referral link.
         const code = rating >= 4 && order.customer_email ? await ensureReferralCode(sb, order.customer_email) : null;
         return json({ ok: true, ref_link: code ? `${SITE}/?ref=${code}` : null });
+      }
+
+      case "order_experience": {
+        // Asked on the payment-success screen. The order id (a random UUID only the buyer's browser has)
+        // identifies it; answers are accepted only for a paid order from the last 3 days.
+        const orderId = String(body.order_id || "");
+        if (!isUuid(orderId)) return json({ error: "bad_order" }, 400);
+        const rating = Math.round(Number(body.rating));
+        if (!(rating >= 1 && rating <= 5)) return json({ error: "bad_rating" }, 400);
+        const comment = typeof body.comment === "string" ? body.comment.trim().slice(0, 2000) : undefined;
+        const { data: order } = await sb.from("orders").select("id, order_number, customer_name, customer_email, payment_status, created_at, total").eq("id", orderId).maybeSingle();
+        if (!order || order.payment_status !== "paid" || Date.parse(order.created_at) < Date.now() - 3 * 864e5) return json({ error: "not_found" }, 404);
+        const { data: before } = await sb.from("order_experience").select("rating, comment").eq("order_id", orderId).maybeSingle();
+        const row: Record<string, unknown> = { order_id: orderId, email: order.customer_email, rating, updated_at: new Date().toISOString() };
+        if (comment !== undefined) row.comment = comment || null;
+        const { error } = await sb.from("order_experience").upsert(row, { onConflict: "order_id" });
+        if (error) throw error;
+        if (!before || rating !== before.rating || (comment && comment !== before.comment)) {
+          const faces = ["", "😞", "😕", "😐", "🙂", "😍"];
+          await notifyOwner(
+            `${faces[rating]} Ordering ${rating}/5 — order #${order.order_number}`,
+            `${order.customer_name || "A customer"} rated ordering on the website (order #${order.order_number}, ₪${order.total}): ${rating}/5 ${faces[rating]}${comment ? `\n\n"${comment}"` : ""}`,
+          );
+        }
+        return json({ ok: true });
       }
 
       case "feedback_pending": {

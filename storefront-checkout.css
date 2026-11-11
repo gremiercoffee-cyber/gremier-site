@@ -186,3 +186,19 @@
 #cartFooter:has(#expressBox) #t-cart-checkout { margin-top:5px; padding:7px; min-height:30px; background:none; border:0; border-radius:6px; font-size:12px; text-decoration:underline; text-underline-offset:3px; }
 #cartFooter:has(#expressBox) .cx-free, #cartFooter:has(#expressBox) .cx-trust { display:none; }
 #cartFooter:not(:has(#expressBox)) .cart-total-row { margin-bottom:9px; }
+/* The ways to pay on PayMe's page, as small badges under "Secure payment". */
+#checkoutOverlay .co-pay-methods { display:flex; justify-content:center; flex-wrap:wrap; gap:6px; margin:6px 0 2px; }
+#checkoutOverlay .cpm { display:inline-flex; align-items:center; gap:3px; height:24px; padding:0 9px; border:1px solid #e2dcd3; border-radius:6px; background:#fff; color:#1a1a1a; font:600 11.5px/1 'DM Sans',system-ui,sans-serif; letter-spacing:0; }
+#checkoutOverlay .cpm-apple { background:#000; color:#fff; border-color:#000; }
+#checkoutOverlay .cpm-google b { color:#4285f4; font-weight:800; }
+#checkoutOverlay .cpm-bit { background:#00b2c3; color:#fff; border-color:#00b2c3; font-weight:800; font-style:italic; }
+
+/* Payment success: "How was ordering today?" */
+.ox-card { margin:14px auto 4px; max-width:420px; padding:14px 16px; border:1px solid #ece4d8; border-radius:16px; background:#fdfaf5; text-align:center; display:flex; flex-direction:column; gap:6px; }
+.ox-card b { font:700 15px 'DM Sans',sans-serif; color:#1a1a1a; }
+.ox-card .ox-sub { font-size:12.5px; color:#7b7166; }
+.ox-card .ox-faces { display:flex; justify-content:center; gap:4px; }
+.ox-card .ox-faces button { width:44px; height:44px; border:none; border-radius:50%; background:none; font-size:1.6rem; cursor:pointer; transition:transform .15s, background .15s; }
+.ox-card .ox-faces button:hover { background:#f1e8da; transform:scale(1.1); }
+.ox-card textarea { width:100%; box-sizing:border-box; border:1px solid #ddd3c4; border-radius:10px; padding:8px 10px; font:14px 'DM Sans',sans-serif; resize:vertical; }
+.ox-card .ox-send { align-self:center; border:none; border-radius:999px; background:#1a1a1a; color:#fff; font:600 13px 'DM Sans',sans-serif; padding:8px 20px; cursor:pointer; }

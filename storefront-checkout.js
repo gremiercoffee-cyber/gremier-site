@@ -155,5 +155,43 @@
   // Switching to pickup / delivery changes what "complete" means.
   document.addEventListener('change', (e) => { if (e.target?.name === 'shipType' || e.target?.id === 'coAptNA') render(); });
   const apply = window.applyTranslations;
-  if (typeof apply === 'function') window.applyTranslations = function () { const r = apply.apply(this, arguments); try { render(); } catch (_) {} return r; };
+  if (typeof apply === 'function') window.applyTranslations = function () { const r = apply.apply(this, arguments); try { render(); payMethods(); payLabel(); } catch (_) {} return r; };
+
+  // ── Payment: the ways to pay on PayMe's page, shown before they leave, and the amount on the button ──
+  function payMethods() {
+    const title = $('t-pay-title');
+    if (!title) return;
+    $('coPayMethods')?.remove();
+    title.insertAdjacentHTML('afterend', '<div id="coPayMethods" class="co-pay-methods" aria-label="Card, bit, Apple Pay, Google Pay">'
+      + '<span class="cpm cpm-apple"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.9-.9-3.1-.8C6.8 7.3 5.3 8.2 4.5 9.6c-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.7 2.4 2.9 2.4 1.2-.1 1.6-.8 3-.8s1.8.8 3.1.7c1.3 0 2.1-1.2 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.4-.9-2.4-3.9zM14.1 5.5c.6-.8 1.1-1.8 1-2.9-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.8 1 .1 2.1-.5 2.7-1.3z"/></svg>Pay</span>'
+      + '<span class="cpm cpm-google"><b>G</b>&nbsp;Pay</span>'
+      + '<span class="cpm cpm-bit">bit</span>'
+      + '<span class="cpm cpm-card"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg>' + T('Card', 'כרטיס') + '</span></div>');
+  }
+  // "Continue to payment · ₪49": only the plain label is rewritten, never a loading or gift-card label.
+  const PLAIN = ['Proceed to Payment', 'Proceed to payment', 'המשך לתשלום'];
+  function payLabel() {
+    const btn = $('t-co-submit'), total = ($('coSummaryTotal')?.textContent || '').trim();
+    if (!btn || btn.disabled || btn.classList.contains('is-loading')) return;
+    const now = btn.textContent.trim();
+    if (!PLAIN.includes(now) && btn.dataset.payLabel !== now) return;
+    // Only once delivery is priced (a city chosen, or pickup), so the amount matches PayMe's page.
+    const ship = document.querySelector('input[name="shipType"]:checked')?.value || '';
+    const known = /pickup/i.test(ship) || (typeof selectedCheckoutCity !== 'undefined' && !!selectedCheckoutCity);
+    const text = known && /[0-9]/.test(total) ? T(`Continue to payment · ${total}`, `המשך לתשלום · ${total}`) : T('Proceed to Payment', 'המשך לתשלום');
+    if (now !== text) { btn.textContent = text; btn.dataset.payLabel = text; }
+  }
+  function watchPay() {
+    const form = $('checkoutFormView');
+    if (!form || form.dataset.payWatch) return;
+    form.dataset.payWatch = '1';
+    new MutationObserver(() => payLabel()).observe(form, { subtree: true, childList: true, characterData: true });
+    form.addEventListener('change', () => setTimeout(payLabel, 60));
+  }
+  const openPay = window.openCheckout;
+  if (typeof openPay === 'function') window.openCheckout = async function () {
+    const r = await openPay.apply(this, arguments);
+    try { payMethods(); watchPay(); payLabel(); } catch (_) {}
+    return r;
+  };
 })();

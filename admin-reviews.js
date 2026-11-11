@@ -1,5 +1,7 @@
 /* Reviews: every "How was it?" answer (email link or website card) with the average rating,
-   a breakdown by stars, sorting, filtering and the full comments. Data: public.feedback. */
+   a breakdown by stars, sorting, filtering and the full comments. Data: public.feedback.
+   A second view, "Ordering", shows "How was ordering today?" from the payment-success screen
+   (public.order_experience). */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -7,7 +9,7 @@
   const FACES = ['', '😞', '😕', '😐', '🙂', '😍'];
   const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
   let rows = [];
-  let state = { sort: 'newest', stars: 0, comments: false };
+  let state = { sort: 'newest', stars: 0, comments: false, kind: 'coffee' };   // kind: coffee (after delivery) | ordering (right after paying)
 
   const main = $('websiteMain');
   if (!main) return;
@@ -22,6 +24,7 @@
           </select>
         </div>
       </div></div>
+      <div class="rv-filters rv-kinds" id="rvKinds"><button type="button" data-kind="coffee" class="on">☕ Coffee · after delivery</button><button type="button" data-kind="ordering">🛒 Ordering · right after paying</button></div>
       <div id="rvSummary" class="rv-summary"><div class="hub-empty">Loading…</div></div>
       <div class="rv-filters" id="rvFilters"></div>
       <div id="rvList"></div>
@@ -34,7 +37,10 @@
   async function load() {
     const list = $('rvList');
     list.innerHTML = '<div class="hub-empty">Loading…</div>';
-    const { data, error } = await sb.from('feedback').select('order_id, email, rating, comment, source, created_at, updated_at').order('created_at', { ascending: false }).limit(1000);
+    document.querySelectorAll('#rvKinds [data-kind]').forEach((b) => b.classList.toggle('on', b.dataset.kind === state.kind));
+    const { data, error } = state.kind === 'ordering'
+      ? await sb.from('order_experience').select('order_id, email, rating, comment, created_at, updated_at').order('created_at', { ascending: false }).limit(1000)
+      : await sb.from('feedback').select('order_id, email, rating, comment, source, created_at, updated_at').order('created_at', { ascending: false }).limit(1000);
     if (error) { list.innerHTML = `<div class="hub-empty">⚠️ ${esc(error.message)}</div>`; return; }
     const ids = (data || []).map((r) => r.order_id).filter(Boolean);
     const orders = new Map();
@@ -59,7 +65,9 @@
         <button type="button" class="rv-bar-row ${state.stars === s ? 'on' : ''}" data-stars="${s}" title="Show ${s}★ only">
           <span>${s}★</span><span class="rv-bar"><i style="width:${n ? Math.round((100 * counts[s]) / n) : 0}%"></i></span><span>${counts[s]}</span>
         </button>`).join('')}</div>`
-      : '<div class="hub-empty">No reviews yet. Answers from the "How was it?" emails and the website card show up here.</div>';
+      : (state.kind === 'ordering'
+        ? '<div class="hub-empty">No answers yet. "How was ordering today?" answers from the payment-success screen show up here.</div>'
+        : '<div class="hub-empty">No reviews yet. Answers from the "How was it?" emails and the website card show up here.</div>');
     $('rvFilters').innerHTML = n ? `
       <button type="button" data-stars="0" class="${!state.stars ? 'on' : ''}">All</button>
       ${[5, 4, 3, 2, 1].map((s) => `<button type="button" data-stars="${s}" class="${state.stars === s ? 'on' : ''}">${s}★</button>`).join('')}
@@ -76,7 +84,7 @@
       return `<article class="rv-card">
         <div class="rv-head"><span class="rv-face">${FACES[r.rating]}</span>
           <div class="rv-who"><b>${esc(o?.customer_name || r.email || 'Customer')}</b>
-            <small>${when} · ${r.source === 'site' ? 'website' : 'email'}${o ? ` · <a href="#" onclick="event.preventDefault();showTab('orders');setTimeout(()=>openOrderDetail('${esc(o.id)}'),300)">order #${esc(o.order_number)}</a>` : ''}</small></div>
+            <small>${when} · ${state.kind === 'ordering' ? 'right after paying' : r.source === 'site' ? 'website' : 'email'}${o ? ` · <a href="#" onclick="event.preventDefault();showTab('orders');setTimeout(()=>openOrderDetail('${esc(o.id)}'),300)">order #${esc(o.order_number)}</a>` : ''}</small></div>
           <span class="rv-stars rv-n">${stars(r.rating)}</span></div>
         ${(r.comment || '').trim() ? `<p class="rv-text">${esc(r.comment)}</p>` : ''}
         ${items ? `<div class="rv-items">${esc(items)}</div>` : ''}
@@ -85,6 +93,8 @@
   }
 
   document.addEventListener('click', (e) => {
+    const k = e.target.closest('#tab-reviews [data-kind]');
+    if (k) { if (state.kind !== k.dataset.kind) { state.kind = k.dataset.kind; state.stars = 0; state.comments = false; load(); } return; }
     const t = e.target.closest('#tab-reviews [data-stars], #tab-reviews [data-comments]');
     if (!t) return;
     if (t.dataset.comments) state.comments = !state.comments;

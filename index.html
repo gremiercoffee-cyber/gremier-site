@@ -790,7 +790,7 @@
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261111-2"/>
-<link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
+<link rel="stylesheet" href="/storefront-checkout.css?v=20261111-1"/>
 <script src="/storefront-nav.js?v=20261111-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 <link rel="stylesheet" href="/storefront-discovery.css?v=20261111-2"/>
@@ -1200,7 +1200,7 @@
   <div class="modal">
     <div id="checkoutFormView">
       <h2 class="modal-title" id="t-co-title">Checkout</h2>
-      <p class="modal-sub" id="t-co-sub">Fill in your details, then continue to secure card payment.</p>
+      <p class="modal-sub" id="t-co-sub">Fill in your details, then continue to secure payment.</p>
       <div class="form-group"><label class="form-label" id="t-co-name">Full Name</label><input class="form-input" id="coName" type="text" placeholder="Your name"/></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label" id="t-co-phone">Phone <span style="text-transform:none;letter-spacing:0;color:#c0392b">*</span></label><input class="form-input" id="coPhone" type="tel" placeholder="05X-XXXXXXX" required/><div id="t-co-delivery-note" style="font-size:.76rem;color:var(--text2);line-height:1.5;margin-top:6px">🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.</div></div>
@@ -1322,8 +1322,8 @@
       <div class="order-summary-box" id="coSummary"></div>
       <div class="payment-ph">
         <div class="payment-ph-icon">💳</div>
-        <div class="payment-ph-title" id="t-pay-title">Secure payment: card, bit, Apple Pay or Google Pay</div>
-        <div class="payment-ph-sub" id="t-pay-sub">You'll be redirected to PayMe to pay securely by card. Your order is confirmed only after payment.</div>
+        <div class="payment-ph-title" id="t-pay-title">Secure payment</div>
+        <div class="payment-ph-sub" id="t-pay-sub">You'll continue to PayMe's secure page to pay by card, bit, Apple Pay or Google Pay. Your order is confirmed only after payment.</div>
       </div>
       <button class="btn btn-primary btn-full" onclick="submitOrder()" id="t-co-submit">Proceed to Payment</button>
       <button class="btn btn-outline btn-full" style="margin-top:10px" onclick="closeCheckout()" id="t-co-cancel">Cancel</button>
@@ -1516,12 +1516,12 @@ const T = {
     'shop-eye':'The Range','shop-title':'Shop Cold Brew',
     'mo-eye':'Account','mo-title':'My Orders',
     'cart-title':'Your Cart','cart-total':'Total','cart-checkout':'Proceed to Checkout',
-    'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure card payment.',
+    'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure payment.',
     'co-name':'Full Name','co-entrance':'Entrance / building (optional)','co-instr':'Delivery instructions (optional)','co-delivery-note':"🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.",'co-phone':'Phone','co-email':'Email',
     'co-city':'City','co-city-hint':'Type to search — all Israeli cities & towns','co-city-ph':'Start typing your city…',
     'co-addr':'Street Address','co-apt':'Apartment *','co-floor':'Floor *','co-apt-na':'Private house — not applicable','co-notes':'Notes (optional)',
-    'pay-title':'Secure payment: card, bit, Apple Pay or Google Pay',
-    'pay-sub':'You\'ll be redirected to PayMe to pay securely by card. Your order is confirmed only after payment.',
+    'pay-title':'Secure payment',
+    'pay-sub':'You\'ll continue to PayMe\'s secure page to pay by card, bit, Apple Pay or Google Pay. Your order is confirmed only after payment.',
     'co-submit':'Proceed to Payment','co-cancel':'Cancel',
     'conf-title':'Payment Successful!',
     'conf-sub':'Thank you! We\'ve got your order and we\'re on it. We\'ll let you know when it\'s on its way.',
@@ -1569,11 +1569,11 @@ const T = {
     'shop-eye':'המוצרים','shop-title':'חנות קולד ברו',
     'mo-eye':'חשבון','mo-title':'ההזמנות שלי',
     'cart-title':'העגלה שלך','cart-total':'סה"כ','cart-checkout':'המשך לתשלום',
-    'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח בכרטיס.',
+    'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח.',
     'co-name':'שם מלא','co-entrance':'כניסה / בניין (לא חובה)','co-instr':'הוראות למשלוח (לא חובה)','co-delivery-note':'🚚 נשתדל להביא את ההזמנה עד הדלת, או לפחות עד הבניין. אם השליח יצטרך שמישהו יקבל את המשלוח, הוא ייצור איתכם קשר בדרך.','co-phone':'טלפון','co-email':'אימייל',
     'co-city':'עיר','co-city-hint':'הקלידו לחיפוש — כל הישובים בישראל','co-city-ph':'הקלידו שם ישוב…',
     'co-addr':'רחוב ומספר בית','co-apt':'דירה *','co-floor':'קומה *','co-apt-na':'בית פרטי — לא רלוונטי','co-notes':'הערות (אופציונלי)',
-    'pay-title':'תשלום מאובטח: כרטיס, bit, Apple Pay או Google Pay',
+    'pay-title':'תשלום מאובטח',
     'pay-sub':'תועברו לדף תשלום מאובטח של PayMe. ההזמנה תאושר רק לאחר התשלום.',
     'co-submit':'המשך לתשלום','co-cancel':'ביטול',
     'conf-title':'התשלום התקבל!',
@@ -3250,6 +3250,7 @@ const resultKind = paid ? 'paid' : 'failed';
     sessionStorage.setItem('gremier_gift_result', JSON.stringify(giftBuy));
   }
   if (resultKind === 'paid') {
+    window.__gremierPaidOrderId = orderId;   // for "How was ordering today?" (storefront-engage.js)
     if (!giftBuy) {
       cart = [];
       clearCartFromStorage();
@@ -5605,11 +5606,11 @@ async function sendChatMessageText(text) {
 })();
 </script>
 <script src="/address-picker.js?v=20261109-1"></script>
-<script src="/storefront-checkout.js?v=20261023-2"></script>
+<script src="/storefront-checkout.js?v=20261111-1"></script>
 <script src="/storefront-coffee-bar-offers.js?v=20261111-1"></script>
 <script src="/storefront-addresses.js?v=20261104-1"></script>
 <script src="/storefront-cart.js?v=20261111-2"></script>
-<script src="/storefront-engage.js?v=20261110-3"></script>
+<script src="/storefront-engage.js?v=20261111-1"></script>
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261102-3"></script>
 <script src="/storefront-packs.js?v=20261103-1"></script>

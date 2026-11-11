@@ -105,9 +105,37 @@
     if (!u?.email) { $('refAccount')?.remove(); return; }
     placeShareCard(document.querySelector('#accountSignedIn .account-points-card'), u.email, 'refAccount');
   }
+  // ── Right after paying: "How was ordering today?" One tap, then an optional comment. ──
+  function orderExperienceCard(view) {
+    const orderId = window.__gremierPaidOrderId;
+    if (!orderId || $('oxCard') || get('gremier_ox_done:' + orderId)) return;
+    const faces = ['', '😞', '😕', '😐', '🙂', '😍'];
+    const el = document.createElement('div');
+    el.id = 'oxCard'; el.className = 'ox-card';
+    el.innerHTML = `<b>${T('How was ordering today?', 'איך היה להזמין היום?')}</b>
+      <span class="ox-sub">${T('One tap. It helps us make the site easier.', 'לחיצה אחת. זה עוזר לנו לשפר את האתר.')}</span>
+      <div class="ox-faces" role="group" aria-label="${T('Rating', 'דירוג')}">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-r="${n}" aria-label="${n}/5">${faces[n]}</button>`).join('')}</div>`;
+    (view.querySelector('.confirm-sub') || view.firstElementChild)?.insertAdjacentElement('afterend', el);
+    el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => {
+      const r = Number(b.dataset.r);
+      put('gremier_ox_done:' + orderId, 1);
+      engage({ action: 'order_experience', order_id: orderId, rating: r }).catch(() => null);
+      el.innerHTML = `<b>${T('Thank you!', 'תודה!')} ${faces[r]}</b>
+        <label class="ox-sub" for="oxText">${r >= 4 ? T('Anything we could make even easier? (optional)', 'משהו שאפשר לעשות עוד יותר פשוט? (לא חובה)') : T('What made it harder than it should be? (optional)', 'מה הקשה עליכם? (לא חובה)')}</label>
+        <textarea id="oxText" rows="2" maxlength="2000"></textarea>
+        <button type="button" class="ox-send">${T('Send', 'שליחה')}</button>`;
+      el.querySelector('.ox-send').onclick = () => {
+        const comment = el.querySelector('textarea').value.trim();
+        if (comment) engage({ action: 'order_experience', order_id: orderId, rating: r, comment }).catch(() => null);
+        el.innerHTML = `<b>${T('Thanks, we read every answer.', 'תודה, אנחנו קוראים כל תשובה.')}</b>`;
+      };
+    });
+  }
+
   function successCard() {
     const view = $('checkoutConfirmView');
     if (!view || view.style.display === 'none') return;
+    try { orderExperienceCard(view); } catch (_) {}
     const signedIn = typeof currentUser !== 'undefined' && !!currentUser;
     const email = (signedIn && currentUser.email) || (get('gremier_checkout_details_v1') || {}).email;
     if (!signedIn && !$('acctInvite')) {
