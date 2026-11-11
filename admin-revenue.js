@@ -144,15 +144,17 @@
  // Store sales belong to the month they were DELIVERED (that month's statements). A store paying later
  // never adds to the month it pays in, or the same delivery would count twice. Only months before the
  // first statement existed fall back to store payments, since that's the only record there.
- function operationalMonths(data,y,bills,businessDate,through='9999-12-31'){
+ // A month with no statement yet (the current month, before billing) counts its deliveries instead,
+ // when the caller has them (deliveryByMonth: {'2026-11': agorot}).
+ function operationalMonths(data,y,bills,businessDate,through='9999-12-31',deliveryByMonth=null){
   const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
   const revenue=keys.map(m=>channels(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate)));
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
   const firstStatement=live.reduce((m,b)=>!m||monthOf(b)<m?monthOf(b):m,'');
   const statements=keys.map(m=>live.filter(b=>monthOf(b)===m));
-  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?statements[i].reduce((n,b)=>n+minor(b.total||0),0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
+  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?(statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0):Number(deliveryByMonth?.[month])||0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
  }
- function operationalSales(data,r,businessDate,partialStore=null){
+ function operationalSales(data,r,businessDate,partialStore=null,deliveryByMonth=null){
   if(Number(r.start.slice(0,4))<2026){
    const snapshot=(data.snapshots||[]).find(x=>Number(x.report_year)===Number(r.start.slice(0,4)));
    const rows=(snapshot?.payload?.monthly||[]).filter(m=>m.month>=r.start.slice(0,7)&&m.month<=r.to.slice(0,7));
@@ -160,7 +162,7 @@
    return {historical:true,total,online:null,stores:null,other:null,totals:null,legacy:0,monthly:rows.map(m=>({key:m.month,online:0,store:0,other:Number(m.income_minor||0)/100})),rows:[]};
   }
   const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=income(data,r.start,to,businessDate),c=channels(report);
-  const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to));
+  const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to,deliveryByMonth));
   const monthly=all.filter(m=>m.month>=r.start.slice(0,7)&&m.month<=to.slice(0,7));
   const stores=r.period==='week'?partialStore:monthly.reduce((n,m)=>n+m.stores,0);
   const totals={...report.totals,stores:stores===null?0:stores};

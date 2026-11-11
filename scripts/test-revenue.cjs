@@ -184,6 +184,10 @@ test('store sales count in the month delivered: a later payment never adds to th
  const rows=m.operationalMonths(d,2026,bills,day,'2026-11-04');
  assert.equal(rows.find(r=>r.month==='2026-10').stores,100000);
  assert.equal(rows.find(r=>r.month==='2026-11').stores,0);
+ // November has no statement yet: its own deliveries count (not the October payment), and October keeps its statement.
+ const live=m.operationalMonths(d,2026,bills,day,'2026-11-11',{'2026-11':250000,'2026-10':999});
+ assert.equal(live.find(r=>r.month==='2026-11').stores,250000);
+ assert.equal(live.find(r=>r.month==='2026-10').stores,100000);
  // Before the first statement existed, payments are the only record and still count.
  const early=m.operationalMonths({...d,businessReceipts:[{...d.businessReceipts[0],payment_date:'2026-05-10'}]},2026,[{...bills[0],month:6}],day);
  assert.equal(early.find(r=>r.month==='2026-05').stores,100000);

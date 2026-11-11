@@ -17,7 +17,7 @@
   if (!['day', 'week', 'month'].includes(view)) view = 'week';
   let anchor = iso(new Date());
   let last = { body: null, entries: [] };
-  const byKey = new Map();
+  const byKey = new Map(), stripKeys = new Map();
 
   /** "BET SHEMESH, HaRav Kook Street 48, Apt 26, Floor 6" → { street: "HaRav Kook Street 48", city: "Bet Shemesh" }. */
   function splitAddress(address, cityHint) {
@@ -152,7 +152,7 @@
   document.addEventListener('click', (ev) => {
     if (!ev.target.closest('.ocal')) return;
     const c = ev.target.closest('[data-ocal]');
-    if (c) { const e = byKey.get(c.dataset.ocal); if (e) preview(e); return; }
+    if (c) { const e = (c.closest('.ocal-strip') ? stripKeys : byKey).get(c.dataset.ocal) || byKey.get(c.dataset.ocal) || stripKeys.get(c.dataset.ocal); if (e) preview(e); return; }
     const v = ev.target.closest('[data-view]');
     if (v) return setView(v.dataset.view, v.dataset.view === 'day' ? iso(new Date()) : null);
     const g = ev.target.closest('[data-goday]');
@@ -162,5 +162,14 @@
     if (ev.target.closest('[data-now]')) { anchor = iso(new Date()); rerender(); }
   });
 
-  root.GremierCalendar = { render, splitAddress, closePreview };
+  /** One line of picture cards in date order, the date just above each (Dashboard "coming up"). */
+  function strip(host, entries) {
+    stripKeys.clear(); entries.forEach((e) => stripKeys.set(e.key, e));
+    const list = [...entries].sort((x, y) => ((x.date || '9999') + (x.time || '99')).localeCompare((y.date || '9999') + (y.time || '99')));
+    const today = iso(new Date());
+    const label = (e) => !e.date ? 'No date' : e.date === today ? 'Today' : e.late ? 'Overdue · ' + at(e.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : at(e.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    host.innerHTML = `<div class="ocal ocal-strip"><div class="ocal-next-row">${list.map((e, i) => { const newDay = !i || list[i - 1].date !== e.date; return `<div class="ocal-next-i${newDay ? ' first' : ''}"><small class="${e.late ? 'late' : e.date === today ? 'now' : ''}">${newDay ? esc(label(e)) : '&nbsp;'}</small>${card(e)}</div>`; }).join('')}</div></div>`;
+  }
+
+  root.GremierCalendar = { render, strip, splitAddress, closePreview };
 })(window);

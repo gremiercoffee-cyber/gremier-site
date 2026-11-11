@@ -31,9 +31,8 @@
     }
     return (j.deliveryType === 'coffeebar' ? j.cbAddress : j.privateAddress) || j.privateAddress || j.cbAddress || '';
   }
-  function render() {
-    const body = document.getElementById('ordersBody');
-    if (!body || orders === null) return;
+  /** Calendar entries for a list of open orders plus the scheduled deliveries (shared with the Dashboard strip). */
+  function buildEntries(orders) {
     const dl = root.__gremierDeliveries || null;
     const stores = dl ? dl.stores : [];
     const jobs = dl ? dl.jobs.filter((j) => !j.done) : [];
@@ -106,6 +105,13 @@
       }),
     ];
     for (const e of entries) e.late = !!e.date && e.date < today;
+    return entries;
+  }
+  function render() {
+    const body = document.getElementById('ordersBody');
+    if (!body || orders === null) return;
+    const dl = root.__gremierDeliveries || null;
+    const entries = buildEntries(orders);
 
     const count = document.getElementById('ordersOpenCount');
     if (count) count.textContent = entries.length || '';
@@ -135,7 +141,7 @@
   root.addEventListener('gremier:deliveries-changed', render);
   root.GremierBoard = {
     setOrders(list) { orders = list || []; render(); },
-    render, renderUnpaid,
+    render, renderUnpaid, entriesFor: (list) => buildEntries(list || []),
     checkoff: act('checkoff'), edit: act('edit'), remove: act('remove'),
   };
 })(window);

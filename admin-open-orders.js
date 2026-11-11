@@ -38,11 +38,19 @@
     const el = document.getElementById('dashOpenOrders');
     if (!el) return;
     rows = rows.filter((o) => !['fulfilled', 'cancelled', 'completed'].includes(String(o.status || '').toLowerCase()));
-    if (!rows.length) { el.hidden = true; el.innerHTML = ''; return; }
+    const deliveries = (root.__gremierDeliveries?.jobs || []).some((j) => !j.done);
+    if (!rows.length && !deliveries) { el.hidden = true; el.innerHTML = ''; return; }
     css();
     el.hidden = false;
     // Same order cards as the Orders screen. Their buttons look orders up in allOrders.
     if (typeof allOrders !== 'undefined') rows.forEach((o) => { if (!allOrders.some((x) => x.id === o.id)) allOrders.push(o); });
+    // Picture cards like the Orders calendar: one line, the delivery date above each, with scheduled deliveries too.
+    if (root.GremierBoard?.entriesFor && root.GremierCalendar?.strip) {
+      const entries = root.GremierBoard.entriesFor(rows);
+      el.innerHTML = `<h2 class="ord-sec-h">Coming up <span class="ord-sec-n">${entries.length}</span><span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('orders')">Open Orders</button></span></h2><div id="dashComingUp"></div>`;
+      root.GremierCalendar.strip(document.getElementById('dashComingUp'), entries);
+      return;
+    }
     const card = typeof orderRowHtml === 'function' ? orderRowHtml : null;
     el.innerHTML = `<h2 class="ord-sec-h">To fulfill <span class="ord-sec-n">${rows.length}</span><span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('orders')">Open Orders</button></span></h2>` +
       `<div class="oc-list">${rows.map((o) => card ? card(o) : `<button type="button" class="dso-row" data-order="${esc(o.id)}"><span class="dso-no">#${esc(o.order_number || '')}</span><span class="dso-main"><b>${esc(o.customer_name || 'Customer')}</b><small>${esc(when(o))}</small></span><span class="dso-total">₪${Math.round(Number(o.total) || 0)}</span></button>`).join('')}</div>`;
@@ -71,5 +79,6 @@
     const row = e.target.closest?.('#dashOpenOrders .dso-row');
     if (row) open(row.dataset.order);
   });
+  root.addEventListener('gremier:deliveries-changed', () => { if (document.getElementById('dashOpenOrders')) render(); });
   root.GremierOpenOrders = { load, render, drop };
 })(window);

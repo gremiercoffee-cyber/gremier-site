@@ -136,3 +136,7 @@
 .ocal-next-row .ocal-card .ocal-name { max-width: calc(100% - 8px); font-size: .62rem; }
 .ocal-next-row .ocal-card .ocal-flags { display: none; }
 .ocal-next-row .ocal-card .ocal-qty { top: 22px; bottom: auto; }
+/* Dashboard strip: one line, the date above each card. */
+.ocal-strip { display: block; border: 1px solid var(--border); border-radius: 14px; background: #fff; padding: 10px 0 8px; }
+.ocal-strip .ocal-next-i small.late { color: var(--red); }
+.ocal-strip .ocal-next-i small.now { color: var(--text); }

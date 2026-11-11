@@ -52,6 +52,8 @@
     let online = orders === null ? null : orders.reduce((s,o) => s+num(o.total),0);
     const values = deliveries === null || data.stores === null ? null : deliveries.map(d => deliveryValue(d,data.stores));
     let store = values === null || values.includes(null) ? null : values.reduce((s,v) => s+v,0);
+    // Deliveries by month, for months that have no store statement yet (this month, before billing).
+    const deliveryByMonth = values === null || values.includes(null) ? null : deliveries.reduce((m,d,i) => { const k=businessDate(d.delivery_date).slice(0,7); m[k]=(m[k]||0)+Math.round(values[i]*100); return m; }, {});
     const bills = data.bills === null ? null : data.bills.filter(b => !b.cancelled_at && !b.paid_at);
     const owed = bills === null ? null : bills.filter(b => b.billed_at).reduce((s,b) => s+num(b.total),0);
     const unbilled = bills === null ? null : bills.filter(b => !b.billed_at).reduce((s,b) => s+num(b.total),0);
@@ -65,7 +67,7 @@
     function bucket(date) { return buckets.find(b => b.key === (r.yearly ? date.slice(0,7) : date)); }
     (orders || []).forEach(o => { const b=bucket(businessDate(o.created_at)); if (b) b.online+=num(o.total); });
     (deliveries || []).forEach((d,i) => { const b=bucket(businessDate(d.delivery_date)); if (b) b.store+=num(values?.[i]); });
-    const sales=data.revenueData&&revenue?.operationalSales?revenue.operationalSales(data.revenueData,r,businessDate,store===null?null:Math.round(store*100)):data.salesSnapshot||null;
+    const sales=data.revenueData&&revenue?.operationalSales?revenue.operationalSales(data.revenueData,r,businessDate,store===null?null:Math.round(store*100),deliveryByMonth):data.salesSnapshot||null;
     let other=0,monthlyBuckets=r.yearly;
     if(sales){
       online=sales.online===null?null:sales.online/100;store=sales.stores===null?null:sales.stores/100;other=sales.other===null?null:sales.other/100;
