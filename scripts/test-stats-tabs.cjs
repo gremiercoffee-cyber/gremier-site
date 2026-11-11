@@ -5,7 +5,7 @@ test('store stats: usual delivery gap, days to pay, trend and what is owed',()=>
   {store_id:'s',year:2026,month:7,total:300,billed_at:'2026-08-01'},{store_id:'s',year:2026,month:8,total:300,billed_at:'2026-09-01',invoiced_gross_minor:35400},{store_id:'s',year:2026,month:9,total:300,cancelled_at:'x'}];
  const del=['2026-08-01','2026-08-08','2026-08-15','2026-08-29'].map(d=>({store_id:'s',delivery_date:d}));
  const x=m.storeStats({id:'s'},bills,del,'2026-10-15');
- assert.equal(x.gap,7);assert.equal(x.payDays,15);assert.equal(x.owed,30000+35400);assert.equal(x.oldestBilled,'2026-08-01');
+ assert.equal(x.gap,7);assert.equal(x.payDays,15);assert.equal(x.owed,30000+30000,"statement amounts before VAT, as on the Dashboard");assert.equal(x.oldestBilled,'2026-08-01');
  assert.equal(x.trend,200);// Jul-Sep 600 vs Apr-Jun 200
  assert.equal(x.last6.length,7);
 });

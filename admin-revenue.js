@@ -66,7 +66,7 @@
    add({key:'finbot:'+id,reference:r.document_reference,name:r.customer_name,description:b?.description||r.description||'',date:paid,amount_minor:w?.amount_minor??b?.amount_minor??Number(r.amount_minor),store_id:b?.store_id,taxInvoice:!!b?.tax_invoice_id,order,website_order_number:r.website_order_number??(w?'missing':null),imported:true});
   });
   data.orderReceipts.filter(r=>['issued','external'].includes(r.status)&&!r.is_test).forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'order:'+r.order_id,reference:r.document_reference||'',name:byId.get(String(r.order_id))?.customer_name||'Online order',date:r.payment_date,amount_minor:Number(r.amount_minor),order:byId.get(String(r.order_id)),website_order_number:byId.get(String(r.order_id))?.order_number??'missing'}));
-  data.businessReceipts.filter(r=>r.status==='issued'&&!r.linked_invoice_id).forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'business:'+r.id,reference:r.document_reference||'',name:r.customer_snapshot?.name||'',description:r.description||'',date:r.payment_date,amount_minor:Number(r.amount_minor),store_id:r.store_id,taxInvoice:!!r.tax_invoice_id}));
+  data.businessReceipts.filter(r=>r.status==='issued'&&!r.linked_invoice_id).forEach(r=>add({key:r.document_reference?'finbot:'+ref(r.document_reference):'business:'+r.id,reference:r.document_reference||'',name:r.customer_snapshot?.name||'',description:r.description||'',date:r.payment_date,amount_minor:Number(r.amount_minor),store_id:r.store_id,taxInvoice:!!r.tax_invoice_id||(['tax_invoice','invoice_receipt'].includes(r.document_type)&&String(r.payment_date)>='2026-10-22')}));
   return rows;
  }
  function income(data,from,to,businessDate){
@@ -123,6 +123,15 @@
   const taxed=r.order?new Date(r.order.created_at).getTime()>=Date.parse(VAT_FROM):!!r.taxInvoice;
   return taxed?vatInGross(r.amount_minor):0;
  }
+ // The same report with VAT taken out of each row (sales before VAT, like store statements).
+ function netOfVat(report){
+  const rows=report.rows.map(r=>{const v=rowVat(r);if(!v||!r.amount_minor)return r;const amount=r.amount_minor-v,parts=empty();let left=amount,top=null;
+   categories.forEach(k=>{if(!r.parts[k])return;parts[k]=Math.trunc(r.parts[k]*amount/r.amount_minor);left-=parts[k];if(!top||Math.abs(r.parts[k])>Math.abs(r.parts[top]))top=k;});if(top)parts[top]+=left;
+   return {...r,amount_minor:amount,parts,vat_minor:v};});
+  const totals=empty(),origins={online:empty(),direct:empty()};
+  rows.forEach(r=>categories.forEach(k=>{totals[k]+=r.parts[k];origins[r.origin||'direct'][k]+=r.parts[k];}));
+  return {rows,totals,origins,total_minor:Object.values(totals).reduce((n,x)=>n+x,0)};
+ }
  function salesVat(report){
   const byPeriod={};let vat=0;
   for(const r of report.rows){const v=rowVat(r);if(!v)continue;vat+=v;const k=vatPeriod(r.date);byPeriod[k]=(byPeriod[k]||0)+v;}
@@ -152,19 +161,20 @@
  function earlierDeliveryPayments(data,bills,businessDate,firstStatement,through){
   if(!firstStatement)return {};
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
-  const pays=income(data,firstStatement+'-01',through,businessDate).rows.filter(r=>r.parts.stores>0&&!r.summary).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const gross=income(data,firstStatement+'-01',through,businessDate),net=new Map(netOfVat(gross).rows.map(r=>[r.key,r]));
+  const pays=gross.rows.filter(r=>r.parts.stores>0&&!r.summary).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   const used={},out={};
   for(const p of pays){
    const sid=p.storeId,billed=sid?live.filter(b=>b.store_id===sid&&monthOf(b)<String(p.date).slice(0,7)).reduce((n,b)=>n+(Number(b.invoiced_gross_minor)||minor(b.total||0)),0):0;
    const room=Math.max(0,billed-(used[sid]||0)),covered=Math.min(room,p.parts.stores),extra=p.parts.stores-covered;
    if(sid)used[sid]=(used[sid]||0)+covered;
-   if(extra>0){const k=String(p.date).slice(0,7);out[k]=(out[k]||0)+extra;}
+   if(extra>0){const k=String(p.date).slice(0,7),n=net.get(p.key),ratio=n&&p.parts.stores?n.parts.stores/p.parts.stores:1;out[k]=(out[k]||0)+Math.round(extra*ratio);}
   }
   return out;
  }
  function operationalMonths(data,y,bills,businessDate,through='9999-12-31',deliveryByMonth=null){
   const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
-  const revenue=keys.map(m=>channels(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate)));
+  const revenue=keys.map(m=>channels(netOfVat(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate))));
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
   const firstStatement=live.reduce((m,b)=>!m||monthOf(b)<m?monthOf(b):m,'');
   const statements=keys.map(m=>live.filter(b=>monthOf(b)===m));
@@ -178,7 +188,7 @@
    const total=rows.length?rows.reduce((n,m)=>n+Number(m.income_minor||0),0):null;
    return {historical:true,total,online:null,stores:null,other:null,totals:null,legacy:0,monthly:rows.map(m=>({key:m.month,online:0,store:0,other:Number(m.income_minor||0)/100})),rows:[]};
   }
-  const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=income(data,r.start,to,businessDate),c=channels(report);
+  const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=netOfVat(income(data,r.start,to,businessDate)),c=channels(report);
   const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to,deliveryByMonth));
   const monthly=all.filter(m=>m.month>=r.start.slice(0,7)&&m.month<=to.slice(0,7));
   const stores=r.period==='week'?partialStore:monthly.reduce((n,m)=>n+m.stores,0);
@@ -187,7 +197,7 @@
    monthly:monthly.map(m=>({key:m.month,online:m.online/100,store:m.stores/100,other:m.other/100})),
    rows:report.rows,legacy:report.rows.filter(x=>x.summary).reduce((n,x)=>n+x.amount_minor,0)};
  }
- const api={reconcile,splitOrder,online,receipts,income,channels,owed,normalize,ref,needsReview,salesVat,owedVat,vatPeriod,rowVat,operationalMonths,operationalSales};
+ const api={reconcile,splitOrder,online,receipts,income,channels,owed,normalize,ref,needsReview,salesVat,owedVat,vatPeriod,rowVat,netOfVat,operationalMonths,operationalSales};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
  if(!root.document)return;root.GremierRevenue=api;
  const get=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -238,7 +248,7 @@
  async function pages(table,columns){const out=[];for(let n=0;n<100000;n+=1000){const r=await client().from(table).select(columns).order(table==='order_receipts'?'order_id':table==='finbot_income_sources'?'document_reference':table==='revenue_classification_overrides'?'source_key':table==='business_receipt_bills'?'billing_id':table==='finbot_reporting_snapshots'?'report_year':'id').range(n,n+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Reporting limit reached');}
  let dataFlight=null;
  async function fetchData(){if(dataFlight)return dataFlight;const task=(async()=>{
-  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference,tax_invoice_id,linked_invoice_id'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number,source_kind,period_start,source_details'],['revenue_classification_overrides','source_key,category'],['finbot_reporting_snapshots','report_year,as_of_date,payload']];
+  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference,tax_invoice_id,linked_invoice_id,document_type'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number,source_kind,period_start,source_details'],['revenue_classification_overrides','source_key,category'],['finbot_reporting_snapshots','report_year,as_of_date,payload']];
   const results=await Promise.all([...tables.map(([t,c])=>pages(t,c)),pages('store_deliveries','id,delivery_date').catch(()=>null),pages('store_billing','id,store_id,year,month,total,billed_at,paid_at,cancelled_at,invoiced_gross_minor,stores(name)'),pages('business_receipt_bills','billing_id,receipt_id').catch(()=>null)]);return Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides','snapshots','deliveries','bills','billLinks'].map((k,i)=>[k,results[i]]));
 })();dataFlight=task;try{return await task;}finally{if(dataFlight===task)dataFlight=null;}}
  api.fetchData=fetchData;
