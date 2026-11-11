@@ -580,3 +580,32 @@ body.bb-world-on .bb-confirm { z-index:3200; color-scheme:light; }
 .planner .bbx-soft { width:100%; display:flex; justify-content:space-between; align-items:center; gap:12px; background:#fff; color:#1a1a1a; border:1px solid #d9d3ca; border-radius:14px; padding:12px 18px; margin:0 0 10px; cursor:pointer; font:600 14.5px 'DM Sans',sans-serif; transition:border-color .15s, background .15s; }
 .planner .bbx-soft:hover { border-color:#1a1a1a; background:#faf8f5; }
 .planner .bbx-soft b { font-weight:700; white-space:nowrap; }
+
+/* Tablets and computers: the step's main button stays pinned at the bottom of the panel, so it never scrolls out of sight. */
+@media(min-width:641px) {
+ .bb-world .bbx-panel.bb-qs .bbx-step .bbx-cta { position:sticky; bottom:6px; z-index:2; box-shadow:0 -14px 18px 6px #ffffffee, 0 8px 22px rgba(0,0,0,.18); }
+}
+/* Short screens (a tablet held sideways, small laptops): a more compact builder that fits the screen. */
+@media(min-width:641px) and (max-height:820px) {
+ .bb-world { width:calc(100% - 32px); max-height:calc(100dvh - 20px); }
+ .bb-world .bb-world-top { padding:6px 18px; }
+ .bb-world .bb-world-close { width:34px; height:34px; font-size:22px; }
+ .bb-world .bbx { padding:10px 18px 12px; gap:16px; }
+ .bb-world .bbx-panel.bb-qs { max-height:calc(100dvh - 112px); padding:14px 16px 8px; }
+ /* The chat bubble moves to the picture's side, clear of the main button. */
+ .bb-world #barChat { inset-inline-end:auto; inset-inline-start:18px; bottom:12px; align-items:flex-start; }
+ .bb-world .bbx-step h2 { font-size:18px; margin-bottom:6px; }
+ .bb-world .bbx-step h3 { font-size:14px; }
+ .bb-world .pl-chips button { height:34px; min-height:34px; padding:0 12px; font-size:13px; }
+ .bb-world .pl-guests input { height:34px; font-size:14px; }
+ .bb-world .bbx-assembly { font-size:12.5px; padding:6px 10px; margin-bottom:8px; }
+ .bb-world .bbx-standard { margin:10px 0 4px; padding:10px 12px 0; }
+ .bb-world .bbx-standard h3 { font-size:13.5px; margin-bottom:6px; }
+ .bb-world .bbx-included li { font-size:12.5px; }
+ .bb-world .bbx-cta { padding:11px 16px; font-size:14.5px; margin:4px 0 8px; }
+ .bb-world .bbx-build strong { font-size:15px; }
+ .bb-world .bbx-build small { font-size:11.5px; margin-top:1px; }
+ .bb-world .bbx-build b { font-size:18px; }
+ .bb-world .bbx-soft { padding:9px 14px; font-size:13.5px; }
+ .bb-world .bbx-price { padding-top:6px; }
+}

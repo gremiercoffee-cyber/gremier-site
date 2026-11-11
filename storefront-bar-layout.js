@@ -52,8 +52,9 @@
     let milkSpecs=[];
     if(plan.milkMix && typeof plan.milkMix==='object'){
       for(const [variant,n] of Object.entries(plan.milkMix)){const take=Math.min(count(n),milkCount-milkSpecs.length);for(let i=0;i<take;i++)milkSpecs.push({variant});}
-      milkSpecs=[...Array.from({length:milkCount-milkSpecs.length},()=>({variant:'dairy'})),...milkSpecs];
-    }else milkSpecs=Array.from({length:milkCount},(_,i)=>({variant:i<milkCount-parve?'dairy':(plan.milkType||'parve')}));
+      milkSpecs=[...milkSpecs,...Array.from({length:milkCount-milkSpecs.length},()=>({variant:'dairy'}))];
+    }else milkSpecs=Array.from({length:milkCount},(_,i)=>({variant:i<parve?(plan.milkType||'parve'):'dairy'}));
+    // Parve cartons (oat, almond, soy) come first: the front of the front row, so an added one is easy to see.
     group('milk', milkSpecs, 78, milkCount > 6 ? Math.ceil(milkCount / 2) : milkCount);
     const guests = Math.max(1, count(plan.guests));
     const bundles = Array.from({ length: Math.ceil(guests / 50) }, (_, i) => Math.min(50, guests - i * 50));

@@ -29,6 +29,9 @@ test('mixed coffees, four dispensers, and both types of milk all appear separate
   assert.equal(of(scene, 'disp').length, 4);
   assert.equal(of(scene, 'milk').filter(item => item.variant === 'dairy').length, 6);
   assert.equal(of(scene, 'milk').filter(item => item.variant === 'parve').length, 6);
+  // Parve cartons stand in front of the dairy ones, so an added one is noticed.
+  const milk = of(scene, 'milk'), minParve = Math.min(...milk.filter(i => i.variant === 'parve').map(i => i.z)), maxDairy = Math.max(...milk.filter(i => i.variant === 'dairy').map(i => i.z));
+  assert.ok(minParve > maxDairy, 'parve in front');
   for (const kind of ['cups', 'straws']) {
     assert.equal(of(scene, kind).reduce((n, item) => n + item.units, 0), 125);
     assert.equal(of(scene, kind).length, 3);
