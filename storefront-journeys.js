@@ -12,7 +12,13 @@
  const allowed=()=>{const c=read(CONSENT);return c?.value==='accepted'&&Date.now()-c.at<180*86400000;};
  const names={home:'Home',shop:'Shop',coffeebars:'Coffee bars',myorders:'Account',giftcards:'Gift cards'};
  let queue=[],sending=false,currentPage='Home',lastView='',lastAction='',lastActionAt=0,lastInput=Date.now(),tickAt=Date.now();
- let visitor=null,session=null,currentProduct=null,internal=false;
+ // Owner and test browsers: never tracked, and their WhatsApp-link clicks aren't counted (functions/go reads the
+ // cookie). Set automatically once the owner signs in here, or by opening any page with ?notrack=1 (?notrack=0 undoes it).
+ const INTERNAL='gremier_internal';
+ const markInternal=(on)=>{try{document.cookie=`${INTERNAL}=${on?1:0}; path=/; max-age=${on?400*86400:0}; secure; samesite=lax`;}catch{}};
+ const isInternal=()=>{try{return /(?:^|;\s*)gremier_internal=1(?:;|$)/.test(document.cookie);}catch{return false;}};
+ try{const u=new URL(location.href),n=u.searchParams.get('notrack');if(n!==null){markInternal(n!=='0');u.searchParams.delete('notrack');history.replaceState(history.state,'',u.pathname+u.search+u.hash);}}catch{}
+ let visitor=null,session=null,currentProduct=null,internal=isInternal();
  const endpoint=()=>`${apiBase}/functions/v1/site-journeys`;
  function ensure(){
   if(internal||!allowed())return false;
@@ -50,7 +56,7 @@
    const r=await fetch(endpoint(),{method:'POST',headers,keepalive:true,body:JSON.stringify({action:'collect',consent:true,visitor_id:visitor,session_id:sid,events:batch,
     device:/iPad|Tablet/i.test(navigator.userAgent)?'Tablet':/Mobile|Android/i.test(navigator.userAgent)?'Phone':'Computer',referrer:document.referrer,language:he()?'he':'en'})});
    const data=await r.json();
-   if(data.internal){internal=true;queue=[];}
+   if(data.internal){internal=true;queue=[];markInternal(true);}
    else if(data.expired){remove(SESSION,sessionStorage);session=null;lastView='';}
    else if(!r.ok)queue.unshift(...batch);
   }catch{queue.unshift(...batch);}finally{sending=false;}
@@ -98,7 +104,7 @@
   const submit=root.submitOrder;if(typeof submit==='function')root.submitOrder=function(...args){track('pay_click',{page:'Checkout'});return submit.apply(this,args);};
   wrap('setCategory',([category])=>track('category_view',{page:'Shop',category}));
   wrap('plannerStart',()=>page('Coffee bar builder','bar_builder'));
-  wrap('setUser',()=>{track('member_signin');flush();});
+  wrap('setUser',([user])=>{const email=String(user?.email||(typeof currentUser!=='undefined'?currentUser?.email:'')||'').toLowerCase();if(['gremiercoffee@gmail.com','yonigrey@gmail.com'].includes(email)){internal=true;queue=[];markInternal(true);return;}track('member_signin');flush();});
   wrap('showCheckoutResultUI',()=>page('Order confirmation'));
   wrap('applyTranslations',()=>{if(document.getElementById('analyticsConsent'))banner(true);const link=document.getElementById('analyticsChoices');if(link)link.textContent=T('Privacy choices','העדפות פרטיות');});
   document.addEventListener('click',e=>{if(e.target.closest('#bbMini,#bbWorldOpen,[data-bb-start]'))page('Coffee bar builder','bar_builder');});
