@@ -17,7 +17,7 @@ test('manual receipts preserve exact cash/bank payments; optional contact data; 
 test('check and Bit use FinBot types 3 and 8, with complete check data and separate dates',()=>{
  const input=normalizeManualInput({...base(),payment_method:'check',payment_details:checkDetails(),payment_reference:'customer ref'},new Date('2026-10-20T10:00Z'));
  const p=manualPayload(input,{name:'Fixture business',address:'Example street 1',phone:'050-1234567',tax_id:'123456789'},new Date('2026-10-20T10:00Z'));
- assert.deepEqual(p.payments[0],{type:'3',date:'15/11/2026',sum:123.45,bankName:12,bankBranch:345,bankAccount:12345678,checkNumber:123456,transactionNumber:'customer ref'});
+ assert.deepEqual(p.payments[0],{type:'3',date:'15/11/2026',sum:123.45,bankName:12,bankBranch:345,bankAccount:12345678,checkNumber:'123456',transactionNumber:'customer ref'}); // FinBot refuses a numeric checkNumber (error 410); it must be text.
  assert.equal(p.date,'20/10/2026');assert.equal(input.payment_date,'2026-10-20');assert.equal(p.customer.address,'Example street 1');assert.equal(p.customer.phone,'0501234567');
  const bit=normalizeManualInput({...base(),payment_method:'bit',payment_details:checkDetails(),payment_reference:'BIT-123'},new Date('2026-10-20T10:00Z'));
  const payment=manualPayload(bit,{name:'Fixture'}).payments[0];assert.equal(payment.type,'8');assert.equal(payment.transactionNumber,'BIT-123');assert.equal(payment.checkNumber,undefined);assert.deepEqual(bit.payment_details,{});

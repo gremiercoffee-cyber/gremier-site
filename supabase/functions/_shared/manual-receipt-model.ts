@@ -64,6 +64,6 @@ export function manualPayload(input:any,customer:any,now=new Date()) {
   customer:{name:c.name,...(c.tax_id?{tax:c.tax_id}:{}),...(c.phone?{phone:c.phone}:{}),...(c.address?{address:c.address}:{}),save:false},
   items:[{name:input.description.slice(0,100),amount:1,price:taxed?priceBeforeVat(input.amount_minor):input.amount_minor/100,save:false}],
   ...(type==='tax_invoice'?{}:{payments:[{type:({cash:'0',bank_transfer:'1',check:'3',bit:'8'} as Record<string,string>)[input.payment_method],date:fmt(input.payment_method==='check'?input.payment_details.check_date:input.payment_date),sum:input.amount_minor/100,
-   ...(input.payment_method==='check'?{bankName:Number(input.payment_details.bank_code),bankBranch:Number(input.payment_details.branch),bankAccount:Number(input.payment_details.account),checkNumber:Number(input.payment_details.check_number)}:{}),
+   ...(input.payment_method==='check'?{bankName:Number(input.payment_details.bank_code),bankBranch:Number(input.payment_details.branch),bankAccount:Number(input.payment_details.account),checkNumber:String(input.payment_details.check_number)}:{}),
    ...(input.payment_reference?{transactionNumber:input.payment_reference}:{})}]})};
 }

@@ -4,11 +4,13 @@ import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
 import {customerFields,normalizeManualInput,manualPayload,DOC_NAME} from '../_shared/manual-receipt-model.ts';
 import {pdfLines,documentNumber} from '../_shared/finbot-pdf-text.ts';
 import {resultDocument} from '../_shared/finbot-receipt-model.ts';
-import {vatApplies} from '../_shared/vat.ts';
+import {vatApplies,priceBeforeVat} from '../_shared/vat.ts';
 import {originalPdf} from '../_shared/finbot-receipts.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(b:unknown,status=200)=>new Response(JSON.stringify(b),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
 function serviceKey(){const k=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(k)return k;return JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')||'{}').default||'';}
+// Notes the server fills in itself (kept on the record, not printed on the document).
+const AUTO_SALES='לפי מכירות',AUTO_VAT='כולל מע"מ 18%';
 const clean=(r:any)=>{const {document_url,request_hash,...safe}=r;return safe;};
 async function pdf(db:any,row:any) {
  if(row.pdf_path)return row;
@@ -61,6 +63,9 @@ Deno.serve(async req=>{
   const c=await db.from('receipt_customers').select('*').eq('id',input.customer_id).is('archived_at',null).single();if(c.error)throw Error('customer_not_available');
   if((raw.action==='issue'||input.customer_version)&&input.customer_version!==String(c.data.updated_at||''))throw Error('customer_changed_refresh_preview');
   const customer=customerFields({...c.data,...(input.customer_address===null?{}:{address:input.customer_address})}),store_id=c.data.store_id||null;
+  // A store that pays for what it sold (not for what was delivered): the amount is whatever they sold, so it never has to match the months.
+  const bySales=store_id?!!(await db.from('stores').select('pays_for_sales').eq('id',store_id).maybeSingle()).data?.pays_for_sales:false;
+  if(bySales&&!input.adjustment_reason)input.adjustment_reason=AUTO_SALES;
   const type=input.document_type,date=input.payment_date+'T23:59:00+03:00';
   // VAT documents start the day the business became Osek Morshe.
   if(type!=='receipt'&&!vatApplies(date))throw Error('tax_invoices_start_2026_10_22');
@@ -81,7 +86,7 @@ Deno.serve(async req=>{
    const paid=await db.from('business_receipts').select('id').eq('linked_document_number',input.linked_document_number).neq('status','needs_review');if((paid.data||[]).length)throw Error('invoice_already_paid');
   }
   let bills:any[]=[],invoices:any[]=[];
-  if(store_id&&['receipt','invoice_receipt'].includes(type)&&!linked&&(input.billing_ids.length||!input.linked_document_number)){
+  if(store_id&&!linked&&(input.billing_ids.length||(type==='receipt'&&!input.linked_document_number))){
    if(!input.billing_ids.length)throw Error('choose_paid_months');
    const r=await db.from('store_billing').select('id,store_id,year,month,total,paid_at,cancelled_at,tax_invoice_id,invoiced_gross_minor').in('id',input.billing_ids);if(r.error)throw Error('billing_unavailable');bills=r.data;
    if(bills.length!==input.billing_ids.length||bills.some(b=>b.store_id!==store_id||b.paid_at||b.cancelled_at))throw Error('month_not_outstanding');
@@ -101,12 +106,14 @@ Deno.serve(async req=>{
    }
    invoices.sort((x,y)=>Number(x.document_number)-Number(y.document_number));
    if(invoices.length&&input.linked_document_number)throw Error('months_already_invoiced');
+   // A combined invoice/receipt adds 18% to the months' before-VAT total: that is not a different amount.
+   if(!input.adjustment_reason&&type==='invoice_receipt'&&!invoiceIds.some(Boolean)&&Math.round(priceBeforeVat(input.amount_minor)*100)===total)input.adjustment_reason=AUTO_VAT;
    if(total!==input.amount_minor&&input.adjustment_reason.length<3)throw Error('adjustment_reason_required');
   }else if(input.billing_ids.length)throw Error('customer_not_linked_to_store');
   // One invoice: FinBot links the receipt to it. Several: the receipt names them all (FinBot links only one).
-  const base=manualPayload(input,customer,new Date()),numbers=linked?[String(linked.document_number)]:input.linked_document_number?[input.linked_document_number]:invoices.map(i=>String(i.document_number));
+  const base=manualPayload([AUTO_SALES,AUTO_VAT].includes(input.adjustment_reason)?{...input,adjustment_reason:''}:input,customer,new Date()),numbers=linked?[String(linked.document_number)]:input.linked_document_number?[input.linked_document_number]:invoices.map(i=>String(i.document_number));
   const payload={...base,...(numbers.length===1?{linkedDocument:numbers[0]}:{}),...(numbers.length>1?{remark:[base.remark,'עבור חשבוניות מס '+numbers.join(', ')].filter(Boolean).join(' · ').slice(0,500)}:{})};
-  if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,invoices,linked,payload},creates_document:false});
+  if(raw.action==='preview')return json({preview:{...input,customer,store_id,bills,invoices,linked,payload,by_sales:bySales},creates_document:false});
   if((type!=='tax_invoice'&&raw.payment_received!==true)||raw.not_already_receipted!==true)return json({error:'confirm_received_and_no_existing_receipt'},400);
   if(input.email_requested&&!Deno.env.get('RESEND_API_KEY'))throw Error('email_not_configured');
   const key=Deno.env.get('FINBOT_API_KEY');if(!key)throw Error('finbot_not_configured');
@@ -116,7 +123,15 @@ Deno.serve(async req=>{
   let issued=false;
   try{
    const response=await fetch('https://api.finbotai.co.il/income',{method:'POST',headers:{'Content-Type':'application/json',secret:key},body:JSON.stringify(payload),signal:AbortSignal.timeout(25000)});
-   if(!response.ok)throw Error(`provider_http_${response.status}_needs_review`);
+   if(!response.ok){
+    const text=(await response.text().catch(()=>'')).split(key).join('');let refusals:string[]=[];
+    try{const j=JSON.parse(text);if(Array.isArray(j)&&j.length&&j.every((e:any)=>e&&typeof e.message==='string'))refusals=j.map((e:any)=>e.message);}catch{}
+    if(response.status===400&&refusals.length){
+     await db.from('business_receipt_bills').delete().eq('receipt_id',input.id);await db.from('business_receipts').delete().eq('id',input.id).eq('status','issuing');
+     return json({error:'finbot_refused',finbot:refusals.join(' · ').slice(0,500),nothing_issued:true},400);
+    }
+    throw Error(`provider_http_${response.status}_needs_review`);
+   }
    const doc=resultDocument(await response.json());
    const complete=await db.rpc('complete_business_receipt',{receipt:input.id,doc_url:doc.url});if(complete.error)throw Error('receipt_save_needs_review');issued=true;
    let row=(await db.from('business_receipts').select('*').eq('id',input.id).single()).data;

@@ -5,10 +5,10 @@
  const money=n=>new Intl.NumberFormat('en-IL',{style:'currency',currency:'ILS'}).format(n/100);
  const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const receiptErrors={already_invoiced_use_receipt:'One of these months already has an official tax invoice. Issue a receipt linked to it instead of another tax invoice.',check_bank_code_required:'Enter the bank number printed on the check.',check_branch_required:'Enter the branch number printed on the check.',check_account_required:'Enter the account number printed on the check (up to 15 digits).',check_check_number_required:'Enter the check number (up to 15 digits).',check_date_required:'Enter a valid date printed on the check.',payment_reference_max_40:'The payment reference can contain up to 40 characters.',amount_exceeds_finbot_limit:'The amount exceeds FinBot’s supported receipt limit.',customer_changed_refresh_preview:'Customer details changed. Refresh and review the receipt again.'};
- async function call(name,body){const r=await sbc().functions.invoke(name,{body});if(r.error||r.data?.error){const detail=r.data||await r.error?.context?.json?.().catch(()=>null);throw Error(receiptErrors[detail?.error]||detail?.error||'Request failed; refresh before retrying.');}return r.data;}
+ async function call(name,body){const r=await sbc().functions.invoke(name,{body});if(r.error||r.data?.error){const detail=r.data||await r.error?.context?.json?.().catch(()=>null);if(detail?.error==='finbot_refused'){requestId=crypto.randomUUID();throw Error('FinBot refused it, nothing was issued: '+(detail.finbot||'')+'. Fix it and press Review again.');}throw Error(receiptErrors[detail?.error]||detail?.error||'Request failed; refresh before retrying.');}return r.data;}
  async function pages(table,columns,order){const out=[],primary=table==='order_receipts'?'order_id':'id';for(let n=0;n<100000;n+=1000){let query=sbc().from(table).select(columns).order(order);if(order!==primary)query=query.order(primary);const r=await query.range(n,n+999);if(r.error)throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Report is too large');}
  const status=(id,message)=>{if(get(id))get(id).textContent=message;};
- let customers=[],allCustomers=[],stores=[],bills=[],preview=null,requestId=crypto.randomUUID(),preparedReceipt=null,docType='receipt',openInvoices=[],expenseFiles=[],expenseSettings=null,batch=null,allReceipts=[];
+ let customers=[],allCustomers=[],stores=[],bills=[],bySales=false,preview=null,requestId=crypto.randomUUID(),preparedReceipt=null,docType='receipt',openInvoices=[],expenseFiles=[],expenseSettings=null,batch=null,allReceipts=[];
  let financeSeq=0,expenseSeq=0,expenseOwner='',expenseShareRequested=false,expensePollBusy=false;
  const expenseBatchKey=selected=>JSON.stringify(selected.map(f=>[f.id,f.created_at]));
  function showPreparedExpenseBatch(){get('expensePrepared').scrollIntoView?.({behavior:'smooth',block:'start'});get('expensePrepared').focus?.({preventScroll:true});}
@@ -54,6 +54,7 @@
     <p class="fw-note" id="manualDocNote"></p><div class="fw-actions" id="manualStoreCombined" hidden><button type="button" class="btn btn-outline" id="manualStoreCombinedButton">Already paid? Issue חשבונית מס/קבלה without selecting months</button></div><div class="fw-form" id="manualLinkedGroup" hidden><label>For tax invoice<select class="form-input" id="manualLinkedInvoice"><option value="">Not for a tax invoice</option><option value="finbot">A tax invoice issued in FinBot…</option></select></label><span id="manualLinkedNumberGroup" hidden>${field('Tax invoice number · as printed','manualLinkedNumber','text','inputmode="numeric" maxlength="9"')}</span></div>
    </div>
    <div class="rc-step"><div class="rc-step-h"><span class="rc-num">3</span><b>Payment</b></div>
+    <label class="rc-toggle" id="manualBySalesRow" hidden><input type="checkbox" id="manualBySales"><span class="rc-switch" aria-hidden="true"></span><span>This store pays for what it sold (not for what I delivered)</span></label>
     <div id="manualBills"></div><div id="manualSettlement" class="fw-settlement" hidden></div>
     <div class="fw-form fw-primary rc-amount">${field('Amount received · ₪','manualAmount','number','min="0.01" max="9999999" step="0.01" inputmode="decimal" placeholder="0.00"')}${field('Date received','manualDate','date')}</div>
     <div id="manualMethodGroup" class="rc-method"><small>Payment method</small><div class="rc-seg" role="radiogroup" aria-label="Payment method"><button type="button" role="radio" data-method="bank_transfer">🏦 Bank</button><button type="button" role="radio" data-method="cash">💵 Cash</button><button type="button" role="radio" data-method="check">✍️ Check</button><button type="button" role="radio" data-method="bit">📱 Bit</button></div><select class="form-input" id="manualMethod" hidden aria-hidden="true" tabindex="-1"><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="check">Check · צ׳ק</option><option value="bit">Bit · ביט</option></select></div>
@@ -77,6 +78,9 @@
   const syncMethod=()=>get('tab-finance').querySelectorAll('[data-method]').forEach(b=>{const on=b.dataset.method===get('manualMethod').value;b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on));});
   get('tab-finance').querySelectorAll('[data-method]').forEach(b=>b.onclick=()=>{get('manualMethod').value=b.dataset.method;get('manualMethod').dispatchEvent(new Event('change'));syncMethod();});syncMethod();
   get('tab-finance').querySelectorAll('[data-doc]').forEach(b=>b.onclick=()=>setDocType(b.dataset.doc));
+  get('manualBySales').onchange=async()=>{const c=customers.find(c=>c.id===get('manualCustomer').value);if(!c?.store_id)return;const on=get('manualBySales').checked;
+   const r=await sbc().from('stores').update({pays_for_sales:on}).eq('id',c.store_id);if(r.error){get('manualBySales').checked=!on;status('manualReceiptStatus','Could not save the store setting.');return;}
+   const s=stores.find(s=>s.id===c.store_id);if(s)s.pays_for_sales=on;loadCustomerBills();};
   get('manualStoreCombinedButton').onclick=()=>{setDocType('invoice_receipt');get('manualAmount').focus();};
   get('manualLinkedNumber').oninput=()=>{const n=get('manualLinkedNumber').value.trim();if(n)get('manualDescription').value=('Payment for tax invoice '+n).slice(0,200);};
   get('manualLinkedInvoice').onchange=()=>{get('manualLinkedNumberGroup').hidden=get('manualLinkedInvoice').value!=='finbot';const inv=openInvoices.find(i=>i.id===get('manualLinkedInvoice').value);if(inv){get('manualAmount').value=(inv.amount_minor/100).toFixed(2);get('manualDescription').value=('Payment for tax invoice '+inv.document_number).slice(0,200);}updateSettlement();};
@@ -126,7 +130,7 @@
  async function loadFinance(){
   setup();const token=++financeSeq;status('financeStatus','Loading customers and receipt history…');
   try{
-   const results=await Promise.all([pages('receipt_customers','*','name'),pages('stores','id,name,phone','name'),
+   const results=await Promise.all([pages('receipt_customers','*','name'),pages('stores','id,name,phone,pays_for_sales','name'),
     pages('business_receipts','id,customer_snapshot,amount_minor,payment_date,payment_method,status,document_type,document_number,linked_invoice_id,linked_document_number,pdf_path,email_requested,email_sent_at,email_error,error_code,issued_at,created_at','created_at'),
     pages('order_receipts','order_id,status,amount_minor,payment_date,pdf_path,document_reference,issued_at,orders(customer_name,order_number)','order_id')]);
    if(token!==financeSeq)return;
@@ -156,7 +160,7 @@
  }
  async function archiveCustomer(){const id=get('customerEdit').value;if(!id)return;const restore=!!allCustomers.find(c=>c.id===id)?.archived_at;try{const r=await sbc().from('receipt_customers').update({archived_at:restore?null:new Date().toISOString()}).eq('id',id);if(r.error)throw Error('Could not update customer');await loadFinance();editCustomer();status('customerStatus',restore?'Customer restored.':'Customer archived; issued receipt records are preserved.');}catch(e){status('customerStatus',e.message);}}
  async function loadCustomerBills(){
-  const c=customers.find(c=>c.id===get('manualCustomer').value);bills=[];preview=null;get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualBills').innerHTML='';get('manualEmail').checked=!!c?.email;get('manualEmail').disabled=!c?.email;get('manualAmount').value='';get('manualDescription').value=c?'Payment from '+c.name:'';
+  const c=customers.find(c=>c.id===get('manualCustomer').value);bills=[];bySales=false;get('manualBySalesRow').hidden=true;preview=null;get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;get('manualBills').innerHTML='';get('manualEmail').checked=!!c?.email;get('manualEmail').disabled=!c?.email;get('manualAmount').value='';get('manualDescription').value=c?'Payment from '+c.name:'';
   showCustomerDetails();get('manualAddress').value=c?.address||'';get('manualReference').value='';get('manualAdjustment').value='';applyJobPrefill();
   for(const id of ['manualCheckBank','manualCheckBranch','manualCheckAccount','manualCheckNumber'])get(id).value='';get('manualCheckDate').value=get('manualDate').value||today();
   status('manualReceiptStatus','');updateSettlement();
@@ -169,10 +173,23 @@
    const [r,claimed]=await Promise.all([sbc().from('store_billing').select('id,year,month,total,tax_invoice_id,invoiced_gross_minor').eq('store_id',c.store_id).is('paid_at',null).is('cancelled_at',null).order('year').order('month'),sbc().from('business_receipt_bills').select('billing_id')]);
    if(c.id!==get('manualCustomer').value)return;if(r.error||claimed.error)throw Error('Could not load outstanding bills.');
    const ids=new Set(claimed.data.map(x=>x.billing_id));bills=r.data.filter(b=>!ids.has(b.id));
+   bySales=!!stores.find(s=>s.id===c.store_id)?.pays_for_sales;get('manualBySalesRow').hidden=false;get('manualBySales').checked=bySales;
    get('manualBills').dataset.has=bills.length?'1':'';get('manualBills').innerHTML=bills.length?'<h3>Months paid for</h3><p class="fw-note">Selected months are marked paid when the receipt is issued.</p><div class="fw-months">'+bills.map(b=>`<label class="fw-month"><input type="checkbox" value="${esc(b.id)}" class="manual-bill"><span>${new Date(b.year,b.month-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}${b.tax_invoice_id?' · incl. VAT':''}</span><strong>${money(owed(b))}</strong></label>`).join('')+'</div>':'';
-   get('manualBills').querySelectorAll('input').forEach(i=>i.onchange=()=>{const selected=selectedBills();get('manualAmount').value=(selected.reduce((s,b)=>s+owed(b),0)/100).toFixed(2);get('manualDescription').value=('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);updateSettlement();});
+   const fill=()=>{const selected=selectedBills();if(!bySales)get('manualAmount').value=selected.length?(selected.reduce((s,b)=>s+owed(b),0)/100).toFixed(2):'';get('manualDescription').value=bySales?'קפה קולד ברו':('Payment '+c.name+' · '+selected.map(b=>b.year+'-'+String(b.month).padStart(2,'0')).join(', ')).slice(0,200);updateSettlement();};
+   get('manualBills').querySelectorAll('input').forEach(i=>{i.checked=true;i.onchange=fill;});
+   applyBySales();fill();
    if(docType==='receipt')status('manualReceiptStatus',bills.length?'':'No outstanding months available. Choose combined tax invoice + receipt for a standalone payment without an existing tax invoice.');
   }catch(e){status('manualReceiptStatus',e.message);}
+ }
+ function applyBySales(){
+  const store=customers.find(c=>c.id===get('manualCustomer').value)?.store_id;if(!store)return;
+  if(bySales&&vatDay()&&docType!=='invoice_receipt')setDocType('invoice_receipt');
+  const list=get('manualBills').querySelector('.fw-months'),head=get('manualBills').querySelector('h3'),note=get('manualBills').querySelector('.fw-note');
+  if(list)list.hidden=bySales;if(head)head.hidden=bySales;
+  if(note)note.textContent=bySales?(bills.length?'Open months ('+bills.map(b=>new Date(b.year,b.month-1,1).toLocaleDateString('en-GB',{month:'short'})).join(', ')+') are marked settled by this payment.':''):'Every open month is ticked. Untick any this payment does not cover.';
+  if(note)note.hidden=false;
+  if(bySales)get('manualAmount').previousSibling.textContent='What they sold · BEFORE VAT · ₪';
+  updateSettlement();
  }
  // The three documents: a tax invoice records a sale (no payment); a receipt records a payment
  // (a store's months, or one of this customer's tax invoices); both together for a sale paid now.
@@ -215,7 +232,7 @@
   get('manualVatSummary').textContent=totals.netBasis&&Number.isFinite(totals.entered)?`Before VAT ${money(totals.entered)} + VAT 18% ${money(totals.vat)} = Total ${money(totals.gross)}`:'';
   const selected=selectedBills(),billed=selected.reduce((sum,b)=>sum+owed(b),0),actual=Math.round(Number(get('manualAmount').value)*100);
   const inv=docType==='receipt'&&openInvoices.find(i=>i.id===get('manualLinkedInvoice')?.value);
-  const differs=(selected.length>0&&Number.isFinite(actual)&&actual>0&&actual!==billed)||(!!inv&&actual>0&&actual!==Number(inv.amount_minor));
+  const differs=!bySales&&(selected.length>0&&Number.isFinite(actual)&&actual>0&&actual!==billed)||(!!inv&&actual>0&&actual!==Number(inv.amount_minor));
   get('manualAdjustmentGroup').hidden=!differs;
   get('manualAdjustment').required=differs;
   get('manualSettlement').hidden=!selected.length;
@@ -239,7 +256,7 @@
    const r=await call('business-receipts',{action:'preview',...input});if(r.already_claimed)throw Error('This request already has a receipt or needs review. Check the receipt history.');
    preview=input;get('manualReceiptForm').hidden=true;const p=r.preview;
    const name=DOC_NAMES[p.document_type],invoice=p.document_type==='tax_invoice';
-   get('manualReceiptReview').innerHTML=`<h3>Review · ${name}</h3>${receiptReviewDetails(p)}${invoice?'':`<label class="fw-check"><input type="checkbox" id="receiptReceived"> I confirm this ${p.payment_method==='check'?'check':'payment'} has already been received${p.bills.length?' and fully settles the selected months':''}.</label>`}<label class="fw-check"><input type="checkbox" id="receiptNoPrior"> No ${invoice?'tax invoice has':'official receipt has'} already been issued for this ${invoice?'sale':'payment'}.</label><div class="fw-actions"><button class="btn btn-outline" id="receiptEditPreview">Edit</button><button class="btn btn-green" id="receiptIssueOfficial">Issue ${name}</button></div>`;
+   get('manualReceiptReview').innerHTML=`<h3>Review · ${name}</h3>${receiptReviewDetails(p)}<div class="fw-actions"><button class="btn btn-outline" id="receiptEditPreview">Edit</button><button class="btn btn-green" id="receiptIssueOfficial">Issue ${name}</button></div>`;
    get('receiptEditPreview').onclick=()=>{get('manualReceiptReview').innerHTML='';get('manualReceiptForm').hidden=false;preview=null;};get('receiptIssueOfficial').onclick=issue;
    status('manualReceiptStatus','');
   }catch(e){status('manualReceiptStatus',e.message);}finally{get('manualPreview').disabled=false;}
@@ -247,7 +264,6 @@
  const DOC_NAMES={tax_invoice:'חשבונית מס',receipt:'קבלה',invoice_receipt:'חשבונית מס/קבלה'};
  async function issue(){
   const invoice=preview?.document_type==='tax_invoice';
-  if((!invoice&&!get('receiptReceived')?.checked)||!get('receiptNoPrior').checked){status('manualReceiptStatus',invoice?'Confirm no tax invoice was already issued for this sale.':'Confirm payment received and no existing receipt first.');return;}
   get('receiptIssueOfficial').disabled=true;get('receiptEditPreview').disabled=true;status('manualReceiptStatus','Issuing '+DOC_NAMES[preview.document_type]+'… Do not submit another request.');
   try{
    const r=await call('business-receipts',{action:'issue',...preview,payment_received:!invoice,not_already_receipted:true});
