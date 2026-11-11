@@ -34,10 +34,28 @@
       name: o.customer_name || 'Customer', phone: o.customer_phone || '',
       // No delivery time on the sticker; the date is an estimate.
       when: [pickup ? 'Pickup' : TYPES[type] || 'Delivery', date ? (pickup ? day(date) : 'Estimated delivery: ' + day(date)) : ''].filter(Boolean).join(' · '),
-      where: pickup ? '' : address, details, items, note: o.notes || '',
+      ...streetAndCity(pickup ? '' : address, di), details, items, pickup,
+      contents: summary(items),
     };
   }
 
+  // "BET SHEMESH, רבי ברכיה 8, Apt 1, Floor -4" → street "רבי ברכיה 8", city "BET SHEMESH". Apartment and floor
+  // are on the details line, and a line in one language reads correctly (mixed lines get scrambled).
+  function streetAndCity(address, di) {
+    const parts = String(address || '').split(',').map((p) => p.trim()).filter((p) => p && !/^(apt|apartment|floor|entrance|דירה|קומה|כניסה)\b/i.test(p));
+    const cities = [di.city_en, di.city_he].filter(Boolean).map((c) => String(c).trim().toLowerCase());
+    let i = parts.findIndex((p) => cities.includes(p.toLowerCase()));
+    if (i < 0 && parts.length > 1) i = parts.length - 1;
+    const city = i >= 0 ? parts[i] : '';
+    return { street: parts.filter((_, j) => j !== i).join(', '), city };
+  }
+  // What's in the package, in one short line: same items added up, at most four, then "+N more".
+  function summary(items) {
+    const byName = new Map();
+    for (const i of items) byName.set(i.name, (byName.get(i.name) || 0) + i.qty);
+    const list = [...byName].map(([name, qty]) => `${qty}× ${name}`);
+    return list.length > 4 ? list.slice(0, 4).join(' · ') + ` · +${list.length - 4} more` : list.join(' · ');
+  }
   // Wrap text into lines that fit the width.
   function wrap(ctx, text, width) {
     const words = String(text).split(/\s+/).filter(Boolean), lines = [];
@@ -62,14 +80,16 @@
         for (const line of wrap(ctx, text, iw)) { ops.push({ line, size, weight, y: cy }); cy += size * 1.18; }
         cy += size * gap;
       };
-      block([d.number, d.name].filter(Boolean).join('  '), Math.round(base * 1.55), '800', 0.2);
-      block(d.phone, base, '600');
-      block(d.when, base, '700');
-      block(d.where, base, '400', 0.1);
-      block(d.details, Math.round(base * 0.85), '400');
-      ops.push({ rule: true, y: cy }); cy += base * 0.6;
-      for (const it of d.items) { block(`${it.qty} × ${it.name}`, base, '600', 0.05); block(it.extra, Math.round(base * 0.8), '400', 0.2); }
-      if (d.note) { cy += base * 0.3; block('Note: ' + d.note, Math.round(base * 0.85), '400'); }
+      // Made for the driver: who, phone, where in big bold text; what's inside and when stay small.
+      block(d.number || 'Order', Math.round(base * 1.1), '800', 0.15);
+      block(d.name, Math.round(base * 1.9), '800', 0.1);
+      block(d.phone, Math.round(base * 1.9), '800', 0.3);
+      block(d.pickup ? 'PICKUP' : (d.street || d.city ? d.street : 'No address'), Math.round(base * 1.6), '700', 0.05);
+      if (!d.pickup) block(d.city, Math.round(base * 1.6), '700', 0.1);
+      block(d.details, base, '400', 0.2);
+      ops.push({ rule: true, y: cy }); cy += base * 0.5;
+      block(d.contents, Math.round(base * 0.85), '400', 0.1);
+      block(d.when, Math.round(base * 0.85), '400', 0);
       if (cy <= y + h - pad || scale <= 0.3) {
         ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
         for (const op of ops) {
