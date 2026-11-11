@@ -200,3 +200,14 @@ test('imported receipts without a website order number never match an unpaid ord
  assert.equal(rows.length,3,'every imported receipt counts');
  assert.deepEqual(rows.map(r=>r.date),['2026-01-08','2026-02-08','2026-03-08'],'dated by the receipt, not an unrelated order');
 });
+test('a store payment beyond everything billed so far paid for older deliveries and counts when received',()=>{
+ const d=base(),day=s=>String(s).slice(0,10);
+ const bills=[{id:'b6',store_id:'s',year:2026,month:6,total:1000,billed_at:'2026-06-30',paid_at:'2026-09-16'}];
+ // Sep: pays June (₪1,000) plus ₪3,000 for May deliveries. Oct: pays exactly a later statement → nothing extra.
+ d.imported=[{document_reference:'p1',customer_name:'Good Store',amount_minor:400000,document_date:'2026-09-16'},{document_reference:'p2',customer_name:'Good Store',amount_minor:50000,document_date:'2026-10-20'}];
+ bills.push({id:'b9',store_id:'s',year:2026,month:9,total:500,billed_at:'2026-09-30',paid_at:'2026-10-20'});
+ const rows=m.operationalMonths(d,2026,bills,day,'2026-11-11');
+ assert.equal(rows.find(r=>r.month==='2026-06').stores,100000);
+ assert.equal(rows.find(r=>r.month==='2026-09').stores,50000+300000,'September statement plus the earlier-delivery part of the payment');
+ assert.equal(rows.find(r=>r.month==='2026-10').stores,0,'a payment for a billed month never counts twice');
+});

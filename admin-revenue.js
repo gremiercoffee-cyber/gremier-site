@@ -57,7 +57,7 @@
    else if(groupName(r.name)){parts.coffee_bar=r.amount_minor;basis='Organization / group';}
    else if(r.amount_minor>30000){parts.coffee_bar=r.amount_minor;basis='Over ₪300 rule';estimated=true;}
    else {parts.coffee=r.amount_minor;basis='Up to ₪300 rule · review';}
-   rows.push({...r,parts,basis,estimated});
+   rows.push({...r,parts,basis,estimated,storeId:r.store_id||aliases.get(normalize(r.name))||null});
   }
   data.imported.filter(r=>r.source_kind!=='legacy_website_summary').forEach(r=>{
    const id=ref(r.document_reference),w=webByRef.get(id),b=manualByRef.get(id),order=w?byId.get(String(w.order_id)):r.website_order_number!=null?byNumber.get(String(r.website_order_number)):undefined;
@@ -142,17 +142,34 @@
  // Shared operational sales basis for Dashboard and Stats: store statements/deliveries,
  // and non-store receipts plus paid orders, matched once across all dates.
  // Store sales belong to the month they were DELIVERED (that month's statements). A store paying later
- // never adds to the month it pays in, or the same delivery would count twice. Only months before the
- // first statement existed fall back to store payments, since that's the only record there.
+ // never adds to the month it pays in, or the same delivery would count twice. Months before the first
+ // statement count store payments, since that's the only record there. From then on, a store payment
+ // larger than everything that store had been billed for up to then (statements for earlier months,
+ // already set against its earlier payments) paid for deliveries from before statements existed, so
+ // that extra counts in the month it was received. Customers with no statements count in full.
  // A month with no statement yet (the current month, before billing) counts its deliveries instead,
  // when the caller has them (deliveryByMonth: {'2026-11': agorot}).
+ function earlierDeliveryPayments(data,bills,businessDate,firstStatement,through){
+  if(!firstStatement)return {};
+  const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
+  const pays=income(data,firstStatement+'-01',through,businessDate).rows.filter(r=>r.parts.stores>0&&!r.summary).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const used={},out={};
+  for(const p of pays){
+   const sid=p.storeId,billed=sid?live.filter(b=>b.store_id===sid&&monthOf(b)<String(p.date).slice(0,7)).reduce((n,b)=>n+(Number(b.invoiced_gross_minor)||minor(b.total||0)),0):0;
+   const room=Math.max(0,billed-(used[sid]||0)),covered=Math.min(room,p.parts.stores),extra=p.parts.stores-covered;
+   if(sid)used[sid]=(used[sid]||0)+covered;
+   if(extra>0){const k=String(p.date).slice(0,7);out[k]=(out[k]||0)+extra;}
+  }
+  return out;
+ }
  function operationalMonths(data,y,bills,businessDate,through='9999-12-31',deliveryByMonth=null){
   const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
   const revenue=keys.map(m=>channels(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate)));
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
   const firstStatement=live.reduce((m,b)=>!m||monthOf(b)<m?monthOf(b):m,'');
   const statements=keys.map(m=>live.filter(b=>monthOf(b)===m));
-  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?(statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0):Number(deliveryByMonth?.[month])||0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
+  const earlier=earlierDeliveryPayments(data,bills,businessDate,firstStatement,through);
+  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?(statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0):Number(deliveryByMonth?.[month])||0)+(earlier[month]||0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
  }
  function operationalSales(data,r,businessDate,partialStore=null,deliveryByMonth=null){
   if(Number(r.start.slice(0,4))<2026){
