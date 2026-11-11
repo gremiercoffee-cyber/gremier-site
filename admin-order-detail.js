@@ -282,6 +282,7 @@
         ${paid && status !== 'fulfilled' && !mainOf(o) ? `<button type="button" class="od-btn primary" onclick="markOrderFulfilled('${o.id}')">Mark fulfilled + email customer</button>` : ''}
         <div class="od-actions">
           <button type="button" class="od-btn" onclick="GremierLabel.open('${o.id}')">🖨 Print label</button>
+          ${o.customer_phone ? `<a class="od-btn" href="tel:${escAttr(String(o.customer_phone).replace(/[^\d+]/g, ''))}">📞 Call</a><a class="od-btn" href="sms:${escAttr(String(o.customer_phone).replace(/[^\d+]/g, ''))}">📱 Text</a>` : ''}
           ${wa ? `<a class="od-btn" href="${escAttr(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
           ${o.customer_phone || o.customer_email ? `<button type="button" class="od-btn" onclick="adminMessageOrder('${o.id}')">Message</button>` : ''}
           ${o.customer_email ? `<button type="button" class="od-btn" onclick="sendCustomerReceipt('${o.id}')">Send receipt</button>` : ''}
