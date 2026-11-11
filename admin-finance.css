@@ -268,3 +268,12 @@ body.rc-drawer-open{overflow:hidden}
 .rc-doc-compact button b{font-size:.8rem;line-height:1.2;text-align:center;overflow-wrap:anywhere}
 .rc-doc-compact button small{position:static!important;font-size:.7rem}
 .rc-link+.rc-link{margin-inline-start:18px}
+/* Store drawer, compact: three short document buttons and one row of payment shortcuts. */
+.sdw-modes-compact{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sdw-modes-compact button{flex-direction:column;align-items:center;text-align:center;gap:2px;padding:10px 6px;border-radius:12px}
+.sdw-modes-compact button b{margin:0;font-size:.82rem}
+.sdw-modes-compact button small{font-size:.7rem;color:#6a7078}
+.sdw-modes-compact button.on{border-color:#34755a;background:#eef6f1;box-shadow:0 0 0 1px #34755a inset}
+.sdw-pay-row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.sdw-pay-row .btn{flex:1 1 160px;font-size:.8rem}
+.sdw-modes-compact button.on::before,.sdw-modes-compact button.on::after{display:none}
