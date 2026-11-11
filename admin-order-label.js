@@ -23,7 +23,6 @@
     const di = info(o), open = root.GremierOrder?.info?.(o.id);
     const type = String(di.delivery_type || '').toLowerCase(), pickup = type === 'pickup';
     const date = open?.date || String(di.delivery_date || '').slice(0, 10);
-    const time = open?.time || String(di.event_time || '').slice(0, 5);
     const address = open ? open.address : (o.delivery_address || '');
     const details = root.GremierRoute?.detailsLine?.(open ? open.details : di.address_details) || '';
     const extras = (i) => (typeof describeItemExtras === 'function' ? describeItemExtras(i) : '');
@@ -33,7 +32,8 @@
     return {
       number: o.order_number != null ? '#' + o.order_number : '',
       name: o.customer_name || 'Customer', phone: o.customer_phone || '',
-      when: [pickup ? 'Pickup' : TYPES[type] || 'Delivery', day(date), time].filter(Boolean).join(' · '),
+      // No delivery time on the sticker; the date is an estimate.
+      when: [pickup ? 'Pickup' : TYPES[type] || 'Delivery', date ? (pickup ? day(date) : 'Estimated delivery: ' + day(date)) : ''].filter(Boolean).join(' · '),
       where: pickup ? '' : address, details, items, note: o.notes || '',
     };
   }
