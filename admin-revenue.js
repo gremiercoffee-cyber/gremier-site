@@ -41,7 +41,7 @@
   const appReceiptByOrder=new Map(data.orderReceipts.filter(r=>['issued','external'].includes(r.status)&&!r.is_test).map(r=>[String(r.order_id),r]));
   const aliases=new Map();data.stores.forEach(s=>aliases.set(normalize(s.name),s.id));data.customers.filter(c=>c.store_id).forEach(c=>aliases.set(normalize(c.name),c.store_id));
   // These transliterations appear in the imported ledger; retain the store exclusion.
-  const translated={'goodstore':['גוד סטור'],'birkatsanhedriya':['ברכת סנהדרייה','חסן מאיר ברכת סנהדרייה'],'minimachaneyehudarbs':['מיני מחניודה']};
+  const translated={'goodstore':['גוד סטור'],'birkatsanhedriya':['ברכת סנהדרייה','חסן מאיר ברכת סנהדרייה'],'minimachaneyehudarbs':['מיני מחניודה'],'frenchhill':['מינימרקט הגבעה'],'shevachfruitstore':['אא פרי וירק'],'arzeimarket':['זקן רועי שווק ומסחר בע'],'nemirovs':['חלק']};
   data.stores.forEach(s=>(translated[normalize(s.name)]||[]).forEach(name=>aliases.set(normalize(name),s.id)));
   const overrides=new Map(data.overrides.map(o=>[o.source_key,o.category])),seen=new Set(),seenOrders=new Set(),rows=[];
   function add(r){
