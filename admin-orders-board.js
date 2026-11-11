@@ -102,7 +102,8 @@
         return {
           key: 'o:' + o.id, kind: 'order', type, date, time: (job && job.time) || di.event_time || '', name: o.customer_name || 'Customer',
           address, city: [di.city_en, di.city_he], labels: all.map(labelOf).concat(waiting.map(labelOf)),
-          items: mergeItems(all.flatMap((x) => x.items || [])),
+          // o.items already holds the paid combined orders' items (see `paid` above); adding `all` again counted them twice.
+          items: mergeItems(o.items || []),
           unpaidParts: waiting.length ? `${waiting.map(labelOf).join(', ')} (${waiting.reduce((s, x) => s + Number(x.total || 0), 0).toFixed(0)}₪) joins this delivery once it's paid.` : '',
           actions: [
             { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(o.id) },
