@@ -281,6 +281,7 @@
       <div class="od-actions stack">
         ${paid && status !== 'fulfilled' && !mainOf(o) ? `<button type="button" class="od-btn primary" onclick="markOrderFulfilled('${o.id}')">Mark fulfilled + email customer</button>` : ''}
         <div class="od-actions">
+          <button type="button" class="od-btn" onclick="GremierLabel.open('${o.id}')">🖨 Print label</button>
           ${wa ? `<a class="od-btn" href="${escAttr(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
           ${o.customer_phone || o.customer_email ? `<button type="button" class="od-btn" onclick="adminMessageOrder('${o.id}')">Message</button>` : ''}
           ${o.customer_email ? `<button type="button" class="od-btn" onclick="sendCustomerReceipt('${o.id}')">Send receipt</button>` : ''}
@@ -409,5 +410,7 @@
     edit() { cur.editing = true; render(); document.querySelector('#orderModal .od-sec')?.scrollIntoView({ block: 'nearest' }); },
     cancel() { cur.editing = false; render(); },
     save, combine, separate,
+    // For the sticker label: where/when for the open order (with its scheduled delivery) and orders combined into it.
+    info(id) { const o = orderOf(); return o && String(o.id) === String(id) ? { ...whenAndWhere(o), parts: cur.parts || [] } : null; },
   };
 })(window);
