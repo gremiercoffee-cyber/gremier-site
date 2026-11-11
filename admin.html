@@ -561,6 +561,19 @@ window.loadHtml2Canvas = function () {
     .ld-day { position:relative; flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:4px; padding:11px 8px; border-radius:12px; border:1px solid var(--border); background:#fff; font:inherit; font-size:.86rem; font-weight:700; color:var(--cream2); cursor:pointer; white-space:nowrap; overflow:hidden; }
     .ld-day.on { background:#1a1a1a; border-color:#1a1a1a; color:#fff; }
     .ld-datebtn input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0; }
+    .ld-sec-h { font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); margin:4px 2px -2px; }
+    .ld-sec-h small { font-weight:500; letter-spacing:0; text-transform:none; }
+    .ld-sec-h, .ld-cases, .ld-qty { flex-shrink:0; }
+    .ld-cases { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .ld-case { position:relative; }
+    .ld-case:first-child { grid-column:1 / -1; }
+    .ld-case-add { width:100%; min-height:58px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:1px; text-align:left; padding:9px 44px 9px 12px; background:#fff; border:1px solid var(--border); border-radius:14px; font:inherit; color:var(--cream); cursor:pointer; }
+    .ld-case-add b { font-size:.9rem; }
+    .ld-case-add small { font-size:.7rem; color:var(--text2); }
+    .ld-case.on .ld-case-add { background:rgba(224,160,48,.12); border-color:#e0a030; }
+    .ld-case-plus, .ld-case-n { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-weight:700; font-size:1.05rem; }
+    .ld-case.on .ld-case-n { right:44px; }
+    .ld-case-minus { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:32px; height:32px; border-radius:10px; border:1px solid var(--border); background:#fff; font-size:1.1rem; cursor:pointer; color:var(--cream); }
     .ld-qty { display:flex; flex-direction:column; background:#fff; border:1px solid var(--border); border-radius:16px; overflow:hidden; }
     .ld-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px 10px 14px; }
     .ld-row + .ld-row { border-top:1px solid var(--border); }
@@ -2042,6 +2055,9 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
         <label class="ld-day ld-datebtn"><span aria-hidden="true">📅</span> <span id="ldDateLabel">Other date</span>
           <input type="date" id="ldDate" onchange="updateDeliveryPreview()" onclick="try{this.showPicker()}catch(_){}" aria-label="Pick a date"/></label>
       </div>
+      <div class="ld-sec-h">Cases <small>· each tap adds 12 large bottles</small></div>
+      <div id="ldCases" class="ld-cases"></div>
+      <div class="ld-sec-h">Bottles</div>
       <div class="ld-qty">
         <div class="ld-row"><div class="ld-row-name"><b>Large bottles</b><small id="ldPriceLarge"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldLarge',-1)" aria-label="One less large">−</button><input type="number" inputmode="numeric" min="0" id="ldLarge" value="0" oninput="updateDeliveryPreview()" aria-label="Large bottles"/><button type="button" onclick="ldStep('ldLarge',1)" aria-label="One more large">+</button></div></div>
         <div class="ld-row"><div class="ld-row-name"><b>Small bottles</b><small id="ldPriceSmall"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldSmall',-1)" aria-label="One less small">−</button><input type="number" inputmode="numeric" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()" aria-label="Small bottles"/><button type="button" onclick="ldStep('ldSmall',1)" aria-label="One more small">+</button></div></div>
@@ -2051,7 +2067,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <details class="ld-more"><summary>Other products (jerry cans, dispensers…)</summary><div id="ldExtraRows"></div></details>
       <input class="form-input ld-notes" id="ldNotes" placeholder="Notes (optional)"/>
-      <p class="ld-hint">Save the bottle totals here. You can choose flavors after saving.</p>
+      <p class="ld-hint">Cases fill in large bottles and their flavors. Extra large bottles typed by hand count as Classic. Minis: enter the total, then pick flavors after saving if you know them.</p>
     </div>
     <footer class="ld-foot">
       <div id="deliveryPreview" class="ld-total"><small>Total</small><b id="deliveryPreviewTotal">₪0</b><span id="deliveryPreviewBreakdown"></span></div>
@@ -2292,6 +2308,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <div class="toast" id="toast"></div>
 <script src="/admin-dashboard.js?v=20261111-7"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
+<script src="/admin-delivery-cases.js?v=20261111-1"></script>
 <script>
   function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -7258,6 +7275,7 @@ function ldAllocationStatus() {
   document.getElementById('ldAllocationStatus').textContent = GremierDelivery.fields.map(k => `${names[k]}: ${actual[k]}/${expected[k]}`).join(' · ');
 }
 function ldShowAllocationPicker() {
+  ldPickerCases = false;
   document.getElementById('ldAllocationChoice').hidden = true;
   document.getElementById('ldAllocationChoice').style.display = 'none';
   document.getElementById('ldAllocationPicker').hidden = false;
@@ -7339,14 +7357,22 @@ function ldSetQty(pid, val) {
   ldQuantities[pid] = Math.max(0, parseInt(val)||0);
   ldAllocationStatus();
 }
+let ldPickerCases = false;
+function ldStartPickerCases() {
+  if (ldPickerCases) return;
+  ldPickerCases = true;
+  Object.keys(ldQuantities).forEach(pid => { if (GremierDelivery.bucket(pid, LD_PRODUCTS) === 'large') ldQuantities[pid] = 0; });
+}
 function ldFillDefaultCase() {
-  ldQuantities = { ...LD_DEFAULT_CASE };
+  ldStartPickerCases();
+  Object.entries(LD_DEFAULT_CASE).forEach(([pid, n]) => { ldQuantities[pid] = (ldQuantities[pid] || 0) + n; });
   ldSyncQtyInputs();
   ldAllocationStatus();
 }
 function ldFillFlavorCase(pid) {
   const c = LD_FLAVOR_CASES[pid];
   if (!c) return;
+  ldStartPickerCases();
   ldQuantities[pid] = (ldQuantities[pid]||0) + c.qty;
   ldSyncQtyInputs();
   ldAllocationStatus();
@@ -7387,6 +7413,7 @@ async function openLogDeliveryModal() {
   populateStoreSelects();
   document.getElementById('ldStore').value = '';
   ldRenderProductRows();
+  window.GremierDeliveryCases?.reset();
   updateDeliveryPreview();
   document.getElementById('logDeliveryModal').classList.add('open');
 }
@@ -7419,6 +7446,7 @@ async function openEditDeliveryModal(deliveryId) {
   // without this the Products section stays blank/stale when editing an existing delivery
   ldQuantities = (d.quantities && typeof d.quantities === 'object') ? { ...d.quantities } : {};
   ldRenderProductRows();
+  window.GremierDeliveryCases?.reset();
   updateDeliveryPreview();
   document.getElementById('logDeliveryModal').classList.add('open');
 }
@@ -7442,9 +7470,13 @@ async function saveDelivery() {
     const quantities = keepPrevious
       ? {...Object.fromEntries(Object.entries(ldEditingRow.quantities||{}).filter(([id])=>id.startsWith('_agg_') || GremierDelivery.bucket(id,LD_PRODUCTS))),...extras}
       : GremierDelivery.defaults(counts,LD_PRODUCTS,extras);
+    const fromCases = keepPrevious ? null : window.GremierDeliveryCases?.apply(quantities,counts,LD_PRODUCTS);
+    if (fromCases?.used) Object.keys(quantities).forEach(k=>delete quantities[k]), Object.assign(quantities,fromCases.quantities);
+    // Every bottle's flavor is known (all large bottles from cases, nothing else that needs flavors): no follow-up question.
+    const flavorsKnown = !!fromCases?.exact && !counts.small && !counts.dairyFree;
     const d = {id:ldDraftId || (ldDraftId=crypto.randomUUID()),store_id:storeId,
       qty_large:counts.large,qty_small:counts.small,qty_dairy_free:counts.dairyFree,qty_unfiltered:counts.unfiltered,qty_syrup:counts.syrup,
-      quantities,allocation_mode:keepPrevious?(ldEditingRow.allocation_mode||'custom'):'default',
+      quantities,allocation_mode:keepPrevious?(ldEditingRow.allocation_mode||'custom'):flavorsKnown?'custom':'default',
       notification_quantities:{...Object.fromEntries(GremierDelivery.fields.map(k=>['_agg_'+({dairyFree:'dairy_free'}[k]||k),counts[k]])),...extras},
       delivery_date:date,notes:document.getElementById('ldNotes').value.trim()};
     const {data,error} = await sb.rpc('save_counted_store_delivery',{d,expected_updated_at:ldEditingRow?.updated_at || null});
@@ -7454,7 +7486,7 @@ async function saveDelivery() {
     window.notifyGremierStockChanged?.();
     window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
     showToast('Delivery saved ✓');
-    ldOfferAllocation(data);
+    if (!flavorsKnown) ldOfferAllocation(data);
     await loadStoreDeliveries();
   } catch (err) { console.error('saveDelivery failed:',err); showToast('Could not save delivery: '+(err.message||err)); }
   finally {btn.disabled=false;btn.textContent='Save Delivery';}
@@ -9906,7 +9938,7 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-orders-calendar.js?v=20261111-2"></script>
 <script src="/admin-orders-board.js?v=20261111-2"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
-<script src="/admin-react-1.js?v=af629a4288"></script>
+<script src="/admin-react-1.js?v=b5c1d6764a"></script>
 <script src="/admin-stock-numbers.js?v=20261026-1"></script>
 <script src="/admin-react-2.js?v=c449863011"></script>
 

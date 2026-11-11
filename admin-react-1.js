@@ -3105,8 +3105,14 @@ function ScheduleForm({
       flex: '0 1 auto',
       border: '1px solid #cccccc'
     },
-    onClick: () => setQuantities({
-      ...DEFAULT_CASE
+    onClick: () => setQuantities(q => {
+      const n = {
+        ...q
+      };
+      Object.entries(DEFAULT_CASE).forEach(([pid, v]) => {
+        n[pid] = (n[pid] || 0) + v;
+      });
+      return n;
     })
   }, "\u26A1 Default Case"), Object.entries(FLAVOR_CASES).map(([pid, c]) => /*#__PURE__*/React.createElement("button", {
     key: pid,

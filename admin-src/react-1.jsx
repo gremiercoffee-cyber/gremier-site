@@ -1403,7 +1403,7 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
               <>
                 {subType==='store'&&(
                   <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
-                    <button style={{...TS.btn('#eeeeee','#121212'),flex:'0 1 auto',border:'1px solid #cccccc'}} onClick={()=>setQuantities({...DEFAULT_CASE})}>⚡ Default Case</button>
+                    <button style={{...TS.btn('#eeeeee','#121212'),flex:'0 1 auto',border:'1px solid #cccccc'}} onClick={()=>setQuantities(q=>{const n={...q};Object.entries(DEFAULT_CASE).forEach(([pid,v])=>{n[pid]=(n[pid]||0)+v;});return n;})}>⚡ Default Case</button>
                     {Object.entries(FLAVOR_CASES).map(([pid,c])=>(
                       <button key={pid} style={{...TS.btn('#eeeeee','#121212'),flex:'0 1 auto',border:'1px solid #cccccc'}} onClick={()=>fillFlavorCase(pid)}>⚡ {c.label}</button>
                     ))}
