@@ -26,7 +26,9 @@
     const address = open ? open.address : (o.delivery_address || '');
     const details = root.GremierRoute?.detailsLine?.(open ? open.details : di.address_details) || '';
     const extras = (i) => (typeof describeItemExtras === 'function' ? describeItemExtras(i) : '');
-    const items = [o, ...(open?.parts || [])].flatMap((x) => (x.items || []))
+    // Combined orders join the delivery once paid (same rule as the Orders calendar); unpaid ones aren't packed.
+    const paidPart = (x) => String(x.payment_status || '').toLowerCase() === 'paid';
+    const items = [o, ...(open?.parts || []).filter(paidPart)].flatMap((x) => (x.items || []))
       .filter((i) => i.category !== 'delivery_fee')
       .map((i) => ({ qty: Number(i.qty ?? i.quantity ?? 1) || 1, name: i.name_en || i.name_he || i.name || 'Item', extra: extras(i) }));
     return {
