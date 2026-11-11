@@ -254,3 +254,17 @@ body.rc-drawer-open{overflow:hidden}
 .ex-doc .ex-row-actions{grid-column:1/-1;display:flex;gap:6px;justify-content:flex-end}
 .ex-doc .ex-doc-state{font-size:.72rem;color:var(--text2)}
 @media(min-width:651px){.ex-doc{grid-template-columns:minmax(0,1fr) auto auto}.ex-doc .ex-row-actions{grid-column:auto}}
+/* Compact form: only the fields to fill; extras sit under "More options". */
+.rc-doc-compact{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.rc-doc-compact button{align-items:center;text-align:center;padding:9px 6px}
+.rc-doc-compact button b{font-size:.84rem}
+.rc-link{border:0;background:none;padding:4px 0;color:#34755a;font-weight:700;font-size:.8rem;cursor:pointer}
+.rc-check{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:650px){.rc-check{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rc-more{margin-top:10px}.rc-more>summary{font-size:.8rem}
+#tab-finance .rc-step{padding-top:10px;padding-bottom:10px}
+#tab-finance [hidden],#rcDrawer [hidden]{display:none!important}
+.rc-doc-compact button{display:flex!important;flex-direction:column!important;justify-content:center;gap:2px;min-height:0}
+.rc-doc-compact button b{font-size:.8rem;line-height:1.2;text-align:center;overflow-wrap:anywhere}
+.rc-doc-compact button small{position:static!important;font-size:.7rem}
+.rc-link+.rc-link{margin-inline-start:18px}
