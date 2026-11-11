@@ -263,6 +263,7 @@
     .product-footer { display:flex; align-items:center; justify-content:space-between; }
     .product-price { font-size:1.05rem; font-weight:500; color:#1a1a1a; font-weight:600; }
     .product-price .orig { font-size:.76rem; color:var(--text2); text-decoration:line-through; margin-right:5px; }
+    .product-price .card-cup { display:block; font-size:.7rem; font-weight:500; color:var(--text2); margin-top:1px; white-space:nowrap; }
     .add-btn { background:#1a1a1a; color:#ffffff; border:none; width:30px; height:30px; border-radius:50%; font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s,transform .15s; position:relative; z-index:2; flex-shrink:0; }
     .add-btn:hover { background:#333333; transform:scale(1.1); }
     /* COFFEE BARS */
@@ -2550,33 +2551,46 @@ function sanitizeProductDesc(text) {
     .trim();
 }
 // Liter bottles and 5L jugs: "Makes up to 8 iced coffees · ₪6.13 a cup*" (8 cups a liter) with the footnote.
-function pdServesHtml(p) {
-  if (!p || /syrup/i.test(p.name_en || '')) return '';
+function cupInfo(p) {
+  if (!p || /syrup/i.test(p.name_en || '')) return null;
   const d = p.description_en || '';
-  const he = lang === 'he';
-  let head, cups;
+  let cups, pack = false;
   if (p.category === 'bulk') {
     const liters = Number((d.match(/\b(\d+)\s*lit(re|er)s?\b/i) || [])[1]) || 0;
-    if (!liters) return '';
+    if (!liters) return null;
     cups = liters * 8;
-    head = he ? `עד ${cups} כוסות אייס קפה` : `Makes up to ${cups} iced coffees`;
   } else if (p.category === 'bottles') {
-    const pack = (p.variations || []).some(v => v.type === 'pack');
-    if (!pack && !/\b1\s*lit(re|er)\b/i.test(d)) return '';
+    pack = (p.variations || []).some(v => v.type === 'pack');
+    if (!pack && !/\b1\s*lit(re|er)\b/i.test(d)) return null;
     cups = pack ? 48 : 8;
-    head = pack
-      ? (he ? 'כל בקבוק: עד 8 כוסות אייס קפה' : 'Each bottle makes up to 8 iced coffees')
-      : (he ? 'עד 8 כוסות אייס קפה מהבקבוק' : 'Makes up to 8 iced coffees');
-  } else return '';
-  const sweet = /sweetened/i.test(p.name_en || '');
-  const note = sweet
-    ? (he ? '*כשמערבבים כמו שצריך עם חלב.' : '*When mixed properly with milk.')
-    : (he ? '*כשמערבבים כמו שצריך עם חלב וסוכר.' : '*When mixed properly with milk and sugar.');
+  } else return null;
   // Price per cup from the current price.
   const price = Number(p.price) || 0;
   const per = price > 0 ? '₪' + (Math.round(price * 100 / cups) / 100).toFixed(2) : '';
-  const perText = per ? (he ? ` · ${per} לכוס` : ` · ${per} a cup`) : '';
-  return `<b>${head}${perText}*</b><small>${note}</small>`;
+  const note = /sweetened/i.test(p.name_en || '')
+    ? (lang === 'he' ? '*כשמערבבים כמו שצריך עם חלב.' : '*When mixed properly with milk.')
+    : (lang === 'he' ? '*כשמערבבים כמו שצריך עם חלב וסוכר.' : '*When mixed properly with milk and sugar.');
+  return { cups, pack, per, note };
+}
+function pdServesHtml(p) {
+  const c = cupInfo(p);
+  if (!c) return '';
+  const he = lang === 'he';
+  const head = c.pack
+    ? (he ? 'כל בקבוק: עד 8 כוסות אייס קפה' : 'Each bottle makes up to 8 iced coffees')
+    : c.cups === 8
+      ? (he ? 'עד 8 כוסות אייס קפה מהבקבוק' : 'Makes up to 8 iced coffees')
+      : (he ? `עד ${c.cups} כוסות אייס קפה` : `Makes up to ${c.cups} iced coffees`);
+  const perText = c.per ? (he ? ` · ${c.per} לכוס` : ` · ${c.per} a cup`) : '';
+  return `<b>${head}${perText}*</b><small>${c.note}</small>`;
+}
+// Shop cards: "₪6.13 a cup*" under the price; the footnote is in the tooltip and on the product page.
+function cardCupHtml(p) {
+  const c = cupInfo(p);
+  if (!c || !c.per) return '';
+  const he = lang === 'he';
+  const tip = (he ? `עד ${c.cups} כוסות אייס קפה. ` : `Up to ${c.cups} iced coffees. `) + c.note;
+  return `<span class="card-cup" title="${escAttr(tip)}">${he ? `${c.per} לכוס*` : `${c.per} a cup*`}</span>`;
 }
 function getProductDescription(p, langOverride) {
   const L = langOverride || lang;
@@ -2624,7 +2638,7 @@ function productCardHTML(p) {
         <div class="product-desc">${desc}</div>
         ${GremierSubscriptionModel.eligible(p)?`<label class="card-subscribe" onclick="event.stopPropagation()"><input type="radio" name="subscribe-${escAttr(p.id)}" onclick="startProductSubscription('${escAttr(p.id)}')">${lang==='he'?(isSyrupProduct(p)?'מנוי':'מנוי וחיסכון 10%'):(isSyrupProduct(p)?'Subscribe':'Subscribe & save 10%')}</label>`:''}
         <div class="product-footer">
-          <div class="product-price">${productCardPriceHTML(p)}</div>
+          <div class="product-price">${productCardPriceHTML(p)}${cardCupHtml(p)}</div>
           <button class="add-btn" data-id="${p.id}">+</button>
         </div>
       </div>
