@@ -130,3 +130,22 @@
 #tab-dashboard{--dash-accent:#e8b04b;--dash-secondary:#7fb7e6}
 #tab-dashboard .dash-bar-other,#tab-dashboard .dash-other-dot{background:#b9a593}
 #tab-dashboard .dash-legend i{border-radius:50%}
+/* Consolidated dashboard: tabbed cards, two-column attention list on wide screens. */
+#tab-dashboard [hidden]{display:none!important}
+#tab-dashboard .dash-attn{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+#tab-dashboard .dash-tabcard{padding:20px 22px}
+#tab-dashboard .dash-tabcard>h2{margin:0 0 12px}
+#tab-dashboard .dash-tabbar{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin:0 0 16px;padding:4px;background:var(--bg3,#f1f2f4);border-radius:12px;width:fit-content;max-width:100%}
+#tab-dashboard .dash-tabbar button{border:0;background:transparent;font:inherit;font-size:.85rem;font-weight:600;color:var(--text2);padding:8px 14px;border-radius:9px;cursor:pointer;white-space:nowrap}
+#tab-dashboard .dash-tabbar button[aria-selected=true]{background:#fff;color:var(--cream);box-shadow:0 1px 6px #0000001a}
+#tab-dashboard .dash-tabcard [data-dpane]>.dash-panel{border:0;padding:0;margin:0;box-shadow:none;border-radius:0}
+#tab-dashboard .dash-tabcard [data-dpane]>.dash-panel>h2:first-child{display:none}
+#tab-dashboard .dash-tabcard .dash-legend{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 10px}
+#tab-dashboard .dash-tabcard .dash-list{margin-bottom:12px}
+#tab-dashboard .dash-more{border:1px solid var(--border);background:#fff;border-radius:999px;padding:8px 16px;font:inherit;font-size:.85rem;font-weight:600;color:var(--cream);cursor:pointer}
+@media(max-width:600px){#tab-dashboard .dash-tabcard{padding:16px}#tab-dashboard .dash-tabbar{width:100%}#tab-dashboard .dash-tabbar button{flex:1;padding:8px 8px;font-size:.8rem}}
+#tab-dashboard .dash-tabcard .dash-row{padding:9px 12px;border-radius:14px}
+#tab-dashboard .dash-tabcard .dash-av{width:34px;height:34px;border-radius:11px}
+#tab-dashboard .dash-tabcard .dash-row-main{flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:2px}
+#tab-dashboard .dash-tabcard .dash-row-main b{flex-basis:100%}
+#tab-dashboard .dash-tabcard .dash-pill{margin-top:0;align-self:center}

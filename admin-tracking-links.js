@@ -21,7 +21,7 @@
    if(r.error||r.data?.error)throw Error(r.data?.error||'unavailable');
    if(seq!==serial)return;
    const links=r.data.links||[];
-   box.innerHTML=`<section class="wj-card"><h3>WhatsApp links</h3><p class="wj-note">Each group and Status post has its own link, and Instagram has one link for the bio. Clicks count everyone who opened it. An order counts if it was placed on that visit, or within a week for people who accepted analytics.</p><div class="wj-tiles">${byChannel(links).map(tile).join('')}</div>${links.length?`<div class="table-wrap"><table><thead><tr><th>Post</th><th>Clicks</th><th>Started checkout</th><th>Paid</th><th>Sales</th></tr></thead><tbody>${links.map(row).join('')}</tbody></table></div>`:'<p class="wj-note">No clicks in this period yet.</p>'}</section>`;
+   box.innerHTML=`<section class="wj-card"><h3>WhatsApp links</h3><p class="wj-note">Each group and Status post has its own link, and Instagram has one link for the bio. Clicks count everyone who opened it. An order counts if it was placed on that visit, or within a week for people who accepted analytics.</p><div class="wj-tiles">${byChannel(links).map(tile).join('')}</div>${links.length?`<div class="table-wrap wj-scroll"><table><thead><tr><th>Post</th><th>Clicks</th><th>Started checkout</th><th>Paid</th><th>Sales</th></tr></thead><tbody>${links.map(row).join('')}</tbody></table></div>`:'<p class="wj-note">No clicks in this period yet.</p>'}</section>`;
   }catch(e){if(seq===serial)box.innerHTML=`<section class="wj-card"><h3>WhatsApp links</h3><p class="wj-note">Couldn’t load the link report.</p></section>`;}
  }};
 })(typeof window!=='undefined'?window:globalThis);

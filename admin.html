@@ -1180,7 +1180,7 @@ window.gremierUiCacheSave = function (key, ids) {
   } catch {}
 };
 </script>
-<link rel="stylesheet" href="/admin-dashboard.css?v=20261105-1">
+<link rel="stylesheet" href="/admin-dashboard.css?v=20261111-2">
 <link rel="stylesheet" href="/admin-surfaces.css?v=20261026-2"/>
 </head>
 <body>
@@ -1623,29 +1623,28 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 
   <p id="dashUpdated" role="status" aria-live="polite" class="dash-updated">Loading business data…</p>
   <section id="dashSalesTotal" class="dash-total" aria-label="Total sales"></section>
-  <div id="dashKPIs" class="dash-metrics"></div>
+  <div id="dashKPIs" class="dash-metrics" hidden></div>
   <section id="dashOpenOrders" aria-label="Orders to fulfill" hidden></section>
 
   <h2 class="ord-sec-h">Needs your attention</h2>
   <div id="dashAttention" class="dash-attn"></div>
 
-  <section class="dash-panel dash-trend-panel"><div class="dash-section-head"><div><h2>Sales · <span id="dashTrendTitle">This month</span></h2></div><div class="dash-legend"><span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span></div></div><div id="dashTrend"></div></section>
-  <div class="dash-overview-grid">
-  <section id="dashOnlineRevenue" class="dash-panel"><h2>Sales by purpose</h2><div class="fin-row"><span>Store sales</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Personal orders</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Events</span><span class="dash-skeleton">&nbsp;</span></div></section>
-    <section class="dash-panel dash-money-panel"><h2>Sales &amp; payments</h2><div id="dashMoney"></div></section>
-  </div>
+  <section class="dash-panel dash-tabcard" data-dtabs="sales" aria-label="Sales">
+    <h2>Sales · <span id="dashTrendTitle">This month</span></h2>
+    <div class="dash-tabbar" role="tablist"><button type="button" role="tab" data-dtab="trend">Over time</button><button type="button" role="tab" data-dtab="purpose">By purpose</button><button type="button" role="tab" data-dtab="bottles">Bottles sold</button></div>
+    <div data-dpane="trend"><div class="dash-legend"><span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span></div><div id="dashTrend"></div></div>
+    <div data-dpane="purpose" hidden><section id="dashOnlineRevenue" class="dash-panel"><h2>Sales by purpose</h2><div class="fin-row"><span>Store sales</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Personal orders</span><span class="dash-skeleton">&nbsp;</span></div><div class="fin-row"><span>Events</span><span class="dash-skeleton">&nbsp;</span></div></section></div>
+    <div data-dpane="bottles" hidden><section class="dash-panel" id="dashBottlesSold"></section></div>
+  </section>
 
-  <h2 class="ord-sec-h">Recent orders <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('orders')">See all</button></span></h2>
-  <div id="dashRecentOrders" class="dash-list"></div>
-
-  <h2 class="ord-sec-h">Stores · this period <span class="ord-sec-actions"><button type="button" class="ord-sec-btn" onclick="showTab('storedeliveries')">Open stores</button></span></h2>
-  <div id="dashStoreBreakdown" class="dash-list"></div>
-
-  <h2 class="ord-sec-h">Recent store deliveries</h2>
-  <div id="dashRecentDeliveries" class="dash-list"></div>
-
-  <h2 class="ord-sec-h">Bottles sold</h2>
-  <section class="dash-panel" id="dashBottlesSold"></section>
+  <section class="dash-panel dash-tabcard" data-dtabs="activity" aria-label="Recent activity">
+    <h2>Recent activity</h2>
+    <div class="dash-tabbar" role="tablist"><button type="button" role="tab" data-dtab="orders">Orders</button><button type="button" role="tab" data-dtab="stores">Stores this period</button><button type="button" role="tab" data-dtab="deliveries">Store deliveries</button></div>
+    <div data-dpane="orders"><div id="dashRecentOrders" class="dash-list"></div><button type="button" class="dash-more" onclick="showTab('orders')">See all orders</button></div>
+    <div data-dpane="stores" hidden><div id="dashStoreBreakdown" class="dash-list"></div><button type="button" class="dash-more" onclick="showTab('storedeliveries')">Open stores</button></div>
+    <div data-dpane="deliveries" hidden><div id="dashRecentDeliveries" class="dash-list"></div></div>
+  </section>
+  <div id="dashMoney" hidden></div>
   <div id="dashChart" hidden></div>
 
   <div class="dash-links">
@@ -2289,7 +2288,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   <div id="ops-globalpills-root"></div>
   <div id="ops-voicelogger-root"></div>
 <div class="toast" id="toast"></div>
-<script src="/admin-dashboard.js?v=20261111-1"></script>
+<script src="/admin-dashboard.js?v=20261111-2"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
 <script>
   function escHtml(s) {
@@ -10397,7 +10396,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-store-invoices.js?v=20261105-4"></script>
 <script src="/admin-billing-documents.js?v=20261021-2"></script>
 <script src="/admin-sales.js?v=20261021-2"></script>
-<script src="/admin-revenue.js?v=20261111-1"></script>
+<script src="/admin-revenue.js?v=20261111-2"></script>
 <script src="/admin-receipts.js?v=20261023-1"></script>
 <script src="/admin-sales-breakdown.js?v=20261031-1"></script>
 <link rel="stylesheet" href="/admin-visitors.css?v=20261025-1"/>
@@ -10405,11 +10404,11 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-messages.js?v=20261110-3"></script>
 <script src="/admin-reviews.js?v=20261023-1"></script>
 <script src="/admin-production.js?v=20261026-2"></script>
-<script src="/admin-stats-tabs.js?v=20261102-1"></script>
-<link rel="stylesheet" href="/admin-journeys.css?v=20261102-3"/>
+<script src="/admin-stats-tabs.js?v=20261111-2"></script>
+<link rel="stylesheet" href="/admin-journeys.css?v=20261111-2"/>
 <script src="/admin-journey-charts.js?v=20261102-2"></script>
-<script src="/admin-tracking-links.js?v=20261109-2"></script>
-<script src="/admin-journeys.js?v=20261109-1"></script>
+<script src="/admin-tracking-links.js?v=20261111-2"></script>
+<script src="/admin-journeys.js?v=20261111-2"></script>
 <link rel="stylesheet" href="/admin-referrals.css?v=20261102-2"/>
 <script src="/admin-referrals.js?v=20261102-2"></script>
 <link rel="stylesheet" href="/admin-production-workers.css?v=20261026-2"/>

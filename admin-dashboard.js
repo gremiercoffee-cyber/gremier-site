@@ -129,7 +129,7 @@
     set('dashChart',m.sales?.historical?row('Historical FinBot income',money(m.totalSales)):row('Online sales',money(m.online))+row('Stores',money(m.store))+row('Direct events & other',money(m.other)));
     const rawOrders=data.orders === null ? null : data.orders.filter(o=>eligible(o) && within(businessDate(o.created_at),m.range));
     const statusWord=o=>o.payment_status!=='paid'?'Not paid':['fulfilled','completed'].includes(o.status)?'Done':'To fulfil';
-    set('dashRecentOrders', rawOrders === null ? empty('Orders unavailable. Try Refresh.') : rawOrders.slice(0,6).map(o=>listRow(initials(o.customer_name),esc(o.customer_name||'Customer'),`#${esc(o.order_number)} · ${esc(shortDate(o.created_at))}`,esc(money(num(o.total))),'orders',`<span class="dash-pill dp-${o.payment_status!=='paid'?'unpaid':['fulfilled','completed'].includes(o.status)?'done':'open'}">${statusWord(o)}</span>`)).join('') || empty('No orders in this period.'));
+    set('dashRecentOrders', rawOrders === null ? empty('Orders unavailable. Try Refresh.') : rawOrders.filter(o=>o.payment_status==='paid').slice(0,6).map(o=>listRow(initials(o.customer_name),esc(o.customer_name||'Customer'),`#${esc(o.order_number)} · ${esc(shortDate(o.created_at))}`,esc(money(num(o.total))),'orders',`<span class="dash-pill dp-${o.payment_status!=='paid'?'unpaid':['fulfilled','completed'].includes(o.status)?'done':'open'}">${statusWord(o)}</span>`)).join('') || empty('No paid orders in this period.'));
     const qtyLine=d=>[['large','large'],['small','small'],['dairy_free','dairy free'],['unfiltered','unfiltered'],['syrup','syrup']].filter(([f])=>num(d['qty_'+f])).map(([f,w])=>num(d['qty_'+f])+' '+w).join(' · ')||'No bottles';
     const storeName=d=>d.store_name || data.stores?.find(s=>s.id===d.store_id)?.name || 'Store';
     set('dashRecentDeliveries',m.deliveries === null ? empty('Deliveries unavailable. Try Refresh.') : m.deliveries.slice(0,6).map(d=>listRow(initials(storeName(d)),esc(storeName(d)),`${esc(shortDate(d.delivery_date))} · ${esc(qtyLine(d))}`,esc(money(data.stores === null ? null : deliveryValue(d,data.stores))),'storedeliveries')).join('') || empty('No deliveries in this period.'));
@@ -209,7 +209,16 @@
   if(el('dashMonth')){el('dashMonth').value=businessDate(new Date()).slice(0,7);el('dashMonth').max=businessDate(new Date()).slice(0,7);}
   if(el('dashYear')?.tagName==='SELECT'&&!el('dashYear').options.length){const y=Number(businessDate(new Date()).slice(0,4));for(let n=y;n>=2023;n--)el('dashYear').add(new Option(String(n),String(n)));}
   if(el('dashYear')){el('dashYear').value=businessDate(new Date()).slice(0,4);el('dashYear').max=businessDate(new Date()).slice(0,4);}
+  // Tabbed cards (Sales, Recent activity): one pane at a time, the choice remembered.
+  function pickTab(card,key){
+    const keys=[...card.querySelectorAll(':scope>[data-dpane]')].map(p=>p.dataset.dpane);if(!keys.includes(key))key=keys[0];
+    card.querySelectorAll(':scope>.dash-tabbar>[data-dtab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.dtab===key)));
+    card.querySelectorAll(':scope>[data-dpane]').forEach(p=>p.hidden=p.dataset.dpane!==key);
+  }
+  (el('tab-dashboard')?.querySelectorAll?.('[data-dtabs]')||[]).forEach(card=>{let saved=null;try{saved=root.localStorage.getItem('gremier_dash_tab_'+card.dataset.dtabs);}catch{}pickTab(card,saved);});
   el('tab-dashboard')?.addEventListener('click',event=> {
+    const tab=event.target.closest('[data-dtab]');
+    if(tab){const card=tab.closest('[data-dtabs]');pickTab(card,tab.dataset.dtab);try{root.localStorage.setItem('gremier_dash_tab_'+card.dataset.dtabs,tab.dataset.dtab);}catch{}return;}
     const button=event.target.closest('[data-dash-target]');
     if (!button) return;
     const target=button.dataset.dashTarget;

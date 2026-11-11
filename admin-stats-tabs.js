@@ -101,7 +101,8 @@
  // ── layout: tab bar + one pane per tab; existing sections are moved into their pane ──
  const placeOf=node=>{
   const has=id=>node.id===id||!!node.querySelector?.('#'+id);
-  if(has('statsYearOverview'))return 'overview';
+  // Year overview (income, expenses, profit) sits with the rest of the accounting, next to its view switch.
+  if(has('statsYearOverview'))return 'accounting';
   if(has('salesByType')||has('salesExplorer')||has('revenueExplorer'))return 'sales';
   if(node.classList?.contains('fin-views')||node.classList?.contains('fin-toolbar')||has('financialResults')||has('financialStatus')||has('financialReceiptActivity'))return 'accounting';
   if(/analytic|visitor/i.test(node.id||''))return 'web';
@@ -125,7 +126,27 @@
   }
   // The new sections lead each pane; Accounting keeps its view switch first.
   for(const pane of host.querySelectorAll('.st-pane')){const fresh=pane.querySelector('.st-new');if(pane.dataset.pane==='accounting')pane.append(fresh);else if(pane.firstElementChild!==fresh)pane.prepend(fresh);}
+  const acc=host.querySelector('.st-pane[data-pane="accounting"]'),overview=get('statsYearOverview'),views=acc?.querySelector(':scope>.fin-views');
+  if(overview&&views&&views.nextElementSibling!==overview)views.after(overview);
+  explore(host.querySelector('.st-pane[data-pane="sales"]'));
   show();
+ }
+ // The sales tools (bottle sales, sales by product, income by channel) share one card with tabs.
+ function explore(pane){
+  if(!pane)return;
+  const panels=[...pane.querySelectorAll(':scope>.stats-disclosure>.sales-panel, :scope>.sales-panel')];if(!panels.length)return;
+  let box=pane.querySelector(':scope>.st-explore');
+  if(!box){box=document.createElement('section');box.className='st-card st-multi st-explore';box.dataset.multi='explore';box.innerHTML='<h3>Explore sales</h3><div class="st-chips" role="tablist"></div>';pane.append(box);}
+  let pick=null;try{pick=localStorage.getItem('gremier_stats_multi_explore');}catch{}
+  for(const p of panels){
+   const wrap=p.parentElement.classList.contains('stats-disclosure')?p.parentElement:null;
+   const label=(p.querySelector('h2')?.textContent||wrap?.querySelector('summary')?.textContent||'Sales').trim(),key=p.id||label.toLowerCase().replace(/\W+/g,'-');
+   const holder=document.createElement('div');holder.className='st-multi-pane';holder.dataset.multiPane=key;holder.append(p);box.append(holder);wrap?.remove();
+   const b=document.createElement('button');b.type='button';b.setAttribute('role','tab');b.dataset.multiKey=key;b.textContent=label;box.querySelector(':scope>.st-chips').append(b);
+  }
+  const keys=[...box.querySelectorAll(':scope>[data-multi-pane]')].map(x=>x.dataset.multiPane);if(!keys.includes(pick))pick=keys[0];
+  box.querySelectorAll(':scope>.st-chips>[data-multi-key]').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.multiKey===pick)));
+  box.querySelectorAll(':scope>[data-multi-pane]').forEach(x=>x.hidden=x.dataset.multiPane!==pick);
  }
  function show(){
   document.querySelectorAll('#tab-reports .st-pane').forEach(p=>p.hidden=p.dataset.pane!==tab);
@@ -138,7 +159,7 @@
   layout();const seq=++serial;
   for(const [k] of TABS)if(get('statsNew-'+k)&&!data)get('statsNew-'+k).innerHTML='<p class="sales-note">Loading…</p>';
   try{
-   const c=client(),since=new Date(Date.now()-90*864e5).toISOString();
+   const c=client();
    const [orders,products,stores,bills,deliveries,snaps,events,feedback,invoices,receipts]=await Promise.all([
     pages(()=>c.from('orders').select('id,order_number,created_at,total,items,customer_email,customer_phone,customer_name,status,payment_status,payment_method,delivery_info,payment_confirmed_at').eq('payment_status','paid').order('created_at').order('id')),
     pages(()=>c.from('products').select('id,name_en,name_he,category,is_coffee_bar').order('id')),
@@ -146,7 +167,7 @@
     pages(()=>c.from('store_billing').select('id,store_id,year,month,total,billed_at,paid_at,cancelled_at,invoiced_gross_minor').order('id')),
     pages(()=>c.from('store_deliveries').select('id,store_id,delivery_date,qty_large,qty_small,qty_dairy_free,qty_unfiltered,qty_syrup,quantities').order('delivery_date').order('id')),
     pages(()=>c.from('finbot_reporting_snapshots').select('report_year,as_of_date,payload').order('report_year')).catch(()=>[]),
-    pages(()=>c.from('site_events').select('kind,sid,created_at').gte('created_at',since).order('created_at')).catch(()=>[]),
+    Promise.resolve([]),
     pages(()=>c.from('feedback').select('rating,created_at').order('created_at')).catch(()=>[]),
     pages(()=>c.from('store_tax_invoices').select('vat_minor,issued_at,status').order('id')).catch(()=>[]),
     pages(()=>c.from('business_receipts').select('id,store_id,amount_minor,payment_date,status,document_type').order('id')).catch(()=>[])]);
@@ -159,7 +180,9 @@
  // Stores count what was delivered (the month's statement, paid or not). Months without statements
  // (before June 2026) count store payments instead; payments received in statement months beyond what
  // paid those statements were for earlier deliveries, so they're kept too, in the month received.
- function salesByMonth(y){return root.GremierRevenue?.salesByMonth?.(y,data.bills)||months(y).map(month=>({month,stores:0,online:0,other:0}));}
+ // A month with no statement yet (the current month, before billing) counts its deliveries at store prices.
+ function deliveredByMonth(){const out={};for(const d of data.deliveries){const s=data.stores.find(x=>x.id===d.store_id);if(!s)continue;let v=0;for(const f of ['large','small','dairy_free','unfiltered','syrup'])v+=Number(d['qty_'+f]||0)*Number(s['price_'+f]||0);const k=String(d.delivery_date).slice(0,7);out[k]=(out[k]||0)+Math.round(v*100);}return out;}
+ function salesByMonth(y){return root.GremierRevenue?.salesByMonth?.(y,data.bills,deliveredByMonth())||months(y).map(month=>({month,stores:0,online:0,other:0}));}
  // Old-website sales exist only as one total for the year, so they're in year totals but not in any month.
  const oldWebsite=y=>(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary).reduce((s,r)=>s+r.amount_minor,0);
  const finbotYear=y=>data.snaps.find(s=>s.report_year===y);
@@ -223,9 +246,10 @@
  function drawStores(){
   const t=today(),active=data.stores.filter(s=>s.is_active!==false||data.bills.some(b=>b.store_id===s.id&&!b.paid_at&&!b.cancelled_at));
   const rows=active.map(s=>({s,x:storeStats(s,data.bills,data.deliveries,t),ytd:Math.round(data.bills.filter(b=>b.store_id===s.id&&!b.cancelled_at&&b.year===year).reduce((n,b)=>n+Number(b.total||0),0)*100)})).filter(r=>r.ytd||r.x.owed).sort((a,b)=>b.ytd-a.ytd);
-  const monthly=months(year).map(m=>Math.round(data.bills.filter(b=>!b.cancelled_at&&b.year+'-'+String(b.month).padStart(2,'0')===m).reduce((n,b)=>n+Number(b.total||0),0)*100));
+  const billKey=b=>b.year+'-'+String(b.month).padStart(2,'0'),live=data.bills.filter(b=>!b.cancelled_at),firstBill=live.map(billKey).sort()[0],delivered=deliveredByMonth();
+  const monthly=months(year).map(m=>{const list=live.filter(b=>billKey(b)===m);return list.length||!firstBill||m<firstBill?Math.round(list.reduce((n,b)=>n+Number(b.total||0),0)*100):delivered[m]||0;});
   const spark=list=>{const mx=Math.max(1,...list.map(x=>x.value)),pts=list.map((x,i)=>`${(i*80/(list.length-1)+2).toFixed(1)},${(24-x.value/mx*20).toFixed(1)}`);return `<svg class="st-spark" viewBox="0 0 84 28" aria-label="${esc(list.map(x=>monthShort(x.month)+' '+money(x.value)).join(', '))}"><polyline points="${pts.join(' ')}" fill="none" stroke="${C[0]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${pts.at(-1).split(',')[0]}" cy="${pts.at(-1).split(',')[1]}" r="3" fill="${C[0]}"/></svg>`;};
-  const top=data.stores.length?line({title:`Store sales by month · ${year}`,labels:months(year).map(m=>({label:monthShort(m),tip:monthLong(m)})),series:[{name:'Stores',color:C[0],values:upToNow(monthly,months(year))}],note:'Monthly statements before VAT. Store statements start in June 2026.'}):'';
+  const top=data.stores.length?line({title:`Store sales by month · ${year}`,labels:months(year).map(m=>({label:monthShort(m),tip:monthLong(m)})),series:[{name:'Stores',color:C[0],values:upToNow(monthly,months(year))}],note:'Monthly statements before VAT (from June 2026). A month not billed yet shows what was delivered.'}):'';
   get('statsNew-stores').innerHTML=top+`<section class="st-card"><h3>Stores · ${year}</h3><div class="table-wrap"><table class="st-store-table"><thead><tr><th>Store</th><th>Last 7 months</th><th>${year}</th><th>Trend</th><th>Delivers every</th><th>Pays within</th><th>Owes now</th></tr></thead><tbody>${rows.map(({s,x,ytd})=>`<tr><td class="st-name"><b>${esc(s.name)}</b>${x.lastDelivery?`<small>Last delivery ${esc(x.lastDelivery)}</small>`:''}</td><td>${spark(x.last6)}</td><td>${money(ytd)}</td><td>${x.trend===null?'—':`<span class="${x.trend>=0?'st-up':'st-down'}">${x.trend>=0?'▲':'▼'} ${Math.abs(x.trend)}%</span>`}</td><td>${x.gap?`${Math.round(x.gap)} days`:'—'}</td><td>${x.payDays!==null?`${Math.round(x.payDays)} days`:'—'}</td><td>${x.owed?money(x.owed):'—'}</td></tr>`).join('')||'<tr><td colspan="7">No store sales this year.</td></tr>'}</tbody></table></div><p class="sales-note">Trend: last 3 full months vs the 3 before. "Delivers every" is the usual gap between deliveries; "Pays within" the usual days from sending a statement to being paid.</p></section>`;
  }
 
@@ -234,20 +258,15 @@
   const yearOrders=data.orders.filter(o=>paidOrder(o)&&String(o.created_at).startsWith(String(year)));
   const buyers=new Map();for(const o of yearOrders){const k=who(o);if(k)buyers.set(k,(buyers.get(k)||0)+1);}
   const repeat=[...buyers.values()].filter(n=>n>1).length,revenue=yearOrders.reduce((s,o)=>s+Math.round(Number(o.total||0)*100),0);
-  const sessions=k=>new Set(data.events.filter(e=>e.kind===k&&Date.parse(e.created_at)>Date.now()-30*864e5).map(e=>e.sid)).size;
-  // Paid orders over the same days the steps were tracked (tracking began 24 Oct 2026).
-  const tracked=Math.max(Date.now()-30*864e5,Math.min(...data.events.map(e=>Date.parse(e.created_at)),Date.now()));
-  const paid30=data.orders.filter(o=>paidOrder(o)&&Date.parse(o.created_at)>=tracked).length;
-  const steps=[['Added to cart',sessions('cart_add')],['Opened checkout',sessions('checkout_open')],['Pressed pay',sessions('pay_click')],['Paid orders',paid30]];
   const types={};for(const o of yearOrders){const k=({regular:'Regular delivery',expedited:'Expedited',pickup:'Pickup',event:'Event'})[String(o.delivery_info?.delivery_type||'').toLowerCase()]||'Other';types[k]=(types[k]||0)+1;}
   const spend=new Map();for(const o of yearOrders){const k=who(o)||o.id;const r=spend.get(k)||{name:o.customer_name||'Customer',orders:0,total:0};r.orders++;r.total+=Math.round(Number(o.total||0)*100);spend.set(k,r);}
   const rated=data.feedback.filter(f=>String(f.created_at).startsWith(String(year))),avg=rated.length?rated.reduce((s,f)=>s+f.rating,0)/rated.length:null;
   get('statsNew-web').innerHTML=`<div class="st-tiles">${tile('Paid orders · '+year,num(yearOrders.length))}${tile('Average order',yearOrders.length?money(revenue/yearOrders.length):'—')}${tile('Customers',num(buyers.size),buyers.size?`${Math.round(repeat/buyers.size*100)}% ordered more than once`:'')}${tile('Reviews',avg===null?'—':avg.toFixed(1)+' ★',rated.length?rated.length+' this year':'')}</div>
    ${multi('web',[{key:'orders',label:'Orders',html:line({title:`Website orders by month · ${year}`,format:num,labels,series:[{name:'All orders',color:'#52514e',dash:true,values:upToNow(cm.map(r=>r.orders),cm.map(r=>r.month))},{name:'New customers',color:C[0],values:upToNow(cm.map(r=>r.new),cm.map(r=>r.month))},{name:'Returning',color:C[1],values:upToNow(cm.map(r=>r.returning),cm.map(r=>r.month))}]})}
-   ,{key:'aov',label:'Average order',html:line({title:`Average order value · ${year}`,labels,series:[{name:'Average order',color:C[0],values:upToNow(cm.map(r=>r.orders?r.aov:null),cm.map(r=>r.month))}]})}])}
-   <section class="st-card"><h3>Checkout funnel · last 30 days</h3>${steps.map(([l,n],i)=>`<div class="st-funnel"><span>${esc(l)}</span><b style="width:${steps[0][1]?Math.min(100,Math.max(2,n/steps[0][1]*100)):0}%"></b><strong>${num(n)}${i&&steps[i-1][1]?` <small>${Math.round(n/steps[i-1][1]*100)}%</small>`:''}</strong></div>`).join('')}<p class="sales-note">Browsers that added to cart, opened checkout and pressed pay (counted from 24 Oct 2026), and paid orders.</p></section>
-   <section class="st-card st-two"><div><h3>How orders arrive · ${year}</h3>${Object.entries(types).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<div class="fin-row"><span>${esc(k)}</span><strong>${num(n)} · ${Math.round(n/yearOrders.length*100)}%</strong></div>`).join('')||'<p class="sales-note">No orders yet.</p>'}</div>
-   <div><h3>Top customers · ${year}</h3>${[...spend.values()].sort((a,b)=>b.total-a.total).slice(0,8).map(r=>`<div class="fin-row"><span>${esc(r.name)}<small> · ${r.orders} order${r.orders>1?'s':''}</small></span><strong>${money(r.total)}</strong></div>`).join('')||'<p class="sales-note">No orders yet.</p>'}</div></section>`;
+   ,{key:'aov',label:'Average order',html:line({title:`Average order value · ${year}`,labels,series:[{name:'Average order',color:C[0],values:upToNow(cm.map(r=>r.orders?r.aov:null),cm.map(r=>r.month))}]})}
+   ,{key:'top',label:'Top customers',html:`<section class="st-card"><h3>Top customers · ${year}</h3>${[...spend.values()].sort((a,b)=>b.total-a.total).slice(0,8).map(r=>`<div class="fin-row"><span>${esc(r.name)}<small> · ${r.orders} order${r.orders>1?'s':''}</small></span><strong>${money(r.total)}</strong></div>`).join('')||'<p class="sales-note">No orders yet.</p>'}</section>`}
+   ,{key:'arrive',label:'Delivery types',html:`<section class="st-card"><h3>How orders arrive · ${year}</h3>${Object.entries(types).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<div class="fin-row"><span>${esc(k)}</span><strong>${num(n)} · ${Math.round(n/yearOrders.length*100)}%</strong></div>`).join('')||'<p class="sales-note">No orders yet.</p>'}</section>`}])}
+   <p class="sales-note">Visits and the checkout funnel are on <a href="#" onclick="event.preventDefault();showTab('traffic')">Website traffic</a>.</p>`;
  }
 
  // VAT collected since becoming Osek Morshe (22 Oct 2026): inside website prices and taxed receipts, on top for store invoices.
@@ -290,6 +309,8 @@
   .st-sub>.st-chips button{border:1px solid var(--border);padding:5px 11px;font-size:.78rem;border-radius:999px}
   .st-sub>.st-chips button[aria-selected="true"]{background:var(--cream);color:var(--card);border-color:var(--cream);box-shadow:none}
   .st-multi-pane[hidden]{display:none!important}
+  .st-explore .sales-panel{margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;background:none!important}
+  .st-explore .sales-heading h2{display:none}.st-explore .sales-heading{justify-content:flex-end}
   .st-new{display:grid;gap:16px;margin-bottom:16px}
   .st-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;min-width:0}
   .st-card h3{margin:0 0 10px;font-size:1rem;color:var(--cream)}
