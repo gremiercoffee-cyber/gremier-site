@@ -589,7 +589,7 @@ async function reverseJobSideEffects2(job, stores) {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty != null ? job.actualQty : (job.liters || 0);
-      const baseRatio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.44);
+      const baseRatio = MINI_P.includes(job.product) ? 0.2933 : (CONC_TYPES[concType]?.ratio || 0.44);
       const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, +(liters * ratio));  // give concentrate back
       const units = window.__OPS_PRODUCTS__?.[job.product]?.category==='mini' ? Math.round(liters * 4)

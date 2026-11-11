@@ -288,7 +288,7 @@ export async function logBottling(sb: Sb, args: { product: string; units: number
   if (!Number.isInteger(units)||!(units > 0 && units <= 2000)) throw new HubError("bad_units", "How many did you bottle?");
   // Admin bottling jobs are entered in liters: minis are 4 per liter, jerry cans are 5 L.
   const liters = meta.category === "mini" ? units / 4 : meta.category === "jerry" ? units * 5 : units;
-  const ratio = PRODUCT_RATIO[product] ?? (FLAVORED_MINIS.has(product) ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.44));
+  const ratio = PRODUCT_RATIO[product] ?? (FLAVORED_MINIS.has(product) ? 0.2933 : (CONC_RATIO[meta.concentrate] || 0.44));
   const now = jerusalemParts(new Date());
   const id = args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
   const {data:event,error}=await productionCall(sb,"complete_bottling",{p_job:{

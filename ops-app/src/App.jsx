@@ -267,7 +267,7 @@ const LABELED_WARN = { classic_liter: 30, sweetened_classic: 25, house_blend: 20
 const MINI_PRODUCTS = ["vanilla_mini", "original_mini", "caramel_mini"];
 function getProductRatio(pid, concType) {
   if (pid === "unfiltered_liter" || /unfilter|אנפילטר/i.test(PRODUCTS[pid]?.label || "")) return 0.40;   // Unfiltered: 40% Classic
-  return MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
+  return MINI_PRODUCTS.includes(pid) ? 0.2933 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
 }
 const WEBSITE_NAME_TO_OPS = [
   [/sweetened.*classic|classic.*sweet/i, "sweetened_classic"],

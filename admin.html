@@ -2550,7 +2550,7 @@ function gremierOpsConcentrateForProduct(product, category) {
   return 'classic';
 }
 // Concentrate per liter of finished product, for products that differ from their coffee type's
-// default (Classic 44%, House Blend/Colombia/Decaf 50%, flavored minis 29%). Used by bottling, undo and stock planning.
+// default (Classic 44%, House Blend/Colombia/Decaf 50%, cream latte minis 29.33%: a 44% base + 50% milk). Used by bottling, undo and stock planning.
 window.gremierConcentrateRatio = function gremierConcentrateRatio(pid, base) {
   const label = window.__OPS_PRODUCTS_FULL__?.[pid]?.label || window.__OPS_PRODUCTS__?.[pid]?.label || '';
   if (pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(label)) return 0.40;   // Unfiltered: 40% of its own concentrate
@@ -8289,7 +8289,7 @@ function briefingInProgressBrews(jobs) {
 }
 // Same per-product rates as bottling: flavored minis 29%, Unfiltered 40%, otherwise the coffee's rate.
 function briefingRatio(pid, meta) {
-  const base = ['vanilla_mini','original_mini','caramel_mini'].includes(pid) ? 0.29 : (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
+  const base = ['vanilla_mini','original_mini','caramel_mini'].includes(pid) ? 0.2933 : (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
   return window.gremierConcentrateRatio?.(pid, base) ?? base;
 }
 function briefingConcentrateDemand(jobs, bottleShortfalls) {
@@ -9957,9 +9957,9 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-orders-calendar.js?v=20261111-2"></script>
 <script src="/admin-orders-board.js?v=20261112-1"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
-<script src="/admin-react-1.js?v=3aa78654c9"></script>
+<script src="/admin-react-1.js?v=cc1bc27fb0"></script>
 <script src="/admin-stock-numbers.js?v=20261026-1"></script>
-<script src="/admin-react-2.js?v=b9bb769774"></script>
+<script src="/admin-react-2.js?v=78f5f5f3c5"></script>
 
 <script src="/admin-react-3.js?v=9ae909da0f"></script>
 

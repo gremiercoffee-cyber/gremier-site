@@ -32,7 +32,7 @@ function concentrateIn(product: string) {
   const m = meta(product);
   if (!m) return 0;
   const liters = m.category === "mini" ? 0.25 : m.category === "jerry" ? 5 : 1;
-  const ratio = FLAVORED_MINIS.has(product) ? 0.29 : RATIO[m.concentrate] ?? 0.44;
+  const ratio = FLAVORED_MINIS.has(product) ? 0.2933 : RATIO[m.concentrate] ?? 0.44;
   return liters * ratio;
 }
 function units(job: any): Record<string, number> {

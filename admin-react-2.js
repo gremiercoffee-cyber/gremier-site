@@ -214,7 +214,7 @@ const LABELED_WARN = {
 };
 const MINI_PRODUCTS = ['vanilla_mini', 'original_mini', 'caramel_mini'];
 function getProductRatio(pid, concType) {
-  const base = MINI_PRODUCTS.includes(pid) ? 0.29 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
+  const base = MINI_PRODUCTS.includes(pid) ? 0.2933 : CONCENTRATE_TYPES[concType]?.ratio || 0.44;
   return window.gremierConcentrateRatio?.(pid, base) ?? base;
 }
 
