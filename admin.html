@@ -2060,14 +2060,15 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="ld-sec-h">Bottles</div>
       <div class="ld-qty">
         <div class="ld-row"><div class="ld-row-name"><b>Large bottles</b><small id="ldPriceLarge"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldLarge',-1)" aria-label="One less large">−</button><input type="number" inputmode="numeric" min="0" id="ldLarge" value="0" oninput="updateDeliveryPreview()" aria-label="Large bottles"/><button type="button" onclick="ldStep('ldLarge',1)" aria-label="One more large">+</button></div></div>
-        <div class="ld-row"><div class="ld-row-name"><b>Small bottles</b><small id="ldPriceSmall"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldSmall',-1)" aria-label="One less small">−</button><input type="number" inputmode="numeric" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()" aria-label="Small bottles"/><button type="button" onclick="ldStep('ldSmall',1)" aria-label="One more small">+</button></div></div>
+        <div class="ld-row"><div class="ld-row-name"><b>Cream latte minis</b><small>Caramel · Original · Vanilla <span id="ldPriceSmall"></span></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldSmall',-1)" aria-label="One less cream latte mini">−</button><input type="number" inputmode="numeric" min="0" id="ldSmall" value="0" oninput="updateDeliveryPreview()" aria-label="Cream latte minis"/><button type="button" onclick="ldStep('ldSmall',1)" aria-label="One more cream latte mini">+</button></div></div>
+        <div class="ld-row"><div class="ld-row-name"><b>Classic minis</b><small id="ldPriceClassicMini"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldClassicMini',-1)" aria-label="One less classic mini">−</button><input type="number" inputmode="numeric" min="0" id="ldClassicMini" value="0" oninput="updateDeliveryPreview()" aria-label="Classic minis"/><button type="button" onclick="ldStep('ldClassicMini',1)" aria-label="One more classic mini">+</button></div></div>
         <div class="ld-row"><div class="ld-row-name"><b>Dairy free</b><small id="ldPriceDairyFree"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldDairyFree',-1)" aria-label="One less dairy free">−</button><input type="number" inputmode="numeric" min="0" id="ldDairyFree" value="0" oninput="updateDeliveryPreview()" aria-label="Dairy free"/><button type="button" onclick="ldStep('ldDairyFree',1)" aria-label="One more dairy free">+</button></div></div>
         <div class="ld-row"><div class="ld-row-name"><b>Unfiltered liter</b><small id="ldPriceUnfiltered"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldUnfiltered',-1)" aria-label="One less unfiltered">−</button><input type="number" inputmode="numeric" min="0" id="ldUnfiltered" value="0" oninput="updateDeliveryPreview()" aria-label="Unfiltered liter"/><button type="button" onclick="ldStep('ldUnfiltered',1)" aria-label="One more unfiltered">+</button></div></div>
         <div class="ld-row"><div class="ld-row-name"><b>Syrups</b><small id="ldPriceSyrup"></small></div><div class="ld-step"><button type="button" onclick="ldStep('ldSyrup',-1)" aria-label="One less syrup">−</button><input type="number" inputmode="numeric" min="0" id="ldSyrup" value="0" oninput="updateDeliveryPreview()" aria-label="Syrups"/><button type="button" onclick="ldStep('ldSyrup',1)" aria-label="One more syrup">+</button></div></div>
       </div>
       <details class="ld-more"><summary>Other products (jerry cans, dispensers…)</summary><div id="ldExtraRows"></div></details>
       <input class="form-input ld-notes" id="ldNotes" placeholder="Notes (optional)"/>
-      <p class="ld-hint">Cases fill in large bottles and their flavors. Extra large bottles typed by hand count as Classic. Minis: just enter the total; flavors are split like the minis you have on hand.</p>
+      <p class="ld-hint">Cases fill in large bottles and their flavors. Extra large bottles typed by hand count as Classic. Cream latte minis are counted as 5 Caramel : 3 Original : 2 Vanilla, skipping flavors that are out of stock.</p>
     </div>
     <footer class="ld-foot">
       <div id="deliveryPreview" class="ld-total"><small>Total</small><b id="deliveryPreviewTotal">₪0</b><span id="deliveryPreviewBreakdown"></span></div>
@@ -2308,7 +2309,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <div class="toast" id="toast"></div>
 <script src="/admin-dashboard.js?v=20261111-7"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
-<script src="/admin-delivery-cases.js?v=20261111-2"></script>
+<script src="/admin-delivery-cases.js?v=20261111-3"></script>
 <script>
   function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -7068,7 +7069,7 @@ function ldSyncFormLabels(store) {
     storeLabel.closest('.sd-pickbtn')?.classList.toggle('empty', !store);
   }
   const each = (v) => store ? (Number(v) > 0 ? `₪${Number(v)} each` : 'No price set') : '';
-  [['ldPriceLarge', store?.price_large], ['ldPriceSmall', store?.price_small], ['ldPriceDairyFree', store?.price_dairy_free], ['ldPriceUnfiltered', store?.price_unfiltered], ['ldPriceSyrup', store?.price_syrup]]
+  [['ldPriceLarge', store?.price_large], ['ldPriceSmall', store?.price_small], ['ldPriceClassicMini', store?.price_small], ['ldPriceDairyFree', store?.price_dairy_free], ['ldPriceUnfiltered', store?.price_unfiltered], ['ldPriceSyrup', store?.price_syrup]]
     .forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.textContent = each(v); });
   const date = document.getElementById('ldDate')?.value || '';
   const today = localDateStr(new Date());
@@ -7086,7 +7087,7 @@ function updateDeliveryPreview() {
   const store = allStores.find(s => s.id === storeId);
   ldSyncFormLabels(store);
   const n = (id) => parseInt(document.getElementById(id).value, 10) || 0;
-  const large = n('ldLarge'), small = n('ldSmall'), dairyFree = n('ldDairyFree'), unfiltered = n('ldUnfiltered'), syrup = n('ldSyrup');
+  const large = n('ldLarge'), small = n('ldSmall') + n('ldClassicMini'), dairyFree = n('ldDairyFree'), unfiltered = n('ldUnfiltered'), syrup = n('ldSyrup');
   const totalEl = document.getElementById('deliveryPreviewTotal');
   const breakdown = document.getElementById('deliveryPreviewBreakdown');
   document.getElementById('deliveryPreview').style.display = '';
@@ -7257,7 +7258,9 @@ let ldSavedAllocation = null;
 let ldExtraQuantities = {};
 
 function ldReadCounts() {
-  return Object.fromEntries(GremierDelivery.fields.map((key, i) => [key, GremierDelivery.count(document.getElementById(['ldLarge','ldSmall','ldDairyFree','ldUnfiltered','ldSyrup'][i]).value)]));
+  const c = Object.fromEntries(GremierDelivery.fields.map((key, i) => [key, GremierDelivery.count(document.getElementById(['ldLarge','ldSmall','ldDairyFree','ldUnfiltered','ldSyrup'][i]).value)]));
+  c.small += GremierDelivery.count(document.getElementById('ldClassicMini')?.value);   // classic minis bill as small bottles too
+  return c;
 }
 function ldRowCounts(row) {
   return {large:row.qty_large,small:row.qty_small,dairyFree:row.qty_dairy_free,unfiltered:row.qty_unfiltered,syrup:row.qty_syrup};
@@ -7405,6 +7408,7 @@ async function openLogDeliveryModal() {
   document.getElementById('ldDate').value = localDateStr(new Date());
   document.getElementById('ldLarge').value = '0';
   document.getElementById('ldSmall').value = '0';
+  document.getElementById('ldClassicMini').value = '0';
   document.getElementById('ldDairyFree').value = '0';
   document.getElementById('ldUnfiltered').value = '0';
   document.getElementById('ldSyrup').value = '0';
@@ -7436,7 +7440,9 @@ async function openEditDeliveryModal(deliveryId) {
   document.getElementById('ldStore').value = d.store_id;
   document.getElementById('ldDate').value = d.delivery_date;
   document.getElementById('ldLarge').value = d.qty_large || 0;
-  document.getElementById('ldSmall').value = d.qty_small || 0;
+  const savedClassicMini = Math.min(Number(d.quantities?.classic_mini) || 0, d.qty_small || 0);
+  document.getElementById('ldSmall').value = (d.qty_small || 0) - savedClassicMini;
+  document.getElementById('ldClassicMini').value = savedClassicMini;
   document.getElementById('ldDairyFree').value = d.qty_dairy_free || 0;
   document.getElementById('ldUnfiltered').value = d.qty_unfiltered || 0;
   document.getElementById('ldSyrup').value = d.qty_syrup || 0;
@@ -7474,15 +7480,16 @@ async function saveDelivery() {
     if (fromCases?.used) Object.keys(quantities).forEach(k=>delete quantities[k]), Object.assign(quantities,fromCases.quantities);
     // Every bottle's flavor is known (all large bottles from cases, nothing else that needs flavors): no follow-up question.
     const flavorsKnown = !!fromCases?.exact && !counts.small && !counts.dairyFree;
-    // Minis: only the total is entered. Split it like the minis on hand (counting this delivery's own minis back in when editing).
-    if (!keepPrevious && counts.small > 0 && window.GremierDeliveryCases?.splitMinis) {
-      const miniIds = Object.keys(LD_PRODUCTS).filter(id => GremierDelivery.bucket(id, LD_PRODUCTS) === 'small');
-      const {data:inv} = await sb.from('inventory').select('product,qty').in('product', miniIds);
-      if (inv) {
-        const stock = Object.fromEntries(inv.map(r => [r.product, (Number(r.qty) || 0) + Number(ldEditingRow?.inventory_deducted?.[r.product] || 0)]));
-        miniIds.forEach(id => delete quantities[id]);
-        Object.assign(quantities, GremierDeliveryCases.splitMinis(counts.small, stock, miniIds));
-      }
+    // Minis: classic minis as entered; cream lattes as 5 Caramel : 3 Original : 2 Vanilla among the flavors in stock
+    // (this delivery's own minis count back in when editing). Stock per flavor is an estimate; what was made is exact.
+    if (!keepPrevious && counts.small > 0 && window.GremierDeliveryCases?.splitCremier) {
+      const classicMini = GremierDelivery.count(document.getElementById('ldClassicMini')?.value);
+      const ids = Object.keys(GremierDeliveryCases.CREMIER);
+      const {data:inv} = await sb.from('inventory').select('product,qty').in('product', ids);
+      const stock = Object.fromEntries((inv || []).map(r => [r.product, (Number(r.qty) || 0) + Number(ldEditingRow?.inventory_deducted?.[r.product] || 0)]));
+      Object.keys(LD_PRODUCTS).filter(id => GremierDelivery.bucket(id, LD_PRODUCTS) === 'small').forEach(id => delete quantities[id]);
+      if (classicMini) quantities.classic_mini = classicMini;
+      Object.assign(quantities, GremierDeliveryCases.splitCremier(counts.small - classicMini, stock));
     }
     // Ask about flavors only for large bottles typed in by hand; never about minis.
     const askFlavors = !keepPrevious && counts.large > 0 && !fromCases?.exact;

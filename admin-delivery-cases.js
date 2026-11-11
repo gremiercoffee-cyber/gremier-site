@@ -56,21 +56,34 @@
     return { quantities: out, exact: !loose, used: true };
   }
 
-  /** Minis are put on shelves in whatever mix is on hand, so a delivery's n minis are split like the stock at home:
-   *  in proportion to each flavor's stock, never more than there is; anything beyond the stock is spread evenly. */
-  function splitMinis(n, stock, ids) {
-    const have = Object.fromEntries(ids.map((id) => [id, Math.max(0, Math.floor(Number(stock[id]) || 0))]));
-    const total = ids.reduce((s, id) => s + have[id], 0), out = {};
-    if (total >= n && total > 0) {
-      const share = ids.map((id) => ({ id, exact: (n * have[id]) / total }));
-      share.forEach((x) => { out[x.id] = Math.floor(x.exact); });
-      let left = n - share.reduce((s, x) => s + out[x.id], 0);
-      share.sort((a, b) => (b.exact % 1) - (a.exact % 1) || have[b.id] - have[a.id]);
-      for (const x of share) { if (!left) break; if (out[x.id] < have[x.id]) { out[x.id]++; left--; } }
-    } else {
-      ids.forEach((id) => { out[id] = have[id]; });
-      const extra = n - total;
-      ids.forEach((id, i) => { out[id] += Math.floor(extra / ids.length) + (i < extra % ids.length ? 1 : 0); });
+  /** Cream latte minis go on shelves in no fixed mix, so a delivery's n are assumed to be 5 Caramel : 3 Original :
+   *  2 Vanilla, among the flavors in stock (out-of-stock flavors are left out and the rest share their part).
+   *  No flavor takes more than its stock while another still has some; past the stock, the 5:3:2 ratio carries on. */
+  const CREMIER = { caramel_mini: 5, original_mini: 3, vanilla_mini: 2 };
+  function byWeight(n, weights) {
+    const ids = Object.keys(weights), total = ids.reduce((s, id) => s + weights[id], 0), out = {};
+    if (!n || !total) return out;
+    const share = ids.map((id) => ({ id, exact: (n * weights[id]) / total }));
+    share.forEach((x) => { out[x.id] = Math.floor(x.exact); });
+    let left = n - share.reduce((s, x) => s + out[x.id], 0);
+    share.sort((a, b) => (b.exact % 1) - (a.exact % 1) || weights[b.id] - weights[a.id]);
+    for (const x of share) { if (!left) break; out[x.id]++; left--; }
+    return out;
+  }
+  function splitCremier(n, stock) {
+    const have = Object.fromEntries(Object.keys(CREMIER).map((id) => [id, Math.max(0, Math.floor(Number(stock[id]) || 0))]));
+    const out = Object.fromEntries(Object.keys(CREMIER).map((id) => [id, 0]));
+    let left = n;
+    // Fill in rounds: flavors still in stock share what's left by 5:3:2, capped at their stock.
+    for (let guard = 0; left > 0 && guard < 10; guard++) {
+      const open = Object.fromEntries(Object.entries(CREMIER).filter(([id]) => have[id] - out[id] > 0));
+      if (!Object.keys(open).length) break;
+      const part = byWeight(left, open);
+      for (const [id, q] of Object.entries(part)) { const take = Math.min(q, have[id] - out[id]); out[id] += take; left -= take; }
+    }
+    if (left > 0) {   // more than is in stock: the rest by 5:3:2 among the flavors that had stock (all three if none did)
+      const had = Object.fromEntries(Object.entries(CREMIER).filter(([id]) => have[id] > 0));
+      for (const [id, q] of Object.entries(byWeight(left, Object.keys(had).length ? had : CREMIER))) out[id] += q;
     }
     return Object.fromEntries(Object.entries(out).filter(([, q]) => q > 0));
   }
@@ -81,5 +94,5 @@
     const minus = e.target.closest('[data-ld-case-minus]');
     if (minus) add(minus.dataset.ldCaseMinus, -1);
   });
-  root.GremierDeliveryCases = { CASES, render, add, reset, apply, liters, caseBottles, splitMinis };
+  root.GremierDeliveryCases = { CASES, render, add, reset, apply, liters, caseBottles, splitCremier, CREMIER };
 })(window);
