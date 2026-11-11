@@ -56,11 +56,30 @@
     return { quantities: out, exact: !loose, used: true };
   }
 
+  /** Minis are put on shelves in whatever mix is on hand, so a delivery's n minis are split like the stock at home:
+   *  in proportion to each flavor's stock, never more than there is; anything beyond the stock is spread evenly. */
+  function splitMinis(n, stock, ids) {
+    const have = Object.fromEntries(ids.map((id) => [id, Math.max(0, Math.floor(Number(stock[id]) || 0))]));
+    const total = ids.reduce((s, id) => s + have[id], 0), out = {};
+    if (total >= n && total > 0) {
+      const share = ids.map((id) => ({ id, exact: (n * have[id]) / total }));
+      share.forEach((x) => { out[x.id] = Math.floor(x.exact); });
+      let left = n - share.reduce((s, x) => s + out[x.id], 0);
+      share.sort((a, b) => (b.exact % 1) - (a.exact % 1) || have[b.id] - have[a.id]);
+      for (const x of share) { if (!left) break; if (out[x.id] < have[x.id]) { out[x.id]++; left--; } }
+    } else {
+      ids.forEach((id) => { out[id] = have[id]; });
+      const extra = n - total;
+      ids.forEach((id, i) => { out[id] += Math.floor(extra / ids.length) + (i < extra % ids.length ? 1 : 0); });
+    }
+    return Object.fromEntries(Object.entries(out).filter(([, q]) => q > 0));
+  }
+
   document.addEventListener('click', (e) => {
     const plus = e.target.closest('[data-ld-case]');
     if (plus) return add(plus.dataset.ldCase, 1);
     const minus = e.target.closest('[data-ld-case-minus]');
     if (minus) add(minus.dataset.ldCaseMinus, -1);
   });
-  root.GremierDeliveryCases = { CASES, render, add, reset, apply, liters, caseBottles };
+  root.GremierDeliveryCases = { CASES, render, add, reset, apply, liters, caseBottles, splitMinis };
 })(window);

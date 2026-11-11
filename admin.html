@@ -2067,7 +2067,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       </div>
       <details class="ld-more"><summary>Other products (jerry cans, dispensers…)</summary><div id="ldExtraRows"></div></details>
       <input class="form-input ld-notes" id="ldNotes" placeholder="Notes (optional)"/>
-      <p class="ld-hint">Cases fill in large bottles and their flavors. Extra large bottles typed by hand count as Classic. Minis: enter the total, then pick flavors after saving if you know them.</p>
+      <p class="ld-hint">Cases fill in large bottles and their flavors. Extra large bottles typed by hand count as Classic. Minis: just enter the total; flavors are split like the minis you have on hand.</p>
     </div>
     <footer class="ld-foot">
       <div id="deliveryPreview" class="ld-total"><small>Total</small><b id="deliveryPreviewTotal">₪0</b><span id="deliveryPreviewBreakdown"></span></div>
@@ -2308,7 +2308,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
 <div class="toast" id="toast"></div>
 <script src="/admin-dashboard.js?v=20261111-7"></script>
 <script src="/admin-delivery-model.js?v=20261020-1"></script>
-<script src="/admin-delivery-cases.js?v=20261111-1"></script>
+<script src="/admin-delivery-cases.js?v=20261111-2"></script>
 <script>
   function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -7474,6 +7474,18 @@ async function saveDelivery() {
     if (fromCases?.used) Object.keys(quantities).forEach(k=>delete quantities[k]), Object.assign(quantities,fromCases.quantities);
     // Every bottle's flavor is known (all large bottles from cases, nothing else that needs flavors): no follow-up question.
     const flavorsKnown = !!fromCases?.exact && !counts.small && !counts.dairyFree;
+    // Minis: only the total is entered. Split it like the minis on hand (counting this delivery's own minis back in when editing).
+    if (!keepPrevious && counts.small > 0 && window.GremierDeliveryCases?.splitMinis) {
+      const miniIds = Object.keys(LD_PRODUCTS).filter(id => GremierDelivery.bucket(id, LD_PRODUCTS) === 'small');
+      const {data:inv} = await sb.from('inventory').select('product,qty').in('product', miniIds);
+      if (inv) {
+        const stock = Object.fromEntries(inv.map(r => [r.product, (Number(r.qty) || 0) + Number(ldEditingRow?.inventory_deducted?.[r.product] || 0)]));
+        miniIds.forEach(id => delete quantities[id]);
+        Object.assign(quantities, GremierDeliveryCases.splitMinis(counts.small, stock, miniIds));
+      }
+    }
+    // Ask about flavors only for large bottles typed in by hand; never about minis.
+    const askFlavors = !keepPrevious && counts.large > 0 && !fromCases?.exact;
     const d = {id:ldDraftId || (ldDraftId=crypto.randomUUID()),store_id:storeId,
       qty_large:counts.large,qty_small:counts.small,qty_dairy_free:counts.dairyFree,qty_unfiltered:counts.unfiltered,qty_syrup:counts.syrup,
       quantities,allocation_mode:keepPrevious?(ldEditingRow.allocation_mode||'custom'):flavorsKnown?'custom':'default',
@@ -7486,7 +7498,7 @@ async function saveDelivery() {
     window.notifyGremierStockChanged?.();
     window.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
     showToast('Delivery saved ✓');
-    if (!flavorsKnown) ldOfferAllocation(data);
+    if (askFlavors) ldOfferAllocation(data);
     await loadStoreDeliveries();
   } catch (err) { console.error('saveDelivery failed:',err); showToast('Could not save delivery: '+(err.message||err)); }
   finally {btn.disabled=false;btn.textContent='Save Delivery';}
