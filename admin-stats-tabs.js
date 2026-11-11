@@ -183,7 +183,7 @@
  // paid those statements were for earlier deliveries, so they're kept too, in the month received.
  // A month with no statement yet (the current month, before billing) counts its deliveries at store prices.
  function deliveredByMonth(){const out={};for(const d of data.deliveries){const s=data.stores.find(x=>x.id===d.store_id);if(!s)continue;let v=0;for(const f of ['large','small','dairy_free','unfiltered','syrup'])v+=Number(d['qty_'+f]||0)*Number(s['price_'+f]||0);const k=String(d.delivery_date).slice(0,7);out[k]=(out[k]||0)+Math.round(v*100);}return out;}
- function salesByMonth(y){return root.GremierRevenue?.salesByMonth?.(y,data.bills,deliveredByMonth())||months(y).map(month=>({month,stores:0,online:0,other:0}));}
+ function salesByMonth(y){return root.GremierRevenue?.salesByMonth?.(y,data.bills,deliveredByMonth(),true)||months(y).map(month=>({month,stores:0,online:0,other:0}));}
  // Old-website sales exist only as one total for the year, so they're in year totals but not in any month.
  const oldWebsite=y=>(root.GremierRevenue?.annualReport?.(y)?.rows||[]).filter(r=>r.summary).reduce((s,r)=>s+r.amount_minor,0);
  const finbotYear=y=>data.snaps.find(s=>s.report_year===y);
@@ -204,13 +204,13 @@
   get('statsNew-overview').innerHTML=`<div class="st-tiles">
    ${isNow&&thisMonth?tile(monthLong(cur)+' so far',money(sum(thisMonth)),prevKey!==cur?`${monthShort(prevKey)}: ${money(sum(rows.find(r=>r.month===prevKey)))}`:''):''}
    ${isNow&&lastYearSame?tile('Same month last year',money(lastYearSame.income_minor),'FinBot income'):''}
-   ${tile((isNow?'This year so far':'Year '+year),money(ytd+oldWebsite(year)),'Before VAT · stores delivered (paid or not) + website + events'+(oldWebsite(year)?` · incl. ${money(oldWebsite(year))} old website`:''))}
+   ${tile((isNow?'This year so far':'Year '+year),money(ytd+oldWebsite(year)),'Website & events incl. VAT · stores delivered (paid or not), before VAT'+(oldWebsite(year)?` · incl. ${money(oldWebsite(year))} old website`:''))}
    ${(()=>{const a=yearByMonth(year),b=yearByMonth(year-1),upTo=+cur.slice(5)-(isNow?1:0),through=isNow?upTo:12;if(!b.some(v=>v)||through<1)return '';
     const now=a.slice(0,through).reduce((s,v)=>s+(v||0),0)+oldWebsite(year),then=b.slice(0,through).reduce((s,v)=>s+(v||0),0);
     return tile('vs last year',pct(now,then)||'—',`${money(now)} vs ${money(then)}, Jan–${monthShort(year+'-'+String(through).padStart(2,'0'))}`);})()}
   </div>
   ${multi('overview',[{key:'month',label:'By month',html:line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
-   note:'All before VAT. Stores: what was delivered each month (paid or not), plus payments for deliveries from before June 2026. Website and events: payments, each counted once.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})},
+   note:'Website and events: what customers paid, VAT included, each payment counted once. Stores: what was delivered each month (paid or not), at statement price before VAT, plus payments for deliveries from before June 2026.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})},
   {key:'total',label:'Running total',html:(()=>{
    // Running total of every sale, month by month: always going up. Filter: all time, one year, or the
    // last two years; each starts from zero. An old-website lump sum (no months) is added in the month its period ended.

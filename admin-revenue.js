@@ -172,24 +172,27 @@
   }
   return out;
  }
- function operationalMonths(data,y,bills,businessDate,through='9999-12-31',deliveryByMonth=null){
+ // withVat: website and event sales as customers paid them (VAT included, the same shelf prices as before
+ // VAT started); stores always at statement price (before VAT). Without it everything is before VAT (Financials).
+ function operationalMonths(data,y,bills,businessDate,through='9999-12-31',deliveryByMonth=null,withVat=false){
   const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
-  const revenue=keys.map(m=>channels(netOfVat(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate))));
+  const vatBasis=withVat?(x=>x):netOfVat;
+  const revenue=keys.map(m=>channels(vatBasis(income(data,m+'-01',[new Date(Date.UTC(y,Number(m.slice(5)),0)).toISOString().slice(0,10),through].sort()[0],businessDate))));
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
   const firstStatement=live.reduce((m,b)=>!m||monthOf(b)<m?monthOf(b):m,'');
   const statements=keys.map(m=>live.filter(b=>monthOf(b)===m));
   const earlier=earlierDeliveryPayments(data,bills,businessDate,firstStatement,through);
   return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?(statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0):Number(deliveryByMonth?.[month])||0)+(earlier[month]||0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
  }
- function operationalSales(data,r,businessDate,partialStore=null,deliveryByMonth=null){
+ function operationalSales(data,r,businessDate,partialStore=null,deliveryByMonth=null,withVat=false){
   if(Number(r.start.slice(0,4))<2026){
    const snapshot=(data.snapshots||[]).find(x=>Number(x.report_year)===Number(r.start.slice(0,4)));
    const rows=(snapshot?.payload?.monthly||[]).filter(m=>m.month>=r.start.slice(0,7)&&m.month<=r.to.slice(0,7));
    const total=rows.length?rows.reduce((n,m)=>n+Number(m.income_minor||0),0):null;
    return {historical:true,total,online:null,stores:null,other:null,totals:null,legacy:0,monthly:rows.map(m=>({key:m.month,online:0,store:0,other:Number(m.income_minor||0)/100})),rows:[]};
   }
-  const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=netOfVat(income(data,r.start,to,businessDate)),c=channels(report);
-  const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to,deliveryByMonth));
+  const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=(withVat?(x=>x):netOfVat)(income(data,r.start,to,businessDate)),c=channels(report);
+  const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to,deliveryByMonth,withVat));
   const monthly=all.filter(m=>m.month>=r.start.slice(0,7)&&m.month<=to.slice(0,7));
   const stores=r.period==='week'?partialStore:monthly.reduce((n,m)=>n+m.stores,0);
   const totals={...report.totals,stores:stores===null?0:stores};
@@ -210,7 +213,7 @@
  const storeOwed=(from,to)=>loaded?.bills?owed(loaded.bills,from,to,loaded.billLinks||[],new Map(loaded.businessReceipts.map(r=>[r.id,r]))):null;
  api.annualOwed=year=>storeOwed(year+'-01-01',year+'-12-31');
  // Month by month, counted once like the income total (stores by payments here; Stats charts use store statements).
- api.salesByMonth=(year,bills,deliveryByMonth=null)=>loaded?operationalMonths(loaded,year,bills||loaded.bills||[],date,date(new Date()),deliveryByMonth):null;
+ api.salesByMonth=(year,bills,deliveryByMonth=null,withVat=false)=>loaded?operationalMonths(loaded,year,bills||loaded.bills||[],date,date(new Date()),deliveryByMonth,withVat):null;
  api.monthly=year=>loaded?Array.from({length:12},(_,i)=>{const m=year+'-'+String(i+1).padStart(2,'0'),r=root.GremierSales?.monthRange?root.GremierSales.monthRange(m):{from:m+'-01',to:m+'-31'};const c=channels(income(loaded,r.from,r.to,date));return {month:m,...c};}):null;
  const totalsHtml=totals=>['stores','coffee','coffee_bar',...['other','unclassified'].filter(k=>totals[k])].map(k=>`<div class="fin-row"><span>${labels[k]}</span><strong>${money(totals[k])}</strong></div>`).join('');
  api.dashboardOnline=(orders,r,purposes=[],storeValue=null,salesTotals=null)=>{

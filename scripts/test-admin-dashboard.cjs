@@ -124,6 +124,8 @@ test('historical years use saved FinBot income and never fabricate a channel bre
 test('an issued non-store 599 document is included once even after its linked payment receipt',()=>{
  const revenue=require('../admin-revenue.js'),nov=range('month',new Date('2026-11-02T12:00:00Z'));
  const rd={orders:[],products:[],stores:[],customers:[],overrides:[],imported:[],orderReceipts:[],bills:[],snapshots:[],businessReceipts:[{id:'invoice',document_type:'tax_invoice',status:'issued',amount_minor:59900,payment_date:'2026-11-01',customer_snapshot:{name:'Coffee bar customer'}},{id:'payment',document_type:'receipt',linked_invoice_id:'invoice',status:'issued',amount_minor:59900,payment_date:'2026-11-02',customer_snapshot:{name:'Coffee bar customer'}}]};
- const m=model(data({revenueData:rd}),nov,revenue);// Sales count before VAT: the ₪599 tax invoice is ₪507.63 + ₪91.37 VAT.
- assert.equal(m.other,507.63);assert.equal(m.totalSales,507.63);assert.equal(m.sales.totals.coffee_bar,50763);
+ const m=model(data({revenueData:rd}),nov,revenue);// The Dashboard counts what the customer paid, VAT included: ₪599 (₪507.63 + ₪91.37 VAT).
+ assert.equal(m.other,599);assert.equal(m.totalSales,599);assert.equal(m.sales.totals.coffee_bar,59900);
+ const net=revenue.operationalSales(rd,nov,(d)=>String(d).slice(0,10));// Financials' basis stays before VAT.
+ assert.equal(net.other,50763);
 });

@@ -67,7 +67,7 @@
     function bucket(date) { return buckets.find(b => b.key === (r.yearly ? date.slice(0,7) : date)); }
     (orders || []).forEach(o => { const b=bucket(businessDate(o.created_at)); if (b) b.online+=num(o.total); });
     (deliveries || []).forEach((d,i) => { const b=bucket(businessDate(d.delivery_date)); if (b) b.store+=num(values?.[i]); });
-    const sales=data.revenueData&&revenue?.operationalSales?revenue.operationalSales(data.revenueData,r,businessDate,store===null?null:Math.round(store*100),deliveryByMonth):data.salesSnapshot||null;
+    const sales=data.revenueData&&revenue?.operationalSales?revenue.operationalSales(data.revenueData,r,businessDate,store===null?null:Math.round(store*100),deliveryByMonth,true):data.salesSnapshot||null;
     let other=0,monthlyBuckets=r.yearly;
     if(sales){
       online=sales.online===null?null:sales.online/100;store=sales.stores===null?null:sales.stores/100;other=sales.other===null?null:sales.other/100;
@@ -106,7 +106,7 @@
     const periodLabel = m.range.label;
     const legend=el('tab-dashboard')?.querySelector?.('.dash-legend');
     if(legend)legend.innerHTML=m.sales?.historical?'<span><i class="dash-other-dot"></i>Historical FinBot income</span>':'<span><i class="dash-online-dot"></i>Online payments</span><span><i class="dash-store-dot"></i>Stores</span><span><i class="dash-other-dot"></i>Direct events & other</span>';
-    set('dashSalesTotal',`<div class="dash-total-label">Total sales <span>${esc(periodLabel)} · before VAT</span></div><div class="dash-total-value">${esc(money(m.totalSales))}</div>${m.sales?.historical?'<div class="dash-total-breakdown"><span>Historical FinBot income · channel split unavailable</span></div>':heroSplit(m)}`);
+    set('dashSalesTotal',`<div class="dash-total-label">Total sales <span>${esc(periodLabel)} · incl. VAT · stores before VAT</span></div><div class="dash-total-value">${esc(money(m.totalSales))}</div>${m.sales?.historical?'<div class="dash-total-breakdown"><span>Historical FinBot income · channel split unavailable</span></div>':heroSplit(m)}`);
     set('dashKPIs', tile('🧾','Unpaid store bills',money(m.owed),'Tap to see who owes','billing-owed')+tile('📦','Paid orders to fulfil',m.waiting === null ? 'Unavailable' : m.waiting.length,'Tap to open Orders','orders'));
     const icons={schedule:'🚚',orders:'📦','billing-owed':'💰','billing-unbilled':'🧾'};
     const action = (count,title,sub,target,urgent=false) => `<button type="button" class="dash-action" data-dash-target="${target}" data-urgent="${urgent}"><span class="dash-action-ico" aria-hidden="true">${icons[target]||'•'}</span><span class="dash-action-count">${esc(count)}</span><span><span class="dash-action-title">${esc(title)}</span>${sub?`<span class="dash-action-sub">${esc(sub)}</span>`:""}</span><span class="dash-action-arrow" aria-hidden="true">↗</span></button>`;
