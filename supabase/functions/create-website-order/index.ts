@@ -6,7 +6,7 @@ const subscriptionModel = (globalThis as any).GremierSubscriptionModel;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fulfillPaidOrder } from "../_shared/fulfill-paid-order.ts";
 import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "../_shared/engage.ts";
-import { shabbatGuaranteedZone, shabbatPromoActive } from "../_shared/weekly-promo.ts";
+import { beitShemeshFreeDelivery, shabbatGuaranteedZone, shabbatPromoActive } from "../_shared/weekly-promo.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { pickAddress } from "../_shared/delivery-address.ts";
 import { linkJourneyOrder } from "../_shared/web-journey-model.ts";
@@ -402,6 +402,9 @@ Deno.serve(async (req) => {
       settingsResult.data || null,
     );
     if (isSubscriptionOrder && String(deliveryInfo.delivery_type || "regular") === "regular") delivery.fee = subscriptionModel.deliveryFee(delivery.fee);
+    // This week only: regular delivery to Beit Shemesh is free on any order (not subscriptions, which recur).
+    const beitShemeshFree = !isSubscriptionOrder && !subscriptionAddon && String(deliveryInfo.delivery_type || "regular") === "regular" && beitShemeshFreeDelivery(delivery.zone?.name_en);
+    if (beitShemeshFree) delivery.fee = 0;
     // Tuesday/Wednesday: regular delivery to Jerusalem or Beit Shemesh is guaranteed to arrive before
     // Shabbat, free or paid (not subscriptions, which recur). The fee itself never changes.
     const shabbatPromo = !isSubscriptionOrder && !subscriptionAddon && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && shabbatGuaranteedZone(delivery.zone?.name_en);
@@ -494,7 +497,7 @@ Deno.serve(async (req) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_address: deliveryAddress,
-      notes: [subscriptionAddon?.note || "", shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
+      notes: [subscriptionAddon?.note || "", shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", beitShemeshFree ? "🚚 Free Beit Shemesh delivery promo" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
       items: allowedItems,
       subtotal,
       discount,

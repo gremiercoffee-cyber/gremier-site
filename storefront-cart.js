@@ -33,6 +33,9 @@
     if (cart.some((i) => i.is_subscription || (i.delivery_price != null && !isNaN(i.delivery_price)))) return null;
     const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0), city = knownCity();
     let freeAbove = 0, where = '';
+    // This week's Beit Shemesh promo: every order already has free delivery there.
+    if (city && typeof resolveDeliveryPricing === 'function' && typeof beitShemeshFreeDelivery === 'function' && beitShemeshFreeDelivery(resolveDeliveryPricing(city).zone?.name_en))
+      return { subtotal, freeAbove: Math.max(1, subtotal), left: 0, where: T('Beit Shemesh', 'בית שמש') };
     if (city && typeof resolveDeliveryPricing === 'function') freeAbove = Number(resolveDeliveryPricing(city).freeAbove) || 0;
     else if (typeof deliveryZones !== 'undefined' && Array.isArray(deliveryZones)) {
       const zones = deliveryZones.filter((z) => Number(z.free_above) > 0).sort((a, b) => Number(a.free_above) - Number(b.free_above));
