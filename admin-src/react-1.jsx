@@ -513,7 +513,7 @@ async function applyJobSideEffects2(job, confirmedQtys, stores) {
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf','jerry_can_unfiltered'];
   const JERRY_MAP = {classic:'jerry_can',unfiltered:'jerry_can_unfiltered',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {unfiltered:{ratio:0.40},classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const CONC_TYPES = {unfiltered:{ratio:0.40},classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
   const PRODS = window.__OPS_PRODUCTS__;
 
   if(job.type==='brew'||job.type==='drain'){
@@ -557,7 +557,7 @@ async function reverseJobSideEffects2(job, stores) {
   const MINI_P = ['vanilla_mini','original_mini','caramel_mini'];
   const JERRY_P = ['jerry_can','jerry_can_houseblend','jerry_can_colombia','jerry_can_decaf','jerry_can_unfiltered'];
   const JERRY_MAP = {classic:'jerry_can',unfiltered:'jerry_can_unfiltered',houseBlend:'jerry_can_houseblend',colombia:'jerry_can_colombia',decaf:'jerry_can_decaf'};
-  const CONC_TYPES = {unfiltered:{ratio:0.40},classic:{ratio:0.43},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
+  const CONC_TYPES = {unfiltered:{ratio:0.40},classic:{ratio:0.44},houseBlend:{ratio:0.50},colombia:{ratio:0.50},decaf:{ratio:0.50}};
 
   // BREW — beans were deducted at brew-start, restore them
   if (job.type === 'brew' && job.brewStarted) {
@@ -589,7 +589,7 @@ async function reverseJobSideEffects2(job, stores) {
     const concType = window.__OPS_PRODUCTS_FULL__?.[job.product]?.concentrate;
     if (concType) {
       const liters = job.actualQty != null ? job.actualQty : (job.liters || 0);
-      const baseRatio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.43);
+      const baseRatio = MINI_P.includes(job.product) ? 0.29 : (CONC_TYPES[concType]?.ratio || 0.44);
       const ratio = window.gremierConcentrateRatio?.(job.product, baseRatio) ?? baseRatio;
       await incrementConcentrate2(concType, +(liters * ratio));  // give concentrate back
       const units = window.__OPS_PRODUCTS__?.[job.product]?.category==='mini' ? Math.round(liters * 4)

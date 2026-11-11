@@ -266,7 +266,7 @@ export const BOTTLES: Record<string, { label: string; category: "liter" | "mini"
   jerry_can_colombia: { label: "Colombia jerry can", category: "jerry", concentrate: "colombia" },
   jerry_can_decaf: { label: "Decaf jerry can", category: "jerry", concentrate: "decaf" },
 };
-const CONC_RATIO: Record<string, number> = { classic: 0.43, unfiltered: 0.4, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
+const CONC_RATIO: Record<string, number> = { classic: 0.44, unfiltered: 0.4, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
 // Products that use a different share of concentrate than their coffee type (keep in sync with
 // window.gremierConcentrateRatio in admin.html).
 const PRODUCT_RATIO: Record<string, number> = { unfiltered_liter: 0.40 };
@@ -288,7 +288,7 @@ export async function logBottling(sb: Sb, args: { product: string; units: number
   if (!Number.isInteger(units)||!(units > 0 && units <= 2000)) throw new HubError("bad_units", "How many did you bottle?");
   // Admin bottling jobs are entered in liters: minis are 4 per liter, jerry cans are 5 L.
   const liters = meta.category === "mini" ? units / 4 : meta.category === "jerry" ? units * 5 : units;
-  const ratio = PRODUCT_RATIO[product] ?? (FLAVORED_MINIS.has(product) ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.43));
+  const ratio = PRODUCT_RATIO[product] ?? (FLAVORED_MINIS.has(product) ? 0.29 : (CONC_RATIO[meta.concentrate] || 0.44));
   const now = jerusalemParts(new Date());
   const id = args.request_id&&/^[a-zA-Z0-9_-]{8,80}$/.test(args.request_id)?"hub_"+args.request_id:newId("hub_");
   const {data:event,error}=await productionCall(sb,"complete_bottling",{p_job:{

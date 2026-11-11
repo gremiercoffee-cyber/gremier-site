@@ -12,7 +12,7 @@ import { BOTTLES, KG_TO_LITERS, todayISO } from "./hub-ops.ts";
 
 type Sb = ReturnType<typeof createClient>;
 const NAMES: Record<string, string> = { classic: "Classic", unfiltered: "Unfiltered", houseBlend: "House Blend", colombia: "Colombia", decaf: "Decaf" };
-const RATIO: Record<string, number> = { classic: 0.43, unfiltered: 0.4, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
+const RATIO: Record<string, number> = { classic: 0.44, unfiltered: 0.4, houseBlend: 0.5, colombia: 0.5, decaf: 0.5 };
 const FLAVORED_MINIS = new Set(["vanilla_mini", "original_mini", "caramel_mini"]);
 // Store deliveries are sometimes logged as totals ("18 small") without the flavor.
 const AGGREGATE: Record<string, string> = { _agg_small: "classic_mini", _agg_large: "classic_liter", _agg_unfiltered: "unfiltered_liter", _agg_dairy_free: "dairy_free_mini" };
@@ -32,7 +32,7 @@ function concentrateIn(product: string) {
   const m = meta(product);
   if (!m) return 0;
   const liters = m.category === "mini" ? 0.25 : m.category === "jerry" ? 5 : 1;
-  const ratio = FLAVORED_MINIS.has(product) ? 0.29 : RATIO[m.concentrate] ?? 0.43;
+  const ratio = FLAVORED_MINIS.has(product) ? 0.29 : RATIO[m.concentrate] ?? 0.44;
   return liters * ratio;
 }
 function units(job: any): Record<string, number> {

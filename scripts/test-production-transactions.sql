@@ -19,7 +19,7 @@ begin
  r:=apply_delivery_stock('test_delivery_existing_can','{"jerry_can":1}');
  if (r->0->>'inferred_units')::numeric<>0 or (r->0->>'concentrate_used_l')::numeric<>0 then raise exception 'Recorded production was counted twice';end if;
  r:=complete_bottling('{"id":"test_classic_minis","product":"classic_mini","actual_qty":1}');
- if (r->>'units')::numeric<>4 or (r->>'concentrate_used_l')::numeric<>0.43 then raise exception 'Classic mini recipe differs';end if;
+ if (r->>'units')::numeric<>4 or (r->>'concentrate_used_l')::numeric<>0.44 then raise exception 'Classic mini recipe differs';end if;
  r:=complete_bottling('{"id":"test_house_minis","product":"house_blend_mini","actual_qty":1}');
  if (r->>'units')::numeric<>4 or (r->>'concentrate_used_l')::numeric<>0.5 then raise exception 'House mini recipe differs';end if;
  r:=complete_bottling('{"id":"test_unfiltered","product":"unfiltered_liter","actual_qty":1}');

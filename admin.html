@@ -2550,7 +2550,7 @@ function gremierOpsConcentrateForProduct(product, category) {
   return 'classic';
 }
 // Concentrate per liter of finished product, for products that differ from their coffee type's
-// default (Classic 43%, House Blend/Colombia/Decaf 50%, flavored minis 29%). Used by bottling, undo and stock planning.
+// default (Classic 44%, House Blend/Colombia/Decaf 50%, flavored minis 29%). Used by bottling, undo and stock planning.
 window.gremierConcentrateRatio = function gremierConcentrateRatio(pid, base) {
   const label = window.__OPS_PRODUCTS_FULL__?.[pid]?.label || window.__OPS_PRODUCTS__?.[pid]?.label || '';
   if (pid === 'unfiltered_liter' || /unfilter|אנפילטר/i.test(label)) return 0.40;   // Unfiltered: 40% of its own concentrate
@@ -7985,7 +7985,7 @@ async function unmarkBillingBilled(billingId) {
 
 // ══ DASHBOARD BRIEFING HELPERS ══
 const BRIEFING_CONCENTRATES = {
-  classic:    { label: 'Classic Dark Roast', ratio: 0.43 },
+  classic:    { label: 'Classic Dark Roast', ratio: 0.44 },
   unfiltered: { label: 'Unfiltered',         ratio: 0.40 },
   houseBlend: { label: 'House Blend',        ratio: 0.50 },
   colombia:   { label: 'Colombia',           ratio: 0.50 },
@@ -8289,7 +8289,7 @@ function briefingInProgressBrews(jobs) {
 }
 // Same per-product rates as bottling: flavored minis 29%, Unfiltered 40%, otherwise the coffee's rate.
 function briefingRatio(pid, meta) {
-  const base = ['vanilla_mini','original_mini','caramel_mini'].includes(pid) ? 0.29 : (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.43);
+  const base = ['vanilla_mini','original_mini','caramel_mini'].includes(pid) ? 0.29 : (BRIEFING_CONCENTRATES[meta.concentrate]?.ratio || 0.44);
   return window.gremierConcentrateRatio?.(pid, base) ?? base;
 }
 function briefingConcentrateDemand(jobs, bottleShortfalls) {
@@ -9957,9 +9957,9 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-orders-calendar.js?v=20261111-2"></script>
 <script src="/admin-orders-board.js?v=20261112-1"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
-<script src="/admin-react-1.js?v=b5c1d6764a"></script>
+<script src="/admin-react-1.js?v=3aa78654c9"></script>
 <script src="/admin-stock-numbers.js?v=20261026-1"></script>
-<script src="/admin-react-2.js?v=c449863011"></script>
+<script src="/admin-react-2.js?v=b9bb769774"></script>
 
 <script src="/admin-react-3.js?v=9ae909da0f"></script>
 
@@ -10462,7 +10462,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
 <script src="/admin-messages.js?v=20261110-3"></script>
 <script src="/admin-reviews.js?v=20261111-1"></script>
 <script src="/admin-production.js?v=20261026-2"></script>
-<script src="/admin-concentrate-calc.js?v=20261111-1"></script>
+<script src="/admin-concentrate-calc.js?v=20261111-2"></script>
 <script src="/admin-stats-tabs.js?v=20261111-7"></script>
 <link rel="stylesheet" href="/admin-journeys.css?v=20261111-2"/>
 <script src="/admin-journey-charts.js?v=20261102-2"></script>

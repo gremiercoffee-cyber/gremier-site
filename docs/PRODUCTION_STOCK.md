@@ -2,7 +2,7 @@
 
 All new bottling, labelling, brew starts and drain completions use admin/service-only database transactions. `production_stock_events` records the actual quantities and balances and makes retries idempotent. The widget, admin forms and voice logger use those same transactions.
 
-Bottling recipes: minis 0.25L each, bottles 1L, jerry cans 5L. Classic concentrate is 43%; House Blend, Colombia and Decaf 50%; flavored minis 29%; Unfiltered 40% of its own concentrate. Unfiltered brews consume Classic beans. Classic/Unfiltered drain after 22 hours, other roasts 18 hours. A batch is recorded even if its input balance is insufficient; a negative concentrate/bean balance flags an unrecorded replenishment instead of silently losing the consumption.
+Bottling recipes: minis 0.25L each, bottles 1L, jerry cans 5L. Classic concentrate is 44%; House Blend, Colombia and Decaf 50%; flavored minis 29%; Unfiltered 40% of its own concentrate. Unfiltered brews consume Classic beans. Classic/Unfiltered drain after 22 hours, other roasts 18 hours. A batch is recorded even if its input balance is insufficient; a negative concentrate/bean balance flags an unrecorded replenishment instead of silently losing the consumption.
 
 Delivery consumes recorded finished stock first. Only the missing finished units consume concentrate as inferred bottling. This does not invent a brew or deduct beans. Inferred production remains real finished production if a delivery is subsequently deleted; those units return to inventory. No inference is attempted for syrups, dispensers, unknown recipes or unmapped aggregate categories. Historic delivery/bottling events are not replayed against current balances.
 

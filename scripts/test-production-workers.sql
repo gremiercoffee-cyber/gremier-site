@@ -17,7 +17,7 @@ begin
  if not exists(select 1 from production_entries where id=entry and worker_id=wid and shift_id=sid and units=4 and source='Test widget') then raise exception 'Attribution failed';end if;
  r:=production_execute('complete_bottling','{"p_job":{"id":"test_worker_bottling","product":"classic_mini","actual_qty":1},"p_labeled":{}}',wid::text,sid,'Test widget');
  if (select count(*) from production_entries where ref='test_worker_bottling')<>1 then raise exception 'Duplicate production entry';end if;
- if (select liters from concentrate where type='classic')<>before_l-0.43 then raise exception 'Incorrect recipe or repeated deduction';end if;
+ if (select liters from concentrate where type='classic')<>before_l-0.44 then raise exception 'Incorrect recipe or repeated deduction';end if;
  begin
   perform production_execute('complete_labeling','{"p_id":"test_wrong_worker","p_product":"classic_mini","p_units":2}',other::text,sid,'Test');
   raise exception 'TEST expected worker mismatch';
@@ -29,7 +29,7 @@ begin
  perform edit_production_entry(entry,other::text,'Corrected worker');
  if not exists(select 1 from production_entries where id=entry and worker_id=other and shift_id is null and note='Corrected worker') then raise exception 'Entry correction failed';end if;
  if (select count(*) from production_entry_edits where entry_id=entry)<>1 then raise exception 'No edit audit';end if;
- if (select liters from concentrate where type='classic')<>before_l-0.43 then raise exception 'Reassignment changed stock';end if;
+ if (select liters from concentrate where type='classic')<>before_l-0.44 then raise exception 'Reassignment changed stock';end if;
  perform reverse_bottling_stock('test_worker_bottling');
  if not exists(select 1 from production_entries where id=entry and voided) then raise exception 'Reversed batch still active';end if;
  r:=production_execute('complete_labeling','{"p_id":"test_owner_labels","p_product":"classic_mini","p_units":2}','owner',null,'Admin');
