@@ -158,17 +158,21 @@
  // that extra counts in the month it was received. Customers with no statements count in full.
  // A month with no statement yet (the current month, before billing) counts its deliveries instead,
  // when the caller has them (deliveryByMonth: {'2026-11': agorot}).
+ // Both sides before VAT: a payment's store part without its VAT against statements (before VAT), so VAT is
+ // never mistaken for extra sales. What a store pays beyond everything billed so far was sold before this
+ // payment. For a store that pays for what it sold, that counts in the month BEFORE the payment (never before
+ // the first statement); for others it stays in the month received (payments for deliveries before statements).
  function earlierDeliveryPayments(data,bills,businessDate,firstStatement,through){
   if(!firstStatement)return {};
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
-  const gross=income(data,firstStatement+'-01',through,businessDate),net=new Map(netOfVat(gross).rows.map(r=>[r.key,r]));
-  const pays=gross.rows.filter(r=>r.parts.stores>0&&!r.summary).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  const used={},out={};
+  const pays=netOfVat(income(data,firstStatement+'-01',through,businessDate)).rows.filter(r=>r.parts.stores>0&&!r.summary).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const used={},out={},bySales=new Set((data.stores||[]).filter(s=>s.pays_for_sales).map(s=>s.id));
+  const before=m=>{const [y,n]=m.split('-').map(Number),d=new Date(Date.UTC(y,n-2,1)).toISOString().slice(0,7);return d<firstStatement?firstStatement:d;};
   for(const p of pays){
-   const sid=p.storeId,billed=sid?live.filter(b=>b.store_id===sid&&monthOf(b)<String(p.date).slice(0,7)).reduce((n,b)=>n+(Number(b.invoiced_gross_minor)||minor(b.total||0)),0):0;
+   const sid=p.storeId,billed=sid?live.filter(b=>b.store_id===sid&&monthOf(b)<String(p.date).slice(0,7)).reduce((n,b)=>n+minor(b.total||0),0):0;
    const room=Math.max(0,billed-(used[sid]||0)),covered=Math.min(room,p.parts.stores),extra=p.parts.stores-covered;
    if(sid)used[sid]=(used[sid]||0)+covered;
-   if(extra>0){const k=String(p.date).slice(0,7),n=net.get(p.key),ratio=n&&p.parts.stores?n.parts.stores/p.parts.stores:1;out[k]=(out[k]||0)+Math.round(extra*ratio);}
+   if(extra>0){const m=String(p.date).slice(0,7),k=bySales.has(sid)?before(m):m;out[k]=(out[k]||0)+extra;}
   }
   return out;
  }
@@ -251,7 +255,7 @@
  async function pages(table,columns){const out=[];for(let n=0;n<100000;n+=1000){const r=await client().from(table).select(columns).order(table==='order_receipts'?'order_id':table==='finbot_income_sources'?'document_reference':table==='revenue_classification_overrides'?'source_key':table==='business_receipt_bills'?'billing_id':table==='finbot_reporting_snapshots'?'report_year':'id').range(n,n+999);if(r.error||!Array.isArray(r.data))throw Error('Could not load '+table);out.push(...r.data);if(r.data.length<1000)return out;}throw Error('Reporting limit reached');}
  let dataFlight=null;
  async function fetchData(){if(dataFlight)return dataFlight;const task=(async()=>{
-  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference,tax_invoice_id,linked_invoice_id,document_type'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number,source_kind,period_start,source_details'],['revenue_classification_overrides','source_key,category'],['finbot_reporting_snapshots','report_year,as_of_date,payload']];
+  const tables=[['orders','id,order_number,created_at,total,customer_name,items,status,payment_status,payment_method,delivery_info'],['products','id,name_en,name_he,category,is_coffee_bar'],['stores','id,name,pays_for_sales'],['receipt_customers','id,name,store_id'],['order_receipts','order_id,status,amount_minor,payment_date,document_reference,is_test'],['business_receipts','id,status,store_id,customer_snapshot,description,amount_minor,payment_date,document_reference,tax_invoice_id,linked_invoice_id,document_type'],['finbot_income_sources','document_reference,document_date,amount_minor,customer_name,website_order_number,source_kind,period_start,source_details'],['revenue_classification_overrides','source_key,category'],['finbot_reporting_snapshots','report_year,as_of_date,payload']];
   const results=await Promise.all([...tables.map(([t,c])=>pages(t,c)),pages('store_deliveries','id,delivery_date').catch(()=>null),pages('store_billing','id,store_id,year,month,total,billed_at,paid_at,cancelled_at,invoiced_gross_minor,stores(name)'),pages('business_receipt_bills','billing_id,receipt_id').catch(()=>null)]);return Object.fromEntries(['orders','products','stores','customers','orderReceipts','businessReceipts','imported','overrides','snapshots','deliveries','bills','billLinks'].map((k,i)=>[k,results[i]]));
 })();dataFlight=task;try{return await task;}finally{if(dataFlight===task)dataFlight=null;}}
  api.fetchData=fetchData;
