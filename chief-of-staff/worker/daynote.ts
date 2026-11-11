@@ -1,3 +1,5 @@
+import {validMorning} from '../shared/daynote-research';
+import {nightlyScores,scoreProfile,saveScoreProfile} from './daynote-scores';
 import {healthPlanChat,healthChatHistory} from './daynote-chat';
 import {getHealthProvider,healthAIStatus} from './daynote-ai';
 import {relationships,suggestRelationships,decideRelationship,relationshipStats} from './daynote-relationships';
@@ -14,7 +16,10 @@ import {HABIT_CATALOG,analyzeJournals,emptyJournal,habitKey,localDate,suggestedD
 import {getProvider,type ModelProvider,type ToolDef} from './ai';
 import {transcribeAudio} from './transcribe';
 import {daynoteConnection,disconnectHealth,healthConnect,healthSync} from './daynote-google';
-import {sendPush} from './push';
+import {pushConfigured} from './push';
+import {daynotePreferences,saveDaynotePreferences,healthNotificationStatus,subscribeHealth,latestWake,healthReminders as scheduledHealthReminders} from './daynote-notifications';
+export {pollForWake} from './daynote-notifications';
+export {daynotePreferences} from './daynote-notifications';
 
 export async function daynoteHabits(env:Env):Promise<Habit[]>{
  const rows=await all<any>(env,'SELECT * FROM daynote_habits');const map=new Map(HABIT_CATALOG.map(h=>[h.id,{...h}]));
@@ -43,7 +48,9 @@ export async function saveEntry(env:Env,date:string,input:any){
  for(const [k,max]of [['energy',10],['readiness',100]]as const)if(j[k]!==null&&j[k]!==undefined&&(!Number.isFinite(j[k])||j[k]!<0||j[k]!>max))throw new HttpError(400,`Invalid ${k}.`);
  if(j.cardio_load!==null&&j.cardio_load!==undefined&&(!Number.isFinite(j.cardio_load)||j.cardio_load<0||j.cardio_load>100000))throw new HttpError(400,'Invalid cardio load.');
  if(j.cardio_load_final!==undefined&&typeof j.cardio_load_final!=='boolean')throw new HttpError(400,'Invalid final-load flag.');
- const revision=input.base_revision+1,stamp=now(),document=JSON.stringify({date,answers:j.answers,questions:[...new Set(j.questions)],cursor:j.cursor,completed:!!j.completed,energy:j.energy??null,readiness:j.readiness??null,cardio_load:j.cardio_load??null,cardio_load_final:!!j.cardio_load_final,revision});
+ if(j.morning!==undefined&&!validMorning(j.morning))throw new HttpError(400,'Check morning ratings and sleep durations.');
+ const previous=await getEntry(env,date),morning=j.morning?{...Object.fromEntries(['overall','quality','rested','sleepiness','alarm','opportunity','sleep_minutes','naps_minutes'].map(k=>[k,(j.morning as any)[k]])),recorded_at:previous?.morning&&JSON.stringify({...previous.morning,recorded_at:undefined})===JSON.stringify({...j.morning,recorded_at:undefined})&&previous.energy===j.energy?previous.morning.recorded_at:now()}:undefined;
+ const revision=input.base_revision+1,stamp=now(),document=JSON.stringify({date,answers:j.answers,questions:[...new Set(j.questions)],cursor:j.cursor,completed:!!j.completed,energy:j.energy??null,readiness:j.readiness??null,cardio_load:j.cardio_load??null,cardio_load_final:!!j.cardio_load_final,morning,revision});
  const result=await env.DB.batch([
   env.DB.prepare('INSERT INTO daynote_entries(date,document,revision,deleted,updated_at,mutation_id) SELECT ?,?,?,0,?,? WHERE ?=0 OR EXISTS(SELECT 1 FROM daynote_entries WHERE date=?) ON CONFLICT(date) DO UPDATE SET document=excluded.document,revision=excluded.revision,deleted=0,updated_at=excluded.updated_at,mutation_id=excluded.mutation_id WHERE daynote_entries.revision=?').bind(date,document,revision,stamp,input.mutation_id,input.base_revision,date,input.base_revision),
   env.DB.prepare('INSERT OR IGNORE INTO daynote_mutations(id,date,revision,created_at) SELECT ?,?,?,? FROM daynote_entries WHERE date=? AND mutation_id=?').bind(input.mutation_id,date,revision,stamp,date,input.mutation_id),
@@ -108,11 +115,19 @@ export async function confirmObservation(env:Env,id:string,p:any){
  if(!habit.enabled||p.action==='entry')await run(env,'INSERT OR REPLACE INTO daynote_suggestion_choices(habit_key,choice,updated_at) VALUES(?,?,?)',o.habit_id||habitKey(o.label),'entry',now());
  return {ok:true,entry:await getEntry(env,p.date)};
 }
-export async function daynoteAnalysis(env:Env,exclude=true){const [entries,rows]=await Promise.all([daynoteEntries(env),all<any>(env,'SELECT * FROM daynote_measurements ORDER BY date DESC,id')]);return analyzeJournals(entries,rows.map(r=>({...r,raw:JSON.parse(r.raw)})),exclude);}
+export async function daynoteAnalysis(env:Env,exclude=true){
+ const scores=await nightlyScores(env,localDate());
+ const [entries,records,vendor]=await Promise.all([daynoteEntries(env),all<{document:string}>(env,'SELECT document FROM daynote_nightly ORDER BY date'),all<any>(env,"SELECT * FROM daynote_measurements WHERE type IN ('google_readiness','google_cardio_load') ORDER BY date,id")]);
+ const measurements:Measurement[]=vendor.map(r=>({...r,raw:JSON.parse(r.raw)}));
+ const types={hrv:'daily-heart-rate-variability',rhr:'daily-resting-heart-rate',resp:'daily-respiratory-rate',oxygen:'daily-oxygen-saturation',temp:'daily-sleep-temperature-derivations'};
+ for(const row of records){const n=JSON.parse(row.document);if(n.sleep)measurements.push({id:n.sleep.id,type:'sleep',date:n.date,start_at:n.sleep.start,end_at:n.sleep.end,value:n.sleep.minutes,raw:{sleep:{metadata:{nap:false}}}});
+ for(const [key,r] of Object.entries(n.vitals) as [keyof typeof types,any][])measurements.push({id:r.id,type:types[key],date:n.date,value:r.value,start_at:null,end_at:null});
+}
+ return {...analyzeJournals(entries,measurements,exclude),score_version:scores.version,score_notice:'Retired composite scores are excluded. Habit comparisons use observed measurements and reported outcomes.',scores_updating:scores.updating};
+}
 const dashboardCache=new WeakMap<Env['DB'],Map<string,any>>();
 export async function recoveryDashboard(env:Env,date=localDate()){const [rows,entries,habits,p]=await Promise.all([all<any>(env,'SELECT * FROM daynote_measurements ORDER BY date,id'),daynoteEntries(env),daynoteHabits(env),daynotePreferences(env)]);const key=JSON.stringify({version:'personal-health-1',date,rows:rows.map(r=>[r.id,r.updated_at??r.raw]),entries,habits,p}),cache=dashboardCache.get(env.DB)||new Map<string,any>();dashboardCache.set(env.DB,cache);if(cache.has(key))return cache.get(key);const measurements=rows.map(r=>({...r,raw:JSON.parse(r.raw)})),result={...buildRecoveryDashboard(measurements,entries,habits,date,p.wake_time),personal:personalModel(measurements,entries,date,p.wake_time,habits)};cache.set(key,result);if(cache.size>5)cache.delete(cache.keys().next().value!);return result;}
-export async function daynotePreferences(env:Env){const row=await first<{value:string}>(env,"SELECT value FROM daynote_settings WHERE key='preferences'");return{reminders:false,reminder_time:'21:00',weekly_summary:false,wake_time:null,...(row?JSON.parse(row.value):{})};}
-export async function daynoteState(env:Env){const [habits,entries,notes,connection,choices,preferences,measurements]=await Promise.all([daynoteHabits(env),daynoteEntries(env),journalNotes(env),daynoteConnection(env),all(env,'SELECT * FROM daynote_suggestion_choices'),daynotePreferences(env),all(env,'SELECT id,type,date,start_at,end_at,value FROM daynote_measurements ORDER BY date DESC LIMIT 300')]);return{habits,entries,notes,connection,choices,preferences,measurements,deleted:await all(env,'SELECT date,revision FROM daynote_entries WHERE deleted=1'),timezone:'Asia/Jerusalem',server_time:now(),measurement_revision:(await first<{revision:string}>(env,'SELECT max(updated_at) revision FROM daynote_measurements'))?.revision??null,latest_readiness_date:(await first<{date:string}>(env,"SELECT max(date) date FROM daynote_measurements WHERE type='google_readiness'"))?.date,measurement_days:[],whoop:await whoopStatus(env)};}
+export async function daynoteState(env:Env){const [habits,entries,notes,connection,choices,preferences,measurements]=await Promise.all([daynoteHabits(env),daynoteEntries(env),journalNotes(env),daynoteConnection(env),all(env,'SELECT * FROM daynote_suggestion_choices'),daynotePreferences(env),all(env,'SELECT id,type,date,start_at,end_at,value FROM daynote_measurements ORDER BY date DESC LIMIT 300')]);return{habits,entries,notes,connection,choices,preferences,measurements,deleted:await all(env,'SELECT date,revision FROM daynote_entries WHERE deleted=1'),timezone:'Asia/Jerusalem',server_time:now(),measurement_revision:(await first<{revision:string}>(env,'SELECT max(updated_at) revision FROM daynote_measurements'))?.revision??null,latest_readiness_date:(await first<{date:string}>(env,"SELECT max(date) date FROM daynote_measurements WHERE type='google_readiness'"))?.date,measurement_days:[],whoop:await whoopStatus(env),last_wake_at:(await latestWake(env))?.end_at??null};}
 const json=(v:unknown,status=200)=>new Response(JSON.stringify(v),{status,headers:{'content-type':'application/json','cache-control':'private, no-store'}});
 /** Called only after Chief of Staff bearer authentication. */
 export async function daynoteRoute(req:Request,env:Env):Promise<Response>{
@@ -121,6 +136,9 @@ export async function daynoteRoute(req:Request,env:Env):Promise<Response>{
  if(path==='/standalone'&&method==='POST')return json(await createDaynoteLogin(env,HEALTH_ORIGIN));
  if((path==='/whoop/connect'||path==='/google/connect')&&method==='POST'&&u.origin===HEALTH_ORIGIN){const login=await createDaynoteLogin(env,COS_ORIGIN);return json({...login,url:login.url+'&connect='+(path.includes('whoop')?'whoop':'google')});}
  const android=await androidOwnerRoute(env,req,path);if(android)return android;
+ if(path==='/score-profile'&&method==='GET')return json(await scoreProfile(env));
+ if(path==='/score-profile'&&method==='PUT')return json(await saveScoreProfile(env,await body()));
+ if(method==='GET'&&path==='/scores'){const date=u.searchParams.get('date')||localDate();if(!validDate(date))throw new HttpError(400,'Invalid date.');return json(await nightlyScores(env,date));}
  if(method==='GET'&&path==='/dashboard'){const date=u.searchParams.get('date')||localDate();if(!validDate(date))throw new HttpError(400,'Invalid date.');return json(await recoveryDashboard(env,date));}
  if(path==='/whoop/configure'&&method==='POST')return json(await configureWhoop(env,await body()));
  if(path==='/whoop/connect'&&method==='POST')return connectWhoop(env,req);
@@ -135,7 +153,7 @@ export async function daynoteRoute(req:Request,env:Env):Promise<Response>{
  if(method==='GET'&&path==='/relationships')return json(await relationships(env));
  if(method==='POST'&&path==='/relationships/suggest'){const p=await body();return json(await suggestRelationships(env,String(p.note_id||'')));}
  const rel=path.match(/^\/relationships\/([^/]+)$/);if(rel&&method==='POST'){const p=await body();return json(await decideRelationship(env,rel[1],String(p.status||'')));}
- if(method==='GET'&&path==='/vitals')return json(await all(env,"SELECT id,type,date,value,updated_at FROM daynote_measurements WHERE type IN ('daily-heart-rate-variability','daily-resting-heart-rate','daily-respiratory-rate','daily-oxygen-saturation','daily-sleep-temperature-derivations') AND value IS NOT NULL ORDER BY date,id"));
+ if(method==='GET'&&path==='/vitals')return json(await all(env,"SELECT id,type,date,value,updated_at,COALESCE(json_extract(raw,'$.dataSource.device.id'),json_extract(raw,'$.dataSource.device.displayName'),json_extract(raw,'$.dataSource.device.model'),'unknown-device') device FROM daynote_measurements WHERE type IN ('daily-heart-rate-variability','daily-resting-heart-rate','daily-respiratory-rate','daily-oxygen-saturation','daily-sleep-temperature-derivations') AND value IS NOT NULL ORDER BY date,id"));
  if(method==='GET'&&path==='/insights')return json(await daynoteAnalysis(env,u.searchParams.get('exclude')!=='false'));
  if(method==='POST'&&path==='/habits')return json(await saveHabit(env,await body()));
  const entry=path.match(/^\/entries\/(20\d\d-\d\d-\d\d)$/);
@@ -151,20 +169,22 @@ export async function daynoteRoute(req:Request,env:Env):Promise<Response>{
  }
  const note=path.match(/^\/notes\/([^/]+)(?:\/(retry|confirm))?$/);
  if(note){if(method==='DELETE'){await run(env,"DELETE FROM daynote_relationships WHERE source_note=?",note[1]);await run(env,'DELETE FROM daynote_relationship_scans WHERE note_id=?',note[1]);await run(env,'DELETE FROM daynote_notes WHERE id=?',note[1]);return json({ok:true});}if(method==='POST'&&note[2]==='retry')return json(await processDaynoteNote(env,note[1]));if(method==='POST'&&note[2]==='confirm')return json(await confirmObservation(env,note[1],await body()));}
- if(path==='/preferences'&&method==='PUT'){const p=await body();if(p.wake_time!==null&&p.wake_time!==undefined&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(p.wake_time))throw new HttpError(400,'Choose a valid wake time.');if(!/^\d{2}:\d{2}$/.test(p.reminder_time)||+p.reminder_time.slice(0,2)>23||+p.reminder_time.slice(3)>59)throw new HttpError(400,'Choose a valid reminder time.');await run(env,"INSERT OR REPLACE INTO daynote_settings(key,value) VALUES('preferences',?)",JSON.stringify({reminders:!!p.reminders,weekly_summary:!!p.weekly_summary,reminder_time:p.reminder_time,wake_time:p.wake_time||null}));return json(await daynotePreferences(env));}
+ if(path==='/preferences'&&method==='PUT')return json(await saveDaynotePreferences(env,await body()));
+ if(path==='/notifications'&&method==='GET')return json({...await healthNotificationStatus(env),key:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null});
+ if(path==='/notifications/subscribe'&&method==='POST')return json(await subscribeHealth(env,await body()));
  if(path==='/google/connect'&&method==='POST')return healthConnect(env,req);
  if(path==='/google/sync'&&method==='POST')return json(await healthSync(env,true));
  if(path==='/google/disconnect'&&method==='POST'){await disconnectHealth(env);return json({ok:true});}
- if(path==='/export'&&method==='GET')return json({exported_at:now(),...await daynoteState(env),relationships:await relationships(env),personal_model:(await recoveryDashboard(env)).personal,measurements:await all(env,'SELECT * FROM daynote_measurements'),health_conversations:await all(env,"SELECT m.* FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.privacy_scope='health'")});
+ if(path==='/export'&&method==='GET')return json({exported_at:now(),...await daynoteState(env),relationships:await relationships(env),scores:await all(env,'SELECT * FROM daynote_nightly ORDER BY date'),legacy_sleep:await all(env,'SELECT * FROM daynote_legacy_sleep'),score_model:'sleep-body-2',score_profile:await scoreProfile(env),score_archive:await all(env,'SELECT * FROM daynote_score_archive ORDER BY date,version'),score_profile_history:await all(env,'SELECT * FROM daynote_score_profile_history ORDER BY revision'),measurements:await all(env,'SELECT * FROM daynote_measurements'),health_conversations:await all(env,"SELECT m.* FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.privacy_scope='health'")});
  if(path==='/data'&&method==='DELETE'){
-  await disconnectHealth(env);await disconnectWhoop(env,true);await env.DB.batch([env.DB.prepare("DELETE FROM messages WHERE conversation_id IN(SELECT id FROM conversations WHERE privacy_scope='health')"),env.DB.prepare("DELETE FROM conversations WHERE privacy_scope='health'")]);await env.DB.batch(['daynote_ai_requests','daynote_relationships','daynote_relationship_scans','daynote_entries','daynote_habits','daynote_mutations','daynote_notes','daynote_suggestion_choices','daynote_measurements','daynote_settings','daynote_oauth','daynote_android_devices','daynote_android_pairs'].map(table=>env.DB.prepare(`DELETE FROM ${table}`)));return json({ok:true});
+  await disconnectHealth(env);await disconnectWhoop(env,true);await env.DB.batch([env.DB.prepare("DELETE FROM messages WHERE conversation_id IN(SELECT id FROM conversations WHERE privacy_scope='health')"),env.DB.prepare("DELETE FROM conversations WHERE privacy_scope='health'")]);await env.DB.batch(['daynote_ai_requests','daynote_relationships','daynote_relationship_scans','daynote_entries','daynote_habits','daynote_mutations','daynote_notes','daynote_suggestion_choices','daynote_measurements','daynote_legacy_sleep','daynote_score_dirty','daynote_nightly','daynote_score_archive','daynote_score_profile','daynote_score_profile_history','daynote_settings','daynote_oauth','daynote_android_devices','daynote_android_pairs'].map(table=>env.DB.prepare(`DELETE FROM ${table}`)));return json({ok:true});
  }
  return json({error:'Not found'},404);
 }
 /** A capability of the existing agent, exposed only inside its verified Health topic. */
 export function daynoteTools(env:Env):ToolDef[]{return[
- {name:'get_health_journal',readOnly:true,description:'Read confirmed Health Journal records and CODE-CALCULATED comparisons. Personal model estimates are explicitly labelled, experimental and calculated in code; never call them Google or WHOOP scores, guarantees, diagnoses or causal effects. Morning ratings refer to that morning. Open /daynote/ to log/edit or confirm a note.',input_schema:{type:'object',properties:{}},handler:async()=>({entries:(await daynoteEntries(env)).slice(0,60),analysis:await daynoteAnalysis(env),recovery_dashboard:await recoveryDashboard(env),connection:await daynoteConnection(env),url:'https://health.gremiercoffee.co.il/daynote/'})},
- {name:'propose_health_note',description:'Extract a health journal text note for review. Never silently enables questions or saves unconfirmed observations. Tell the owner to review the summary in Health Journal.',input_schema:{type:'object',properties:{date:{type:'string'},text:{type:'string'}},required:['text']},handler:async p=>{const n=await extractDaynoteNote(env,{date:validDate(p.date)?p.date:suggestedDate(),text:String(p.text),source:'telegram'});return{id:n.id,observations:n.observations,status:'awaiting_confirmation',url:`${HEALTH_URL}?note=${n.id}`};}},
+ {name:'get_health_journal',readOnly:true,description:'Read confirmed Health Journal records and CODE-CALCULATED comparisons. Sleep Score estimates reported sleep quality and Body Score estimates morning energy only after personal evaluation gates. A null score must be described as Learning or unavailable, never replaced with a number. Owner-reported ideal range is not measured biological need. Weekend owner defaults are assumptions, not watch records or observed outcomes; Body Score contains sleep and physiological inputs, so association with its own components is mathematical, not a discovery; never call them Google or WHOOP scores, guarantees, diagnoses or causal effects. Morning ratings refer to that morning. Open /daynote/ to log/edit or confirm a note.',input_schema:{type:'object',properties:{}},handler:async()=>({entries:(await daynoteEntries(env)).slice(0,60),analysis:await daynoteAnalysis(env),nightly_scores:await nightlyScores(env,localDate()),connection:await daynoteConnection(env),url:'https://health.gremiercoffee.co.il/daynote/'})},
+ {name:'propose_health_note',description:'Extract a health journal text note for review. Never silently enables questions or saves unconfirmed observations. Tell the owner to review the summary in Health Journal.',input_schema:{type:'object',properties:{date:{type:'string'},text:{type:'string'}},required:['text']},handler:async p=>{const n=await extractDaynoteNote(env,{date:validDate(p.date)?p.date:suggestedDate(new Date(),(await latestWake(env))?.end_at),text:String(p.text),source:'telegram'});return{id:n.id,observations:n.observations,status:'awaiting_confirmation',url:`${HEALTH_URL}?note=${n.id}`};}},
 ];}
 export async function weeklyHealthSummary(env:Env){
  const [analysis,habits]=await Promise.all([daynoteAnalysis(env),daynoteHabits(env)]);
@@ -172,10 +192,4 @@ export async function weeklyHealthSummary(env:Env){
  const comparisons=analysis.comparisons.filter(c=>['hrv_ms','resting_hr'].includes(c.metric)&&c.yes_n>=5&&c.no_n>=5&&c.difference!==null).slice(0,3).map(c=>`${habits.find(h=>h.id===c.habit_id)?.label||c.habit_id}: ${c.label.toLowerCase()} with ${c.metric==='hrv_ms'?'HRV':'resting heart rate'} (${c.difference!>0?'+':''}${c.difference!.toFixed(1)}; yes n=${c.yes_n}, no n=${c.no_n}; missing ${c.missing}).`);
  return ['Health Journal · weekly review',...vitals,...(comparisons.length?comparisons:['Not enough journal and measurement data to identify reliable patterns yet.']),'Patterns are associations across available history, not proof of causes. Other factors and chance may explain them.','https://health.gremiercoffee.co.il/daynote/'].join('\n');
 }
-export async function healthReminders(env:Env){
- const p=await daynotePreferences(env);if(!p.reminders&&!p.weekly_summary)return;
- const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date()),time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
- const key=p.reminders&&time>=p.reminder_time&&!((await getEntry(env,date))?.completed)?'reminder:'+date:p.weekly_summary&&new Date(date+'T12:00Z').getUTCDay()===0&&time>='19:00'?'summary:'+date:null;if(!key)return;
- const claim=await first(env,'INSERT INTO daynote_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING RETURNING key','sent:'+key,now());if(!claim)return;
- try{const summary=key.startsWith('reminder')?null:await weeklyHealthSummary(env);await sendPush(env,{title:summary?'Health Journal · weekly review':'Health Journal',body:summary?summary.split(String.fromCharCode(10)).slice(1,4).join(' · '):'Your daily journal is ready.',url:'https://health.gremiercoffee.co.il/daynote/',tag:'daynote'});}catch(e){await run(env,'DELETE FROM daynote_settings WHERE key=?','sent:'+key);throw e;}
-}
+export async function healthReminders(env:Env){return scheduledHealthReminders(env,new Date(),undefined,()=>weeklyHealthSummary(env));}

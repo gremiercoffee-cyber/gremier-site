@@ -1,8 +1,12 @@
 // Only public app-shell assets. Never cache health APIs, OAuth callbacks, or authenticated responses.
-const CACHE='daynote-shell-v10';
+const CACHE='daynote-shell-v19';
 self.addEventListener('install',e=>e.waitUntil((async()=>{const c=await caches.open(CACHE);const r=await fetch('/daynote/');if(!r.ok)throw Error('No shell');const html=await r.clone().text();await c.put('/daynote/',r);const assets=[...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+\.(?:js|css))"/g)].map(m=>m[1]);await c.addAll(['/daynote/manifest.webmanifest','/daynote/icon.svg','/daynote/icon-192.png','/daynote/icon-512.png',...assets]);await self.skipWaiting();})()));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('daynote-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==self.location.origin||u.pathname.startsWith('/api/'))return;
  const shell=e.request.mode==='navigate'&&/^\/daynote\/(?:index\.html)?$/.test(u.pathname);const asset=u.pathname.startsWith('/assets/')||/^\/daynote\/(?:icon[^/]*\.(?:png|svg)|manifest\.webmanifest|(?:privacy|research)\.html)$/.test(u.pathname);if(!shell&&!asset)return;
  e.respondWith(fetch(e.request).then(r=>{if(r.ok&&r.type!=='opaque'){const copy=r.clone();caches.open(CACHE).then(c=>c.put(shell?'/daynote/':e.request,copy));}return r;}).catch(()=>caches.match(shell?'/daynote/':e.request,{ignoreVary:true}).then(r=>r||new Response('Offline asset unavailable',{status:503}))));
 });
+
+// Health pushes contain a discreet invitation; detailed measurements stay in the app.
+self.addEventListener('push',event=>{event.waitUntil((async()=>{let data={};try{data=event.data?.json()||{};}catch{}await self.registration.showNotification(data.title||'Health Journal',{body:data.body||'',tag:data.tag||'daynote',icon:'/daynote/icon-192.png',badge:'/daynote/icon-192.png',data:{url:data.url||'/daynote/'}});})());});
+self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil((async()=>{let target=new URL(event.notification.data?.url||'/daynote/',self.location.origin);if(target.origin!==self.location.origin||!target.pathname.startsWith('/daynote/'))target=new URL('/daynote/',self.location.origin);const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of windows){if(new URL(client.url).origin===target.origin&&new URL(client.url).pathname.startsWith('/daynote/')){await client.navigate(target.href);await client.focus();return;}}await self.clients.openWindow(target.href);})());});

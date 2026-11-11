@@ -1,3 +1,4 @@
+import {orderShoppingItems} from './shopping-route';
 export interface ShoppingItem {
   id: string; list_id: string; name: string; quantity: string; notes: string;
   checked: number; checked_at: string | null; source: string; created_at: string; updated_at: string;
@@ -15,7 +16,7 @@ export function shoppingSections(items: ShoppingItem[], at = Date.now()) {
     else if (Date.parse(item.checked_at ?? item.updated_at) + PURCHASE_VISIBLE_MS > at) recent.push(item);
     else archived.push(item);
   }
-  return {needed,recent,archived};
+  return {needed:items.every(i=>i.list_id==='store')?orderShoppingItems(needed,'store'):needed,recent,archived};
 }
 
 // Match the configured conversation, never the message's sender or a group participant.

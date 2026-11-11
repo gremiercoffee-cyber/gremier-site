@@ -7,7 +7,7 @@ import {HEALTH_ORIGIN} from '../shared/health-origin';
 import {androidDeviceRoute} from './daynote-android';
 import {redeemDaynoteLogin} from './daynote-login';
 import {finishWhoopAuth,syncWhoop} from './daynote-whoop';
-import {daynoteRoute,healthReminders} from './daynote';
+import {daynoteRoute,healthReminders,pollForWake} from './daynote';
 import {finishHealthAuth,healthSync} from './daynote-google';
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {homeJobs,stopHomeJob} from './home-jobs';
@@ -43,6 +43,7 @@ import { findPeople, recallMemories } from "./memory";
 import { currentBlock, nowChecklist, describeSituation, saveSituation, type Situation } from "./situations";
 import { bridgeWatches, capture, knownChats, linkWhatsapp, markBackfilled, saveChatNames } from "./wa-bridge";
 import { GoogleAuthError, disconnectGoogle, finishGoogleAuth, googleStatus, startGoogleAuth, syncGoogle } from "./google";
+import {gesherTick,gesherStatus,checkGesherScheduler} from './gesher';
 import { contactsStatus, openWhatsApps, syncContacts, syncContactsDaily } from "./contacts";
 import { createRealtimeSession, logRealtimeMessage, runRealtimeTool } from "./realtime";
 
@@ -618,8 +619,11 @@ export default {
       if (!env.AGENT_KEY || !safeEqual(key, env.AGENT_KEY)) return json({ error: "unauthorised" }, 401);
       if (url.pathname.startsWith("/api/agent/helper-jobs")) return json({ error: "The computer helper has been removed." }, 410);
       try{
+      if(url.pathname==='/api/agent/gesher/status'&&req.method==='GET')return json(await gesherStatus(env));
+      if(url.pathname==='/api/agent/gesher/tick'&&req.method==='POST')return json(await gesherTick(env));
       const healthAIResponse=await healthAIRunnerRoute(req,env);if(healthAIResponse)return json(healthAIResponse);
       if(url.pathname==='/api/agent/health/sync'&&req.method==='POST')return json(await healthSync(env,true,true,url.searchParams.get('history_days')==='28'?28:7));
+                                                if(url.pathname==='/api/agent/shopping'&&req.method==='GET'){const s=await shoppingState(env);return json({lists:s.lists,pending:s.pending,source:'live_records',store_order:'physical_walking_route'});}
       const agentChatResponse=await agentChatsRoute(req,env);if(agentChatResponse)return agentChatResponse;
       if(url.pathname.startsWith('/api/agent/cos/')){
         const target='/api/'+url.pathname.slice('/api/agent/cos/'.length);
@@ -709,6 +713,7 @@ export default {
   },
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(checkGesherScheduler(env).catch(()=>console.error('Gesher scheduler health check failed')));
     // Every 5 minutes: jobs (start what's due, collect results). Everything else keeps its 15-minute rhythm
     // (one schedule: the account allows no more).
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
@@ -716,11 +721,11 @@ export default {
     ctx.waitUntil(import("./approvals").then((a) => a.announceApprovals(env)).catch((e) => console.error("approvals", e)));
     // Reminders and due times the user set: every 5 minutes, so they arrive on time.
     ctx.waitUntil(runProactive(env).catch((e) => console.error("reminders", e)));
+    ctx.waitUntil(healthReminders(env).catch(()=>{}));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
-    ctx.waitUntil(healthSync(env).catch(()=>{}));
+    ctx.waitUntil(healthSync(env).catch(()=>{}).then(()=>pollForWake(env)).catch(()=>{}));
     ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));
     ctx.waitUntil(syncWhoop(env).catch(()=>{}));
-    ctx.waitUntil(healthReminders(env).catch(()=>{}));
     // Pull Google first so new emails and meetings are in place before reminders.
     ctx.waitUntil(syncHashgacha(env).catch(e=>console.error('hashgacha',e)).then(()=>runHashgachaAutopilot(env)).catch(e=>console.error('hashgacha autopilot',e)).then(()=>syncGoogle(env)).catch((e) => console.error("google sync", e)).then(() => runProactive(env))
       .then(() => organizeProjects(env)).catch(e=>console.error("project organization",e))

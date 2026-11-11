@@ -35,7 +35,7 @@ const tool=(h,token,name,args={})=>h.call('/api/mcp','POST',{jsonrpc:'2.0',id:5,
 test('MCP discovery is public but every private tool requires a separate OAuth grant',async()=>{
  const h=setup(),meta=await h.call('/.well-known/oauth-protected-resource');assert.equal(meta.data.resource,R);
  const hello=await h.call('/api/mcp','POST',{id:1,method:'initialize'});assert.equal(hello.data.result.serverInfo.name,'chief-of-staff');
- const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_my_day','get_reminders','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','coffee_read','coffee_update','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
+ const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_shopping_lists','get_my_day','get_reminders','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','coffee_read','coffee_update','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
  assert.equal((await tool(h,null,'chief_of_staff_connection')).status,401);assert.equal((await tool(h,'owner-fixture','chief_of_staff_connection')).status,401);
  assert.ok(!JSON.stringify(tools.data).includes('owner-fixture'));assert.ok(tools.data.result.tools.every(t=>['cos.relay','cos.tasks.read','cos.tasks.write','cos.life.read','cos.drafts.write'].includes(t.securitySchemes[0].scopes[0])));
 });
@@ -195,4 +195,33 @@ test('broken alerts: only real breakage, computer-off is quiet, one alert per pr
   set('bridge_last_seen',iso(now+20*60_000));await m.checkBroken(h.env,now+30*60_000);
   assert.equal(h.db.prepare("SELECT count(*) n FROM nudges WHERE type='broken' AND dismissed=0").get().n,0);
  }finally{globalThis.fetch=original;}
+});
+
+
+test('direct shopping tool shares Store route and avoids second-model calls and D1 writes',async()=>{
+ const h=setup(),g=await grant(h,'cos.relay cos.life.read');
+ const put=h.db.prepare("INSERT INTO shopping_items(id,list_id,name,normalized_name,quantity,notes,checked,created_at,updated_at) VALUES(?,?,?,?,?,?,0,?,?)");
+ for(const [i,name] of ['Wipes','Herring','Biscuits','Oatmeal','Frozen chicken','Bread'].entries())put.run('route-'+i,'store',name,name.toLowerCase(),'2','keep details','2026-11-05','2026-11-05');
+ const before=h.db.prepare('SELECT total_changes() n').get().n;
+ const r=await tool(h,g.access_token,'get_shopping_lists');assert.equal(r.status,200);assert.ok(!r.data.result.isError);
+ const data=r.data.result.structuredContent;assert.equal(data.store_order,'physical_walking_route');assert.deepEqual(data.lists.find(l=>l.id==='store').items.map(i=>i.name),['Oatmeal','Bread','Herring','Frozen chicken','Biscuits','Wipes']);assert.equal(data.lists[0].items[0].quantity,'2');assert.equal(data.lists[0].items[0].notes,'keep details');assert.equal(h.db.prepare('SELECT total_changes() n').get().n,before);assert.ok(!JSON.stringify(data).includes('shopping_whatsapp'));h.db.close();
+});
+
+test('headless heartbeat keeps work alive, receipts are retry-safe and verification requires completion',async()=>{
+ const h=setup(),g=await grant(h),headers={'x-agent-key':'agent-fixture'};
+ await tool(h,g.access_token,'ask_chief_of_staff',{message:'Safe test',request_key:'headless-test'});
+ const r=(await h.call('/api/agent/relay/next','POST',{ready:true,executor:'headless'},headers)).data.request;
+ await h.call(`/api/agent/relay/${r.id}/submitted`,'POST',{claim_token:r.claim_token},headers);
+ h.db.prepare('UPDATE cos_relay_requests SET submitted_at=0,updated_at=0 WHERE id=?').run(r.id);
+ assert.equal((await h.call(`/api/agent/relay/${r.id}/heartbeat`,'POST',{claim_token:'bad'},headers)).status,403);
+ assert.equal((await h.call(`/api/agent/relay/${r.id}/heartbeat`,'POST',{claim_token:r.claim_token},headers)).status,200);
+ await h.call('/api/agent/relay/next','POST',{ready:true,executor:'headless'},headers);
+ assert.equal(h.db.prepare('SELECT state FROM cos_relay_requests WHERE id=?').get(r.id).state,'submitted');
+ assert.equal((await tool(h,g.access_token,'chief_of_staff_connection')).data.result.structuredContent.automatic_execution_verified,false);
+ const result={claim_token:r.claim_token,executor:'headless',state:'done',answer:'Verified safe result'};
+ assert.equal((await h.call(`/api/agent/relay/${r.id}/result`,'POST',result,headers)).status,200);
+ assert.equal((await h.call(`/api/agent/relay/${r.id}/result`,'POST',result,headers)).data.duplicate,true);
+ assert.equal((await tool(h,g.access_token,'chief_of_staff_connection')).data.result.structuredContent.automatic_execution_verified,true);
+ h.db.prepare("INSERT INTO settings(key,value) VALUES('automatic_codex_enabled','true')").run();
+ assert.equal((await h.call('/api/agent/relay/next','POST',{ready:true},headers)).data.reason,'headless_executor_active');
 });

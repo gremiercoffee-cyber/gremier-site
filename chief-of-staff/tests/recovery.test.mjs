@@ -8,6 +8,36 @@ const result=await build({stdin:{contents:"export * from './shared/recovery';exp
 const m=await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64'));
 function setup(){const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));const prepare=sql=>{let args=[];return{bind(...v){args=v;return this;},first(){return db.prepare(sql).get(...args)||null;},all(){return{results:db.prepare(sql).all(...args)};},run(){return{meta:{changes:Number(db.prepare(sql).run(...args).changes)}};}};};return{db,env:{GOOGLE_CLIENT_SECRET:'fixture-encryption-only',DB:{prepare,batch:async statements=>{db.exec('BEGIN');try{const r=statements.map(s=>s.run());db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}}}}};}
 const json=x=>new Response(JSON.stringify(x),{headers:{'content-type':'application/json'}});
+test('WHOOP repeated history fetch leaves unchanged measurements untouched and accepts corrections',async()=>{
+ const h=setup();await authorize(h,async url=>String(url).includes('/token')?json(tokens):json({records:[]}));
+ const f=fixture(1),original=globalThis.fetch;let corrected=false;
+ h.db.exec('CREATE TABLE measurement_changes(id TEXT); CREATE TRIGGER track_measurement_update AFTER UPDATE ON daynote_measurements BEGIN INSERT INTO measurement_changes VALUES(new.id); END;');
+ globalThis.fetch=async url=>{const s=String(url),kind=s.includes('/activity/sleep')?'sleep':s.includes('/recovery')?'recovery':'cycle';return json({records:f.measurements.filter(m=>m.type==='whoop_'+kind).map(m=>corrected&&kind==='recovery'?{...m.raw,score:{...m.raw.score,recovery_score:73}}:m.raw)});};
+ try{
+  await m.syncWhoop(h.env,true);await m.syncWhoop(h.env,true);
+  assert.equal(h.db.prepare('SELECT count(*) n FROM measurement_changes').get().n,0);
+  corrected=true;await m.syncWhoop(h.env,true);
+  assert.equal(h.db.prepare('SELECT count(*) n FROM measurement_changes').get().n,2);
+  assert.equal(h.db.prepare("SELECT value FROM daynote_measurements WHERE type='whoop_recovery' LIMIT 1").get().value,73);
+ }finally{globalThis.fetch=original;}
+});
+test('WHOOP recent reconciliation keeps identical rows, removes missing IDs only in the fetched window, and retains history on failure',async()=>{
+ const h=setup();await authorize(h,async url=>String(url).includes('/token')?json(tokens):json({records:[]}));
+ const f=fixture(1),today=new Date().toISOString().slice(0,10),original=globalThis.fetch;
+ const records=f.measurements.map(m=>({...m.raw,start:m.raw.start?today+'T05:00:00Z':undefined,end:m.raw.end?today+'T06:00:00Z':undefined,created_at:m.raw.created_at?today+'T05:00:00Z':undefined}));
+ h.db.prepare("INSERT INTO daynote_settings(key,value) VALUES('whoop_history',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({end:new Date().toISOString(),streams:{cycle:{done:true},sleep:{done:true},recovery:{done:true}},earliest:'2026-08-01'}));
+ let omit=false,fail=false;
+ globalThis.fetch=async url=>{const s=String(url);if(fail&&s.includes('/recovery'))return new Response('',{status:403});const kind=s.includes('/activity/sleep')?'sleep':s.includes('/recovery')?'recovery':'cycle';return json({records:records.filter(p=>kind==='sleep'?!!p.nap===false&&!!p.score.stage_summary:kind==='recovery'?!!p.score.recovery_score:!!p.score.strain).filter(p=>!omit||(p.id??p.cycle_id)!==1)});};
+ h.db.exec('CREATE TABLE measurement_changes(id TEXT); CREATE TRIGGER track_recent_update AFTER UPDATE ON daynote_measurements BEGIN INSERT INTO measurement_changes VALUES(new.id); END;');
+ try{
+  await m.syncWhoop(h.env,true);
+  const old=f.measurements[0];h.db.prepare('INSERT INTO daynote_measurements(id,type,date,start_at,end_at,value,raw,updated_at) VALUES(?,?,?,?,?,?,?,?)').run('old-history',old.type,old.date,old.start_at,old.end_at,old.value,JSON.stringify(old.raw),new Date().toISOString());
+  const count=h.db.prepare('SELECT count(*) n FROM daynote_measurements').get().n;assert.equal(count,7);
+  await m.syncWhoop(h.env,true);assert.equal(h.db.prepare('SELECT count(*) n FROM measurement_changes').get().n,0);
+  omit=true;fail=true;await assert.rejects(m.syncWhoop(h.env,true));assert.equal(h.db.prepare('SELECT count(*) n FROM daynote_measurements').get().n,count);
+  fail=false;await m.syncWhoop(h.env,true);assert.equal(h.db.prepare('SELECT count(*) n FROM daynote_measurements').get().n,5);assert.ok(h.db.prepare("SELECT id FROM daynote_measurements WHERE id='old-history'").get());
+ }finally{globalThis.fetch=original;}
+});
 function fixture(n=70){const measurements=[],entries=[];for(let i=0;i<=n;i++){const date=m.shiftDate('2026-08-01',i),start=date+'T05:00:00Z',sleepDate=m.shiftDate(date,-1),hours=i%2?8.5:6.5;const sleepStart=new Date(Date.parse(start)-hours*3600000-30*60000).toISOString(),id=i+1,recovery=i%2?82:44;
  const cycle={id,user_id:42,start,end:i===n?null:m.shiftDate(date,1)+'T05:00:00Z',score_state:'SCORED',score:{strain:12+(i%3)/10}};
  const sleep={id:'sleep-'+id,cycle_id:id,user_id:42,start:sleepStart,end:start,nap:false,score_state:'SCORED',score:{stage_summary:{total_light_sleep_time_milli:hours*3600000,total_slow_wave_sleep_time_milli:0,total_rem_sleep_time_milli:0}}};

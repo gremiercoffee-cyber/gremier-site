@@ -1,7 +1,8 @@
+import type {MorningReview} from './daynote-research';
 export const DAYNOTE_TZ='Asia/Jerusalem';
 export type Habit={id:string;label:string;category:string;enabled:boolean;position:number;followups:boolean;detail?:'time'|'number';detailLabel?:string;custom?:boolean};
 export type Answer={value:'yes'|'no'|'skip';detail?:string;source:'questionnaire'|'note';note_id?:string;evidence?:string;at:string};
-export type Journal={date:string;answers:Record<string,Answer>;questions:string[];cursor:number;completed:boolean;energy:number|null;readiness:number|null;cardio_load?:number|null;cardio_load_final?:boolean;revision:number;updated_at?:string};
+export type Journal={date:string;answers:Record<string,Answer>;questions:string[];cursor:number;completed:boolean;energy:number|null;readiness:number|null;cardio_load?:number|null;cardio_load_final?:boolean;morning?:MorningReview;revision:number;updated_at?:string};
 export type Observation={date:string;habit_id:string|null;label:string;category:string;value:'yes'|'no'|null;detail?:string;evidence:string;uncertain:boolean};
 export type JournalNote={id:string;date:string;transcript:string;observations:Observation[];decisions:Record<string,string>;source:string;created_at:string;processed?:boolean};
 const definitions:[string,string,string,boolean,('time'|'number')?,string?][]=[
@@ -49,7 +50,9 @@ export function localDate(at:Date|string=new Date()){return new Intl.DateTimeFor
 export function localHour(at:Date|string=new Date()){return Number(new Intl.DateTimeFormat('en-GB',{timeZone:DAYNOTE_TZ,hour:'2-digit',hourCycle:'h23'}).format(new Date(at)));}
 export function shiftDate(date:string,days:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
 /** Default to the current Jerusalem calendar day. The user can always choose another date. */
-export function suggestedDate(at:Date|string=new Date()){return localDate(at);}
+/** The journal day you are living in: it stays on the day you went to sleep until you wake up. After midnight it is still
+ * yesterday until a main sleep has ended today (or noon, for nights the watch missed). */
+export function suggestedDate(at:Date|string=new Date(),lastWakeAt?:string|null){const today=localDate(at);if(localHour(at)>=12)return today;return lastWakeAt&&localDate(lastWakeAt)===today&&Date.parse(lastWakeAt)<=new Date(at).getTime()?today:shiftDate(today,-1);}
 export function validDate(date:unknown):date is string{return typeof date==='string'&&/^20\d\d-\d\d-\d\d$/.test(date)&&!Number.isNaN(Date.parse(date+'T12:00Z'))&&new Date(date+'T12:00Z').toISOString().slice(0,10)===date;}
 export function emptyJournal(date:string,habits:Habit[]):Journal{return{date,answers:{},questions:habits.filter(h=>h.enabled).sort((a,b)=>a.position-b.position).map(h=>h.id),cursor:0,completed:false,energy:null,readiness:null,revision:0};}
 /** Refresh the active sequence without deleting answers to disabled questions. */
@@ -85,16 +88,18 @@ export function analyzeJournals(entries:Journal[],measurements:Measurement[],exc
  for(const m of measurements.filter(m=>m.type==='sleep'&&m.start_at&&m.end_at&&m.value!==null&&m.raw?.sleep?.metadata?.nap!==true)){
   const key=sleepJournalDate(m.start_at!);if(!sleep.has(key)||(sleep.get(key)!.value??0)<m.value!)sleep.set(key,m);
  }
- const metrics=['sleep_minutes','sleep_onset_minutes','hrv_ms','resting_hr','respiratory_rate','oxygen_saturation','skin_temperature_delta','energy','readiness'],habits=[...new Set(entries.flatMap(j=>Object.keys(j.answers)))],comparisons:Comparison[]=[];
+ const metrics=['sleep_minutes','sleep_onset_minutes','hrv_ms','resting_hr','respiratory_rate','oxygen_saturation','skin_temperature_delta','sleep_score','body_score','sleep_quality','rested','sleepiness','energy','readiness'],habits=[...new Set(entries.flatMap(j=>Object.keys(j.answers)))],comparisons:Comparison[]=[];
  for(const id of habits)for(const metric of metrics){
   const yes:number[]=[],no:number[]=[],strata=new Map<string,{yes:number[];no:number[]}>();let missing=0;
   for(const j of entries){const answer=j.answers[id]?.value;if(answer!=='yes'&&answer!=='no')continue;
    if(excludeIllnessTravel&&(j.answers.illness?.value==='yes'||j.answers.travel?.value==='yes'))continue;
    const s=sleep.get(j.date),wake=s?.end_at?localDate(s.end_at):shiftDate(j.date,1);let value:number|null=null;
-   if(metric==='sleep_minutes')value=s?.value??null;
+   if(metric==='sleep_minutes')value=byDay.get(wake)?.morning?.sleep_minutes??s?.value??null;
+   if(metric==='sleep_quality'||metric==='rested'||metric==='sleepiness')value=byDay.get(wake)?.morning?.[metric==='sleep_quality'?'quality':metric]??null;
    if(metric==='sleep_onset_minutes'&&s?.start_at){const d=new Date(s.start_at);const mins=Number(new Intl.DateTimeFormat('en-GB',{timeZone:DAYNOTE_TZ,minute:'2-digit'}).format(d));value=localHour(d)*60+mins;if(value<720)value+=1440;}
    if(metric==='hrv_ms'||metric==='resting_hr')value=measurements.find(m=>m.date===wake&&m.type===(metric==='hrv_ms'?'daily-heart-rate-variability':'daily-resting-heart-rate'))?.value??null;
    if(metric==='respiratory_rate'||metric==='oxygen_saturation'||metric==='skin_temperature_delta'){const type=metric==='respiratory_rate'?'daily-respiratory-rate':metric==='oxygen_saturation'?'daily-oxygen-saturation':'daily-sleep-temperature-derivations';value=measurements.find(m=>m.date===wake&&m.type===type)?.value??null;}
+   if(metric==='sleep_score'||metric==='body_score')value=measurements.find(m=>m.date===wake&&m.type===metric)?.value??null;
    if(metric==='energy'||metric==='readiness')value=byDay.get(wake)?.[metric]??null;
    if(value===null||!Number.isFinite(value)){missing++;continue;}(answer==='yes'?yes:no).push(value);
    const weekday=new Date(j.date+'T12:00Z').getUTCDay(),duration=s?.value===null||s?.value===undefined?'unknown':String(Math.floor(s.value/60));

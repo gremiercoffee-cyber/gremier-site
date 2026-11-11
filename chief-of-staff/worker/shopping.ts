@@ -1,5 +1,6 @@
 import type { ShoppingConfig, ShoppingItem, ShoppingList, ShoppingState } from '../shared/shopping';
 import { isShoppingChat, shoppingKey } from '../shared/shopping';
+import {orderShoppingItems,STORE_ROUTE} from '../shared/shopping-route';
 import type { Env } from './env';
 import { all, first, HttpError, now, run, uid } from './db';
 import { getProvider } from './ai';
@@ -21,7 +22,7 @@ export async function shoppingState(env: Env): Promise<ShoppingState> {
   const lists = await all<Omit<ShoppingList, 'items'>>(env, "SELECT * FROM shopping_lists ORDER BY id != 'store', created_at");
   const items = await all<ShoppingItem>(env, 'SELECT * FROM shopping_items ORDER BY checked, created_at');
   const pending = await first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM shopping_messages WHERE status != 'done'");
-  return { lists: lists.map(l => ({ ...l, items: items.filter(i => i.list_id === l.id) })), config: await shoppingConfig(env), pending: pending?.n ?? 0 };
+  return { lists: lists.map(l => ({ ...l, items: orderShoppingItems(items.filter(i => i.list_id === l.id),l.id),...(l.id==='store'?{route:STORE_ROUTE.map(([key,label])=>({key,label}))}:{}) })), config: await shoppingConfig(env), pending: pending?.n ?? 0 };
 }
 export async function saveShoppingList(env: Env, input: { id?: string; name?: string }) {
   const name = String(input.name ?? '').trim().slice(0, 80);

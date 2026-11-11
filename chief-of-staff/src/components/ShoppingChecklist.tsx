@@ -1,5 +1,6 @@
 import type {ShoppingItem} from '../../shared/shopping';
 import {shoppingSections} from '../../shared/shopping';
+import {STORE_ROUTE,storeAisle} from '../../shared/shopping-route';
 import {Button} from './ui';
 
 export default function ShoppingChecklist({items,at,busy,onToggle,onEdit,isPending}:{items:ShoppingItem[];at:number;busy:boolean;isPending?:(id:string)=>boolean;onToggle:(item:ShoppingItem,checked:boolean)=>void;onEdit:(item:ShoppingItem)=>void}) {
@@ -14,7 +15,7 @@ export default function ShoppingChecklist({items,at,busy,onToggle,onEdit,isPendi
   <Button variant="ghost" disabled={busy||isPending?.(i.id)} onClick={()=>onEdit({...i})}>Edit</Button>
  </div>;
  return <>
-  {needed.map(i=>row(i))}
+  {items.some(i=>i.list_id==='store')&&items.every(i=>i.list_id==='store')?STORE_ROUTE.map(([aisle,label])=>{const group=needed.filter(i=>storeAisle(i)===aisle);return group.length?<section key={aisle} aria-label={label}><h2 className="pt-5 pb-2 text-xs font-semibold uppercase tracking-wide text-muted">{label}</h2>{group.map(i=>row(i))}</section>:null;}):needed.map(i=>row(i))}
   {recent.length>0&&<section aria-label="Bought in the last 24 hours"><p className="pt-4 pb-2 text-xs font-medium text-blue-600">Bought in the last 24 hours · {recent.length}</p>{recent.map(i=>row(i))}</section>}
   {archived.length>0&&<details className="mt-4 border-t border-line pt-3"><summary className="cursor-pointer text-sm text-muted py-2">Purchased archive · {archived.length}</summary><p className="text-xs text-muted pb-2">Bought more than 24 hours ago. Uncheck to buy again.</p>{archived.map(i=>row(i,true))}</details>}
  </>;

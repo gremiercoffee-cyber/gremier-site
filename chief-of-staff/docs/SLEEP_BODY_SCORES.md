@@ -1,0 +1,109 @@
+# Sleep and Body Scores: research protocol, version 2
+
+Version `sleep-body-2`, 5 November 2026. **This is not a published or clinically validated scoring algorithm.** Published research supports the measurements, personal context, and evaluation principles below. Our candidate prediction model, eligibility thresholds and release gates are engineering choices requiring real personal evaluation. It may never predict the owner's ratings sufficiently well to issue a score. No accuracy is promised.
+
+## What changed
+
+The retired `sleep-body-1` hand-weighted composite was not sufficiently justified. Its fixed seven-hour saturation, 60/25/15 sleep weights, 40/25/20/10/5 body weights, and mapping of typical physiology to 100 are removed from active outputs. Original code is retained in `shared/daynote-scores-v1.ts`, original method in `SLEEP_BODY_SCORES_V1.md` and `score-methods-v1.html`, and prior dated documents in private `daynote_score_archive`. They are not current outcomes for habit comparisons. Existing source records, journals and owner archives remain.
+
+There are now three distinct products:
+
+1. Descriptive measurements and an owner-reported ideal sleep range, available immediately.
+2. Seven-calendar-day recorded/assumed sleep accounting, with coverage and source labels. This is not measured physiological debt.
+3. Candidate personal estimates of independently reported sleep quality and morning energy. They remain Learning unless later-date evaluation supports them. They do not claim to measure general health, physical readiness, disease, cognitive performance or clinically measured biological sleep need.
+
+## Evidence and applicability
+
+| Primary source | What it supports | What it does not validate |
+| --- | --- | --- |
+| [Kitamura et al. 2016: individual optimal duration and potential sleep debt](https://pubmed.ncbi.nlm.nih.gov/27775095/) | Habitual duration can differ from individual need; extended-sleep observations and daytime outcomes add information. | Inferring need from the median of work nights, from one long weekend night, or from this app's ratings alone. Small laboratory evidence is not an at-home validation of our method. |
+| [Van Dongen et al. 2003: randomized chronic restriction](https://pubmed.ncbi.nlm.nih.gov/12683469/) | Repeated short sleep can cause cumulative deficits, with subjective adaptation not establishing full function. | A fixed seven-hour perfect-score threshold or a precise universal conversion from missed hours into impairment. |
+| [Belenky et al. 2003: dose response and recovery](https://pubmed.ncbi.nlm.nih.gov/12603781/), [Banks et al. 2010: recovery dose](https://pubmed.ncbi.nlm.nih.gov/20815182/) | Prior sleep matters and recovery can remain incomplete after a longer night; recovery varies with dose/outcome. | One-for-one repayment, guaranteed recovery after one good night, or a debt balance read from a watch. |
+| [Ramakrishnan et al. 2016: unified performance model](https://pmc.ncbi.nlm.nih.gov/articles/PMC4678351/) | Published models can predict vigilance trends under studied sleep/wake schedules. | A validated sleep-quality or Body Score: its endpoint is vigilance lapses and its inputs/assumptions differ. We did not translate it into an invented 0–100 health score or claim to implement it. |
+| [Phillips et al. 2017: regularity and circadian timing](https://pubmed.ncbi.nlm.nih.gov/28607474/) | Regularity is worth observing. | Causal conclusions, measured circadian phase, or this model's coefficient for midpoint deviation. |
+| [Chinoy et al. 2021: PSG comparison](https://pubmed.ncbi.nlm.nih.gov/33378539/), [Miller et al. 2022: six-device validation](https://pubmed.ncbi.nlm.nih.gov/36016077/) | Wearable duration/timing are more defensible than exact staging; wake/fragmentation estimates also have error. | EEG-equivalent stages, exact deep/REM quotas, Pixel Watch 4 accuracy specifically, or our combined predictions. |
+| [Carney et al. 2012: Consensus Sleep Diary](https://pubmed.ncbi.nlm.nih.gov/22294820/) | Consistent prospective reports and subjective sleep experience matter. | Our abbreviated check-in is not the validated full diary or a validated questionnaire score. |
+| [Plews et al. 2014: repeated HRV observations](https://pubmed.ncbi.nlm.nih.gov/24334285/), [Versa 4/ECG HRV pilot](https://pubmed.ncbi.nlm.nih.gov/41268189/) | Repeated personal observations and device/protocol consistency matter. | Universal readiness weights, ECG accuracy for Pixel Watch 4, or higher HRV always being better. |
+| [Riley et al. 2019: continuous-model sample size](https://pubmed.ncbi.nlm.nih.gov/30347470/), [Archer et al. 2021: validation sample size](https://pubmed.ncbi.nlm.nih.gov/33150684/), [TRIPOD+AI 2024](https://pubmed.ncbi.nlm.nih.gov/38636956/) | Specify outcomes, avoid optimistic in-sample evidence, report development/evaluation and uncertainty; small samples can be unstable. | Our 90-day minimum is not a published sufficient sample size, external validation, or proof of accuracy. Repeated days within one person are not independent participants. |
+
+Polar was checked as a product comparison: its [published Sleep Plus Stages method](https://www.polar.com/en/img/static/whitepapers/pdf/polar-sleep-plus-stages-white-paper.pdf) averages six components and considers preferred sleep duration and age recommendations. It does not provide a complete reproducible public implementation or validate our model. Vendor readiness labels in existing archives are not training targets or ground truth.
+
+## Personal reference and weekend handling
+
+The reference is an explicit, revisioned owner statement, not an automatically inferred biological minimum. A workable duration is stored separately from an ideal range. Habitual short nights cannot pull that ideal range down. The app displays observed unrestricted/rested-night duration quartiles only after 14 earlier qualifying nights within 90 days: reported ample opportunity, no alarm/commitment ending sleep, restfulness at least 7/10, sleepiness at most 3/10, explicit nap coverage, and no known illness/travel that day or the preceding day. Those cutoffs are app safeguards, not a laboratory sleep-extension protocol or medical criteria. Catch-up sleep, opportunity misreporting and unmeasured causes of fatigue remain limitations. The observed range never silently replaces the owner's reference.
+
+The owner specifically authorized recurring Friday-night and Shabbos-nap duration defaults. They are private profile data, not hard-coded public health facts. Friday-night sleep belongs to Saturday's wake date; a Shabbos-afternoon nap belongs to the preceding waking day when viewing Sunday morning. On opening the app, a once-per-week duration prompt offers the owner's usual amounts. Leaving them uncorrected uses the defaults. It writes no fabricated measurement or completed questionnaire. Explicit manual corrections override the relevant default; an entered zero means no nap, while blank means unknown. Defaults remain labeled assumed and cannot supply training targets, observed sleep inputs, or independent habit outcomes. Current estimates using an assumed main duration are withheld.
+
+A valid watch main session takes precedence over a default. A manual sleep duration explicitly overrides the watch. Detected duplicate/overlapping nap sessions select one source instead of summing duplicates. An owner-entered nap total replaces detected nap totals, rather than adding to them. No onset/wake timestamps are fabricated for a manual duration. All temporal joins use Asia/Jerusalem wake dates and physical instants across DST.
+
+## Recent sleep loss
+
+For each of the last seven calendar days, retain actual or explicitly assumed main sleep plus known previous-day naps. Show which dates are missing and which include assumptions or incomplete nap coverage. Compare known totals with both ends of the owner's ideal reference, summing positive shortfalls separately. Extra sleep does not subtract from prior shortfalls. The range reflects the stated reference range only, not a statistical confidence interval or sensor-error bounds.
+
+With unknown naps this is a comparison against recorded sleep, not proof that the same amount of sleep was biologically missed. An absent main night is unknown and is never counted as zero. Assumed weekend durations can be included in this accounting only with explicit assumed-date labels. A fully observed week requires all main nights, explicit nap coverage and no assumed durations. The seven-day window is a descriptive reporting choice, not a published physiological recovery constant. Longer-term and unobserved history can matter. The app does not claim one long night fully restores vigilance, metabolism or subjective functioning.
+
+## What the scores would mean
+
+Sleep Score: estimate of the owner's independently reported sleep quality, rated 0–10 and displayed multiplied by ten. Body Score: estimate of independently reported morning energy on the same scale. Both are experimental wellness proxies. A future 100 means an estimated 10/10 self-rating, not perfect health. Sleep and body are separate targets. Body uses raw sleep features rather than nesting Sleep Score, which avoids one layer of mathematical circularity.
+
+The optional morning check-in records quality, energy, restfulness, sleepiness, alarm/commitment, opportunity and manual duration/nap corrections. Scores do not require the owner to enable more habit questions. All are saved through the existing offline/revision-aware journal. The server timestamps the review; reports outside the displayed or following Jerusalem calendar date, or before the detected wake instant when known, cannot supply timely training outcomes. Current/future outcomes are excluded when predicting a date. Known illness/travel that day or the preceding day excludes training. Unknown confounders remain. Retrospective corrections can change research results and are not a prospective validation study.
+
+## Exact candidate model and release gates
+
+Implementation: `shared/daynote-research.ts`. This is our candidate statistical model, not a published physiological scoring equation.
+
+Sleep inputs: main sleep hours; estimated asleep fraction when available; circular midpoint deviation from at least seven same-device prior nights in 28 days; observed mean main duration in the preceding six calendar days when at least three are observed; explicitly reported previous-day nap hours. Assumed durations are excluded from model features. No unrecorded nap is silently filled as zero. Body adds personal log-HRV, RHR, respiratory and temperature deviations. Oxygen and REM/deep remain context, without fixed weights.
+
+Each physiological deviation uses at least 14 earlier distinct dates in 28 days from the same source/device/window, a median and 1.4826 × MAD spread, and noise floors 0.1 log-HRV, 2 bpm, 1 breath/min, 0.2 °C. These floors are measurement safeguards, not clinical boundaries. Daily RHR is not relabeled a nocturnal sample. Wrist temperature deviation is not core temperature. Body training is restricted to the current HRV/RHR measurement protocol.
+
+Fit regularized linear regression: minimize sum of squared rating errors plus `10 × sum(squared non-intercept coefficients)`. Median imputation, missingness indicators, centering and scaling are fit on earlier training data only. The ridge strength 10 is fixed in advance, not tuned against the held-out results; it is an engineering choice, not a scientifically established optimum. There are no hand-assigned percentage contributions. Show actual fitted contributions to the predicted rating when an estimate is available. Collinearity, linear model misspecification and sensor error can still impair prediction.
+
+Minimum 90 earlier usable labeled dates: first 60 can begin training, then at least 30 later predictions are made with earlier records only, using up to 180 earlier observations for each fit. Evaluation grows in complete batches of 30 later predictions, reducing daily peeking. Compare absolute errors with the smaller error from two simple benchmarks on each test date: earlier median rating and last rating. This conservative per-date comparator is stronger than either benchmark alone; it is an evaluation yardstick, not a deployable oracle forecast.
+
+An estimate requires at least 10% lower mean absolute error, benchmark error at least 0.2 rating points, and positive mean improvement after subtracting 3.2 standard errors across non-overlapping seven-observation blocks. These small-sample/dependence checks are approximate; they are not formal control of repeated testing or proof of generalization. There must also be at least ten earlier training examples and ten later test predictions matching the current device/method/missing-data pattern. Current measured predictors must lie inside their training ranges; Body also requires calibrated HRV and RHR. No extrapolated score is produced.
+
+The displayed empirical error radius is the larger ranked 90th-percentile absolute residual from all test dates and the matching-method/device test subset. It is not a guaranteed 90% prediction interval: dependence, distribution shift, delayed reports and model updating limit calibration. Radius above two rating points withholds the estimate. Estimated ratings are bounded to 0–10 and scores to 0–100. The minimum observation counts, improvement threshold, block size, interval-width gate and display colors are explicitly app rules, not clinically validated cutoffs. Passing them permits a personally evaluated experimental estimate, never a claim that the score is established as accurate. More data or external validation may still be needed.
+
+## Correlations and storage
+
+Raw HRV/RHR/respiration/oxygen/temperature and recorded duration remain independent outcomes for explicit Yes/No habits. Observed manual duration and reported quality/restfulness/sleepiness/energy can also be compared on the appropriate following wake date. Assumed durations and retired composite marks are excluded. Correlation of a predicted score with its inputs is mathematical, not an independent physiological discovery. Five usable Yes and No days remains only an exploratory gate; effect sizes, missingness, uncertainty, weekday/exercise adjustment and confounding warnings remain.
+
+`daynote_nightly` continues one compact daily input/baseline document, now version `nightly-inputs-2`, with no active hand-weighted marks. Naps add only short aggregates; no raw HR polling or indefinite high-frequency samples are added. `daynote_score_archive` preserves prior versioned documents. Profile updates retain revision history. Existing original archives and pre-upgrade API epochs remain preserved. Explicit health export/deletion cover the new tables; no deletion is executed by this upgrade.
+
+The current endpoint reads the compact last 90 days, owner profile and date-bounded journals. Once enough labels exist, it can read up to 365 compact days for evaluation. A binding-local four-result cache avoids repeating model computation for identical dates/input revisions. Idle requests perform no writes and never scan raw sample history. The initial archive/migration/backfill has a one-time cost. New defaults require one profile document and one revision-history row, not synthetic daily measurements.
+
+## Actual evidence available now
+
+A read-only audit of the actual connected history found 260 compact nightly inputs, two journals, six dates with identifiable recorded nap aggregates, and zero qualifying timely independent quality/energy training ratings. Consequently both candidate estimates are unavailable. The app must not substitute the retired 91/96-style marks. Software tests and synthetic predictive examples verify behavior, not real-world accuracy. The live account has not passed the personal prediction gates, and no prospective accuracy is claimed.
+
+The original Google authorization and all five daily streams remain in place. Official references: [sleep schema](https://developers.google.com/health/data-types/sleep), [vitals](https://developers.google.com/health/data-types/vitals), [skin temperature](https://developers.google.com/health/data-types/skin-temperature). Existing aggregate sync remains every four hours; high-frequency HR fetching stays disabled. Record actual post-deployment costs and version below after verification.
+
+
+## Delivery verification — 5 November 2026
+
+Deployed existing Worker version `93808222-8f28-405c-a7da-8377887dd717` at https://health.gremiercoffee.co.il/daynote/ and https://chief-of-staff.gremiercoffee.workers.dev; migration 0087 applied. Live shell and both method pages returned 200; score/profile routes reject unauthenticated access with 401. A real integrated Google sync returned all five daily streams with no warnings and zero pending score refreshes.
+
+The private owner profile is saved at revision 1. Defaults are profile assumptions, not new measurements or journal answers. All 2,650 source records and both journals remain. All 260 original v1 documents are archived; 260 compact daily input documents now use `nightly-inputs-2`. Mean current input size: 1,669 bytes. The one-time input refresh cost 9,233 reads and 520 writes, excluding additive migration/archive setup and profile writes.
+
+Executing the actual quiet v2 endpoint function against the real D1 binding through its authenticated API used five queries, 65 rows read and zero writes. It returned Learning for both scores with zero qualifying independent prior ratings. Source history is not scanned on quiet requests. This is a measured request, not a whole-day account billing or accuracy claim.
+
+Validation: 360 JavaScript tests, six Python import tests, successful production build and isolated browser checks at 320/390/820 px. Browser checks verified usual 9h/2h prompt behavior with zero fabricated journal writes; explicitly saved 8.5h/1.5h corrections on the proper Saturday/Sunday dates; retired-score suppression; size hierarchy, colored whole-circle tint/glow, local journal advancement and no overflow/browser errors. Those example edits were local fixtures, never production health records. A signed-in live phone UI session and prospective predictive accuracy remain unverified. No emails/messages were sent to others and no Google permissions changed.
+
+## Scores shown today (5 November 2026)
+
+Until the ratings model passes its gates, `researchView` returns `baselineEstimate`. It needs no ratings and scores from the first night. No score here has been validated against how the owner felt: only 4 journal entries exist.
+
+**Sleep Score = 65% length + 35% quality.** Additive by the owner's explicit requirement: a short night with excellent numbers should be able to match a long night with poor ones, and a very long night should be able to offset poor numbers.
+
+- Length: 0 at 4 hours, 100 at the owner's ideal minimum, up to 115 by 90 minutes past it. Length is judged against stated need, not habit, because the owner's typical 6h18 would otherwise count as fine. Sleep restriction studies found deficits that build up while people stop noticing them (Van Dongen 2003), and one long night did not fully restore function (Banks 2010).
+- Quality: percent rank against the previous 90 nights since `RECORDING_CHANGE`. Time asleep 25%, long wake-ups 25%, REM share 30%, deep minutes 20%. Continuity and REM have the most consistent links to reported sleep quality (Della Monica 2018); deep sleep findings conflict. Within-person links are stronger than between-person ones, which supports comparing against the owner's own nights. REM is a share and deep is in minutes because, on the owner's data, those are the forms nearly independent of length (r = -0.13 and 0.10).
+- The 65/35 split, the 4-hour floor and the 115 cap are judgment calls. Length carries more because watches measure it better than stages (consumer tracker validations), and objective measures explain only a modest share of how rested people feel.
+
+**Body Score = 70 + 20 × deviation, clipped to 1-100.** HRV counts 65% and inverted resting heart rate 35%. Each blends last night against the previous 28 days (50%), the past week against the same (30%), and the past week against the 90 days before that (20%); that last term is capped at zero so it only catches slides and never cushions a bad night. Changed 8 November 2026 after an equal average gave 74 (green) to a night with HRV 16% below usual, because a 3-beat lower pulse and a rising long-term HRV trend offset it. With the change: 65, no clearly low-HRV day (z ≤ -1, 30 of them) is green, and agreement with Google readiness rose from r = 0.75 to 0.82. HRV averaged over a week tracked adaptation better than single days in athletes (Plews 2014); that evidence is from training studies. 70 as "usual" and 20 points per unit are judgment calls chosen so Sleep and Body share one color scale. Unlike a percent rank, this does not force a fixed share of days to be red.
+
+**Data findings that shaped this:**
+- `RECORDING_CHANGE` (2026-07-11): awakenings fell from about 20 to about 2 and time asleep rose from about 92% to 98%, with deep, REM, HRV and resting heart rate unchanged. The same dates are identical in Takeout and API, so it is not a source difference. Cause unknown. Wake data is never compared across it.
+- Takeout `unknown-device` and API `Pixel Watch 4` readings are the same data on 21 overlapping days (HRV identical, resting heart rate within 0.5), so baselines now match on provider, not device.
+- Google readiness correlates with HRV deviation (r = 0.81) and barely with sleep length (r = 0.09). It uses the same inputs, so agreement with it is a sanity check, not evidence of accuracy.
+
+A ratings estimate that passes the gates above replaces these and is labeled differently.

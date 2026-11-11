@@ -6,10 +6,12 @@ import {homedir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 export const THREAD='01a14e9f-dfd2-7901-8e50-d3f7f93959c6';
-export const root=join(dirname(fileURLToPath(import.meta.url)),'..');
+export const root=process.env.COS_WORKSPACE||join(dirname(fileURLToPath(import.meta.url)),'..');
 const claimDir=join(root,'.local','relay-claims');
 export const API='https://chief-of-staff.gremiercoffee.workers.dev';
 export function codexExe(){
+ if(process.env.CODEX_EXECUTABLE)return process.env.CODEX_EXECUTABLE;
+ if(process.platform!=='win32')return 'codex';
  const bin=join(homedir(),'AppData','Local','OpenAI','Codex','bin');
  const found=readdirSync(bin).map(d=>join(bin,d,'codex.exe')).filter(existsSync).sort((a,b)=>statSync(b).mtimeMs-statSync(a).mtimeMs);
  if(!found[0])throw Error('Codex installation not found.');return found[0];

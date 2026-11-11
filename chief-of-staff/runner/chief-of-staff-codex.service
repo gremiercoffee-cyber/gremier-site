@@ -1,0 +1,23 @@
+[Unit]
+Description=Chief of Staff automatic Codex executor
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=cosrunner
+WorkingDirectory=/opt/chief-of-staff
+EnvironmentFile=/etc/chief-of-staff/runner.env
+ExecStart=/usr/bin/node /opt/chief-of-staff/runner/automatic-codex.mjs
+Restart=always
+RestartSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/chief-of-staff /var/lib/chief-of-staff
+Environment=HOME=/var/lib/chief-of-staff
+
+[Install]
+WantedBy=multi-user.target

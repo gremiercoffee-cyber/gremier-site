@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 Error.stackTraceLimit=0;
-const result=await build({stdin:{contents:"export * from './shared/daynote';export * from './worker/daynote';export * from './worker/daynote-relationships';export * from './worker/daynote-google';export {default as worker} from './worker/index';export {sealGoogleToken} from './worker/google';export {assistantTools,chat} from './worker/assistant';export {healthPlanChat} from './worker/daynote-chat';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
+const result=await build({stdin:{contents:"export * from './shared/daynote';export * from './worker/daynote';export * from './worker/daynote-relationships';export * from './worker/daynote-google';export {default as worker} from './worker/index';export {sealGoogleToken} from './worker/google';export {assistantTools,chat} from './worker/assistant';export {healthPlanChat} from './worker/daynote-chat';export {scoreProfile,saveScoreProfile} from './worker/daynote-scores';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node'});
 const m=await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64'));
 function setup(){
  const db=new DatabaseSync(':memory:');for(const f of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('migrations/'+f,'utf8'));
@@ -20,9 +20,9 @@ async function withFetch(fn,body){const original=globalThis.fetch;globalThis.fet
 const response=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json'}});
 
 test('journal defaults to the current Jerusalem day across midnight and daylight saving',()=>{
- assert.equal(m.suggestedDate('2026-11-01T23:30:00Z'),'2026-11-02');
- assert.equal(m.suggestedDate('2026-11-02T02:01:00Z'),'2026-11-02');
- assert.equal(m.suggestedDate('2026-07-03T00:30:00Z'),'2026-07-03');
+ assert.equal(m.suggestedDate('2026-11-01T23:30:00Z'),'2026-11-01');
+ assert.equal(m.suggestedDate('2026-11-02T02:01:00Z'),'2026-11-01');assert.equal(m.suggestedDate('2026-11-02T06:00:00Z','2026-11-02T05:30:00Z'),'2026-11-02');assert.equal(m.suggestedDate('2026-11-02T06:00:00Z','2026-11-01T05:30:00Z'),'2026-11-01');assert.equal(m.suggestedDate('2026-11-02T10:30:00Z'),'2026-11-02');
+ assert.equal(m.suggestedDate('2026-07-03T00:30:00Z'),'2026-07-02');
  assert.equal(m.sleepJournalDate('2026-11-02T00:15:00Z'),'2026-11-01');
  assert.equal(m.sleepJournalDate('2026-11-01T20:30:00Z'),'2026-11-01');
  assert.equal(m.validDate('2026-02-30'),false);
@@ -136,7 +136,7 @@ test('exercise sync uses Google session civil dates rather than unsupported phys
 
 test('heart-rate sync uses physical-time filters, paginates and stores observed-minute summaries rather than raw sample rows',async()=>{
  const h=setup();await connected(h);h.db.prepare('UPDATE daynote_google SET scopes=?').run(m.HEALTH_SCOPES[1]);let calls=0;
- await withFetch(async url=>{const u=new URL(url);if(!u.pathname.includes('/heart-rate/'))return response({dataPoints:[]});calls++;assert.equal(u.searchParams.get('pageSize'),'10000');assert.match(u.searchParams.get('filter'),/heart_rate.sample_time.physical_time/);const t=new Date(Date.now()-3600000),minute=Math.floor(t.getTime()/60000)*60000;return response({dataPoints:[{name:'hr'+calls,heartRate:{sampleTime:{physicalTime:new Date(minute+(calls===1?0:10000)).toISOString()},beatsPerMinute:calls===1?'80':'100'},dataSource:{device:{model:'Pixel Watch'}}}],nextPageToken:calls===1?'next-page':undefined});},async()=>{await m.healthSync(h.env,true);});
+ await withFetch(async url=>{const u=new URL(url);if(!u.pathname.includes('/heart-rate/'))return response({dataPoints:[]});calls++;assert.equal(u.searchParams.get('pageSize'),'10000');assert.match(u.searchParams.get('filter'),/heart_rate.sample_time.physical_time/);const t=new Date(Date.now()-3600000),minute=Math.floor(t.getTime()/60000)*60000;return response({dataPoints:[{name:'hr'+calls,heartRate:{sampleTime:{physicalTime:new Date(minute+(calls===1?0:10000)).toISOString()},beatsPerMinute:calls===1?'80':'100'},dataSource:{device:{model:'Pixel Watch'}}}],nextPageToken:calls===1?'next-page':undefined});},async()=>{await m.healthSync(h.env,true,false,7,true);});
  assert.equal(calls,2);const rows=h.db.prepare("SELECT * FROM daynote_measurements WHERE type='heart-rate-summary'").all();assert.equal(rows.length,1);const raw=JSON.parse(rows[0].raw);assert.equal(raw.coverage_minutes,1);assert.deepEqual(raw.bins,[[90,1]]);assert.equal(raw.source,'google_api_hr');assert.equal(h.db.prepare("SELECT count(*) n FROM daynote_measurements WHERE type='heart-rate'").get().n,0);
 });
 test('revoked tokens stop future syncs; disconnect during an in-flight fetch prevents health-data writes',async()=>{
@@ -202,3 +202,39 @@ test('daily Google vitals without resource names retain stable per-type per-date
  for(const h of habits)h.enabled=false;active=m.reconcileQuestions(j,habits);assert.deepEqual(active.questions,[]);
  assert.equal(active.cursor,0);assert.equal(active.answers.late_caffeine.value,'no');
  });
+
+
+test('unchanged sleep sync writes no measurement rows, preserves archive and never requests raw HR by default',async()=>{
+ const h=setup();await connected(h);h.db.prepare('UPDATE daynote_google SET scopes=?').run(m.HEALTH_SCOPES.join(' '));
+ const date=m.localDate(),start=m.shiftDate(date,-1)+'T22:00:00Z',end=date+'T06:00:00Z';
+ const p={name:'users/test/sleep',sleep:{interval:{startTime:start,endTime:end},summary:{minutesAsleep:450},stages:[{type:'LIGHT',startTime:start,endTime:end}]}};
+ await withFetch(async url=>{assert.ok(!String(url).includes('/heart-rate/'));return response({dataPoints:String(url).includes('/sleep/')?[p]:[]});},async()=>{
+  await m.healthSync(h.env,true);const old=h.db.prepare('SELECT * FROM daynote_measurements').get(),dirty=h.db.prepare('SELECT * FROM daynote_score_dirty').all();
+  await m.healthSync(h.env,true);assert.deepEqual(h.db.prepare('SELECT * FROM daynote_measurements').get(),old);assert.deepEqual(h.db.prepare('SELECT * FROM daynote_score_dirty').all(),dirty);
+  const raw=JSON.parse(old.raw);assert.equal(raw.sleep.stages,undefined);assert.equal(raw.sleep_aggregate.stages.LIGHT,480);
+ });
+});
+
+
+test('morning diary is validated, remains optional, preserves zero, and receives a server timestamp',async()=>{
+ const h=setup(),j=h.journal('2026-11-04');j.morning={quality:0,rested:5,sleepiness:7,alarm:true,opportunity:false,sleep_minutes:420,naps_minutes:0,recorded_at:'2000-01-01T00:00:00Z'};
+ const saved=(await h.save(j)).entry;assert.equal(saved.morning.quality,0);assert.equal(saved.morning.naps_minutes,0);assert.notEqual(saved.morning.recorded_at,'2000-01-01T00:00:00Z');
+ const invalid={...saved,morning:{...saved.morning,quality:11}};await assert.rejects(h.save(invalid,saved.revision));assert.equal((await m.daynoteState(h.env)).entries[0].morning.quality,0);
+});
+
+test('one combined morning rating round-trips without fabricating separate sleep or energy reports',async()=>{
+ const h=setup(),j=h.journal('2026-11-04');
+ j.morning={overall:0,quality:null,rested:null,sleepiness:null,alarm:null,opportunity:null,sleep_minutes:null,naps_minutes:null};
+ const saved=(await h.save(j)).entry;assert.equal(saved.morning.overall,0);assert.equal(saved.morning.quality,null);assert.equal(saved.energy,null);
+ assert.equal((await m.daynoteState(h.env)).entries[0].morning.overall,0);
+ for(const overall of [-1,11,2.5,'8'])await assert.rejects(h.save({...saved,morning:{...saved.morning,overall}},saved.revision));
+ const updated=(await h.save({...saved,energy:6,morning:{...saved.morning,quality:8,overall:7}},saved.revision)).entry;
+ const edited=(await h.save({...updated,morning:{...updated.morning,overall:9}},updated.revision)).entry;
+ assert.equal(edited.energy,6);assert.equal(edited.morning.quality,8);assert.equal(edited.morning.overall,9);
+});
+
+test('sleep profile is revisioned, private, preserves prior references and rejects stale writes',async()=>{
+ const h=setup(),p={age:32,reference_low:450,reference_high:480,functional_minutes:420,source:'owner_reported',friday_night_minutes:540,shabbos_nap_minutes:120,revision:0};
+ assert.equal((await m.scoreProfile(h.env)).source,'unset');const first=await m.saveScoreProfile(h.env,p);assert.equal(first.revision,1);assert.equal(first.friday_night_minutes,540);
+ const second=await m.saveScoreProfile(h.env,{...first,reference_high:510});assert.equal(second.revision,2);assert.equal(h.count('daynote_score_profile_history'),2);await assert.rejects(m.saveScoreProfile(h.env,p));assert.equal((await m.scoreProfile(h.env)).reference_high,510);assert.equal(h.count('daynote_entries'),0);
+});

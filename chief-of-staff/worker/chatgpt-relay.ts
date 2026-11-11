@@ -49,7 +49,7 @@ async function tokens(env:Env,grant:string){
  ]);
  return json({access_token:access,token_type:'Bearer',expires_in:3600,refresh_token:refresh,scope:(await first<{scopes:string}>(env,'SELECT scopes FROM cos_oauth_grants WHERE id=?',grant))?.scopes||SCOPE});
 }
-export async function relayStatus(env:Env){const s=await first<any>(env,'SELECT seen_at,ready,detail FROM cos_relay_status WHERE id=1');return{online:!!s&&stamp()-s.seen_at<90000,can_queue:!!s?.ready&&stamp()-s.seen_at<90000,automatic_execution_verified:false,detail:s?.detail||'Desktop relay has not connected yet.',last_seen:s?new Date(s.seen_at).toISOString():null};}
+export async function relayStatus(env:Env){const s=await first<any>(env,'SELECT seen_at,ready,detail FROM cos_relay_status WHERE id=1');const proof=await first<any>(env,"SELECT value FROM settings WHERE key='automatic_codex_verified'");return{online:!!s&&stamp()-s.seen_at<90000,can_queue:!!s?.ready&&stamp()-s.seen_at<90000,automatic_execution_verified:!!proof,detail:s?.detail||'Desktop relay has not connected yet.',last_seen:s?new Date(s.seen_at).toISOString():null};}
 export async function submitRelay(env:Env,grant:string,message:string,key:string){
  const fingerprint=await hash(message),id=uid(),t=stamp();
  await run(env,'INSERT OR IGNORE INTO cos_relay_requests(id,grant_id,request_key,content_hash,message,thread_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',id,grant,key,fingerprint,message,MAIN_THREAD,t,t);
@@ -103,28 +103,36 @@ async function desktopRoute(req:Request,env:Env,path:string){
  if(req.method!=='POST')return error('method_not_allowed',405);
  const p=await object(req),t=stamp();
  if(path==='/api/agent/relay/next'){
+  const automatic=await first<any>(env,"SELECT value FROM settings WHERE key='automatic_codex_enabled'");
+  if(automatic?.value==='true'&&p.executor!=='headless')return json({request:null,reason:'headless_executor_active'});
   const detail=typeof p.detail==='string'?p.detail.slice(0,300):'Unknown';
   // Persist liveness every 30s (online expires after 90s; a long poll can hold 50s), or immediately
   // when readiness changes. Queue claims still run on every poll.
   await run(env,'INSERT INTO cos_relay_status(id,seen_at,ready,detail) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET seen_at=excluded.seen_at,ready=excluded.ready,detail=excluded.detail WHERE cos_relay_status.seen_at<=? OR cos_relay_status.ready IS NOT excluded.ready OR cos_relay_status.detail IS NOT excluded.detail',t,p.ready===true?1:0,detail,t-30000);
   // A crashed/expired claim is uncertain, never automatically replayed into a chat.
   await run(env,"UPDATE cos_relay_requests SET state='uncertain',error='Desktop relay stopped before confirming delivery. Review before retrying.',updated_at=? WHERE state='claimed' AND claimed_at<?",t,t-120000);
-  await run(env,"UPDATE cos_relay_requests SET state='uncertain',error='The chat has not returned a response receipt. Check the existing chat before retrying.',updated_at=? WHERE state='submitted' AND coalesce(engine,'codex')='codex' AND submitted_at<?",t,t-15*60000);
+  await run(env,"UPDATE cos_relay_requests SET state='uncertain',error='The chat has not returned a response receipt. Check the existing chat before retrying.',updated_at=? WHERE state='submitted' AND coalesce(engine,'codex')='codex' AND updated_at<?",t,t-15*60000);
   if(p.ready!==true)return json({request:null});
   const claim=secret();
   const row=await waitFor(p.wait,()=>first<any>(env,"UPDATE cos_relay_requests SET state='claimed',claim_token=?,claimed_at=?,updated_at=? WHERE id=(SELECT r.id FROM cos_relay_requests r JOIN cos_oauth_grants g ON g.id=r.grant_id WHERE r.state='queued' AND g.revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM cos_relay_requests x WHERE x.state IN ('claimed','submitted') AND coalesce(x.engine,'codex')='codex') ORDER BY r.created_at LIMIT 1) AND state='queued' RETURNING id,message,thread_id,claim_token",claim,t,t));
   return json({request:row});
  }
- const m=path.match(/^\/api\/agent\/relay\/([^/]+)\/(submitted|result)$/);
+ const m=path.match(/^\/api\/agent\/relay\/([^/]+)\/(submitted|heartbeat|result)$/);
  if(m){
   const r=await first<any>(env,'SELECT * FROM cos_relay_requests WHERE id=?',m[1]);
   if(!r||typeof p.claim_token!=='string'||!same(r.claim_token||'',p.claim_token))return error('invalid_claim',403);
+  if(m[2]==='heartbeat'){
+   if(!['claimed','submitted'].includes(r.state))return error('request_not_running',409);
+   await run(env,'UPDATE cos_relay_requests SET updated_at=? WHERE id=?',t,r.id);
+   await run(env,"UPDATE cos_relay_status SET seen_at=?,ready=1,detail='Headless Codex executing a request; approval review enforced.' WHERE id=1 AND seen_at<=?",t,t-30000);return json({ok:true});
+  }
   if(m[2]==='submitted'){
    await run(env,"UPDATE cos_relay_requests SET state='submitted',submitted_at=?,updated_at=? WHERE id=? AND state='claimed'",t,t,r.id);
   }else{
    const state=p.state==='done'?'done':p.state==='needs_user'?'needs_user':p.state==='uncertain'?'uncertain':'failed';
-   if(!['claimed','submitted'].includes(r.state))return error('request_already_finished',409);
+   if(!['claimed','submitted'].includes(r.state)){if(r.state===state&&r.result===(typeof p.answer==='string'?p.answer.slice(0,20000):null))return json({ok:true,duplicate:true});return error('request_already_finished',409);}
    await run(env,'UPDATE cos_relay_requests SET state=?,result=?,error=?,updated_at=? WHERE id=?',state,typeof p.answer==='string'?p.answer.slice(0,20000):null,typeof p.error==='string'?p.error.slice(0,400):null,t,r.id);
+   if(p.executor==='headless'&&state==='done')await run(env,"INSERT INTO settings(key,value) VALUES('automatic_codex_verified',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({request_id:r.id,at:new Date(t).toISOString()}));
   }return json({ok:true});
  }
  return error('not_found',404);

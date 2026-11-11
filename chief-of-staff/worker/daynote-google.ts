@@ -1,3 +1,5 @@
+import {refreshNightlyScores} from './daynote-scores';
+import {compactSleepMeasurement} from '../shared/daynote-scores';
 import {summarizeHeartRate} from '../shared/personal-health';
 import type {Env} from './env';
 import {all,first,HttpError,now,run,uid} from './db';
@@ -67,19 +69,19 @@ async function access(env:Env,c:Connection){
  const t=await tokenExchange(env,{refresh_token:await unsealGoogleToken(env,c.refresh_token),grant_type:'refresh_token'});
  await run(env,'UPDATE daynote_google SET access_token=?,expires_at=? WHERE id=1 AND generation=?',await sealGoogleToken(env,t.access_token),Date.now()+t.expires_in*1000,c.generation);return t.access_token;
 }
-export async function healthSync(env:Env,force=false,vitalsOnly=false,historyDays=7){
+export async function healthSync(env:Env,force=false,vitalsOnly=false,historyDays=7,includeHeartRate=false,sleepOnly=false){
  const c=await row(env);if(!c?.refresh_token||!c.verified_at)return{skipped:'Connect Google Health and verify a real fetch first.'};
  if(!force&&c.last_attempt&&Date.parse(c.last_attempt)>Date.now()-4*3600000)return{skipped:'recently checked'};
  const stamp=now(),lease=new Date(Date.now()+240000).toISOString();
  if(!await first(env,"INSERT INTO daynote_settings(key,value) VALUES('sync_lease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE daynote_settings.value<? RETURNING key",lease,stamp))return{skipped:'sync in progress'};
- await run(env,'UPDATE daynote_google SET last_attempt=? WHERE id=1 AND generation=?',stamp,c.generation);
+ if(!sleepOnly)await run(env,'UPDATE daynote_google SET last_attempt=? WHERE id=1 AND generation=?',stamp,c.generation);
  try{
   const token=await access(env,c),today=localDate(),end=shiftDate(today,2),start=shiftDate(today,-Math.min(28,Math.max(7,historyDays))),backfillEnd=c.backfill_before&&c.backfill_before>shiftDate(today,-90)?c.backfill_before:null;
   // First sync recent measurements. Subsequent passes alternate historical chunks and fresh overlap.
-  const useBackfill=!vitalsOnly&&!!backfillEnd&&!!c.last_success&&new Date().getUTCMinutes()%30<15;
+  const useBackfill=!vitalsOnly&&!sleepOnly&&!!backfillEnd&&!!c.last_success&&new Date().getUTCMinutes()%30<15;
   const from=useBackfill?shiftDate(backfillEnd!,-7):start,to=useBackfill?backfillEnd!:end;
   const records:Measurement[]=[],warnings:string[]=[],successTypes:string[]=[];const streamCounts:Record<string,{received:number;parsed:number}>={};
-  const streams=[...availableTypes(c.scopes).filter(t=>!vitalsOnly||t.type.startsWith('daily-')),...(!vitalsOnly&&c.scopes.split(' ').includes(HEALTH_SCOPES[1])?[{type:'heart-rate',field:'heart_rate.sample_time.physical_time',scope:HEALTH_SCOPES[1]}]:[])];
+  const streams=sleepOnly?availableTypes(c.scopes).filter(t=>t.type==='sleep'):[...availableTypes(c.scopes).filter(t=>!vitalsOnly||t.type.startsWith('daily-')),...(!vitalsOnly&&includeHeartRate&&c.scopes.split(' ').includes(HEALTH_SCOPES[1])?[{type:'heart-rate',field:'heart_rate.sample_time.physical_time',scope:HEALTH_SCOPES[1]}]:[])];
   for(const t of streams){
    let pageToken:string|undefined,pages=0;const collected:Measurement[]=[],hrPoints:any[]=[];const streamFrom=t.type==='heart-rate'?shiftDate(today,-2):from,streamTo=t.type==='heart-rate'?shiftDate(today,1):to;
    do{
@@ -93,20 +95,30 @@ export async function healthSync(env:Env,force=false,vitalsOnly=false,historyDay
     const counts=streamCounts[t.type]??{received:0,parsed:0};counts.received+=(data.dataPoints||[]).length;counts.parsed+=(data.dataPoints||[]).filter(p=>!!normalizeHealthPoint(t.type,p)).length;streamCounts[t.type]=counts;
     if(t.type==='heart-rate')hrPoints.push(...(data.dataPoints||[]));else collected.push(...(data.dataPoints||[]).map(p=>normalizeHealthPoint(t.type,p)).filter((p):p is Measurement=>!!p));pageToken=data.nextPageToken;pages++;
     if(pages>=12&&pageToken){warnings.push(`${t.type}: history exceeds this sync window; other measurements will continue syncing.`);break;}
-    if(!pageToken){records.push(...(t.type==='heart-rate'?summarizeHeartRate(hrPoints,'google_api_hr',stamp):collected));successTypes.push(t.type);}
+    if(!pageToken){if(t.type!=='heart-rate'&&streamCounts[t.type].parsed<streamCounts[t.type].received){warnings.push(`${t.type}: incomplete parsing; existing stream kept.`);}else{records.push(...(t.type==='heart-rate'?summarizeHeartRate(hrPoints,'google_api_hr',stamp):collected));successTypes.push(t.type);}}
    }while(pageToken);
   }
   // A disconnect while requests were in flight must prevent subsequent writes.
   if((await row(env))?.generation!==c.generation)return{skipped:'disconnected'};
   const statements:D1PreparedStatement[]=[];
-  // Replace successfully fetched windows, including deletions made upstream. Failed types remain intact.
-  for(const type of successTypes){if(type==='heart-rate'){statements.push(env.DB.prepare("DELETE FROM daynote_measurements WHERE type='heart-rate-summary' AND id LIKE 'api:%' AND date>=? AND date<? AND EXISTS(SELECT 1 FROM daynote_google WHERE generation=?)").bind(shiftDate(today,-2),shiftDate(today,1),c.generation));continue;}const column=type==='sleep'?'end_at':type==='exercise'?'start_at':'date';const daily=column==='date';statements.push(env.DB.prepare(`DELETE FROM daynote_measurements WHERE type=? AND id NOT LIKE 'takeout:%' AND ${column}>=? AND ${column}<? AND EXISTS(SELECT 1 FROM daynote_google WHERE generation=?)`).bind(type,daily?from:from+'T00:00:00Z',daily?to:to+'T00:00:00Z',c.generation));}
-  for(const m of records)statements.push(env.DB.prepare('INSERT INTO daynote_measurements(id,type,date,start_at,end_at,value,raw,updated_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM daynote_google WHERE generation=?) ON CONFLICT(id) DO UPDATE SET date=excluded.date,start_at=excluded.start_at,end_at=excluded.end_at,value=excluded.value,raw=excluded.raw,updated_at=excluded.updated_at').bind(m.id,m.type,m.date,m.start_at,m.end_at,m.value,JSON.stringify(m.raw),stamp,c.generation));
+  // Successful windows reconcile missing API IDs, then upsert only changed payloads.
+  // Never touch owner archives. No delete/reinsert churn on identical repeated syncs.
+  for(const type of successTypes){
+   const storedType=type==='heart-rate'?'heart-rate-summary':type,column=type==='sleep'?'end_at':type==='exercise'?'start_at':'date',daily=column==='date';
+   const ids=records.filter(m=>m.type===storedType).map(m=>m.id);
+   const lo=type==='heart-rate'?shiftDate(today,-2):daily?from:from+'T00:00:00Z',hi=type==='heart-rate'?shiftDate(today,1):daily?to:to+'T00:00:00Z';
+   statements.push(env.DB.prepare(`DELETE FROM daynote_measurements WHERE type=? AND id NOT LIKE 'takeout:%' AND ${column}>=? AND ${column}<? AND id NOT IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM daynote_google WHERE generation=?)`).bind(storedType,lo,hi,JSON.stringify(ids),c.generation));
+  }
+  for(const record of records){const m=record.type==='sleep'?compactSleepMeasurement(record):record;
+   if(record.type==='sleep')statements.push(env.DB.prepare("INSERT INTO daynote_legacy_sleep(id,raw,source_updated_at) SELECT id,raw,updated_at FROM daynote_measurements WHERE id=? AND json_type(raw,'$.sleep.stages')='array' AND EXISTS(SELECT 1 FROM daynote_google WHERE generation=?) ON CONFLICT(id) DO NOTHING").bind(m.id,c.generation));
+   statements.push(env.DB.prepare('INSERT INTO daynote_measurements(id,type,date,start_at,end_at,value,raw,updated_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM daynote_google WHERE generation=?) ON CONFLICT(id) DO UPDATE SET date=excluded.date,start_at=excluded.start_at,end_at=excluded.end_at,value=excluded.value,raw=excluded.raw,updated_at=excluded.updated_at WHERE daynote_measurements.date IS NOT excluded.date OR daynote_measurements.start_at IS NOT excluded.start_at OR daynote_measurements.end_at IS NOT excluded.end_at OR daynote_measurements.value IS NOT excluded.value OR daynote_measurements.raw IS NOT excluded.raw').bind(m.id,m.type,m.date,m.start_at,m.end_at,m.value,JSON.stringify(m.raw),stamp,c.generation));
+  }
   if(successTypes.length)statements.push(env.DB.prepare('UPDATE daynote_google SET last_success=?,last_error=?,backfill_before=? WHERE id=1 AND generation=?').bind(stamp,warnings.join(' ')||null,useBackfill&&!warnings.some(w=>!/^daily-(respiratory-rate|oxygen-saturation|sleep-temperature-derivations):/.test(w))?from:c.backfill_before, c.generation));
   else statements.push(env.DB.prepare('UPDATE daynote_google SET last_error=? WHERE id=1 AND generation=?').bind(warnings.join(' ')||'No authorized streams.',c.generation));
   if(statements.length>450)throw new HttpError(502,'Sync window is too large; existing data kept.');
   await env.DB.batch(statements);
-  return{synced:successTypes,records:records.length,warnings,range:{from,to},backfill_verified:true,stream_counts:streamCounts};
+  const score_update=await refreshNightlyScores(env,today).catch(()=>({pending:true}));
+  return{score_update,synced:successTypes,records:records.length,warnings,range:{from,to},backfill_verified:true,stream_counts:streamCounts};
  }catch(e){const revoked=e instanceof HttpError&&e.status===401;await run(env,`UPDATE daynote_google SET last_error=?${revoked?",refresh_token='',access_token=''":''} WHERE id=1 AND generation=?`,revoked?'Authorization expired or revoked. Reconnect Google Health.':'Sync failed; existing data kept. Retry later.',c.generation);throw e;}
  finally{await run(env,"DELETE FROM daynote_settings WHERE key='sync_lease' AND value=?",lease);}
 }

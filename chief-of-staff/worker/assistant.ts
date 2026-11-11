@@ -299,7 +299,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
       handler: async input => { const r = await saveRecurringReminder(env,input); note('save_recurring_reminder', `${r.active ? 'Reminder' : 'Paused'}: ${r.title}, ${r.days.join(', ')} each month at ${r.time}. No AI job.`); return r; },
     },
     {
-      name: 'get_shopping_lists', description: 'Read shopping lists and their item IDs. Kept separate from tasks; Store is the main list.',
+      name: 'get_shopping_lists', description: 'Read shopping lists and their item IDs. Store items are already ordered in the owner walking route; preserve this order in replies, do not re-sort alphabetically or regroup. Kept separate from tasks; Store is the main list.',
       input_schema: { type: 'object', properties: {} }, handler: async () => shoppingState(env),
     },
     {

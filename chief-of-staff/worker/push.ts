@@ -15,6 +15,8 @@ import { getSettings } from "./db";
 export interface PushMessage {
   /** The settings test: sends even when app notifications are off. */
   force?: boolean;
+  /** Health-device audience, falling back to existing owner devices until set up. */
+  health?: boolean;
   title: string; body?: string; url?: string; tag?: string;
   nudge_id?: string; sig?: string; actions?: { action: string; title: string; opens?: boolean }[];
   topic_key?: string; legacy_tags?: string[]; revision?: number;
@@ -81,7 +83,9 @@ async function encrypt(payload: Uint8Array, p256dh: string, auth: string): Promi
 /** Sends to every registered device; drops subscriptions the push service says are gone. */
 export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: number; failed: number }> {
   if (!pushConfigured(env)) return { sent: 0, failed: 0 };
-  const subs = await all<{ endpoint: string; subscription: string }>(env, "SELECT endpoint, subscription FROM push_subscriptions");
+  const healthSubs=msg.health?await all<{endpoint:string;subscription:string}>(env,'SELECT endpoint,subscription FROM daynote_push_subscriptions'):[];
+  const healthAudience=!!msg.health&&healthSubs.length>0;
+  const subs=healthAudience?healthSubs:await all<{endpoint:string;subscription:string}>(env,'SELECT endpoint,subscription FROM push_subscriptions');
   const packed = { ...msg, body: (msg.body ?? "").slice(0, 300),
     notification_updates:msg.notification_updates?.slice(0,6).map(n=>({...n,title:n.title.slice(0,90),body:n.body.slice(0,180)})),
     close_notifications:msg.close_notifications?.slice(0,50) };
@@ -99,12 +103,12 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
           authorization: await vapidHeader(env, endpoint),
           "content-encoding": "aes128gcm",
           "content-type": "application/octet-stream",
-          ttl: "86400",
+          ttl: msg.health ? "7200" : "86400",
           urgency: "high",
         },
         body: await encrypt(payload, keys.p256dh, keys.auth),
       });
-      if (res.status === 404 || res.status === 410) await run(env, "DELETE FROM push_subscriptions WHERE endpoint = ?", endpoint);
+      if (res.status === 404 || res.status === 410) await run(env, `DELETE FROM ${healthAudience?'daynote_push_subscriptions':'push_subscriptions'} WHERE endpoint = ?`, endpoint);
       if (res.ok) sent++;
       else (failed++, console.error("push failed", res.status, await res.text()));
     } catch (e) {
