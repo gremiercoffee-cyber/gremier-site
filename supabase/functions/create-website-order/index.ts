@@ -1,4 +1,4 @@
-import { buildCoffeeBarConfiguration, resolveCoffeeBarGuests } from "../_shared/coffee-bar-order.ts";
+import { buildCoffeeBarConfiguration, noDispenserDiscount, resolveCoffeeBarGuests } from "../_shared/coffee-bar-order.ts";
 import { packConfig, quotePack } from "../_shared/pack-model.ts";
 import { subscriptionDeliveryRule } from "../_shared/subscription-delivery.ts";
 import "../_shared/subscription-model.js";
@@ -358,7 +358,8 @@ Deno.serve(async (req) => {
         product_id: productId,
         name_en: isSub ? "Coffee subscription" : pack ? `${product.name_en} · ${pack.label_en}` : product.name_en || null,
         name_he: isSub ? "מנוי קפה" : pack ? `${product.name_he || product.name_en} · ${pack.label_he}` : product.name_he || null,
-        price: unitPrice,
+        // No dispenser: ₪49 off (full bars only).
+        price: unitPrice - (coffeeBarConfiguration?.no_dispenser ? noDispenserDiscount(product) : 0),
         qty,
         coffee_bar_configuration: coffeeBarConfiguration,
         selected_variations: isSub ? null : item.selected_variations || null,

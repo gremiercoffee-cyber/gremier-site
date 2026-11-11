@@ -153,7 +153,7 @@ ${n.value}`:line;}
         total+=liters*(Number(choice.addon.price)||0);lines.push(`${liters}L ${name(choice.addon)}`);
       }
       const disp = addons.findIndex((a) => /dispenser/i.test(a.name) && Number(a.max) > 1);
-      if (state.noDispenser) { plan.dispensers = 0; plan.noDispenser = true; lines.push(T('No dispenser', 'בלי מתקן')); }
+      if (state.noDispenser) { const off = window.CoffeeBarOrder?.noDispenserDiscount?.(p) || 0; plan.dispensers = 0; plan.noDispenser = true; plan.noDispenserOff = off; total -= off; lines.push(T(`No dispenser −₪${off}`, `בלי מתקן −₪${off}`)); }
       const extra = state.noDispenser ? 0 : Math.min(Math.max(0, plan.stations - 1), disp >= 0 ? Number(addons[disp].max) : 0);
       if (disp >= 0 && extra) { plan.qty.push([disp, extra]); plan.dispensers += extra; total += extra * (Number(addons[disp].price) || 0); lines.push(T(`${extra} extra dispenser${extra > 1 ? 's' : ''}`, `${extra} מתקנים נוספים`)); }
     }
@@ -359,7 +359,7 @@ ${n.value}`:line;}
         if (typeof pdSetBarExtras === 'function') pdSetBarExtras(plan.extras);
         if (typeof pdUpdateDrawerPrice === 'function') pdUpdateDrawerPrice();
         const ready=typeof pdGetVariationPrice==='function'&&typeof pdGetAddonsTotal==='function'&&typeof pdCurrentProduct!=='undefined'&&pdCurrentProduct
-          &&Math.round(pdGetVariationPrice(pdCurrentProduct)+pdGetAddonsTotal())===Math.round(plan.total);
+          &&Math.round(pdGetVariationPrice(pdCurrentProduct)+pdGetAddonsTotal()-(typeof pdNoDispenserOff==='function'?pdNoDispenserOff(pdCurrentProduct):0))===Math.round(plan.total);
         if(!ready||typeof pdAddToCart!=='function'){done();if(typeof showToast==='function')showToast(T('Please check your coffee bar and add it to the cart','בדקו את בר הקפה והוסיפו לעגלה'));return;}
         const count=cart.length;pdAddToCart();
         if(cart.length===count&&!cart.some(i=>String(i.base_product_id||i.id).startsWith(String(plan.product.id)))){done();return;}
@@ -535,7 +535,7 @@ ${n.value}`:line;}
   }
   function ownerDispHtml(plan) {
     if (!plan || !(owner() || state.noDispenser)) return '';
-    return `<label class="bb-owner-disp"><input type="checkbox" data-no-dispenser${state.noDispenser ? ' checked' : ''}${owner() ? '' : ' disabled'}><span><b>${T('No dispenser', 'בלי מתקן')}</b><small>${T('Owner only · they have their own · same price', 'לבעלים בלבד · יש להם משלהם · אותו מחיר')}</small></span></label>`;
+    return `<label class="bb-owner-disp"><input type="checkbox" data-no-dispenser${state.noDispenser ? ' checked' : ''}${owner() ? '' : ' disabled'}><span><b>${T('No dispenser', 'בלי מתקן')}</b><small>${T(`Owner only · they have their own · −₪${window.CoffeeBarOrder?.noDispenserDiscount?.(plan.product) || 0}`, `לבעלים בלבד · יש להם משלהם · −₪${window.CoffeeBarOrder?.noDispenserDiscount?.(plan.product) || 0}`)}</small></span></label>`;
   }
   function includedHtml(plan) {
     return `<ul class="bbx-included">${tiles(plan).map((x) => `<li><b>${x.n > 1 ? x.n + '×' : '✓'}</b> ${esc(x.title)}${x.sub ? ` <small>${esc(x.sub)}</small>` : ''}</li>`).join('')}</ul>`;

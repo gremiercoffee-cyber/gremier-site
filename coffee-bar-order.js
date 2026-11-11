@@ -74,6 +74,15 @@ function buildCoffeeBarConfiguration(product, item) {
   return { version: 1, package: packageType, guests, coffee, milk, dispensers, ...(item.no_dispenser === true ? { no_dispenser: true } : {}), syrups, cups: guests, straws: guests, ...(lids ? { lids } : {}), ...(extras.length ? { extras } : {}) };
 }
 
+// A full bar without its dispenser costs the dispenser's price less (₪49); other bars have none to remove.
+function noDispenserDiscount(product) {
+  const settings = variations(product).find(v => v.type === 'coffee_bar_config');
+  const full = (settings?.package || (product?.id === FULL_BAR_ID ? 'full' : null)) === 'full';
+  if (!full) return 0;
+  const d = addons(product).find(a => /dispenser/i.test(a.name || ''));
+  return Number(d?.price) > 0 ? Number(d.price) : 49;
+}
+
 function describeCoffeeBar(configuration) {
   const c = configuration;
   if (!c || c.version !== 1) return '';
@@ -118,5 +127,5 @@ function describeCoffeeBarJob(value) {
   return (value?.bars || []).map(describeCoffeeBar).join('\n');
 }
 
-return {resolveCoffeeBarGuests,buildCoffeeBarConfiguration,describeCoffeeBar,coffeeBarSchedulePrefill,describeCoffeeBarJob};
+return {resolveCoffeeBarGuests,buildCoffeeBarConfiguration,describeCoffeeBar,coffeeBarSchedulePrefill,describeCoffeeBarJob,noDispenserDiscount};
 });

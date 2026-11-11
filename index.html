@@ -2171,10 +2171,12 @@ function pdRenderLiterRows() {
     row.querySelector('.pd-l-total').textContent = pdLiters[i] ? `+₪${price * pdLiters[i]}` : '';
   });
 }
+// The builder's owner-only "No dispenser": ₪49 off a full bar.
+function pdNoDispenserOff(p) { return window.pdNoDispenser && window.CoffeeBarOrder?.noDispenserDiscount ? window.CoffeeBarOrder.noDispenserDiscount(p) : 0; }
 function pdUpdateDrawerPrice() {
   if (!pdCurrentProduct) return;
   const p = pdCurrentProduct;
-  const total = pdGetVariationPrice(p) + pdGetAddonsTotal();
+  const total = pdGetVariationPrice(p) + pdGetAddonsTotal() - pdNoDispenserOff(p);
   if (isCoffeeBarProduct(p)) {
     const label = pdGetPriceLabel();
     const labelHtml = label
@@ -2496,7 +2498,7 @@ function pdAddToCart() {
     alert(lang === 'he' ? 'בחרו לפחות מוצר אחד למנוי' : 'Please choose at least one subscription item');
     return;
   }
-  const price = pdIsSubscription() ? pdGetSubscriptionTotal() : pdGetVariationPrice(p) + pdGetAddonsTotal();
+  const price = pdIsSubscription() ? pdGetSubscriptionTotal() : pdGetVariationPrice(p) + pdGetAddonsTotal() - (noDisp ? pdNoDispenserOff(p) : 0);
   const addonKey = [...pdGetSelectedAddons().map(a => a.per_liter ? `${a.name}x${a.liters}` : a.qty ? `${a.name}x${a.qty}` : a.name), ...pdBarExtras.map(x => `x${x.product_id}x${x.qty}`)].join('_');
   const varKey = Object.values(pdSelectedVariations).map(v => v.label).join('_');
   const guestKey = pdSelectedPrice != null ? String(pdSelectedPrice) : '';
@@ -5672,10 +5674,10 @@ async function sendChatMessageText(text) {
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261110-1"></script>
 <script src="/storefront-hero-stills.js?v=20261111-1"></script>
-<script src="/coffee-bar-order.js?v=20261111-1"></script>
+<script src="/coffee-bar-order.js?v=20261111-2"></script>
 <script src="/storefront-bar-layout.js?v=20261111-1"></script>
 <script src="/storefront-bar-world.js?v=20261110-1"></script>
-<script src="/storefront-planner.js?v=20261111-1"></script>
+<script src="/storefront-planner.js?v=20261111-2"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
 <script src="/storefront-promo.js?v=20261111-2"></script>
 <script src="/storefront-together.js?v=20261103-2"></script>
