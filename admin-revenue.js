@@ -115,7 +115,7 @@
  // VAT (Osek Morshe from VAT_FROM). Website and payment-link prices include VAT, so an order paid after
  // it carries 18/118 of its total; a store payment carries VAT when it pays a tax invoice. Israeli VAT
  // is reported every two months (Jan–Feb, …, Nov–Dec), due the 15th of the month after.
- const VAT_FROM='2026-10-22T12:08:54Z',VAT_RATE=0.18;
+ const VAT_FROM='2026-10-22T12:08:54Z',VAT_RATE=0.18,STORE_VAT_MONTH='2026-10';
  const vatInGross=g=>g-Math.round(g/(1+VAT_RATE));
  const vatPeriod=d=>{const y=d.slice(0,4),m=Number(d.slice(5,7)),a=m-(m+1)%2;return y+'-'+String(a).padStart(2,'0');};
  function rowVat(r){
@@ -163,21 +163,21 @@
  // payment. For a store that pays for what it sold, that counts in the month BEFORE the payment (never before
  // the first statement); for others it stays in the month received (payments for deliveries before statements).
  function earlierDeliveryPayments(data,bills,businessDate,firstStatement,through){
-  if(!firstStatement)return {};
+  if(!firstStatement)return {net:{},withVat:{}};
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
   const pays=netOfVat(income(data,firstStatement+'-01',through,businessDate)).rows.filter(r=>r.parts.stores>0&&!r.summary).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  const used={},out={},bySales=new Set((data.stores||[]).filter(s=>s.pays_for_sales).map(s=>s.id));
+  const used={},out={},outVat={},bySales=new Set((data.stores||[]).filter(s=>s.pays_for_sales).map(s=>s.id));
   const before=m=>{const [y,n]=m.split('-').map(Number),d=new Date(Date.UTC(y,n-2,1)).toISOString().slice(0,7);return d<firstStatement?firstStatement:d;};
   for(const p of pays){
    const sid=p.storeId,billed=sid?live.filter(b=>b.store_id===sid&&monthOf(b)<String(p.date).slice(0,7)).reduce((n,b)=>n+minor(b.total||0),0):0;
    const room=Math.max(0,billed-(used[sid]||0)),covered=Math.min(room,p.parts.stores),extra=p.parts.stores-covered;
    if(sid)used[sid]=(used[sid]||0)+covered;
-   if(extra>0){const m=String(p.date).slice(0,7),k=bySales.has(sid)?before(m):m;out[k]=(out[k]||0)+extra;}
+   if(extra>0){const m=String(p.date).slice(0,7),k=bySales.has(sid)?before(m):m;out[k]=(out[k]||0)+extra;outVat[k]=(outVat[k]||0)+(p.vat_minor&&p.amount_minor?Math.round(extra*(p.amount_minor+p.vat_minor)/p.amount_minor):extra);}
   }
-  return out;
+  return {net:out,withVat:outVat};
  }
- // withVat: website and event sales as customers paid them (VAT included, the same shelf prices as before
- // VAT started); stores always at statement price (before VAT). Without it everything is before VAT (Financials).
+ // withVat: sales as charged, VAT included: website and events as customers paid them, stores from October 2026
+ // with VAT on their statements. Without it everything is before VAT (Financials).
  function operationalMonths(data,y,bills,businessDate,through='9999-12-31',deliveryByMonth=null,withVat=false){
   const keys=Array.from({length:12},(_,i)=>y+'-'+String(i+1).padStart(2,'0'));
   const vatBasis=withVat?(x=>x):netOfVat;
@@ -185,8 +185,10 @@
   const live=bills.filter(b=>!b.cancelled_at),monthOf=b=>b.year+'-'+String(b.month).padStart(2,'0');
   const firstStatement=live.reduce((m,b)=>!m||monthOf(b)<m?monthOf(b):m,'');
   const statements=keys.map(m=>live.filter(b=>monthOf(b)===m));
-  const earlier=earlierDeliveryPayments(data,bills,businessDate,firstStatement,through);
-  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?(statements[i].length?statements[i].reduce((n,b)=>n+minor(b.total||0),0):Number(deliveryByMonth?.[month])||0)+(earlier[month]||0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
+  const extras=earlierDeliveryPayments(data,bills,businessDate,firstStatement,through),earlier=withVat?extras.withVat:extras.net;
+  // With VAT: store months from October 2026 (VAT from 22 Oct; October was billed with VAT) count what the store is charged, VAT included.
+  const taxedMonth=m=>withVat&&m>=STORE_VAT_MONTH,statementValue=(b,m)=>taxedMonth(m)?(Number(b.invoiced_gross_minor)||Math.round(minor(b.total||0)*(1+VAT_RATE))):minor(b.total||0);
+  return keys.map((month,i)=>({month,stores:firstStatement&&month>=firstStatement?(statements[i].length?statements[i].reduce((n,b)=>n+statementValue(b,month),0):Math.round((Number(deliveryByMonth?.[month])||0)*(taxedMonth(month)?1+VAT_RATE:1)))+(earlier[month]||0):revenue[i].stores,online:revenue[i].online,other:revenue[i].other}));
  }
  function operationalSales(data,r,businessDate,partialStore=null,deliveryByMonth=null,withVat=false){
   if(Number(r.start.slice(0,4))<2026){
@@ -198,7 +200,7 @@
   const to=r.to||new Date(Date.parse(r.end+'T12:00:00Z')-864e5).toISOString().slice(0,10),report=(withVat?(x=>x):netOfVat)(income(data,r.start,to,businessDate)),c=channels(report);
   const all=[];for(let y=Number(r.start.slice(0,4));y<=Number(to.slice(0,4));y++)all.push(...operationalMonths(data,y,data.bills||[],businessDate,to,deliveryByMonth,withVat));
   const monthly=all.filter(m=>m.month>=r.start.slice(0,7)&&m.month<=to.slice(0,7));
-  const stores=r.period==='week'?partialStore:monthly.reduce((n,m)=>n+m.stores,0);
+  const stores=r.period==='week'?(partialStore===null?null:Math.round(partialStore*(withVat&&r.start>=VAT_FROM.slice(0,10)?1+VAT_RATE:1))):monthly.reduce((n,m)=>n+m.stores,0);
   const totals={...report.totals,stores:stores===null?0:stores};
   return {online:c.online,other:c.other,stores,total:stores===null?null:c.online+c.other+stores,totals,
    monthly:monthly.map(m=>({key:m.month,online:m.online/100,store:m.stores/100,other:m.other/100})),

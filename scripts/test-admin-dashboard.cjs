@@ -111,8 +111,8 @@ test('dashboard and Stats share event receipts, store statements and deduplicate
  const revenue=require('../admin-revenue.js'),oct=range('pickmonth',new Date('2026-11-02T12:00:00Z'),{month:'2026-10'});
  const rd={orders:[order({id:'paid',order_number:1,total:100})],products:[],stores:[{id:'s',name:'Store'}],customers:[],overrides:[],imported:[{document_reference:'event',document_date:'2026-10-12',amount_minor:800000,customer_name:'Coffee bar event'}],orderReceipts:[{order_id:'paid',status:'issued',amount_minor:10000,payment_date:'2026-10-05',document_reference:'web'}],businessReceipts:[],bills:[{year:2026,month:10,total:500}],snapshots:[]};
  const m=model(data({orders:rd.orders,revenueData:rd}),oct,revenue);
- assert.equal(m.online,100);assert.equal(m.other,8000);assert.equal(m.store,500);assert.equal(m.totalSales,8600);
- const stats=revenue.operationalMonths(rd,2026,rd.bills,businessDate)[9];assert.equal(m.totalSales,(stats.online+stats.other+stats.stores)/100);
+ assert.equal(m.online,100);assert.equal(m.other,8000);assert.equal(m.store,590);assert.equal(m.totalSales,8690);// October store statements count with VAT (500 + 18%).
+ const stats=revenue.operationalMonths(rd,2026,rd.bills,businessDate,undefined,undefined,true)[9];assert.equal(m.totalSales,(stats.online+stats.other+stats.stores)/100);
  assert.equal(m.sales.totals.coffee_bar,800000);assert.equal(m.buckets.reduce((n,b)=>n+b.online+b.store+b.other,0),m.totalSales);
 });
 test('historical years use saved FinBot income and never fabricate a channel breakdown',()=>{

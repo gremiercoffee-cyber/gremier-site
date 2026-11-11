@@ -204,13 +204,13 @@
   get('statsNew-overview').innerHTML=`<div class="st-tiles">
    ${isNow&&thisMonth?tile(monthLong(cur)+' so far',money(sum(thisMonth)),prevKey!==cur?`${monthShort(prevKey)}: ${money(sum(rows.find(r=>r.month===prevKey)))}`:''):''}
    ${isNow&&lastYearSame?tile('Same month last year',money(lastYearSame.income_minor),'FinBot income'):''}
-   ${tile((isNow?'This year so far':'Year '+year),money(ytd+oldWebsite(year)),'Website & events incl. VAT · stores delivered (paid or not), before VAT'+(oldWebsite(year)?` · incl. ${money(oldWebsite(year))} old website`:''))}
+   ${tile((isNow?'This year so far':'Year '+year),money(ytd+oldWebsite(year)),'Incl. VAT · stores delivered (paid or not) + website + events'+(oldWebsite(year)?` · incl. ${money(oldWebsite(year))} old website`:''))}
    ${(()=>{const a=yearByMonth(year),b=yearByMonth(year-1),upTo=+cur.slice(5)-(isNow?1:0),through=isNow?upTo:12;if(!b.some(v=>v)||through<1)return '';
     const now=a.slice(0,through).reduce((s,v)=>s+(v||0),0)+oldWebsite(year),then=b.slice(0,through).reduce((s,v)=>s+(v||0),0);
     return tile('vs last year',pct(now,then)||'—',`${money(now)} vs ${money(then)}, Jan–${monthShort(year+'-'+String(through).padStart(2,'0'))}`);})()}
   </div>
   ${multi('overview',[{key:'month',label:'By month',html:line({title:`Sales by month · ${year}`,labels:rows.map(r=>({label:monthShort(r.month),tip:monthLong(r.month)})),series:[{name:'Total',color:'#52514e',dash:true,values:upToNow(rows.map(sum),rows.map(r=>r.month))},{name:'Stores',color:C[0],values:upToNow(rows.map(r=>r.stores),rows.map(r=>r.month))},{name:'Website',color:C[1],values:upToNow(rows.map(r=>r.online),rows.map(r=>r.month))},{name:'Events & other',color:C[2],values:upToNow(rows.map(r=>r.other),rows.map(r=>r.month))}],
-   note:'Website and events: what customers paid, VAT included, each payment counted once. Stores: what was delivered each month (paid or not), at statement price before VAT, plus payments for deliveries from before June 2026.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})},
+   note:'Incl. VAT (from 22 Oct 2026; store months from October). Website and events: what customers paid, each payment counted once. Stores: what was delivered each month (paid or not), plus payments for deliveries from before June 2026.'+(oldWebsite(year)?` Old-website sales (${money(oldWebsite(year))}) are one total for the year, so they're not in any month.`:'')})},
   {key:'total',label:'Running total',html:(()=>{
    // Running total of every sale, month by month: always going up. Filter: all time, one year, or the
    // last two years; each starts from zero. An old-website lump sum (no months) is added in the month its period ended.
