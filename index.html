@@ -297,6 +297,9 @@
     .pd-price { font-size:1.15rem; color:#1a1a1a; font-weight:500; margin-bottom:12px; }
     .pd-price .orig { text-decoration:line-through; color:var(--text2); font-size:.88rem; margin-right:6px; font-weight:300; }
     .pd-desc { font-size:.87rem; color:var(--text2); line-height:1.75; margin-bottom:20px; }
+    .pd-serves { margin:4px 0 18px; display:flex; flex-direction:column; gap:2px; }
+    .pd-serves b { font-size:.9rem; font-weight:600; color:var(--text,#1a1a1a); }
+    .pd-serves small { font-size:.74rem; color:var(--text2); }
     .pd-qty-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
     .pd-qty { display:flex; align-items:center; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
     .pd-qty button { background:none; border:none; width:36px; height:36px; font-size:1.1rem; cursor:pointer; color:#1a1a1a; transition:background .15s; }
@@ -1087,6 +1090,7 @@
     <div class="pd-name" id="pdName"></div>
     <div class="pd-price" id="pdPrice"></div>
     <div class="pd-desc" id="pdDesc"></div>
+    <div class="pd-serves" id="pdServes" style="display:none"></div>
     <ul class="pd-features" id="pdFeatures" style="display:none"></ul>
     <div id="pdVariationsSection" style="display:none"></div>
     <div id="pdAddonsSection" style="display:none;margin-bottom:16px"></div>
@@ -2385,6 +2389,8 @@ function openProductDrawerUI(productId) {
   }
   document.getElementById('pdName').textContent = name;
   document.getElementById('pdDesc').textContent = getProductDescription(p);
+  const serves = document.getElementById('pdServes');
+  if (serves) { const h = pdServesHtml(p); serves.innerHTML = h; serves.style.display = h ? '' : 'none'; }
   const featList = document.getElementById('pdFeatures');
   const features = lang === 'he' ? (p.featuresHe || []) : (p.featuresEn || []);
   if (features && features.length > 0) {
@@ -2542,6 +2548,22 @@ function sanitizeProductDesc(text) {
     .replace(/\s+([,.!?])/g, '$1')
     .replace(/^[,.\s–—-]+|[,.\s–—-]+$/g, '')
     .trim();
+}
+// Liter bottles: "Makes up to 8 iced coffees*" with the footnote, instead of a volume or price per cup.
+function pdServesHtml(p) {
+  if (!p || p.category !== 'bottles' || /syrup/i.test(p.name_en || '')) return '';
+  const d = p.description_en || '';
+  const pack = (p.variations || []).some(v => v.type === 'pack');
+  if (!pack && !/\b1\s*lit(re|er)\b/i.test(d)) return '';
+  const sweet = /sweetened/i.test(p.name_en || '');
+  const he = lang === 'he';
+  const head = pack
+    ? (he ? 'כל בקבוק: עד 8 כוסות אייס קפה*' : 'Each bottle makes up to 8 iced coffees*')
+    : (he ? 'עד 8 כוסות אייס קפה מהבקבוק*' : 'Makes up to 8 iced coffees*');
+  const note = sweet
+    ? (he ? '*כשמערבבים כמו שצריך עם חלב.' : '*When mixed properly with milk.')
+    : (he ? '*כשמערבבים כמו שצריך עם חלב וסוכר.' : '*When mixed properly with milk and sugar.');
+  return `<b>${head}</b><small>${note}</small>`;
 }
 function getProductDescription(p, langOverride) {
   const L = langOverride || lang;
