@@ -78,6 +78,7 @@
       if (typeof currentUser !== 'undefined' && currentUser) return window.showPage?.('myorders');
       return window.handleAuthClick?.();
     }
+    if (tab === 'coffeebars' && typeof window.openCoffeeBarsFromMenu === 'function') return window.openCoffeeBarsFromMenu();
     window.showPage?.(tab);
     window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
   }

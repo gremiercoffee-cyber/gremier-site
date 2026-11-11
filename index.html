@@ -791,7 +791,7 @@
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261111-1"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261025-7"/>
-<script src="/storefront-nav.js?v=20261026-1"></script>
+<script src="/storefront-nav.js?v=20261111-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 <link rel="stylesheet" href="/storefront-discovery.css?v=20261111-2"/>
 <script src="/storefront-discovery.js?v=20261111-1"></script>
@@ -863,7 +863,7 @@
 <div class="mobile-menu" id="mobileMenu">
   <a onclick="showPage('home');closeMobileMenu()" id="mm-home">Home</a>
   <a onclick="showPage('shop');closeMobileMenu()" id="mm-shop">Shop</a>
-  <a onclick="showPage('coffeebars');closeMobileMenu()" id="mm-bars">Coffee Bars</a>
+  <a href="#coffeebars/build" onclick="closeMobileMenu();openCoffeeBarsFromMenu(event)" id="mm-bars">Coffee Bars</a>
   <a href="/where-to-buy" onclick="closeMobileMenu()" id="mm-locations">Where to find us</a>
   <a onclick="goToAbout();closeMobileMenu()" id="mm-about">About</a>
 <a onclick="showPage('myorders');closeMobileMenu()" id="mm-orders" style="display:none">My Account</a>
@@ -876,7 +876,7 @@
   <ul class="nav-links">
     <li><a onclick="showPage('home')">Home</a></li>
     <li><a onclick="showPage('shop')">Shop</a></li>
-    <li><a onclick="showPage('coffeebars')">Coffee Bars</a></li>
+    <li><a href="#coffeebars/build" onclick="openCoffeeBarsFromMenu(event)">Coffee Bars</a></li>
     <li><a href="/where-to-buy" id="nav-locations">Where to find us</a></li>
     <li><a onclick="goToAbout()">About</a></li>
 <li id="myOrdersNav" style="display:none"><a onclick="showPage('myorders')">My Account</a></li>
@@ -3492,6 +3492,15 @@ function navReplace(state, stripSearch = false) {
 }
 function navBack() {
   if (!navSkipPush) history.back();
+}
+// Menu links and the phone tab bar: "Coffee Bars" opens the builder directly, not the intro page.
+function openCoffeeBarsFromMenu(event) {
+  if (event && (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+  event?.preventDefault?.();
+  if (!window.plannerStart) { showPage('coffeebars'); return; }
+  navPush({ page: 'coffeebars', layer: null, bbBuild: true, bbDirect: 'home' });
+  showPage('coffeebars', true);
+  window.plannerStart('guests');
 }
 function openCoffeeBarFromHome(event) {
   if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !window.plannerStart) return;
