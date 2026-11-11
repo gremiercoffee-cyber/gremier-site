@@ -205,6 +205,7 @@ export default function Settings({ settings, onSaved, installPrompt }: {
                     </div>
                     {!a.last_error && !a.workspace && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Add Docs & Drive</Button>}
                     {!a.last_error && a.workspace && !a.contacts && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Allow contacts</Button>}
+                    {!a.last_error && a.email === "gremiercoffee@gmail.com" && !a.invoices && <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect({ invoices: true })).url; }}>Allow invoice labels</Button>}
                     {a.last_error
                       ? <Button variant="soft" onClick={async () => { location.href = (await api.googleConnect()).url; }}>Reconnect</Button>
                       : <Button variant="ghost" onClick={async () => {

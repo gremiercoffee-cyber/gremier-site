@@ -569,7 +569,8 @@ route("POST", "/api/whatsapps/:id/done", async (_req, env, [id]) => { await run(
 route("POST", "/api/whatsapps/batch/:id/done", async (_req, env, [id]) => { await run(env, "UPDATE wa_drafts SET done_at = ? WHERE batch_id = ? AND done_at IS NULL", now(), id); return json({ ok: true }); });
 route("GET", "/api/bridge-status", async (_req, env) => json(await bridgeStatus(env)));
 route("POST", "/api/google/connect", async (req, env) => {
-  try { return json({ url: await startGoogleAuth(env, req) }); }
+  const b = await body<{ invoices?: boolean }>(req).catch(() => ({} as { invoices?: boolean }));
+  try { return json({ url: await startGoogleAuth(env, req, { invoices: b?.invoices === true }) }); }
   catch (e) { if (e instanceof GoogleAuthError) throw new HttpError(400, e.message); throw e; }
 });
 route("POST", "/api/google/disconnect", async (req, env) => {
@@ -609,6 +610,8 @@ export default {
     if(url.pathname === "/api/daynote/whoop/callback" && req.method === "GET") return finishWhoopAuth(env,req);
     if (url.pathname === "/api/daynote/google/callback" && req.method === "GET") return finishHealthAuth(env,req);
     if (url.pathname === "/api/google/callback" && req.method === "GET") return finishGoogleAuth(env, req);
+    // The invoice email's ✓/✗ buttons: signed per message, so no sign-in is needed.
+    if (url.pathname === "/api/invoice/decide" && req.method === "GET") return import("./invoices").then((m) => m.invoiceDecide(env, req));
     // Outside agents (Codex, Claude Code): ask the computer helper for a job and check on it. Every job waits for
     // the user's Allow on their phone. Their own key, never the app passcode.
     // A Claude plan run sends its answer here, to the one-time link it was given for that run.
@@ -714,6 +717,7 @@ export default {
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(checkGesherScheduler(env).catch(()=>console.error('Gesher scheduler health check failed')));
+    ctx.waitUntil(import("./invoices").then((m) => m.invoiceTick(env)).catch((e) => console.error("invoices", (e as Error).message)));
     // Every 5 minutes: jobs (start what's due, collect results). Everything else keeps its 15-minute rhythm
     // (one schedule: the account allows no more).
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));

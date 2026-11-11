@@ -196,6 +196,8 @@ export interface GoogleAccountStatus {
   workspace: boolean;
   /** Read-only Contacts access granted (for finding WhatsApp numbers). */
   contacts?: boolean;
+  /** Allowed to label mail, for the invoice watcher. */
+  invoices?: boolean;
   /** Area its calendar events belong to. */
   category: string | null;
   last_sync_at: string | null;

@@ -26,6 +26,8 @@ const SCOPES = [
   "https://www.googleapis.com/auth/calendar.events", // add events the owner asks for (ChatGPT / chat)
 ];
 export const CALENDAR_WRITE_SCOPE = SCOPES[9];
+/** Label mail ("Invoice ?"); asked for only from the "Allow invoice labels" button, never by default. */
+export const INVOICE_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 /** Calendar + Gmail are required; Docs/Sheets/Drive and Contacts are optional per account (added later). */
 const CORE_SCOPES = SCOPES.slice(2, 5);
 export const WORKSPACE_SCOPES = SCOPES.slice(5, 8);
@@ -103,12 +105,13 @@ export async function googleStatus(env: Env): Promise<GoogleStatus> {
       email: a.email, last_sync_at: a.last_sync_at, last_error: a.last_error, category: (a as Account & { category?: string }).category ?? null,
       workspace: WORKSPACE_SCOPES.every((s) => ((a as Account & { scopes?: string }).scopes ?? "").includes(s)),
       contacts: ((a as Account & { scopes?: string }).scopes ?? "").includes(CONTACTS_SCOPE),
+      invoices: ((a as Account & { scopes?: string }).scopes ?? "").includes(INVOICE_SCOPE),
     })),
     ai_used_today: b.used, ai_daily_cap: b.cap,
   };
 }
 
-export async function startGoogleAuth(env: Env, req: Request): Promise<string> {
+export async function startGoogleAuth(env: Env, req: Request, opts: { invoices?: boolean } = {}): Promise<string> {
   if (!googleConfigured(env)) throw new GoogleAuthError("Google isn't set up on the server yet.");
   const state = crypto.randomUUID();
   await run(env, "DELETE FROM oauth_states WHERE created_at < ?", new Date(Date.now() - 15 * 60_000).toISOString());
@@ -117,7 +120,8 @@ export async function startGoogleAuth(env: Env, req: Request): Promise<string> {
   u.search = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID!, redirect_uri: redirectUri(req), response_type: "code",
     // select_account so a second or third account can be picked instead of silently reusing the first.
-    scope: SCOPES.join(" "), access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state,
+    scope: [...SCOPES, ...(opts.invoices ? [INVOICE_SCOPE] : [])].join(" "), access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state,
+    ...(opts.invoices ? { login_hint: "gremiercoffee@gmail.com" } : {}),
   }).toString();
   return u.toString();
 }
@@ -175,6 +179,11 @@ export async function disconnectGoogle(env: Env, email: string) {
 
 export const accountEmails = async (env: Env) =>
   (await all<{ email: string }>(env, "SELECT email FROM google_accounts ORDER BY connected_at")).map((r) => r.email);
+
+export async function hasInvoiceScope(env: Env, email: string) {
+  const a = await first<{ scopes: string | null }>(env, "SELECT scopes FROM google_accounts WHERE email = ?", email);
+  return (a?.scopes ?? "").includes(INVOICE_SCOPE);
+}
 
 export async function accessToken(env: Env, email: string): Promise<string> {
   const a = await first<Account>(env, "SELECT * FROM google_accounts WHERE email = ?", email);

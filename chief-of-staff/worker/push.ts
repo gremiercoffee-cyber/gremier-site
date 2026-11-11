@@ -129,7 +129,7 @@ export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: numb
  * and when something is broken. Everything else (suggestions, heads-ups, "still waiting", meeting prep,
  * situations, reply batches, learning prompts…) is not recorded or sent at all. */
 export const ALLOWED_NOTIFICATIONS = new Set(["reminder", "checkin", "overdue", "watch", "wa_send", "wa_sent", "wa_failed",
-  "approval", "broken", "hashgacha", "hashgacha_auto"]);
+  "approval", "broken", "hashgacha", "hashgacha_auto", "invoice"]);
 export async function notify(env: Env, type: string, title: string, body = "", itemId: string | null = null, url = "/", options: NotificationOptions = {}) {
   if (!ALLOWED_NOTIFICATIONS.has(type)) return "";
   const { id, topic } = await recordNotification(env,type,title,body,itemId,url,options);

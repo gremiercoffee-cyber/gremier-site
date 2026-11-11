@@ -30,6 +30,10 @@ async function scan(env:Env,at:number){
  // Claude backup failed to start recently.
  const claudeErr=seen(await setting(env,'settings','claude_routine_error'));
  if(claudeErr&&at-claudeErr<3*60*MIN)out.push({key:'claude',title:'Claude backup is not starting',body:'Jobs fall back to the API until it works. The Claude routine or its token may need renewing.'});
+ // Invoice watcher (gremiercoffee@gmail.com): stopped, or not allowed to label mail yet.
+ const inv=await import('./invoices').then(m=>m.invoiceHealth(env,at)).catch(()=>null);
+ if(inv?.stale)out.push({key:'invoices',title:'Invoice check stopped',body:'New invoices in gremiercoffee@gmail.com are not being checked. Open Settings and reconnect Google if it shows an error.'});
+ if(inv?.connected&&!inv.canLabel)out.push({key:'invoices:labels',title:'Invoice check: allow labels',body:'Invoices are found and you get the email, but they cannot go under "Invoice ?" in Gmail yet. Settings → Google → Allow invoice labels.'});
  return {problems:out,computerOn};
 }
 
