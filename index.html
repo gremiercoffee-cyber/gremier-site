@@ -798,6 +798,7 @@
 <link rel="stylesheet" href="/storefront-reveal.css?v=20261029-3"/>
 <link rel="stylesheet" href="/storefront-journeys.css?v=20261102-2"/>
 <link rel="stylesheet" href="/storefront-together.css?v=20261103-1"/>
+<link rel="stylesheet" href="/storefront-home-flow.css?v=20261111-1"/>
 </head>
 <body>
 <div id="gremierBoot" role="status" aria-live="polite" aria-label="Loading Gremier Coffee">
@@ -933,13 +934,14 @@
       <div class="discovery-footer"><span id="t-hero-bars" data-discovery-en="Build your coffee bar" data-discovery-he="בנו את עמדת הקפה שלכם">Build your coffee bar</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
     </a>
     <a class="discovery-route discovery-sub" href="#subscribe" onclick="event.preventDefault();window.openSubscriptionBuilder ? openSubscriptionBuilder() : showPage('shop')">
-      <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="Subscriptions" data-discovery-he="מנויים">Subscriptions</div><h2 data-discovery-en="Never run out." data-discovery-he="שלא ייגמר לכם.">Never run out.</h2><p data-discovery-en="Pick your coffee once. It arrives at your door every month, 10% off. Pause any time." data-discovery-he="בוחרים קפה פעם אחת, והוא מגיע לדלת כל חודש ב־10% הנחה. אפשר להשהות בכל עת.">Pick your coffee once. It arrives at your door every month, 10% off. Pause any time.</p></div>
+      <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="Subscriptions" data-discovery-he="מנויים">Subscriptions</div><h2><span data-discovery-en="Never run out." data-discovery-he="שלא ייגמר לכם.">Never run out.</span><b class="ds-strip-off" data-discovery-en="10% off" data-discovery-he="10% הנחה">10% off</b></h2><p data-discovery-en="Pick your coffee once. It arrives at your door every month, 10% off. Pause any time." data-discovery-he="בוחרים קפה פעם אחת, והוא מגיע לדלת כל חודש ב־10% הנחה. אפשר להשהות בכל עת.">Pick your coffee once. It arrives at your door every month, 10% off. Pause any time.</p></div>
       <div class="discovery-visual ds-scene" aria-hidden="true"><span class="ds-door"><i class="ds-win"></i><i class="ds-knob"></i><b class="ds-tag">−10%</b></span><span class="ds-mat"></span><span class="ds-items"><img src="/packs/studio/bottles-classic-v2.webp" alt="" loading="lazy"><img src="/packs/studio/bottles-house-v2.webp" alt="" loading="lazy"><img src="/packs/studio/bottles-colombia-v2.webp" alt="" loading="lazy"></span></div>
       <div class="discovery-footer"><span data-discovery-en="Build your subscription" data-discovery-he="בנו את המנוי שלכם">Build your subscription</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
     </a>
   </div>
   <div class="section section-home-products">
     <div class="section-header">
+      <div class="eyebrow" id="t-feat-eye">Our Range</div>
       <h2 class="section-title" id="t-feat-title" style="font-size:clamp(1.4rem,3vw,2rem)">Shop Cold Brew</h2>
     </div>
     <div class="product-grid" id="featuredGrid"><div class="loading"><div class="spinner"></div></div></div>
@@ -947,22 +949,27 @@
       <button class="btn btn-outline" onclick="showPage('shop')" id="t-view-all">View All Products</button>
     </div>
   </div>
-  <div class="section section-alt" id="coffeeBarsSection">
+  <div class="section home-steps" aria-labelledby="homeStepsTitle">
     <div class="section-header">
-      <div class="eyebrow" id="t-cb-eye">Events</div>
-      <div class="divider"></div>
-      <h2 class="section-title" id="t-cb-title">Coffee Bars</h2>
-      <p style="color:var(--text2);font-size:.9rem;margin-top:12px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.75;" id="t-cb-desc">Premium Gremier cold brew for your party, corporate event, or special occasion — tailored to your guest count. Based in Jerusalem, serving events across Israel.</p>
+      <div class="eyebrow" data-discovery-en="How it works" data-discovery-he="איך זה עובד">How it works</div>
+      <h2 class="section-title" id="homeStepsTitle" data-discovery-en="Three steps to great coffee" data-discovery-he="שלושה צעדים לקפה מעולה">Three steps to great coffee</h2>
     </div>
-    <div class="product-grid" id="coffeeBarGrid"><div class="loading"><div class="spinner"></div></div></div>
+    <ol class="home-steps-list">
+      <li><span class="hs-n" aria-hidden="true">1</span><b data-discovery-en="Slow-brewed cold" data-discovery-he="חליטה איטית בקור">Slow-brewed cold</b><small data-discovery-en="Hours in cold water. Smooth, never bitter." data-discovery-he="שעות במים קרים. חלק, בלי מרירות.">Hours in cold water. Smooth, never bitter.</small></li>
+      <li><span class="hs-n" aria-hidden="true">2</span><b data-discovery-en="Delivered to your door" data-discovery-he="משלוח עד הדלת">Delivered to your door</b><small data-discovery-en="Bottled fresh and brought to you." data-discovery-he="בקבוקים טריים, ישר אליכם.">Bottled fresh and brought to you.</small></li>
+      <li><span class="hs-n" aria-hidden="true">3</span><b data-discovery-en="Pour over ice" data-discovery-he="מוזגים על קרח">Pour over ice</b><small data-discovery-en="Add milk if you like. Ready in seconds." data-discovery-he="מוסיפים חלב אם רוצים, ומוכן תוך שניות.">Add milk if you like. Ready in seconds.</small></li>
+    </ol>
   </div>
-  <div class="section section-alt">
-    <div class="why-grid" style="max-width:860px;margin:0 auto">
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">❄</div><div class="why-title" id="t-w1t">Brewed for hours, not minutes</div><div class="why-desc" id="t-w1d">Cold water and time bring out the sweet, chocolatey side of the coffee and leave the bitterness behind.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">→</div><div class="why-title" id="t-w2t">Fresh from our brewery</div><div class="why-desc" id="t-w2d">Brewed in small batches and bottled fresh.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">◉</div><div class="why-title" id="t-w3t">Beans chosen for cold brew</div><div class="why-desc" id="t-w3d">From Colombia, Honduras, Costa Rica and beyond, in dark, medium and light roasts, each picked because it tastes great cold.</div></div>
-      <div class="why-item"><div class="why-icon" style="font-size:1.4rem;opacity:.7">✦</div><div class="why-title" id="t-w4t">A coffee bar for your event</div><div class="why-desc" id="t-w4d">Tell us how many guests and we&#39;ll put everything together: coffee, milk, cups and syrups.</div></div>
-    </div>
+  <div class="section section-alt home-bar-teaser" id="coffeeBarsSection">
+    <a class="hbt-card" href="#coffeebars/build" onclick="openCoffeeBarFromHome(event)">
+      <div class="hbt-photo"><img src="/hero/09-coffee-bar-900.webp?v=20261103d" alt="Gremier coffee bar at an event with dispensers, syrups, milk, cups and straws" loading="lazy" decoding="async"></div>
+      <div class="hbt-copy">
+        <div class="eyebrow" id="t-cb-eye">Events</div>
+        <h2 class="section-title" id="t-cb-title">Coffee Bars</h2>
+        <p id="t-cb-desc">Premium Gremier cold brew for your party, corporate event, or special occasion — tailored to your guest count. Based in Jerusalem, serving events across Israel.</p>
+        <span class="hbt-cta"><span data-discovery-en="Build your coffee bar" data-discovery-he="בנו את עמדת הקפה שלכם">Build your coffee bar</span><span aria-hidden="true">↗</span></span>
+      </div>
+    </a>
   </div>
   <div class="section" id="aboutSection">
     <div style="max-width:620px;margin:0 auto;text-align:center;">
@@ -5609,7 +5616,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-subscribe.js?v=20261110-1"></script>
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261110-1"></script>
-<script src="/storefront-hero-stills.js?v=20261103-17"></script>
+<script src="/storefront-hero-stills.js?v=20261111-1"></script>
 <script src="/coffee-bar-order.js?v=20261030-1"></script>
 <script src="/storefront-bar-layout.js?v=20261111-1"></script>
 <script src="/storefront-bar-world.js?v=20261110-1"></script>

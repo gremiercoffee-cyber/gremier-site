@@ -115,7 +115,24 @@
   .hb-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:3}
   .hb-word{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;font-family:'DM Sans',system-ui,sans-serif;font-weight:900;font-size:clamp(2.6rem,15cqw,8.5rem);letter-spacing:.02em;color:#fff;text-shadow:0 6px 30px rgba(0,0,0,.35);opacity:0;pointer-events:none;will-change:transform,opacity}
   @media(max-width:948px){.hero-film{margin:4px 24px 22px}}
-  @media(max-width:640px){.hero-film{margin:0 16px 18px;aspect-ratio:4/5;border-radius:18px}.hero-film-cap{font-size:.78rem;inset-inline-start:12px;bottom:12px;max-width:calc(100% - 24px)}.hero-film-dots{inset-inline-end:auto;inset-inline-start:50%;transform:translateX(-50%);top:12px;bottom:auto}}`;
+  @media(max-width:640px){.hero-film{margin:0 16px 18px;aspect-ratio:4/5;border-radius:18px}.hero-film-cap{font-size:.78rem;inset-inline-start:12px;bottom:12px;max-width:calc(100% - 24px)}.hero-film-dots{inset-inline-end:auto;inset-inline-start:50%;transform:translateX(-50%);top:12px;bottom:auto}}
+  /* The headline sits on the film: a thin line and a small Shop button over a soft dark fade.
+     The separate hero block (logo, headline, paragraph) is folded away; the logo is already in the header. */
+  #homePage .hero.hero-folded{display:none}
+  #homePage .hero-film{max-width:min(1152px,calc((100svh - 150px) * 1.5));margin:18px auto 26px}
+  .hero-film-over{position:absolute;inset:auto 0 0 0;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:70px 26px 22px;background:linear-gradient(to top,rgba(14,10,7,.62),rgba(14,10,7,.28) 55%,transparent);pointer-events:none}
+  .hero-film-over .hero-title{font-family:'Playfair Display',serif;font-size:clamp(1.25rem,2.3vw,1.8rem);font-weight:500;line-height:1.15;color:#fff;margin:0;text-align:start;text-shadow:0 1px 12px rgba(0,0,0,.25);transition:opacity .5s}
+  .hero-film-over .hero-title br{display:none}
+  .hero-film-over .hero-title em{color:#fff!important;font-weight:500;font-style:italic;margin-inline-start:.28em}
+  .hero-film-shop{pointer-events:auto;flex-shrink:0;border:0;border-radius:999px;background:#fff;color:#1a1a1a;font:600 .82rem 'DM Sans',sans-serif;padding:10px 18px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+  .hero-film-shop:hover{background:#f3ede4}
+  .hero-film-shop:focus-visible{outline:3px solid #b9854c;outline-offset:3px}
+  .hero-film.at-intro .hero-film-over{background:none}
+  .hero-film.at-intro .hero-film-over .hero-title{opacity:0}
+  .hero-film-cap{bottom:auto;top:16px}
+  .hero-film-dots{bottom:auto;top:20px}
+  @media(max-width:948px){#homePage .hero-film{max-width:none;margin:14px 24px 22px}}
+  @media(max-width:640px){#homePage .hero-film{margin:10px 16px 18px}.hero-film-over{padding:56px 16px 16px;gap:10px}.hero-film-over .hero-title{font-size:1.2rem}.hero-film-shop{padding:9px 15px;font-size:.78rem}.hero-film-cap{top:30px}}`;
   document.head.appendChild(css);
 
   function build() {
@@ -127,6 +144,19 @@
     film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => BURSTS[f] ? `<div class="hero-film-shot hero-film-burst">${BURSTS[f].frames.map(([bf]) => `<img class="hb-img" alt="" decoding="async" loading="lazy" ${src(bf)}>`).join('')}<div class="hb-dim"></div><div class="hb-word" aria-hidden="true"></div><div class="hb-flash"></div></div>` : f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><div class="hi-stage"><div class="hi-art"><picture><source media="(max-width:640px)" srcset="/hero/00-intro-720.webp?v=${IMG_V} 720w, /hero/00-intro.webp?v=${IMG_V} 1024w" sizes="100vw"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:948px) 100vw, 900px" srcset="/hero/00-intro-wide-900.webp?v=${IMG_V} 900w, /hero/00-intro-wide.webp?v=${IMG_V} 1536w" src="/hero/00-intro-wide.webp?v=${IMG_V}"></picture><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-${(SIZES[f] || [900])[0]}.webp?v=${IMG_V} ${(SIZES[f] || [900])[0]}w, /hero/${f}.webp?v=${IMG_V} ${(SIZES[f] || [0, 1536])[1]}w" src="/hero/${f}.webp?v=${IMG_V}"></div>`).join('')
       + `<div class="hero-film-cap" aria-live="polite"></div><div class="hero-film-dots">${SHOTS.map((_, i) => `<button type="button" aria-label="${i + 1}"></button>`).join('')}</div>`;
     hero.insertAdjacentElement('afterend', film);
+    // The headline moves onto the film, with a small Shop button; the rest of the hero block is hidden.
+    const over = document.createElement('div');
+    over.className = 'hero-film-over';
+    const title = hero.querySelector('.hero-title');
+    if (title) over.appendChild(title);
+    const shopBtn = document.createElement('button');
+    shopBtn.type = 'button'; shopBtn.className = 'hero-film-shop';
+    shopBtn.setAttribute('data-discovery-en', 'Shop now'); shopBtn.setAttribute('data-discovery-he', 'לחנות');
+    shopBtn.textContent = he() ? 'לחנות' : 'Shop now';
+    shopBtn.onclick = (e) => { e.stopPropagation(); if (typeof showPage === 'function') showPage('shop'); };
+    over.appendChild(shopBtn);
+    film.appendChild(over);
+    hero.classList.add('hero-folded');
     const shots = [...film.querySelectorAll('.hero-film-shot')], cap = film.querySelector('.hero-film-cap'), dots = [...film.querySelectorAll('.hero-film-dots button')];
     let i = 0, timer = null, anim = null, beats = [], moving = [];
     // Each beat's animations are cancelled before the next, so a page left open doesn't pile them up.
@@ -191,6 +221,7 @@
       // The opening replays its reveal, glint and glow each time it comes round.
       if (intro) { shots[i].classList.remove('play'); void shots[i].offsetWidth; shots[i].classList.add('play'); }
       shots[i].classList.add('on');
+      film.classList.toggle('at-intro', intro);   // the opening graphic carries its own words
       cap.textContent = he() ? hebrew : en; cap.style.opacity = cap.textContent ? '1' : '0';
       dots.forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
       film.setAttribute('aria-label', (he() ? hebrew : en) || 'Gremier Coffee Co.');
@@ -212,7 +243,7 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(timer); timer = null; stopBurst(); anim?.pause(); } else if (!timer) show(i); });
     // Captions follow the language switch.
     const toggle = window.toggleLang;
-    if (typeof toggle === 'function') window.toggleLang = function () { const r = toggle.apply(this, arguments); cap.textContent = he() ? SHOTS[i][2] : SHOTS[i][1]; cap.style.opacity = cap.textContent ? '1' : '0'; return r; };
+    if (typeof toggle === 'function') window.toggleLang = function () { const r = toggle.apply(this, arguments); shopBtn.textContent = he() ? 'לחנות' : 'Shop now'; cap.textContent = he() ? SHOTS[i][2] : SHOTS[i][1]; cap.style.opacity = cap.textContent ? '1' : '0'; return r; };
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build); else build();
 })();
