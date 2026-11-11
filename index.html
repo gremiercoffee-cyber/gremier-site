@@ -2549,25 +2549,34 @@ function sanitizeProductDesc(text) {
     .replace(/^[,.\s–—-]+|[,.\s–—-]+$/g, '')
     .trim();
 }
-// Liter bottles: "Makes up to 8 iced coffees*" with the footnote, instead of a volume or price per cup.
+// Liter bottles and 5L jugs: "Makes up to 8 iced coffees · ₪6.13 a cup*" (8 cups a liter) with the footnote.
 function pdServesHtml(p) {
-  if (!p || p.category !== 'bottles' || /syrup/i.test(p.name_en || '')) return '';
+  if (!p || /syrup/i.test(p.name_en || '')) return '';
   const d = p.description_en || '';
-  const pack = (p.variations || []).some(v => v.type === 'pack');
-  if (!pack && !/\b1\s*lit(re|er)\b/i.test(d)) return '';
-  const sweet = /sweetened/i.test(p.name_en || '');
   const he = lang === 'he';
-  const head = pack
-    ? (he ? 'כל בקבוק: עד 8 כוסות אייס קפה*' : 'Each bottle makes up to 8 iced coffees*')
-    : (he ? 'עד 8 כוסות אייס קפה מהבקבוק*' : 'Makes up to 8 iced coffees*');
+  let head, cups;
+  if (p.category === 'bulk') {
+    const liters = Number((d.match(/\b(\d+)\s*lit(re|er)s?\b/i) || [])[1]) || 0;
+    if (!liters) return '';
+    cups = liters * 8;
+    head = he ? `עד ${cups} כוסות אייס קפה` : `Makes up to ${cups} iced coffees`;
+  } else if (p.category === 'bottles') {
+    const pack = (p.variations || []).some(v => v.type === 'pack');
+    if (!pack && !/\b1\s*lit(re|er)\b/i.test(d)) return '';
+    cups = pack ? 48 : 8;
+    head = pack
+      ? (he ? 'כל בקבוק: עד 8 כוסות אייס קפה' : 'Each bottle makes up to 8 iced coffees')
+      : (he ? 'עד 8 כוסות אייס קפה מהבקבוק' : 'Makes up to 8 iced coffees');
+  } else return '';
+  const sweet = /sweetened/i.test(p.name_en || '');
   const note = sweet
     ? (he ? '*כשמערבבים כמו שצריך עם חלב.' : '*When mixed properly with milk.')
     : (he ? '*כשמערבבים כמו שצריך עם חלב וסוכר.' : '*When mixed properly with milk and sugar.');
-  // Price per cup from the current price: 8 cups a liter (a 6-pack is 48 cups).
-  const cups = pack ? 48 : 8, price = Number(p.price) || 0;
-  const per = price > 0 ? '₪' + (Math.round(price / cups * 100) / 100).toFixed(2) : '';
+  // Price per cup from the current price.
+  const price = Number(p.price) || 0;
+  const per = price > 0 ? '₪' + (Math.round(price * 100 / cups) / 100).toFixed(2) : '';
   const perText = per ? (he ? ` · ${per} לכוס` : ` · ${per} a cup`) : '';
-  return `<b>${head.replace(/\*$/, '')}${perText}*</b><small>${note}</small>`;
+  return `<b>${head}${perText}*</b><small>${note}</small>`;
 }
 function getProductDescription(p, langOverride) {
   const L = langOverride || lang;
