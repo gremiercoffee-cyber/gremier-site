@@ -28,12 +28,16 @@
   const SHOTS = [
     // The opening: the brand graphic, animated (see INTRO below). No caption.
     ['00-intro', '', '', 'shop', [1, 0, 0], [1.06, 0, 0]],
-    ['02-classic', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
-    ['04-colombia', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
-    ['05-sweetened', 'Sweetened Classic · add milk if you like', 'קלאסיק ממותק · עם חלב, אם בא לכם', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
-    ['06-syrups', 'Vanilla Bean & Caramel syrups', 'סירופ וניל ושל קרמל', 'shop', [1.03, 1.5, 1], [1.1, -4, -3]],
-    ['07-minis', 'Cremier minis · grab and go', 'קרמייר מיני · לוקחים והולכים', 'shop', [1.03, -1.5, 1], [1.1, 4, -3]],
-    ['08-five-liter', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
+    ['15-classic-liter', 'Classic Dark Roast · smooth & strong', 'קלאסיק קלייה כהה · חלק וחזק', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
+    ['16-colombia-liter', 'Colombia Light Roast · bright & fruity', 'קולומביה קלייה בהירה · רענן ופירותי', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
+    ['17-sweetened-liter', 'Sweetened Classic · add milk if you like', 'קלאסיק ממותק · עם חלב, אם בא לכם', 'shop', [1.03, -1.5, -1], [1.1, 4, 3]],
+    ['18-vanilla-pump', 'Vanilla Bean Syrup', 'סירופ וניל', 'shop', [1.03, 1.5, 1], [1.1, -4, -3]],
+    ['19-original-cream-latte', 'Original Cream Latte', 'קרים לאטה אוריג׳ינל', 'shop', [1.03, -1.5, 1], [1.1, 4, -3]],
+    ['22-vanilla-cream-latte', 'Vanilla Cream Latte', 'קרים לאטה וניל', 'shop', [1, 0, 0], [1.06, 0, 0]],
+    ['23-caramel-cream-latte', 'Caramel Cream Latte', 'קרים לאטה קרמל', 'shop', [1, 0, 0], [1.06, 0, 0]],
+    ['24-caramel-pump', 'Caramel Syrup', 'סירופ קרמל', 'shop', [1, 0, 0], [1.06, 0, 0]],
+    ['25-sugar-pump', 'Sugar Syrup', 'סירופ סוכר', 'shop', [1, 0, 0], [1.06, 0, 0], '22% center'],
+    ['20-classic-jug', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['09-coffee-bar', 'Coffee bars for your event', 'עמדות קפה לאירוע שלכם', 'coffeebars', [1.03, -1.5, -1], [1.1, 4, 3]],
     // The closing shot is a tall photo with its own words: the camera tilts down it (TILT below). No caption.
     ['10-elevate', '', '', 'shop', [1.02, 0, 0], [1.08, 0, 0], '50% 0%'],
@@ -54,18 +58,22 @@
   // register, in a calmer GLIDE: each photo sweeps in on a slanted wipe and settles, the word rises in.
   const BURSTS = {
     'burst-minis': { beat: 850, frames: [
-      ['11-burst-classic', 'CLASSIC.', 'קלאסיק.'],
-      ['07-minis', 'ORIGINAL.', 'אוריג׳ינל.'],
-      ['12-burst-vanilla', 'VANILLA.', 'וניל.'],
-      ['13-burst-caramel', 'CARAMEL.', 'קרמל.'],
+      ['21-classic-mini', 'CLASSIC.', 'קלאסיק.'],
+      ['19-original-cream-latte', 'ORIGINAL.', 'אוריג׳ינל.'],
+      ['22-vanilla-cream-latte', 'VANILLA.', 'וניל.'],
+      ['23-caramel-cream-latte', 'CARAMEL.', 'קרמל.'],
       ['14-burst-unfiltered', 'UNFILTERED.', 'לא מסונן.'],
     ] },
     'burst-products': { beat: 1300, glide: true, frames: [
-      ['02-classic', 'DARK ROAST.', 'קלייה כהה.'],
-      ['04-colombia', 'COLOMBIA.', 'קולומביה.'],
-      ['05-sweetened', 'SWEETENED.', 'ממותק.'],
-      ['06-syrups', 'SYRUPS.', 'סירופים.'],
-      ['08-five-liter', '5 LITRES.', '5 ליטר.'],
+      ['15-classic-liter', 'DARK ROAST.', 'קלייה כהה.'],
+      ['16-colombia-liter', 'COLOMBIA.', 'קולומביה.'],
+      ['17-sweetened-liter', 'SWEETENED.', 'ממותק.'],
+      ['26-house-liter', 'HOUSE BLEND.', 'תערובת הבית.'],
+      ['27-decaf-liter', 'DECAF.', 'נטול קפאין.'],
+      ['18-vanilla-pump', 'VANILLA SYRUP.', 'סירופ וניל.'],
+      ['24-caramel-pump', 'CARAMEL SYRUP.', 'סירופ קרמל.'],
+      ['25-sugar-pump', 'SUGAR SYRUP.', 'סירופ סוכר.'],
+      ['20-classic-jug', '5 LITRES.', '5 ליטר.'],
       ['09-coffee-bar', 'COFFEE BARS.', 'עמדות קפה.', 'coffeebars'],
     ] },
   };
@@ -141,7 +149,7 @@
     const film = document.createElement('div');
     film.className = 'hero-film'; film.setAttribute('role', 'region'); film.setAttribute('aria-roledescription', 'carousel');
     const src = (f) => `sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-900.webp?v=${IMG_V} 900w, /hero/${f}.webp?v=${IMG_V} 1536w" src="/hero/${f}.webp?v=${IMG_V}"`;
-    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => BURSTS[f] ? `<div class="hero-film-shot hero-film-burst">${BURSTS[f].frames.map(([bf]) => `<img class="hb-img" alt="" decoding="async" loading="lazy" ${src(bf)}>`).join('')}<div class="hb-dim"></div><div class="hb-word" aria-hidden="true"></div><div class="hb-flash"></div></div>` : f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><div class="hi-stage"><div class="hi-art"><picture><source media="(max-width:640px)" srcset="/hero/00-intro-720.webp?v=${IMG_V} 720w, /hero/00-intro.webp?v=${IMG_V} 1024w" sizes="100vw"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:948px) 100vw, 900px" srcset="/hero/00-intro-wide-900.webp?v=${IMG_V} 900w, /hero/00-intro-wide.webp?v=${IMG_V} 1536w" src="/hero/00-intro-wide.webp?v=${IMG_V}"></picture><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-${(SIZES[f] || [900])[0]}.webp?v=${IMG_V} ${(SIZES[f] || [900])[0]}w, /hero/${f}.webp?v=${IMG_V} ${(SIZES[f] || [0, 1536])[1]}w" src="/hero/${f}.webp?v=${IMG_V}"></div>`).join('')
+    film.innerHTML = SHOTS.map(([f, , , , , , focus], i) => BURSTS[f] ? `<div class="hero-film-shot hero-film-burst">${BURSTS[f].frames.map(([bf]) => `<img class="hb-img" alt=""${bf === '25-sugar-pump' ? ' style="object-position:22% center"' : ''} decoding="async" loading="lazy" ${src(bf)}>`).join('')}<div class="hb-dim"></div><div class="hb-word" aria-hidden="true"></div><div class="hb-flash"></div></div>` : f === '00-intro' ? `<div class="hero-film-shot hero-film-intro${i ? '' : ' on'}"><div class="hi-stage"><div class="hi-art"><picture><source media="(max-width:640px)" srcset="/hero/00-intro-720.webp?v=${IMG_V} 720w, /hero/00-intro.webp?v=${IMG_V} 1024w" sizes="100vw"><img alt="Gremier Coffee Co. · Cold Brew · Elevate Every Day" fetchpriority="high" decoding="async" sizes="(max-width:948px) 100vw, 900px" srcset="/hero/00-intro-wide-900.webp?v=${IMG_V} 900w, /hero/00-intro-wide.webp?v=${IMG_V} 1536w" src="/hero/00-intro-wide.webp?v=${IMG_V}"></picture><div class="hi-glint"></div></div><div class="hi-glow"></div></div></div>` : `<div class="hero-film-shot${i ? '' : ' on'}"><img alt="" decoding="async"${focus ? ` style="object-position:${focus}"` : ''} ${i ? 'loading="lazy"' : 'fetchpriority="high"'} sizes="(max-width:948px) 100vw, 900px" srcset="/hero/${f}-${(SIZES[f] || [900])[0]}.webp?v=${IMG_V} ${(SIZES[f] || [900])[0]}w, /hero/${f}.webp?v=${IMG_V} ${(SIZES[f] || [0, 1536])[1]}w" src="/hero/${f}.webp?v=${IMG_V}"></div>`).join('')
       + `<div class="hero-film-cap" aria-live="polite"></div><div class="hero-film-dots">${SHOTS.map((_, i) => `<button type="button" aria-label="${i + 1}"></button>`).join('')}</div>`;
     hero.insertAdjacentElement('afterend', film);
     // The headline moves onto the film, with a small Shop button; the rest of the hero block is hidden.
