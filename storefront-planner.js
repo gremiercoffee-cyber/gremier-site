@@ -29,14 +29,17 @@
   const pname = (p) => (he() ? (p.name_he || p.name_en) : p.name_en);
 
   // A bar's choices as a short link code, and back. Only known fields with sane values are taken.
-  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,d:[state.deliveryMode,state.deliveryDate,state.deliveryTime,state.deliveryPicked?1:0]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+  // Only the owner's accounts see the "No dispenser" switch (customers who bring their own).
+  const OWNER_EMAILS=['gremiercoffee@gmail.com','yonigrey@gmail.com'];
+  const owner=()=>{try{return typeof currentUser!=='undefined'&&OWNER_EMAILS.includes(String(currentUser?.email||'').toLowerCase());}catch{return false;}};
+  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,...(state.noDispenser?{nd:1}:{}),d:[state.deliveryMode,state.deliveryDate,state.deliveryTime,state.deliveryPicked?1:0]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
   function fromCode(code){
     try{
       const j=JSON.parse(decodeURIComponent(escape(atob(String(code).replace(/-/g,'+').replace(/_/g,'/')))));
       const n=(v,max)=>Math.max(0,Math.min(max,Math.round(Number(v)||0)));
       const counts=(o,keys,max)=>Object.fromEntries(keys.map(k=>[k,n(o?.[k],max)]));
       return {guests:Math.max(5,n(j.g,500)),milk:['dairy','parve','all_parve'].includes(j.m)?j.m:'dairy',milkMix:j.mm&&typeof j.mm==='object'?j.mm:null,
-       mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,syrups:counts(j.s,['caramel','vanilla','sugar'],20),
+       mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,noDispenser:j.nd===1,syrups:counts(j.s,['caramel','vanilla','sugar'],20),
        deliveryMode:['before','pickup'].includes(j.d?.[0])?j.d[0]:'event',deliveryDate:/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||'')?j.d[1]:'',deliveryTime:/^\d{2}:\d{2}$/.test(j.d?.[2]||'')?j.d[2]:'',
        // Older links have no flag: a non-default type or a date means it was chosen.
        deliveryPicked:j.d?.[3]===1||['before','pickup'].includes(j.d?.[0])||/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||''),
@@ -150,7 +153,8 @@ ${n.value}`:line;}
         total+=liters*(Number(choice.addon.price)||0);lines.push(`${liters}L ${name(choice.addon)}`);
       }
       const disp = addons.findIndex((a) => /dispenser/i.test(a.name) && Number(a.max) > 1);
-      const extra = Math.min(Math.max(0, plan.stations - 1), disp >= 0 ? Number(addons[disp].max) : 0);
+      if (state.noDispenser) { plan.dispensers = 0; plan.noDispenser = true; lines.push(T('No dispenser', 'בלי מתקן')); }
+      const extra = state.noDispenser ? 0 : Math.min(Math.max(0, plan.stations - 1), disp >= 0 ? Number(addons[disp].max) : 0);
       if (disp >= 0 && extra) { plan.qty.push([disp, extra]); plan.dispensers += extra; total += extra * (Number(addons[disp].price) || 0); lines.push(T(`${extra} extra dispenser${extra > 1 ? 's' : ''}`, `${extra} מתקנים נוספים`)); }
     }
     for(const option of syrupOptions(p)){
@@ -326,7 +330,7 @@ ${n.value}`:line;}
     const chosen=!!state.deliveryDate&&(state.deliveryMode!=='event'||!!state.deliveryTime);
     // Opening the same checkout link again: the bar is already in the cart, just go to checkout.
     if(options.deliveryAtCheckout){try{if(state.deliveryPicked)localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));else localStorage.removeItem('gremier_bar_delivery');}catch{}}
-    if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total))){if(typeof openCheckout==='function')openCheckout();return;}
+    if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total)&&!!i.no_dispenser===!!plan.noDispenser)){if(typeof openCheckout==='function')openCheckout();return;}
     if(!chosen&&options.deliveryAtCheckout){/* a checkout link: checkout asks for whatever is missing */}
     else if(!chosen){
       if(!document.querySelector('#planner .bb-delivery')){bstep='delivery';render();}
@@ -340,7 +344,7 @@ ${n.value}`:line;}
     document.body.classList.add('pd-silent');
     const btns=[...document.querySelectorAll('#planner .pl-order')];btns.forEach(x=>{x.disabled=true;x.dataset.label=x.innerHTML;x.textContent=T('Getting your checkout ready…','מכינים את הקופה…');});
     const done=()=>{document.body.classList.remove('pd-silent');btns.forEach(x=>{x.disabled=false;if(x.dataset.label)x.innerHTML=x.dataset.label;});};
-    openProductDrawer(plan.product.id);
+    openProductDrawer(plan.product.id);window.pdNoDispenser=!!plan.noDispenser;
     setTimeout(() => {
       const sel = document.querySelector('#pdVariationsSection select');
       const idx = sel ? [...sel.options].findIndex((o) => parseInt(o.textContent, 10) === plan.tier.guests) : -1;
@@ -367,7 +371,7 @@ ${n.value}`:line;}
   window.openCoffeeBarBuilder = function(options={}) {
     state.guests=options.guests||25;
     state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.milk='dairy';state.milkMix=null;
-    state.syrups={caramel:0,vanilla:0,sugar:0};state.extras={};state.lids=false;
+    state.syrups={caramel:0,vanilla:0,sugar:0};state.extras={};state.lids=false;state.noDispenser=false;
     if(typeof showPage==='function')showPage('coffeebars');
     window.plannerStart('bar');
   };
@@ -529,6 +533,10 @@ ${n.value}`:line;}
       ${from ? `<small class="bbx-from">${T(`From ₪${from} · takes about a minute`, `החל מ-₪${from} · לוקח בערך דקה`)}</small>` : ''}
     </div>`;
   }
+  function ownerDispHtml(plan) {
+    if (!plan || !(owner() || state.noDispenser)) return '';
+    return `<label class="bb-owner-disp"><input type="checkbox" data-no-dispenser${state.noDispenser ? ' checked' : ''}${owner() ? '' : ' disabled'}><span><b>${T('No dispenser', 'בלי מתקן')}</b><small>${T('Owner only · they have their own · same price', 'לבעלים בלבד · יש להם משלהם · אותו מחיר')}</small></span></label>`;
+  }
   function includedHtml(plan) {
     return `<ul class="bbx-included">${tiles(plan).map((x) => `<li><b>${x.n > 1 ? x.n + '×' : '✓'}</b> ${esc(x.title)}${x.sub ? ` <small>${esc(x.sub)}</small>` : ''}</li>`).join('')}</ul>`;
   }
@@ -549,6 +557,7 @@ ${n.value}`:line;}
       <h2>${T(`Your coffee bar for ${plan.tier.guests} guests`, `בר הקפה שלכם ל-${plan.tier.guests} אורחים`)}</h2>
       <p class="bbx-lead">${T('Everything you need to set up your bar:', 'כל מה שצריך להקמת בר הקפה:')}</p>
       ${includedHtml(plan)}
+      ${ownerDispHtml(plan)}
       ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}
       <button type="button" class="bbx-cta bbx-build" data-go="opt-coffee"><span><strong>${T('Build the rest of your coffee bar', 'בנו את שאר בר הקפה')}</strong><small>${T('Other coffees · Parve milk · More stations · Domed lids · Extra syrups', 'קפה אחר · חלב פרווה · עוד עמדות · מכסים קמורים · עוד סירופים')}</small></span><b aria-hidden="true">›</b></button>
       <button type="button" class="bbx-soft" data-go="delivery"><span>${T('Order now, as is', 'להזמין עכשיו, כמו שזה')}</span><b>${total} ›</b></button>
@@ -582,6 +591,7 @@ ${n.value}`:line;}
       ${deliveryHtml()}
       ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
       ${assemblyNote()}
+      ${ownerDispHtml(plan)}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
       <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : prevStep === 'guests' ? 'guests' : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
       <button type="button" class="bbx-share" onclick="plannerShare()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>${T('Share this bar', 'שיתוף הבר')}</button></div>`;
@@ -706,6 +716,7 @@ ${n.value}`:line;}
       return;
     }
     if(e.target.matches('[data-bar-lids]')){state.lids=e.target.checked;render();return;}
+    if(e.target.matches('[data-no-dispenser]')){if(owner())state.noDispenser=e.target.checked;render();return;}
     if(e.target.closest('[data-lids-toggle]')){state.lids=!state.lids;render();return;}
     const syrup=e.target.closest('[data-syrup-step]');
     if(syrup){state.syrups[syrup.dataset.syrup]=Math.max(0,(Number(state.syrups[syrup.dataset.syrup])||0)+Number(syrup.dataset.syrupStep));render();return;}

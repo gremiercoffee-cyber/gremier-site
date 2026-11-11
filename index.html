@@ -793,7 +793,7 @@
 <link rel="stylesheet" href="/storefront-nav.css?v=20261111-1"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261111-2"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261111-3"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261111-1"/>
 <script src="/storefront-nav.js?v=20261111-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -2062,6 +2062,7 @@ function pdQtyCap(i) {
 }
 // Each coffee in the bar is served from its own dispenser: mixing flavours adds dispensers.
 function pdEnsureDispensers() {
+  if (window.pdNoDispenser) return;
   const addons = getProductAddons(pdCurrentProduct);
   const upgraded = addons.map((a, i) => (a.per_jug ? pdQtyAddons[i] || 0 : 0));
   if (!upgraded.some(Boolean)) return;
@@ -2443,6 +2444,7 @@ function openProductDrawerUI(productId) {
   return true;
 }
 function openProductDrawer(productId) {
+  window.pdNoDispenser = false;  // only the builder's owner switch turns it on, for that one bar
   window.GremierTaste?.bump(productId, 1);
   if (openProductDrawerUI(productId)) {
     navPush({ page: appPage, layer: 'product', productId: String(productId) });
@@ -2487,7 +2489,8 @@ function pdAddToCart() {
   const p = pdCurrentProduct;
   if(pdIsSubscription()){try{pdSubscriptionQuote();}catch(e){alert(lang==='he'?'יש להוסיף קפה למנוי.':e.message);return;}}
   const extrasSuffix = pdBarExtras.length ? ' · +' + pdBarExtras.map(x => `${x.qty}× ${lang === 'he' ? (x.name_he || x.name_en) : x.name_en}`).join(', ') : '';
-  const suffix = pdGetVariationSuffix() + pdGetAddonSuffix() + extrasSuffix;
+  const noDisp = !!window.pdNoDispenser && !pdIsSubscription();
+  const suffix = pdGetVariationSuffix() + pdGetAddonSuffix() + extrasSuffix + (noDisp ? (lang === 'he' ? ' · בלי מתקן' : ' · no dispenser') : '');
   const subscriptionSelection = pdIsSubscription() ? getSubscriptionSelection() : [];
   if (pdIsSubscription() && getSubscriptionBundleProducts(p).length && !subscriptionSelection.length) {
     alert(lang === 'he' ? 'בחרו לפחות מוצר אחד למנוי' : 'Please choose at least one subscription item');
@@ -2500,7 +2503,7 @@ function pdAddToCart() {
   const subKey = pdIsSubscription()
     ? [pdSubscriptionInterval, ...subscriptionSelection.map(i => `${i.product_id}x${i.qty}`)].join('_')
     : '';
-  const cartId = [p.id, varKey, guestKey, addonKey, subKey].filter(Boolean).join('_');
+  const cartId = [p.id, varKey, guestKey, addonKey, subKey, noDisp ? 'nodisp' : ''].filter(Boolean).join('_');
   if(window.CoffeeBarOffers?.beforeAdd(p,cart)===false)return;
   const existing = cart.find(x => x.id === cartId);
   if (existing) { if(pdIsSubscription())existing.qty=1;else existing.qty += pdQty; }
@@ -2517,7 +2520,8 @@ function pdAddToCart() {
   selected_variations: pdSelectedVariations,
   selected_addons: pdGetSelectedAddons(),
   bar_extras: pdBarExtras.length ? pdBarExtras.map(x => ({ ...x })) : null,
-  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice,bar_extras:pdBarExtras}) || null,
+  ...(noDisp ? { no_dispenser: true } : {}),
+  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice,bar_extras:pdBarExtras,no_dispenser:noDisp}) || null,
   selected_guest_price: pdSelectedPrice,
   is_subscription: pdIsSubscription(),
   subscription_interval: pdIsSubscription() ? pdSubscriptionInterval : null,
@@ -3132,6 +3136,7 @@ const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expe
         selected_variations: i.selected_variations || null,
         selected_addons: i.selected_addons || null,
         bar_extras: i.bar_extras || null,
+        no_dispenser: i.no_dispenser === true || undefined,
         selected_guest_price: i.selected_guest_price || null,
         is_subscription: !!i.is_subscription,
         subscription_interval: i.subscription_interval || null,
@@ -5667,10 +5672,10 @@ async function sendChatMessageText(text) {
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261110-1"></script>
 <script src="/storefront-hero-stills.js?v=20261111-1"></script>
-<script src="/coffee-bar-order.js?v=20261030-1"></script>
+<script src="/coffee-bar-order.js?v=20261111-1"></script>
 <script src="/storefront-bar-layout.js?v=20261111-1"></script>
 <script src="/storefront-bar-world.js?v=20261110-1"></script>
-<script src="/storefront-planner.js?v=20261110-2"></script>
+<script src="/storefront-planner.js?v=20261111-1"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
 <script src="/storefront-promo.js?v=20261111-2"></script>
 <script src="/storefront-together.js?v=20261103-2"></script>

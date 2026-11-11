@@ -609,3 +609,9 @@ body.bb-world-on .bb-confirm { z-index:3200; color-scheme:light; }
  .bb-world .bbx-soft { padding:9px 14px; font-size:13.5px; }
  .bb-world .bbx-price { padding-top:6px; }
 }
+
+/* Owner-only: leave the dispenser out of a bar (same price). */
+.planner .bb-owner-disp { display:flex; align-items:center; gap:10px; margin:0 0 14px; padding:10px 12px; border:1px dashed #c9b28a; border-radius:12px; background:#fbf6ec; cursor:pointer; }
+.planner .bb-owner-disp input { width:20px; height:20px; flex:none; accent-color:#7a5a2b; }
+.planner .bb-owner-disp span { display:flex; flex-direction:column; line-height:1.25; }
+.planner .bb-owner-disp small { color:#7a6a55; font-size:12px; }

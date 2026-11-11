@@ -69,7 +69,9 @@ function buildCoffeeBarConfiguration(product, item) {
   // validated and priced by the server: delivered with the bar.
   const extras = (Array.isArray(item.bar_extras) ? item.bar_extras : []).filter(x => x && x.product_id && positive(x.qty))
     .map(x => ({ product_id: String(x.product_id), name: String(x.name_en || x.name || 'Extra'), qty: positive(x.qty) }));
-  return { version: 1, package: packageType, guests, coffee, milk, dispensers, syrups, cups: guests, straws: guests, ...(lids ? { lids } : {}), ...(extras.length ? { extras } : {}) };
+  // The owner can leave the dispenser out (the customer has their own); the price stays the same.
+  if (item.no_dispenser === true) dispensers = 0;
+  return { version: 1, package: packageType, guests, coffee, milk, dispensers, ...(item.no_dispenser === true ? { no_dispenser: true } : {}), syrups, cups: guests, straws: guests, ...(lids ? { lids } : {}), ...(extras.length ? { extras } : {}) };
 }
 
 function describeCoffeeBar(configuration) {
@@ -79,7 +81,7 @@ function describeCoffeeBar(configuration) {
     `${c.guests} guests`,
     ...(c.coffee || []).map(x => `${x.jugs}× ${x.name} 5L`),
     ...(c.milk || []).map(x => `${x.liters}L ${x.name}`),
-    `${c.dispensers} dispenser${c.dispensers === 1 ? '' : 's'}`,
+    c.no_dispenser ? 'NO dispenser (customer has their own)' : `${c.dispensers} dispenser${c.dispensers === 1 ? '' : 's'}`,
     ...(c.syrups || []).map(x => `${x.bottles}× ${x.name}`),
     `${c.cups} cups`, `${c.straws} straws`,
     ...(c.lids ? [`${c.lids} domed lids`] : []),

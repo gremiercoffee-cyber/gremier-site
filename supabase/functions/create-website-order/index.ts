@@ -363,6 +363,7 @@ Deno.serve(async (req) => {
         coffee_bar_configuration: coffeeBarConfiguration,
         selected_variations: isSub ? null : item.selected_variations || null,
         selected_addons: isSub ? null : item.selected_addons || null,
+        ...(coffeeBarConfiguration?.no_dispenser ? { no_dispenser: true } : {}),
         bar_extras: barExtras.length ? barExtras : null,
         selected_guest_price: isSub ? null : item.selected_guest_price || null,
         // Guest tier for display ("for N people") — validated against the catalog.
