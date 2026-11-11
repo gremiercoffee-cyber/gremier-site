@@ -87,13 +87,21 @@
       if(parent.id==='cartBody')parent.append(card);else parent.prepend(card);
     }
   }
+  // Two short sections: what completes the order (cups, lids, straws, syrup) and a grab-and-go treat
+  // (cream lattes). Few items in the cart → roomy cards; a long cart → slim one-line rows.
   function renderAccessories(){
     document.querySelectorAll('.serving-pack-offer').forEach(el=>el.remove());
     const options=checkoutOffers(basket(),catalog());if(!options.length)return;
+    const treats=options.filter(p=>p.category==='minis'),serve=options.filter(p=>p.category!=='minis');
+    const roomy=basket().length<=2;
+    const price=p=>'₪'+Number(p.price).toFixed(Number(p.price)%1?2:0);
+    const row=p=>`<div class="serving-pack-row"><img src="${esc(p.images?.[0]||'')}" alt=""><div><strong>${esc((he()?p.name_he:p.name_en)||p.name_en)}${p.category==='minis'&&!/4|pack|מארז/i.test((he()?p.name_he:p.name_en)||'')?T(' · 4-pack',' · מארז 4'):''}</strong><button type="button" data-serving-add="${esc(p.id)}">${T('Add','הוספה')} · ${price(p)}</button></div></div>`;
+    const group=(title,sub,list)=>list.length?`<div class="serving-pack-group"><h3>${title}</h3><p>${sub}</p><div class="serving-pack-grid">${list.map(row).join('')}</div></div>`:'';
     for(const parent of [document.getElementById('cartBody'),document.getElementById('checkoutFormView')]){
       if(!parent)continue;
-      const card=document.createElement('section');card.className='serving-pack-offer';
-      card.innerHTML=`<h3>${T('A little extra?','אולי עוד משהו קטן?')}</h3><div class="serving-pack-grid">${options.map(p=>`<div class="serving-pack-row"><img src="${esc(p.images?.[0]||'')}" alt=""><div><strong>${esc((he()?p.name_he:p.name_en)||p.name_en)}${p.category==='minis'?T(' · 4-pack',' · מארז 4'):''}</strong><button type="button" data-serving-add="${esc(p.id)}">${T('+ Add','+ הוספה')} · ₪${Number(p.price).toFixed(Number(p.price)%1?2:0)}</button></div></div>`).join('')}</div>`;
+      const card=document.createElement('section');card.className='serving-pack-offer '+(roomy?'is-roomy':'is-compact');
+      card.innerHTML=group(T('Ready to serve','מוכן להגשה'),T('Everything to pour and serve, straight out of the box.','כל מה שצריך כדי למזוג ולהגיש, ישר מהקופסה.'),serve)
+        +group(T('Grab-and-go treat','פינוק לדרך'),T('Chilled, creamy, ready to drink. Perfect for the road.','צונן, קרמי ומוכן לשתייה. מושלם לדרך.'),treats);
       if(parent.id==='cartBody')parent.append(card);else parent.prepend(card);
     }
   }
