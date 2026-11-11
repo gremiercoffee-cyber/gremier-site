@@ -184,15 +184,8 @@ receipt settlement and RLS denial for customers/anonymous roles. Browser sample
 tests verified receipt review gates, two-page PDF conversion, ZIP integrity and
 explicit batch filing without issuing or sending a real receipt.
 
-## Invoice watcher (Gmail → "Invoice ?" → one-tap forward)
 
-`scripts/gmail-invoice-watch.gs` + `scripts/gmail-invoice-appsscript.json`, a separate Apps Script
-project from the read-only expense importer. Every minute it scores new mail (Hebrew/English
-invoice and receipt words, attachment names, invoice-service links, amounts) across all mail
-including Spam; every hour it re-sweeps 3 days. Flagged mail gets the Gmail label `Invoice ?` and
-the owner gets an email with **✓ Forward to invoices** (forwards to gremiercoffee+expenses@gmail.com,
-attaching the email as a PDF when it has no PDF/photo) and **✗ Not an invoice**. The buttons are a
-web app deployed "Execute as me / Only myself" and HMAC-signed per message. A summary at 20:00
-lists what is waiting and borderline "maybe" emails; if it stops arriving, the watcher stopped.
-Scope: full Gmail (`https://mail.google.com/`), needed to label and forward. Approved by the owner
-on 2026-11-11. Tests: `node scripts/test-gmail-invoice-watch.cjs`.
+## Invoice watcher
+
+Runs in Chief of Staff (worker/invoices.ts), not Apps Script: invoices in gremiercoffee@gmail.com get
+"Invoice ?" and a one-tap email; ✓ forwards them to gremiercoffee+expenses@gmail.com, where the importer above files them.
