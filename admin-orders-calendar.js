@@ -135,7 +135,7 @@
       <h4>To deliver${e.labels.length > 1 ? ` <small>· ${e.labels.length} orders together</small>` : ''}</h4>
       <ul class="ocal-items">${e.items.map((i) => `<li>${i.img ? `<img src="${esc(i.img)}" alt=""/>` : '<span class="ocal-noimg">☕</span>'}<span><b>${esc(i.label)}</b>${i.note ? `<small>${esc(i.note)}</small>` : ''}</span><em>×${esc(i.qty)}</em></li>`).join('') || '<li>No items listed</li>'}</ul>
       ${e.unpaidParts ? `<p class="ocal-note">${esc(e.unpaidParts)}</p>` : ''}
-      <div class="ocal-acts">${e.actions.map((x, n) => x.href ? `<a class="oc-btn ${x.cls || ''}" href="${esc(x.href)}" target="_blank" rel="noopener">${esc(x.label)}</a>` : `<button type="button" class="oc-btn ${x.cls || ''}" data-act="${n}">${esc(x.label)}</button>`).join('')}</div>
+      <div class="ocal-acts">${e.actions.map((x, n) => x.href ? `<a class="oc-btn ${x.cls || ''}" href="${esc(x.href)}"${x.same ? '' : ' target="_blank" rel="noopener"'}>${esc(x.label)}</a>` : `<button type="button" class="oc-btn ${x.cls || ''}" data-act="${n}">${esc(x.label)}</button>`).join('')}</div>
     </div>`;
     document.body.appendChild(el);
     el.addEventListener('click', (ev) => {

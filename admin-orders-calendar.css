@@ -100,6 +100,9 @@
 .ocal-acts .oc-btn { flex: 1 1 40%; }
 .ocal-acts .oc-btn.primary { flex-basis: 100%; background: #fff; border: 1.5px solid #1a1a1a; font-weight: 600; }
 .ocal-acts .oc-btn.icon { flex: 0 0 auto; padding: 0 14px; }
+/* Call · Text · WhatsApp share one row. */
+.ocal-acts .oc-btn.contact { flex: 1 1 28%; min-width: 0; }
+.ocal-acts .oc-btn.contact:not(.wa) { background: #fff; border: 1.5px solid #d6d1c8; color: #1a1a1a; }
 
 /* Coming up: one scrolling row of small picture cards for everything after what's on screen. */
 .ocal-next { border: 1px solid var(--border); border-radius: 14px; background: #fff; padding: 10px 0 8px; }

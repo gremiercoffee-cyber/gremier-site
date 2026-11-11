@@ -57,11 +57,36 @@
       const flat = list.flatMap((i) => { const inside = Array.isArray(i.subscription_items) && i.subscription_items.length ? i.subscription_items : Array.isArray(i.pack_items) && i.pack_items.length ? i.pack_items : null; return inside ? inside.map((c) => ({ ...c, qty: (Number(c.qty) || 1) * (Number(i.qty) || 1) })) : [i]; });
       for (const i of flat) {
         if (i.category === 'delivery_fee') continue;
-        const label = i.name_en || i.name_he || i.name || 'Item', note = extras(i) || '', k = label + '|' + note;
+        const label = i.name_en || i.name_he || i.name || 'Item', note = extras(i) || i._note || '', k = label + '|' + note;
         const cur = out.get(k) || { label, note, qty: 0, img: imgOf(i) };
         cur.qty += Number(i.qty) || 1; out.set(k, cur);
       }
       return [...out.values()];
+    };
+    // Call / Text / WhatsApp buttons for a phone number.
+    const contact = (phone) => {
+      const digits = String(phone || '').replace(/[^\d+]/g, '');
+      if (digits.replace(/\D/g, '').length < 7) return [];
+      const num = /^972/.test(digits) ? '+' + digits : digits;
+      const wa = typeof whatsAppShareHref === 'function' ? whatsAppShareHref(phone, '') : '';
+      return [
+        { label: '📞 Call', cls: 'contact', href: 'tel:' + num, same: true },
+        { label: '✉️ Text', cls: 'contact', href: 'sms:' + num, same: true },
+        wa ? { label: '💬 WhatsApp', cls: 'wa contact', href: wa } : null,
+      ];
+    };
+    // A delivery made for a website order that isn't in the open orders list: show that order's real
+    // products (from the loaded order, else from the delivery's label "Website Order — name — A x1, B x2").
+    const orderLookup = (id) => (typeof allOrders !== 'undefined' ? allOrders.find((x) => x.id === id) : null);
+    const productByName = (name) => (typeof allProducts !== 'undefined' ? allProducts.find((p) => p.name_en === name || p.name_en === name.replace(/\s*\([^()]*\)$/, '')) : null);
+    const itemsFromLabel = (label) => {
+      const list = String(label || '').split(' — ').slice(2).join(' — ');
+      const out = [];
+      for (const m of list.matchAll(/(.+?) x(\d+)(?: \(([^()]*(?:\([^()]*\)[^()]*)*)\))?(?:, |$)/g)) {
+        const p = productByName(m[1].trim());
+        out.push({ name_en: m[1].trim(), qty: Number(m[2]), product_id: p?.id, category: p?.category, _note: m[3] || '' });
+      }
+      return out;
     };
     const labelOf = (x) => (x.order_number != null ? '#' + x.order_number : 'Unpaid order');
     const entries = [
@@ -72,7 +97,7 @@
         const dType = String(di.delivery_type || '').toLowerCase();
         const type = job?.deliveryType === 'coffeebar' ? 'coffeebar' : dType === 'pickup' && !(job && (job.privateAddress || job.cbAddress)) ? 'pickup' : 'delivery';
         const address = (job && (job.deliveryType === 'coffeebar' ? job.cbAddress || job.privateAddress : job.privateAddress || job.cbAddress)) || o.delivery_address || all.map((x) => x.delivery_address).find(Boolean) || '';
-        const wa = o.customer_phone && typeof whatsAppShareHref === 'function' ? whatsAppShareHref(o.customer_phone, '') : '';
+        const phone = o.customer_phone || job?.customerPhone || '';
         const needsFulfil = !['fulfilled', 'cancelled'].includes(String(o.status || '').toLowerCase());
         return {
           key: 'o:' + o.id, kind: 'order', type, date, time: (job && job.time) || di.event_time || '', name: o.customer_name || 'Customer',
@@ -81,7 +106,7 @@
           unpaidParts: waiting.length ? `${waiting.map(labelOf).join(', ')} (${waiting.reduce((s, x) => s + Number(x.total || 0), 0).toFixed(0)}₪) joins this delivery once it's paid.` : '',
           actions: [
             { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(o.id) },
-            wa ? { label: '💬 WhatsApp', cls: 'wa', href: wa } : null,
+            ...contact(phone),
             job ? { label: '✓ Delivered', cls: 'done', run: () => root.GremierBoard.checkoff(job.id) }
               : needsFulfil && typeof confirmFulfillOrder === 'function' ? { label: '✓ Fulfilled', cls: 'done', run: () => confirmFulfillOrder(o.id) } : null,
           ].filter(Boolean),
@@ -89,16 +114,20 @@
       }),
       ...jobs.filter((j) => !(j.websiteOrderId && orderIds.has(j.websiteOrderId))).map((j) => {
         const qty = Object.entries(j.quantities || {}).filter(([, n]) => Number(n) > 0);
-        const wa = j.customerPhone && typeof whatsAppShareHref === 'function' ? whatsAppShareHref(j.customerPhone, '') : '';
+        const web = j.websiteOrderId || null, order = web ? orderLookup(web) : null;
+        const fromOrder = order ? mergeItems(order.items || []) : web ? mergeItems(itemsFromLabel(j.label)) : [];
         return {
           key: 'j:' + j.id, kind: 'job', type: j.deliveryType === 'store' ? 'store' : j.deliveryType === 'coffeebar' ? 'coffeebar' : 'delivery',
-          date: j.date || '', time: j.time || '', name: jobName(j), address: jobAddress(j, stores), city: [], labels: [],
-          items: qty.map(([pid, n]) => ({ label: productLabel(pid), qty: Number(n), img: root.getProductImage ? root.getProductImage(pid) : '' })),
+          date: j.date || '', time: j.time || '', name: jobName(j), address: jobAddress(j, stores), city: [],
+          labels: order?.order_number != null ? ['#' + order.order_number] : [],
+          items: fromOrder.length ? fromOrder : qty.map(([pid, n]) => ({ label: productLabel(pid), qty: Number(n), img: root.getProductImage ? root.getProductImage(pid) : '' })),
           unpaidParts: '',
           actions: [
-            { label: '✎ Edit', cls: 'primary', run: () => root.GremierBoard.edit(j.id) },
-            wa ? { label: '💬 WhatsApp', cls: 'wa', href: wa } : null,
+            web ? { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(web) }
+              : { label: '✎ Edit', cls: 'primary', run: () => root.GremierBoard.edit(j.id) },
+            ...contact(j.customerPhone || order?.customer_phone),
             { label: '✓ Delivered', cls: 'done', run: () => root.GremierBoard.checkoff(j.id) },
+            web ? { label: '✎', cls: 'icon', run: () => root.GremierBoard.edit(j.id) } : null,
             { label: '🗑 Delete', cls: 'icon', run: () => root.GremierBoard.remove(j.id) },
           ].filter(Boolean),
         };

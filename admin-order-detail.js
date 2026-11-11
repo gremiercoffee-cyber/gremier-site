@@ -397,8 +397,14 @@
   }
 
   root.openOrderDetail = async function openOrderDetail(id) {
-    const o = allOrders.find((x) => x.id === id);
-    if (!o) return;
+    let o = allOrders.find((x) => x.id === id);
+    // Not in the loaded Orders list (e.g. opened from a delivery): fetch it rather than doing nothing.
+    if (!o && typeof sb !== 'undefined') {
+      const { data, error } = await sb.from('orders').select('*').eq('id', id).maybeSingle();
+      if (error) console.warn('order lookup:', error.message);
+      if (data) { o = data; allOrders.push(data); }
+    }
+    if (!o) { if (typeof showToast === 'function') showToast("Couldn't find that order"); return; }
     await loadOrderCouponDetails([o]);
     let job = null, jobUnknown = false;
     try { job = await findJob(id); } catch (e) { jobUnknown = true; console.warn('order delivery lookup:', e); }
