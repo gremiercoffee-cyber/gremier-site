@@ -45,7 +45,17 @@
   .discovery-routes .discovery-sub{grid-column:1/-1;display:flex;flex-direction:row;align-items:center;min-height:0;padding:0;border-radius:14px}
   .discovery-routes .discovery-sub .discovery-copy{flex:1;padding:12px 14px;max-width:none}
   .discovery-routes .discovery-sub .discovery-copy h2{font-size:16px;margin:3px 0 0}
-  .discovery-routes .discovery-sub .ds-scene{display:none}
+  /* The subscription picture (door, mat and bottles), shrunk to sit in the strip. */
+  .discovery-routes .discovery-sub .ds-scene{display:block;position:relative;inset:auto;flex:0 0 118px;width:118px;height:96px;margin:0;opacity:1;align-self:flex-end;overflow:hidden;background:none}
+  .discovery-routes .discovery-sub .ds-scene::before{height:14px}
+  .discovery-routes .discovery-sub .ds-door{width:50px;height:76px;margin-left:-25px;bottom:13px;box-shadow:inset 0 0 0 4px #3d2b20,0 0 0 4px #e9dfd0}
+  .discovery-routes .discovery-sub .ds-win{left:11px;right:11px;top:9px;height:16px}
+  .discovery-routes .discovery-sub .ds-knob{right:7px;top:42px;width:5px;height:5px}
+  .discovery-routes .discovery-sub .ds-tag{display:none}
+  .discovery-routes .discovery-sub .ds-mat{width:84px;height:7px;margin-left:-42px;bottom:8px}
+  .discovery-routes .discovery-sub .ds-items{bottom:9px}
+  .discovery-routes .discovery-sub .ds-items img{height:46px}
+  .discovery-routes .discovery-sub .ds-items img:nth-child(2){height:50px}
   .discovery-routes .discovery-sub .discovery-footer{position:static;padding:0 14px;background:none;border:0}
   .discovery-routes .discovery-sub .discovery-footer>span:first-child{display:none}
   .discovery-routes .discovery-sub .ds-strip-off{display:inline-block}
