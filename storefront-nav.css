@@ -269,6 +269,8 @@ body.has-banner .planner .bb-tray { top:136px; }
 /* Weekly delivery banner (storefront-promo.js) */
 #memberBanner.promo { flex-wrap:wrap; column-gap:18px; row-gap:6px; padding-top:12px; padding-bottom:12px; }
 #memberBanner.promo > span { font-size:.95rem; font-weight:500; letter-spacing:.03em; }
+#memberBanner.promo .promo-lines { display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; }
+#memberBanner.promo .promo-lines > span { display:block; }
 #memberBanner .promo-shop { display:inline-flex; align-items:center; padding:5px 15px; border:none; border-radius:999px; background:#c8873a; color:#fff; font-size:.74rem; font-weight:600; letter-spacing:.02em; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,.25); transition:background .15s, transform .12s; }
 #memberBanner .promo-shop:hover { background:#d6964a; color:#fff; transform:translateY(-1px); }
 footer .promo-footnote { max-width:1000px; margin:0 auto 16px; font-size:.76rem; color:#888; letter-spacing:.01em; line-height:1.6; }

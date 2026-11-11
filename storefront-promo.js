@@ -1,5 +1,5 @@
 /* Weekly delivery banner in the top bar (in place of the member banner on those days):
-   Beit Shemesh free-delivery days (11–12 Nov 2026 only): that offer takes the banner.
+   Beit Shemesh free-delivery days (11–12 Nov 2026 only): that offer shows as a first line, above the weekly one.
    Tuesday and Wednesday: regular delivery to Jerusalem and Beit Shemesh arrives before Shabbat (shabbatPromoActive() in index.html).
    Thursday: choose expedited delivery to get it by Shabbat. Israel time. */
 (function () {
@@ -15,8 +15,9 @@
   // This week's Beit Shemesh free-delivery days (beitShemeshFreeToday() in index.html) take the banner.
   const bsDays = () => (typeof BEIT_SHEMESH_FREE_DAYS !== 'undefined' ? BEIT_SHEMESH_FREE_DAYS : []);
   const israelDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const bsToday = () => typeof beitShemeshFreeToday === 'function' && beitShemeshFreeToday();
+  // The weekly Shabbat line for today (Tue, Wed, Thu) or null.
   function kind() {
-    if (typeof beitShemeshFreeToday === 'function' && beitShemeshFreeToday()) return 'BS';
     const day = israelDay();
     if (day === 'Tue' || day === 'Wed') return day;
     if (day === 'Thu') return 'Thu';
@@ -26,29 +27,31 @@
     try { return sessionStorage.getItem(KEY) === new Date().toDateString(); } catch (_) { return false; }
   }
 
-  function html(k) {
-    const shop = `<a class="promo-shop" onclick="showPage('shop')">${T('Shop now', 'לחנות')}</a>`;
-    if (k === 'BS') {
-      const last = israelDate() === bsDays()[bsDays().length - 1];
-      const msg = last
-        ? T('Last day: free delivery to Beit Shemesh on every order', 'יום אחרון: משלוח חינם לבית שמש על כל הזמנה')
-        : T('Free delivery to Beit Shemesh on every order, today and tomorrow only', 'משלוח חינם לבית שמש על כל הזמנה, היום ומחר בלבד');
-      return `🚚 <span>${msg}</span>${shop}`;
-    }
-    if (k === 'Thu') {
-      return `🚚 <span>${T('Want it by Shabbat? Choose expedited delivery at checkout.', 'רוצים עד שבת? בחרו משלוח מהיר בקופה.')}</span>${shop}`;
-    }
-    const main = k === 'Tue'
+  function weekly(k) {
+    if (k === 'Thu') return T('Want it by Shabbat? Choose expedited delivery at checkout.', 'רוצים עד שבת? בחרו משלוח מהיר בקופה.');
+    return k === 'Tue'
       ? T('Order by Wednesday, receive by Shabbat*', 'מזמינים עד רביעי, מקבלים עד שבת*')
       : T('Last day: order today, receive by Shabbat*', 'יום אחרון: מזמינים היום, מקבלים עד שבת*');
-    return `🕯️ <span>${main}</span>${shop}`;
+  }
+  function html(k) {
+    const shop = `<a class="promo-shop" onclick="showPage('shop')">${T('Shop now', 'לחנות')}</a>`;
+    if (bsToday()) {
+      const last = israelDate() === bsDays()[bsDays().length - 1];
+      const bs = last
+        ? T('Last day: free delivery to Beit Shemesh on every order', 'יום אחרון: משלוח חינם לבית שמש על כל הזמנה')
+        : T('Free delivery to Beit Shemesh on every order, today and tomorrow', 'משלוח חינם לבית שמש על כל הזמנה, היום ומחר');
+      // Both offers, one per line: the Beit Shemesh one, then this week's Shabbat one.
+      if (k) return `<span class="promo-lines"><span>🚚 ${bs}</span><span>${k === 'Thu' ? '🚚' : '🕯️'} ${weekly(k)}</span></span>${shop}`;
+      return `🚚 <span>${bs}</span>${shop}`;
+    }
+    return `${k === 'Thu' ? '🚚' : '🕯️'} <span>${weekly(k)}</span>${shop}`;
   }
 
   // The asterisk's note lives in the page footer, on the days the offer runs.
   function footnote() {
     const k = kind();
     let n = $('promoFootnote');
-    if (!k || k === 'Thu' || k === 'BS') { n?.remove(); return; }
+    if (!k || k === 'Thu') { n?.remove(); return; }
     const bottom = document.querySelector('footer .footer-bottom');
     if (!bottom) return;
     if (!n) { n = document.createElement('p'); n.id = 'promoFootnote'; n.className = 'promo-footnote'; bottom.before(n); }
@@ -58,7 +61,7 @@
   function render() {
     const k = kind();
     const b = $('memberBanner');
-    if (!k || !b || closed()) return false;
+    if ((!k && !bsToday()) || !b || closed()) return false;
     b.classList.add('promo');
     b.innerHTML = `${html(k)}<button class="banner-close" onclick="dismissBanner()" aria-label="Close">×</button>`;
     b.classList.remove('hidden');
