@@ -38,11 +38,11 @@ async function researched(e,db){
  return db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
 }
 
-test('"email them" → Codex writes drafts (with the research); nothing is sent before Send',async()=>{
+test('"email them" in a Codex research chat → Codex writes drafts (with the research); nothing is sent before Send',async()=>{
  globalThis.__tg.length=0;const {env:e,db}=env();const j=await researched(e,db);
  globalThis.__model.push(JSON.stringify({email:{action:'write',ask:'email each supplier asking for prices for 5,000 bottles'}}));
  const reply=await jobs.messageJob(e,j,'email each supplier asking for prices for 5,000 bottles','app');
- assert.match(reply,/Codex is writing/);
+ assert.match(reply,/Writing the emails/);
  const next=await jobs.nextCodexRun(e,{device:'home'});
  assert.equal(next.run.gmail,true,'email runs use Codex with Gmail');
  assert.match(next.run.prompt,/5,000 bottles[^]*DON'T send[^]*PlastiCo/);
@@ -105,13 +105,13 @@ test('a Codex send that never finishes stays uncertain until checked in Gmail',a
  assert.ok(posts().some(p=>/check Gmail's Sent folder/.test(p.text)));
 });
 
-test('from the main chat: an email chat of its own, where Codex writes the email',async()=>{
+test('from the main chat: an email chat of its own, written on the API with Codex left alone',async()=>{
  globalThis.__tg.length=0;const {env:e,db}=env();
  const r=await jobs.createEmailChat(e,{title:'Invoice from Dana',ask:'email dana@studio.co.il asking for the October invoice'});
  assert.match(r.where,/Invoice from Dana/);
- const j=db.prepare("SELECT * FROM jobs").get();assert.equal(j.engine,'codex');assert.equal(j.pinned,1);
- const next=await jobs.nextCodexRun(e,{device:'home'});
- assert.equal(next.run.gmail,true);assert.match(next.run.prompt,/October invoice/);
+ const j=db.prepare("SELECT * FROM jobs").get();assert.equal(j.engine,'auto');assert.equal(j.pinned,1);
+ assert.equal((await jobs.nextCodexRun(e,{device:'home'})).run,null,'not queued for Codex');
+ assert.match(JSON.stringify(globalThis.__bgs.at(-1)),/October invoice/);
 });
 
 test('Codex out of usage: drafts are written on the API, and Send goes straight out from Gmail, checked the same way',async()=>{

@@ -60,7 +60,7 @@ if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  mkdirSync(dir,{recursive:true});const lock=join(dir,'runner.lock');
  try{const fd=openSync(lock,'wx');writeFileSync(fd,String(process.pid));closeSync(fd);}catch{
   let alive=false;try{process.kill(Number(readFileSync(lock,'utf8')),0);alive=true;}catch{}
-  if(alive)throw Error('Automatic runner already running');unlinkSync(lock);const fd=openSync(lock,'wx');writeFileSync(fd,String(process.pid));closeSync(fd);
+  if(alive)process.exit(0);unlinkSync(lock);const fd=openSync(lock,'wx');writeFileSync(fd,String(process.pid));closeSync(fd);
  }
  const release=()=>{try{unlinkSync(lock);}catch{}};process.on('exit',release);process.on('SIGTERM',()=>process.exit());process.on('SIGINT',()=>process.exit());
  do{try{await tick();}catch{console.error('Automatic Codex transport unavailable; retry in 30 seconds.');}if(process.argv.includes('--once'))break;await new Promise(r=>setTimeout(r,30000));}while(true);

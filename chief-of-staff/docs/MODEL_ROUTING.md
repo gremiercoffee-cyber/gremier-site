@@ -1,3 +1,13 @@
+# Jobs run on the API by default — 12 November 2026
+
+Owner decision: ChatGPT is the front end; Chief of Staff is the backend. Research, monitoring and email jobs
+run on the API (`auto` = API first). Codex or Claude runs a job only when the owner names it for that job; a
+named plan that cannot run falls back as before (Codex, then the chosen backup). If the API call fails, a free
+plan may take an `auto` job. ChatGPT starts research with the direct `start_research` tool; `ask_chief_of_staff`
+(the Codex relay) is only for building Chief of Staff itself or work explicitly sent to Codex.
+
+---
+
 # Current routing — 27 October 2026
 
 Everything runs on `gpt-6-luna` ($0.10/M input, $0.01/M cached, $0.50/M output: a tenth of Terra):

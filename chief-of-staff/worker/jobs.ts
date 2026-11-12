@@ -116,16 +116,16 @@ export async function createEmailChat(env: Env, input: { title?: string; ask?: s
   if (input.research_chat) {
     const q = `%${String(input.research_chat).trim()}%`;
     const r = await first<Job>(env, "SELECT * FROM jobs WHERE status!='cancelled' AND (id = ? OR title LIKE ?) ORDER BY created_at DESC LIMIT 1", input.research_chat, q);
-    if (r) { await log(env, r, "you", ask); await post(env, r, await mail.requestDrafts(env, r, ask)); return { where: `the “${r.title}” research chat`, status: "Codex is writing the emails; they'll appear there with Send buttons" }; }
+    if (r) { await log(env, r, "you", ask); await post(env, r, await mail.requestDrafts(env, r, ask)); return { where: `the “${r.title}” research chat`, status: "The emails are being written; they'll appear there with Send buttons" }; }
   }
   const title = String(input.title ?? "").trim().slice(0, 80) || "Emails";
-  const j = { id: uid(), title, instructions: ask, kind: "once", every_minutes: null, weekday: null, time: null, until_at: null, engine: "codex", only_changes: 0, status: "done",
+  const j = { id: uid(), title, instructions: ask, kind: "once", every_minutes: null, weekday: null, time: null, until_at: null, engine: "auto", only_changes: 0, status: "done",
     chat_id: null, topic_id: null, next_run_at: null, last_run_at: null, last_result: null, created_at: now(), updated_at: now(), model: null } as Job;
-  await run(env, `INSERT INTO jobs (id, title, instructions, kind, engine, only_changes, status, chat_id, topic_id, created_at, updated_at) VALUES (?, ?, ?, 'once', 'codex', 0, 'done', ?, ?, ?, ?)`,
+  await run(env, `INSERT INTO jobs (id, title, instructions, kind, engine, only_changes, status, chat_id, topic_id, created_at, updated_at) VALUES (?, ?, ?, 'once', 'auto', 0, 'done', ?, ?, ?, ?)`,
     j.id, j.title, j.instructions, j.chat_id, j.topic_id, j.created_at, j.updated_at);
   await log(env, j, "you", ask);
   await post(env, j, await mail.requestDrafts(env, j, ask));
-  return { where: `a new chat “${title}” pinned in the side panel`, status: "Codex is writing the emails; they'll appear there with Send buttons" };
+  return { where: `a new chat “${title}” pinned in the side panel`, status: "The emails are being written; they'll appear there with Send buttons" };
 }
 
 async function log(env: Env, j: Job, role: "you" | "bot", text: string, buttons?: Buttons) {
@@ -334,15 +334,16 @@ export async function setBackupEngine(env: Env, engine: "claude" | "api") {
     note: engine === "claude" && !s.claude.configured ? "Claude isn't connected yet, so the API takes over until it is." : undefined };
 }
 
-/** The job's engine first; when it can't (out of usage, computer off, failed), the next one: Codex, then the backup
- *  they chose (Claude or the API), then the other (Claude first for a Claude job). Every engine gets the same brief, with all the shared records, so nothing is
+/** Jobs run on the API unless the owner named Codex or Claude for that job (12 Nov 2026: the desktop Codex helper is
+ *  only for work they send to it). A named engine that can't run (out of usage, computer off, failed) falls back to
+ *  the next one: Codex, then the backup they chose (Claude or the API), then the other (Claude first for a Claude job). Every engine gets the same brief, with all the shared records, so nothing is
  *  lost by switching. null = nothing free right now: the run waits and is tried again every 5 minutes. */
 export async function pickEngine(env: Env, j: Pick<Job, "engine">, avoid: Engine[] = []): Promise<Engine | null> {
   const s = await engineStatus(env);
   if (j.engine === "api") return avoid.includes("api") ? null : "api";
   const ok = (e: Engine) => !avoid.includes(e) && (e === "api"
     || (e === "codex" ? s.codex.online && !s.codex.limited && (j.engine !== "auto" || s.codex.room) : s.claude.configured && !s.claude.limited));
-  const order: Engine[] = j.engine === "claude" ? ["claude", "codex", "api"]
+  const order: Engine[] = j.engine === "auto" ? ["api", "codex", "claude"] : j.engine === "claude" ? ["claude", "codex", "api"]
     : (await backupEngine(env)) === "api" ? ["codex", "api"] : ["codex", "claude", "api"];
   return order.find(ok) ?? null;
 }
@@ -367,7 +368,7 @@ async function dispatch(env: Env, j: Job, r: JobRun, avoid: Engine[] = []) {
     // Codex takes it from the queue. When Codex can't (out of usage, computer off), the drafts are written on the
     // API and a send goes straight out from their connected Gmail, exactly as written.
     const s = (await engineStatus(env)).codex;
-    if (s.online && !s.limited && !avoid.includes("codex")) {
+    if (j.engine === "codex" && s.online && !s.limited && !avoid.includes("codex")) {
       await run(env, "UPDATE job_runs SET engine = 'codex', status = 'queued', attempts = attempts + 1, started_at = ?, claimed_by = NULL, error = NULL WHERE id = ?", now(), r.id);
       return;
     }

@@ -14,7 +14,7 @@
 // Needs: Codex (the desktop app) signed in with ChatGPT, and the agent key in C:\Users\Yoni\.tokens\cos-agent-key.txt.
 // For the Claude "hi": a Claude subscription token from `claude setup-token` in C:\Users\Yoni\.tokens\claude-code-oauth.txt.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, appendFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -167,6 +167,15 @@ async function keepWindows(usage) {
 }
 
 let usage = { primary: 0, secondary: 0, resetsAt: null }, usageAt = 0;
+// One copy at a time: the scheduled task starts this every 5 minutes and a second copy just exits.
+const LOCK = join(HOME, "ChiefOfStaff", "codex-runner", "runner.lock");
+try { writeFileSync(LOCK, String(process.pid), { flag: "wx" }); } catch {
+  let alive = false; try { process.kill(Number(readFileSync(LOCK, "utf8")), 0); alive = true; } catch { /* stale */ }
+  if (alive) process.exit(0);
+  writeFileSync(LOCK, String(process.pid));
+}
+process.on("exit", () => { try { if (readFileSync(LOCK, "utf8") === String(process.pid)) unlinkSync(LOCK); } catch { /* gone */ } });
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit());
 log("runner started");
 for (;;) {
   try {

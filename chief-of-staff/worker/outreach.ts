@@ -66,7 +66,7 @@ async function insert(env: Env, j: Job, d: { to_email: string; to_name?: string 
 /** "Email the suppliers asking for prices": Codex writes them (a run on the Codex plan); they come back as drafts. */
 export async function requestDrafts(env: Env, j: Job, ask: string) {
   await queueRun(env, j, { mode: "email_draft", ask });
-  return "Codex is writing the emails now. They'll show up here to check, each with a Send button. Nothing is sent before you tap Send.";
+  return "Writing the emails now. They'll show up here to check, each with a Send button. Nothing is sent before you tap Send.";
 }
 
 /** What Codex gets for an email run. */

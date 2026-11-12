@@ -35,7 +35,7 @@ const tool=(h,token,name,args={})=>h.call('/api/mcp','POST',{jsonrpc:'2.0',id:5,
 test('MCP discovery is public but every private tool requires a separate OAuth grant',async()=>{
  const h=setup(),meta=await h.call('/.well-known/oauth-protected-resource');assert.equal(meta.data.resource,R);
  const hello=await h.call('/api/mcp','POST',{id:1,method:'initialize'});assert.equal(hello.data.result.serverInfo.name,'chief-of-staff');
- const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_shopping_lists','get_my_day','get_reminders','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','coffee_read','coffee_update','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
+ const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_shopping_lists','get_my_day','get_reminders','start_research','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','coffee_read','coffee_update','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
  assert.equal((await tool(h,null,'chief_of_staff_connection')).status,401);assert.equal((await tool(h,'owner-fixture','chief_of_staff_connection')).status,401);
  assert.ok(!JSON.stringify(tools.data).includes('owner-fixture'));assert.ok(tools.data.result.tools.every(t=>['cos.relay','cos.tasks.read','cos.tasks.write','cos.life.read','cos.drafts.write'].includes(t.securitySchemes[0].scopes[0])));
 });
@@ -106,6 +106,9 @@ test('everyday ChatGPT tools need the new read scope and answer from live record
   const rem={title:'Call the roaster',due_at:soon,category:'coffee',request_key:'rem-1'};
   const a=await tool(h,g.access_token,'add_reminder',rem);assert.equal(a.data.result.structuredContent.saved,true);await tool(h,g.access_token,'add_reminder',rem);
   assert.equal(h.db.prepare("SELECT count(*) n FROM items WHERE kind='reminder'").get().n,1);
+  const res={title:'Cold brew market',instructions:'Weekly cold-brew prices in Israel.',kind:'weekly',weekday:0,time:'09:00',request_key:'res-1'};
+  const r=(await tool(h,g.access_token,'start_research',res)).data.result.structuredContent;await tool(h,g.access_token,'start_research',res);
+  assert.equal(r.runs_on,'API');assert.equal(r.status,'waiting for Start');const jobs=h.db.prepare('SELECT engine,status FROM jobs').all();assert.deepEqual(jobs.map(j=>[j.engine,j.status]),[['auto','pending']],'one job, on the API, waiting for Start');
   const day=(await tool(h,g.access_token,'get_my_day',{hours:3,category:'coffee'})).data.result.structuredContent;
   assert.ok(day.tasks.items.some(i=>i.title==='Roast plan'));assert.equal(day.reminders_due[0].title,'Call the roaster');assert.equal(day.waiting_on[0].title,'Quote from bottle supplier');
   assert.equal(day.calendar.source,'unavailable');assert.equal(day.window_hours,3);

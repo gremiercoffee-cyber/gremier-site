@@ -20,7 +20,7 @@ async function scan(env:Env,at:number){
  const relay=await first<{seen_at:number}>(env,'SELECT seen_at FROM cos_relay_status WHERE id=1').catch(()=>null);
  const helpers=[
   {key:'whatsapp',name:'WhatsApp helper',at:seen(await setting(env,'settings','bridge_last_seen')),fix:'WhatsApp messages are not reaching Chief of Staff. Check the WhatsApp add-on in Chrome.'},
-  {key:'codex',name:'Codex helper',at:seen((await setting(env,'settings','codex_runner'))?.seen_at),fix:'Research and coding jobs cannot run on Codex. Restart the Codex helper (or the computer).'},
+  {key:'codex',name:'Codex helper',at:seen((await setting(env,'settings','codex_runner'))?.seen_at),fix:'Only jobs you sent to Codex wait; everything else runs on the API. It restarts itself within 5 minutes while the computer is on.'},
   {key:'relay',name:'ChatGPT relay',at:seen(relay?.seen_at),fix:'Longer requests from ChatGPT cannot reach the Codex chat; Claude takes them meanwhile.'},
   {key:'health',name:'Health journal helper',at:seen((await setting(env,'daynote_settings','ai_runner'))?.at),fix:'The health journal is using the API instead of your plans. Restart the computer to restart it.'},
  ].filter(h=>h.at>0);

@@ -74,3 +74,7 @@ receipt has been observed end to end. The adapter status reports this limitation
 Connection to ChatGPT, mobile plugin availability, and power-button voice tool use
 must each be tested on the owner's actual account/device. Never infer one from the
 other. No scheduled AI polling has been enabled as a workaround.
+
+## Research from ChatGPT (12 November 2026)
+
+`start_research` starts a Chief of Staff research job on the API (one-off starts now; repeating ones wait for Start in Chief of Staff). Read results with `find_research`. The Codex relay (`ask_chief_of_staff`) is only for building Chief of Staff or work the owner explicitly sends to Codex.

@@ -1,3 +1,14 @@
+# Restart behaviour — 12 November 2026
+
+Both desktop helpers stopped and stayed off (automatic Codex: 8 Nov 23:08, exit 0xC000013A, the code for a
+closed console window; job runner: last log 9 Nov 05:56). Their only start trigger was Windows sign-in, and the
+computer had not restarted since 1 Nov. Now: the tasks `Chief of Staff Automatic Codex` and
+`Chief of Staff Codex runner` start at sign-in and again every 5 minutes, hidden (`runner/hidden-node.vbs`, no
+window to close). Each runner holds a lock file, so an extra start exits at once. They still need the computer
+on and awake. Only jobs explicitly sent to Codex use them (see MODEL_ROUTING.md).
+
+---
+
 # Automatic Codex runner — verified 8 November 2026
 
 ## Live deployment

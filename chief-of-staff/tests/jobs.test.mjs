@@ -77,35 +77,29 @@ test('weekly: asks before each report and runs only on Yes; Skip skips',async()=
  assert.equal(globalThis.__bg.length,1,'a skipped week cannot be run afterwards');
 });
 
-test('Codex when on with room, then Claude, then the API when neither can',async()=>{
+test('jobs run on the API unless Codex or Claude is named; a named plan falls back when it cannot run',async()=>{
  reset();
  const job={engine:'auto'};
- let {env:e,db}=env();
- assert.equal(await jobs.pickEngine(e,job),'api','no plan free: the API takes it');
- assert.equal(await jobs.pickEngine(e,{engine:'api'}),'api');
+ let {env:e,db}=env({CLAUDE_ROUTINE_URL:'https://example/fire',CLAUDE_ROUTINE_TOKEN:'x'});
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:10,secondary:30}));
- assert.equal(await jobs.pickEngine(e,job),'codex');
- db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:90,secondary:30}));
- assert.equal(await jobs.pickEngine(e,job),'api','a nearly used-up Codex plan is left alone');
+ assert.equal(await jobs.pickEngine(e,job),'api','the API even with Codex and Claude free');
+ assert.equal(await jobs.pickEngine(e,{engine:'api'}),'api');
+ assert.equal(await jobs.pickEngine(e,{engine:'codex'}),'codex');
+ assert.equal(await jobs.pickEngine(e,{engine:'claude'}),'claude');
+ assert.equal(await jobs.pickEngine(e,job,['api']),'codex','if the API fails, a free plan takes it');
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:100,secondary:30}));
- assert.equal(await jobs.pickEngine(e,{engine:'codex'}),'api','a Codex job out of usage goes on elsewhere');
- ({env:e,db}=env({CLAUDE_ROUTINE_URL:'https://example/fire',CLAUDE_ROUTINE_TOKEN:'x'}));
- assert.equal(await jobs.pickEngine(e,job),'claude');
- db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('claude_limited_until',?)").run(JSON.stringify(new Date(Date.now()+3600_000).toISOString()));
- assert.equal(await jobs.pickEngine(e,job),'api','Claude is avoided after hitting its limit');
- db.prepare("DELETE FROM settings WHERE key='claude_limited_until'").run();
+ assert.equal(await jobs.pickEngine(e,{engine:'codex'}),'claude','a Codex job out of usage goes to the backup');
  await jobs.setBackupEngine(e,'api');
- assert.equal(await jobs.pickEngine(e,job),'api','they chose the API as the backup: Claude is skipped');
- assert.equal(await jobs.pickEngine(e,{engine:'claude'}),'claude','a Claude job still goes to Claude');
- await jobs.setBackupEngine(e,'claude');
- assert.equal(await jobs.pickEngine(e,job),'claude');
+ assert.equal(await jobs.pickEngine(e,{engine:'codex'}),'api','they chose the API as the backup: Claude is skipped');
+ db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('claude_limited_until',?)").run(JSON.stringify(new Date(Date.now()+3600_000).toISOString()));
+ assert.equal(await jobs.pickEngine(e,{engine:'claude'}),'api','Claude is avoided after hitting its limit');
  assert.equal(await jobs.pickEngine(e,{engine:'codex'},['codex','claude','api']),null,'nothing left: wait');
 });
 
 test('the Codex runner takes the run and answers; a run Codex never finishes goes to the API, which says so',async()=>{
  reset();const {env:e,db}=env();
  db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('codex_runner',?)").run(JSON.stringify({seen_at:new Date().toISOString(),primary:5,secondary:5}));
- const {id}=await jobs.createJob(e,{title:'Bean prices',instructions:'Arabica price now.',kind:'once'});
+ const {id}=await jobs.createJob(e,{title:'Bean prices',instructions:'Arabica price now.',kind:'once',engine:'codex'});
  await jobs.pressButton(e,`start:${id}`);
  assert.equal(globalThis.__bg.length,0,'queued for Codex, not the API');
  const next=await jobs.nextCodexRun(e,{device:'home',primary:6,secondary:5});
@@ -140,7 +134,7 @@ test('replying in the chat changes the job: stop, how often, and how it reports'
 
 test('Claude plan: the run gets a one-time reply link; only that link, once, can answer it',async()=>{
  reset();const {env:e}=env({CLAUDE_ROUTINE_URL:'https://example/fire',CLAUDE_ROUTINE_TOKEN:'x'});
- const {id}=await jobs.createJob(e,{title:'Cold brew',instructions:'Weekly cold-brew market with action items.',kind:'once'});
+ const {id}=await jobs.createJob(e,{title:'Cold brew',instructions:'Weekly cold-brew market with action items.',kind:'once',engine:'claude'});
  await jobs.pressButton(e,`start:${id}`);
  const fire=globalThis.__tg.find(t=>t.method==='fire');
  const payload=JSON.parse(fire.body.text);

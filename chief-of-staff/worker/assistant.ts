@@ -619,7 +619,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
         every_minutes: { type: "integer", description: "every: e.g. 60 for hourly" },
         until: { type: "string", description: "every: local YYYY-MM-DDTHH:MM to stop; omit for until they say stop" },
         weekday: { type: "integer", description: "weekly: 0=Sunday" }, time: { type: "string", description: "weekly: HH:MM" },
-        engine: { type: "string", enum: ["auto", "claude", "codex", "api"], description: "auto (their Claude/Codex plans) unless they name one; api only when they ask for the API" },
+        engine: { type: "string", enum: ["auto", "claude", "codex", "api"], description: "auto (the API) unless they name Codex or Claude for this job" },
         only_changes: { type: "boolean", description: "post only when something changed (default for 'every')" },
         model: { type: "string", description: "only if they name one: luna, terra, sol, or a model name" },
       }, required: ["title", "instructions", "kind"] },
@@ -627,7 +627,7 @@ export function assistantTools(env: Env, source: string, notes: ActionNote[]): T
     },
     {
       name: "email_with_codex",
-      description: "Email people for the user through Codex (their ChatGPT plan, with their Gmail): e.g. the suppliers a research chat found, or 'email Dana asking for the invoice'. Codex writes the emails (looking up missing addresses), they appear in a chat with Send buttons, Codex sends only when the user taps Send, and replies are tracked there.",
+      description: "Email people for the user (written on the API, sent from their Gmail): e.g. the suppliers a research chat found, or 'email Dana asking for the invoice'. Codex writes the emails (looking up missing addresses), they appear in a chat with Send buttons, Codex sends only when the user taps Send, and replies are tracked there.",
       input_schema: { type: "object", properties: {
         ask: { type: "string", description: "everything they said: who to email, what to ask or say, tone, language" },
         title: { type: "string", description: "2-4 words for a new email chat" },
