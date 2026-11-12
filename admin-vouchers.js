@@ -192,6 +192,7 @@
     const count = Math.max(1, Math.min(500, Math.floor(Number(val('vcCount')) || 1)));
     const email = count === 1 ? val('vcEmail') : '';
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast('Check the email address');
+    const send = { name: val('vcName'), lang: val('vcLang'), note: val('vcNote') };   // read now: the form closes before the email goes
     const btn = document.getElementById('vcCreate'); btn.disabled = true; btn.textContent = 'Creating…';
     const w = words(base);
     const batch = count > 1 ? (val('vcBatch') || `${w.big === 'FREE' ? 'Free ' + w.what : w.big.replace(' OFF', ' off') + ' ' + w.what} · ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`) : (val('vcBatch') || null);
@@ -209,7 +210,7 @@
       closeModal();
       render();
       if (email) {
-        await sendEmail(data[0], email, val('vcName'), val('vcLang'), val('vcNote'));
+        await sendEmail(data[0], email, send.name, send.lang, send.note);
       } else toast(count > 1 ? `${count} vouchers created. Print them from the list.` : 'Voucher created ✓');
       load();
     } catch (e) {
@@ -277,7 +278,7 @@
       return `<div class="card">
         <div class="pic">${photo ? `<img src="${esc(img(photo, 500))}" alt="">` : `<div class="amt">${esc(w.big)}</div>`}</div>
         <div class="info">
-          <div class="brand"><img src="${SITE}/logo.png" alt=""><span>Gremier Coffee Co.</span></div>
+          <div class="brand"><img src="${SITE}/logo.png" alt=""><span dir="ltr">Gremier Coffee Co.</span></div>
           <div class="label">${he ? 'שובר' : 'Voucher'}</div>
           <div class="big">${esc(w.big)}</div>
           <div class="what">${esc(w.what)}</div>
@@ -304,7 +305,8 @@
       .codebox { margin-top: auto; display: flex; align-items: center; gap: 3mm; }
       .qr { width: 17mm; height: 17mm; flex: none; } .qr svg { width: 100%; height: 100%; display: block; }
       .cl { font-size: 6pt; letter-spacing: .2em; text-transform: uppercase; color: #8a7c6e; }
-      .code { font-family: 'Courier New', monospace; font-weight: bold; font-size: 11.5pt; letter-spacing: .06em; direction: ltr; }
+      .code { font-family: 'Courier New', monospace; font-weight: bold; font-size: 10.5pt; letter-spacing: .03em; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
+      .codebox > div:last-child { min-width: 0; }
       .small { margin-top: 1.5mm; font-size: 6.2pt; color: #6b6158; line-height: 1.3; }
       .bar { padding: 10px 0 14px; font-size: 14px; } @media print { .bar { display: none; } }
     </style></head><body><div class="bar">${list.length} voucher${list.length > 1 ? 's' : ''}, 8 to a page. <button onclick="print()">Print</button></div><div class="sheet">${cards}</div>

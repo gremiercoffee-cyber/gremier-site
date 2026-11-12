@@ -4277,7 +4277,7 @@ async function applyRedeemCode() {
     });
     let data = await res.json().catch(() => ({}));
     if (data.valid) {
-      appliedRedeem = { kind: 'coupon', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery };
+      appliedRedeem = { kind: 'coupon', voucher: data.kind === 'voucher', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery };
       showRedeemApplied(data.message, data.discount);
       return;
     }
@@ -4313,7 +4313,7 @@ function showRedeemApplied(message, discount) {
   wrap.style.display = 'flex';
   const label = appliedRedeem.kind === 'gift_card'
     ? (lang==='he'?`כרטיס מתנה: -₪${discount}`:`Gift card: -₪${discount}`)
-    : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.free_delivery ? (lang==='he'?' + משלוח חינם':' + free delivery') : '') + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
+    : appliedRedeem.voucher ? (lang==='he'?`שובר: -₪${discount}`:`Voucher: -₪${discount}`) : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.free_delivery ? (lang==='he'?' + משלוח חינם':' + free delivery') : '') + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
   document.getElementById('coRedeemAppliedText').textContent = '✓ ' + label;
   prepareCheckoutContent();
 }
