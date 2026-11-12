@@ -80,16 +80,54 @@
     return lines;
   }
 
+  // The logo for the top right corner, in pure black and white for thermal printers: the round logo's
+  // light lines become black on white (its black background would print as a solid block).
+  let logo = null;
+  const logoReady = new Promise((resolve) => {
+    if (typeof Image === 'undefined') return resolve();
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const n = 256, c = document.createElement('canvas'); c.width = c.height = n;
+        const g = c.getContext('2d');
+        g.drawImage(img, 0, 0, n, n);
+        const px = g.getImageData(0, 0, n, n), p = px.data, r = n / 2;
+        for (let i = 0; i < p.length; i += 4) {
+          const k = i / 4, dx = (k % n) - r + 0.5, dy = Math.floor(k / n) - r + 0.5;
+          const light = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+          const v = dx * dx + dy * dy > (r - 1) * (r - 1) ? 255 : light > 110 ? 0 : 255;   // outside the circle: white
+          p[i] = p[i + 1] = p[i + 2] = v; p[i + 3] = 255;
+        }
+        g.putImageData(px, 0, 0);
+        logo = c;
+      } catch (e) { console.warn('label logo:', e); }
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = '/logo.png';
+  });
+
   // Lay out one order in a box; shrinks the text until everything fits.
   function drawOrder(ctx, d, x, y, w, h) {
     const pad = Math.round(Math.min(w, h) * 0.05), iw = w - pad * 2;
+    // The logo sits in the top right corner; the lines beside it are kept short so they don't run into it.
+    const ls = logo ? Math.round(Math.min(w, h) * 0.24) : 0, logoBottom = y + pad + ls;
     for (let scale = 2.2; scale > 0.25; scale -= 0.05) {
       const base = Math.max(14, Math.round(Math.min(w, h * 0.9) * 0.055 * scale)), ops = [];
       let cy = y + pad;
       const block = (text, size, weight = '400', gap = 0.35) => {
         if (!text) return;
         ctx.font = `${weight} ${size}px "DM Sans", Arial, sans-serif`;
-        for (const line of wrap(ctx, text, iw)) { ops.push({ line, size, weight, y: cy }); cy += size * 1.18; }
+        const room = (lineY) => (ls && lineY < logoBottom ? iw - ls - pad * 0.6 : iw);
+        const lines = [];
+        let cur = '', lineY = cy;
+        for (const word of String(text).split(/\s+/).filter(Boolean)) {
+          const next = cur ? cur + ' ' + word : word;
+          if (!cur || ctx.measureText(next).width <= room(lineY)) cur = next;
+          else { lines.push(cur); lineY += size * 1.18; cur = word; }
+        }
+        if (cur) lines.push(cur);
+        for (const line of lines) { ops.push({ line, size, weight, y: cy }); cy += size * 1.18; }
         cy += size * gap;
       };
       // Made for the driver: who, phone, where in big bold text; what's inside and when stay small.
@@ -104,12 +142,13 @@
       block(d.when, Math.round(base * 0.85), '400', 0);
       if (cy <= y + h - pad || scale <= 0.3) {
         ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
+        if (ls) { ctx.imageSmoothingEnabled = true; ctx.drawImage(logo, x + w - pad - ls, y + pad, ls, ls); }
         for (const op of ops) {
           if (op.rule) { ctx.fillRect(x + pad, op.y, iw, Math.max(2, Math.round(base * 0.08))); continue; }
           ctx.font = `${op.weight} ${op.size}px "DM Sans", Arial, sans-serif`;
           const rtl = hebrew(op.line);
           ctx.direction = rtl ? 'rtl' : 'ltr'; ctx.textAlign = rtl ? 'right' : 'left';
-          ctx.fillText(op.line, rtl ? x + w - pad : x + pad, op.y);
+          ctx.fillText(op.line, rtl ? x + w - pad - (ls && op.y < logoBottom ? ls + pad * 0.6 : 0) : x + pad, op.y);
         }
         ctx.direction = 'ltr'; ctx.textAlign = 'left';
         return;
@@ -229,6 +268,7 @@
     let o = ordersList().find((x) => String(x.id) === String(id));
     if (!o && typeof sb !== 'undefined') { const { data } = await sb.from('orders').select('*').eq('id', id).maybeSingle(); o = data; }
     if (!o) { if (typeof showToast === 'function') showToast('Order not found'); return; }
+    await logoReady;
     if (document.fonts?.load) { try { await Promise.all(['400', '600', '700', '800'].map((w) => document.fonts.load(`${w} 20px "DM Sans"`))); } catch {} }
     sheet().hidden = false;
     state = { orders: [o], size: readSize(), search: '' };
