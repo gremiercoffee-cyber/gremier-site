@@ -3,6 +3,7 @@
 // Public-callable (anon key) — never trusts the client for the discount math.
 
 import { referralProblem } from "../_shared/engage.ts";
+import { couponDiscount } from "../_shared/coupon-math.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 /** Case-insensitive EXACT match: escape LIKE wildcards so "%" / "_" can't enumerate codes. */
 function likeLiteral(v: string): string { return v.replace(/[\\%_]/g, (m) => "\\" + m); }
@@ -72,12 +73,12 @@ Deno.serve(async (req) => {
 
     // Expiry
     if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
-      return json({ valid: false, error: 'expired', message: 'This coupon has expired' });
+      return json({ valid: false, error: 'expired', message: coupon.kind === 'voucher' ? 'This voucher has expired' : 'This coupon has expired' });
     }
 
     // Global max uses
     if (coupon.max_uses != null && coupon.uses_count >= coupon.max_uses) {
-      return json({ valid: false, error: 'used_up', message: 'This coupon has reached its usage limit' });
+      return json({ valid: false, error: 'used_up', message: coupon.kind === 'voucher' ? 'This voucher has already been used' : 'This coupon has reached its usage limit' });
     }
 
     // Tied to a specific user (loyalty coupon)
@@ -120,31 +121,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Compute eligible subtotal based on scope
-    let eligibleTotal = cartTotal;
-    if (coupon.applies_to === 'specific_products' && Array.isArray(coupon.product_ids)) {
-      eligibleTotal = (items || [])
-        // A subscription line counts when any product inside it is one of the coupon's products.
-        .filter((i: any) => coupon.product_ids.includes(i.product_id || i.base_product_id || i.id) || (Array.isArray(i.component_ids) && i.component_ids.some((id: string) => coupon.product_ids.includes(id))))
-        .reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
-    } else if (coupon.applies_to === 'category' && coupon.category) {
-      eligibleTotal = (items || [])
-        .filter((i: any) => i.category === coupon.category)
-        .reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
+    // The product a voucher (or product coupon) is for, to name it in the message.
+    let productName = '';
+    if (coupon.applies_to === 'specific_products' && coupon.product_ids?.length) {
+      const { data: p } = await sb.from('products').select('name_en').eq('id', coupon.product_ids[0]).maybeSingle();
+      productName = p?.name_en || '';
     }
-
-    if (eligibleTotal <= 0) {
-      return json({ valid: false, error: 'not_applicable', message: 'No eligible items in your cart for this coupon' });
+    const { discount, eligibleTotal } = couponDiscount(coupon, items || [], cartTotal);
+    // (A free-delivery code can take nothing off the items and still apply.)
+    if (!(eligibleTotal > 0) || (coupon.discount_type === 'free_item' && !(discount > 0))) {
+      return json({ valid: false, error: 'not_applicable', message: productName
+        ? `Add ${productName} to your cart to use this ${coupon.kind === 'voucher' ? 'voucher' : 'code'}`
+        : 'No eligible items in your cart for this coupon' });
     }
-
-    // Discount math
-    let discount = 0;
-    if (coupon.discount_type === 'percent') {
-      discount = Math.round(eligibleTotal * (Number(coupon.discount_value) / 100));
-    } else {
-      discount = Math.min(Number(coupon.discount_value), eligibleTotal);
-    }
-    discount = Math.max(0, Math.min(discount, cartTotal));
+    const freeQty = Math.max(1, Number(coupon.free_qty) || 1);
+    const what = coupon.discount_type === 'free_item' ? `Free ${freeQty > 1 ? freeQty + ' × ' : ''}${productName || 'item'} applied`
+      : coupon.discount_type === 'percent' ? `${coupon.discount_value}% off${productName ? ' ' + productName : ''} applied`
+      : `₪${coupon.discount_value} off${productName ? ' ' + productName : ''} applied`;
 
     return json({
       valid: true,
@@ -156,9 +149,8 @@ Deno.serve(async (req) => {
       applies_to: coupon.applies_to,
       subscription: !!subscription,
       free_delivery: !!coupon.free_delivery,
-      message: (coupon.discount_type === 'percent'
-        ? `${coupon.discount_value}% off applied`
-        : `₪${coupon.discount_value} off applied`) + (coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
+      kind: coupon.kind || 'coupon',
+      message: what + (coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
     });
   } catch (err) {
     return json({ valid: false, error: 'server_error', message: String(err) }, 500);

@@ -1,0 +1,29 @@
+/* Vouchers screen (admin-vouchers.js) */
+.vc-empty { padding: 24px; color: var(--text2); text-align: center; }
+.vc-group { padding: 14px 16px; margin-bottom: 12px; }
+.vc-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vc-pic { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: #efe8de; flex: none; }
+.vc-amt { display: grid; place-items: center; font-weight: 800; font-size: .85rem; color: #3a2a1a; }
+.vc-title { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.vc-title b { font-size: 1rem; }
+.vc-title small { color: var(--text2); }
+.vc-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.vc-rows { margin-top: 12px; border-top: 1px solid var(--border); }
+.vc-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.vc-row:last-child { border-bottom: 0; }
+.vc-code { font-family: 'Courier New', monospace; font-weight: 700; font-size: .95rem; letter-spacing: .04em; min-width: 120px; }
+.vc-st { flex: 1; min-width: 120px; font-size: .82rem; color: var(--text2); }
+.vc-row.used .vc-st { color: var(--green); font-weight: 600; }
+.vc-row.expired .vc-code, .vc-row.off .vc-code { color: var(--text2); text-decoration: line-through; }
+.vc-row-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.vc-modal .modal-box { max-width: 560px; }
+.vc-seg { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.vc-seg button { flex: 1; min-height: 44px; padding: 8px 6px; border: 0; background: #fff; color: var(--text); font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; }
+.vc-seg button + button { border-left: 1px solid var(--border); }
+.vc-seg button.on { background: #121212; color: #fff; }
+.vc-prod { display: flex; align-items: center; gap: 10px; }
+.vc-prod img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
+.vc-prod select { flex: 1; min-width: 0; }
+.vc-preview { margin: 6px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--bg2); font-size: .88rem; color: var(--text); }
+.vc-preview:empty { display: none; }
+.vc-modal [hidden] { display: none !important; }

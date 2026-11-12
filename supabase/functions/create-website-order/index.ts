@@ -9,6 +9,7 @@ import { logReferralEvent, notifyOwner, referralByCode, referralProblem } from "
 import { beitShemeshFreeDelivery, shabbatGuaranteedZone, shabbatPromoActive } from "../_shared/weekly-promo.ts";
 import { cleanText, pickDeliveryChoice } from "../_shared/security.ts";
 import { pickAddress } from "../_shared/delivery-address.ts";
+import { couponDiscount } from "../_shared/coupon-math.ts";
 import { linkJourneyOrder } from "../_shared/web-journey-model.ts";
 import { subscriptionAddonOrder } from "../_shared/subscription-addon.ts";
 
@@ -448,10 +449,8 @@ Deno.serve(async (req) => {
           return json({ error: "This code can't be used on a subscription." }, 400);
         }
         if (notExhausted && notExpired && forThisEmail) {
-          const couponDiscount = coupon.discount_type === "percent"
-            ? Math.round(subtotal * (Number(coupon.discount_value) / 100))
-            : Number(coupon.discount_value) || 0;
-          discount = Math.min(couponDiscount, subtotal);
+          // Only the lines the code is for (a product/category code, or a voucher's item); a free-item voucher makes its item free.
+          discount = couponDiscount(coupon, allowedItems, subtotal).discount;
           if (discount > 0) appliedCouponCode = couponCode;
           // Some coupons also make regular delivery free (on a subscription, every month's).
           if (coupon.free_delivery && String(deliveryInfo.delivery_type || "regular") === "regular") { delivery.fee = 0; delivery.source = "coupon"; appliedCouponCode = couponCode; }

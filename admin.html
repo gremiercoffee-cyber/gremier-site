@@ -1240,6 +1240,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
       <div class="nav-item" onclick="showTab('delivery')" id="nav-delivery"><span class="icon">🚚</span><span>Delivery</span></div>
       <div class="nav-item" onclick="showTab('siteimages')" id="nav-siteimages"><span class="icon">🖼️</span><span>Site Images</span></div>
       <div class="nav-item" onclick="showTab('coupons')" id="nav-coupons"><span class="icon">🎟️</span><span>Coupons</span></div>
+      <div class="nav-item" onclick="showTab('vouchers')" id="nav-vouchers"><span class="icon">🎫</span><span>Vouchers</span></div>
       <div class="nav-item" onclick="showTab('giftcards')" id="nav-giftcards"><span class="icon">🎁</span><span>Gift Cards</span></div>
       </div></details>
       </div>
@@ -1701,6 +1702,17 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
   </div>
 </div>
 
+<div id="tab-vouchers" class="tab-content" style="display:none">
+  <div class="page-header">
+    <div class="flex-between">
+      <div><h1 class="page-title">🎫 Vouchers</h1><p class="page-sub" style="margin:4px 0 0;color:var(--text2);font-size:.85rem">One-time codes for a free item, or an amount off an item or any order. Email one, or print a batch.</p></div>
+      <button class="btn btn-amber" data-vc-new>+ New vouchers</button>
+    </div>
+  </div>
+  <div class="stat-grid" id="voucherStats"></div>
+  <div id="vouchersList"></div>
+</div>
+
 <!-- GIFT CARDS TAB -->
 <div id="tab-workers" class="tab-content" style="display:none">
   <div class="page-header">
@@ -1824,6 +1836,7 @@ const OPS_URL = 'https://gremier-coffee.vercel.app/';
     <details class="settings-nav" id="drawerWebsiteSettings"><summary><span>⚙️</span><span>Website settings</span><span class="settings-chevron" aria-hidden="true">›</span></summary><div class="settings-items">
     <button class="nav-drawer-item" onclick="showTab('delivery');closeNavDrawer()"><span>&#128666;</span>Delivery</button>
     <button class="nav-drawer-item" onclick="showTab('coupons');closeNavDrawer()"><span>&#127903;&#65039;</span>Coupons</button>
+    <button class="nav-drawer-item" onclick="showTab('vouchers');closeNavDrawer()"><span>&#127915;</span>Vouchers</button>
     <button class="nav-drawer-item" onclick="showTab('giftcards');closeNavDrawer()"><span>&#127873;</span>Gift Cards</button>
     <button class="nav-drawer-item" onclick="showTab('siteimages');closeNavDrawer()"><span>&#128444;&#65039;</span>Site Images</button>
     </div></details>
@@ -9324,7 +9337,7 @@ let allCoupons = [];
 let couponSearchTerm = '';
 
 async function loadCoupons() {
-  const { data, error } = await sb.from('coupons').select('*').order('created_at', { ascending: false });
+  const { data, error } = await sb.from('coupons').select('*').neq('kind', 'voucher').order('created_at', { ascending: false });   // vouchers have their own screen
   if (error) { console.error(error); showToast('Could not load coupons'); }
   allCoupons = data || [];
   renderCouponsTable();
@@ -9954,6 +9967,8 @@ window.opsFetch = window.opsFetch || (function () {
 <script src="/admin-refunds.js?v=20261108-1"></script>
 <script src="/admin-open-orders.js?v=20261111-1"></script>
 <link rel="stylesheet" href="/admin-orders-calendar.css?v=20261112-1"/>
+<link rel="stylesheet" href="/admin-vouchers.css?v=20261112-1"/>
+<script src="/admin-vouchers.js?v=20261112-1"></script>
 <script src="/admin-orders-calendar.js?v=20261112-2"></script>
 <script src="/admin-orders-board.js?v=20261112-3"></script>
 <script src="/admin-abandoned.js?v=20261104-1"></script>
