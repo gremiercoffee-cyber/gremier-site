@@ -1244,7 +1244,7 @@ function DeliveryDetails2({ value, onChange }) {
   </div>;
 }
 
-function ScheduleForm({ mode, stores, onClose, onSubmit, prefill, onModeChange }) {
+function ScheduleForm({ mode, stores, onClose, onSubmit, prefill, onModeChange, deliveryOnly }) {
   const logNow = mode === 'lognow';
   const [submitting,setSubmitting]=useState2(false);
   const submissionId=useRef2('production_'+Date.now()+'_'+Math.random().toString(36).slice(2));
@@ -1385,7 +1385,8 @@ const [cbName,setCbName] = useState2(prefill?.cbName || '');
           <button type="button" style={tog(!logNow)} onClick={()=>onModeChange('schedule')}>Schedule</button>
         </div>}
 
-        {prefill?.jobType!=='production'&&<div style={{...togRow,marginBottom:14}}>
+        {/* Orders only schedules deliveries; production is planned from the Production tab. */}
+        {prefill?.jobType!=='production'&&!deliveryOnly&&<div style={{...togRow,marginBottom:14}}>
           <button style={tog(jobType==='delivery')} onClick={()=>setJobType('delivery')}>Delivery</button>
           <button style={tog(jobType==='production','#3f7fc4')} onClick={()=>setJobType('production')}>Production</button>
         </div>}
@@ -1997,7 +1998,7 @@ async function addJobFromForm(job, mode) {
           </div>
         </div>
       </div>}
-{showForm&&ReactDOM.createPortal(<ScheduleForm mode={formMode} onModeChange={editingJobId?null:setFormMode} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>,document.body)}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
+{showForm&&ReactDOM.createPortal(<ScheduleForm mode={formMode} onModeChange={editingJobId?null:setFormMode} deliveryOnly={!production} stores={stores} prefill={formPrefill} onClose={()=>{setShowForm(false);setFormPrefill(null);setEditingJobId(null);}} onSubmit={(job)=>addJobFromForm(job,formMode)}/>,document.body)}      {calDay&&<DayPopup2 date={calDay} jobs={jobs} onClose={()=>setCalDay(null)} onCheckoff={handleCheckoff}/>}
       {rescheduleJob&&<RescheduleModal2 job={rescheduleJob} onSave={saveReschedule} onCancel={()=>setRescheduleJob(null)}/>}
     </div>
   );

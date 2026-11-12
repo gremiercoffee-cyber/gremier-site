@@ -2688,7 +2688,8 @@ function ScheduleForm({
   onClose,
   onSubmit,
   prefill,
-  onModeChange
+  onModeChange,
+  deliveryOnly
 }) {
   const logNow = mode === 'lognow';
   const [submitting, setSubmitting] = useState2(false);
@@ -3031,7 +3032,7 @@ function ScheduleForm({
     type: "button",
     style: tog(!logNow),
     onClick: () => onModeChange('schedule')
-  }, "Schedule")), prefill?.jobType !== 'production' && /*#__PURE__*/React.createElement("div", {
+  }, "Schedule")), prefill?.jobType !== 'production' && !deliveryOnly && /*#__PURE__*/React.createElement("div", {
     style: {
       ...togRow,
       marginBottom: 14
@@ -4430,6 +4431,7 @@ Puts ${brew.kg} kg of beans back in stock and removes its drain.`)) return;
   }, "Yes, mark fulfilled")))), showForm && ReactDOM.createPortal( /*#__PURE__*/React.createElement(ScheduleForm, {
     mode: formMode,
     onModeChange: editingJobId ? null : setFormMode,
+    deliveryOnly: !production,
     stores: stores,
     prefill: formPrefill,
     onClose: () => {
