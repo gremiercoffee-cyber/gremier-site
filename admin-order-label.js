@@ -1,6 +1,7 @@
 /* Sticker labels for orders: one order per sticker, or two orders on one sticker split by a cut line.
    Draws the sticker as a picture (203 dpi, the usual thermal-printer resolution) and opens the phone's
-   share sheet so it can go straight to the label printer's app (e.g. Nelko). Read-only: no data changes. */
+   share sheet so it can go straight to the label printer's app (e.g. Nelko). Sharing or saving the picture marks the
+   orders on it as printed (delivery_info.label_printed_at), so they leave the "print another order" list. */
 (function (root) {
   'use strict';
   const DPMM = 8; // ≈203 dpi
@@ -198,7 +199,8 @@
 .lbl-size{display:flex;align-items:center;gap:6px;font-size:.8rem;color:#666;flex-wrap:wrap}
 .lbl-size input{width:64px;border:1px solid #ddd;border-radius:8px;padding:6px;font:inherit}
 .lbl-go{display:flex;gap:8px;margin-top:14px}.lbl-go button{flex:1;min-height:46px;border-radius:12px;font:inherit;font-weight:700;cursor:pointer;border:1px solid #121212;background:#fff;color:#121212}
-.lbl-go .main{background:#121212;color:#fff}`;
+.lbl-go .main{background:#121212;color:#fff}
+.lbl-more{border:0;background:none;color:#555;text-decoration:underline;font:inherit;font-size:.82rem;padding:6px;cursor:pointer;justify-self:start}`;
     document.head.append(css);
     return el;
   }
@@ -209,6 +211,7 @@
     return ordersList().filter((o) => String(o.id) !== String(first.id)
       && String(o.payment_status) === 'paid' && !['fulfilled', 'completed', 'cancelled', 'refunded'].includes(String(o.status || '').toLowerCase())
       && !info(o).combined_into
+      && (state.showPrinted || !info(o).label_printed_at)
       && (!q || String(o.customer_name || '').toLowerCase().includes(q) || String(o.order_number ?? '').includes(q)))
       .sort((a, b) => String(info(a).delivery_date || '9').localeCompare(String(info(b).delivery_date || '9')));
   }
@@ -216,13 +219,16 @@
   function paint() {
     const box = document.querySelector('#labelSheet .lbl-box');
     const first = state.orders[0], second = state.orders[1] || null, size = state.size;
-    const pickRow = (o) => `<button type="button" class="lbl-pick" data-lbl-second="${esc(o.id)}" aria-pressed="${second && String(second.id) === String(o.id)}"><span>${o.order_number != null ? '#' + esc(o.order_number) + ' ' : ''}${esc(o.customer_name || 'Customer')}</span><small>${esc(day(String(info(o).delivery_date || '').slice(0, 10)) || 'No date')}</small></button>`;
+    const pickRow = (o) => `<button type="button" class="lbl-pick" data-lbl-second="${esc(o.id)}" aria-pressed="${second && String(second.id) === String(o.id)}"><span>${o.order_number != null ? '#' + esc(o.order_number) + ' ' : ''}${esc(o.customer_name || 'Customer')}</span><small>${esc(day(String(info(o).delivery_date || '').slice(0, 10)) || 'No date')}${printed(o)}</small></button>`;
     const list = others(first);
-    box.innerHTML = `<div class="lbl-head"><h3 id="lblTitle">Label · ${first.order_number != null ? '#' + esc(first.order_number) + ' ' : ''}${esc(first.customer_name || '')}</h3><button type="button" class="lbl-x" data-lbl-close aria-label="Close">✕</button></div>
+    const printedCount = state.showPrinted ? 0 : (() => { state.showPrinted = true; const n = others(first).length - list.length; state.showPrinted = false; return n; })();
+    const printed = (o) => info(o).label_printed_at ? ' · printed' : '';
+    box.innerHTML = `<div class="lbl-head"><h3 id="lblTitle">Label · ${first.order_number != null ? '#' + esc(first.order_number) + ' ' : ''}${esc(first.customer_name || '')}${info(first).label_printed_at ? ' <small style="font-weight:600;color:#777">· printed</small>' : ''}</h3><button type="button" class="lbl-x" data-lbl-close aria-label="Close">✕</button></div>
       <p class="lbl-q">Print another order on the same sticker?</p>
       <div class="lbl-picks"><button type="button" class="lbl-pick" data-lbl-second="" aria-pressed="${!second}"><span>No, just this order</span><small>Whole sticker</small></button>
       ${list.length > 6 || state.search ? `<input class="lbl-search" id="lblSearch" placeholder="Find an order by name or number" value="${esc(state.search || '')}">` : ''}
-      ${list.slice(0, 40).map(pickRow).join('') || (state.search ? '<small>No matching open orders.</small>' : '')}</div>
+      ${list.slice(0, 40).map(pickRow).join('') || (state.search ? '<small>No matching open orders.</small>' : '')}
+      ${printedCount ? `<button type="button" class="lbl-more" data-lbl-printed>Show ${printedCount} already printed</button>` : ''}</div>
       <div class="lbl-prev"><img id="lblImg" alt="Label preview"></div>
       <div class="lbl-size">Sticker size <input type="number" id="lblW" min="20" max="300" value="${size.w}" aria-label="Width in mm"> × <input type="number" id="lblH" min="20" max="300" value="${size.h}" aria-label="Height in mm"> mm${second ? ' · cut along the dashed line' : ''}</div>
       <div class="lbl-go"><button type="button" class="main" data-lbl-share>Share to printer</button><button type="button" data-lbl-save>Save picture</button></div>`;
@@ -237,13 +243,30 @@
   async function share() {
     const file = new File([await blob()], fileName(), { type: 'image/png' });
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Order label' }); } catch (e) { if (e?.name !== 'AbortError') save(); }
+      try { await navigator.share({ files: [file], title: 'Order label' }); markPrinted(); } catch (e) { if (e?.name !== 'AbortError') save(); }
     } else save();
   }
   async function save() {
     const url = URL.createObjectURL(await blob()), a = document.createElement('a');
     a.href = url; a.download = fileName(); document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
+    markPrinted();
+  }
+  // Stamp each order on the sticker as printed. Reads delivery_info fresh so other edits aren't overwritten.
+  async function markPrinted() {
+    if (!state || typeof sb === 'undefined') return;
+    const now = new Date().toISOString(), orders = state.orders.slice();
+    orders.forEach((o) => { o.delivery_info = { ...info(o), label_printed_at: now }; const l = ordersList().find((x) => String(x.id) === String(o.id)); if (l && l !== o) l.delivery_info = { ...info(l), label_printed_at: now }; });
+    if (state) paint();
+    try {
+      for (const o of orders) {
+        const { data, error } = await sb.from('orders').select('delivery_info').eq('id', o.id).maybeSingle();
+        if (error) throw error;
+        const di = (data && typeof data.delivery_info === 'object' && data.delivery_info) || {};
+        const { error: e2 } = await sb.from('orders').update({ delivery_info: { ...di, label_printed_at: now } }).eq('id', o.id);
+        if (e2) throw e2;
+      }
+    } catch (e) { console.warn('label printed mark failed', e); if (typeof showToast === 'function') showToast('Could not mark the label as printed'); }
   }
 
   document.addEventListener('click', (e) => {
@@ -251,6 +274,7 @@
     if (e.target.closest('[data-lbl-close]')) return close();
     const pick = e.target.closest('[data-lbl-second]');
     if (pick) { const id = pick.dataset.lblSecond, o = ordersList().find((x) => String(x.id) === id); state.orders = o ? [state.orders[0], o] : [state.orders[0]]; state.focusSearch = false; return paint(); }
+    if (e.target.closest('[data-lbl-printed]')) { state.showPrinted = true; return paint(); }
     if (e.target.closest('[data-lbl-share]')) return share();
     if (e.target.closest('[data-lbl-save]')) return save();
   });
