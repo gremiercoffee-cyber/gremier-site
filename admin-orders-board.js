@@ -108,6 +108,7 @@
           move: (day) => moveTo({ orderId: o.id, jobId: job?.id }, day),
           actions: [
             { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(o.id) },
+            root.GremierLabel ? { label: '🖨 Print label', cls: 'primary', run: () => root.GremierLabel.open(o.id) } : null,
             ...contact(phone),
             job ? { label: '✓ Delivered', cls: 'done', run: () => root.GremierBoard.checkoff(job.id) }
               : needsFulfil && typeof confirmFulfillOrder === 'function' ? { label: '✓ Fulfilled', cls: 'done', run: () => confirmFulfillOrder(o.id) } : null,
@@ -128,6 +129,7 @@
           actions: [
             web ? { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(web) }
               : { label: '✎ Edit', cls: 'primary', run: () => root.GremierBoard.edit(j.id) },
+            web && root.GremierLabel ? { label: '🖨 Print label', cls: 'primary', run: () => root.GremierLabel.open(web) } : null,
             ...contact(j.customerPhone || order?.customer_phone),
             { label: '✓ Delivered', cls: 'done', run: () => root.GremierBoard.checkoff(j.id) },
             web ? { label: '✎', cls: 'icon', run: () => root.GremierBoard.edit(j.id) } : null,

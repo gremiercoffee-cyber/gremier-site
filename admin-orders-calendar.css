@@ -98,7 +98,7 @@
 .ocal-note { margin: 0; font-size: .82rem; background: #fff7e0; border-radius: 10px; padding: 8px 10px; }
 .ocal-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .ocal-acts .oc-btn { flex: 1 1 40%; }
-.ocal-acts .oc-btn.primary { flex-basis: 100%; background: #fff; border: 1.5px solid #1a1a1a; font-weight: 600; }
+.ocal-acts .oc-btn.primary { flex-basis: 40%; background: #fff; border: 1.5px solid #1a1a1a; font-weight: 600; }
 .ocal-acts .oc-btn.icon { flex: 0 0 auto; padding: 0 14px; }
 /* Call · Text · WhatsApp share one row. */
 .ocal-acts .oc-btn.contact { flex: 1 1 28%; min-width: 0; }
