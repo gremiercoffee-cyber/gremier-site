@@ -2640,6 +2640,8 @@ window.gremierLoadDynamicOpsProductCatalog = async function gremierLoadDynamicOp
     const p = typeof normalizeProduct === 'function' ? normalizeProduct(raw) : raw;
     const meta = gremierBuildOpsProductMeta(p);
     if (!meta) return;
+    // A switched-off product with no shared stock row of its own (e.g. an old "test" product) isn't offered in the pickers.
+    if (p?.is_active === false && meta.key === String(p.id)) return;
     // Bundle products (ops_exclude=true with a stock_key) map orders to existing rows but
     // should NOT create their own inventory row or appear in stock pickers.
     if (meta.isBundle) { if (meta.image) images[meta.key] = meta.image; return; }
