@@ -3,6 +3,7 @@
 // Month: the month as a grid of small pictures; tap a day to see it. Today: one day, bigger cards.
 // A card shows pictures of what goes out, with the name and the street on top; tapping it shows the address (street and number,
 // then the city), everything to deliver, and the usual buttons. "Full order" opens the order itself.
+// To change a delivery day, drag the card onto another day (Week or Month); on a phone, hold the card a moment first.
 // Entries come from admin-orders-board.js: { key, kind:'order'|'job', date, time, name, phone,
 // address, city, items:[{label, qty, img, note}], labels, total, late, unpaidParts, open(), actions:[…] }.
 (function (root) {
@@ -148,6 +149,97 @@
   }
   function escClose(ev) { if (ev.key === 'Escape') closePreview(); }
   function closePreview() { document.getElementById('ocalSheet')?.remove(); root.removeEventListener('keydown', escClose); }
+
+  // ── Drag a card to another day (Week and Month views, and from Overdue / No date) ──
+  // Mouse: press and move. Touch: press and hold a moment, then drag (a quick swipe still scrolls).
+  let drag = null, swallowClick = false;
+  const dayAt = (x, y) => document.elementFromPoint(x, y)?.closest('.ocal [data-day], .ocal .ocal-mcell[data-goday]');
+  const dayOf = (el) => el?.dataset.day || el?.dataset.goday || '';
+  function scroller(el) {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+  function startDrag() {
+    const d = drag;
+    d.on = true;
+    const r = d.card.getBoundingClientRect();
+    d.dx = d.x - r.left; d.dy = d.y - r.top;
+    d.ghost = d.card.cloneNode(true);
+    d.ghost.className += ' ocal-ghost';
+    Object.assign(d.ghost.style, { width: r.width + 'px', height: r.height + 'px' });
+    document.body.appendChild(d.ghost);
+    d.card.classList.add('ocal-dragging');
+    document.body.classList.add('ocal-drag-on');
+    navigator.vibrate?.(15);
+    moveGhost(d.x, d.y);
+  }
+  function moveGhost(x, y) {
+    const d = drag;
+    d.ghost.style.transform = `translate(${x - d.dx}px, ${y - d.dy}px) rotate(-3deg)`;
+    const over = dayAt(x, y);
+    if (over !== d.over) { d.over?.classList.remove('ocal-drop'); over?.classList.add('ocal-drop'); d.over = over; }
+    d.edge = y < 70 ? -1 : y > innerHeight - 70 ? 1 : 0;
+    if (d.edge && !d.timer) d.timer = setInterval(() => { if (drag?.edge) { scroller(drag.card).scrollBy(0, drag.edge * 14); moveGhost(drag.x, drag.y); } }, 16);
+  }
+  function endDrag(drop) {
+    const d = drag; drag = null;
+    if (!d) return;
+    clearTimeout(d.hold); clearInterval(d.timer);
+    if (!d.on) return;
+    swallowClick = true; setTimeout(() => { swallowClick = false; }, 400);
+    d.ghost.remove(); d.card.classList.remove('ocal-dragging'); d.over?.classList.remove('ocal-drop');
+    document.body.classList.remove('ocal-drag-on');
+    const day = drop ? dayOf(d.over) : '';
+    if (!day || day === d.entry.date) return;
+    move(d.entry, day);
+  }
+  async function move(e, day) {
+    const from = e.date, nice = (k) => at(k).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    try {
+      await e.move(day);
+      snack(`${e.name} moved to ${nice(day)}`, from ? async () => { try { await e.move(from); snack(`${e.name} is back on ${nice(from)}`); } catch (err) { root.showToast?.(err.message || 'Could not move it back'); } } : null);
+    } catch (err) { root.showToast?.('Could not move it: ' + (err.message || err)); }
+  }
+  function snack(text, undo) {
+    document.getElementById('ocalSnack')?.remove();
+    const el = document.createElement('div');
+    el.id = 'ocalSnack'; el.setAttribute('role', 'status');
+    el.innerHTML = `<span>${esc(text)}</span>${undo ? '<button type="button">Undo</button>' : ''}`;
+    if (undo) el.querySelector('button').onclick = () => { el.remove(); undo(); };
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 6000);
+  }
+  document.addEventListener('pointerdown', (ev) => {
+    if (ev.button || drag) return;
+    const card = ev.target.closest('.ocal:not(.ocal-strip) .ocal-card');
+    if (!card || card.closest('.ocal-next')) return;
+    const entry = byKey.get(card.dataset.ocal);
+    if (!entry || typeof entry.move !== 'function') return;
+    drag = { card, entry, x: ev.clientX, y: ev.clientY, sx: ev.clientX, sy: ev.clientY, touch: ev.pointerType !== 'mouse', on: false };
+    if (drag.touch) drag.hold = setTimeout(() => { if (drag && !drag.on) startDrag(); }, 380);
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    drag.x = ev.clientX; drag.y = ev.clientY;
+    const far = Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 8;
+    if (!drag.on) {
+      if (drag.touch) { if (far) endDrag(false); return; }   // moved before the hold: it's a scroll
+      if (!far) return;
+      startDrag();
+    }
+    ev.preventDefault();
+    moveGhost(ev.clientX, ev.clientY);
+  });
+  document.addEventListener('pointerup', () => endDrag(true));
+  document.addEventListener('pointercancel', () => endDrag(false));
+  // While a card is held, the page mustn't scroll or open the long-press menu.
+  document.addEventListener('touchmove', (ev) => { if (drag?.on) ev.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', (ev) => { if (drag || ev.target.closest('.ocal:not(.ocal-strip) .ocal-card')) ev.preventDefault(); });
+  document.addEventListener('dragstart', (ev) => { if (ev.target.closest?.('.ocal-card')) ev.preventDefault(); });
+  document.addEventListener('click', (ev) => { if (swallowClick && ev.target.closest('.ocal')) { ev.stopPropagation(); ev.preventDefault(); swallowClick = false; } }, true);
 
   document.addEventListener('click', (ev) => {
     if (!ev.target.closest('.ocal')) return;

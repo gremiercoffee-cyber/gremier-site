@@ -105,6 +105,7 @@
           // o.items already holds the paid combined orders' items (see `paid` above); adding `all` again counted them twice.
           items: mergeItems(o.items || []),
           unpaidParts: waiting.length ? `${waiting.map(labelOf).join(', ')} (${waiting.reduce((s, x) => s + Number(x.total || 0), 0).toFixed(0)}₪) joins this delivery once it's paid.` : '',
+          move: (day) => moveTo({ orderId: o.id, jobId: job?.id }, day),
           actions: [
             { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(o.id) },
             ...contact(phone),
@@ -123,6 +124,7 @@
           labels: order?.order_number != null ? ['#' + order.order_number] : [],
           items: fromOrder.length ? fromOrder : qty.map(([pid, n]) => ({ label: productLabel(pid), qty: Number(n), img: root.getProductImage ? root.getProductImage(pid) : '' })),
           unpaidParts: '',
+          move: (day) => moveTo({ orderId: web, jobId: j.id }, day),
           actions: [
             web ? { label: 'Full order', cls: 'primary', run: () => root.openOrderDetail?.(web) }
               : { label: '✎ Edit', cls: 'primary', run: () => root.GremierBoard.edit(j.id) },
@@ -161,6 +163,33 @@
     box.hidden = !unpaid.length;
     const head = document.getElementById('plkWaitingHead');
     if (head) head.hidden = !(unpaid.length || document.getElementById('payLinksOneTimeBody')?.children.length);
+  }
+
+  /** Drag a card to another day: the scheduled delivery, the order and the delivery queue all move together
+   *  (like changing the date in the order card); the time stays, the customer isn't contacted. */
+  async function moveTo({ orderId, jobId }, day) {
+    const date = day || null;
+    if (jobId && date) {
+      const { data, error } = await sb.from('jobs').update({ date }).eq('id', jobId).select('id');
+      if (error) throw error;
+      if (!data?.length) throw new Error('The delivery could not be moved');
+      const local = root.__gremierDeliveries?.jobs?.find((x) => x.id === jobId);
+      if (local) local.date = date;   // show it on the new day straight away; the schedule reloads below
+    }
+    if (orderId) {
+      const { data: fresh, error } = await sb.from('orders').select('delivery_info').eq('id', orderId).maybeSingle();
+      if (error) throw error;
+      if (fresh) {
+        const info = { ...(fresh.delivery_info || {}), delivery_date: date };
+        const { error: saveError } = await sb.from('orders').update({ delivery_info: info, updated_at: new Date().toISOString() }).eq('id', orderId);
+        if (saveError) throw saveError;
+        for (const list of [orders || [], typeof allOrders !== 'undefined' ? allOrders : []]) for (const x of list) if (x.id === orderId) x.delivery_info = info;
+        const { error: queueError } = await sb.from('pending_website_deliveries').update({ scheduled_date: date }).eq('order_id', orderId);
+        if (queueError) console.warn('pending_website_deliveries update:', queueError);
+      }
+    }
+    render();
+    root.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
   }
 
   const act = (name) => (id) => {
