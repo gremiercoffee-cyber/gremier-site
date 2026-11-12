@@ -18,40 +18,56 @@
     return t;
   }
 
-  let bestRank = {}, bought = new Set(), rerender = null;
+  // How products are ordered for each shopper. Score = what sells (everyone) + what this shopper likes:
+  //  · popularity: paid orders in the last 90 days, on a square-root curve (top seller = 10),
+  //    so a best seller is ahead by default but not so far ahead that personal interest can't move things;
+  //  · this shopper's purchases: 8 per order, fading by half every 90 days (strongest personal signal);
+  //  · browsing on this device: opened = 1, added to cart = 3, fading by half every 30 days.
+  // One look at a product doesn't jump it past the best sellers; buying it again and again does.
+  // Niche products start lower so they sit at the end unless this shopper actually buys them.
+  const NICHE = { '2203b52d-df14-4c71-afe6-5c0a4c29079b': -10 }; // Decaf: last unless this shopper buys it
+  let bestRank = {}, pop = {}, bought = {}, rerender = null;
+  const setBest = (rows) => {
+    bestRank = {}; pop = {};
+    const max = Math.max(1, ...rows.map((r) => Number(r.n) || 0));
+    rows.forEach((r, i) => { bestRank[r.id] = i; pop[r.id] = 10 * Math.sqrt((Number(r.n) || 0) / max); });
+  };
   const Taste = {
-    /** Product opened = 1, added to cart = 3, ordered = 4. */
+    /** Product opened = 1, added to cart = 3. */
     bump(id, w) {
       if (!id) return;
       const t = readTaste(); id = String(id);
       t.s[id] = Math.min(50, (t.s[id] || 0) + w);
       put(TASTE_KEY, t);
     },
-    /** Past orders (signed-in account or this device) – the strongest signal. */
-    setBought(ids) {
-      const next = new Set((ids || []).map(String));
-      if ([...next].sort().join() === [...bought].sort().join()) return;
+    /** Past orders (signed-in account or this device): [{ id, date }] — one entry per order a product was in. */
+    setBought(list) {
+      const next = {};
+      for (const x of list || []) {
+        const id = String(typeof x === 'object' ? x.id : x), days = x && x.date ? Math.max(0, (Date.now() - new Date(x.date)) / 864e5) : 0;
+        if (id) next[id] = Math.min(40, (next[id] || 0) + 8 * Math.pow(0.5, days / 90));
+      }
+      if (JSON.stringify(next) === JSON.stringify(bought)) return;
       bought = next; rerender?.();
     },
-    score(id) { id = String(id); return (readTaste().s[id] || 0) + (bought.has(id) ? 12 : 0); },
-    isPersonal() { return bought.size > 0 || Object.keys(readTaste().s).length > 0; },
+    /** This shopper's own interest. */
+    personal(id) { id = String(id); return (readTaste().s[id] || 0) + (bought[id] || 0); },
+    score(id) { id = String(id); return (pop[id] || 0) + (NICHE[id] || 0) + this.personal(id); },
+    isPersonal() { return Object.keys(bought).length > 0 || Object.keys(readTaste().s).length > 0; },
     isBestSeller(id) { const r = bestRank[String(id)]; return r != null && r < 3; },
-    /** Sort key, lower comes first: personal interest, then the last 90 days of real sales. */
-    rank(id) {
-      const b = bestRank[String(id)];
-      return -this.score(id) * 100 + (b == null ? 60 : b);
-    },
+    /** Sort key, lower comes first. Negative when the product has any popularity or personal interest. */
+    rank(id) { return -this.score(id) * 100; },
     loadBestSellers(sb, onChange) {
       rerender = onChange;
       const cached = get(BEST_KEY);
-      if (cached && Array.isArray(cached.ids)) cached.ids.forEach((id, i) => { bestRank[id] = i; });
-      if (cached && Date.now() - cached.ts < 6 * 36e5) return;
+      if (cached && Array.isArray(cached.rows)) setBest(cached.rows);
+      if (cached && Array.isArray(cached.rows) && Date.now() - cached.ts < 6 * 36e5) return;
       sb.rpc('storefront_best_sellers', { days: 90 }).then(({ data, error }) => {
         if (error || !Array.isArray(data)) return;
-        const ids = data.map((r) => String(r.product_id));
-        put(BEST_KEY, { ts: Date.now(), ids });
-        if (cached && JSON.stringify(cached.ids) === JSON.stringify(ids)) return;
-        bestRank = {}; ids.forEach((id, i) => { bestRank[id] = i; });
+        const rows = data.map((r) => ({ id: String(r.product_id), n: Number(r.orders) || 0 }));
+        put(BEST_KEY, { ts: Date.now(), rows });
+        if (cached && JSON.stringify(cached.rows) === JSON.stringify(rows)) return;
+        setBest(rows);
         onChange?.();
       }, () => {});
     },

@@ -795,7 +795,7 @@
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261111-3"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261111-1"/>
-<script src="/storefront-nav.js?v=20261111-1"></script>
+<script src="/storefront-nav.js?v=20261112-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 <link rel="stylesheet" href="/storefront-discovery.css?v=20261111-2"/>
 <script src="/storefront-discovery.js?v=20261111-1"></script>
@@ -1871,7 +1871,7 @@ function getFeaturedProducts() {
     const ranked = products
       .filter(p => p.category!=='coffeebars' && !isSubscriptionProduct(p) && !(typeof isCoffeeBarProduct === 'function' && isCoffeeBarProduct(p)))
       .map(p => ({ p, r: taste.rank(p.id) }))
-      .filter(x => x.r < 60)               // has personal interest or real recent sales
+      .filter(x => x.r < 0)                // sells, or this shopper has shown interest
       .sort((a, b) => a.r - b.r)
       .map(x => x.p);
     if (ranked.length >= 4) return ranked.slice(0, 4);
@@ -5263,7 +5263,7 @@ async function sendChatMessageText(text) {
     // Guests (or members with older device orders): orders paid on this device.
     const local = get(HK) || [];
     for (const o of local) if (!list.some((x) => x.id === o.id)) list.push(o);
-    window.GremierTaste?.setBought(list.flatMap((o) => (o.items || []).map((it) => String(it.product_id || '').split('_')[0])).filter(Boolean));
+    window.GremierTaste?.setBought(list.flatMap((o) => [...new Set((o.items || []).flatMap((it) => [it.product_id, ...(Array.isArray(it.subscription_items) ? it.subscription_items.map((x) => x && x.product_id) : [])]).map((id) => String(id || '').split('_')[0]).filter(Boolean))].map((id) => ({ id, date: o.date }))));
     list.sort((a, b) => new Date(b.date) - new Date(a.date));
     // Drop repeats of the same basket so the row shows distinct orders.
     const seen = new Set();
@@ -5292,6 +5292,7 @@ async function sendChatMessageText(text) {
       else cart.push({ id: p.id, base_product_id: p.id, name_en: p.name_en, name_he: p.name_he, price: p.price, images: p.images, category: p.category, delivery_price: p.delivery_price != null ? parseFloat(p.delivery_price) : null, qty });
     }
     updateCartCount();
+    window.GremierJourneys?.track('reorder_used');
     const skipped = (o.items || []).length - items.length;
     showToast(skipped > 0 ? T(`Added to cart — ${skipped} item(s) no longer available`, `נוסף לעגלה — ${skipped} פריטים כבר לא זמינים`) : T('Added to cart ✓', 'נוסף לעגלה ✓'));
     if (typeof openCart === 'function') openCart();
@@ -5316,12 +5317,14 @@ async function sendChatMessageText(text) {
     const strip = btn.closest('.reorder-strip');
     const open = !strip.classList.contains('open');
     document.querySelectorAll('.reorder-strip.open').forEach((x) => { x.classList.remove('open'); x.querySelector('.ro-pill')?.setAttribute('aria-expanded', 'false'); });
-    if (open) { strip.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); }
+    if (open) { strip.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); window.GremierJourneys?.track('reorder_open'); }
   };
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.reorder-strip')) document.querySelectorAll('.reorder-strip.open').forEach((x) => { x.classList.remove('open'); x.querySelector('.ro-pill')?.setAttribute('aria-expanded', 'false'); });
   });
+  let reorderSeen = false;
   function renderStrips() {
+    if (history.length && !reorderSeen) { reorderSeen = true; window.GremierJourneys?.track('reorder_seen'); }
     const html = history.length
       ? reorderPillHtml() + `<div class="reorder-row">${history.map(orderCardHtml).join('')}</div>` : '';
     for (const [id, anchorId, where] of [['reorderShop', 'catFilter', 'beforebegin'], ['reorderHome', 'featuredGrid', 'beforebegin']]) {

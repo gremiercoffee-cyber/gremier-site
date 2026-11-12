@@ -1,5 +1,5 @@
 export const uuid=(v:unknown)=>typeof v==='string'&&/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v);
-const kinds=new Set(['page_view','product_view','category_view','bar_builder','pack_builder','cart_add','cart_open','checkout_open','pay_click','payment_error','active','member_signin']);
+const kinds=new Set(['page_view','product_view','category_view','bar_builder','pack_builder','cart_add','cart_open','checkout_open','pay_click','payment_error','active','member_signin','reorder_seen','reorder_open','reorder_used']);
 const pages=new Set(['Home','Shop','Coffee bars','Account','Gift cards','About','Cart','Checkout','Payment','Order confirmation','Product','6-pack builder','Coffee bar builder','Store locations','Delivery information','Privacy & terms']);
 export function cleanJourney(raw:any){
  if(raw?.consent!==true||!uuid(raw.visitor_id)||!uuid(raw.session_id)||!Array.isArray(raw.events)||!raw.events.length||raw.events.length>20)throw Error('invalid_batch');
