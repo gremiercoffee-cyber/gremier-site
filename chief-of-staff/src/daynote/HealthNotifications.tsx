@@ -28,7 +28,7 @@ export function HealthNotifications({preferences,onSaved}:{preferences?:Partial<
  <label className="dn-label">Evening · Israel time<input type="time" value={p.reminder_time} onChange={e=>setP({...p,reminder_time:e.target.value})}/></label>
  <label className="dn-toggle"><input type="checkbox" checked={p.health_alerts} onChange={e=>setP({...p,health_alerts:e.target.checked})}/> Unusual health patterns</label>
  <p className="dn-fine">A cautious heads-up when several readings move outside your own usual range. This can reflect poor sleep, stress, exercise, alcohol or illness; it cannot tell you whether you are getting sick. Daytime only, at most once per day.</p>
- <label className="dn-toggle"><input type="checkbox" checked={p.weekly_summary} onChange={e=>setP({...p,weekly_summary:e.target.checked})}/> Sunday evening summary</label>
+ <label className="dn-toggle"><input type="checkbox" checked={p.weekly_summary} onChange={e=>setP({...p,weekly_summary:e.target.checked})}/> When a weekly or monthly report is ready</label>
  <p className="dn-fine">Completed check-ins are skipped. No notifications over Shabbos. Reminder times follow Asia/Jerusalem, including daylight saving.</p>
  <button className="dn-primary" disabled={busy}>Save notification settings</button></form>{message&&<p role="status">{message}</p>}</section>;
 }

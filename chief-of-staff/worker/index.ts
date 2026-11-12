@@ -7,7 +7,7 @@ import {HEALTH_ORIGIN} from '../shared/health-origin';
 import {androidDeviceRoute} from './daynote-android';
 import {redeemDaynoteLogin} from './daynote-login';
 import {finishWhoopAuth,syncWhoop} from './daynote-whoop';
-import {daynoteRoute,healthReminders,pollForWake} from './daynote';
+import {daynoteRoute,healthReminders,pollForWake,healthReports} from './daynote';
 import {finishHealthAuth,healthSync} from './daynote-google';
 import {hashgachaCampaigns,syncHashgacha} from './hashgacha';
 import {homeJobs,stopHomeJob} from './home-jobs';
@@ -726,6 +726,7 @@ export default {
     // Reminders and due times the user set: every 5 minutes, so they arrive on time.
     ctx.waitUntil(runProactive(env).catch((e) => console.error("reminders", e)));
     ctx.waitUntil(healthReminders(env).catch(()=>{}));
+    ctx.waitUntil(healthReports(env).catch((e)=>console.error('health reports',e)));
     if (new Date(event.scheduledTime).getUTCMinutes() % 15 >= 5) return;
     ctx.waitUntil(healthSync(env).catch(()=>{}).then(()=>pollForWake(env)).catch(()=>{}));
     ctx.waitUntil(import("./broken").then((b) => b.checkBroken(env)).catch((e) => console.error("broken check", e)));

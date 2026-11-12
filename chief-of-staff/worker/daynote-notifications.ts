@@ -32,7 +32,7 @@ export async function pollForWake(env:Env,at=new Date(),sync=healthSync){
  const wake=await latestWake(env,at);if(wake&&localDate(wake.end_at)===localDate(at))return;
  await sync(env,true,false,7,false,true);
 }
-export async function healthReminders(env:Env,at=new Date(),deliver=sendPush,weekly?:()=>Promise<string>){
+export async function healthReminders(env:Env,at=new Date(),deliver=sendPush){
  const p=await daynotePreferences(env);if(!p.reminders&&!p.morning_reminders&&!p.health_alerts&&!p.weekly_summary||isShabbat('Asia/Jerusalem',at)||!pushConfigured(env))return;
  const devices=await healthNotificationStatus(env);if(!devices.health_devices&&!devices.existing_devices)return;
  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(at),time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(at);
@@ -56,9 +56,10 @@ export async function healthReminders(env:Env,at=new Date(),deliver=sendPush,wee
   const n=await first<{document:string}>(env,'SELECT document FROM daynote_nightly WHERE date=? AND NOT EXISTS(SELECT 1 FROM daynote_score_dirty WHERE date=?)',date,date),notice=unusualVitals(n?JSON.parse(n.document) as NightScore:null);
   if(notice)notices.push({key:'vitals:'+date,message:{title:'A change in your usual pattern',body:'A few readings look different today. Open Health Journal to review what changed.',url:HEALTH_URL+'?vitals=1&date='+date,tag:'daynote-vitals'}});
  }
- if(p.weekly_summary&&weekly&&new Date(date+'T12:00Z').getUTCDay()===0&&within('19:00')){
-  const sent=await first(env,'SELECT key FROM daynote_notice_delivery WHERE key=? AND sent_at IS NOT NULL','summary:'+date);
-  if(!sent)notices.push({key:'summary:'+date,message:{title:'Health Journal · weekly review',body:(await weekly()).split('\n').slice(1,4).join(' · '),url:HEALTH_URL,tag:'daynote-summary'}});
+ if(p.weekly_summary&&time>='08:00'&&time<'22:00'){
+  // A finished weekly/monthly report: one generic notice (no health details on the lock screen) that opens it in the app.
+  const r=await first<{id:string;kind:string}>(env,"SELECT id,kind FROM daynote_reports WHERE status='ready' AND ready_at>? AND NOT EXISTS(SELECT 1 FROM daynote_notice_delivery d WHERE d.key='report:'||daynote_reports.id AND d.sent_at IS NOT NULL) ORDER BY ready_at LIMIT 1",new Date(at.getTime()-3*86400000).toISOString());
+  if(r)notices.push({key:'report:'+r.id,message:{title:r.kind==='month'?'Your monthly health report is ready':'Your weekly health report is ready',body:'See which way things are heading and what to focus on next.',url:HEALTH_URL+'?report='+r.id,tag:'daynote-report'}});
  }
  for(const n of notices){
   const claimed=await first(env,'INSERT INTO daynote_notice_delivery(key,created_at,claim_until) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET claim_until=excluded.claim_until WHERE daynote_notice_delivery.sent_at IS NULL AND daynote_notice_delivery.claim_until<? RETURNING key',n.key,at.toISOString(),at.getTime()+120000,at.getTime());if(!claimed)continue;

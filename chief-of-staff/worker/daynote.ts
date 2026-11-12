@@ -138,6 +138,8 @@ export async function daynoteRoute(req:Request,env:Env):Promise<Response>{
  const android=await androidOwnerRoute(env,req,path);if(android)return android;
  if(path==='/score-profile'&&method==='GET')return json(await scoreProfile(env));
  if(path==='/score-profile'&&method==='PUT')return json(await saveScoreProfile(env,await body()));
+ if(method==='GET'&&path==='/reports'){const {listReports}=await import('./daynote-reports');return json(await listReports(env));}
+ if(method==='GET'&&path.startsWith('/reports/')){const {getReport}=await import('./daynote-reports');return json(await getReport(env,decodeURIComponent(path.slice(9))));}
  if(method==='GET'&&path==='/scores'){const date=u.searchParams.get('date')||localDate();if(!validDate(date))throw new HttpError(400,'Invalid date.');return json(await nightlyScores(env,date));}
  if(method==='GET'&&path==='/dashboard'){const date=u.searchParams.get('date')||localDate();if(!validDate(date))throw new HttpError(400,'Invalid date.');return json(await recoveryDashboard(env,date));}
  if(path==='/whoop/configure'&&method==='POST')return json(await configureWhoop(env,await body()));
@@ -192,4 +194,5 @@ export async function weeklyHealthSummary(env:Env){
  const comparisons=analysis.comparisons.filter(c=>['hrv_ms','resting_hr'].includes(c.metric)&&c.yes_n>=5&&c.no_n>=5&&c.difference!==null).slice(0,3).map(c=>`${habits.find(h=>h.id===c.habit_id)?.label||c.habit_id}: ${c.label.toLowerCase()} with ${c.metric==='hrv_ms'?'HRV':'resting heart rate'} (${c.difference!>0?'+':''}${c.difference!.toFixed(1)}; yes n=${c.yes_n}, no n=${c.no_n}; missing ${c.missing}).`);
  return ['Health Journal · weekly review',...vitals,...(comparisons.length?comparisons:['Not enough journal and measurement data to identify reliable patterns yet.']),'Patterns are associations across available history, not proof of causes. Other factors and chance may explain them.','https://health.gremiercoffee.co.il/daynote/'].join('\n');
 }
-export async function healthReminders(env:Env){return scheduledHealthReminders(env,new Date(),undefined,()=>weeklyHealthSummary(env));}
+export async function healthReminders(env:Env){return scheduledHealthReminders(env,new Date());}
+export {healthReports} from './daynote-reports';
