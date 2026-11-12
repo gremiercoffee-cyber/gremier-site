@@ -37,7 +37,7 @@
     ['23-caramel-cream-latte', 'Caramel Cream Latte', 'קרים לאטה קרמל', 'shop', [1, 0, 0], [1.06, 0, 0]],
     ['24-caramel-pump', 'Caramel Syrup', 'סירופ קרמל', 'shop', [1, 0, 0], [1.06, 0, 0]],
     ['25-sugar-pump', 'Sugar Syrup', 'סירופ סוכר', 'shop', [1, 0, 0], [1.06, 0, 0], '22% center'],
-    ['29-classic-jug-two-glasses', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
+    ['31-classic-jug-natural-milk', '5 litres for the office or family', '5 ליטר למשרד או למשפחה', 'shop', [1.03, 1.5, -1], [1.1, -4, 3]],
     ['09-coffee-bar', 'Coffee bars for your event', 'עמדות קפה לאירוע שלכם', 'coffeebars', [1.03, -1.5, -1], [1.1, 4, 3]],
     // The closing shot is a tall photo with its own words: the camera tilts down it (TILT below). No caption.
     ['10-elevate', '', '', 'shop', [1.02, 0, 0], [1.08, 0, 0], '50% 0%'],
@@ -73,7 +73,7 @@
       ['18-vanilla-pump', 'VANILLA SYRUP.', 'סירופ וניל.'],
       ['24-caramel-pump', 'CARAMEL SYRUP.', 'סירופ קרמל.'],
       ['25-sugar-pump', 'SUGAR SYRUP.', 'סירופ סוכר.'],
-      ['29-classic-jug-two-glasses', '5 LITRES.', '5 ליטר.'],
+      ['31-classic-jug-natural-milk', '5 LITRES.', '5 ליטר.'],
       ['09-coffee-bar', 'COFFEE BARS.', 'עמדות קפה.', 'coffeebars'],
     ] },
   };
@@ -112,7 +112,7 @@
   .hero-film-shot{position:absolute;inset:0;opacity:0;transition:opacity ${FADE}ms ease}
   .hero-film-shot.on{opacity:1}
   .hero-film-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform}
-  @media(max-width:640px){.hero-film-shot img[src*="/29-classic-jug-two-glasses.webp"]{object-fit:contain;background:#17130f}}
+  @media(max-width:640px){.hero-film-shot img[src*="/31-classic-jug-natural-milk.webp"]{object-fit:contain;background:#17130f}}
   .hero-film-cap{position:absolute;inset-inline-start:18px;bottom:16px;z-index:2;background:rgba(255,255,255,.88);backdrop-filter:blur(6px);color:#1a1a1a;font-size:.86rem;font-weight:600;padding:8px 14px;border-radius:999px;box-shadow:0 2px 12px rgba(0,0,0,.08);transition:opacity .4s}
   .hero-film-dots{position:absolute;inset-inline-end:18px;bottom:20px;z-index:2;display:flex;gap:6px}
   .hero-film-dots button{width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.6);cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.12)}

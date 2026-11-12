@@ -1893,7 +1893,7 @@ function cloudinaryOptimize(url, width) {
   return url.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_' + w + '/');
 }
 async function loadProducts() {
-  const CACHE_KEY = 'gremier_products_v9';
+  const CACHE_KEY = 'gremier_products_v10';
   const CACHE_TTL = 5 * 60 * 1000;
   function mapProduct(p) {
     const dv = (p.variations || []).find(v => v.type === 'delivery_price');
@@ -5673,7 +5673,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-subscribe.js?v=20261110-1"></script>
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261110-1"></script>
-<script src="/storefront-hero-stills.js?v=20261111-4"></script>
+<script src="/storefront-hero-stills.js?v=20261112-1"></script>
 <script src="/coffee-bar-order.js?v=20261111-2"></script>
 <script src="/storefront-bar-layout.js?v=20261111-1"></script>
 <script src="/storefront-bar-world.js?v=20261110-1"></script>
