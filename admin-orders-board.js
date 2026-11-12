@@ -169,28 +169,47 @@
    *  (like changing the date in the order card); the time stays, the customer isn't contacted. */
   async function moveTo({ orderId, jobId }, day) {
     const date = day || null;
-    if (jobId && date) {
-      const { data, error } = await sb.from('jobs').update({ date }).eq('id', jobId).select('id');
-      if (error) throw error;
-      if (!data?.length) throw new Error('The delivery could not be moved');
-      const local = root.__gremierDeliveries?.jobs?.find((x) => x.id === jobId);
-      if (local) local.date = date;   // show it on the new day straight away; the schedule reloads below
-    }
-    if (orderId) {
-      const { data: fresh, error } = await sb.from('orders').select('delivery_info').eq('id', orderId).maybeSingle();
-      if (error) throw error;
-      if (fresh) {
-        const info = { ...(fresh.delivery_info || {}), delivery_date: date };
-        const { error: saveError } = await sb.from('orders').update({ delivery_info: info, updated_at: new Date().toISOString() }).eq('id', orderId);
-        if (saveError) throw saveError;
-        for (const list of [orders || [], typeof allOrders !== 'undefined' ? allOrders : []]) for (const x of list) if (x.id === orderId) x.delivery_info = info;
-        const { error: queueError } = await sb.from('pending_website_deliveries').update({ scheduled_date: date }).eq('order_id', orderId);
-        if (queueError) console.warn('pending_website_deliveries update:', queueError);
+    // Show it on the new day at once; save in the background, and put it back if saving fails.
+    const job = jobId && date ? root.__gremierDeliveries?.jobs?.find((x) => x.id === jobId) : null;
+    const local = orderId ? [orders || [], typeof allOrders !== 'undefined' ? allOrders : []].flatMap((l) => l.filter((x) => x.id === orderId)) : [];
+    const before = { job: job?.date, info: local.map((x) => x.delivery_info) };
+    if (job) job.date = date;
+    for (const x of local) x.delivery_info = { ...(x.delivery_info || {}), delivery_date: date };
+    render();
+    // Saves run one after another, so a quick Undo can't land before the move it undoes.
+    const run = saveQueue.then(() => save());
+    saveQueue = run.catch(() => {});
+    pending++;
+    try { await run; } catch (err) {
+      if (job) job.date = before.job;
+      local.forEach((x, n) => { x.delivery_info = before.info[n]; });
+      render();
+      throw err;
+    } finally { pending--; }
+    // Reload the schedule once the last queued move is saved (an earlier reload would show the card jump back).
+    if (!pending) root.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
+
+    async function save() {
+      if (jobId && date) {
+        const { data, error } = await sb.from('jobs').update({ date }).eq('id', jobId).select('id');
+        if (error) throw error;
+        if (!data?.length) throw new Error('The delivery could not be moved');
+      }
+      if (orderId) {
+        // Read the order fresh so a payment update that just arrived isn't overwritten.
+        const { data: fresh, error } = await sb.from('orders').select('delivery_info').eq('id', orderId).maybeSingle();
+        if (error) throw error;
+        if (fresh) {
+          const info = { ...(fresh.delivery_info || {}), delivery_date: date };
+          const { error: saveError } = await sb.from('orders').update({ delivery_info: info, updated_at: new Date().toISOString() }).eq('id', orderId);
+          if (saveError) throw saveError;
+          const { error: queueError } = await sb.from('pending_website_deliveries').update({ scheduled_date: date }).eq('order_id', orderId);
+          if (queueError) console.warn('pending_website_deliveries update:', queueError);
+        }
       }
     }
-    render();
-    root.dispatchEvent(new CustomEvent('gremier:jobs-changed'));
   }
+  let saveQueue = Promise.resolve(), pending = 0;
 
   const act = (name) => (id) => {
     const a = root.__gremierDeliveryActions;

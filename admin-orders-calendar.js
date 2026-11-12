@@ -198,10 +198,11 @@
   }
   async function move(e, day) {
     const from = e.date, nice = (k) => at(k).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    try {
-      await e.move(day);
-      snack(`${e.name} moved to ${nice(day)}`, from ? async () => { try { await e.move(from); snack(`${e.name} is back on ${nice(from)}`); } catch (err) { root.showToast?.(err.message || 'Could not move it back'); } } : null);
-    } catch (err) { root.showToast?.('Could not move it: ' + (err.message || err)); }
+    // The card is already on its new day (the move shows it at once and saves in the background).
+    const failed = (err) => { document.getElementById('ocalSnack')?.remove(); root.showToast?.('Could not move it, so it’s back where it was: ' + (err.message || err)); };
+    const saving = e.move(day);
+    snack(`${e.name} moved to ${nice(day)}`, from ? () => { e.move(from).catch(failed); snack(`${e.name} is back on ${nice(from)}`); } : null);
+    saving.catch(failed);
   }
   function snack(text, undo) {
     document.getElementById('ocalSnack')?.remove();
