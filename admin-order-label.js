@@ -27,10 +27,20 @@
     const details = root.GremierRoute?.detailsLine?.(open ? open.details : di.address_details) || '';
     const extras = (i) => (typeof describeItemExtras === 'function' ? describeItemExtras(i) : '');
     // Combined orders join the delivery once paid (same rule as the Orders calendar); unpaid ones aren't packed.
+    // Printing from the label picker (not from the open order card): find the combined orders in the loaded orders.
     const paidPart = (x) => String(x.payment_status || '').toLowerCase() === 'paid';
-    const items = [o, ...(open?.parts || []).filter(paidPart)].flatMap((x) => (x.items || []))
+    const partIds = Array.isArray(di.combined_orders) ? di.combined_orders.map(String) : [];
+    const parts = open?.parts || ordersList().filter((x) => partIds.includes(String(x.id)) && info(x).combined_into === o.id);
+    // A subscription box or a build-your-own pack is listed by what's inside it.
+    const inside = (i) => {
+      const list = Array.isArray(i.subscription_items) && i.subscription_items.length ? i.subscription_items : Array.isArray(i.pack_items) && i.pack_items.length ? i.pack_items : null;
+      return list ? list.map((c) => ({ ...c, qty: (Number(c.qty) || 1) * (Number(i.qty ?? i.quantity ?? 1) || 1) })) : [i];
+    };
+    const items = [o, ...parts.filter(paidPart)].flatMap((x) => (x.items || [])).flatMap(inside)
       .filter((i) => i.category !== 'delivery_fee')
-      .map((i) => ({ qty: Number(i.qty ?? i.quantity ?? 1) || 1, name: i.name_en || i.name_he || i.name || 'Item', extra: extras(i) }));
+      .map((i) => ({ qty: Number(i.qty ?? i.quantity ?? 1) || 1, name: i.name_en || i.name_he || i.name || 'Item', extra: extras(i) }))
+      // The same product from the box and a combined order is one line (2× House Blend, not 1× twice).
+      .reduce((out, i) => { const same = out.find((x) => x.name === i.name && x.extra === i.extra); if (same) same.qty += i.qty; else out.push({ ...i }); return out; }, []);
     return {
       number: o.order_number != null ? '#' + o.order_number : '',
       name: o.customer_name || 'Customer', phone: o.customer_phone || '',
