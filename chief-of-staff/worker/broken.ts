@@ -33,6 +33,8 @@ async function scan(env:Env,at:number){
  // Invoice watcher (gremiercoffee@gmail.com): stopped, or not allowed to label mail yet.
  const inv=await import('./invoices').then(m=>m.invoiceHealth(env,at)).catch(()=>null);
  if(inv?.stale)out.push({key:'invoices',title:'Invoice check stopped',body:'New invoices in gremiercoffee@gmail.com are not being checked. Open Settings and reconnect Google if it shows an error.'});
+ const exp=await import('./expense-intake').then(m=>m.expenseIntakeHealth(env,at)).catch(()=>null);
+ if(exp?.stale)out.push({key:'expense-intake',title:'Expense email intake stopped',body:'Invoices emailed to gremiercoffee+expenses@gmail.com are not being filed. Open Settings and reconnect Google if it shows an error.'});
  if(inv?.connected&&!inv.canLabel)out.push({key:'invoices:labels',title:'Invoice check: allow labels',body:'Invoices are found and you get the email, but they cannot go under "Invoice ?" in Gmail yet. Settings → Google → Allow invoice labels.'});
  return {problems:out,computerOn};
 }

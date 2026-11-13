@@ -18,6 +18,10 @@ database_name = "chief-of-staff"
 database_id = "7b4ec7b1-cece-4e94-adf7-67e8ad5067ee"
 migrations_dir = "migrations"
 
+# Prints invoice pages and receipt emails to PDF for the expense inbox (worker/expense-intake.ts).
+[browser]
+binding = "BROWSER"
+
 # Proactive pass: morning briefing, overdue/reminder checks, stale "waiting for" nudges.
 [triggers]
 crons = ["*/5 * * * *"]

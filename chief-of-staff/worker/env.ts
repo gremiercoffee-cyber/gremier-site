@@ -42,4 +42,8 @@ export interface Env {
   /** Optional: Groq key for much faster dictation (Whisper on Groq). */
   GROQ_API_KEY?: string;
   TTS_VOICE?: string;
+  /** Cloudflare Browser Rendering: prints invoice pages and receipt emails to PDF (expense-intake.ts). */
+  BROWSER?: Fetcher;
+  /** Key for filing documents in the Gremier expense inbox (Supabase EXPENSE_INGRESS_SECRET_COS). Secret. */
+  EXPENSE_INGRESS_KEY?: string;
 }

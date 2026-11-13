@@ -718,6 +718,8 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(checkGesherScheduler(env).catch(()=>console.error('Gesher scheduler health check failed')));
     ctx.waitUntil(import("./invoices").then((m) => m.invoiceTick(env)).catch((e) => console.error("invoices", (e as Error).message)));
+    // Emails to the expenses address: file their document (attachment, invoice link, or the email as a PDF).
+    ctx.waitUntil(import("./expense-intake").then((m) => m.expenseIntakeTick(env)).catch((e) => console.error("expense intake", (e as Error).message)));
     // Every 5 minutes: jobs (start what's due, collect results). Everything else keeps its 15-minute rhythm
     // (one schedule: the account allows no more).
     ctx.waitUntil(tickJobs(env).catch((e) => console.error("jobs", e)));
