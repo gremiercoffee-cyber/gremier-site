@@ -79,6 +79,7 @@
   function deliveryHtml(plan){
     const before=state.deliveryMode==='before',pickup=state.deliveryMode==='pickup',ship=shipFor();
     return `<div class="pl-q bb-delivery"><h2>${T('How do you want us to deliver it?','איך תרצו שנביא את זה?')}</h2>
+      ${plan.ice?.bags ? `<p class="bb-ice-delivery-note">${iceDeliveryNote()}</p>` : ''}
       ${chips('deliveryMode',[['event',T('At the event','לאירוע')],['before',T('Before it','לפני האירוע')],['pickup',T('Pickup · free','איסוף · חינם')]])}
       <div class="bb-del-fields">
         <label>${pickup?T('Pickup date','תאריך האיסוף'):before?T('Delivery date','תאריך המשלוח'):T('Event date','תאריך האירוע')}<input type="date" class="form-input" id="plDelDate" min="${isoDay(1)}" value="${esc(state.deliveryDate)}"></label>
@@ -88,8 +89,7 @@
         :!state.deliveryDate?T('Choose a date. The delivery fee for your area is added at checkout.','בחרו תאריך. דמי המשלוח לאזור שלכם יתווספו בקופה.')
         :ship==='event'?T('Event delivery: we arrive at your event at that time.','משלוח לאירוע: נגיע לאירוע בשעה הזו.')
         :ship==='expedited'?T('That’s within two days, so it’s expedited delivery on that date.','זה בתוך יומיים, אז זה משלוח מהיר בתאריך הזה.')
-        :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small>
-      ${before && plan.ice?.bags ? `<p class="bb-ice-delivery-note">${iceDeliveryNote()}</p>` : ''}</div>`;
+        :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small></div>`;
   }
   // When checkout opens for a coffee bar, it starts with the delivery chosen here.
   function fillCheckoutDelivery(){
@@ -192,7 +192,7 @@ ${n.value}`:line;}
     `${bags} שקיות קרח ב-${insulatedBags} שקיות מבודדות`
   );
   const iceWeight = bags => T(`${bags * 2} kg`, `${bags * 2} ק״ג`);
-  const iceDeliveryNote = () => T('Choose Event Delivery for ice. It may melt with regular or expedited delivery.', 'מומלץ לבחור משלוח לאירוע. במשלוח רגיל או מהיר הקרח עלול להימס.');
+  const iceDeliveryNote = () => T('We recommend choosing Event Delivery. Ice may melt with regular or expedited delivery.', 'מומלץ לבחור משלוח לאירוע. במשלוח רגיל או מהיר הקרח עלול להימס.');
 
   function tiles(plan) {
     if (!plan) return [];
@@ -568,7 +568,7 @@ ${n.value}`:line;}
           <button type="button" data-ice-action="add" data-ice-bags="${next?.bags ?? bags}" ${next ? '' : 'disabled'} aria-label="${T('Add 2 kg of ice', 'הוספת 2 ק״ג קרח')}">+ <span>${iceWeight(1)}</span></button>
         </div>
         ${next?.insulatedBags > plan.ice.insulatedBags ? `<small>${T('Next 2 kg starts a new insulated bag', '2 ק״ג נוספים מצריכים שקית מבודדת נוספת')} · +₪${next.price - price}</small>` : ''}`
-        : `<button type="button" class="bbx-soft bb-ice-add" data-ice-action="start" data-ice-bags="${recommended.bags}"><span>${T('Add ice', 'הוסיפו קרח')}</span><b>${iceWeight(recommended.bags)} · ₪${recommended.price}</b></button>`}
+        : `<button type="button" class="bbx-cta bb-ice-add" data-ice-action="start" data-ice-bags="${recommended.bags}"><span>${T('Add ice', 'הוסיפו קרח')}</span><b>${iceWeight(recommended.bags)} · ₪${recommended.price}</b></button>`}
       </div>
       <p class="bb-ice-delivery-note">${iceDeliveryNote()}</p>
     </section>`;
@@ -579,7 +579,6 @@ ${n.value}`:line;}
       <h2>${T('How many guests do you have?', 'כמה אורחים יהיו?')}</h2>
       <div class="pl-guests">${chips('guests', tierChips.length ? tierChips : [[25, '25'], [50, '50'], [75, '75'], [100, '100']])}<input type="number" min="5" max="500" inputmode="numeric" value="${state.guests}" id="plGuests" class="form-input" aria-label="${T('Number of guests', 'מספר אורחים')}"></div>
       <small class="bb-q-hint">${T('Pick the closest number, or type your own.', 'בחרו את המספר הקרוב, או הקלידו.')}</small>
-      ${assemblyNote()}
       ${plan ? `<div class="bbx-standard"><h3>${T(`What comes standard for ${plan.tier.guests} guests`, `מה מגיע בבר הבסיסי ל-${plan.tier.guests} אורחים`)}</h3>
       ${includedHtml(plan)}
       ${plan.tooBig ? `<div class="pl-r-note">${T('For a bigger event, message us and we’ll plan it together.', 'לאירוע גדול יותר כתבו לנו ונתכנן יחד.')}</div>` : ''}</div>
@@ -625,7 +624,6 @@ ${n.value}`:line;}
       ${deliveryHtml(plan)}
       ${plan.ice ? `<button type="button" class="bbx-link" data-go="opt-extras">${plan.ice.bags ? T('Change ice quantity', 'שינוי כמות הקרח') : T('Add ice to your bar', 'הוסיפו קרח לבר')}</button>` : ''}
       ${home}
-      ${assemblyNote()}
       ${ownerDispHtml(plan)}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
       <div class="bbx-actions">${back(/^opt-/.test(prevStep || '') ? prevStep : prevStep === 'guests' ? 'guests' : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}
@@ -655,6 +653,7 @@ ${n.value}`:line;}
       <div class="bbx">
         <aside class="bbx-scene bb-tray">
           ${plan ? sceneHtml(plan) : ''}
+          ${plan ? assemblyNote() : ''}
           ${plan ? `<div class="bbx-price"><span>${esc(pname(plan.product))} · ${T(`${plan.tier.guests} guests`, `${plan.tier.guests} אורחים`)}</span><strong>₪${plan.total}</strong></div>` : ''}
         </aside>
         <div class="bbx-panel bb-qs">${stepHtml(plan, tierChips)}</div>

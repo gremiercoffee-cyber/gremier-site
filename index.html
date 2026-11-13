@@ -793,7 +793,7 @@
 <link rel="stylesheet" href="/storefront-nav.css?v=20261111-1"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261113-2"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261113-3"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261111-1"/>
 <script src="/storefront-nav.js?v=20261112-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -4136,7 +4136,7 @@ function updateCoffeeBarIceDeliveryNote() {
   note.hidden = !(ordinaryDelivery && cart.some(item => item.ice_bags > 0));
   if (!note.hidden) note.textContent = lang === 'he'
     ? 'מומלץ לבחור משלוח לאירוע. במשלוח רגיל או מהיר הקרח עלול להימס.'
-    : 'Choose Event Delivery for ice. It may melt with regular or expedited delivery.';
+    : 'We recommend choosing Event Delivery. Ice may melt with regular or expedited delivery.';
 }
 function updateDeliveryPrice() {
   updateCoffeeBarIceDeliveryNote();
@@ -5700,7 +5700,7 @@ async function sendChatMessageText(text) {
 <script src="/coffee-bar-order.js?v=20261113-1"></script>
 <script src="/storefront-bar-layout.js?v=20261113-1"></script>
 <script src="/storefront-bar-world.js?v=20261110-1"></script>
-<script src="/storefront-planner.js?v=20261113-2"></script>
+<script src="/storefront-planner.js?v=20261113-3"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
 <script src="/storefront-promo.js?v=20261111-2"></script>
 <script src="/storefront-together.js?v=20261103-2"></script>
