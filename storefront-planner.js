@@ -89,7 +89,7 @@
         :ship==='event'?T('Event delivery: we arrive at your event at that time.','משלוח לאירוע: נגיע לאירוע בשעה הזו.')
         :ship==='expedited'?T('That’s within two days, so it’s expedited delivery on that date.','זה בתוך יומיים, אז זה משלוח מהיר בתאריך הזה.')
         :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small>
-      ${before && plan.ice?.bags ? `<p class="bb-ice-delivery-note">${T('We recommend Event Delivery so the ice comes straight to you. With other delivery, it may sit in the vehicle and we can’t guarantee it will arrive frozen.', 'מומלץ לבחור משלוח לאירוע כדי שהקרח יגיע ישירות אליכם. במשלוח אחר הקרח עשוי לשהות ברכב, ולכן אין התחייבות שיגיע קפוא.')}</p>` : ''}</div>`;
+      ${before && plan.ice?.bags ? `<p class="bb-ice-delivery-note">${iceDeliveryNote()}</p>` : ''}</div>`;
   }
   // When checkout opens for a coffee bar, it starts with the delivery chosen here.
   function fillCheckoutDelivery(){
@@ -191,6 +191,8 @@ ${n.value}`:line;}
     `${bags} ${bags === 1 ? 'bag' : 'bags'} of ice in ${insulatedBags} insulated ${insulatedBags === 1 ? 'bag' : 'bags'}`,
     `${bags} שקיות קרח ב-${insulatedBags} שקיות מבודדות`
   );
+  const iceWeight = bags => T(`${bags * 2} kg`, `${bags * 2} ק״ג`);
+  const iceDeliveryNote = () => T('Choose Event Delivery for ice. It may melt with regular or expedited delivery.', 'מומלץ לבחור משלוח לאירוע. במשלוח רגיל או מהיר הקרח עלול להימס.');
 
   function tiles(plan) {
     if (!plan) return [];
@@ -463,20 +465,17 @@ ${n.value}`:line;}
     const next=Math.max(0,Math.min(current+Number(delta),current+plan.milkLiters-plan.liters));
     state.milkMix={...(state.milkMix||{}),[kind]:next};
   }
-  // Coffee for home: a strip of a few products, and "See all our coffee" opens a picker of everything we
-  // sell (photo, price, + / stepper). Ready-made products only (not the build-your-own 6-packs).
+  // Coffee for home opens a picker of ready-made products.
   const homeProducts=()=>all().filter(p=>extraProduct(p.id)&&!(p.variations||[]).some(v=>v.type==='pack'));
   function homeCard(p){
     const n=Number(state.extras[p.id])||0;
     return `<div class="bb-home-product${n?' on':''}">${p.images?.[0]?`<img src="${esc(p.images[0])}" alt="" loading="lazy">`:''}<span>${esc(pname(p))}<small>₪${Number(p.price)||0}</small></span>${n?`<span class="bb-home-step"><button type="button" data-take-home="${esc(p.id)}" data-d="-1" aria-label="${esc(T('One less','אחד פחות'))}">−</button><b>${n}</b><button type="button" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('One more','עוד אחד'))}">+</button></span>`:`<button type="button" class="bb-home-add" data-take-home="${esc(p.id)}" data-d="1" aria-label="${esc(T('Add to my coffee bar','הוספה לבר הקפה'))}">+</button>`}</div>`;
   }
   function takeHomeHtml() {
-    const available=homeProducts().filter(p=>!/syrup|סירופ/i.test(p.name_en||p.name_he||''));
-    const picks=[...available.filter(p=>p.category==='minis').slice(0,3),...available.filter(p=>p.category==='bottles').slice(0,3)];
-    if(!picks.length)return '';
-    const more=homeProducts().filter(p=>!picks.includes(p)&&Number(state.extras[p.id])>0).length;
-    return `<section class="bb-take-home"><h3>${T('Want some coffee for home?','רוצים גם קפה לבית?')}</h3><p>${T('Added to your coffee bar order and delivered with it.','נוסף להזמנת בר הקפה ומגיע איתו.')}</p><div class="bb-home-products">${picks.map(homeCard).join('')}
-      <button type="button" class="bb-home-more" data-picker="open"><span aria-hidden="true">☕</span><b>${T('See all our coffee','לכל הקפה שלנו')}</b><small>${more?T(`${more} more added`,`עוד ${more} נוספו`):T('Bottles, minis, 5L, syrups','בקבוקים, מיני, 5 ל׳, סירופים')}</small></button></div></section>`;
+    const available = homeProducts();
+    if (!available.length) return '';
+    const added = available.reduce((sum, product) => sum + (Number(state.extras[product.id]) || 0), 0);
+    return `<button type="button" class="bbx-soft bbx-coffee-for-home" data-picker="open"><span>${T('Add coffee for home','הוסיפו קפה לבית')}</span><b>${added ? T(`${added} added`, `${added} נוספו`) : '›'}</b></button>`;
   }
   let pickerOpen=false;
   function pickerHtml(){
@@ -561,15 +560,17 @@ ${n.value}`:line;}
     const next = bags < model.MAX_ICE_BAGS ? model.quoteCoffeeBarIce(bags + 1) : null;
     return `<section class="bb-ice">
       <img class="bb-ice-preview" src="/bar/studio/ice-bag-product-v2.webp" alt="${T('A sealed bag of ice lying flat beside a black insulated tote', 'שקית קרח סגורה מונחת לצד תיק מבודד שחור')}" loading="lazy">
-      <h3 class="bbx-sub">${T('Ice in an insulated bag', 'קרח בשקית מבודדת')}</h3>
-      <p class="bb-q-hint">${T('Each insulated bag holds up to 3 bags of ice. The first costs ₪59 with the insulated bag. The next two cost ₪20 each.', 'כל שקית מבודדת מכילה עד 3 שקיות קרח. הראשונה עולה ₪59 כולל השקית המבודדת. השתיים הבאות עולות ₪20 כל אחת.')}</p>
-      <p class="bb-q-hint">${T('Recommended', 'מומלץ')} · ${iceLabel(recommended)} · ₪${recommended.price}</p>
-      ${bags ? `<p class="bb-q-hint" aria-live="polite">${iceLabel(plan.ice)} · ₪${price}</p>
-        <div class="bb-ice-controls">
-          <button type="button" class="bbx-link" data-ice-action="remove" data-ice-bags="${bags - 1}">${T('Remove one', 'הסירו שקית אחת')}</button>
-          ${next ? `<button type="button" class="bbx-link" data-ice-action="add" data-ice-bags="${next.bags}">${T('Add one', 'הוסיפו שקית אחת')} · +₪${next.price - price}</button>` : ''}
-        </div>`
-      : `<button type="button" class="bbx-soft" data-ice-action="start" data-ice-bags="${recommended.bags}"><span>${T('Add recommended ice', 'הוסיפו את הכמות המומלצת')}</span><b>+₪${recommended.price}</b></button>`}
+      <div class="bb-ice-details">
+        <h3>${T('Ice in an insulated bag', 'קרח בשקית מבודדת')}</h3>
+        ${bags ? `<div class="bb-ice-controls">
+          <button type="button" data-ice-action="remove" data-ice-bags="${bags - 1}" aria-label="${T('Remove 2 kg of ice', 'הסרת 2 ק״ג קרח')}">− <span>${iceWeight(1)}</span></button>
+          <strong aria-live="polite">${iceWeight(bags)} · ₪${price}</strong>
+          <button type="button" data-ice-action="add" data-ice-bags="${next?.bags ?? bags}" ${next ? '' : 'disabled'} aria-label="${T('Add 2 kg of ice', 'הוספת 2 ק״ג קרח')}">+ <span>${iceWeight(1)}</span></button>
+        </div>
+        ${next?.insulatedBags > plan.ice.insulatedBags ? `<small>${T('Next 2 kg starts a new insulated bag', '2 ק״ג נוספים מצריכים שקית מבודדת נוספת')} · +₪${next.price - price}</small>` : ''}`
+        : `<button type="button" class="bbx-soft bb-ice-add" data-ice-action="start" data-ice-bags="${recommended.bags}"><span>${T('Add ice', 'הוסיפו קרח')}</span><b>${iceWeight(recommended.bags)} · ₪${recommended.price}</b></button>`}
+      </div>
+      <p class="bb-ice-delivery-note">${iceDeliveryNote()}</p>
     </section>`;
   }
 
@@ -601,15 +602,14 @@ ${n.value}`:line;}
     if (oi >= 0) {
       const lids = lidsHtml(plan), syrups = syrupHtml(plan);
       const body = oi === 0 ? `<h2>${T('Coffee & serving stations', 'קפה ועמדות הגשה')}</h2>
-          <p class="bbx-lead">${T(`You have ${plan.jugs} jerry can${plan.jugs > 1 ? 's' : ''} of 5 litres. Tap + on a coffee to swap a can to it.`, `יש לכם ${plan.jugs} ג׳ריקנים של 5 ליטר. לחצו + על קפה כדי להחליף ג׳ריקן אליו.`)}</p>
+          <p class="bbx-lead">${T(`${plan.jugs} × 5L included. Tap + to swap a Classic jug.`, `${plan.jugs} × 5 ל׳ כלולים. לחצו + כדי להחליף ג׳ריקן קלאסיק.`)}</p>
           ${coffeeHtml(plan)}
           <h3 class="bbx-sub">${T('Serving stations', 'עמדות הגשה')}</h3>
           ${chips('points', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], plan.stations)}
-          <small class="bb-q-hint">${plan.flavours > 1 ? T(`Each coffee has its own dispenser, so your ${plan.flavours} coffees come with ${plan.flavours} stations (added for you).`, `לכל קפה מתקן משלו, אז ${plan.flavours} הקפה שלכם מגיעים עם ${plan.flavours} עמדות (נוספו אוטומטית).`) : T('Expecting a big crowd? Add stations so guests don’t queue.', 'מצפים לקהל גדול? הוסיפו עמדות כדי שלא יהיו תורים.')}</small>`
+          <small class="bb-q-hint">${plan.flavours > 1 ? T('One station per coffee is included.', 'כל סוג קפה מגיע עם עמדה משלו.') : T('Add stations to shorten queues.', 'הוסיפו עמדות כדי לקצר תורים.')}</small>`
         : oi === 1 ? `<h2>${T('Which milk?', 'איזה חלב?')}</h2>
           <p class="bbx-lead">${T(`${plan.milkLiters} litres of milk come with your bar. Tap + on a plant milk to swap litres to it.`, `${plan.milkLiters} ליטר חלב מגיעים עם הבר. לחצו + על חלב צמחי כדי להחליף אליו ליטרים.`)}</p>${milkHtml(plan)}`
         : `<h2>${T('Syrups, lids & ice', 'סירופים, מכסים וקרח')}</h2>
-          <p class="bbx-lead">${T('One caramel, one vanilla and one sugar syrup are included. Add more if you like.', 'סירופ קרמל, וניל וסוכר אחד מכל סוג כלולים. אפשר להוסיף עוד.')}</p>
           <div class="bb-jug-grid">${syrups}${lids}</div>
           ${iceHtml(plan)}`;
       const last = oi === OPTS.length - 1;
@@ -624,12 +624,12 @@ ${n.value}`:line;}
     return `<div class="bbx-step" data-step="delivery">
       ${deliveryHtml(plan)}
       ${plan.ice ? `<button type="button" class="bbx-link" data-go="opt-extras">${plan.ice.bags ? T('Change ice quantity', 'שינוי כמות הקרח') : T('Add ice to your bar', 'הוסיפו קרח לבר')}</button>` : ''}
-      ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
+      ${home}
       ${assemblyNote()}
       ${ownerDispHtml(plan)}
       <button type="button" class="pl-order bbx-cta bbx-book" onclick="plannerOrder()"><span>${T('Book my coffee bar', 'להזמנת בר הקפה')}</span><b>${total}</b></button>
-      <div class="bbx-actions bbx-only-back">${back(/^opt-/.test(prevStep || '') ? prevStep : prevStep === 'guests' ? 'guests' : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}</div>
-      <button type="button" class="bbx-share" onclick="plannerShare()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>${T('Share this bar', 'שיתוף הבר')}</button></div>`;
+      <div class="bbx-actions">${back(/^opt-/.test(prevStep || '') ? prevStep : prevStep === 'guests' ? 'guests' : 'bar', /^opt-/.test(prevStep || '') ? T('Options', 'אפשרויות') : T('My bar', 'הבר שלי'))}
+      <button type="button" class="bbx-share" onclick="plannerShare()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>${T('Share this bar', 'שיתוף הבר')}</button></div></div>`;
   }
 
   function render() {

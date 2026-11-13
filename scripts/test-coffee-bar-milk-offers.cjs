@@ -11,7 +11,7 @@ const catalog=[full,basic,jug,syrup,{id:'mini',category:'minis',name_en:'Mini 4 
 const basket=()=>[{id:'jug',base_product_id:'jug',qty:1,price:249},{id:'syrup',base_product_id:'syrup',qty:1,price:59},{id:'mini',qty:1,price:59}];
 function planner(){
  const context={window:{},document:{readyState:'loading',addEventListener(){}},addEventListener(){},products:catalog,getProductAddons:p=>p.variations?.find(v=>v.type==='addons')?.items||[],isCoffeeBarProduct:p=>p.is_coffee_bar,lang:'en'};
- const source=fs.readFileSync('storefront-planner.js','utf8').replace("  if (document.readyState === 'loading')","  window.testApi={state,suggestion,tiles,milkHtml,takeHomeHtml,adjustMilk};\n  if (document.readyState === 'loading')");
+ const source=fs.readFileSync('storefront-planner.js','utf8').replace("  if (document.readyState === 'loading')","  window.testApi={state,suggestion,tiles,milkHtml,takeHomeHtml,adjustMilk,openHomePicker:()=>{pickerOpen=true;return pickerHtml();}};\n  if (document.readyState === 'loading')");
  vm.runInNewContext(source,context);return context.window.testApi;
 }
 test('50 guests defaults to 3L named parve + 2L dairy, charged at nine per litre',()=>{
@@ -80,8 +80,10 @@ test('stale cart changes invalidate replacement, and unsupported guest sizes are
  assert.equal(session.valid(cart),false);
  cart[0].qty=10;assert.deepEqual(offers.offers(cart,catalog),[]);
 });
-test('take-home section offers actual products and opens their quantity drawer',()=>{
- const html=planner().takeHomeHtml();assert.match(html,/Coffee for home, too/);assert.match(html,/data-take-home="mini"/);
+test('compact take-home button opens a picker with catalogue products',()=>{
+ const api=planner();
+ assert.match(api.takeHomeHtml(),/data-picker="open">.*Add coffee for home/);
+ assert.match(api.openHomePicker(),/data-take-home="mini"/);
 });
 test('three-jug bundles retain their actual guest capacity in an upgrade',()=>{
  const bundle={id:'bundle',name_en:'3 × 5L Classic Dark Roast',price:489,category:'bulk'};
