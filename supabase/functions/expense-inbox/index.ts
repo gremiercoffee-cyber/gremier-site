@@ -13,23 +13,64 @@ async function notify(db:any){
 function b64(bytes:Uint8Array){let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(s);}
 // Two tries: the reader sometimes comes back empty on a big phone photo.
 async function readDocument(db:any,id:string){const first:any=await readOnce(db,id);return first.read_status==='failed'||first.error==='read_failed'?await readOnce(db,id):first;}
+// Shekels per one unit of a foreign currency on the document date: Bank of Israel representative rate
+// (the last published one on or before that day), else the ECB rate.
+export async function fxRate(currency:string,date:string|null):Promise<{rate:number,date:string}|null>{
+ const today=new Date().toISOString().slice(0,10),day=date&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&date<=today?date:today;
+ const from=new Date(Date.parse(day)-12*864e5).toISOString().slice(0,10);
+ try{
+  const r=await fetch(`https://edge.boi.gov.il/FusionEdgeServer/sdmx/v2/data/dataflow/BOI.STATISTICS/EXR/1.0/RER_${currency}_ILS?startperiod=${from}&endperiod=${day}&format=csv`,{signal:AbortSignal.timeout(15000)});
+  if(r.ok){
+   const rows=(await r.text()).trim().split('\n').slice(1).map(l=>l.split(',')).filter(c=>/^\d{4}-\d{2}-\d{2}$/.test(c[12]||'')&&Number(c[13])>0).sort((x,y)=>x[12].localeCompare(y[12]));
+   const last=rows[rows.length-1];if(last)return {rate:Number(last[13])/10**(Number(last[10])||0),date:last[12]};
+  }
+ }catch(_){}
+ try{const r=await fetch(`https://api.frankfurter.dev/v1/${day}?base=${currency}&symbols=ILS`,{signal:AbortSignal.timeout(15000)});const j=await r.json();if(Number(j?.rates?.ILS)>0)return {rate:Number(j.rates.ILS),date:j.date||day};}catch(_){}
+ return null;
+}
+// Hebrew documents count only with the words "חשבונית מס" (חשבונית מס, חשבונית מס קבלה, חשבונית מס/קבלה ...).
+export const HEB_TAX_INVOICE=/חשבונית\s*[-–]?\s*מס(?![א-ת])/;
+export function taxInvoiceCheck(j:any):{ok:true}|{ok:false,reason:string}{
+ const words=[j.title,j.tax_invoice_words].filter((x:unknown)=>typeof x==='string').join(' ');
+ const hebrew=j.language==='he'||/[א-ת]/.test(String(j.title||''));
+ if(!hebrew)return {ok:true};
+ if(HEB_TAX_INVOICE.test(words))return {ok:true};
+ const kind=String(j.doc_kind||'');
+ return {ok:false,reason:kind==='order_confirmation'?'Order confirmation, not a tax invoice (no "חשבונית מס")':kind==='payment_confirmation'?'Payment confirmation, not a tax invoice (no "חשבונית מס")':'No "חשבונית מס" on this Hebrew document'};
+}
 async function readOnce(db:any,id:string){
  const key=Deno.env.get('OPENAI_API_KEY');if(!key)return {id,error:'reader_not_configured'};
- const row=await db.from('expense_inbox_files').select('storage_path,mime_type,original_name').eq('id',id).single();if(row.error)return {id,error:'file_unavailable'};
+ const row=await db.from('expense_inbox_files').select('storage_path,mime_type,original_name,status').eq('id',id).single();if(row.error)return {id,error:'file_unavailable'};
  const dl=await db.storage.from('expense-inbox').download(row.data.storage_path);if(dl.error)return {id,error:'file_unavailable'};
  const data=`data:${row.data.mime_type};base64,${b64(new Uint8Array(await dl.data.arrayBuffer()))}`;
  const doc=row.data.mime_type==='application/pdf'?{type:'file',file:{filename:row.data.original_name||'document.pdf',file_data:data}}:{type:'image_url',image_url:{url:data}};
- const prompt='This is a business expense document from Israel (receipt, tax invoice, bill), often in Hebrew. Reply with JSON only: {"is_expense":true|false,"supplier":"business name as printed","date":"YYYY-MM-DD document date","total":number (the final amount paid, including VAT),"vat":number (VAT amount, 0 if none shown),"currency":"ILS"|"USD"|"EUR"|...}. Use null for anything you cannot read. is_expense is false if it is not a receipt or invoice.';
+ const prompt='This is a business expense document (receipt, tax invoice, bill, order confirmation), often Hebrew from Israel, sometimes English from abroad. It may hold several documents (e.g. an order confirmation and a tax invoice); describe the tax invoice if there is one. Reply with JSON only: {"is_expense":true|false,"doc_kind":"tax_invoice"|"tax_invoice_receipt"|"receipt"|"invoice"|"order_confirmation"|"payment_confirmation"|"quote"|"other","language":"he"|"en"|"other" (main language of the document),"title":"the document title exactly as printed, e.g. חשבונית מס קבלה 7296","tax_invoice_words":"the exact Hebrew words if the document says חשבונית מס anywhere, else null","supplier":"business name as printed","date":"YYYY-MM-DD document date","total":number (final amount paid, including VAT, in the document currency),"vat":number (VAT amount, 0 if none shown),"currency":"ILS"|"USD"|"EUR"|...}. Use null for anything you cannot read. is_expense is false if it is not a receipt, invoice or order/purchase document.';
  try{
   const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},
-   body:JSON.stringify({model:'gpt-6-luna',max_completion_tokens:600,response_format:{type:'json_object'},messages:[{role:'user',content:[{type:'text',text:prompt},doc]}]})});
+   body:JSON.stringify({model:'gpt-6-luna',max_completion_tokens:800,response_format:{type:'json_object'},messages:[{role:'user',content:[{type:'text',text:prompt},doc]}]})});
   const out=await res.json();const j=JSON.parse(out?.choices?.[0]?.message?.content||'{}');
   const minor=(v:unknown)=>typeof v==='number'&&isFinite(v)&&v>=0&&v<1e7?Math.round(v*100):null;
   const date=typeof j.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(j.date)&&!isNaN(Date.parse(j.date))?j.date:null;
-  const total=minor(j.total);
-  const change=j.is_expense===false?{read_status:'not_expense'}:total===null?{read_status:'failed'}:
-   {read_status:'read',supplier:typeof j.supplier==='string'?j.supplier.slice(0,120):null,doc_date:date,total_minor:total,vat_minor:minor(j.vat)??0,currency:typeof j.currency==='string'&&/^[A-Z]{3}$/.test(j.currency)?j.currency:'ILS'};
+  const total=minor(j.total),currency=typeof j.currency==='string'&&/^[A-Z]{3}$/.test(j.currency)?j.currency:'ILS';
+  const kind=typeof j.doc_kind==='string'?j.doc_kind.slice(0,40):null,base={doc_kind:kind,supplier:typeof j.supplier==='string'?j.supplier.slice(0,120):null,doc_date:date};
+  let change:Record<string,unknown>;
+  if(j.is_expense===false)change={read_status:'not_expense',doc_kind:kind};
+  else if(total===null)change={read_status:'failed',...base};
+  else{
+   const vat=minor(j.vat)??0;
+   change={read_status:'read',...base,total_minor:total,vat_minor:vat,currency:'ILS',orig_total_minor:null,orig_vat_minor:null,orig_currency:null,fx_rate:null,fx_date:null,hold_reason:null};
+   if(currency!=='ILS'){
+    // Foreign document: keep the original amount and show it in shekels at the rate for its date.
+    const fx=await fxRate(currency,date);
+    change=fx?{...change,total_minor:Math.round(total*fx.rate),vat_minor:Math.round(vat*fx.rate),orig_total_minor:total,orig_vat_minor:vat,orig_currency:currency,fx_rate:fx.rate,fx_date:fx.date}
+     :{...change,read_status:'failed',total_minor:null,orig_total_minor:total,orig_vat_minor:vat,orig_currency:currency,hold_reason:'Could not get the '+currency+' rate; add the shekel amount by hand'};
+   }
+   const tax=taxInvoiceCheck(j);
+   if(!tax.ok)change={...change,read_status:'no_tax_invoice',hold_reason:tax.reason};
+  }
   await db.from('expense_inbox_files').update({...change,read_at:new Date().toISOString()}).eq('id',id).neq('read_status','manual');
+  // Not a tax invoice: kept out of the accountant's batches (archived with the reason); "Move to waiting" undoes it.
+  if(change.read_status==='no_tax_invoice')await db.from('expense_inbox_files').update({status:'archived'}).eq('id',id).eq('status','pending').eq('read_status','no_tax_invoice');
   return {id,...change,...(change.read_status==='failed'?{reason:String(out?.error?.message||out?.choices?.[0]?.message?.content||out?.choices?.[0]?.finish_reason||'').slice(0,300)}:{})};
  }catch(_){await db.from('expense_inbox_files').update({read_status:'failed',read_at:new Date().toISOString()}).eq('id',id).neq('read_status','manual');return {id,error:'read_failed'};}
 }
@@ -43,7 +84,9 @@ function mime(bytes:Uint8Array){
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return new Response(null,{headers:cors});if(req.method!=='POST')return json({error:'POST_required'},405);
  const ingress=Deno.env.get('EXPENSE_INGRESS_SECRET');
- const incoming=!!ingress&&req.headers.get('x-expense-ingress')===ingress;
+ const ingressCos=Deno.env.get('EXPENSE_INGRESS_SECRET_COS'),given=req.headers.get('x-expense-ingress')||'';
+ // Two senders may deliver email documents: the Gmail script (attachments) and Chief of Staff (links, email bodies).
+ const incoming=!!given&&((!!ingress&&given===ingress)||(!!ingressCos&&given===ingressCos));
  if(!incoming&&!await isServiceOrAdmin(req))return forbidden(cors);
  const db=createClient(Deno.env.get('SUPABASE_URL')!,serviceKey(),{auth:{persistSession:false}});
  try{
@@ -81,12 +124,18 @@ Deno.serve(async req=>{
    if(!/^[0-9a-f-]{36}$/i.test(String(b.id||'')))throw Error('file_unavailable');
    const total=Number(b.total),vat=Number(b.vat||0);if(!isFinite(total)||total<0||total>=1e7||!isFinite(vat)||vat<0||vat>total)throw Error('invalid_amount');
    const date=typeof b.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(b.date)?b.date:null;
-   const r=await db.from('expense_inbox_files').update({read_status:'manual',total_minor:Math.round(total*100),vat_minor:Math.round(vat*100),doc_date:date,supplier:typeof b.supplier==='string'?b.supplier.slice(0,120):null,currency:'ILS',read_at:new Date().toISOString()}).eq('id',b.id);
+   const r=await db.from('expense_inbox_files').update({read_status:'manual',total_minor:Math.round(total*100),vat_minor:Math.round(vat*100),doc_date:date,supplier:typeof b.supplier==='string'?b.supplier.slice(0,120):null,currency:'ILS',hold_reason:null,orig_total_minor:null,orig_vat_minor:null,orig_currency:null,fx_rate:null,fx_date:null,read_at:new Date().toISOString()}).eq('id',b.id);
    if(r.error)throw Error('amount_save_failed');return json({saved:true});
   }
   if(b.action==='settings'){
    if(![5,10,15,20].includes(b.batch_size))throw Error('invalid_batch_size');
    const r=await db.from('expense_inbox_settings').update({batch_size:b.batch_size,updated_at:new Date().toISOString()}).eq('id',1);if(r.error)throw Error('settings_save_failed');await notify(db);return json({saved:true});
+  }
+  if(b.action==='restore'){
+   // A document held back (or archived) goes back to Waiting.
+   if(!/^[0-9a-f-]{36}$/i.test(String(b.id||'')))throw Error('file_unavailable');
+   const r=await db.from('expense_inbox_files').update({status:'pending',hold_reason:null}).eq('id',b.id).eq('status','archived');if(r.error)throw Error('restore_failed');
+   await notify(db);return json({saved:true});
   }
   if(b.action==='original'){
    const file=await db.from('expense_inbox_files').select('storage_path').eq('id',b.id).single();if(file.error)throw Error('file_unavailable');

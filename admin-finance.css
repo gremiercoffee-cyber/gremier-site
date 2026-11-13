@@ -277,3 +277,6 @@ body.rc-drawer-open{overflow:hidden}
 .sdw-pay-row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .sdw-pay-row .btn{flex:1 1 160px;font-size:.8rem}
 .sdw-modes-compact button.on::before,.sdw-modes-compact button.on::after{display:none}
+.ex-doc .ex-hold{display:block;font-size:.72rem;color:#9a5b00;margin-top:2px}
+.ex-held-title{font-size:.95rem;margin:0 0 4px}
+#expenseHeld:not(:empty){margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
