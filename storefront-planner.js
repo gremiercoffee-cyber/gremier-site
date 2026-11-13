@@ -18,7 +18,7 @@
   const premium = () => all().find((p) => addonsOf(p).some((a) => a.per_liter || a.group)) || all().find((p) => /premium/i.test(p.name_en || ''));
 
   // mix: how many 5L jugs of each upgrade coffee (the rest of the jugs are the included Classic).
-  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, lids: false, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {}, deliveryMode: 'event', deliveryDate: '', deliveryTime: '', deliveryPicked: false };
+  const state = { guests: 50, milk: 'dairy', milkMix: null, mix: { house: 0, colomb: 0, decaf: 0 }, points: 1, lids: false, iceBags: 0, syrups: { caramel: 0, vanilla: 0, sugar: 0 }, extras: {}, deliveryMode: 'event', deliveryDate: '', deliveryTime: '', deliveryPicked: false };
   // Everyday products that can ride along with the bar at their full price.
   const extraProduct = (id) => all().find((p) => String(p.id) === String(id) && p.is_active !== false && !p.is_coffee_bar && ['bottles', 'minis', 'bulk'].includes(p.category));
   // The 5L jugs on their own (not the 3-jug pack): an extra jerry can of coffee for the bar.
@@ -32,14 +32,14 @@
   // Only the owner's accounts see the "No dispenser" switch (customers who bring their own).
   const OWNER_EMAILS=['gremiercoffee@gmail.com','yonigrey@gmail.com'];
   const owner=()=>{try{return typeof currentUser!=='undefined'&&OWNER_EMAILS.includes(String(currentUser?.email||'').toLowerCase());}catch{return false;}};
-  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,...(state.noDispenser?{nd:1}:{}),d:[state.deliveryMode,state.deliveryDate,state.deliveryTime,state.deliveryPicked?1:0]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+  const toCode=()=>{const j=JSON.stringify({g:state.guests,m:state.milk,mm:state.milkMix,x:state.mix,p:state.points,l:state.lids,s:state.syrups,e:state.extras,...(state.iceBags?{i:state.iceBags}:{}),...(state.noDispenser?{nd:1}:{}),d:[state.deliveryMode,state.deliveryDate,state.deliveryTime,state.deliveryPicked?1:0]});return btoa(unescape(encodeURIComponent(j))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
   function fromCode(code){
     try{
       const j=JSON.parse(decodeURIComponent(escape(atob(String(code).replace(/-/g,'+').replace(/_/g,'/')))));
       const n=(v,max)=>Math.max(0,Math.min(max,Math.round(Number(v)||0)));
       const counts=(o,keys,max)=>Object.fromEntries(keys.map(k=>[k,n(o?.[k],max)]));
       return {guests:Math.max(5,n(j.g,500)),milk:['dairy','parve','all_parve'].includes(j.m)?j.m:'dairy',milkMix:j.mm&&typeof j.mm==='object'?j.mm:null,
-       mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,noDispenser:j.nd===1,syrups:counts(j.s,['caramel','vanilla','sugar'],20),
+       mix:counts(j.x,['house','colomb','decaf'],40),points:Math.max(1,n(j.p,4)),lids:j.l===true,noDispenser:j.nd===1,syrups:counts(j.s,['caramel','vanilla','sugar'],20),iceBags:n(j.i,window.CoffeeBarOrder?.MAX_ICE_BAGS || 99),
        deliveryMode:['before','pickup'].includes(j.d?.[0])?j.d[0]:'event',deliveryDate:/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||'')?j.d[1]:'',deliveryTime:/^\d{2}:\d{2}$/.test(j.d?.[2]||'')?j.d[2]:'',
        // Older links have no flag: a non-default type or a date means it was chosen.
        deliveryPicked:j.d?.[3]===1||['before','pickup'].includes(j.d?.[0])||/^\d{4}-\d{2}-\d{2}$/.test(j.d?.[1]||''),
@@ -76,7 +76,7 @@
   // Filled into checkout.
   const isoDay=(n=0)=>{const d=new Date(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date())+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
   const shipFor=()=>state.deliveryMode==='event'?'event':state.deliveryMode==='pickup'?'pickup':(state.deliveryDate&&state.deliveryDate<=isoDay(2)?'expedited':'regular');
-  function deliveryHtml(){
+  function deliveryHtml(plan){
     const before=state.deliveryMode==='before',pickup=state.deliveryMode==='pickup',ship=shipFor();
     return `<div class="pl-q bb-delivery"><h2>${T('How do you want us to deliver it?','איך תרצו שנביא את זה?')}</h2>
       ${chips('deliveryMode',[['event',T('At the event','לאירוע')],['before',T('Before it','לפני האירוע')],['pickup',T('Pickup · free','איסוף · חינם')]])}
@@ -88,7 +88,8 @@
         :!state.deliveryDate?T('Choose a date. The delivery fee for your area is added at checkout.','בחרו תאריך. דמי המשלוח לאזור שלכם יתווספו בקופה.')
         :ship==='event'?T('Event delivery: we arrive at your event at that time.','משלוח לאירוע: נגיע לאירוע בשעה הזו.')
         :ship==='expedited'?T('That’s within two days, so it’s expedited delivery on that date.','זה בתוך יומיים, אז זה משלוח מהיר בתאריך הזה.')
-        :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small></div>`;
+        :T('Regular delivery on that date.','משלוח רגיל בתאריך הזה.')}</small>
+      ${before && plan.ice?.bags ? `<p class="bb-ice-delivery-note">${T('We recommend Event Delivery so the ice comes straight to you. With other delivery, it may sit in the vehicle and we can’t guarantee it will arrive frozen.', 'מומלץ לבחור משלוח לאירוע כדי שהקרח יגיע ישירות אליכם. במשלוח אחר הקרח עשוי לשהות ברכב, ולכן אין התחייבות שיגיע קפוא.')}</p>` : ''}</div>`;
   }
   // When checkout opens for a coffee bar, it starts with the delivery chosen here.
   function fillCheckoutDelivery(){
@@ -174,6 +175,11 @@ ${n.value}`:line;}
     plan.extras = Object.entries(state.extras || {}).map(([id, qty]) => ({ p: extraProduct(id), qty: Number(qty) || 0 })).filter((x) => x.p && x.qty > 0)
       .map(({ p, qty }) => ({ product_id: String(p.id), name_en: p.name_en, name_he: p.name_he, price: Number(p.price) || 0, qty, jug: jugProducts().includes(p) ? jugVariant(p) : null }));
     for (const x of plan.extras) { total += x.price * x.qty; lines.push(`+${x.qty}× ${he() ? (x.name_he || x.name_en) : x.name_en}`); }
+    plan.ice = window.CoffeeBarOrder?.quoteCoffeeBarIce?.(state.iceBags);
+    if (plan.ice?.bags) {
+      total += plan.ice.price;
+      lines.push(iceLabel(plan.ice));
+    }
     plan.lines = lines; plan.total = total;
     plan.tooBig = state.guests > tier.guests;
     return plan;
@@ -181,6 +187,10 @@ ${n.value}`:line;}
 
   // One 5-liter jug of cold brew per 25 guests.
   const jugsFor = (guests) => Math.max(1, Math.ceil(guests / 25));
+  const iceLabel = ({bags, insulatedBags}) => T(
+    `${bags} ${bags === 1 ? 'bag' : 'bags'} of ice in ${insulatedBags} insulated ${insulatedBags === 1 ? 'bag' : 'bags'}`,
+    `${bags} שקיות קרח ב-${insulatedBags} שקיות מבודדות`
+  );
 
   function tiles(plan) {
     if (!plan) return [];
@@ -202,6 +212,7 @@ ${n.value}`:line;}
     for (const x of plan.extras || []) t.push({ key: 'extra-' + x.product_id, n: x.qty, title: (x.jug ? T('Extra ', 'עוד ') : '') + (he() ? (x.name_he || x.name_en) : x.name_en) });
     t.push({ key: 'cups', pic: 'cups', n: plan.tier.guests, title: T('Cups', 'כוסות') });
     if(plan.lids)t.push({key:'lids',pic:'lids',n:plan.lids,title:T('Domed lids','מכסים קמורים')});
+    if (plan.ice?.bags) t.push({key:'ice',n:1,title:iceLabel(plan.ice)});
     t.push({ key: 'straws', pic: 'straws', n: plan.tier.guests, title: T('Straws', 'קשיות') });
     return t;
   }
@@ -210,6 +221,7 @@ ${n.value}`:line;}
   const MASTER = '/bar/studio/bar-master-dark-v4.webp?v=1';
   function itemArt(item) {
     const r=item.region;
+    if (item.kind === 'ice') return `<div class="bs-art bb-ice-bag"><img src="/bar/studio/ice-bag-cutout-v2.webp" alt="" draggable="false"><b>${item.units}×</b></div>`;
     if(item.kind==='lids')return `<div class="bs-art" style="width:${r.w}px;height:${352-r.y}px;transform:scale(${item.sx},${item.sy})"><img src="/bar/studio/domed-lids-stack-v1.webp" alt="" style="width:100%;height:100%;object-fit:contain;object-position:bottom" draggable="false"></div>`;
     const label=item.kind==='coffee'&&item.variant!=='classic'
       ? `<span class="bs-coffee-label bs-label-${item.variant}"><small>${item.variant==='house'?'MEDIUM ROAST':item.variant==='colomb'?'LIGHT ROAST':'CAFFEINE FREE'}</small><b>${item.variant==='house'?'House Blend':item.variant==='colomb'?'Colombia':'Decaf'}</b></span>` : '';
@@ -224,7 +236,7 @@ ${n.value}`:line;}
   function sceneHtml(plan) {
     const list=tiles(plan);
     const layout=window.CoffeeBarScene.layout({extraCoffee:(plan.extras||[]).flatMap(x=>x.jug?Array(x.qty).fill(x.jug):[]),classic:plan.classic,mix:plan.mix,dispensers:plan.dispensers,
-      milkLiters:plan.milkLiters,parveLiters:plan.liters,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),syrupCounts:plan.syrupCounts,lids:plan.lids,guests:plan.tier.guests});
+      milkLiters:plan.milkLiters,parveLiters:plan.liters,milkMix:Object.fromEntries(plan.milk.map(m=>[m.key,m.liters])),syrupCounts:plan.syrupCounts,lids:plan.lids,iceBags:plan.ice?.bags,guests:plan.tier.guests});
     const ratio=layout.width/(352+layout.width*.135+32);
     const items=layout.items.map((item,index)=>`<div class="bs-object drop" data-instance="${item.id}" data-kind="${item.kind}" data-variant="${item.variant}" data-units="${item.units}" style="left:${item.x}px;bottom:${item.bottom}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};--d:${Math.min(300,index*22)}ms">${itemArt(item)}</div>`).join('');
     const legend=list.map(x=>`<span>${x.n>1?`<b>${x.n}×</b> `:''}${esc(x.title)}</span>`).join('');
@@ -237,7 +249,7 @@ ${n.value}`:line;}
     const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
     const pieces=new Map([...oldStage.querySelectorAll('.bs-object:not(.leaving)')].map(el=>[el.dataset.instance,el]));
     newStage.querySelectorAll('.bs-object').forEach(el=>{
-      const old=pieces.get(el.dataset.instance);if(!old||old.dataset.variant!==el.dataset.variant)return;
+      const old=pieces.get(el.dataset.instance);if(!old||old.dataset.variant!==el.dataset.variant||(el.dataset.kind==='ice'&&old.dataset.units!==el.dataset.units))return;
       const before={x:parseFloat(old.style.left),bottom:parseFloat(old.style.bottom),w:parseFloat(old.style.width),h:parseFloat(old.style.height)};
       old.classList.remove('drop');old.style.cssText=el.style.cssText;old.dataset.units=el.dataset.units;
       old.querySelector('.bs-art').style.cssText=el.querySelector('.bs-art').style.cssText;
@@ -330,7 +342,7 @@ ${n.value}`:line;}
     const chosen=!!state.deliveryDate&&(state.deliveryMode!=='event'||!!state.deliveryTime);
     // Opening the same checkout link again: the bar is already in the cart, just go to checkout.
     if(options.deliveryAtCheckout){try{if(state.deliveryPicked)localStorage.setItem('gremier_bar_delivery',JSON.stringify({ship:shipFor(),date:state.deliveryDate,time:state.deliveryMode==='event'?state.deliveryTime:'',at:Date.now()}));else localStorage.removeItem('gremier_bar_delivery');}catch{}}
-    if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total)&&!!i.no_dispenser===!!plan.noDispenser)){if(typeof openCheckout==='function')openCheckout();return;}
+    if(options.deliveryAtCheckout&&typeof cart!=='undefined'&&cart.some(i=>String(i.base_product_id||'')===String(plan.product.id)&&Math.round(i.price)===Math.round(plan.total)&&!!i.no_dispenser===!!plan.noDispenser&&(i.ice_bags||0)===(plan.ice?.bags||0))){if(typeof openCheckout==='function')openCheckout();return;}
     if(!chosen&&options.deliveryAtCheckout){/* a checkout link: checkout asks for whatever is missing */}
     else if(!chosen){
       if(!document.querySelector('#planner .bb-delivery')){bstep='delivery';render();}
@@ -357,6 +369,7 @@ ${n.value}`:line;}
         [...plan.qty.filter((q) => !isJug(q)), ...plan.qty.filter(isJug)].forEach(([i, n]) => typeof pdSetQty === 'function' && pdSetQty(i, n));
         plan.checks.forEach((i) => { const cb = document.querySelector(`#pdAddonsSection input[data-addon-idx="${i}"]`); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); } });
         if (typeof pdSetBarExtras === 'function') pdSetBarExtras(plan.extras);
+        if (plan.ice?.bags) pdSetIceBags(plan.ice.bags);
         if (typeof pdUpdateDrawerPrice === 'function') pdUpdateDrawerPrice();
         const ready=typeof pdGetVariationPrice==='function'&&typeof pdGetAddonsTotal==='function'&&typeof pdCurrentProduct!=='undefined'&&pdCurrentProduct
           &&Math.round(pdGetVariationPrice(pdCurrentProduct)+pdGetAddonsTotal()-(typeof pdNoDispenserOff==='function'?pdNoDispenserOff(pdCurrentProduct):0))===Math.round(plan.total);
@@ -371,7 +384,7 @@ ${n.value}`:line;}
   window.openCoffeeBarBuilder = function(options={}) {
     state.guests=options.guests||25;
     state.mix={house:0,colomb:0,decaf:0,...(options.mix||{})};state.points=1;state.milk='dairy';state.milkMix=null;
-    state.syrups={caramel:0,vanilla:0,sugar:0};state.extras={};state.lids=false;state.noDispenser=false;
+    state.syrups={caramel:0,vanilla:0,sugar:0};state.extras={};state.lids=false;state.noDispenser=false;state.iceBags=0;
     if(typeof showPage==='function')showPage('coffeebars');
     window.plannerStart('bar');
   };
@@ -540,6 +553,26 @@ ${n.value}`:line;}
   function includedHtml(plan) {
     return `<ul class="bbx-included">${tiles(plan).map((x) => `<li><b>${x.n > 1 ? x.n + '×' : '✓'}</b> ${esc(x.title)}${x.sub ? ` <small>${esc(x.sub)}</small>` : ''}</li>`).join('')}</ul>`;
   }
+  function iceHtml(plan) {
+    const model = window.CoffeeBarOrder;
+    if (!plan.ice) return '';
+    const {bags, price} = plan.ice;
+    const recommended = model.quoteCoffeeBarIce(model.recommendedIceBags(plan.tier.guests));
+    const next = bags < model.MAX_ICE_BAGS ? model.quoteCoffeeBarIce(bags + 1) : null;
+    return `<section class="bb-ice">
+      <img class="bb-ice-preview" src="/bar/studio/ice-bag-product-v2.webp" alt="${T('A sealed bag of ice lying flat beside a black insulated tote', 'שקית קרח סגורה מונחת לצד תיק מבודד שחור')}" loading="lazy">
+      <h3 class="bbx-sub">${T('Ice in an insulated bag', 'קרח בשקית מבודדת')}</h3>
+      <p class="bb-q-hint">${T('Each insulated bag holds up to 3 bags of ice. The first costs ₪59 with the insulated bag. The next two cost ₪20 each.', 'כל שקית מבודדת מכילה עד 3 שקיות קרח. הראשונה עולה ₪59 כולל השקית המבודדת. השתיים הבאות עולות ₪20 כל אחת.')}</p>
+      <p class="bb-q-hint">${T('Recommended', 'מומלץ')} · ${iceLabel(recommended)} · ₪${recommended.price}</p>
+      ${bags ? `<p class="bb-q-hint" aria-live="polite">${iceLabel(plan.ice)} · ₪${price}</p>
+        <div class="bb-ice-controls">
+          <button type="button" class="bbx-link" data-ice-action="remove" data-ice-bags="${bags - 1}">${T('Remove one', 'הסירו שקית אחת')}</button>
+          ${next ? `<button type="button" class="bbx-link" data-ice-action="add" data-ice-bags="${next.bags}">${T('Add one', 'הוסיפו שקית אחת')} · +₪${next.price - price}</button>` : ''}
+        </div>`
+      : `<button type="button" class="bbx-soft" data-ice-action="start" data-ice-bags="${recommended.bags}"><span>${T('Add recommended ice', 'הוסיפו את הכמות המומלצת')}</span><b>+₪${recommended.price}</b></button>`}
+    </section>`;
+  }
+
   function stepHtml(plan, tierChips) {
     if (bstep === 'guests' || !plan) return `<div class="bbx-step" data-step="guests">
       <h2>${T('How many guests do you have?', 'כמה אורחים יהיו?')}</h2>
@@ -575,9 +608,10 @@ ${n.value}`:line;}
           <small class="bb-q-hint">${plan.flavours > 1 ? T(`Each coffee has its own dispenser, so your ${plan.flavours} coffees come with ${plan.flavours} stations (added for you).`, `לכל קפה מתקן משלו, אז ${plan.flavours} הקפה שלכם מגיעים עם ${plan.flavours} עמדות (נוספו אוטומטית).`) : T('Expecting a big crowd? Add stations so guests don’t queue.', 'מצפים לקהל גדול? הוסיפו עמדות כדי שלא יהיו תורים.')}</small>`
         : oi === 1 ? `<h2>${T('Which milk?', 'איזה חלב?')}</h2>
           <p class="bbx-lead">${T(`${plan.milkLiters} litres of milk come with your bar. Tap + on a plant milk to swap litres to it.`, `${plan.milkLiters} ליטר חלב מגיעים עם הבר. לחצו + על חלב צמחי כדי להחליף אליו ליטרים.`)}</p>${milkHtml(plan)}`
-        : `<h2>${T('Syrups & lids', 'סירופים ומכסים')}</h2>
+        : `<h2>${T('Syrups, lids & ice', 'סירופים, מכסים וקרח')}</h2>
           <p class="bbx-lead">${T('One caramel, one vanilla and one sugar syrup are included. Add more if you like.', 'סירופ קרמל, וניל וסוכר אחד מכל סוג כלולים. אפשר להוסיף עוד.')}</p>
-          <div class="bb-jug-grid">${syrups}${lids}</div>`;
+          <div class="bb-jug-grid">${syrups}${lids}</div>
+          ${iceHtml(plan)}`;
       const last = oi === OPTS.length - 1;
       return `<div class="bbx-step" data-step="${bstep}">
         <div class="bbx-dots" aria-label="${T(`Option ${oi + 1} of 3`, `אפשרות ${oi + 1} מתוך 3`)}">${OPTS.map((_, j) => `<i class="${j <= oi ? 'on' : ''}"></i>`).join('')}</div>
@@ -588,7 +622,8 @@ ${n.value}`:line;}
     // Delivery, then one gentle "anything else?" (coffee for home), then Book.
     const home = takeHomeHtml();
     return `<div class="bbx-step" data-step="delivery">
-      ${deliveryHtml()}
+      ${deliveryHtml(plan)}
+      ${plan.ice ? `<button type="button" class="bbx-link" data-go="opt-extras">${plan.ice.bags ? T('Change ice quantity', 'שינוי כמות הקרח') : T('Add ice to your bar', 'הוסיפו קרח לבר')}</button>` : ''}
       ${home ? `<div class="bbx-extra bbx-home">${home}</div>` : ''}
       ${assemblyNote()}
       ${ownerDispHtml(plan)}
@@ -644,9 +679,10 @@ ${n.value}`:line;}
     const plan = suggestion(); if (!plan) return '';
     const milk = state.milk === 'dairy' ? 'dairy milk' : plan.milk.map((m) => `${m.liters}L ${m.addon?.name || m.key}`).join(', ') || state.milk;
     const del = state.deliveryMode === 'event' ? `delivered to the event${state.deliveryDate ? ` on ${state.deliveryDate}${state.deliveryTime ? ' at ' + state.deliveryTime : ''}` : ''}` : state.deliveryMode === 'pickup' ? `pickup${state.deliveryDate ? ' on ' + state.deliveryDate : ''} (free)` : `delivered before the event${state.deliveryDate ? ' on ' + state.deliveryDate : ''}`;
-    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests; under it they see what comes standard for that count, a main "Build the rest of your coffee bar" button and a smaller "Order now, as is" button' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included), choosing between booking it and seeing more options' : bstep === 'delivery' ? 'choosing delivery, then booking (with an optional take-home coffee add-on)' : bstep === 'opt-coffee' ? 'choosing coffee types and serving stations' : bstep === 'opt-milk' ? 'choosing the milk' : 'choosing extra syrups and domed lids';
+    const where = !building_() ? 'on the Coffee Bars intro' : bstep === 'guests' ? 'choosing the number of guests; under it they see what comes standard for that count, a main "Build the rest of your coffee bar" button and a smaller "Order now, as is" button' : bstep === 'bar' ? 'looking at their standard coffee bar (what is included), choosing between booking it and seeing more options' : bstep === 'delivery' ? 'choosing delivery, then booking (with an optional take-home coffee add-on)' : bstep === 'opt-coffee' ? 'choosing coffee types and serving stations' : bstep === 'opt-milk' ? 'choosing the milk' : 'choosing extra syrups, domed lids and optional ice';
     return [`Guests: ${state.guests} (package tier ${plan.tier.guests})`, `Coffee: ${plan.jugs} × 5L jerry cans (${plan.classic} Classic${Object.entries(plan.mix).map(([k, n]) => `, ${n} ${k}`).join('')})`,
       `Milk: ${milk} (${plan.milkLiters}L)`, `Serving stations: ${plan.stations}`, `Domed lids: ${state.lids ? 'yes' : 'no'}`, `Syrups: caramel ${plan.syrupCounts.caramel}, vanilla ${plan.syrupCounts.vanilla}, sugar ${plan.syrupCounts.sugar} (one of each included)`,
+      ...(plan.ice?.bags ? [`Ice: ${plan.ice.bags} bags in ${plan.ice.insulatedBags} insulated bags (₪${plan.ice.price})`] : []),
       `Delivery: ${del}`, `Total so far: ₪${plan.total}`, `The customer is ${where}.`].join('\n');
   };
 
@@ -718,6 +754,14 @@ ${n.value}`:line;}
     if(e.target.matches('[data-bar-lids]')){state.lids=e.target.checked;render();return;}
     if(e.target.matches('[data-no-dispenser]')){if(owner())state.noDispenser=e.target.checked;render();return;}
     if(e.target.closest('[data-lids-toggle]')){state.lids=!state.lids;render();return;}
+    const iceButton = e.target.closest('[data-ice-bags]');
+    if (iceButton) {
+      state.iceBags = window.CoffeeBarOrder.quoteCoffeeBarIce(Number(iceButton.dataset.iceBags)).bags;
+      render();
+      const control = box.querySelector(`[data-ice-action="${iceButton.dataset.iceAction}"]:enabled`);
+      (control || box.querySelector('[data-ice-bags]:enabled'))?.focus({preventScroll:true});
+      return;
+    }
     const syrup=e.target.closest('[data-syrup-step]');
     if(syrup){state.syrups[syrup.dataset.syrup]=Math.max(0,(Number(state.syrups[syrup.dataset.syrup])||0)+Number(syrup.dataset.syrupStep));render();return;}
     const swap=e.target.closest('[data-classic-swap]');

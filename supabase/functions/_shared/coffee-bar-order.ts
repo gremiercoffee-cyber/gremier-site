@@ -7,6 +7,19 @@ const positive = n => Math.max(0, Math.round(Number(n) || 0));
 const variations = p => Array.isArray(p?.variations) ? p.variations : [];
 const addons = p => variations(p).find(v => v.type === 'addons')?.items || [];
 
+export const MAX_ICE_BAGS = 99;
+export function quoteCoffeeBarIce(bags = 0) {
+  if (!Number.isSafeInteger(bags) || bags < 0 || bags > MAX_ICE_BAGS) throw new Error('Invalid coffee bar ice quantity');
+  const insulatedBags = Math.ceil(bags / 3);
+  return { bags, insulatedBags, price: bags * 20 + insulatedBags * 39 };
+}
+
+export function recommendedIceBags(guests) {
+  if (guests <= 25) return 1;
+  if (guests <= 75) return 2;
+  return 3;
+}
+
 export function resolveCoffeeBarGuests(product, item) {
   const options = variations(product).filter(v => v.type === 'guest_count' || (v.type === 'choice' && /guest|people|אורח/i.test(v.name || ''))).flatMap(v => v.options || []);
   const selected = Object.values(item.selected_variations || {}).map(v => typeof v === 'object' ? v?.label : v);
@@ -22,6 +35,7 @@ export function buildCoffeeBarConfiguration(product, item) {
   const packageType = settings?.package || (product.id === FULL_BAR_ID ? 'full' : product.id === BASIC_BAR_ID ? 'coffee' : null);
   const guests = resolveCoffeeBarGuests(product, item);
   if (!packageType || !guests) return null;
+  const ice = quoteCoffeeBarIce(item.ice_bags ?? 0);
   const full = packageType === 'full';
   let remaining = Math.ceil(guests / 25), dispensers = full ? 1 : 0;
   const coffee = [], milk = [], syrups = [];
@@ -69,7 +83,7 @@ export function buildCoffeeBarConfiguration(product, item) {
     .map(x => ({ product_id: String(x.product_id), name: String(x.name_en || x.name || 'Extra'), qty: positive(x.qty) }));
   // The owner can leave the dispenser out (the customer has their own); the price stays the same.
   if (item.no_dispenser === true) dispensers = 0;
-  return { version: 1, package: packageType, guests, coffee, milk, dispensers, ...(item.no_dispenser === true ? { no_dispenser: true } : {}), syrups, cups: guests, straws: guests, ...(lids ? { lids } : {}), ...(extras.length ? { extras } : {}) };
+  return { version: 1, package: packageType, guests, coffee, milk, dispensers, ...(item.no_dispenser === true ? { no_dispenser: true } : {}), syrups, cups: guests, straws: guests, ...(lids ? { lids } : {}), ...(ice.bags ? { ice } : {}), ...(extras.length ? { extras } : {}) };
 }
 
 // A full bar without its dispenser costs the dispenser's price less (₪49); other bars have none to remove.
@@ -92,6 +106,7 @@ export function describeCoffeeBar(configuration) {
     ...(c.syrups || []).map(x => `${x.bottles}× ${x.name}`),
     `${c.cups} cups`, `${c.straws} straws`,
     ...(c.lids ? [`${c.lids} domed lids`] : []),
+    ...(c.ice?.bags ? [`${c.ice.bags} ice ${c.ice.bags === 1 ? 'bag' : 'bags'} in ${c.ice.insulatedBags} insulated ${c.ice.insulatedBags === 1 ? 'bag' : 'bags'}`] : []),
     ...(c.extras || []).map(x => `+ ${x.qty}× ${x.name}`)
   ].join(' · ');
 }

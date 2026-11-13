@@ -793,7 +793,7 @@
 <link rel="stylesheet" href="/storefront-nav.css?v=20261111-1"/>
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
-<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261111-3"/>
+<link rel="stylesheet" href="/storefront-bar-scene.css?v=20261113-1"/>
 <link rel="stylesheet" href="/storefront-checkout.css?v=20261111-1"/>
 <script src="/storefront-nav.js?v=20261112-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
@@ -1264,6 +1264,7 @@
             <div><div style="font-size:.85rem;color:var(--cream)">Pickup</div><div style="font-size:.74rem;color:var(--text2)">Free</div></div>
           </label>
         </div>
+        <p id="coffeeBarIceDeliveryNote" class="bb-ice-delivery-note" role="status" hidden></p>
         <!-- Regular delivery: optional requested date -->
         <div id="regularOptions" style="margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
           <label style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px" id="t-co-regular-date">Requested delivery date (optional)</label>
@@ -1655,6 +1656,7 @@ function applyTranslations() {
     if (selectedCheckoutCity) cityInput.value = lang === 'he' ? selectedCheckoutCity.he : selectedCheckoutCity.en;
   }
   renderGrids();
+  updateCoffeeBarIceDeliveryNote();
 }
 function toggleLang() { lang = lang === 'en' ? 'he' : 'en'; applyTranslations(); applySiteImages(); window.coAddrPicker?.refresh(); }
 // ══ AUTH ══
@@ -2114,11 +2116,16 @@ function pdGetSelectedAddons() {
   return selected;
 }
 function pdGetAddonsTotal() {
-  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0) * (a.per_liter ? a.liters : (a.qty || 1)), 0) + pdBarExtrasTotal();
+  const icePrice = pdIceBags ? window.CoffeeBarOrder.quoteCoffeeBarIce(pdIceBags).price : 0;
+  return pdGetSelectedAddons().reduce((s, a) => s + (parseFloat(a.price) || 0) * (a.per_liter ? a.liters : (a.qty || 1)), 0) + pdBarExtrasTotal() + icePrice;
 }
 // Extras bought with a coffee bar (an extra 5L jug, coffee to take home), chosen in the builder:
 // part of the bar's one cart item, at each product's full price. The server re-prices them.
 let pdBarExtras = [];
+let pdIceBags = 0;
+function pdSetIceBags(bags) {
+  pdIceBags = window.CoffeeBarOrder.quoteCoffeeBarIce(bags).bags;
+}
 const pdBarExtrasTotal = () => pdBarExtras.reduce((s, x) => s + (Number(x.price) || 0) * (Number(x.qty) || 0), 0);
 function pdSetBarExtras(list) {
   pdBarExtras = (list || []).filter(x => x && x.product_id && x.qty > 0).map(x => ({ product_id: String(x.product_id), name_en: x.name_en, name_he: x.name_he, price: Number(x.price) || 0, qty: Number(x.qty) }));
@@ -2358,6 +2365,7 @@ function pdOnGuestChange(select) {
   pdUpdateDrawerPrice();
 }
 function openProductDrawerUI(productId) {
+  pdIceBags = 0;
   pdBarExtras = []; document.getElementById('pdBarExtras')?.replaceChildren();
   // Links can use the product id or a readable name (e.g. #product=classic-dark-roast, used in Status ads).
   const key = String(productId || '').toLowerCase();
@@ -2505,15 +2513,15 @@ function pdAddToCart() {
   const subKey = pdIsSubscription()
     ? [pdSubscriptionInterval, ...subscriptionSelection.map(i => `${i.product_id}x${i.qty}`)].join('_')
     : '';
-  const cartId = [p.id, varKey, guestKey, addonKey, subKey, noDisp ? 'nodisp' : ''].filter(Boolean).join('_');
+  const cartId = [p.id, varKey, guestKey, addonKey, subKey, noDisp ? 'nodisp' : '', pdIceBags ? 'ice'+pdIceBags : ''].filter(Boolean).join('_');
   if(window.CoffeeBarOffers?.beforeAdd(p,cart)===false)return;
   const existing = cart.find(x => x.id === cartId);
   if (existing) { if(pdIsSubscription())existing.qty=1;else existing.qty += pdQty; }
   else cart.push({
   id: cartId,
   base_product_id: p.id,
-  name_en: pdIsSubscription() ? 'Coffee subscription' : p.name_en + suffix,
-  name_he: pdIsSubscription() ? 'מנוי קפה' : (p.name_he || p.name_en) + suffix,
+  name_en: pdIsSubscription() ? 'Coffee subscription' : p.name_en + suffix + (pdIceBags ? ` · ${pdIceBags} ${pdIceBags === 1 ? 'bag' : 'bags'} of ice` : ''),
+  name_he: pdIsSubscription() ? 'מנוי קפה' : (p.name_he || p.name_en) + suffix + (pdIceBags ? ` · ${pdIceBags} שקיות קרח` : ''),
   price,
   images: p.images,
   category: p.category,
@@ -2522,8 +2530,9 @@ function pdAddToCart() {
   selected_variations: pdSelectedVariations,
   selected_addons: pdGetSelectedAddons(),
   bar_extras: pdBarExtras.length ? pdBarExtras.map(x => ({ ...x })) : null,
+  ...(pdIceBags ? { ice_bags: pdIceBags } : {}),
   ...(noDisp ? { no_dispenser: true } : {}),
-  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice,bar_extras:pdBarExtras,no_dispenser:noDisp}) || null,
+  coffee_bar_configuration: window.CoffeeBarOrder?.buildCoffeeBarConfiguration(p, {selected_variations:pdSelectedVariations,selected_addons:pdGetSelectedAddons(),selected_guest_price:pdSelectedPrice,bar_extras:pdBarExtras,no_dispenser:noDisp,ice_bags:pdIceBags}) || null,
   selected_guest_price: pdSelectedPrice,
   is_subscription: pdIsSubscription(),
   subscription_interval: pdIsSubscription() ? pdSubscriptionInterval : null,
@@ -3138,6 +3147,7 @@ const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expe
         selected_variations: i.selected_variations || null,
         selected_addons: i.selected_addons || null,
         bar_extras: i.bar_extras || null,
+        ice_bags: i.ice_bags || undefined,
         no_dispenser: i.no_dispenser === true || undefined,
         selected_guest_price: i.selected_guest_price || null,
         is_subscription: !!i.is_subscription,
@@ -4119,7 +4129,17 @@ function updateSubscriptionCheckoutNotice(){
  node.textContent=lang==='he'?`משלוח רגיל בכל חיוב: ₪${remaining===0?0:GremierSubscriptionModel.deliveryFee(p.regular)}.${remaining?` הוסיפו ₪${remaining.toFixed(2)} לפני ההנחה למשלוח חינם.`:''}`:`Regular delivery each cycle: ₪${remaining===0?0:GremierSubscriptionModel.deliveryFee(p.regular)}.${remaining?` Add ₪${remaining.toFixed(2)} before discount for free delivery.`:''}`;}
  }catch{node.textContent=lang==='he'?'יש להוסיף קפה למנוי.':'Add coffee to your subscription.';}
 }
+function updateCoffeeBarIceDeliveryNote() {
+  const note = document.getElementById('coffeeBarIceDeliveryNote');
+  if (!note) return;
+  const ordinaryDelivery = document.getElementById('shipRegular')?.checked || document.getElementById('shipExpedited')?.checked;
+  note.hidden = !(ordinaryDelivery && cart.some(item => item.ice_bags > 0));
+  if (!note.hidden) note.textContent = lang === 'he'
+    ? 'מומלץ לבחור משלוח לאירוע כדי שהקרח יגיע ישירות אליכם. במשלוח אחר הקרח עשוי לשהות ברכב, ולכן אין התחייבות שיגיע קפוא.'
+    : 'We recommend Event Delivery so the ice comes straight to you. With other delivery, it may sit in the vehicle and we can’t guarantee it will arrive frozen.';
+}
 function updateDeliveryPrice() {
+  updateCoffeeBarIceDeliveryNote();
   updateSubscriptionCheckoutNotice();
   renderCheckoutSubWindow();
   const feeRow = document.getElementById('deliveryFeeRow');
@@ -5677,10 +5697,10 @@ async function sendChatMessageText(text) {
 <script src="/storefront-birthday.js?v=20261108-1"></script>
 <script src="/storefront-subscriptions.js?v=20261110-1"></script>
 <script src="/storefront-hero-stills.js?v=20261112-1"></script>
-<script src="/coffee-bar-order.js?v=20261111-2"></script>
-<script src="/storefront-bar-layout.js?v=20261111-1"></script>
+<script src="/coffee-bar-order.js?v=20261113-1"></script>
+<script src="/storefront-bar-layout.js?v=20261113-1"></script>
 <script src="/storefront-bar-world.js?v=20261110-1"></script>
-<script src="/storefront-planner.js?v=20261111-2"></script>
+<script src="/storefront-planner.js?v=20261113-1"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
 <script src="/storefront-promo.js?v=20261111-2"></script>
 <script src="/storefront-together.js?v=20261103-2"></script>

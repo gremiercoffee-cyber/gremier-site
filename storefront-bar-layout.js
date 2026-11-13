@@ -14,7 +14,8 @@
     milk: { x: 557.6, y: 143, w: 82 },
     cups: { x: 639.6, y: 169, w: 69.6 },
     lids: {x:0,y:287,w:110},
-    straws: { x: 709.2, y: 160, w: 90.8 }
+    straws: { x: 709.2, y: 160, w: 90.8 },
+    ice: { x: 0, y: 215, w: 165 }
   };
   const count = value => Math.max(0, Math.floor(Number(value) || 0));
   function layout(plan) {
@@ -61,6 +62,10 @@
     group('cups', bundles.map(units => ({ units, sx: .95 + units / 50 * .1, sy: .55 + units / 50 * .9 })), 48);
     group('lids',Array.from({length:Math.ceil(count(plan.lids)/25)},()=>({units:25})),58);
     group('straws', bundles.map(units => ({ units, sx: .88 + units / 50 * .24, sy: .84 + units / 50 * .32 })), 65);
+    const iceBags = count(plan.iceBags);
+    group('ice', Array.from({length:Math.ceil(iceBags / 3)}, (_, i) => ({
+      units: Math.min(3, iceBags - i * 3)
+    })), 158, 4);
     // Centered on the table: a small bar sits in the middle and new things appear on both sides;
     // the canvas only widens (and the view zooms out) once the bar needs more than its width.
     const left = Math.min(...items.map(item => item.x)), right = Math.max(...items.map(item => item.x + item.w));

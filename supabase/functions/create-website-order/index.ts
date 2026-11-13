@@ -353,6 +353,9 @@ Deno.serve(async (req) => {
       if (!(unitPrice > 0)) throw new Error("Invalid item price");
       const guest = resolveGuestSelection(product, item);
       const coffeeBarConfiguration = isSub ? null : buildCoffeeBarConfiguration(product, { ...item, bar_extras: barExtras });
+      if (item.ice_bags != null && item.ice_bags !== 0 && !coffeeBarConfiguration) {
+        throw new Error("Ice can only be added to a coffee bar");
+      }
       if (["9361ff6e-4227-44cc-a23a-428a002f1f4c", "c211cedd-ef93-4dba-9a6e-b2edb1add6e0"].includes(productId) && !coffeeBarConfiguration) throw new Error("Choose the number of guests for your coffee bar");
       const interval = String(item.subscription_interval || "monthly").toLowerCase() === "weekly" ? "weekly" : "monthly";
       return {
@@ -360,7 +363,7 @@ Deno.serve(async (req) => {
         name_en: isSub ? "Coffee subscription" : pack ? `${product.name_en} · ${pack.label_en}` : product.name_en || null,
         name_he: isSub ? "מנוי קפה" : pack ? `${product.name_he || product.name_en} · ${pack.label_he}` : product.name_he || null,
         // No dispenser: ₪49 off (full bars only).
-        price: unitPrice - (coffeeBarConfiguration?.no_dispenser ? noDispenserDiscount(product) : 0),
+        price: unitPrice + (coffeeBarConfiguration?.ice?.price ?? 0) - (coffeeBarConfiguration?.no_dispenser ? noDispenserDiscount(product) : 0),
         qty,
         coffee_bar_configuration: coffeeBarConfiguration,
         selected_variations: isSub ? null : item.selected_variations || null,
