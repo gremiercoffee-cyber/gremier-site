@@ -1,11 +1,12 @@
 /**
  * Expense intake for gremiercoffee+expenses@gmail.com (suppliers send there directly; the owner forwards there).
  *
- * Every cron tick it files each new email's document into the Gremier expense inbox (Supabase "expense-inbox"):
- *   1. PDF / photo attachments, as they are;
- *   2. otherwise the invoice link(s) in the email (Rivhit, iCount, a supplier's own "view invoice" link ...):
- *      a PDF or photo is filed as it is, a web page is printed to PDF;
- *   3. otherwise the email itself, printed to PDF (receipts that are only the email body).
+ * Every cron tick it files new emails' invoices into the Gremier expense inbox (Supabase "expense-inbox"):
+ * but only when it has
+ *   1. an attached PDF, or
+ *   2. an invoice link to click (Rivhit, iCount, a supplier's own "view invoice" link ...): a PDF or photo is filed
+ *      as it is, a web page is printed to PDF.
+ * Everything else (photos, screenshots, plain emails) is left to the Gmail script, which has always handled it.
  * Only document links are opened, never marketing/consent/unsubscribe links (shared/expense-links.ts).
  * The expense inbox then reads it and decides: a Hebrew document without "חשבונית מס" (an order confirmation)
  * is held back; foreign amounts are converted to shekels.
@@ -29,8 +30,6 @@ export interface ExpenseDoc { name: string; type: string; bytes: Uint8Array }
 export interface IntakeIO {
   /** Opens a document link: the file, or the page printed to PDF. Null if it is neither. */
   fetchLink(url: string): Promise<ExpenseDoc | null>;
-  /** Prints an email (HTML) to PDF. */
-  printHtml(html: string, name: string): Promise<ExpenseDoc>;
   /** Files one document in the expense inbox; true when stored (or already there). */
   upload(doc: ExpenseDoc, reference: string): Promise<boolean>;
 }
@@ -39,7 +38,6 @@ interface Row { message_id: string; tries: number; status: string }
 
 const b64ToBytes = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), (c) => c.charCodeAt(0));
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "document";
-const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const gmailLink = (id: string) => `https://mail.google.com/mail/u/0/#all/${id}`;
 
 // ---- The real outside world (browser rendering, web, Supabase) -----------------------------
@@ -64,10 +62,6 @@ export function liveIO(env: Env): IntakeIO {
       const pdf = await withPage(env, async (page) => { await page.goto(url, { waitUntil: "networkidle0", timeout: 45000 }); return page.pdf(pdfOptions); });
       return { name: safeName(new URL(url).hostname) + ".pdf", type: "application/pdf", bytes: new Uint8Array(pdf) };
     },
-    async printHtml(html, name) {
-      const pdf = await withPage(env, async (page) => { await page.setContent(html, { waitUntil: "networkidle0", timeout: 45000 }); return page.pdf(pdfOptions); });
-      return { name, type: "application/pdf", bytes: new Uint8Array(pdf) };
-    },
     async upload(doc, reference) {
       if (!env.EXPENSE_INGRESS_KEY) throw new Error("expense inbox key missing");
       const form = new FormData();
@@ -83,21 +77,21 @@ export function liveIO(env: Env): IntakeIO {
 }
 
 // ---- One email -----------------------------------------------------------------------------
-/** The documents in an email, in the order they should be tried. */
+/** Chief of Staff steps in only for an attached PDF or an invoice link to click. Photos, screenshots and
+ * plain emails are left to the Gmail script, as before. */
 export async function documentsOf(g: InvoiceGmail, m: GMsg, io: IntakeIO): Promise<{ docs: ExpenseDoc[]; how: string }> {
   const f = readMessage(m), docs: ExpenseDoc[] = [];
-  // 1. Attachments: PDFs, and photos that are not small logos (phone mail apps often attach photos inline).
+  // 1. Attached PDFs.
   for (const a of f.attachments) {
-    const isPdf = /pdf/i.test(a.type) || /\.pdf$/i.test(a.name), isImg = /^image\/(jpe?g|png|webp)$/i.test(a.type);
-    if (!isPdf && !isImg) continue;
+    if (!/pdf/i.test(a.type) && !/.pdf$/i.test(a.name)) continue;
     const data = a.data ?? (a.id ? await g.attachment(m.id, a.id) : null);
     if (!data) continue;
-    const bytes = b64ToBytes(data), kind = fileKind(bytes);
-    if (!kind || (kind !== "application/pdf" && bytes.length < 15000) || bytes.length > MAX_BYTES) continue;
-    docs.push({ name: safeName(a.name || "receipt") , type: kind, bytes });
+    const bytes = b64ToBytes(data);
+    if (fileKind(bytes) !== "application/pdf" || bytes.length > MAX_BYTES) continue;
+    docs.push({ name: safeName(a.name || "invoice.pdf"), type: "application/pdf", bytes });
   }
   if (docs.length) return { docs, how: "attachment" };
-  // 2. Invoice links.
+  // 2. An invoice link to click.
   const errors: string[] = [];
   for (const url of documentLinks(f.html, f.text)) {
     try { const d = await io.fetchLink(url); if (d) docs.push(d); } catch (e) { errors.push((e as Error).message); }
@@ -105,14 +99,7 @@ export async function documentsOf(g: InvoiceGmail, m: GMsg, io: IntakeIO): Promi
   }
   if (docs.length) return { docs, how: "link" };
   if (errors.length) throw new Error("invoice link could not be opened: " + errors.join("; ").slice(0, 200));
-  // 3. The email itself.
-  const head = `<div dir="auto" style="font:13px Arial,sans-serif;color:#555;border-bottom:1px solid #ddd;padding-bottom:8px;margin-bottom:12px">`
-    + `<b>From:</b> ${esc(f.from)}<br><b>Date:</b> ${esc(f.date)}<br><b>Subject:</b> ${esc(f.subject)}</div>`;
-  const body = f.html || `<pre dir="auto" style="white-space:pre-wrap;font:14px Arial,sans-serif">${esc(f.text)}</pre>`;
-  if (!f.text.trim() && !f.html.trim()) return { docs: [], how: "empty" };
-  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0">${head}${body}</body>`;
-  docs.push(await io.printHtml(html, safeName(f.subject || "email") + ".pdf"));
-  return { docs, how: "email" };
+  return { docs: [], how: "none" };
 }
 
 // ---- The tick -----------------------------------------------------------------------------
@@ -153,7 +140,7 @@ async function handle(env: Env, g: InvoiceGmail, io: IntakeIO, id: string, tries
     const f = readMessage(m); subject = f.subject; sender = f.from;
     if (f.received < (await config(env))!.watch_from) { await record(env, id, "skip", 0, "before intake started", f, at, tries); return "skip"; }
     const { docs, how } = await documentsOf(g, m, io);
-    if (!docs.length) throw new Error("nothing to file (empty email)");
+    if (!docs.length) { await record(env, id, "skip", 0, "no PDF or invoice link: left to the Gmail script", f, at, tries); return "skip"; }
     for (const [n, d] of docs.entries()) await io.upload(d, `cos:${id}:${n}`);
     await record(env, id, "filed", docs.length, how, f, at, tries + 1);
     return "filed";

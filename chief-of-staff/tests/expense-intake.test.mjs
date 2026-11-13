@@ -41,18 +41,19 @@ test('the invoice links are found; consent, maps and site links are never opened
  assert.equal(m.fileKind(new TextEncoder().encode('%PDF-1.4')),'application/pdf');assert.equal(m.fileKind(new TextEncoder().encode('<html>')),null);
 });
 
-test("today's Dekel and Kerach Aretz invoices are filed from their links; the order confirmation is printed (the inbox then holds it back)",async()=>{
+test("today's Dekel and Kerach Aretz invoices are filed from their links; the order confirmation (no PDF, no invoice link) is left alone",async()=>{
  const s=setup([dekelInvoice,iceInvoice,iceOrder],{links:{[RIVHIT]:PDF,[ADIDA]:PDF}});
- const r=await s.tick();assert.equal(r.filed,3);assert.match(s.g.q,/^to:gremiercoffee\+expenses@gmail\.com /);
+ const r=await s.tick();assert.equal(r.filed,2);assert.match(s.g.q,/^to:gremiercoffee\+expenses@gmail\.com /);
  assert.deepEqual(s.opened,[RIVHIT,ADIDA]);assert(!s.opened.includes(CONSENT));
- assert.deepEqual(s.uploads.map(u=>u.ref),['cos:dekel:0','cos:ice:0','cos:iceorder:0']);
- assert.equal(s.row('dekel').detail,'link');assert.equal(s.row('iceorder').detail,'email');assert.match(s.printed[0],/הזמנתך #57993/);
- await s.tick(NOW+300e3);assert.equal(s.uploads.length,3,'never filed twice');
+ assert.deepEqual(s.uploads.map(u=>u.ref),['cos:dekel:0','cos:ice:0']);
+ assert.equal(s.row('dekel').detail,'link');assert.equal(s.row('iceorder').status,'skip');assert.equal(s.printed.length,0);
+ await s.tick(NOW+300e3);assert.equal(s.uploads.length,2,'never filed twice');
 });
 
-test('attachments are filed as they are; small logos are not',async()=>{
- const s=setup([mail('a',{subject:'Invoice 12',files:[['12.pdf','application/pdf',PDF],['logo.png','image/png','\x89PNG small']]})]);
- await s.tick();assert.deepEqual(s.uploads.map(u=>[u.ref,u.type]),[['cos:a:0','application/pdf']]);assert.equal(s.opened.length,0);
+test('an attached PDF is filed as it is; photos and screenshots are left to the Gmail script',async()=>{
+ const big='\x89PNG'+'x'.repeat(40000);
+ const s=setup([mail('a',{subject:'Invoice 12',files:[['12.pdf','application/pdf',PDF],['logo.png','image/png',big]]}),mail('p',{files:[['PXL_1.jpg','image/jpeg','\xff\xd8\xff'+'x'.repeat(40000)]]})]);
+ await s.tick();assert.deepEqual(s.uploads.map(u=>[u.ref,u.type]),[['cos:a:0','application/pdf']]);assert.equal(s.opened.length,0);assert.equal(s.row('p').status,'skip');
 });
 
 test('a link that fails is retried, then the owner is alerted instead of it being dropped',async()=>{
