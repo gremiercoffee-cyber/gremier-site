@@ -30,7 +30,7 @@
    drawer.addEventListener('cancel',e=>{e.preventDefault();close();});drawer.addEventListener('click',e=>{if(e.target===drawer)close();});
   }
   drawer.replaceChildren();drawer.dir=he()?'rtl':'ltr';const exit=el('button','✕',{type:'button','aria-label':T('Close','סגירה'),class:'gremier-raffle-x'});exit.onclick=close;
-  drawer.append(exit,el('h2',raffle.prize,{id:'gremier-raffle-title'}),el('p',T('Free to enter. Entries close ','ההשתתפות בחינם. אפשר להירשם עד ')+date(raffle.cutoff)+'.'));
+  drawer.append(exit,el('h2',T(raffle.prize,raffle.prizeHe||raffle.prize),{id:'gremier-raffle-title'}),el('p',T('Free to enter. Entries close ','ההשתתפות בחינם. אפשר להירשם עד ')+date(raffle.cutoff)+'.'));
   const question=el('h3',T('Which would you pick?','מה הייתם בוחרים?'));
   const form=el('form'),cards=el('fieldset'),legend=el('legend',T(`Pick one for ${raffle.choiceEntries} entries`,`בחרו אחד וקבלו ${raffle.choiceEntries} כרטיסים`));cards.append(legend);
   for(const p of raffle.products){const label=el('label',null,{class:'gremier-raffle-card'}),radio=el('input',null,{type:'radio',name:'product',value:p.id,required:''});label.append(radio,el('span',p.name));cards.append(label);}
