@@ -43,6 +43,13 @@ test('a new batch rejects over 10 documents before loading files',async()=>{
  assert.equal(f.calls.length,0);
  assert.equal(f.node('expenseBatchStatus').textContent,'Select 1–10 documents.');
 });
+test('donations are grouped by receipt year before the ten-document limit is applied',()=>{
+ const {context}=fixture();
+ const dates=['2026-11-14',...Array.from({length:6},(_,i)=>`2025-${String(i+7).padStart(2,'0')}-14`),...Array.from({length:10},(_,i)=>`2026-${String(i+1).padStart(2,'0')}-14`)];
+ const receipts=dates.map(doc_date=>({doc_date,doc_kind:'donation_receipt',batch_id:'original-batch'}));
+ const batches=Array.from(context.donationBatches(receipts),({year,files})=>[year,files.length,files[0].doc_date,files.at(-1).doc_date]);
+ assert.deepEqual(batches,[['2026',10,'2026-01-14','2026-10-14'],['2026',1,'2026-11-14','2026-11-14'],['2025',6,'2025-07-14','2025-12-14']]);
+});
 test('10 documents with 17 pages use two taps and mark the batch shared after both parts',async()=>{
  const session=new Map();
  const first=fixture({count:10,pages:8,session});await first.context.prepareBatch();

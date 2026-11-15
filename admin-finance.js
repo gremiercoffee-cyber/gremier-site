@@ -335,18 +335,13 @@
    const [files,settings]=await Promise.all([pages('expense_inbox_files','id,original_name,mime_type,size_bytes,source,status,created_at,filed_at,shared_at,batch_id,supplier,doc_date,doc_kind,total_minor,vat_minor,read_status,hold_reason,orig_total_minor,orig_currency,fx_rate,fx_date','created_at'),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
    if(token!==expenseSeq)return;if(settings.error)throw Error('Expense settings unavailable');expenseFiles=files;expenseSettings=settings.data;
    const pending=files.filter(f=>f.status==='pending');get('expenseQueueTitle').textContent=`Waiting · ${pending.length}`;
-   const per=expenseSettings.batch_size===5?5:shareFileLimit,chunks=[],donations=new Map();
+   const per=expenseSettings.batch_size===5?5:shareFileLimit,chunks=[];
    get('expenseBatchSize').value=per;
    const regular=pending.filter(f=>f.doc_kind!=='donation_receipt');
-   for(const f of pending.filter(f=>f.doc_kind==='donation_receipt')){
-    const key=f.batch_id||'unassigned';
-    if(!donations.has(key))donations.set(key,[]);
-    donations.get(key).push(f);
-   }
-   for(let i=0;i<regular.length;i+=per)chunks.push(regular.slice(i,i+per));
-   for(const group of donations.values())for(let i=0;i<group.length;i+=shareFileLimit)chunks.push(group.slice(i,i+shareFileLimit));
-   get('expenseQueue').innerHTML=chunks.map((c,n)=>{const sum=c.reduce((t,f)=>t+(docRead(f)?Number(f.total_minor)||0:0),0),donation=c[0].doc_kind==='donation_receipt';return `<div class="ex-chunk"><div class="ex-chunk-head"><b>${donation?'Donation receipts':'Batch '+(n+1)}</b><span>${c.length} document${c.length===1?'':'s'}${sum?' · '+money(sum):''}</span>${donation?`<button class="btn btn-outline btn-sm" data-prepare-donations="${n}">Prepare donation batch</button>`:''}</div>${c.map(f=>docRow(f,`<input type="checkbox" class="expense-select" value="${esc(f.id)}" ${n===0?'checked':''}>`,`<button class="btn btn-outline btn-sm" data-expense-open="${esc(f.id)}">Open</button><button class="btn btn-outline btn-sm" data-expense-archive="${esc(f.id)}">Archive</button>`)).join('')}</div>`;}).join('')||'<p class="ex-empty">Nothing waiting.</p>';
-   get('expenseQueue').querySelectorAll('[data-prepare-donations]').forEach(b=>b.onclick=()=>prepareBatch({selected:chunks[Number(b.dataset.prepareDonations)]}));
+   for(let i=0;i<regular.length;i+=per)chunks.push({files:regular.slice(i,i+per)});
+   chunks.push(...donationBatches(pending));
+   get('expenseQueue').innerHTML=chunks.map(({files:c,year},n)=>{const sum=c.reduce((t,f)=>t+(docRead(f)?Number(f.total_minor)||0:0),0),donation=year!==undefined;return `<div class="ex-chunk"><div class="ex-chunk-head"><b>${donation?'Donation receipts · '+(year||'Date needed'):'Batch '+(n+1)}</b><span>${c.length} document${c.length===1?'':'s'}${sum?' · '+money(sum):''}</span>${donation?`<button class="btn btn-outline btn-sm" data-prepare-donations="${n}">Prepare donation batch</button>`:''}</div>${c.map(f=>docRow(f,`<input type="checkbox" class="expense-select" value="${esc(f.id)}" ${n===0?'checked':''}>`,`<button class="btn btn-outline btn-sm" data-expense-open="${esc(f.id)}">Open</button><button class="btn btn-outline btn-sm" data-expense-archive="${esc(f.id)}">Archive</button>`)).join('')}</div>`;}).join('')||'<p class="ex-empty">Nothing waiting.</p>';
+   get('expenseQueue').querySelectorAll('[data-prepare-donations]').forEach(b=>b.onclick=()=>prepareBatch({selected:chunks[Number(b.dataset.prepareDonations)].files}));
    const held=files.filter(f=>f.status==='archived'&&f.read_status==='no_tax_invoice').reverse();
    get('expenseHeld').innerHTML=held.length?`<h3 class="ex-held-title">Held back · ${held.length}</h3>`+held.map(f=>docRow(f,'',`<button class="btn btn-outline btn-sm" data-expense-open="${esc(f.id)}">Open</button><button class="btn btn-outline btn-sm" data-expense-restore="${esc(f.id)}" data-donation="${f.doc_kind==='donation_review'}">${f.doc_kind==='donation_review'?'Confirm donation':'Move to waiting'}</button>`)).join(''):'';
    get('expenseHistory').innerHTML=files.filter(f=>['filed','archived'].includes(f.status)&&!(f.status==='archived'&&f.read_status==='no_tax_invoice')).reverse().map(f=>docRow(f,'',`<small class="ex-doc-state">${f.status==='filed'?'Filed':'Archived'} ${esc((f.filed_at||f.created_at).slice(0,10))}</small>`)).join('')||'<p class="fw-note">Nothing filed yet.</p>';bindAmounts(get('expenseHeld'));
@@ -357,7 +352,7 @@
    get('expenseQueue').querySelectorAll('[data-expense-archive]').forEach(b=>b.onclick=async()=>{try{await call('expense-inbox',{action:'archive',ids:[b.dataset.expenseArchive]});await loadExpenses();}catch(e){status('expenseStatus',e.message);}});
    status('expenseEmailState',expenseSettings.email_last_checked_at?'Email last checked: '+new Date(expenseSettings.email_last_checked_at).toLocaleString()+(expenseSettings.email_error_count?' · '+expenseSettings.email_error_count+' messages need review in Gmail / script execution logs.':' · Connected')+(Date.now()-new Date(expenseSettings.email_last_checked_at).getTime()>20*60*1000?' · Check is overdue; review the Google trigger.':''):expenseSettings.email_last_received_at?'Last email attachment received: '+new Date(expenseSettings.email_last_received_at).toLocaleString():'Email connection is awaiting verification. Complete the one-time Google authorization if you have not done so.');
    status('expenseStatus',`${pending.length} waiting · batch size ${per}`);
-   const selected=chunks[0]||[],key=expenseBatchKey(selected);
+   const selected=chunks[0]?.files||[],key=expenseBatchKey(selected);
    if(batch?.key===key){if(expenseShareRequested)showPreparedExpenseBatch();}
    else if((!batch||batch.auto||expenseShareRequested)&&selected.length&&(selected.length>=per||expenseShareRequested))await prepareBatch({selected,auto:true});
    else if(batch&&batch.ids.some(id=>!pending.some(f=>f.id===id))){batch=null;get('expensePrepared').innerHTML='';status('expenseBatchStatus','');}
@@ -385,6 +380,22 @@
  }
  let pdfLibrary=null,zipPromise=null;
  const shareFileLimit=10;
+ function donationBatches(pending){
+  const groups=new Map();
+  for(const file of pending){
+   if(file.doc_kind!=='donation_receipt')continue;
+   const year=file.doc_date?.match(/^\d{4}(?=-)/)?.[0]||'';
+   const key=year+':'+(file.batch_id||'');
+   if(!groups.has(key))groups.set(key,{year,files:[]});
+   groups.get(key).files.push(file);
+  }
+  const batches=[];
+  for(const {year,files} of [...groups.values()].sort((a,b)=>b.year.localeCompare(a.year))){
+   files.sort((a,b)=>(a.doc_date||'').localeCompare(b.doc_date||''));
+   for(let i=0;i<files.length;i+=shareFileLimit)batches.push({year,files:files.slice(i,i+shareFileLimit)});
+  }
+  return batches;
+ }
  async function pdfjs(){if(!pdfLibrary){pdfLibrary=await import('/vendor/pdfjs-6.4.299/build/pdf.mjs');pdfLibrary.GlobalWorkerOptions.workerSrc='/vendor/pdfjs-6.4.299/build/pdf.worker.mjs';}return pdfLibrary;}
  function zipjs(){if(root.JSZip)return Promise.resolve(root.JSZip);if(!zipPromise)zipPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/vendor/jszip-3.10.2/dist/jszip.min.js';s.onload=()=>resolve(root.JSZip);s.onerror=()=>{zipPromise=null;reject(Error('ZIP export unavailable'));};document.head.append(s);});return zipPromise;}
  const jpeg=canvas=>new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Image conversion failed')),'image/jpeg',0.9));
