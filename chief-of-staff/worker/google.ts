@@ -503,6 +503,36 @@ export async function readThread(env: Env, threadId: string, account?: string) {
   };
 }
 
+/** Morning audit reads Gmail directly, including read mail that still needs action. */
+export async function morningMail(env: Env, email: string, limit: number, carry: string[]) {
+  const token = await accessToken(env, email);
+  const q = 'in:inbox newer_than:7d -category:promotions -category:social -category:forums';
+  const result = await gapi<{ threads?: { id: string }[]; nextPageToken?: string }>(
+    token, `${GMAIL}/threads?${new URLSearchParams({ q, maxResults: String(limit) })}`);
+  const ids = [...new Set([...carry, ...(result.threads ?? []).map(thread => thread.id)])];
+  const reads = await Promise.allSettled(ids.slice(0, limit).map(id =>
+    gapi<GThread>(token, `${GMAIL}/threads/${encodeURIComponent(id)}?format=full`)));
+  const threads = reads.flatMap(read => {
+    if (read.status !== 'fulfilled') return [];
+    const thread = read.value;
+    const latest = thread.messages.at(-1);
+    if (!latest || !latest.labelIds?.includes('INBOX')) return [];
+    const excerpt = bodyText(latest);
+    if (skipReason(latest, null, excerpt)) return [];
+    if (fromMe(latest)) return [];
+    return [{
+      threadId: thread.id, messageId: latest.id, sender: displayName(header(latest, 'From')),
+      subject: header(thread.messages[0], 'Subject') || '(no subject)',
+      receivedAt: new Date(Number(latest.internalDate)).toISOString(),
+      excerpt: excerpt.slice(0, 800),
+      context: thread.messages.slice(-3).map(m => ({
+        mine: fromMe(m), to: header(m, 'To'), text: bodyText(m).slice(0, 600),
+      })),
+    }];
+  });
+  return {threads, partial: reads.some(r => r.status === 'rejected') || ids.length > limit || !!result.nextPageToken};
+}
+
 const mimeWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...enc.encode(s)))}?=`);
 
 const b64bytes = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };

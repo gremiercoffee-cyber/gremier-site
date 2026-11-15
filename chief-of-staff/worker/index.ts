@@ -30,6 +30,7 @@ import {
   HttpError, all, archiveFinishedProjects, createItem, createProject, endOfLocalDay, first, getSettings, learnCategory, now, run, saveSettings, syncProject, updateItem,
 } from "./db";
 import { runProactive } from "./proactive";
+import { decideInboxEntry, inboxReview, runInboxReview } from './inbox-review';
 import { scanNewWatches } from "./watches";
 import { tidyConversations } from "./tidy";
 import { getAreas, removeArea, saveArea } from "./areas";
@@ -519,6 +520,11 @@ route("POST", "/api/nudges/:id/undo", async (_req, env, [id]) => {
   return json({ ok: true });
 });
 route("POST", "/api/proactive/run", async (_req, env) => json(await runProactive(env)));
+route('GET', '/api/inbox-review', async (_req, env) => json(await inboxReview(env)));
+route('POST', '/api/inbox-review/:id/decision', async (req, env, [id]) => {
+  const input = await body<{decision?: string}>(req);
+  return json(await decideInboxEntry(env, id, input.decision));
+});
 route("POST", "/api/actions/:id/:decision", async (_req, env, [id, decision]) => json(await decidePendingAction(env, id, decision)));
 route("GET", "/api/approvals", async (_req, env) => json(await (await import("./approvals")).listApprovals(env)));
 route("POST", "/api/approvals/:source/:id/:decision", async (_req, env, [source, id, decision]) => json(await (await import("./approvals")).decideApproval(env, source, id, decision)));
@@ -716,6 +722,7 @@ export default {
   },
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runInboxReview(env, new Date(event.scheduledTime)).catch(() => console.error('Morning inbox review failed')));
     ctx.waitUntil(checkGesherScheduler(env).catch(()=>console.error('Gesher scheduler health check failed')));
     ctx.waitUntil(import("./invoices").then((m) => m.invoiceTick(env)).catch((e) => console.error("invoices", (e as Error).message)));
     // Emails to the expenses address: file their document (attachment, invoice link, or the email as a PDF).

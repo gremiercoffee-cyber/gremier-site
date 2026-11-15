@@ -6,6 +6,7 @@ import ItemSheet from "./components/ItemSheet";
 import TaskSheet, { toast } from "./components/TaskSheet";
 import Home from "./pages/Home";
 import Shopping from './pages/Shopping';
+import InboxReview from './pages/InboxReview';
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Search from "./pages/Search";
@@ -18,10 +19,11 @@ import ConversationList from "./components/ConversationList";
 import { ResearchChat, ResearchList } from "./components/ResearchChats";
 import type { JobChatRow } from "./api";
 
-type View = "home" | "research" | "chats" | "projects" | "groups" | "shopping" | "details" | "settings" | "search";
-const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", research: "Research", chats: "Chats", projects: "Projects", groups: "Groups", shopping: "Shopping lists", details: "My details", settings: "Settings", search: "Search" };
+type View = "home" | "research" | "chats" | "projects" | "groups" | "shopping" | "inbox-review" | "details" | "settings" | "search";
+const VIEW_TITLES: Record<View, string> = { home: "Chief of Staff", research: "Research", chats: "Chats", projects: "Projects", groups: "Groups", shopping: "Shopping lists", 'inbox-review': "Morning inbox review", details: "My details", settings: "Settings", search: "Search" };
 /** The top menu: everything that isn't the home screen. */
 const MENU: [View | "health", string, string][] = [
+  ["inbox-review", "📥", "Morning inbox review"],
   ["chats", "💬", "Chats"], ["projects", "📁", "Projects"], ["groups", "👥", "Groups"], ["shopping", "🛒", "Shopping lists"],
   ["details", "🪪", "My details"], ["settings", "⚙️", "Settings"], ["health", "🌿", "Health Journal"],
 ];
@@ -238,6 +240,7 @@ export default function App() {
           </div>
         )}
         {view === "research" && jobId && <ResearchChat id={jobId} onChanged={loadJobs} />}
+        {view === 'inbox-review' && <InboxReview onChanged={refresh} />}
         {view === "home" && (
           <Home name={settings?.name ?? ""} conversationId={conversationId}
             onConversation={(id) => { setConversationId(id); loadConversations(); }}

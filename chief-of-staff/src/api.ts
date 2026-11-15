@@ -1,4 +1,5 @@
 import type {HashgachaCampaign} from '../shared/hashgacha';
+import type { InboxDecision, InboxReview } from '../shared/inbox-review';
 import type { ApprovalCard, HomeJob } from "../shared/types";
 import type {
   ShoppingConfig, ShoppingState,
@@ -75,6 +76,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
+  inboxReview: () => request<InboxReview>('GET', '/api/inbox-review'),
+  decideInboxEntry: (id: string, decision: InboxDecision) =>
+    request<{decision: InboxDecision}>('POST', `/api/inbox-review/${encodeURIComponent(id)}/decision`, {decision}),
   refreshHashgacha:()=>request<HashgachaCampaign[]>('POST','/api/hashgacha/refresh'),
   notificationState: (ids: string[]) => request<{active_ids:string[];updates:{id:string;title:string;body:string;revision:number}[]}>("POST","/api/push/state",{ids}),
   recurringReminders: () => request<RecurringReminder[]>('GET', '/api/recurring-reminders'),
