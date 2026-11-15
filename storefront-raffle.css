@@ -12,3 +12,7 @@
 .gremier-raffle-card:has(input:checked){border-color:#795838;background:#f5eddf}
 .gremier-raffle-terms{font-size:13px;color:#6b5a4e;margin:0}
 .gremier-raffle-drawer a{color:#72502c;text-underline-offset:3px}.gremier-raffle-drawer :focus-visible{outline:3px solid #99733d;outline-offset:3px}
+/* Arriving from the hero video's link: the page (and its hero) stays in view; the giveaway button is centred and gently pulses. */
+.gremier-raffle-trigger.is-invite{left:50%;right:auto;bottom:calc(140px + env(safe-area-inset-bottom));transform:translateX(-50%);width:max-content;white-space:nowrap;background:#d4ab72;color:#1a110b;font-size:16px;padding:14px 22px;border-radius:28px;animation:gremier-raffle-pulse 1.8s ease-in-out 3}
+@keyframes gremier-raffle-pulse{0%,100%{box-shadow:0 3px 16px #0003,0 0 0 0 #d4ab7299}50%{box-shadow:0 3px 16px #0003,0 0 0 12px #d4ab7200}}
+@media (prefers-reduced-motion:reduce){.gremier-raffle-trigger.is-invite{animation:none}}

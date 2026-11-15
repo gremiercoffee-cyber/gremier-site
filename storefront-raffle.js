@@ -54,8 +54,11 @@
  api('').then(data=>{
   if(!data.active){try{sessionStorage.removeItem(KEY);}catch{}return;}
   raffle=data;opener=el('button',T('🎁 Enter this week’s giveaway','🎁 להשתתפות בהגרלה השבועית'),{class:'gremier-raffle-trigger',type:'button','aria-haspopup':'dialog'});opener.onclick=open;document.body.append(opener);track('raffle_visit');
-  // Arriving from the "pick a product" frame: open the giveaway straight away.
-  if(/-2$/.test(source)&&new URL(location.href).searchParams.get('raffle'))setTimeout(open,600);
+  // Arriving from the "pick a product" frame: open the giveaway straight away. From the hero video's link (-3): keep the
+  // homepage and its hero in view, and invite them with a highlighted button instead of covering the page.
+  const fresh=!!new URL(location.href).searchParams.get('raffle');
+  if(/-2$/.test(source)&&fresh)setTimeout(open,600);
+  if(/-3$/.test(source)&&fresh){opener.classList.add('is-invite');opener.textContent=T('🎁 Enter this week’s free giveaway','🎁 להשתתפות בהגרלה החינמית');}
  }).catch(()=>{});
  root.GremierRaffle={open,close};
 })(window);
