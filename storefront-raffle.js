@@ -9,7 +9,7 @@
  let id='',source='';
  try{
   const p=new URL(location.href).searchParams;
-  if(/^raffle_[\w-]{1,100}$/.test(p.get('raffle')||'')&&/^status-[1-3]-[1-4]$/.test(p.get('source')||'')){id=p.get('raffle');source=p.get('source');sessionStorage.setItem(KEY,JSON.stringify({id,source}));}
+  if(/^raffle_[\w-]{1,100}$/.test(p.get('raffle')||'')&&/^status-[1-9]\d?-[1-4]$/.test(p.get('source')||'')){id=p.get('raffle');source=p.get('source');sessionStorage.setItem(KEY,JSON.stringify({id,source}));}
   else{const saved=JSON.parse(sessionStorage.getItem(KEY)||'null');if(saved&&/^raffle_[\w-]{1,100}$/.test(saved.id||'')){id=saved.id;source=saved.source||'';}}
  }catch{}
  if(!id)return;
