@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('admin-finance.js','utf8');
-function fixture({pdfFailure=false,cached=null}={}){
- const ids=['a','b','c','d','e'],nodes={},shares=[],calls=[];
+function fixture({pdfFailure=false,cached=null,count=5}={}){
+ const ids=Array.from({length:count},(_,i)=>String.fromCharCode(97+i)),nodes={},shares=[],calls=[];
  function node(id){return nodes[id]||=( {textContent:'',innerHTML:'',disabled:false,children:[],setAttribute(k,v){this[k]=v},removeAttribute(k){delete this[k]},append(v){this.children.push(v)},scrollIntoView(){this.scrolled=true},focus(){this.focused=true},click(){return this.onclick?.()}});}
  const context={File,Blob,Uint8Array,Date,console,Set,Promise,
   document:{querySelectorAll:()=>ids.map(value=>({value})),createElement:type=>type==='canvas'?{width:0,height:0,getContext:()=>({fillRect(){},drawImage(){}}),toBlob:cb=>cb(new Blob(['image'],{type:'image/jpeg'}))}:node('created-'+Math.random())},
@@ -33,7 +33,14 @@ test('conversion failure leaves all originals unfiled and shows the error beside
  const f=fixture({pdfFailure:true});await f.context.prepareBatch();
  assert.equal(f.context.batch,null);assert.equal(f.shares.length,0);assert.equal(f.calls.filter(x=>x.action==='filed').length,0);
  assert.match(f.node('expenseBatchStatus').textContent,/PDF unreadable.*No documents were marked filed/);
- assert.equal(f.node('expensePrepare').disabled,false);assert.equal(f.node('expensePrepare').textContent,'Prepare selected batch');
+ assert.equal(f.node('expensePrepare').disabled,false);assert.equal(f.node('expensePrepare').textContent,'Prepare selected');
+});
+test('17 donation receipts can be prepared together without sharing or filing them',async()=>{
+ const f=fixture({count:17});
+ await f.context.prepareBatch({selected:f.context.expenseFiles});
+ assert.equal(f.context.batch.files.length,17);
+ assert.equal(f.shares.length,0);
+ assert(f.calls.every(call=>call.action==='original'));
 });
 test('a prepared batch is restored as separate files without downloading or rendering again',async()=>{
  const first=fixture();await first.context.prepareBatch();assert.equal(first.context.saved.owner,'admin-1');
