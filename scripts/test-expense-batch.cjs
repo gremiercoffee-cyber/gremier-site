@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('admin-finance.js','utf8');
-function fixture({pdfFailure=false,cached=null,count=5,session=new Map()}={}){
+function fixture({pdfFailure=false,cached=null,count=5,pages=1,session=new Map()}={}){
  const ids=Array.from({length:count},(_,i)=>String.fromCharCode(97+i)),nodes={},shares=[],calls=[],marked=[];
  function node(id){return nodes[id]||=( {textContent:'',innerHTML:'',disabled:false,children:[],setAttribute(k,v){this[k]=v},removeAttribute(k){delete this[k]},append(v){this.children.push(v)},scrollIntoView(){this.scrolled=true},focus(){this.focused=true},click(){return this.onclick?.()}});}
  const context={File,Blob,Uint8Array,Date,console,Set,Promise,
@@ -15,7 +15,7 @@ function fixture({pdfFailure=false,cached=null,count=5,session=new Map()}={}){
  };
  vm.createContext(context);
  vm.runInContext(source.slice(source.indexOf('let pdfLibrary=null'),source.indexOf('const originalShow=root.showTab')),context);
- context.pdfFixture={getDocument:()=>({promise:pdfFailure?Promise.reject(Error('PDF unreadable')):Promise.resolve({numPages:1,getPage:async()=>({getViewport:({scale})=>({width:600*scale,height:800*scale}),render:()=>({promise:Promise.resolve()}),cleanup(){}})}),destroy:async()=>{}})};
+ context.pdfFixture={getDocument:()=>({promise:pdfFailure?Promise.reject(Error('PDF unreadable')):Promise.resolve({numPages:pages,getPage:async()=>({getViewport:({scale})=>({width:600*scale,height:800*scale}),render:()=>({promise:Promise.resolve()}),cleanup(){}})}),destroy:async()=>{}})};
  vm.runInContext('pdfLibrary=pdfFixture',context);
  return {context,nodes,node,shares,calls,marked};
 }
@@ -36,21 +36,21 @@ test('conversion failure leaves all originals unfiled and shows the error beside
  assert.match(f.node('expenseBatchStatus').textContent,/PDF unreadable.*No documents were marked filed/);
  assert.equal(f.node('expensePrepare').disabled,false);assert.equal(f.node('expensePrepare').textContent,'Prepare selected');
 });
-test('17 donation receipts can be prepared together without sharing or filing them',async()=>{
+test('a new batch rejects over 10 documents before loading files',async()=>{
  const f=fixture({count:17});
  await f.context.prepareBatch({selected:f.context.expenseFiles});
- assert.equal(f.context.batch.files.length,17);
- assert.equal(f.shares.length,0);
- assert(f.calls.every(call=>call.action==='original'));
+ assert.equal(f.context.batch,null);
+ assert.equal(f.calls.length,0);
+ assert.equal(f.node('expenseBatchStatus').textContent,'Select 1–10 documents.');
 });
-test('17 files use two phone share taps and only mark the batch shared after both parts',async()=>{
+test('10 documents with 17 pages use two taps and mark the batch shared after both parts',async()=>{
  const session=new Map();
- const first=fixture({count:17,session});await first.context.prepareBatch();
+ const first=fixture({count:10,pages:8,session});await first.context.prepareBatch();
  assert.equal(first.node('expenseShare').textContent,'Share part 1 of 2 (10 files)');
  await first.node('expenseShare').onclick();
  assert.equal(first.shares[0].files.length,10);
  assert.equal(first.marked.length,0);
- const second=fixture({count:17,session,cached:first.context.batch.files});await second.context.prepareBatch();
+ const second=fixture({count:10,session,cached:first.context.batch.files});await second.context.prepareBatch();
  assert.equal(second.node('expenseShare').textContent,'Share part 2 of 2 (7 files)');
  const share=second.context.navigator.share;
  second.context.navigator.share=async()=>{throw Object.assign(Error('cancelled'),{name:'AbortError'});};

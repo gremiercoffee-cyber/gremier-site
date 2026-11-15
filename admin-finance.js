@@ -20,10 +20,11 @@
    const owner=expenseOwner;
    const [files,settings]=await Promise.all([sbc().from('expense_inbox_files').select('id,original_name,mime_type,created_at,doc_kind').eq('status','pending').order('created_at').order('id').limit(40),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
    if(files.error||settings.error||owner!==expenseOwner)return;
-   const selected=(files.data||[]).filter(f=>f.doc_kind!=='donation_receipt').slice(0,settings.data.batch_size);
+   const per=settings.data.batch_size===5?5:shareFileLimit;
+   const selected=(files.data||[]).filter(f=>f.doc_kind!=='donation_receipt').slice(0,per);
    if(batch&&!batch.auto)return;
    if(batch&&batch.ids.some(id=>!files.data.some(f=>f.id===id))){batch=null;get('expensePrepared').innerHTML='';status('expenseBatchStatus','');}
-   if(selected.length<settings.data.batch_size)return;
+   if(selected.length<per)return;
    expenseSettings=settings.data;
    if(batch?.key===expenseBatchKey(selected))return;
    await prepareBatch({selected,background:true,auto:true});
@@ -304,7 +305,7 @@
   get('tab-expenses').innerHTML=`<header class="page-header"><div class="flex-between"><div><h1 class="page-title">Expense inbox</h1></div><span data-action-menu="Expense tools"><button class="btn btn-outline" id="expenseReload">Refresh</button></span></div></header><p class="fw-note" role="status" id="expenseStatus"></p>
    <section class="ex-card ex-add"><label class="ex-plus" title="Add photos or PDFs"><input type="file" id="expenseUpload" accept="application/pdf,image/jpeg,image/png,image/webp" multiple hidden><span aria-hidden="true">+</span><span class="ex-sr">Add photos or PDFs</span></label><label class="ex-cam" title="Take a photo"><input type="file" id="expenseCamera" accept="image/*" capture="environment" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="ex-sr">Take a photo</span></label><div class="ex-add-text"><b>Add expenses</b><small>or email <strong>gremiercoffee+expenses@gmail.com</strong></small><small id="expenseEmailState">Checking email intake…</small></div></section>
    <section class="ex-card ex-ready" id="expenseReadyCard"><header class="ex-head"><h2>Ready to share</h2></header><p class="ex-sub" id="expenseBatchStatus" role="status" aria-live="polite"></p><div id="expensePrepared" tabindex="-1" style="scroll-margin-top:100px;outline:none"></div></section>
-   <section class="ex-card"><header class="ex-head"><h2 id="expenseQueueTitle">Waiting</h2><div class="ex-head-tools"><label class="ex-size">Batch of <select class="form-input" id="expenseBatchSize"><option>5</option><option>10</option><option>15</option><option>20</option></select></label><button class="btn btn-outline btn-sm" id="expensePrepare">Prepare selected</button></div></header><div id="expenseQueue"></div><details class="fw-help"><summary>How batches work</summary><p class="fw-note">Each document counts once toward the batch size. Every PDF page becomes an image. PDF, JPG, PNG or WebP up to 20 MB; originals stay private. Email is checked about every five minutes.</p></details></section>
+   <section class="ex-card"><header class="ex-head"><h2 id="expenseQueueTitle">Waiting</h2><div class="ex-head-tools"><label class="ex-size">Batch of <select class="form-input" id="expenseBatchSize"><option>5</option><option>10</option></select></label><button class="btn btn-outline btn-sm" id="expensePrepare">Prepare selected</button></div></header><div id="expenseQueue"></div><details class="fw-help"><summary>How batches work</summary><p class="fw-note">Each batch holds up to 10 documents. Every PDF page becomes an image. If there are more than 10 images, share them in parts. Originals stay private.</p></details></section>
    <section class="ex-card" id="expenseSharedCard"><header class="ex-head"><h2 id="expenseSharedTitle">Shared batches</h2></header><p class="ex-sub">Shared but not filed yet. Mark each one filed once it's done.</p><div id="expenseShared"></div></section>
    <section class="ex-card ex-quiet" id="expenseHeldCard"><div id="expenseHeld"></div><details><summary>Filed &amp; archived</summary><div id="expenseHistory"></div></details></section>`;
   get('expenseReload').onclick=loadExpenses;get('expensePrepare').onclick=prepareBatch;
@@ -332,9 +333,10 @@
   setup();const token=++expenseSeq;status('expenseStatus','Loading expense inbox…');
   try{
    const [files,settings]=await Promise.all([pages('expense_inbox_files','id,original_name,mime_type,size_bytes,source,status,created_at,filed_at,shared_at,batch_id,supplier,doc_date,doc_kind,total_minor,vat_minor,read_status,hold_reason,orig_total_minor,orig_currency,fx_rate,fx_date','created_at'),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
-   if(token!==expenseSeq)return;if(settings.error)throw Error('Expense settings unavailable');expenseFiles=files;expenseSettings=settings.data;get('expenseBatchSize').value=expenseSettings.batch_size;
+   if(token!==expenseSeq)return;if(settings.error)throw Error('Expense settings unavailable');expenseFiles=files;expenseSettings=settings.data;
    const pending=files.filter(f=>f.status==='pending');get('expenseQueueTitle').textContent=`Waiting · ${pending.length}`;
-   const per=Number(expenseSettings.batch_size)||5,chunks=[],donations=new Map();
+   const per=expenseSettings.batch_size===5?5:shareFileLimit,chunks=[],donations=new Map();
+   get('expenseBatchSize').value=per;
    const regular=pending.filter(f=>f.doc_kind!=='donation_receipt');
    for(const f of pending.filter(f=>f.doc_kind==='donation_receipt')){
     const key=f.batch_id||'unassigned';
@@ -342,7 +344,7 @@
     donations.get(key).push(f);
    }
    for(let i=0;i<regular.length;i+=per)chunks.push(regular.slice(i,i+per));
-   for(const group of donations.values())for(let i=0;i<group.length;i+=20)chunks.push(group.slice(i,i+20));
+   for(const group of donations.values())for(let i=0;i<group.length;i+=shareFileLimit)chunks.push(group.slice(i,i+shareFileLimit));
    get('expenseQueue').innerHTML=chunks.map((c,n)=>{const sum=c.reduce((t,f)=>t+(docRead(f)?Number(f.total_minor)||0:0),0),donation=c[0].doc_kind==='donation_receipt';return `<div class="ex-chunk"><div class="ex-chunk-head"><b>${donation?'Donation receipts':'Batch '+(n+1)}</b><span>${c.length} document${c.length===1?'':'s'}${sum?' · '+money(sum):''}</span>${donation?`<button class="btn btn-outline btn-sm" data-prepare-donations="${n}">Prepare donation batch</button>`:''}</div>${c.map(f=>docRow(f,`<input type="checkbox" class="expense-select" value="${esc(f.id)}" ${n===0?'checked':''}>`,`<button class="btn btn-outline btn-sm" data-expense-open="${esc(f.id)}">Open</button><button class="btn btn-outline btn-sm" data-expense-archive="${esc(f.id)}">Archive</button>`)).join('')}</div>`;}).join('')||'<p class="ex-empty">Nothing waiting.</p>';
    get('expenseQueue').querySelectorAll('[data-prepare-donations]').forEach(b=>b.onclick=()=>prepareBatch({selected:chunks[Number(b.dataset.prepareDonations)]}));
    const held=files.filter(f=>f.status==='archived'&&f.read_status==='no_tax_invoice').reverse();
@@ -354,10 +356,10 @@
    get('expenseQueue').querySelectorAll('[data-expense-open]').forEach(b=>b.onclick=async()=>{try{const r=await call('expense-inbox',{action:'original',id:b.dataset.expenseOpen});root.open(r.url,'_blank','noopener');}catch(e){status('expenseStatus',e.message);}});
    get('expenseQueue').querySelectorAll('[data-expense-archive]').forEach(b=>b.onclick=async()=>{try{await call('expense-inbox',{action:'archive',ids:[b.dataset.expenseArchive]});await loadExpenses();}catch(e){status('expenseStatus',e.message);}});
    status('expenseEmailState',expenseSettings.email_last_checked_at?'Email last checked: '+new Date(expenseSettings.email_last_checked_at).toLocaleString()+(expenseSettings.email_error_count?' · '+expenseSettings.email_error_count+' messages need review in Gmail / script execution logs.':' · Connected')+(Date.now()-new Date(expenseSettings.email_last_checked_at).getTime()>20*60*1000?' · Check is overdue; review the Google trigger.':''):expenseSettings.email_last_received_at?'Last email attachment received: '+new Date(expenseSettings.email_last_received_at).toLocaleString():'Email connection is awaiting verification. Complete the one-time Google authorization if you have not done so.');
-   status('expenseStatus',`${pending.length} waiting · batch size ${expenseSettings.batch_size}`);
+   status('expenseStatus',`${pending.length} waiting · batch size ${per}`);
    const selected=chunks[0]||[],key=expenseBatchKey(selected);
    if(batch?.key===key){if(expenseShareRequested)showPreparedExpenseBatch();}
-   else if((!batch||batch.auto||expenseShareRequested)&&selected.length&&(selected.length>=expenseSettings.batch_size||expenseShareRequested))await prepareBatch({selected,auto:true});
+   else if((!batch||batch.auto||expenseShareRequested)&&selected.length&&(selected.length>=per||expenseShareRequested))await prepareBatch({selected,auto:true});
    else if(batch&&batch.ids.some(id=>!pending.some(f=>f.id===id))){batch=null;get('expensePrepared').innerHTML='';status('expenseBatchStatus','');}
    if(!get('expensePrepare').disabled)expenseShareRequested=false;
   }catch(e){status('expenseStatus',e.message);}
@@ -390,7 +392,8 @@
   if(get('expensePrepare').disabled)return;
   const selection=Array.isArray(options.selected)?options.selected:null;
   const ids=selection?selection.map(f=>f.id):[...document.querySelectorAll('.expense-select:checked')].map(i=>i.value),selected=selection||expenseFiles.filter(f=>ids.includes(f.id));
-  if(!selected.length||selected.length>20){status('expenseStatus','Select 1–20 documents.');status('expenseBatchStatus','Select 1–20 documents.');return;}
+  const limit=options.shared?20:shareFileLimit;
+  if(!selected.length||selected.length>limit){status('expenseStatus',`Select 1–${limit} documents.`);status('expenseBatchStatus',`Select 1–${limit} documents.`);return;}
   batch=null;get('expensePrepared').innerHTML='';get('expensePrepare').disabled=true;get('expensePrepare').setAttribute('aria-busy','true');
   const progress=message=>{status('expenseStatus',message);status('expenseBatchStatus',message);};
   try{

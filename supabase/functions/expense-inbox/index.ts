@@ -146,7 +146,7 @@ Deno.serve(async req=>{
    if(r.error)throw Error('amount_save_failed');return json({saved:true});
   }
   if(b.action==='settings'){
-   if(![5,10,15,20].includes(b.batch_size))throw Error('invalid_batch_size');
+   if(![5,10].includes(b.batch_size))throw Error('invalid_batch_size');
    const r=await db.from('expense_inbox_settings').update({batch_size:b.batch_size,updated_at:new Date().toISOString()}).eq('id',1);if(r.error)throw Error('settings_save_failed');await notify(db);return json({saved:true});
   }
   if(b.action==='restore'){
@@ -164,6 +164,7 @@ Deno.serve(async req=>{
   }
   if(['filed','archive','shared','unshare'].includes(b.action)){
    const ids=Array.isArray(b.ids)?b.ids:[];if(ids.length<1||ids.length>20||ids.some((x:any)=>!/^[0-9a-f-]{36}$/i.test(x)))throw Error('choose_up_to_20_files');
+   if(b.action==='shared'&&ids.length>10)throw Error('choose_up_to_10_files');
    const now=new Date().toISOString();
    // shared: the batch left the phone (share sheet / ZIP) and leaves the waiting list, labelled with when.
    // filed: done, from waiting or shared. unshare: a shared batch goes back to waiting.

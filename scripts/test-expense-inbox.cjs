@@ -23,3 +23,9 @@ test('donation receipts need evidence of a completed donation and identifiable r
  assert.equal(taxInvoiceCheck(row).ok,false);
  assert.equal(taxInvoiceCheck({...row,title:'חשבונית מס קבלה'}).ok,true);
 });
+test('expense intake rejects a batch setting or new shared batch over 10',async()=>{
+ const s=server(),headers={Authorization:'Bearer fixture-admin'};
+ const ids=Array.from({length:11},()=>crypto.randomUUID());
+ assert.equal((await s.request({action:'settings',batch_size:15},headers)).body.error,'invalid_batch_size');
+ assert.equal((await s.request({action:'shared',ids},headers)).body.error,'choose_up_to_10_files');
+});
