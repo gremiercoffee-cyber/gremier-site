@@ -1,14 +1,15 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('admin-finance.js','utf8');
-function fixture({pdfFailure=false,cached=null,count=5}={}){
- const ids=Array.from({length:count},(_,i)=>String.fromCharCode(97+i)),nodes={},shares=[],calls=[];
+function fixture({pdfFailure=false,cached=null,count=5,session=new Map()}={}){
+ const ids=Array.from({length:count},(_,i)=>String.fromCharCode(97+i)),nodes={},shares=[],calls=[],marked=[];
  function node(id){return nodes[id]||=( {textContent:'',innerHTML:'',disabled:false,children:[],setAttribute(k,v){this[k]=v},removeAttribute(k){delete this[k]},append(v){this.children.push(v)},scrollIntoView(){this.scrolled=true},focus(){this.focused=true},click(){return this.onclick?.()}});}
  const context={File,Blob,Uint8Array,Date,console,Set,Promise,
   document:{querySelectorAll:()=>ids.map(value=>({value})),createElement:type=>type==='canvas'?{width:0,height:0,getContext:()=>({fillRect(){},drawImage(){}}),toBlob:cb=>cb(new Blob(['image'],{type:'image/jpeg'}))}:node('created-'+Math.random())},
   get:node,status:(id,message)=>node(id).textContent=message,esc:String,phone:String,today:()=> '2026-10-25',
   call:async(name,body)=>{calls.push(body);return {url:'https://private.test/'+body.id}},fetch:async()=>({ok:true,blob:async()=>new Blob(['original'])}),
   createImageBitmap:async()=>({width:3000,height:4000,close(){}}),URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},setTimeout(){},
-  root:{open(){},GremierExpenseCache:{get:async()=>cached,put:async(owner,key,files)=>{context.saved={owner,key,files}},clear:async()=>{}}},navigator:{canShare:({files})=>files.every(f=>f instanceof File),share:async payload=>shares.push(payload)},
+  root:{open(){},sessionStorage:{getItem:key=>session.get(key),setItem:(key,value)=>session.set(key,value),removeItem:key=>session.delete(key)},GremierExpenseCache:{get:async()=>cached,put:async(owner,key,files)=>{context.saved={owner,key,files}},clear:async()=>{}}},navigator:{canShare:({files})=>files.length<=10&&files.every(f=>f instanceof File),share:async payload=>shares.push(payload)},
+  markBatchShared:async()=>{marked.push(context.batch.ids);context.batch.shared=true;},
   expenseFiles:ids.map((id,i)=>({id,created_at:'2026-10-25',original_name:id,mime_type:i===2?'application/pdf':'image/jpeg'})),expenseSettings:{whatsapp_number:'972500000000'},batch:null,
   expenseOwner:'admin-1',expenseShareRequested:false,expenseBatchKey:rows=>JSON.stringify(rows.map(f=>[f.id,f.created_at])),showPreparedExpenseBatch:()=>{node('expensePrepared').scrollIntoView();node('expensePrepared').focus();},
  };
@@ -16,7 +17,7 @@ function fixture({pdfFailure=false,cached=null,count=5}={}){
  vm.runInContext(source.slice(source.indexOf('let pdfLibrary=null'),source.indexOf('const originalShow=root.showTab')),context);
  context.pdfFixture={getDocument:()=>({promise:pdfFailure?Promise.reject(Error('PDF unreadable')):Promise.resolve({numPages:1,getPage:async()=>({getViewport:({scale})=>({width:600*scale,height:800*scale}),render:()=>({promise:Promise.resolve()}),cleanup(){}})}),destroy:async()=>{}})};
  vm.runInContext('pdfLibrary=pdfFixture',context);
- return {context,nodes,node,shares,calls};
+ return {context,nodes,node,shares,calls,marked};
 }
 test('five selected receipts become five separate files passed to a single share call',async()=>{
  const f=fixture();await f.context.prepareBatch();
@@ -41,6 +42,26 @@ test('17 donation receipts can be prepared together without sharing or filing th
  assert.equal(f.context.batch.files.length,17);
  assert.equal(f.shares.length,0);
  assert(f.calls.every(call=>call.action==='original'));
+});
+test('17 files use two phone share taps and only mark the batch shared after both parts',async()=>{
+ const session=new Map();
+ const first=fixture({count:17,session});await first.context.prepareBatch();
+ assert.equal(first.node('expenseShare').textContent,'Share part 1 of 2 (10 files)');
+ await first.node('expenseShare').onclick();
+ assert.equal(first.shares[0].files.length,10);
+ assert.equal(first.marked.length,0);
+ const second=fixture({count:17,session,cached:first.context.batch.files});await second.context.prepareBatch();
+ assert.equal(second.node('expenseShare').textContent,'Share part 2 of 2 (7 files)');
+ const share=second.context.navigator.share;
+ second.context.navigator.share=async()=>{throw Object.assign(Error('cancelled'),{name:'AbortError'});};
+ await second.node('expenseShare').onclick();
+ assert.equal(second.marked.length,0);
+ assert.equal(second.node('expenseShare').textContent,'Share part 2 of 2 (7 files)');
+ second.context.navigator.share=share;await second.node('expenseShare').onclick();
+ assert.equal(second.shares[0].files.length,7);
+ assert.equal(new Set([...first.shares[0].files,...second.shares[0].files].map(f=>f.name)).size,17);
+ assert.equal(second.marked.length,1);
+ assert.equal(session.size,0);
 });
 test('a prepared batch is restored as separate files without downloading or rendering again',async()=>{
  const first=fixture();await first.context.prepareBatch();assert.equal(first.context.saved.owner,'admin-1');

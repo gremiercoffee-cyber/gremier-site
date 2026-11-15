@@ -382,6 +382,7 @@
   act('[data-shared-again]',async g=>{await prepareBatch({selected:g,shared:true});showPreparedExpenseBatch();});
  }
  let pdfLibrary=null,zipPromise=null;
+ const shareFileLimit=10;
  async function pdfjs(){if(!pdfLibrary){pdfLibrary=await import('/vendor/pdfjs-6.4.299/build/pdf.mjs');pdfLibrary.GlobalWorkerOptions.workerSrc='/vendor/pdfjs-6.4.299/build/pdf.worker.mjs';}return pdfLibrary;}
  function zipjs(){if(root.JSZip)return Promise.resolve(root.JSZip);if(!zipPromise)zipPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/vendor/jszip-3.10.2/dist/jszip.min.js';s.onload=()=>resolve(root.JSZip);s.onerror=()=>{zipPromise=null;reject(Error('ZIP export unavailable'));};document.head.append(s);});return zipPromise;}
  const jpeg=canvas=>new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Image conversion failed')),'image/jpeg',0.9));
@@ -412,13 +413,40 @@
    if(owner!==expenseOwner)return;
    if(!cached&&owner)await root.GremierExpenseCache?.put(owner,key,files);
    if(owner!==expenseOwner)return;
-   batch={ids,files,key,auto:!!options.auto,shared:!!options.shared};get('expensePrepared').innerHTML=`<div class="ex-ready-top"><div><b>${selected.length} documents · ${files.length} files</b><small>${options.shared?'Shared before · sharing again won\'t change it':'Sharing moves it to Shared batches'}</small></div><button class="btn btn-green ex-share" id="expenseShare">Share ${files.length} files</button></div><div class="fw-actions"><button class="btn btn-outline btn-sm" id="expenseZip">Download ZIP</button><button class="btn btn-outline btn-sm" id="expenseWhatsApp">Open filing WhatsApp</button><button class="btn btn-outline btn-sm" id="expenseFiled">Mark filed</button></div><div id="expenseImageReview" class="fw-image-review"></div>`;
+   batch={ids,files,key,auto:!!options.auto,shared:!!options.shared};const prepared=batch;
+   const parts=Math.ceil(files.length/shareFileLimit),progressKey='expense-share:'+owner+':'+key;
+   let nextPart=0;
+   if(parts>1&&!options.shared){try{const saved=Number(root.sessionStorage.getItem(progressKey));if(Number.isInteger(saved)&&saved>=0&&saved<=parts)nextPart=saved;}catch{}}
+   get('expensePrepared').innerHTML=`<div class="ex-ready-top"><div><b>${selected.length} documents · ${files.length} files</b><small>${options.shared?'Shared before':parts>1?'Share one part at a time in WhatsApp':'Sharing moves it to Shared batches'}</small></div><button type="button" class="btn btn-green ex-share" id="expenseShare"></button></div><div class="fw-actions"><button class="btn btn-outline btn-sm" id="expenseZip">Download ZIP</button><button class="btn btn-outline btn-sm" id="expenseWhatsApp">Open filing WhatsApp</button><button class="btn btn-outline btn-sm" id="expenseFiled">Mark filed</button></div><div id="expenseImageReview" class="fw-image-review"></div>`;
    files.forEach(f=>{const button=document.createElement('button'),img=document.createElement('img'),url=URL.createObjectURL(f);button.type='button';button.className='fw-preview-image';button.title='Open full-size page';img.src=url;img.alt=f.name;img.loading='lazy';img.decoding='async';img.onload=()=>URL.revokeObjectURL(url);button.append(img);button.onclick=()=>{const full=URL.createObjectURL(f);root.open(full,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(full),60000);};get('expenseImageReview').append(button);});
-   get('expenseShare').onclick=async()=>{try{if(navigator.canShare?.({files})){await navigator.share({files,title:'Gremier expense documents'});await markBatchShared();}else{status('expenseStatus','File sharing is unavailable here. Download the ZIP, extract the images and attach them in WhatsApp.');get('expenseZip').click();}}catch(e){if(e.name!=='AbortError')status('expenseStatus','Sharing failed. Download the ZIP and attach its images manually.');}};
-   get('expenseZip').onclick=async()=>{try{const Zip=await zipjs(),z=new Zip();files.forEach(f=>z.file(f.name,f));download(await z.generateAsync({type:'blob',compression:'STORE'}),'Gremier-expenses-'+today()+'.zip');await markBatchShared();}catch(e){status('expenseStatus',e.message);}};
+   const shareButton=get('expenseShare');
+   const currentPart=()=>files.slice(nextPart*shareFileLimit,(nextPart+1)*shareFileLimit);
+   const updateShareButton=()=>{shareButton.textContent=nextPart===parts?'Finish batch':parts===1?`Share ${files.length} files`:`Share part ${nextPart+1} of ${parts} (${currentPart().length} files)`;};
+   updateShareButton();
+   shareButton.onclick=async()=>{
+    if(shareButton.disabled||batch!==prepared)return;
+    shareButton.disabled=true;
+    try{
+     if(nextPart<parts){
+      const part=currentPart();
+      if(!navigator.canShare?.({files:part})){progress('File sharing is unavailable here. Download the ZIP and attach the images in WhatsApp.');return;}
+      await navigator.share({files:part,title:'Gremier expense documents'});
+      nextPart++;
+      if(parts>1&&!options.shared){try{root.sessionStorage.setItem(progressKey,String(nextPart));}catch{}}
+      if(batch!==prepared)return;
+     }
+     if(nextPart<parts){progress(`Part ${nextPart} handed off. Return here to share part ${nextPart+1}.`);return;}
+     if(options.shared){nextPart=0;progress('Files handed off to your share app.');return;}
+     await markBatchShared();
+     if(prepared.shared){try{root.sessionStorage.removeItem(progressKey);}catch{}}
+     else progress('Files handed off. Tap Finish batch to retry saving the batch status.');
+    }catch(e){progress(e.name==='AbortError'?'Share canceled. Tap again when you’re ready.':'Sharing failed. Try again or download the ZIP and attach the images in WhatsApp.');}
+    finally{updateShareButton();shareButton.disabled=false;}
+   };
+   get('expenseZip').onclick=async()=>{try{const Zip=await zipjs(),z=new Zip();files.forEach(f=>z.file(f.name,f));download(await z.generateAsync({type:'blob',compression:'STORE'}),'Gremier-expenses-'+today()+'.zip');progress('ZIP downloaded. After sharing the files, you can mark the batch filed.');}catch(e){progress(e.message);}};
    get('expenseWhatsApp').onclick=()=>root.open('https://wa.me/'+phone(expenseSettings.whatsapp_number),'_blank','noopener');
    get('expenseFiled').onclick=async()=>{get('expenseFiled').disabled=true;try{await call('expense-inbox',{action:'filed',ids});get('expensePrepared').innerHTML='';batch=null;await root.GremierExpenseCache?.clear();await loadExpenses();status('expenseStatus','Batch marked filed. Original documents are retained.');}catch(e){get('expenseFiled').disabled=false;status('expenseStatus',e.message);}};
-   progress(`${files.length} separate JPG files ready to share together.`);
+   progress(parts===1?`${files.length} separate JPG files ready to share together.`:`${files.length} JPG files · ${parts} shares`);
    if(!options.background||expenseShareRequested){showPreparedExpenseBatch();expenseShareRequested=false;}
   }catch(e){progress(e.message+' No documents were marked filed.');}finally{get('expensePrepare').disabled=false;get('expensePrepare').removeAttribute('aria-busy');get('expensePrepare').textContent='Prepare selected';}
  }
