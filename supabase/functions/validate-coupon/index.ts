@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
   try {
-    const { code, cart_total, items, user_id, email, subscription } = await req.json();
+    const { code, cart_total, items, user_id, email, subscription, catalog } = await req.json();
     const cleanCode = String(code || '').trim().toUpperCase();
     if (!cleanCode) return json({ valid: false, error: 'no_code' });
     // Codes are letters/digits/dashes/underscores only — no LIKE wildcards.
@@ -74,6 +74,16 @@ Deno.serve(async (req) => {
     // Expiry
     if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
       return json({ valid: false, error: 'expired', message: coupon.kind === 'voucher' ? 'This voucher has expired' : 'This coupon has expired' });
+    }
+
+    // An event's pop-up page asks for the event's products (they may be hidden in the main shop).
+    if (catalog === true) {
+      if (!coupon.event_name || !coupon.waive_shipping) return json({ valid: false, error: 'not_event', message: 'Coupon not found' });
+      const ids = (coupon.product_ids || []).map(String);
+      const { data: ps } = await sb.from('products').select('id,name_en,name_he,price,images,description_en,description_he,category,delivery_price').in('id', ids);
+      const products = ids.map((id: string) => (ps || []).find((p: any) => String(p.id) === id)).filter(Boolean);
+      return json({ valid: true, code: coupon.code, event_name: coupon.event_name, discount_type: coupon.discount_type, discount_value: coupon.discount_value,
+        reward_percent: coupon.reward_percent || null, expires_at: coupon.expires_at, products });
     }
 
     // Global max uses
@@ -148,10 +158,13 @@ Deno.serve(async (req) => {
       discount_value: coupon.discount_value,
       applies_to: coupon.applies_to,
       subscription: !!subscription,
-      free_delivery: !!coupon.free_delivery || !!coupon.waive_shipping,
+      free_delivery: !!coupon.free_delivery,
       waive_shipping: !!coupon.waive_shipping,
+      event_name: coupon.event_name || null,
+      pickup_product_ids: coupon.waive_shipping ? (coupon.product_ids || []) : [],
+      reward_percent: coupon.reward_percent || null,
       kind: coupon.kind || 'coupon',
-      message: what + (coupon.waive_shipping ? ' + shipping waived' : coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
+      message: what + (coupon.waive_shipping ? (coupon.event_name ? ' · pick up at ' + coupon.event_name : ' + shipping waived') : coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
     });
   } catch (err) {
     return json({ valid: false, error: 'server_error', message: String(err) }, 500);

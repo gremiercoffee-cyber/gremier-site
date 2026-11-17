@@ -4146,18 +4146,41 @@ function updateDeliveryPrice() {
   const feeRow = document.getElementById('deliveryFeeRow');
   const freeNote = document.getElementById('freeDeliveryNote');
   const shabbatHide = document.getElementById('shabbatDeliveryNote'); if (shabbatHide) shabbatHide.style.display = 'none';
-  // A coupon that waives shipping: no delivery choice and no fee, just a note.
-  const waived = appliedRedeem?.kind === 'coupon' && !!appliedRedeem.waive_shipping;
-  const shipOpts = document.getElementById('coShipOptions'), waivedNote = document.getElementById('coShipWaivedNote');
-  if (shipOpts) shipOpts.classList.toggle('is-waived', waived);
-  if (waivedNote) { waivedNote.style.display = waived ? 'block' : 'none'; waivedNote.textContent = lang === 'he' ? '✓ המשלוח על הפריט הזה בחינם.' : '✓ Shipping is waived on this item.'; }
-  if (waivedNote && waivedNote.dataset.on !== String(waived)) {   // coupon added or removed: refresh the delivery extras
-    waivedNote.dataset.on = String(waived);
-    const reg = document.getElementById('shipRegular');
-    if (waived && reg) reg.checked = true;
-    toggleExpeditedOptions();
+  // An event coupon (e.g. the ELLE Fitness pop-up): its items are picked up at the event with no shipping.
+  // Anything else in the cart is delivered as usual, and only those items pay delivery.
+  const swapping = !!window.__evtSwap;
+  const waived = !swapping && appliedRedeem?.kind === 'coupon' && !!appliedRedeem.waive_shipping;
+  const evIds = new Set((appliedRedeem?.pickup_product_ids || []).map(String));
+  const evKey = (i) => String(i.base_product_id || i.product_id || i.id).split('_')[0];
+  const atEvent = waived ? cart.filter((i) => evIds.has(evKey(i))) : [];
+  const rest = waived ? cart.filter((i) => !evIds.has(evKey(i))) : [];
+  const allAtEvent = waived && (!evIds.size || (atEvent.length > 0 && !rest.length));
+  const mixed = waived && evIds.size > 0 && atEvent.length > 0 && rest.length > 0;
+  if (!swapping) {
+    window.__evtMixed = mixed;
+    const he = lang === 'he', evName = appliedRedeem?.event_name || (he ? 'האירוע' : 'the event');
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const list = (a) => a.map((i) => `${esc(he ? (i.name_he || i.name_en) : i.name_en)} ×${i.qty}`).join(', ');
+    const shipOpts = document.getElementById('coShipOptions'), waivedNote = document.getElementById('coShipWaivedNote');
+    if (shipOpts) shipOpts.classList.toggle('is-waived', allAtEvent);
+    if (waivedNote) {
+      waivedNote.style.display = allAtEvent || mixed ? 'block' : 'none';
+      waivedNote.classList.toggle('co-event-split', mixed);
+      waivedNote.innerHTML = allAtEvent
+        ? (appliedRedeem?.event_name ? (he ? `✓ בלי משלוח: אוספים כאן ב-${esc(evName)}.` : `✓ Shipping is waived: you pick these up here at ${esc(evName)}.`) : (he ? '✓ המשלוח על הפריט הזה בחינם.' : '✓ Shipping is waived on this item.'))
+        : mixed ? (he ? `<b>📍 איסוף כאן ב-${esc(evName)}, בלי משלוח:</b> ${list(atEvent)}<br><b>🚚 נשלח אליכם:</b> ${list(rest)}. מלאו כתובת למטה. דמי המשלוח הם רק על המוצרים האלה.`
+                       : `<b>📍 Picked up here at ${esc(evName)}, no shipping:</b> ${list(atEvent)}<br><b>🚚 Delivered to you:</b> ${list(rest)}. Enter your address below; delivery is charged on these items only.`) : '';
+    }
+    const mode = allAtEvent ? 'pickup' : mixed ? 'mixed' : 'none';
+    if (waivedNote && waivedNote.dataset.mode !== mode) {   // switched between pick-up-only, mixed and normal: set the delivery type once
+      const was = waivedNote.dataset.mode;
+      waivedNote.dataset.mode = mode;
+      if (mode === 'pickup') { const pk = document.getElementById('shipPickup'); if (pk) pk.checked = true; }
+      else if (was === 'pickup') { const reg = document.getElementById('shipRegular'); if (reg) reg.checked = true; }
+      toggleExpeditedOptions();
+    }
   }
-  if (waived) {
+  if (allAtEvent) {
     if (feeRow) feeRow.style.display = 'none';
     if (freeNote) freeNote.style.display = 'none';
     refreshGiftCardDiscount(0);
@@ -4165,6 +4188,16 @@ function updateDeliveryPrice() {
     const cartSum = cart.reduce((s, i) => s + i.price * i.qty, 0);
     if (summaryTotal) summaryTotal.textContent = `₪${Math.max(0, cartSum - (Number(appliedRedeem.discount) || 0))}`;
     return 0;
+  }
+  if (mixed) {   // price delivery for the delivered items only, then show the whole order's total
+    const full = cart; let fee = 0;
+    window.__evtSwap = true;
+    try { cart = rest; fee = Number(updateDeliveryPrice()) || 0; } finally { cart = full; window.__evtSwap = false; }
+    refreshGiftCardDiscount(fee);
+    const summaryTotal = document.getElementById('coSummaryTotal');
+    const cartSum = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    if (summaryTotal) summaryTotal.textContent = `₪${Math.max(0, cartSum + fee - (Number(appliedRedeem.discount) || 0))}`;
+    return fee;
   }
   const isExpedited = document.getElementById('shipExpedited')?.checked;
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
@@ -4318,7 +4351,7 @@ async function applyRedeemCode() {
     });
     let data = await res.json().catch(() => ({}));
     if (data.valid) {
-      appliedRedeem = { kind: 'coupon', voucher: data.kind === 'voucher', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery, waive_shipping: !!data.waive_shipping };
+      appliedRedeem = { kind: 'coupon', voucher: data.kind === 'voucher', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery, waive_shipping: !!data.waive_shipping, event_name: data.event_name || null, pickup_product_ids: data.pickup_product_ids || [] };
       showRedeemApplied(data.message, data.discount);
       return;
     }
@@ -4870,6 +4903,7 @@ async function sendChatMessageText(text) {
     if (!hint) { hint = document.createElement('div'); hint.id = 'pvFreeHint'; hint.className = 'pv-free-hint'; note.insertAdjacentElement('afterend', hint); }
     hint.style.display = 'none';
     if(cart.some(i=>i.is_subscription))return fee; // The subscription notice uses its pre-discount shipping threshold.
+    if(window.__evtMixed||window.__evtSwap)return fee; // event pick-up + delivery: the threshold is on the delivered items only
     try {
       const city = (typeof selectedCheckoutCity!=='undefined'?selectedCheckoutCity:null);
       const regular = document.getElementById('shipRegular')?.checked;
@@ -5732,5 +5766,7 @@ async function sendChatMessageText(text) {
 <script src="/storefront-journeys.js?v=20261111-1"></script>
 <link rel="stylesheet" href="/storefront-raffle.css?v=20261117-4"/>
 <script src="/storefront-raffle.js?v=20261117-4" defer></script>
+<link rel="stylesheet" href="/storefront-elle.css?v=20261118-2"/>
+<script src="/storefront-elle.js?v=20261118-11" defer></script>
 </body>
 </html>

@@ -321,10 +321,15 @@ Deno.serve(async (req) => {
       return json({ error: "A subscription has to be ordered on its own — please check out other items separately." }, 400);
     }
 
+    // An event coupon (e.g. a pop-up shop): its products can be sold through it even when hidden in the main shop.
+    const eventCode = String(body.coupon_code || "").trim().toUpperCase();
+    const { data: eventCouponRow } = eventCode ? await admin.from("coupons").select("product_ids,waive_shipping,event_name,expires_at,starts_at,is_active").eq("code", eventCode).maybeSingle() : { data: null };
+    const eventCoupon = eventCouponRow && eventCouponRow.is_active && eventCouponRow.waive_shipping && (!eventCouponRow.expires_at || new Date(eventCouponRow.expires_at) > new Date()) && (!eventCouponRow.starts_at || new Date(eventCouponRow.starts_at) <= new Date()) ? eventCouponRow : null;
+    const eventProductIds = new Set(((eventCoupon?.product_ids || []) as unknown[]).map(String));
     const allowedItems = items.map((item: Record<string, unknown>) => {
       const productId = String(item.product_id || "").trim();
       const product = productsById.get(productId);
-      if (!product || product.is_active === false) throw new Error("Invalid order item");
+      if (!product || (product.is_active === false && !eventProductIds.has(productId))) throw new Error("Invalid order item");
       const isSub = isSubscriptionProductRow(product) || item.is_subscription === true;
       const modern = isSub && !isSubscriptionProductRow(product);
       const subscriptionQuote = modern ? subscriptionModel.quote(item.subscription_items, [...productsById.values()]) : null;
@@ -416,6 +421,7 @@ Deno.serve(async (req) => {
     const shabbatPromo = !isSubscriptionOrder && !subscriptionAddon && shabbatPromoActive() && String(deliveryInfo.delivery_type || "regular") === "regular" && shabbatGuaranteedZone(delivery.zone?.name_en);
 
     let discount = 0;
+    let eventPickupNote = "";
 
     // The subscription order's total becomes the recurring PayMe price. So a gift card never
     // applies (it would recur forever), and only coupons allowed for subscriptions do: their
@@ -457,8 +463,25 @@ Deno.serve(async (req) => {
           if (discount > 0) appliedCouponCode = couponCode;
           // Some coupons also make regular delivery free (on a subscription, every month's).
           if (coupon.free_delivery && String(deliveryInfo.delivery_type || "regular") === "regular") { delivery.fee = 0; delivery.source = "coupon"; appliedCouponCode = couponCode; }
-          // A shipping-waived coupon: no delivery fee at all, whatever delivery type was sent.
-          if (coupon.waive_shipping) { delivery.fee = 0; delivery.source = "coupon"; appliedCouponCode = couponCode; }
+          // A shipping-waived (event) coupon: its items are picked up at the event, so they never pay delivery.
+          // Anything else in the cart is delivered as usual and pays delivery on those items alone.
+          if (coupon.waive_shipping) {
+            const covered = new Set(((coupon.product_ids || []) as unknown[]).map(String));
+            const atEvent = allowedItems.filter((i) => covered.has(String(i.product_id)));
+            const rest = allowedItems.filter((i) => !covered.has(String(i.product_id)));
+            if (!rest.length || String(deliveryInfo.delivery_type || "regular") === "pickup") delivery.fee = 0;
+            else {
+              const restDelivery = computeDeliveryFee(rest.map((i) => productsById.get(String(i.product_id))).filter(Boolean) as Record<string, unknown>[],
+                rest.reduce((s, i) => s + i.price * i.qty, 0), deliveryInfo, zonesResult.data || [], settingsResult.data || null);
+              delivery.fee = beitShemeshFree ? 0 : restDelivery.fee;
+            }
+            delivery.source = "coupon"; appliedCouponCode = couponCode;
+            if (atEvent.length) {
+              const where = String(coupon.event_name || "the event");
+              deliveryInfo.event_pickup = { event: where, items: atEvent.map((i) => `${i.name_en || i.product_id} ×${i.qty}`), delivered: rest.map((i) => `${i.name_en || i.product_id} ×${i.qty}`) };
+              eventPickupNote = `📍 Picked up at ${where}: ${atEvent.map((i) => `${i.name_en || ""} ×${i.qty}`).join(", ")}` + (rest.length ? ` · deliver only: ${rest.map((i) => `${i.name_en || ""} ×${i.qty}`).join(", ")}` : "");
+            }
+          }
         }
       }
     }
@@ -503,7 +526,7 @@ Deno.serve(async (req) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_address: deliveryAddress,
-      notes: [subscriptionAddon?.note || "", shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", beitShemeshFree ? "🚚 Free Beit Shemesh delivery promo" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
+      notes: [eventPickupNote, subscriptionAddon?.note || "", shabbatPromo ? "🕯️ Tue/Wed promo: deliver before Shabbat" : "", beitShemeshFree ? "🚚 Free Beit Shemesh delivery promo" : "", cleanText(body.notes, 1000) || ""].filter(Boolean).join(" · ") || null,
       items: allowedItems,
       subtotal,
       discount,

@@ -6,6 +6,7 @@ import { enqueuePendingWebsiteDelivery } from "./pending-delivery.ts";
 import { redeemOrderCodes } from "./redeem-order-codes.ts";
 import { issueFinbotReceipt } from "./finbot-receipts.ts";
 import { settleReferral } from "./engage.ts";
+import { issueEventReward } from "./event-reward.ts";
 import { sendPendingLoyaltyCodes } from "./loyalty-codes.ts";
 import { pushToCustomer } from "./customer-push.ts";
 
@@ -120,6 +121,12 @@ export async function fulfillPaidOrder(
     await settleReferral(supabase, orderId);
   } catch (e) {
     console.error("settleReferral failed:", e);
+  }
+  // Bought at an event pop-up (e.g. ELLE Fitness) during its reward hours: a code for the next order, by email (once).
+  try {
+    await issueEventReward(supabase, orderId);
+  } catch (e) {
+    console.error("issueEventReward failed:", e);
   }
   // Opt-in "save my card" (signed-in customers): store PayMe's token for one-tap checkout.
   await saveCardIfRequested(supabase, orderId);

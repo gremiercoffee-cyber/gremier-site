@@ -1,0 +1,42 @@
+/* ELLE Fitness pop-up: the homepage banner and its shop sheet. */
+.elle-banner { margin: 14px 16px 6px; padding: 18px 18px 16px; border-radius: 14px; background: #1a1a1a; color: #f6efe4; display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; box-shadow: 0 10px 28px rgba(0,0,0,.14); }
+.elle-banner-copy { flex: 1 1 260px; min-width: 0; }
+.elle-eye { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: #c9a96e; font-weight: 700; }
+.elle-banner h2 { margin: 4px 0 4px; font-size: clamp(1.25rem, 4.6vw, 1.6rem); line-height: 1.15; color: #fff; }
+.elle-banner p { margin: 0; font-size: .9rem; line-height: 1.45; color: #e6dccb; }
+.elle-banner-btn { flex: 1 1 220px; border: 0; border-radius: 999px; padding: 14px 20px; background: #c9a96e; color: #1a1a1a; font: inherit; font-weight: 800; font-size: .95rem; cursor: pointer; }
+.elle-banner-btn:active { transform: scale(.98); }
+@media (min-width: 900px) { .elle-banner { max-width: 1100px; margin: 18px auto 8px; padding: 22px 28px; } .elle-banner-btn { flex: 0 0 auto; } }
+
+.elle-store { position: fixed; inset: 0; z-index: 3000; background: rgba(20,16,12,.55); display: none; align-items: flex-end; justify-content: center; }
+.elle-store.open { display: flex; }
+.elle-panel { width: 100%; max-width: 560px; max-height: 94vh; background: #faf6ef; border-radius: 18px 18px 0 0; display: flex; flex-direction: column; overflow: hidden; color: #1a1a1a; }
+@media (min-width: 700px) { .elle-store { align-items: center; } .elle-panel { border-radius: 18px; } }
+.elle-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 18px 8px; }
+.elle-head h2 { margin: 2px 0 0; font-size: 1.45rem; line-height: 1.15; }
+.elle-head h2 span { color: #c9a96e; font-weight: 400; }
+.elle-x { border: 0; background: #ede5d8; width: 36px; height: 36px; border-radius: 50%; font-size: 1rem; cursor: pointer; color: #1a1a1a; flex: 0 0 auto; }
+.elle-perks { list-style: none; margin: 4px 18px 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.elle-perks li { background: #fff; border: 1px solid #e7dccb; border-radius: 999px; padding: 6px 11px; font-size: .78rem; font-weight: 600; }
+.elle-grid { overflow-y: auto; padding: 4px 18px 14px; display: grid; gap: 10px; }
+.elle-card { display: grid; grid-template-columns: 92px 1fr; gap: 12px; background: #fff; border: 1px solid #ece3d5; border-radius: 12px; padding: 10px; align-items: center; }
+.elle-img { width: 92px; height: 92px; border-radius: 9px; overflow: hidden; background: #f1ebe1; }
+.elle-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.elle-info { min-width: 0; }
+.elle-info h3 { margin: 0; font-size: .98rem; line-height: 1.25; }
+.elle-info p { margin: 3px 0 0; font-size: .76rem; line-height: 1.35; color: #6b6156; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.elle-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.elle-price s { color: #9a8f82; font-size: .8rem; }
+.elle-price b { font-size: 1.02rem; }
+.elle-add { border: 0; border-radius: 999px; background: #1a1a1a; color: #fff; padding: 9px 18px; font: inherit; font-weight: 700; cursor: pointer; }
+.elle-qty { display: inline-flex; align-items: center; gap: 10px; background: #f1ebe1; border-radius: 999px; padding: 3px; }
+.elle-qty button { border: 0; width: 32px; height: 32px; border-radius: 50%; background: #1a1a1a; color: #fff; font-size: 1.05rem; cursor: pointer; }
+.elle-qty b { min-width: 16px; text-align: center; }
+.elle-msg { text-align: center; color: #6b6156; padding: 24px 0; }
+.elle-foot { padding: 12px 18px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid #ece3d5; background: #faf6ef; }
+.elle-go { width: 100%; border: 0; border-radius: 999px; padding: 15px; background: #c9a96e; color: #1a1a1a; font: inherit; font-weight: 800; font-size: 1rem; cursor: pointer; }
+.elle-go:disabled { background: #e7dccb; color: #8a7f72; cursor: default; }
+
+/* Checkout: what is picked up at the event and what is delivered. */
+.co-event-split { line-height: 1.55; }
+.co-event-split b { color: #1a1a1a; }
