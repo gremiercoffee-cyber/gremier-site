@@ -122,11 +122,13 @@
   // At checkout the event code applies itself (when the cart has an event item and no other code is in).
   function autoApply() {
     let code = null; try { code = sessionStorage.getItem(KEY); } catch (_) {}
-    if (!code || !live() || (typeof appliedRedeem !== 'undefined' && appliedRedeem)) return;
+    // The event's price wins over any code typed before (it carries the pick-up and the reward).
+    if (!code || !live() || (typeof appliedRedeem !== 'undefined' && appliedRedeem && appliedRedeem.event_name)) return;
     const ids = new Set((catalog?.products || []).map((p) => String(p.id)));
     if (catalog && !cart.some((i) => ids.has(String(i.base_product_id || i.id).split('_')[0]))) return;
     const input = document.getElementById('coRedeemCode');
     if (!input || typeof applyRedeemCode !== 'function') return;
+    window.__eventShopCode = code;   // tells the server this is an order from the event's shop
     input.value = code; applyRedeemCode();
   }
   const origOpen = window.openCheckout;

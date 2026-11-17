@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
   try {
-    const { code, cart_total, items, user_id, email, subscription, catalog } = await req.json();
+    const { code, cart_total, items, user_id, email, subscription, catalog, event_shop } = await req.json();
     const cleanCode = String(code || '').trim().toUpperCase();
     if (!cleanCode) return json({ valid: false, error: 'no_code' });
     // Codes are letters/digits/dashes/underscores only — no LIKE wildcards.
@@ -75,6 +75,9 @@ Deno.serve(async (req) => {
     if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
       return json({ valid: false, error: 'expired', message: coupon.kind === 'voucher' ? 'This voucher has expired' : 'This coupon has expired' });
     }
+
+    // A pop-up event's price is only for orders from its shop: typed in by hand, the code doesn't exist.
+    if (coupon.event_name && catalog !== true && event_shop !== true) return json({ valid: false, error: 'not_found', message: 'Coupon not found' });
 
     // An event's pop-up page asks for the event's products (they may be hidden in the main shop).
     if (catalog === true) {

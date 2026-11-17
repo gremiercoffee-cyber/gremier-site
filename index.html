@@ -3160,6 +3160,7 @@ const shipType = isPickup ? 'pickup' : (isEvent ? 'event' : (isExpedited ? 'expe
       subtotal: cartTotal,
       discount: couponDiscount + giftCardDiscount,
       coupon_code: (appliedRedeem && appliedRedeem.kind === 'coupon') ? appliedRedeem.code : null,
+      event_shop: !!(appliedRedeem && appliedRedeem.event_name),   // ordered from a pop-up event's shop: its price, pick-up and reward
       coupon_discount: couponDiscount,
       gift_card_code: (appliedRedeem && appliedRedeem.kind === 'gift_card') ? appliedRedeem.code : null,
       gift_card_discount: giftCardDiscount,
@@ -4325,6 +4326,7 @@ function setRedeemMsg(msg, ok) {
 }
 function clearRedeemCode() {
   appliedRedeem = null;
+  const redeemBox = document.getElementById('coRedeemCode')?.closest('.form-group'); if (redeemBox) redeemBox.style.display = '';
   document.getElementById('coRedeemCode').value = '';
   document.getElementById('coRedeemApplied').style.display = 'none';
   setRedeemMsg('', false);
@@ -4349,7 +4351,7 @@ async function applyRedeemCode() {
     let res = await fetch(`${SUPABASE_URL}/functions/v1/validate-coupon`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-      body: JSON.stringify({ code, cart_total: cartTotal, items, subscription: subscriptionCart, user_id: currentUser?.id || null, email: document.getElementById('coEmail').value.trim() || currentUser?.email || null }),
+      body: JSON.stringify({ code, event_shop: !!window.__eventShopCode && window.__eventShopCode === code, cart_total: cartTotal, items, subscription: subscriptionCart, user_id: currentUser?.id || null, email: document.getElementById('coEmail').value.trim() || currentUser?.email || null }),
     });
     let data = await res.json().catch(() => ({}));
     if (data.valid) {
@@ -4395,7 +4397,10 @@ function showRedeemApplied(message, discount) {
   document.getElementById('coRedeemAppliedText').textContent = '✓ ' + (ev
     ? (lang==='he' ? `מחיר הפופ-אפ של ${appliedRedeem.event_name}: -₪${discount}` : `${appliedRedeem.event_name} pop-up price: -₪${discount}`)
     : label);
-  if (ev) { const inp = document.getElementById('coRedeemCode'); if (inp && inp.value.trim().toUpperCase() === String(appliedRedeem.code).toUpperCase()) inp.value = ''; }
+  // An event-shop order has nothing to enter or remove: the code box is hidden (the summary shows the discount).
+  const redeemBox = document.getElementById('coRedeemCode')?.closest('.form-group');
+  if (redeemBox) redeemBox.style.display = ev ? 'none' : '';
+  if (ev) document.getElementById('coRedeemCode').value = '';
   prepareCheckoutContent();
 }
  
@@ -5774,6 +5779,6 @@ async function sendChatMessageText(text) {
 <link rel="stylesheet" href="/storefront-raffle.css?v=20261117-4"/>
 <script src="/storefront-raffle.js?v=20261117-4" defer></script>
 <link rel="stylesheet" href="/storefront-elle.css?v=20261118-2"/>
-<script src="/storefront-elle.js?v=20261118-12" defer></script>
+<script src="/storefront-elle.js?v=20261118-13" defer></script>
 </body>
 </html>

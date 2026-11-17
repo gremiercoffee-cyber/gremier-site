@@ -323,7 +323,8 @@ Deno.serve(async (req) => {
 
     // An event coupon (e.g. a pop-up shop): its products can be sold through it even when hidden in the main shop.
     const eventCode = String(body.coupon_code || "").trim().toUpperCase();
-    const { data: eventCouponRow } = eventCode ? await admin.from("coupons").select("product_ids,waive_shipping,event_name,expires_at,starts_at,is_active").eq("code", eventCode).maybeSingle() : { data: null };
+    // Only orders placed from the event's own shop (event_shop) get it; the code can't be typed in by hand.
+    const { data: eventCouponRow } = eventCode && body.event_shop === true ? await admin.from("coupons").select("product_ids,waive_shipping,event_name,expires_at,starts_at,is_active").eq("code", eventCode).maybeSingle() : { data: null };
     const eventCoupon = eventCouponRow && eventCouponRow.is_active && eventCouponRow.waive_shipping && (!eventCouponRow.expires_at || new Date(eventCouponRow.expires_at) > new Date()) && (!eventCouponRow.starts_at || new Date(eventCouponRow.starts_at) <= new Date()) ? eventCouponRow : null;
     const eventProductIds = new Set(((eventCoupon?.product_ids || []) as unknown[]).map(String));
     const allowedItems = items.map((item: Record<string, unknown>) => {
@@ -447,7 +448,8 @@ Deno.serve(async (req) => {
         .eq("code", couponCode)
         .eq("is_active", true)
         .maybeSingle();
-      if (coupon) {
+      // A pop-up event's price comes only with an order from the event's shop, never from typing its code.
+      if (coupon && (!coupon.event_name || body.event_shop === true)) {
         const maxUses = coupon.max_uses != null ? Number(coupon.max_uses) : null;
         const usesCount = Number(coupon.uses_count) || 0;
         const notExhausted = maxUses === null || usesCount < maxUses;
