@@ -20,7 +20,10 @@
  // Consent-aware journeys only; never pass the phone number or anything typed.
  const track=kind=>{try{root.GremierJourneys?.track(kind,{page:'Home'});}catch{}};
  const api=async(path,body)=>{const r=await fetch(endpoint+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(r.status===400&&/phone/i.test(d.message||'')?T('Please check the phone number.','בדקו את מספר הטלפון.'):d.message||T('The giveaway is unavailable right now. Please try again.','ההגרלה לא זמינה כרגע. נסו שוב.'));return d;};
- let raffle,drawer,opener,previousFocus,scrollY,previousOverflow,chosen;
+ let raffle,drawer,opener,previousFocus,scrollY,previousOverflow,chosen,openerState='plain',label=()=>{};
+ // One more entry for messaging us on WhatsApp. The WhatsApp add-on credits the sender's number (never whoever shared the link).
+ const WA='972552703413',waEntries=()=>raffle.whatsappEntries||1;
+ const waLink=(text,cls)=>{const a=el('a',text,{class:cls,target:'_blank',rel:'noopener',href:'https://wa.me/'+WA+'?text='+encodeURIComponent(T('Hi! I’d like another entry into the giveaway raffle 🎟️','היי! אשמח לכרטיס נוסף בהגרלה 🎟️'))});return a;};
  function close(){if(!drawer?.open)return;drawer.close();document.body.style.overflow=previousOverflow;root.scrollTo(0,scrollY);previousFocus?.focus();}
  function productUrl(product){try{const u=new URL(product.url||'https://gremiercoffee.co.il/#shop');return u.protocol==='https:'&&/(^|\.)gremiercoffee\.co\.il$/.test(u.hostname)?u.href:'https://gremiercoffee.co.il/#shop';}catch{return 'https://gremiercoffee.co.il/#shop';}}
  function open(){
@@ -45,20 +48,36 @@
     const result=await api('/entry',{phone:phone.value,productId});track('raffle_entry');form.replaceChildren();question.textContent=T('You’re in!','נרשמתם!');
     form.append(el('p',T(`${result.entries} entries for picking ${chosen.name}. Heart and reshare our Status for more.`,`${result.entries} כרטיסים על הבחירה ב-${chosen.name}. סמנו לב ושתפו את הסטטוס שלנו לעוד כרטיסים.`)));
     const view=el('a',T('See ','לצפייה ב-')+chosen.name,{href:productUrl(chosen),class:'gremier-raffle-go'});
-    const done=el('button',T('Keep browsing','להמשיך לגלוש'),{type:'button'});done.onclick=close;form.append(view,done);
-    if(opener)opener.textContent=T('You’re entered ✓','נרשמתם להגרלה ✓');
+    const more=waLink(T(`💬 Save our number & message us for ${waEntries()} more`,`💬 שמרו את המספר ושלחו לנו הודעה לעוד ${waEntries()}`),'gremier-raffle-wa');
+    const done=el('button',T('Keep browsing','להמשיך לגלוש'),{type:'button'});done.onclick=close;form.append(view,more,done);
+    openerState='entered';label();
    }catch(error){message.textContent=error.message;submit.disabled=false;}
   };
   previousFocus=document.activeElement;scrollY=root.scrollY;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';drawer.showModal();track('raffle_open');
  }
  api('').then(data=>{
   if(!data.active){try{sessionStorage.removeItem(KEY);}catch{}return;}
-  raffle=data;opener=el('button',T('🎁 Enter this week’s giveaway','🎁 להשתתפות בהגרלה השבועית'),{class:'gremier-raffle-trigger',type:'button','aria-haspopup':'dialog'});opener.onclick=open;document.body.append(opener);track('raffle_visit');
+  raffle=data;opener=el('button',T('🎁 Enter this week’s giveaway','🎁 להשתתפות בהגרלה השבועית'),{class:'gremier-raffle-trigger',type:'button','aria-haspopup':'dialog'});opener.onclick=open;
+  // Under the giveaway button: a handwritten note pointing down to a WhatsApp pill.
+  const dock=el('div',null,{class:'gremier-raffle-dock'}),n=waEntries(),note=el('p',null,{class:'gremier-raffle-note'}),noteText=el('span');
+  note.append(noteText);
+  note.insertAdjacentHTML('beforeend','<svg width="26" height="30" viewBox="0 0 26 30" fill="none" aria-hidden="true"><path d="M6 3 C 3 12, 8 20, 14 26" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 24 L14 26 L14 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  const pill=waLink('','gremier-raffle-wa');dock.append(opener,note,pill);document.body.append(dock);track('raffle_visit');
+  // The site picks Hebrew or English after it loads (and on the language button): keep every label in step.
+  label=()=>{
+   opener.textContent=openerState==='entered'?T('You’re entered ✓','נרשמתם להגרלה ✓'):openerState==='invite'?T('🎁 Enter this week’s free giveaway','🎁 להשתתפות בהגרלה החינמית'):T('🎁 Enter this week’s giveaway','🎁 להשתתפות בהגרלה השבועית');
+   note.dir=he()?'rtl':'ltr';noteText.textContent=T(`Save our number & message us for ${n===1?'another entry':n+' more entries'}!`,`שמרו את המספר שלנו ושלחו לנו הודעה ${n===1?'לכרטיס נוסף':'לעוד '+n+' כרטיסים'}!`);
+   pill.textContent=T('💬 Message us on WhatsApp','💬 שלחו לנו הודעה בוואטסאפ');
+   pill.href='https://wa.me/'+WA+'?text='+encodeURIComponent(T('Hi! I’d like another entry into the giveaway raffle 🎟️','היי! אשמח לכרטיס נוסף בהגרלה 🎟️'));
+  };
+  label();new MutationObserver(()=>label()).observe(document.documentElement,{attributes:true,attributeFilter:['lang']});
+  // Once they scroll into the shop, the note folds away and the two buttons stay.
+  root.addEventListener('scroll',()=>dock.classList.toggle('is-compact',root.scrollY>root.innerHeight*0.6),{passive:true});
   // Arriving from the "pick a product" frame: open the giveaway straight away. From the hero video's link (-3): keep the
   // homepage and its hero in view, and invite them with a highlighted button instead of covering the page.
   const fresh=!!new URL(location.href).searchParams.get('raffle');
   if(/-2$/.test(source)&&fresh)setTimeout(open,600);
-  if(/-3$/.test(source)&&fresh){opener.classList.add('is-invite');opener.textContent=T('🎁 Enter this week’s free giveaway','🎁 להשתתפות בהגרלה החינמית');}
+  if(/-3$/.test(source)&&fresh){opener.classList.add('is-invite');openerState='invite';label();}
  }).catch(()=>{});
  root.GremierRaffle={open,close};
 })(window);
