@@ -17,11 +17,19 @@
 @keyframes gremier-raffle-pulse{0%,100%{box-shadow:0 3px 16px #0003,0 0 0 0 #d4ab7299}50%{box-shadow:0 3px 16px #0003,0 0 0 12px #d4ab7200}}
 @media (prefers-reduced-motion:reduce){.gremier-raffle-trigger.is-invite{animation:none}}
 
-/* Raffle visitors: giveaway button, a handwritten note pointing down, then a WhatsApp pill for another entry. */
-.gremier-raffle-dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(128px + env(safe-area-inset-bottom));z-index:45;display:flex;flex-direction:column;align-items:center;gap:4px;width:max-content;max-width:calc(100vw - 32px)}
-.gremier-raffle-dock .gremier-raffle-trigger,.gremier-raffle-dock .gremier-raffle-trigger.is-invite{position:static;transform:none;max-width:100%;white-space:normal}
-.gremier-raffle-note{margin:6px 0 0;display:flex;flex-direction:column;align-items:center;font-family:'Caveat',cursive;font-size:1.35rem;line-height:1.1;color:#1a1a1a;text-align:center;background:#fffdf8e8;border-radius:14px;padding:5px 12px 0;max-width:260px}
-.gremier-raffle-note svg{display:block;margin-top:1px}
+/* Raffle visitors: one small solid card just above the tab bar: the giveaway button, then a handwritten
+   note with a WhatsApp button beside it. Solid background so it reads over any photo; the chat bubble moves above it. */
+.gremier-raffle-dock{position:fixed;left:12px;right:12px;bottom:calc(64px + env(safe-area-inset-bottom));z-index:95;margin:0 auto;max-width:420px;display:flex;flex-direction:column;gap:8px;padding:10px;box-sizing:border-box;background:#fffdf8;border:1px solid #e6dccf;border-radius:18px;box-shadow:0 6px 24px #0000002e}
+.gremier-raffle-dock .gremier-raffle-trigger,.gremier-raffle-dock .gremier-raffle-trigger.is-invite{position:static;transform:none;width:100%;max-width:none;white-space:normal;margin:0;box-shadow:none;font:700 15px system-ui;padding:11px 14px;border-radius:12px;min-height:44px}
+.gremier-raffle-dock .gremier-raffle-trigger.is-invite{background:#d4ab72;color:#1a110b}
+.gremier-raffle-row{display:flex;align-items:center;gap:10px}
+.gremier-raffle-note{flex:1;margin:0;font-family:'Caveat',cursive;font-size:1.25rem;line-height:1.05;color:#1a1a1a;text-align:start}
+.gremier-raffle-note svg{display:none}
+.gremier-raffle-dock a.gremier-raffle-wa{flex:none;min-height:40px;padding:8px 14px;font-size:14px;box-shadow:none;border-radius:12px}
+/* Scrolled into the shop: one slim row, the note folds away. */
+.gremier-raffle-dock.is-compact{flex-direction:row;padding:8px}
+.gremier-raffle-dock.is-compact .gremier-raffle-trigger{width:auto;flex:1}
 .gremier-raffle-dock.is-compact .gremier-raffle-note{display:none}
+body:has(.gremier-raffle-dock) #fabStack{bottom:calc(var(--gremier-raffle-dock-h,0px) + 74px + env(safe-area-inset-bottom))!important;transition:bottom .2s}
 a.gremier-raffle-wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;background:#25D366;color:#fff;font:600 15px system-ui;padding:11px 20px;border-radius:28px;text-decoration:none;box-shadow:0 3px 16px #0003;box-sizing:border-box;max-width:100%;text-align:center}
 .gremier-raffle-drawer a.gremier-raffle-wa{border-radius:12px;box-shadow:none;color:#fff}

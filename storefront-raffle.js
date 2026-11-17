@@ -77,12 +77,14 @@
   const dock=el('div',null,{class:'gremier-raffle-dock'}),n=waEntries(),note=el('p',null,{class:'gremier-raffle-note'}),noteText=el('span');
   note.append(noteText);
   note.insertAdjacentHTML('beforeend','<svg width="26" height="30" viewBox="0 0 26 30" fill="none" aria-hidden="true"><path d="M6 3 C 3 12, 8 20, 14 26" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 24 L14 26 L14 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>');
-  const pill=waLink('','gremier-raffle-wa');dock.append(opener,note,pill);document.body.append(dock);track('raffle_visit');
+  const pill=waLink('','gremier-raffle-wa'),row=el('div',null,{class:'gremier-raffle-row'});row.append(note,pill);dock.append(opener,row);document.body.append(dock);track('raffle_visit');
+  // The page's chat bubble sits just above this card (CSS reads its height).
+  try{new ResizeObserver(()=>document.documentElement.style.setProperty('--gremier-raffle-dock-h',dock.offsetHeight+'px')).observe(dock);}catch{}
   // The site picks Hebrew or English after it loads (and on the language button): keep every label in step.
   label=()=>{
    opener.textContent=openerState==='entered'?T('You’re entered ✓','נרשמתם להגרלה ✓'):openerState==='invite'?T('🎁 Enter this week’s free giveaway','🎁 להשתתפות בהגרלה החינמית'):T('🎁 Enter this week’s giveaway','🎁 להשתתפות בהגרלה השבועית');
-   note.dir=he()?'rtl':'ltr';noteText.textContent=T(`Save our number & message us for ${n===1?'another entry':n+' more entries'}!`,`שמרו את המספר שלנו ושלחו לנו הודעה ${n===1?'לכרטיס נוסף':'לעוד '+n+' כרטיסים'}!`);
-   pill.textContent=T('💬 Message us on WhatsApp','💬 שלחו לנו הודעה בוואטסאפ');
+   dock.dir=he()?'rtl':'ltr';noteText.textContent=T(`Save our number & message us for ${n===1?'another entry':n+' more entries'}!`,`שמרו את המספר שלנו ושלחו הודעה ${n===1?'לכרטיס נוסף':'לעוד '+n+' כרטיסים'}!`);
+   pill.textContent=T('💬 WhatsApp us','💬 וואטסאפ');
    pill.href='https://wa.me/'+WA+'?text='+encodeURIComponent(T('Hi! I’d like another entry into the giveaway raffle 🎟️','היי! אשמח לכרטיס נוסף בהגרלה 🎟️'));
   };
   label();new MutationObserver(()=>label()).observe(document.documentElement,{attributes:true,attributeFilter:['lang']});
