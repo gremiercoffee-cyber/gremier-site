@@ -19,7 +19,11 @@
  const el=(tag,text,attrs={})=>{const n=document.createElement(tag);if(text)n.textContent=text;for(const [key,value]of Object.entries(attrs))n.setAttribute(key,value);return n;};
  // Consent-aware journeys only; never pass the phone number or anything typed.
  const track=kind=>{try{root.GremierJourneys?.track(kind,{page:'Home'});}catch{}};
- const api=async(path,body)=>{const r=await fetch(endpoint+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(r.status===400&&/phone/i.test(d.message||'')?T('Please check the phone number.','בדקו את מספר הטלפון.'):d.message||T('The giveaway is unavailable right now. Please try again.','ההגרלה לא זמינה כרגע. נסו שוב.'));return d;};
+ // Entering needs a site account (Google sign-in), so we know who each entrant is. Uses the page's own sign-in.
+ const user=()=>{try{return typeof currentUser!=='undefined'?currentUser:null;}catch{return null;}};
+ const token=async()=>{try{const s=await getSessionSafe();return s?.data?.session?.access_token||'';}catch{return '';}};
+ const RESUME='gremier-raffle-resume';
+ const api=async(path,body,auth)=>{const r=await fetch(endpoint+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+auth}:{})}:{},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){const e=Error(T('Please sign in to enter.','צריך להתחבר כדי להשתתף.'));e.signIn=true;throw e;}if(!r.ok)throw Error(r.status===400&&/phone/i.test(d.message||'')?T('Please check the phone number.','בדקו את מספר הטלפון.'):d.message||T('The giveaway is unavailable right now. Please try again.','ההגרלה לא זמינה כרגע. נסו שוב.'));return d;};
  let raffle,drawer,opener,previousFocus,scrollY,previousOverflow,chosen,openerState='plain',label=()=>{};
  // One more entry for messaging us on WhatsApp. The WhatsApp add-on credits the sender's number (never whoever shared the link).
  const WA='972552703413',waEntries=()=>raffle.whatsappEntries||1;
@@ -34,24 +38,34 @@
   }
   drawer.replaceChildren();drawer.dir=he()?'rtl':'ltr';const exit=el('button','✕',{type:'button','aria-label':T('Close','סגירה'),class:'gremier-raffle-x'});exit.onclick=close;
   drawer.append(exit,el('h2',T(raffle.prize,raffle.prizeHe||raffle.prize),{id:'gremier-raffle-title'}),el('p',T('Free to enter. Entries close ','ההשתתפות בחינם. אפשר להירשם עד ')+date(raffle.cutoff)+'.'));
+  // Not signed in yet: one tap with Google, then they come straight back to this form.
+  if(!user()){
+   const why=el('p',T('Sign in to enter, so we know who you are if you win. It takes one tap.','התחברו כדי להשתתף, כדי שנדע מי אתם אם תזכו. זה לוקח רגע.'));
+   const google=el('button',T('Continue with Google','המשך עם Google'),{type:'button',class:'gremier-raffle-go'});
+   google.onclick=()=>{try{sessionStorage.setItem(RESUME,'1');}catch{}track('raffle_sign_in');try{signInWithGoogle();}catch{}};
+   drawer.append(why,google);
+   previousFocus=document.activeElement;scrollY=root.scrollY;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';drawer.showModal();track('raffle_open');
+   return;
+  }
   const question=el('h3',T('Which would you pick?','מה הייתם בוחרים?'));
   const form=el('form'),cards=el('fieldset'),legend=el('legend',T(`Pick one for ${raffle.choiceEntries} entries`,`בחרו אחד וקבלו ${raffle.choiceEntries} כרטיסים`));cards.append(legend);
   for(const p of raffle.products){const label=el('label',null,{class:'gremier-raffle-card'}),radio=el('input',null,{type:'radio',name:'product',value:p.id,required:''});label.append(radio,el('span',p.name));cards.append(label);}
-  const phoneLabel=el('label',T('Your phone number (so we can tell you if you win)','מספר הטלפון שלכם (כדי שנוכל לבשר לכם אם זכיתם)')),phone=el('input',null,{type:'tel',name:'phone',autocomplete:'tel',inputmode:'tel',required:'',placeholder:'050-000-0000',dir:'ltr'});phoneLabel.append(phone);
+  const phoneLabel=el('label',T('Your WhatsApp number (so we can tell you if you win)','מספר הוואטסאפ שלכם (כדי שנוכל לבשר לכם אם זכיתם)')),phone=el('input',null,{type:'tel',name:'phone',autocomplete:'tel',inputmode:'tel',required:'',placeholder:'050-000-0000',dir:'ltr'});phoneLabel.append(phone);
   const submit=el('button',T('Enter','להשתתפות'),{type:'submit',class:'gremier-raffle-go'}),message=el('p','',{role:'status','aria-live':'polite'});
   const terms=el('p','',{class:'gremier-raffle-terms'}),link=el('a',T('Rules','תקנון'),{href:raffle.terms,target:'_blank',rel:'noopener'});terms.append(T('No purchase needed. ','לא צריך לקנות כלום. '),link);
-  form.append(cards,phoneLabel,submit,message,terms);drawer.append(question,form);
+  const phoneHint=el('p',T('Messages from this number on WhatsApp add to the same entry.','הודעות מהמספר הזה בוואטסאפ מצטרפות לאותה השתתפות.'),{class:'gremier-raffle-terms'});
+  form.append(cards,phoneLabel,phoneHint,submit,message,terms);drawer.append(question,form);
   form.onsubmit=async e=>{
    e.preventDefault();if(!form.reportValidity())return;submit.disabled=true;message.textContent=T('Saving…','שומרים…');
    try{
     const productId=new FormData(form).get('product');chosen=raffle.products.find(p=>p.id===productId);
-    const result=await api('/entry',{phone:phone.value,productId});track('raffle_entry');form.replaceChildren();question.textContent=T('You’re in!','נרשמתם!');
+    const result=await api('/entry',{phone:phone.value,productId},await token());track('raffle_entry');form.replaceChildren();question.textContent=T('You’re in!','נרשמתם!');
     form.append(el('p',T(`${result.entries} entries for picking ${chosen.name}. Heart and reshare our Status for more.`,`${result.entries} כרטיסים על הבחירה ב-${chosen.name}. סמנו לב ושתפו את הסטטוס שלנו לעוד כרטיסים.`)));
     const view=el('a',T('See ','לצפייה ב-')+chosen.name,{href:productUrl(chosen),class:'gremier-raffle-go'});
     const more=waLink(T(`💬 Save our number & message us for ${waEntries()} more`,`💬 שמרו את המספר ושלחו לנו הודעה לעוד ${waEntries()}`),'gremier-raffle-wa');
     const done=el('button',T('Keep browsing','להמשיך לגלוש'),{type:'button'});done.onclick=close;form.append(view,more,done);
     openerState='entered';label();
-   }catch(error){message.textContent=error.message;submit.disabled=false;}
+   }catch(error){message.textContent=error.message;submit.disabled=false;if(error.signIn){close();setTimeout(open,0);}}
   };
   previousFocus=document.activeElement;scrollY=root.scrollY;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';drawer.showModal();track('raffle_open');
  }
@@ -76,6 +90,9 @@
   // Arriving from the "pick a product" frame: open the giveaway straight away. From the hero video's link (-3): keep the
   // homepage and its hero in view, and invite them with a highlighted button instead of covering the page.
   const fresh=!!new URL(location.href).searchParams.get('raffle');
+  // Back from Google sign-in: reopen the giveaway once the account has loaded.
+  let resume=false;try{resume=sessionStorage.getItem(RESUME)==='1';sessionStorage.removeItem(RESUME);}catch{}
+  if(resume){let n=0;const wait=setInterval(()=>{if(user()||++n>40){clearInterval(wait);if(user())open();}},250);}
   if(/-2$/.test(source)&&fresh)setTimeout(open,600);
   if(/-3$/.test(source)&&fresh){opener.classList.add('is-invite');openerState='invite';label();}
  }).catch(()=>{});
