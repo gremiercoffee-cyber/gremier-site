@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
     // The product a voucher (or product coupon) is for, to name it in the message.
     let productName = '';
-    if (coupon.applies_to === 'specific_products' && coupon.product_ids?.length) {
+    if (coupon.applies_to === 'specific_products' && coupon.product_ids?.length === 1) {   // several products: don't name just the first
       const { data: p } = await sb.from('products').select('name_en').eq('id', coupon.product_ids[0]).maybeSingle();
       productName = p?.name_en || '';
     }
@@ -148,9 +148,10 @@ Deno.serve(async (req) => {
       discount_value: coupon.discount_value,
       applies_to: coupon.applies_to,
       subscription: !!subscription,
-      free_delivery: !!coupon.free_delivery,
+      free_delivery: !!coupon.free_delivery || !!coupon.waive_shipping,
+      waive_shipping: !!coupon.waive_shipping,
       kind: coupon.kind || 'coupon',
-      message: what + (coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
+      message: what + (coupon.waive_shipping ? ' + shipping waived' : coupon.free_delivery ? ' + free delivery' : '') + (subscription ? ' to every charge' : ''),
     });
   } catch (err) {
     return json({ valid: false, error: 'server_error', message: String(err) }, 500);

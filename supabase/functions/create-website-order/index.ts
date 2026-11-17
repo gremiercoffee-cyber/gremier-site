@@ -457,6 +457,8 @@ Deno.serve(async (req) => {
           if (discount > 0) appliedCouponCode = couponCode;
           // Some coupons also make regular delivery free (on a subscription, every month's).
           if (coupon.free_delivery && String(deliveryInfo.delivery_type || "regular") === "regular") { delivery.fee = 0; delivery.source = "coupon"; appliedCouponCode = couponCode; }
+          // A shipping-waived coupon: no delivery fee at all, whatever delivery type was sent.
+          if (coupon.waive_shipping) { delivery.fee = 0; delivery.source = "coupon"; appliedCouponCode = couponCode; }
         }
       }
     }

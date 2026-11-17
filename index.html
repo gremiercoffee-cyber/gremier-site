@@ -794,7 +794,7 @@
 <link rel="stylesheet" href="/storefront-pack-scene.css?v=20261102-3"/>
 <link rel="stylesheet" href="/storefront-subscribe.css?v=20261110-1"/>
 <link rel="stylesheet" href="/storefront-bar-scene.css?v=20261113-3"/>
-<link rel="stylesheet" href="/storefront-checkout.css?v=20261111-1"/>
+<link rel="stylesheet" href="/storefront-checkout.css?v=20261118-1"/>
 <script src="/storefront-nav.js?v=20261112-1"></script>
 <script src="/storefront-pay.js?v=20261023-2"></script>
 <link rel="stylesheet" href="/storefront-discovery.css?v=20261111-2"/>
@@ -1246,7 +1246,7 @@
       </div>
       <div class="form-group">
         <label class="form-label" id="t-co-ship">Shipping Type</label>
-        <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
+        <div id="coShipOptions" style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
           <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;cursor:pointer" id="shipRegularLabel">
             <input type="radio" name="shipType" value="regular" id="shipRegular" onchange="updateDeliveryPrice();toggleExpeditedOptions()" checked style="accent-color:#1a1a1a"/>
             <div><div style="font-size:.85rem;color:var(--cream)" id="t-ship-regular">Regular Delivery</div><div style="font-size:.74rem;color:var(--text2)">2-5 days <span id="shipRegularPrice">—</span></div></div>
@@ -1264,6 +1264,7 @@
             <div><div style="font-size:.85rem;color:var(--cream)">Pickup</div><div style="font-size:.74rem;color:var(--text2)">Free</div></div>
           </label>
         </div>
+        <div id="coShipWaivedNote" style="display:none;margin-top:4px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:11px 14px;font-size:.85rem;color:#4caf72">✓ Shipping is waived on this item.</div>
         <p id="coffeeBarIceDeliveryNote" class="bb-ice-delivery-note" role="status" hidden></p>
         <!-- Regular delivery: optional requested date -->
         <div id="regularOptions" style="margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:14px 16px">
@@ -4145,6 +4146,26 @@ function updateDeliveryPrice() {
   const feeRow = document.getElementById('deliveryFeeRow');
   const freeNote = document.getElementById('freeDeliveryNote');
   const shabbatHide = document.getElementById('shabbatDeliveryNote'); if (shabbatHide) shabbatHide.style.display = 'none';
+  // A coupon that waives shipping: no delivery choice and no fee, just a note.
+  const waived = appliedRedeem?.kind === 'coupon' && !!appliedRedeem.waive_shipping;
+  const shipOpts = document.getElementById('coShipOptions'), waivedNote = document.getElementById('coShipWaivedNote');
+  if (shipOpts) shipOpts.classList.toggle('is-waived', waived);
+  if (waivedNote) { waivedNote.style.display = waived ? 'block' : 'none'; waivedNote.textContent = lang === 'he' ? '✓ המשלוח על הפריט הזה בחינם.' : '✓ Shipping is waived on this item.'; }
+  if (waivedNote && waivedNote.dataset.on !== String(waived)) {   // coupon added or removed: refresh the delivery extras
+    waivedNote.dataset.on = String(waived);
+    const reg = document.getElementById('shipRegular');
+    if (waived && reg) reg.checked = true;
+    toggleExpeditedOptions();
+  }
+  if (waived) {
+    if (feeRow) feeRow.style.display = 'none';
+    if (freeNote) freeNote.style.display = 'none';
+    refreshGiftCardDiscount(0);
+    const summaryTotal = document.getElementById('coSummaryTotal');
+    const cartSum = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    if (summaryTotal) summaryTotal.textContent = `₪${Math.max(0, cartSum - (Number(appliedRedeem.discount) || 0))}`;
+    return 0;
+  }
   const isExpedited = document.getElementById('shipExpedited')?.checked;
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
@@ -4297,7 +4318,7 @@ async function applyRedeemCode() {
     });
     let data = await res.json().catch(() => ({}));
     if (data.valid) {
-      appliedRedeem = { kind: 'coupon', voucher: data.kind === 'voucher', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery };
+      appliedRedeem = { kind: 'coupon', voucher: data.kind === 'voucher', code: data.code, discount: data.discount, message: data.message, subscription: subscriptionCart, free_delivery: !!data.free_delivery, waive_shipping: !!data.waive_shipping };
       showRedeemApplied(data.message, data.discount);
       return;
     }
@@ -4333,7 +4354,7 @@ function showRedeemApplied(message, discount) {
   wrap.style.display = 'flex';
   const label = appliedRedeem.kind === 'gift_card'
     ? (lang==='he'?`כרטיס מתנה: -₪${discount}`:`Gift card: -₪${discount}`)
-    : appliedRedeem.voucher ? (lang==='he'?`שובר: -₪${discount}`:`Voucher: -₪${discount}`) : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.free_delivery ? (lang==='he'?' + משלוח חינם':' + free delivery') : '') + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
+    : appliedRedeem.voucher ? (lang==='he'?`שובר: -₪${discount}`:`Voucher: -₪${discount}`) : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.waive_shipping ? (lang==='he'?' + ללא משלוח לתשלום':' + shipping waived') : appliedRedeem.free_delivery ? (lang==='he'?' + משלוח חינם':' + free delivery') : '') + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
   document.getElementById('coRedeemAppliedText').textContent = '✓ ' + label;
   prepareCheckoutContent();
 }
@@ -4357,7 +4378,8 @@ function showRedeemApplied(message, discount) {
   function shippingExplainer() {
     const evLabel = document.getElementById('shipEventLabel'), box = document.getElementById('regularOptions');
     let ex = document.getElementById('coShipExplain');
-    const shown = evLabel && getComputedStyle(evLabel).display !== 'none' && !document.getElementById('shipPickup')?.checked;
+    const waived = typeof appliedRedeem !== 'undefined' && appliedRedeem?.kind === 'coupon' && !!appliedRedeem.waive_shipping;   // no choice to explain
+    const shown = !waived && evLabel && getComputedStyle(evLabel).display !== 'none' && !document.getElementById('shipPickup')?.checked;
     if (!shown) { ex?.remove(); return; }
     if (!ex) { ex = document.createElement('div'); ex.id = 'coShipExplain'; ex.style.cssText = 'margin-top:10px;padding:10px 12px;background:var(--bg3);border-radius:3px;font-size:.78rem;line-height:1.55;color:var(--text2)'; box.before(ex); }
     const he = lang === 'he';
@@ -4387,7 +4409,7 @@ function showRedeemApplied(message, discount) {
   const dateLabel=document.getElementById('t-co-regular-date'),dateHint=document.getElementById('t-co-regular-date-hint');
   if(dateLabel)dateLabel.textContent=subscription?(lang==='he'?'תאריך יעד למשלוח חוזר (אופציונלי)':'Recurring delivery target (optional)'):(lang==='he'?'תאריך משלוח מבוקש (אופציונלי)':'Requested delivery date (optional)');
   if(dateHint)dateHint.style.fontSize=subscription?'.8rem':'.72rem';
-  if(dateHint)dateHint.textContent=subscription?(lang==='he'?'ברירת המחדל היא לפי מועד החיוב. בחרו תאריך יעד ראשון: המשלוחים הבאים יחזרו באותו יום בחודש או בשבוע. המשלוח עשוי להגיע כמה ימים לפני או אחרי תאריך היעד. מועד החיוב לא משתנה.':'Leave blank to follow billing. A chosen date repeats monthly or weekly. Delivery may arrive a few days before or after; billing dates stay unchanged.'):(lang==='he'?'השאירו ריק למשלוח בהקדם (2–5 ימים). להיום או מחר בחרו משלוח מהיר.':'Leave blank for delivery as soon as possible (2–5 days). For today or tomorrow, choose expedited.');
+  if(dateHint)dateHint.textContent=subscription?(lang==='he'?'ברירת המחדל היא לפי מועד החיוב. בחרו תאריך יעד ראשון: המשלוחים הבאים יחזרו באותו יום בחודש או בשבוע. המשלוח עשוי להגיע כמה ימים לפני או אחרי תאריך היעד. מועד החיוב לא משתנה.':'Leave blank to follow billing. A chosen date repeats monthly or weekly. Delivery may arrive a few days before or after; billing dates stay unchanged.'):(appliedRedeem?.waive_shipping?(lang==='he'?'השאירו ריק למשלוח בהקדם (2–5 ימים).':'Leave blank for delivery as soon as possible (2–5 days).'):(lang==='he'?'השאירו ריק למשלוח בהקדם (2–5 ימים). להיום או מחר בחרו משלוח מהיר.':'Leave blank for delivery as soon as possible (2–5 days). For today or tomorrow, choose expedited.'));
 
   // Don't let the customer pick a date in the past.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
