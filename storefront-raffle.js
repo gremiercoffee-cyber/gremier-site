@@ -15,7 +15,8 @@
  if(!id)return;
  // Follows the site's language (Hebrew or English), like the rest of the page.
  const he=()=>typeof lang!=='undefined'?lang==='he':document.documentElement.lang==='he',T=(en,hb)=>he()?hb:en;
- const endpoint=API+encodeURIComponent(id),date=v=>new Intl.DateTimeFormat(he()?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',weekday:'long',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(v));
+ // When the draw is, broadly ("Thursday evening" / "יום חמישי בערב"), never a clock time.
+ const endpoint=API+encodeURIComponent(id),date=v=>{const d=new Date(v),day=new Intl.DateTimeFormat(he()?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',weekday:'long'}).format(d),h=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jerusalem',hour:'2-digit',hourCycle:'h23'}).format(d));return day+' '+(h>=17?T('evening','בערב'):h>=12?T('afternoon','אחר הצהריים'):T('morning','בבוקר'));};
  const el=(tag,text,attrs={})=>{const n=document.createElement(tag);if(text)n.textContent=text;for(const [key,value]of Object.entries(attrs))n.setAttribute(key,value);return n;};
  // Consent-aware journeys only; never pass the phone number or anything typed.
  const track=kind=>{try{root.GremierJourneys?.track(kind,{page:'Home'});}catch{}};
@@ -37,7 +38,7 @@
    drawer.addEventListener('cancel',e=>{e.preventDefault();close();});drawer.addEventListener('click',e=>{if(e.target===drawer)close();});
   }
   drawer.replaceChildren();drawer.dir=he()?'rtl':'ltr';const exit=el('button','✕',{type:'button','aria-label':T('Close','סגירה'),class:'gremier-raffle-x'});exit.onclick=close;
-  drawer.append(exit,el('h2',T(raffle.prize,raffle.prizeHe||raffle.prize),{id:'gremier-raffle-title'}),el('p',T('Free to enter. Entries close ','ההשתתפות בחינם. אפשר להירשם עד ')+date(raffle.cutoff)+'.'));
+  drawer.append(exit,el('h2',T(raffle.prize,raffle.prizeHe||raffle.prize),{id:'gremier-raffle-title'}),el('p',T('Free to enter. The draw is on ','ההשתתפות בחינם. ההגרלה תתקיים ב')+date(raffle.draw_at||raffle.cutoff)+'.'));
   // Not signed in yet: one tap with Google, then they come straight back to this form.
   if(!user()){
    const why=el('p',T('Sign in to enter, so we know who you are if you win. It takes one tap.','התחברו כדי להשתתף, כדי שנדע מי אתם אם תזכו. זה לוקח רגע.'));
