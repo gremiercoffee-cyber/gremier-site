@@ -3627,6 +3627,8 @@ function prepareCheckoutContent() {
   if (appliedRedeem) {
     const lbl = appliedRedeem.kind === 'gift_card'
       ? (lang === 'he' ? `🎁 כרטיס מתנה (${appliedRedeem.code})` : `🎁 Gift card (${appliedRedeem.code})`)
+      : appliedRedeem.event_name   // a pop-up event's automatic price: no code to show
+        ? (lang === 'he' ? `🏷️ הנחת ${appliedRedeem.event_name}` : `🏷️ ${appliedRedeem.event_name} discount`)
       : (lang === 'he' ? `🎟️ קופון (${appliedRedeem.code})` : `🎟️ Coupon (${appliedRedeem.code})`);
     redeemLine = `<div class="order-line" style="color:var(--green)"><span>${lbl}</span><span>-₪${redeemDiscount}</span></div>`;
   }
@@ -4388,7 +4390,12 @@ function showRedeemApplied(message, discount) {
   const label = appliedRedeem.kind === 'gift_card'
     ? (lang==='he'?`כרטיס מתנה: -₪${discount}`:`Gift card: -₪${discount}`)
     : appliedRedeem.voucher ? (lang==='he'?`שובר: -₪${discount}`:`Voucher: -₪${discount}`) : (lang==='he'?`קופון: -₪${discount}`:`Coupon: -₪${discount}`) + (appliedRedeem.waive_shipping ? (lang==='he'?' + ללא משלוח לתשלום':' + shipping waived') : appliedRedeem.free_delivery ? (lang==='he'?' + משלוח חינם':' + free delivery') : '') + (appliedRedeem.subscription ? (lang==='he'?' בכל חיוב':' on every charge') : '');
-  document.getElementById('coRedeemAppliedText').textContent = '✓ ' + label;
+  // A pop-up event's price (e.g. ELLE Fitness) is applied by itself: show it as the event's price, not as a code.
+  const ev = appliedRedeem.kind === 'coupon' && appliedRedeem.event_name;
+  document.getElementById('coRedeemAppliedText').textContent = '✓ ' + (ev
+    ? (lang==='he' ? `מחיר הפופ-אפ של ${appliedRedeem.event_name}: -₪${discount}` : `${appliedRedeem.event_name} pop-up price: -₪${discount}`)
+    : label);
+  if (ev) { const inp = document.getElementById('coRedeemCode'); if (inp && inp.value.trim().toUpperCase() === String(appliedRedeem.code).toUpperCase()) inp.value = ''; }
   prepareCheckoutContent();
 }
  
@@ -5767,6 +5774,6 @@ async function sendChatMessageText(text) {
 <link rel="stylesheet" href="/storefront-raffle.css?v=20261117-4"/>
 <script src="/storefront-raffle.js?v=20261117-4" defer></script>
 <link rel="stylesheet" href="/storefront-elle.css?v=20261118-2"/>
-<script src="/storefront-elle.js?v=20261118-11" defer></script>
+<script src="/storefront-elle.js?v=20261118-12" defer></script>
 </body>
 </html>

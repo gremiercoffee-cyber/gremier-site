@@ -1,8 +1,11 @@
-/* ELLE Fitness pop-up (Wed 18 Nov 2026, 09:30–13:00 Israel time).
-   A banner under the homepage video opens the event's own little shop. Its products come from the event coupon
-   (so items hidden in the main shop can be sold here), the code is applied at checkout by itself, and the
-   items are picked up at the event with no shipping. Preview any time with ?elle=preview. */
+/* Pop-up event shop (template; first used for ELLE Fitness, Wed 18 Nov 2026, 09:30–13:00 Israel time).
+   A banner under the homepage video opens the event's own little shop. Its products and discount come from the
+   event's coupon row in Supabase (so items hidden in the main shop can be sold here). Shoppers never see or type
+   a code: it is applied at checkout by itself and shown as the event's price. The items are picked up at the
+   event with no shipping. Preview any time with ?elle=preview; direct link /#elle (or ?elle=1).
+   For the next event: change EV below and the coupon row. See docs/popup-event-template.md. */
 (function () {
+  // ── The event: the only lines to change for the next one ──
   const EV = { code: 'ELLEFITNESS', name: 'ELLE Fitness', from: Date.parse('2026-11-18T07:30:00Z'), until: Date.parse('2026-11-18T11:00:00Z') };
   const KEY = 'gremier_event_code';
   let preview = false;
@@ -13,12 +16,12 @@
   const money = (n) => '₪' + Math.round(n);
   const after = (price, off) => price - Math.round(price * off / 100);   // the discount is rounded to whole shekels, like at checkout
   const T = {
-    eye: ['Today only · at ELLE Fitness', 'היום בלבד · ב-ELLE Fitness'],
-    title: ['The ELLE Fitness pop-up', 'הפופ-אפ של ELLE Fitness'],
-    text: ['Pick up right here. 10% off, no shipping, and 10% off your next order.', 'אוספים כאן במקום. 10% הנחה, בלי משלוח, ועוד 10% הנחה על ההזמנה הבאה.'],
-    cta: ['Shop ELLE Fitness products', 'למוצרים של ELLE Fitness'],
+    eye: [`Today only · at ${EV.name}`, `היום בלבד · ב-${EV.name}`],
+    title: [`The ${EV.name} pop-up`, `הפופ-אפ של ${EV.name}`],
+    text: ['Pick up right here. 10% off automatically (no code needed), no shipping, and 10% off your next order.', 'אוספים כאן במקום. 10% הנחה אוטומטית (בלי קוד), בלי משלוח, ועוד 10% הנחה על ההזמנה הבאה.'],
+    cta: [`Shop ${EV.name} products`, `למוצרים של ${EV.name}`],
     sub: ['Pick up here today', 'איסוף כאן היום'],
-    p1: ['10% off everything here', '10% הנחה על הכול כאן'],
+    p1: ['10% off everything, no code needed', '10% הנחה על הכול, בלי קוד'],
     p2: ['No shipping: pick up at the event', 'בלי משלוח: איסוף באירוע'],
     p3: ['10% off your next order, by email', '10% על ההזמנה הבאה, במייל'],
     add: ['Add', 'הוספה'],
@@ -103,7 +106,7 @@
             : `<button type="button" class="elle-add" data-id="${esc(p.id)}" data-d="1">${t('add')}</button>`}</div></div></article>`;
     }).join('');
     sheet.innerHTML = `<div class="elle-panel">
-      <header class="elle-head"><div><div class="elle-eye">${t('sub')}</div><h2>ELLE Fitness <span>×</span> Gremier</h2></div><button type="button" class="elle-x" aria-label="${t('close')}">✕</button></header>
+      <header class="elle-head"><div><div class="elle-eye">${t('sub')}</div><h2>${esc(EV.name)} <span>×</span> Gremier</h2></div><button type="button" class="elle-x" aria-label="${t('close')}">✕</button></header>
       <ul class="elle-perks"><li>🏷️ ${t('p1')}</li><li>📍 ${t('p2')}</li><li>🎁 ${t('p3')}</li></ul>
       <div class="elle-grid">${grid}</div>
       <footer class="elle-foot"><button type="button" class="elle-go" ${count ? '' : 'disabled'}>${count ? `${t('checkout')} · ${count} · ${money(net)}` : t('empty')}</button></footer></div>`;
