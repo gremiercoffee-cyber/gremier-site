@@ -36,7 +36,7 @@ itself off when the event's hours end, so the next pop-up only needs new setting
    insert into coupons (code, discount_type, discount_value, applies_to, product_ids, is_active,
                         waive_shipping, free_delivery, event_name, starts_at, expires_at,
                         reward_percent, reward_from, reward_until, reward_days, description)
-   values ('NEXTEVENT', 'percent', 10, 'products',
+   values ('NEXTEVENT', 'percent', 10, 'specific_products',
            array['<product id>', '<product id>']::uuid[],   -- the products to sell there, in display order
            true, true, false, 'Next Event Name',
            '2027-01-10 07:00Z', '2027-01-10 15:00Z',          -- code valid from / until
