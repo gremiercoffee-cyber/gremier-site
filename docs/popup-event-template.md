@@ -9,8 +9,9 @@ itself off when the event's hours end, so the next pop-up only needs new setting
   the event's hours. Tapping it opens the event's own shop (a sheet on the homepage).
 - Direct link for a QR code: `https://gremiercoffee.co.il/#elle` (or `?elle=1`).
 - The shop lists the event's products, including ones hidden in the main shop, with the discount already shown.
-- **No code for shoppers.** The event coupon applies itself at checkout for anyone who came through the event
-  shop. Checkout shows it as "<event> pop-up price" / "<event> discount", never the code.
+- **No code at all.** Ordering from the event shop is what gives the price, pick-up and reward. The coupon row
+  is only internal settings: typed in by hand the code says "not found" (validate-coupon and create-website-order
+  need `event_shop: true`, which only the event shop sends). Checkout hides the code box and shows "<event> discount".
 - The event's items are **picked up at the event**, so there's no address or shipping. If the cart also has
   other products, those are delivered, and delivery is charged on them only (checkout shows the split).
 - Optional reward: orders paid during the reward hours get a personal single-use code for the next
