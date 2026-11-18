@@ -17,7 +17,7 @@
   const packFor = (pool) => all().find((p) => packOf(p)?.pool === pool && p.is_active !== false);
   let open = null;   // { pack, picks: {id: n} }
   let returnFocus = null, previousOverflow = '';
-  const art = (pool, flavour) => `/packs/studio/${pool}-${flavour}-${flavour === 'carrier' ? 'v3' : pool === 'bottles' ? 'v2' : 'v1'}.webp`;
+  const art = (pool, flavour) => `/packs/studio/${pool}-${flavour}-${flavour === 'carrier' ? 'v3' : 'v2'}.webp`;   // minis v2 = the Cream Latte labels
   function flavour(p, pool) {
     const name = String(p?.name_en || '').toLowerCase();
     if (pool === 'minis') return /classic/.test(name) ? 'classic' : /vanilla/.test(name) ? 'vanilla' : /caramel/.test(name) ? 'caramel' : 'original';
