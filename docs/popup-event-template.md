@@ -14,6 +14,8 @@ itself off when the event's hours end, so the next pop-up only needs new setting
   need `event_shop: true`, which only the event shop sends). Checkout hides the code box and shows "<event> discount".
 - The event's items are **picked up at the event**, so there's no address or shipping. If the cart also has
   other products, those are delivered, and delivery is charged on them only (checkout shows the split).
+- Once paid, an event-only order is marked **fulfilled** with no delivery card or job
+  (`_shared/pending-delivery.ts`). A mixed order's delivery carries only the delivered items.
 - Optional reward: orders paid during the reward hours get a personal single-use code for the next
   order by email (for example `ELLE-K7P2Q`, 10% off, valid 30 days).
 
