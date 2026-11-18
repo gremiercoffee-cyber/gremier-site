@@ -480,7 +480,7 @@ Deno.serve(async (req) => {
             delivery.source = "coupon"; appliedCouponCode = couponCode;
             if (atEvent.length) {
               const where = String(coupon.event_name || "the event");
-              deliveryInfo.event_pickup = { event: where, items: atEvent.map((i) => `${i.name_en || i.product_id} ×${i.qty}`), delivered: rest.map((i) => `${i.name_en || i.product_id} ×${i.qty}`) };
+              deliveryInfo.event_pickup = { event: where, product_ids: atEvent.map((i) => String(i.product_id)), items: atEvent.map((i) => `${i.name_en || i.product_id} ×${i.qty}`), delivered: rest.map((i) => `${i.name_en || i.product_id} ×${i.qty}`) };
               eventPickupNote = `📍 Picked up at ${where}: ${atEvent.map((i) => `${i.name_en || ""} ×${i.qty}`).join(", ")}` + (rest.length ? ` · deliver only: ${rest.map((i) => `${i.name_en || ""} ×${i.qty}`).join(", ")}` : "");
             }
           }

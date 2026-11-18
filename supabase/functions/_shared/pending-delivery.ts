@@ -378,6 +378,23 @@ export async function enqueuePendingWebsiteDelivery(
 
   if (!order || order.payment_status !== "paid") return "skipped";
 
+  // A pop-up event order (e.g. ELLE Fitness): the event's items go home with the customer there and then.
+  // Nothing to deliver → no delivery card or job, and the order is fulfilled. Anything else in the
+  // cart is delivered as usual, so only those items go on the delivery.
+  const eventPickup = (order.delivery_info as Record<string, unknown> | null)?.event_pickup as
+    { product_ids?: string[]; items?: string[]; delivered?: string[] } | undefined;
+  if (eventPickup) {
+    if (!eventPickup.delivered?.length) {
+      await supabase.from("orders").update({ status: "fulfilled" }).eq("id", orderId).neq("status", "cancelled");
+      return "skipped";
+    }
+    const takenIds = new Set((eventPickup.product_ids || []).map(String));
+    const takenNames = new Set((eventPickup.items || []).map((s) => String(s).replace(/ ×\d+$/, "")));
+    const keep = (Array.isArray(order.items) ? order.items : []).filter((i: Record<string, unknown>) =>
+      takenIds.size ? !takenIds.has(String(i.product_id)) : !takenNames.has(String(i.name_en || "")));
+    order.items = keep;
+  }
+
   const { data: existing } = await supabase
     .from("pending_website_deliveries")
     .select("id, status, scheduled_date")
