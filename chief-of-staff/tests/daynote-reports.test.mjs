@@ -49,11 +49,13 @@ test('one Sol job per period, parsed when done, retried, notice sent once',async
  const list=await m.listReports(h.env);assert.equal(list.find(r=>r.id===ready.id).headline,'Sleep and HRV both improved.');
  assert.equal((await m.getReport(h.env,ready.id)).analysis.direction,'better');
  // The failed one is retried only after 30 minutes.
- await m.healthReports(h.env,new Date(Date.now()+10*60000),p);assert.equal(p.calls.length,2);
- await m.healthReports(h.env,new Date(Date.now()+31*60000),p);assert.equal(p.calls.length,3);
+ // Stamps use the real clock, so pin the failure time to the fixture's Sunday (a real "now" would make a newer week due).
+ h.db.prepare("UPDATE daynote_reports SET updated_at=? WHERE status='failed'").run(sunday.toISOString());
+ await m.healthReports(h.env,new Date(sunday.getTime()+10*60000),p);assert.equal(p.calls.length,2);
+ await m.healthReports(h.env,new Date(sunday.getTime()+31*60000),p);assert.equal(p.calls.length,3);
  assert.equal(h.db.prepare("SELECT attempts FROM daynote_reports WHERE status='running'").get().attempts,2);
  // Ready notice: generic text, sent once.
- h.db.prepare('INSERT INTO push_subscriptions(endpoint,subscription,created_at) VALUES(?,?,?)').run('https://example.test','{}','2026-11-05');
+ h.db.prepare('INSERT INTO daynote_push_subscriptions(endpoint,subscription,created_at) VALUES(?,?,?)').run('https://example.test','{}','2026-11-05');
  const sent=[],deliver=async(_,msg)=>{sent.push(msg);return{sent:1,failed:0}};
  const ra=new Date(ready.ready_at),noon=new Date(Date.UTC(ra.getUTCFullYear(),ra.getUTCMonth(),ra.getUTCDate(),10,0));
  const when=noon<ra?new Date(noon.getTime()+86400000):noon;

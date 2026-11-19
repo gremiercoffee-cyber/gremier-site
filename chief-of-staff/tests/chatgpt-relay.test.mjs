@@ -35,7 +35,7 @@ const tool=(h,token,name,args={})=>h.call('/api/mcp','POST',{jsonrpc:'2.0',id:5,
 test('MCP discovery is public but every private tool requires a separate OAuth grant',async()=>{
  const h=setup(),meta=await h.call('/.well-known/oauth-protected-resource');assert.equal(meta.data.resource,R);
  const hello=await h.call('/api/mcp','POST',{id:1,method:'initialize'});assert.equal(hello.data.result.serverInfo.name,'chief-of-staff');
- const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_shopping_lists','get_my_day','get_reminders','start_research','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','coffee_read','coffee_update','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
+ const tools=await h.call('/api/mcp','POST',{id:2,method:'tools/list'});assert.deepEqual(tools.data.result.tools.map(t=>t.name),['get_tasks','add_task','complete_task','defer_task','get_shopping_lists','add_shopping_items','update_shopping_item','remove_shopping_item','get_my_day','get_reminders','start_research','add_reminder','get_waiting','search_email','read_email_thread','search_whatsapp','get_projects','find_research','remember','recall','find_items','update_item','add_calendar_event','watch_for','get_watches','get_approvals','draft_email','coffee_read','coffee_update','ask_chief_of_staff','check_chief_of_staff_request','chief_of_staff_connection']);
  assert.equal((await tool(h,null,'chief_of_staff_connection')).status,401);assert.equal((await tool(h,'owner-fixture','chief_of_staff_connection')).status,401);
  assert.ok(!JSON.stringify(tools.data).includes('owner-fixture'));assert.ok(tools.data.result.tools.every(t=>['cos.relay','cos.tasks.read','cos.tasks.write','cos.life.read','cos.drafts.write'].includes(t.securitySchemes[0].scopes[0])));
 });
@@ -208,6 +208,33 @@ test('direct shopping tool shares Store route and avoids second-model calls and 
  const before=h.db.prepare('SELECT total_changes() n').get().n;
  const r=await tool(h,g.access_token,'get_shopping_lists');assert.equal(r.status,200);assert.ok(!r.data.result.isError);
  const data=r.data.result.structuredContent;assert.equal(data.store_order,'physical_walking_route');assert.deepEqual(data.lists.find(l=>l.id==='store').items.map(i=>i.name),['Oatmeal','Bread','Herring','Frozen chicken','Biscuits','Wipes']);assert.equal(data.lists[0].items[0].quantity,'2');assert.equal(data.lists[0].items[0].notes,'keep details');assert.equal(h.db.prepare('SELECT total_changes() n').get().n,before);assert.ok(!JSON.stringify(data).includes('shopping_whatsapp'));h.db.close();
+});
+
+test('ChatGPT can add, re-open, mark purchased and remove shopping items',async()=>{
+ const h=setup(),g=await grant(h,'cos.life.read cos.tasks.write'),ro=await grant(h,'cos.life.read');
+ const put=h.db.prepare("INSERT INTO shopping_items(id,list_id,name,normalized_name,quantity,notes,checked,created_at,updated_at) VALUES(?,?,?,?,'','',?,?,?)");
+ put.run('olive','store','Olive cream cheese','olive cream cheese',0,'2026-11-15','2026-11-15');put.run('apples','store','Apples','apples',1,'2026-11-15','2026-11-15');
+ const ok=r=>{assert.equal(r.status,200);assert.ok(!r.data.result.isError,JSON.stringify(r.data));return r.data.result.structuredContent;};
+ assert.equal(ok(await tool(h,g.access_token,'add_shopping_items',{items:[{name:'Greek yogurts',quantity:'4'}]})).added,1);
+ assert.equal(ok(await tool(h,g.access_token,'add_shopping_items',{items:[{name:'greek yogurts'}]})).added,0,'no duplicate');
+ assert.equal(ok(await tool(h,g.access_token,'update_shopping_item',{item_id:'apples',purchased:false})).item.checked,0);
+ assert.equal(ok(await tool(h,g.access_token,'remove_shopping_item',{item_id:'olive'})).removed,'Olive cream cheese');
+ assert.equal((await tool(h,g.access_token,'remove_shopping_item',{item_id:'olive'})).data.result.isError,true);
+ assert.deepEqual(h.db.prepare("SELECT name,checked FROM shopping_items WHERE list_id='store' ORDER BY name").all().map(r=>[r.name,r.checked]),[['Apples',0],['Greek yogurts',0]]);
+ const denied=await tool(h,ro.access_token,'add_shopping_items',{items:[{name:'Milk'}]});assert.ok(denied.status!==200||denied.data.result?.isError,'read-only grant cannot write');
+ h.db.close();
+});
+
+test('relay agent can edit shopping items but not delete whole lists',async()=>{
+ const h=setup(),k={'x-agent-key':'agent-fixture'};
+ h.db.prepare("INSERT INTO shopping_items(id,list_id,name,normalized_name,quantity,notes,checked,created_at,updated_at) VALUES('milk','store','Milk','milk','','',1,'2026-11-15','2026-11-15')").run();
+ assert.equal((await h.call('/api/agent/cos/shopping/items','POST',{items:[{name:'Greek yogurts'}]},k)).status,200);
+ assert.equal((await h.call('/api/agent/cos/shopping/items/milk','PATCH',{checked:false},k)).status,200);
+ assert.deepEqual(h.db.prepare("SELECT name,checked FROM shopping_items ORDER BY name").all().map(r=>[r.name,r.checked]),[['Greek yogurts',0],['Milk',0]]);
+ assert.equal((await h.call('/api/agent/cos/shopping/items/milk','DELETE',undefined,k)).status,200);
+ assert.equal((await h.call('/api/agent/cos/shopping/lists/store','DELETE',undefined,k)).status,403);
+ assert.equal((await h.call('/api/agent/cos/shopping/items','POST',{items:[{name:'x'}]},{})).status,401);
+ h.db.close();
 });
 
 test('headless heartbeat keeps work alive, receipts are retry-safe and verification requires completion',async()=>{

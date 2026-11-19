@@ -84,7 +84,8 @@ async function encrypt(payload: Uint8Array, p256dh: string, auth: string): Promi
 export async function sendPush(env: Env, msg: PushMessage): Promise<{ sent: number; failed: number }> {
   if (!pushConfigured(env)) return { sent: 0, failed: 0 };
   const healthSubs=msg.health?await all<{endpoint:string;subscription:string}>(env,'SELECT endpoint,subscription FROM daynote_push_subscriptions'):[];
-  const healthAudience=!!msg.health&&healthSubs.length>0;
+  // Health Journal notices go only to devices that turned them on in Health Journal, never to Chief of Staff.
+  const healthAudience=!!msg.health;
   const subs=healthAudience?healthSubs:await all<{endpoint:string;subscription:string}>(env,'SELECT endpoint,subscription FROM push_subscriptions');
   const packed = { ...msg, body: (msg.body ?? "").slice(0, 300),
     notification_updates:msg.notification_updates?.slice(0,6).map(n=>({...n,title:n.title.slice(0,90),body:n.body.slice(0,180)})),

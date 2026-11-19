@@ -20,7 +20,7 @@ export function HealthNotifications({preferences,onSaved}:{preferences?:Partial<
  useEffect(()=>{void refresh().catch(()=>{});},[]);
  async function action(f:()=>Promise<unknown>){setBusy(true);setMessage('');try{await f();}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}
  return <section className="dn-card dn-notification-settings"><p className="dn-eyebrow">YOUR DAILY RHYTHM</p><h2>A gentle nudge, when it helps.</h2>
- <p>{status?.existing_devices&&!status?.health_devices?'Your existing Chief of Staff devices can receive these. Enable this app for a direct Health Journal notification.':'Morning, evening and meaningful changes. You choose what reaches you.'}</p>
+ <p>{!status?.health_devices?'Turn on notifications in this app to get them. Health notices never go through Chief of Staff.':'Morning, evening and meaningful changes. You choose what reaches you.'}</p>
  <button disabled={busy} onClick={()=>void action(async()=>{await connectHealthPush(true);await refresh();setMessage('Notifications are enabled on this device.');})}>Enable notifications on this device</button>
  <form onSubmit={e=>{e.preventDefault();void action(async()=>{await call('/preferences','PUT',p);await onSaved();setMessage('Your reminder settings are saved.');});}}>
  <label className="dn-toggle"><input type="checkbox" checked={p.morning_reminders} onChange={e=>setP({...p,morning_reminders:e.target.checked})}/> After I wake up: how do you feel, and any unfinished journal</label>

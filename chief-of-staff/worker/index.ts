@@ -636,7 +636,9 @@ export default {
       const agentChatResponse=await agentChatsRoute(req,env);if(agentChatResponse)return agentChatResponse;
       if(url.pathname.startsWith('/api/agent/cos/')){
         const target='/api/'+url.pathname.slice('/api/agent/cos/'.length);
-        const allowed=(req.method==='GET'&&/^\/api\/(dashboard|items|projects|memories|replies|areas|assistant\/brief)$/.test(target))||(['POST','PATCH'].includes(req.method)&&/^\/api\/(items|projects)(?:\/[^/]+)?$/.test(target)&&!target.endsWith('/organize'));
+        const allowed=(req.method==='GET'&&/^\/api\/(dashboard|items|projects|memories|replies|areas|assistant\/brief)$/.test(target))||(['POST','PATCH'].includes(req.method)&&/^\/api\/(items|projects)(?:\/[^/]+)?$/.test(target)&&!target.endsWith('/organize'))
+          // Shopping list edits the owner asked for in ChatGPT (add, change/check off, remove an item); not whole lists.
+          ||(req.method==='GET'&&target==='/api/shopping')||(req.method==='POST'&&target==='/api/shopping/items')||(['PATCH','DELETE'].includes(req.method)&&/^\/api\/shopping\/items\/[^/]+$/.test(target));
         if(!allowed)return json({error:'This operation is not available to the agent records API. Use the normal approval workflow.'},403);
         const internal=new URL(req.url);internal.pathname=target;
         for(const [method,re,handler] of routes){const match=target.match(re);if(match&&method===req.method){const result=await handler(new Request(internal,req),env,match.slice(1).map(decodeURIComponent),ctx);const headers=new Headers(result.headers);headers.set('cache-control','private, no-store');return new Response(result.body,{status:result.status,headers});}}

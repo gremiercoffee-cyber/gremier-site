@@ -34,7 +34,7 @@ export async function pollForWake(env:Env,at=new Date(),sync=healthSync){
 }
 export async function healthReminders(env:Env,at=new Date(),deliver=sendPush){
  const p=await daynotePreferences(env);if(!p.reminders&&!p.morning_reminders&&!p.health_alerts&&!p.weekly_summary||isShabbat('Asia/Jerusalem',at)||!pushConfigured(env))return;
- const devices=await healthNotificationStatus(env);if(!devices.health_devices&&!devices.existing_devices)return;
+ const devices=await healthNotificationStatus(env);if(!devices.health_devices)return;
  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(at),time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(at);
  const minutes=(t:string)=>+t.slice(0,2)*60 + +t.slice(3),within=(t:string)=>minutes(time)>=minutes(t)&&minutes(time)-minutes(t)<120;
  const notices:{key:string;message:PushMessage}[]=[];
