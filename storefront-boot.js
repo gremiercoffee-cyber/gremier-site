@@ -1,4 +1,4 @@
-/* Cold openings play the complete short reveal; checkout returns remain excluded. */
+/* Cold openings show the logo only while the site loads (no fixed hold); checkout returns remain excluded. */
 (function(root){
  'use strict';
  const key='gremier_last_open_v2',now=Date.now(),repeatWindow=15*60*1000;
@@ -10,7 +10,7 @@
  if(typeof module==='object'&&module.exports){module.exports={shouldShow};return;}
  let last=0;try{last=Number(root.localStorage.getItem(key))||0;root.localStorage.setItem(key,String(now));}catch{}
  const on=shouldShow({last,now,search:root.location.search,hash:root.location.hash,type:root.performance?.getEntriesByType?.('navigation')?.[0]?.type,framed:root.parent!==root});
- const minimum=root.matchMedia?.('(prefers-reduced-motion: reduce)').matches?0:2400;
+ const minimum=0;   // the intro covers loading only: it leaves as soon as the shop is ready
  const clock=()=>root.performance?.now?.()??Date.now();
  let finished=false,preparing=false,timer,minTimer,starting=false,startedAt=null,contentReady=false;
  function dismiss(){
@@ -31,7 +31,7 @@
  async function ready(){
   if(!on||finished||preparing)return;preparing=true;start();
   const images=[...document.querySelectorAll('.page.active img')].filter(img=>{const r=img.getBoundingClientRect();return r.width>0&&r.height>0&&r.top<root.innerHeight&&r.bottom>0;}).slice(0,8);
-  await Promise.race([Promise.all(images.map(waitForImage)),new Promise(resolve=>root.setTimeout(resolve,1200))]);
+  await Promise.race([Promise.all(images.map(waitForImage)),new Promise(resolve=>root.setTimeout(resolve,800))]);
   contentReady=true;maybeFinish();
  }
  root.GremierBoot={ready,dismiss,start};

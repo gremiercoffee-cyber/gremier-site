@@ -17,16 +17,13 @@ function boot({reduced=false}={}){
  vm.runInNewContext(fs.readFileSync('storefront-boot.js','utf8'),{window:root,document,URLSearchParams,Date,Promise,clearTimeout(){}});
  return {root,classes,timeouts,listeners,overlay,advance:ms=>{time=ms;}};
 }
-test('the complete reveal remains visible until 2400ms even when content is ready',async()=>{
- const x=boot();await x.root.GremierBoot.ready();assert.ok(x.classes.has('gremier-boot'));
- x.advance(2399);x.timeouts.find(t=>t.ms===2400).cb();assert.ok(x.classes.has('gremier-boot'));
- x.advance(2400);x.timeouts.find(t=>t.ms===2400).cb();assert.ok(!x.classes.has('gremier-boot'));
+test('the intro leaves as soon as the shop is ready, with no fixed hold',async()=>{
+ const x=boot();await x.root.GremierBoot.ready();assert.ok(!x.classes.has('gremier-boot'));
  await x.root.GremierBoot.ready();assert.equal(x.timeouts.filter(t=>t.ms===620).length,1);
 });
 
-test('content becoming ready after the reveal dismisses without another wait',async()=>{
- const x=boot();x.root.GremierBoot.start();x.advance(3000);x.timeouts.find(t=>t.ms===2400).cb();assert.ok(x.classes.has('gremier-boot'));
- await x.root.GremierBoot.ready();assert.ok(!x.classes.has('gremier-boot'));
+test('the intro stays up while the shop is still loading',()=>{
+ const x=boot();x.root.GremierBoot.start();x.advance(3000);x.timeouts.find(t=>t.ms===0).cb();assert.ok(x.classes.has('gremier-boot'));
 });
 
 test('reduced motion has no forced animation hold',async()=>{
