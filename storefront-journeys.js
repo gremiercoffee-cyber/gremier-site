@@ -187,7 +187,7 @@
  }
  function onError(message){if(errors>=5)return;errors++;interact('js_error',clean(message)||'error');}
  // Microsoft Clarity (heatmaps and visit recordings), only after "Accept"; typed text is masked by Clarity.
- const CLARITY_ID=root.GREMIER_CLARITY_ID||'';
+ const CLARITY_ID=root.GREMIER_CLARITY_ID||'zg7jd2e9u2';
  function clarity(){
   if(!CLARITY_ID||internal||!allowed()||root.clarity?.loaded)return;
   root.clarity=root.clarity||function(){(root.clarity.q=root.clarity.q||[]).push(arguments);};root.clarity.loaded=true;
