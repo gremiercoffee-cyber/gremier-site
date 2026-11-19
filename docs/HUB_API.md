@@ -42,6 +42,10 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 | `website_overview` | `from`, `to` | visits and the visit → cart → checkout → pay → paid funnel, sources, devices, first/last pages, most viewed pages/products, daily conversion. Anonymous (no visitor list) |
 | `website_behavior` | `from`, `to` | where people get lost: most clicked, clicks on non-clickable things, frustrated clicks, scroll depth, time per section, checkout fields reached, page errors; phone vs computer |
 | `website_lost_visits` | `days` (≤30), `limit` (≤25), `reached` (cart\|checkout\|product\|any) | recent visits that did not buy, step by step; anonymous short browser tag only |
+| `briefing` | `role` (vice_ceo\|cfo\|coo\|cmo\|cdo) | **start here for the weekly meeting**: a short pre-digested summary for that officer (vice_ceo gets everyone's headlines). Keeps bot usage low |
+| `finance_overview` | `from`, `to` (YYYY-MM) | month by month: official FinBot books where imported (income, cost of sales, expenses by category, top suppliers, net) and live app sales / inbox expenses. Never add the two bases together |
+| `finance_open_items` | – | what needs sorting: expense documents to fix, money stores owe, paid orders without a receipt, refunds without a credit document, personal donation receipts |
+| `marketing_results` | `from`, `to` (YYYY-MM-DD) | website paid orders, tracking links, coupons, referrals, traffic sources, best sellers. Aggregates only |
 
 **Write** (needs `write` scope; every write lands in the timeline credited to `app:<key name>`)
 
