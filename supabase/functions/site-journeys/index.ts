@@ -1,6 +1,6 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {isServiceOrAdmin} from '../_shared/security.ts';
-import {cleanJourney,dateRange,jerusalemMidnight,uuid} from '../_shared/web-journey-model.ts';
+import {cleanJourney,cleanInteractions,dateRange,jerusalemMidnight,uuid} from '../_shared/web-journey-model.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info,x-link-key','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
 const key=()=>Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||Object.values(JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')||'{}'))[0] as string;
@@ -32,6 +32,13 @@ Deno.serve(async req=>{
    if(report.error)throw Error('report_unavailable');
    return json({links:report.data||[]});
   }
+  if(raw.action==='behavior'){
+   if(!await isServiceOrAdmin(req))return json({error:'admin_only'},403);
+   const {start,end}=dateRange(raw);
+   const r=await db.rpc('web_behavior_report',{from_day:start,to_day:end,testing:raw.testing===true});
+   if(r.error)throw Error('report_unavailable');
+   return json({...r.data,from:start,to:end});
+  }
   if(['report','visitor'].includes(raw.action)){
    if(!await isServiceOrAdmin(req))return json({error:'admin_only'},403);
    const {start,end}=dateRange(raw);
@@ -55,10 +62,15 @@ Deno.serve(async req=>{
    const products=pids.length?await db.from('products').select('id,name_en').in('id',pids):{data:[]};
    return json({sessions:sessions.data,events:(events.data||[]).slice(0,3000),products:products.data||[],truncated:(events.data||[]).length>3000});
   }
-  if(raw.action!=='collect')return json({error:'unsupported_action'},400);
+  if(raw.action!=='collect'&&raw.action!=='interact')return json({error:'unsupported_action'},400);
   const origin=req.headers.get('origin')||'';
   if(!/^https:\/\/(www\.)?gremiercoffee\.co\.il$/.test(origin)&&!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin))return json({error:'origin_not_allowed'},403);
   if(/bot|spider|crawler|headless/i.test(req.headers.get('user-agent')||''))return json({ok:true,ignored:true});
+  if(raw.action==='interact'){
+   const result=await db.rpc('web_interact',{p:cleanInteractions(raw)});
+   if(result.error)throw Error('collection_unavailable');
+   return json(result.data);
+  }
   const p=cleanJourney(raw);let member=null;
   const token=(req.headers.get('authorization')||'').replace(/^Bearer /i,'');
   if(token&&token.split('.').length===3){const u=await db.auth.getUser(token);if(u.data?.user)member=u.data.user.id;}

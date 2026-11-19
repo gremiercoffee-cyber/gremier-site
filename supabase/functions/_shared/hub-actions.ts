@@ -7,6 +7,7 @@ import {
 import { widgetDrains } from "./widget-production.ts";
 import { readOutlook } from "./hub-outlook.ts";
 import { marketingInventory, marketingProducts, marketingSales } from "./hub-marketing.ts";
+import { websiteBehavior, websiteLostVisits, websiteOverview } from "./hub-website.ts";
 import { cleanText } from "./security.ts";
 
 export { HubError };
@@ -25,6 +26,9 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   marketing_products: { properties: {} },
   marketing_sales: { properties: { from: str("YYYY-MM-DD"), to: str("YYYY-MM-DD (max 120 days)") }, required: ["from", "to"] },
   marketing_inventory: { properties: {} },
+  website_overview: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
+  website_behavior: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
+  website_lost_visits: { properties: { days: num("Look back this many days (1-30, default 7)"), limit: num("How many visits (max 25, default 10)"), reached: { type: "string", enum: ["cart", "checkout", "product", "any"], description: "Only visits that got at least this far (default cart)" } } },
   log_labeling: {properties:{product:str("Bottled product key"),units:num("Empty bottles labeled")},required:["product","units"]},
   log_bottling: { properties: { product: { type: "string", enum: ["unfiltered_liter", "classic_liter", "sweetened_classic", "house_blend", "colombia_liter", "decaf_liter", "classic_mini", "vanilla_mini", "original_mini", "caramel_mini", "house_blend_mini", "jerry_can", "jerry_can_unfiltered", "jerry_can_houseblend", "jerry_can_colombia", "jerry_can_decaf"] }, units: { type: "integer", description: "Bottles / minis / jerry cans made" } }, required: ["product", "units"] },
   start_brew: { properties: { product: { type: "string", enum: ["classic", "unfiltered", "houseBlend", "colombia", "decaf"] }, kg: { type: "number", enum: [1, 1.5, 2, 3] } }, required: ["product"] },
@@ -58,6 +62,9 @@ export const ACTIONS: Record<string, Handler> = {
   activity: { scope: "read", describe: "Timeline of everything done (admin, website, apps). Args: since (ISO time), limit.", run: ({ sb }, a) => readActivity(sb, a as any) },
   marketing_products: { scope: "read", describe: "Website product catalog for marketing (id, names, price, category, active).", run: ({ sb }) => marketingProducts(sb) },
   marketing_sales: { scope: "read", describe: "Paid website sales per product per day (units, revenue, orders). No customer data. Args: from, to.", run: ({ sb }, a) => marketingSales(sb, a as any) },
+  website_overview: { scope: "read", describe: "Website traffic and the visit → cart → checkout → pay → paid funnel, with sources, devices, first/last pages, most viewed pages and products, and daily conversion. Anonymous. Args: from, to.", run: ({ sb }, a) => websiteOverview(sb, a) },
+  website_behavior: { scope: "read", describe: "Where people get lost on the website: most clicked buttons (and how often those visits buy), clicks on things that do nothing, frustrated repeat clicks, scroll depth, time per section, checkout fields reached, page errors; phone vs computer. Args: from, to.", run: ({ sb }, a) => websiteBehavior(sb, a) },
+  website_lost_visits: { scope: "read", describe: "Recent visits that did NOT buy, step by step (pages, products, clicks, scroll, checkout fields) to see where each got stuck. Anonymous, last 30 days. Args: days, limit, reached (cart|checkout|product|any).", run: ({ sb }, a) => websiteLostVisits(sb, a) },
   marketing_inventory: { scope: "read", describe: "Bottled stock per website product.", run: ({ sb }) => marketingInventory(sb) },
   // ── write ──
   start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|unfiltered|houseBlend|colombia|decaf; unfiltered uses Classic beans), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },

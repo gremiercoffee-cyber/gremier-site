@@ -44,7 +44,7 @@
  function page(name,kind='page_view',extra={}){
   if(!allowed())return;
   ensure();const key=kind+name+String(extra.product_id||'');if(lastView===key)return;
-  if(lastView)active();
+  if(lastView){active();finishView();}
   lastView=key;currentPage=name;currentProduct=extra.product_id||null;track(kind,{page:name,...extra});
  }
  async function flush(){
@@ -116,7 +116,96 @@
   const pref=read(CONSENT);if(pref&&Date.now()-pref.at>=180*86400000){remove(VISITOR);remove(SESSION,sessionStorage);visitor=null;session=null;}
   banner();if(allowed())currentView();
  }
+ // ---- Where people click, get stuck and spend time (same consent; no typed text or values) ----
+ // Labels come from the site's own buttons/sections, with digits, emails and links removed.
+ let iq=[],isending=false,iCount=0,scrollMax=0,sectionTime=new Map(),visible=new Set(),observer=null,sectionTick=Date.now(),clicks=[],fieldsSeen=new Set(),errors=0;
+ const INTERACTIVE='a,button,[role=button],[role=tab],[role=link],[role=option],[role=checkbox],[role=radio],input,select,textarea,label,summary,[onclick],[data-track]';
+ const PRIVATE='#myordersPage,[data-private]';
+ const clean=s=>String(s||'').replace(/\S+@\S+/g,'').replace(/https?:\/\/\S+/g,'').replace(/\d+([.,]\d+)?/g,'#').replace(/\s+/g,' ').trim().slice(0,48);
+ const skip=c=>['page','active','open','section','show','visible','hidden','loading'].includes(c)||/^(t-|is-|has-)/.test(c);
+ // A section's name: its data-section, id or class; otherwise its first heading; otherwise header/footer/nav.
+ function sectionName(s){return clean(s.dataset?.section||s.id||[...s.classList].find(c=>!skip(c))||s.querySelector('h1,h2,h3')?.textContent||(['HEADER','FOOTER','NAV'].includes(s.tagName)?s.tagName.toLowerCase():''));}
+ function region(el){const s=el.closest('[data-section],.page>div,.page>section,.drawer,[role=dialog],.overlay,header,footer,nav');return s?sectionName(s):'';}
+ function label(el,dead=false){
+  if(el.dataset?.track)return clean(el.dataset.track);
+  const tag=el.tagName.toLowerCase();
+  if(['input','select','textarea'].includes(tag))return tag+': '+clean(el.name||el.id||el.type||'field');
+  const fn=/^\s*([A-Za-z_$][\w$]*)\s*\(/.exec(el.getAttribute('onclick')||'')?.[1];
+  const priv=el.closest(PRIVATE);
+  const text=priv?'':clean(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.textContent);
+  const img=el.tagName==='IMG'?el:el.querySelector?.('img');
+  const name=text||(img?.alt?'image: '+clean(img.alt):'')||(el.id?'#'+clean(el.id):'')||(fn?fn+'()':'')||tag;
+  return dead&&tag==='img'&&img?.alt?'image: '+clean(img.alt):name;
+ }
+ const target=(el,dead)=>{const r=region(el),l=label(el,dead);return (r&&r!==l?r+' › ':'')+l;};
+ function interact(kind,targetText,value=0){
+  if(internal||!allowed()||iCount>=800)return;iCount++;
+  iq.push({id:crypto.randomUUID(),kind,page:currentPage,target:String(targetText||'').slice(0,100),value:Math.max(0,Math.min(3600,Math.round(value)||0))});
+  if(iq.length>200)iq=iq.slice(-200);if(iq.length>=30)iflush();
+ }
+ async function iflush(){
+  if(isending||!iq.length||!allowed()||!ensure())return;
+  const batch=iq.splice(0,40),sid=session.id;isending=true;
+  try{const r=await fetch(endpoint(),{method:'POST',headers:{'Content-Type':'application/json',apikey:publicKey},keepalive:true,body:JSON.stringify({action:'interact',consent:true,visitor_id:visitor,session_id:sid,events:batch})});
+   const data=await r.json().catch(()=>({}));if(!r.ok||data.retry)iq.unshift(...batch.slice(0,200-iq.length));
+  }catch{iq.unshift(...batch);}finally{isending=false;}
+ }
+ function onClick(e){
+  if(!allowed()||internal||!(e.target instanceof Element))return;
+  const el=e.target,hit=el.closest(INTERACTIVE),now=Date.now();
+  // Three or more clicks in under a second on the same spot = frustration (counted once per burst).
+  clicks=clicks.filter(c=>now-c.t<900&&Math.hypot(c.x-e.clientX,c.y-e.clientY)<40);clicks.push({t:now,x:e.clientX,y:e.clientY});
+  if(clicks.length===3)interact('rage_click',target(hit||el,!hit));
+  if(hit){if(!hit.matches('input,select,textarea')||hit.matches('[type=checkbox],[type=radio],[type=submit],[type=button]'))interact('click',target(hit));return;}
+  // Not a link or button and doesn't look clickable: people expected something to happen.
+  try{if(getComputedStyle(el).cursor!=='pointer')interact('dead_click',target(el,true));}catch{}
+ }
+ function onScroll(e){
+  const t=e.target===document||e.target===document.documentElement||e.target===document.body?document.scrollingElement:e.target;
+  if(!(t instanceof Element)||t.scrollHeight<t.clientHeight*1.3)return;
+  const pct=(t.scrollTop+t.clientHeight)/t.scrollHeight*100;if(pct>scrollMax)scrollMax=pct;
+ }
+ function sectionsNow(){
+  observer?.disconnect();visible.clear();if(!('IntersectionObserver' in root))return;
+  observer=new IntersectionObserver(list=>{countSections();for(const x of list){const key=sectionName(x.target);if(!key)continue;if(x.isIntersecting&&(x.intersectionRatio>=.5||x.intersectionRect.height>=innerHeight*.5))visible.add(key);else visible.delete(key);}},{threshold:[0,.1,.25,.5,.75,1]});
+  document.querySelectorAll('.page.active>div,.page.active>section,[data-section],.drawer.open section,[role=dialog] section').forEach(el=>{if(el.offsetHeight>120)observer.observe(el);});
+ }
+ function countSections(){
+  const now=Date.now(),secs=Math.min(30,(now-sectionTick)/1000);sectionTick=now;
+  if(document.visibilityState!=='visible'||now-lastInput>60000)return;
+  for(const k of visible)sectionTime.set(k,(sectionTime.get(k)||0)+secs);
+ }
+ function finishView(){
+  if(!allowed()||internal)return;
+  if(scrollMax>0){const b=scrollMax>=95?100:Math.max(25,Math.floor(scrollMax/25)*25);interact('scroll','reached '+b+'%',b);}
+  countSections();for(const [k,s] of sectionTime)if(s>=2)interact('section',k,Math.min(600,s));
+  scrollMax=0;sectionTime=new Map();setTimeout(sectionsNow,400);
+ }
+ function onFocus(e){
+  const el=e.target;if(!(el instanceof Element)||!el.matches('input,select,textarea')||!el.closest('#checkoutOverlay,.checkout,[data-checkout]'))return;
+  const name=label(el);if(fieldsSeen.has(name))return;fieldsSeen.add(name);interact('field',name);
+ }
+ function onError(message){if(errors>=5)return;errors++;interact('js_error',clean(message)||'error');}
+ // Microsoft Clarity (heatmaps and visit recordings), only after "Accept"; typed text is masked by Clarity.
+ const CLARITY_ID=root.GREMIER_CLARITY_ID||'';
+ function clarity(){
+  if(!CLARITY_ID||internal||!allowed()||root.clarity?.loaded)return;
+  root.clarity=root.clarity||function(){(root.clarity.q=root.clarity.q||[]).push(arguments);};root.clarity.loaded=true;
+  const s=document.createElement('script');s.async=true;s.src='https://www.clarity.ms/tag/'+encodeURIComponent(CLARITY_ID);document.head.append(s);root.clarity('consent');
+ }
+ function startBehaviour(){
+  document.addEventListener('click',onClick,{capture:true,passive:true});
+  document.addEventListener('scroll',onScroll,{capture:true,passive:true});
+  document.addEventListener('focusin',onFocus,{passive:true});
+  root.addEventListener('error',e=>onError(e.message));root.addEventListener('unhandledrejection',e=>onError(e.reason?.message||'promise'));
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){finishView();iflush();}else sectionTick=Date.now();});
+  root.addEventListener('pagehide',()=>{finishView();iflush();});
+  setInterval(()=>{countSections();iflush();},15000);
+  setTimeout(sectionsNow,1500);clarity();
+  document.addEventListener('click',e=>{if(e.target.closest?.('[data-analytics-choice="accepted"]'))setTimeout(clarity,50);else if(e.target.closest?.('[data-analytics-choice="declined"]')){iq=[];try{root.clarity?.('consent',false);}catch{}}},true);
+ }
  captureLink();
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startBehaviour);else startBehaviour();
  root.GremierJourneys={track,context,choices:()=>banner(true),flush};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })(window);

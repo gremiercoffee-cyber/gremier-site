@@ -14,7 +14,7 @@
   const el=document.createElement('section');el.id='websiteJourneyAnalytics';el.className='wj-root';
   el.innerHTML=`<header class="wj-heading"><div><h1>Website traffic</h1><p>Visits, shopping and the paths people take.</p></div><button class="btn btn-outline btn-sm" id="wjRefresh">Refresh</button></header>
    <div class="wj-filters"><label>From<input type="date" id="wjFrom" value="${before(6)}"></label><label>To<input type="date" id="wjTo" value="${today()}"></label><div>${[['today','Today'],['week','1 week'],['fortnight','2 weeks'],['threeweeks','3 weeks'],['month','1 month'],['year','1 year'],['calendar','This year']].map(([id,label])=>`<button type="button" class="btn btn-outline btn-sm" data-wj-period="${id}">${label}</button>`).join('')}</div></div>
-   <p class="wj-note" id="wjStatus" role="status">Loading…</p><div id="wjResults"></div><div id="wjLinks"></div><div id="wjVisitors"></div><div id="wjDetail"></div>`;
+   <p class="wj-note" id="wjStatus" role="status">Loading…</p><div id="wjResults"></div><div id="wjBehavior"></div><div id="wjLinks"></div><div id="wjVisitors"></div><div id="wjDetail"></div>`;
   host.prepend(el);
   $('wjRefresh').onclick=load;$('wjFrom').onchange=$('wjTo').onchange=()=>{visitorOffset=0;load();};
   el.querySelectorAll('[data-wj-period]').forEach(b=>b.onclick=()=>{visitorOffset=0;$('wjTo').value=today();$('wjFrom').value=b.dataset.wjPeriod==='calendar'?today().slice(0,4)+'-01-01':before({today:0,week:6,fortnight:13,threeweeks:20,month:29,year:364}[b.dataset.wjPeriod]);load();});
@@ -37,6 +37,7 @@
  async function load(){
   if(!mount())return;const seq=++serial;$('wjStatus').textContent='Loading…';
   root.GremierLinkReport?.load($('wjFrom').value,$('wjTo').value);
+  behavior(seq);
   try{
    const data=await call({action:'report',from:$('wjFrom').value,to:$('wjTo').value,visitor_offset:visitorOffset});if(seq!==serial)return;
    last=data;loaded=true;const t=data.totals||{},visits=Number(t.visits||0),parts=data.breakdowns||[],products=new Map(data.products.map(p=>[p.id,p.name_en]));
@@ -56,6 +57,25 @@
    document.querySelectorAll('[data-wj-metric]').forEach(b=>b.onclick=()=>{trendMetric=b.dataset.wjMetric;drawTrend();});$('wjGrain').value=trendGrain;$('wjGrain').onchange=e=>{trendGrain=e.target.value;drawTraffic();drawTrend();};drawTraffic();drawTrend();
    $('wjPrev').onclick=()=>{visitorOffset=Math.max(0,visitorOffset-100);load();};$('wjNext').onclick=()=>{visitorOffset+=100;load();};
   }catch(e){if(seq===serial)$('wjStatus').textContent=e.message;}
+ }
+ // Where people click, click on things that do nothing, click in frustration, stop scrolling, linger and stop at checkout.
+ async function behavior(seq){
+  const box=$('wjBehavior');if(!box)return;box.innerHTML='<section class="wj-card"><h3>Where people get lost</h3><p class="wj-note">Loading…</p></section>';
+  try{
+   const d=await call({action:'behavior',from:$('wjFrom').value,to:$('wjTo').value});if(seq!==serial)return;
+   const rows=d.rows||[],of=k=>rows.filter(r=>r.kind===k),paidRate=r=>pct(r.paid,r.sessions);
+   const list=(k,cols,note)=>{const r=of(k);return r.length?`<p class="wj-note">${note}</p><div class="table-wrap wj-scroll"><table><thead><tr><th>Page</th><th>What</th>${cols.map(c=>`<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${r.slice(0,40).map(x=>`<tr><td>${esc(x.page)}</td><td>${esc(x.target)}</td>${cols.map(c=>`<td>${c[1](x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:`<p class="wj-note">Nothing recorded in this period yet.</p>`;};
+   const split=x=>`${num(x.phone)} / ${num(x.computer)}`;
+   box.innerHTML=tabs('behavior','Where people get lost',[
+    {key:'dead',label:'Clicks that do nothing',html:list('dead_click',[['Clicks',x=>num(x.events)],['Visits',x=>num(x.sessions)],['Phone / computer',split],['Visits that paid',paidRate]],'People clicked something that isn’t a link or button. Usually a sign they expected it to open or do something.')},
+    {key:'rage',label:'Frustrated clicks',html:list('rage_click',[['Bursts',x=>num(x.events)],['Visits',x=>num(x.sessions)],['Phone / computer',split],['Visits that paid',paidRate]],'Three or more fast clicks on the same spot — something was slow, broken or confusing.')},
+    {key:'clicks',label:'Most clicked',html:list('click',[['Clicks',x=>num(x.events)],['Visits',x=>num(x.sessions)],['Reached checkout',x=>pct(x.checkout,x.sessions)],['Paid',paidRate]],'Buttons and links people use, and how often those visits went on to buy.')},
+    {key:'scroll',label:'How far they scroll',html:list('scroll',[['Page views',x=>num(x.events)],['Phone / computer',split]],'How far down each page people got before moving on.')},
+    {key:'sections',label:'Time per section',html:list('section',[['Average time',x=>duration(x.events?x.value_sum/x.events:0)],['Views',x=>num(x.events)],['Paid',paidRate]],'Sections people actually looked at, and for how long.')},
+    {key:'fields',label:'Checkout fields',html:list('field',[['Visits',x=>num(x.sessions)],['Paid',paidRate]],'Checkout fields people reached. A field many reach but few pay after is where checkout loses them.')},
+    {key:'errors',label:'Site errors',html:list('js_error',[['Times',x=>num(x.events)],['Visits',x=>num(x.sessions)],['Paid',paidRate]],'Errors in the page itself while people browsed.')}
+   ],`<small class="wj-note">Since 19 Nov 2026</small>`);
+  }catch(e){if(seq===serial)box.innerHTML=`<section class="wj-card"><h3>Where people get lost</h3><p class="wj-note">${esc(e.message)}</p></section>`;}
  }
  async function detail(id){
   const seq=++detailSerial,box=$('wjDetail');box.innerHTML='<section class="wj-card">Loading journey…</section>';

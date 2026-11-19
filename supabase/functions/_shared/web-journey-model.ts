@@ -14,6 +14,18 @@ export function cleanJourney(raw:any){
  return {visitor_id:raw.visitor_id,session_id:raw.session_id,events,referrer,
   device:['Phone','Tablet','Computer'].includes(raw.device)?raw.device:'Other',language:raw.language==='he'?'he':'en'};
 }
+// Clicks, dead/rage clicks, scroll depth, time per section, checkout fields reached, script errors.
+// Targets are labels of the site's own elements; digits, emails and links are stripped again here.
+const interactionKinds=new Set(['click','dead_click','rage_click','scroll','section','field','js_error']);
+export function cleanInteractions(raw:any){
+ if(raw?.consent!==true||!uuid(raw.visitor_id)||!uuid(raw.session_id)||!Array.isArray(raw.events)||!raw.events.length||raw.events.length>40)throw Error('invalid_batch');
+ const events=raw.events.map((e:any)=>{
+  if(!uuid(e.id)||!interactionKinds.has(e.kind)||!pages.has(e.page))throw Error('invalid_event');
+  const target=String(e.target??'').replace(/\S+@\S+/g,'').replace(/https?:\/\/\S+/g,'').replace(/\d+([.,]\d+)?/g,'#').replace(/[\u0000-\u001f<>]/g,'').replace(/\s+/g,' ').trim().slice(0,100);
+  return {id:e.id,kind:e.kind,page:e.page,target,value:Math.max(0,Math.min(3600,Math.round(Number(e.value)||0)))};
+ });
+ return {visitor_id:raw.visitor_id,session_id:raw.session_id,events};
+}
 export function dateRange(raw:any,now=new Date()){
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(now);
  const valid=(s:any)=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&new Date(s+'T12:00:00Z').toISOString().slice(0,10)===s;

@@ -39,6 +39,9 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 | `marketing_products` | – | website catalog (id, names, price, category, active) — used by the Status Assistant |
 | `marketing_sales` | `from`, `to` (≤120 days) | paid website sales per product per Israel day: units, revenue, orders. Aggregates only, no customer data |
 | `marketing_inventory` | – | bottled stock per website product id |
+| `website_overview` | `from`, `to` | visits and the visit → cart → checkout → pay → paid funnel, sources, devices, first/last pages, most viewed pages/products, daily conversion. Anonymous (no visitor list) |
+| `website_behavior` | `from`, `to` | where people get lost: most clicked, clicks on non-clickable things, frustrated clicks, scroll depth, time per section, checkout fields reached, page errors; phone vs computer |
+| `website_lost_visits` | `days` (≤30), `limit` (≤25), `reached` (cart\|checkout\|product\|any) | recent visits that did not buy, step by step; anonymous short browser tag only |
 
 **Write** (needs `write` scope; every write lands in the timeline credited to `app:<key name>`)
 

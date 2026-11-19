@@ -12,6 +12,14 @@ Checkout links are attached by `create-website-order` after successful order cre
 
 The public Edge Function accepts only bounded allowlisted metadata, validates origin, caps events per session and deduplicates UUID event IDs. Public roles cannot read or write analytics tables/RPCs. Reports and visitor details require a verified admin/service role. No public member IDs are accepted as identity claims. Localhost sessions are explicitly test data, excluded from production reports.
 
+## Where people get lost (from 19 Nov 2026)
+
+Same consent, visitor and session. `storefront-journeys.js` also records, in `web_interactions`: clicks on links/buttons (`click`), clicks on things that aren't clickable (`dead_click`), 3+ fast clicks on one spot (`rage_click`), how far each page was scrolled (`scroll`, 25/50/75/100%), seconds each section was on screen while the visitor was active (`section`), checkout fields reached (`field`, by field name only) and page errors (`js_error`). A target is the label of the site's own element, prefixed by its section (e.g. `section-home-products › OUR RANGE`); digits, emails and links are stripped in the browser and again on the server, field values and typed text are never read, and text inside the account page or `[data-private]` is not used. Caps: 800 per visit, 200 per minute.
+
+Raw rows follow their session (30 days). `web_interactions_rollup()` (pg_cron `website-interactions-rollup`, 02:07) keeps per-day summaries in `web_interactions_daily` (page, kind, target, device, events, visits, visits that reached checkout / paid, value sum) for two years. `web_behavior_report` serves Website traffic → **Where people get lost** and the Gremier Hub `website_behavior` action; `website_lost_visits` returns recent non-buying visits step by step (anonymous).
+
+Microsoft Clarity (heatmaps and recordings) loads only after Accept, only when `window.GREMIER_CLARITY_ID` / the `CLARITY_ID` constant in `storefront-journeys.js` is set; it is never loaded for owner/test browsers.
+
 Validation:
 - `node --test scripts/test-web-journeys.cjs`
 - Database assertions in `scripts/test-web-journeys.sql` run inside a rolled-back transaction; verify event sequence, duplicate retries, denominators, returning visits, raw deletion and idempotent aggregation.
