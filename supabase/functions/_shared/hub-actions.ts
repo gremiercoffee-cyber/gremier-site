@@ -8,6 +8,9 @@ import { widgetDrains } from "./widget-production.ts";
 import { readOutlook } from "./hub-outlook.ts";
 import { marketingInventory, marketingProducts, marketingSales } from "./hub-marketing.ts";
 import { websiteBehavior, websiteLostVisits, websiteOverview } from "./hub-website.ts";
+import { financeOpenItems, financeOverview } from "./hub-finance.ts";
+import { marketingResults } from "./hub-cmo.ts";
+import { briefing } from "./hub-briefing.ts";
 import { cleanText } from "./security.ts";
 
 export { HubError };
@@ -26,6 +29,10 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   marketing_products: { properties: {} },
   marketing_sales: { properties: { from: str("YYYY-MM-DD"), to: str("YYYY-MM-DD (max 120 days)") }, required: ["from", "to"] },
   marketing_inventory: { properties: {} },
+  briefing: { properties: { role: { type: "string", enum: ["vice_ceo", "cfo", "coo", "cmo", "cdo"], description: "Whose briefing (vice_ceo = everyone's headlines)" } }, required: ["role"] },
+  finance_overview: { properties: { from: str("YYYY-MM, default 5 months ago"), to: str("YYYY-MM, default this month") } },
+  finance_open_items: { properties: {} },
+  marketing_results: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
   website_overview: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
   website_behavior: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
   website_lost_visits: { properties: { days: num("Look back this many days (1-30, default 7)"), limit: num("How many visits (max 25, default 10)"), reached: { type: "string", enum: ["cart", "checkout", "product", "any"], description: "Only visits that got at least this far (default cart)" } } },
@@ -62,6 +69,10 @@ export const ACTIONS: Record<string, Handler> = {
   activity: { scope: "read", describe: "Timeline of everything done (admin, website, apps). Args: since (ISO time), limit.", run: ({ sb }, a) => readActivity(sb, a as any) },
   marketing_products: { scope: "read", describe: "Website product catalog for marketing (id, names, price, category, active).", run: ({ sb }) => marketingProducts(sb) },
   marketing_sales: { scope: "read", describe: "Paid website sales per product per day (units, revenue, orders). No customer data. Args: from, to.", run: ({ sb }, a) => marketingSales(sb, a as any) },
+  briefing: { scope: "read", describe: "START HERE for the weekly meeting: a short pre-digested briefing for one officer (cfo, coo, cmo, cdo) or vice_ceo (everyone's headlines). This week vs last, top issues, open items. Use the detailed actions only to dig into something specific.", run: ({ sb }, a) => briefing(sb, a) },
+  finance_overview: { scope: "read", describe: "CFO book month by month: official FinBot books (income, cost of sales, operating expenses, net, by category and top suppliers) where imported, and live app sales (website, stores billed/collected, refunds, returns, events) and inbox expenses after. Args: from, to (YYYY-MM).", run: ({ sb }, a) => financeOverview(sb, a) },
+  finance_open_items: { scope: "read", describe: "What needs sorting in the books: expense documents to fix (unread, no tax invoice, missing amount/date, future dates, possible duplicates), money each store owes, paid orders without a receipt, refunds without a credit document, personal donation receipts kept apart.", run: ({ sb }) => financeOpenItems(sb) },
+  marketing_results: { scope: "read", describe: "Marketing results for a period: website paid orders and average order, tracking-link clicks and sales (WhatsApp/Instagram posts), coupon use, referrals, traffic sources and best sellers. Aggregates only. Args: from, to (YYYY-MM-DD).", run: ({ sb }, a) => marketingResults(sb, a) },
   website_overview: { scope: "read", describe: "Website traffic and the visit → cart → checkout → pay → paid funnel, with sources, devices, first/last pages, most viewed pages and products, and daily conversion. Anonymous. Args: from, to.", run: ({ sb }, a) => websiteOverview(sb, a) },
   website_behavior: { scope: "read", describe: "Where people get lost on the website: most clicked buttons (and how often those visits buy), clicks on things that do nothing, frustrated repeat clicks, scroll depth, time per section, checkout fields reached, page errors; phone vs computer. Args: from, to.", run: ({ sb }, a) => websiteBehavior(sb, a) },
   website_lost_visits: { scope: "read", describe: "Recent visits that did NOT buy, step by step (pages, products, clicks, scroll, checkout fields) to see where each got stuck. Anonymous, last 30 days. Args: days, limit, reached (cart|checkout|product|any).", run: ({ sb }, a) => websiteLostVisits(sb, a) },
