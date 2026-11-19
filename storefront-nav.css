@@ -296,7 +296,10 @@ body.promo-banner .page { padding-top:calc(var(--promo-h, 38px) + 80px) !importa
 .kashrut-card { background:#fff; border-radius:18px; padding:22px 20px 18px; max-width:340px; width:100%; text-align:center; }
 .kashrut-card img { width:100%; max-width:280px; height:auto; }
 /* Badatz seal at the top of the site, next to the logo */
-.nav-badatz { display:inline-flex; align-items:center; background:none; border:0; padding:0 0 0 2px; margin:0; cursor:pointer; flex-shrink:0; }
+/* The seal sits centred in the space between the logo and whatever comes next (menu links or the buttons). */
+.nav-badatz-slot { flex:1 1 0; min-width:0; display:flex; justify-content:center; align-items:center; }
+@media (min-width:1121px) { .nav-links { flex:1 1 0; justify-content:center; } }
+.nav-badatz { display:inline-flex; align-items:center; background:none; border:0; padding:0; margin:0; cursor:pointer; flex-shrink:0; }
 .nav-badatz img { height:42px; width:auto; display:block; }
 @media (max-width:640px) { .nav-badatz img { height:38px; } }
 .kashrut-card p { font-size:.82rem; color:#5f656d; margin:12px 0 14px; line-height:1.5; }
