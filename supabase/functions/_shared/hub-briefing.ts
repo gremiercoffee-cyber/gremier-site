@@ -16,13 +16,15 @@ function compact(v: any, items = 5, depth = 0): any {
   return typeof v === "string" ? v.slice(0, 160) : v;
 }
 const safe = async (f: () => Promise<any>) => { try { return await f(); } catch (e) { return { unavailable: e instanceof Error ? e.message : "error" }; } };
-const pct = (n: number, d: number) => (d ? Math.round((n / d) * 1000) / 10 : null);
+// Lists are cut short, so always give the full total too (bots must not add up a partial list).
+const owedTotals = (l: any) => Array.isArray(l) ? { stores_owe_total: Math.round(l.reduce((t: number, o: any) => t + Number(o.amount || 0), 0) * 100) / 100, stores_owing: l.length } : {};
+const pct =(n: number, d: number) => (d ? Math.round((n / d) * 1000) / 10 : null);
 
 async function cfo(sb: Sb) {
   const now = day(0).slice(0, 7), prev = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toLocaleDateString("en-CA", { timeZone: TZ }).slice(0, 7); })();
   const [book, open] = await Promise.all([safe(() => financeOverview(sb, { from: prev, to: now })), safe(() => financeOpenItems(sb))]);
   return { months: compact(book.months, 8), official_books_until: book.official_books_until, open_items: {
-    expenses_to_fix: open.expenses_to_fix?.length ?? null, examples: compact(open.expenses_to_fix, 5), stores_owe: compact(open.stores_owe, 6),
+    expenses_to_fix: open.expenses_to_fix?.length ?? null, examples: compact(open.expenses_to_fix, 5), ...owedTotals(open.stores_owe), stores_owe_largest: compact(open.stores_owe, 6),
     paid_orders_without_receipt: open.paid_orders_without_receipt?.count ?? null, refunds_without_credit_document: open.refunds_without_credit_document } };
 }
 async function coo(sb: Sb) {
@@ -49,7 +51,7 @@ export async function briefing(sb: Sb, a: Record<string, unknown>) {
   if (make[role]) return { role, as_of: new Date().toISOString(), currency: "ILS", ...(await make[role](sb)) };
   const [f, o, m, d] = await Promise.all([safe(() => cfo(sb)), safe(() => coo(sb)), safe(() => cmo(sb)), safe(() => cdo(sb))]);
   return { role: "vice_ceo", as_of: new Date().toISOString(), currency: "ILS",
-    cfo: { months: compact(f.months, 3), open_items: f.open_items && { expenses_to_fix: f.open_items.expenses_to_fix, stores_owe: compact(f.open_items.stores_owe, 3), paid_orders_without_receipt: f.open_items.paid_orders_without_receipt } },
+    cfo: { months: compact(f.months, 3), open_items: f.open_items && { expenses_to_fix: f.open_items.expenses_to_fix, stores_owe_total: f.open_items.stores_owe_total, stores_owing: f.open_items.stores_owing, stores_owe_largest: compact(f.open_items.stores_owe_largest, 3), paid_orders_without_receipt: f.open_items.paid_orders_without_receipt } },
     coo: { today: compact(o.today, 4) }, cmo: { this_week: m.this_week?.website_paid_orders, week_before: m.week_before?.website_paid_orders },
     cdo: { this_week: d.this_week, week_before: d.week_before } };
 }
