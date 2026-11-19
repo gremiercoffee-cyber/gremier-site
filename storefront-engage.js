@@ -149,9 +149,9 @@
   }
 
   // ── Kashrut: a small seal under "Add to cart" and in the footer; tap to see the certificate ──
-  const kosherLabel = () => T('Kosher · Rabbi Shmuel Weiner', 'כשר · בהשגחת הרב שמואל ויינער');
+  const kosherLabel = () => T('Kosher · Badatz Edah HaChareidis', 'כשר · בד״ץ העדה החרדית');
   function kosherChip(cls) {
-    return `<button type="button" class="kosher-chip ${cls || ''}" onclick="showKashrut()"><img src="/kashrut-sm.png" alt="" width="22" height="22">${kosherLabel()}</button>`;
+    return `<button type="button" class="kosher-chip ${cls || ''}" onclick="showKashrut()"><img src="/badatz-sm.webp" alt="" width="49" height="22">${kosherLabel()}</button>`;
   }
   window.showKashrut = function () {
     let el = $('kashrutView');
@@ -161,8 +161,8 @@
       el.onclick = () => el.classList.remove('open');
       document.body.appendChild(el);
     }
-    el.innerHTML = `<div class="kashrut-card" role="dialog" aria-label="${T('Kashrut', 'כשרות')}"><img src="/kashrut.png" alt="${T('Kashrut certificate: Rabbi Shmuel Weiner, Khal Zichron Nosson Tzvi', 'תעודת כשרות: הרב שמואל ויינער, קהל זכרון נתן צבי')}">
-      <p>${T('Under the supervision of Rabbi Shmuel Weiner, Rav of Khal Zichron Nosson Tzvi.', 'בהשגחת הרב שמואל ויינער, רב דקהל זכרון נתן צבי.')}</p>
+    el.innerHTML = `<div class="kashrut-card" role="dialog" aria-label="${T('Kashrut', 'כשרות')}"><img src="/badatz.webp" alt="${T('Badatz Edah HaChareidis, Jerusalem', 'הבד״ץ העדה החרדית ירושלים')}">
+      <p>${T('Under the supervision of the Badatz Edah HaChareidis, Jerusalem.', 'בהשגחת הבד״ץ העדה החרדית ירושלים.')}</p>
       <button type="button" class="btn btn-outline btn-sm">${T('Close', 'סגירה')}</button></div>`;
     el.classList.add('open');
   };

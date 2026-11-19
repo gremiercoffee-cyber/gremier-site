@@ -38,7 +38,7 @@ h1{font-size:1.7rem;line-height:1.25;margin:0 0 6px}h2{font-size:1.15rem;margin:
 <div class="box">${esc(delEn)} Choose regular or expedited delivery, or pick a date.</div>
 <a class="cta" href="/#shop">Shop the coffee</a><a class="cta alt" href="/#coffeebars">Coffee bar for an event in ${esc(en)}</a></section>
 <h2>Our coffee · הקפה שלנו</h2><div class="grid">${coffees.map(card).join('')}</div>
-<div class="box he">☕ נחלט טרי באצוות קטנות · <a href="/he/cold-brew/kosher">כשר בהשגחת הרב שמואל ויינער</a></div>
+<div class="box he">☕ נחלט טרי באצוות קטנות · <a href="/he/cold-brew/kosher">כשר בהשגחת הבד״ץ העדה החרדית</a></div>
 <p class="he"><a href="/he/cold-brew">קולד ברו מוכן בבקבוק</a> · <a href="/he/cold-brew/events">קולד ברו לאירועים</a> · <a href="/he/cold-brew/office-and-wholesale">למשרד ולעסקים</a> · <a href="/he/cold-brew/what-is-cold-brew">מה זה קולד ברו?</a></p>
 </main><script src="/storefront-journeys.js?v=20261109-1"></script></body></html>`;
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' } });

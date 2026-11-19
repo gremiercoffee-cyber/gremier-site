@@ -242,21 +242,21 @@ ${c.barTable.en}
   },
   kosher: {
     name: { he: 'קולד ברו כשר', en: 'Kosher cold brew' },
-    title: { he: 'קולד ברו כשר, בהשגחת הרב שמואל ויינער | גרמיר קפה', en: 'Kosher Cold Brew Coffee in Israel | Gremier' },
+    title: { he: 'קולד ברו כשר, בהשגחת הבד״ץ העדה החרדית | גרמיר קפה', en: 'Kosher Cold Brew Coffee in Israel | Gremier' },
     desc: {
-      he: 'קולד ברו כשר מירושלים, בהשגחת הרב שמואל ויינער. בקבוקים, מיני, ג׳ריקנים ובר קפה לשמחות, עם אפשרות לחלב שיבולת שועל או שקדים. משלוח עד הבית.',
-      en: 'Kosher cold brew from Jerusalem under the supervision of Rabbi Shmuel Weiner: bottles, minis, jugs and event coffee bars, with oat or almond milk options.',
+      he: 'קולד ברו כשר מירושלים, בהשגחת הבד״ץ העדה החרדית. בקבוקים, מיני, ג׳ריקנים ובר קפה לשמחות, עם אפשרות לחלב שיבולת שועל או שקדים. משלוח עד הבית.',
+      en: 'Kosher cold brew from Jerusalem under the supervision of the Badatz Edah HaChareidis: bottles, minis, jugs and event coffee bars, with oat or almond milk options.',
     },
     h1: { he: 'קולד ברו כשר, נחלט בירושלים', en: 'Kosher cold brew, brewed in Jerusalem' },
     lead: {
-      he: 'הקולד ברו של גרמיר כשר בהשגחת ועד הכשרות של הרב שמואל ויינער, רב קהל זכרון נתן צבי.',
-      en: "Gremier's cold brew is kosher under the Vaad HaKashrus of Rabbi Shmuel Weiner, Rav of Kehal Zichron Nosson Tzvi.",
+      he: 'הקולד ברו של גרמיר כשר בהשגחת הבד״ץ העדה החרדית ירושלים.',
+      en: "Gremier's cold brew is kosher under the supervision of the Badatz Edah HaChareidis, Jerusalem.",
     },
     products: isCoffee,
     limit: 6,
     body: {
       he: () => `
-<img class="seal" src="/kashrut-sm.png" alt="חותמת ועד הכשרות, הרב שמואל ויינער" width="120" height="120" loading="lazy">
+<img class="seal" src="/badatz-sm.webp" alt="בהשגחת הבד״ץ העדה החרדית ירושלים" width="179" height="80" loading="lazy">
 <h2>מה מכיל חלב?</h2>
 <p>הלאטה קרם (אוריג׳ינל, קרמל ווניל) מכיל חלב, וכך גם החלב שמגיע עם בר הקפה. הקפה השחור, כמו הקלאסיק, בלנד הבית, קולומביה ונטול הקפאין, נמכר בלי חלב.</p>
 <h2>קפה קר לשמחה</h2>
@@ -265,7 +265,7 @@ ${c.barTable.en}
 <p>אפשר <a href="/he/cold-brew">להזמין קולד ברו כשר עד הבית</a>, או למצוא אותנו <a href="/where-to-buy">בחנויות</a>. אין משלוחים בשבת ובחגים.</p>
 <p>לשאלות על הכשרות של מוצר מסוים, <a href="${WA}">כתבו לנו בוואטסאפ</a>.</p>`,
       en: () => `
-<img class="seal" src="/kashrut-sm.png" alt="Vaad HaKashrus seal, Rabbi Shmuel Weiner" width="120" height="120" loading="lazy">
+<img class="seal" src="/badatz-sm.webp" alt="Under the supervision of the Badatz Edah HaChareidis, Jerusalem" width="179" height="80" loading="lazy">
 <h2>What contains milk?</h2>
 <p>The Cream Lattes (Original, Caramel and Vanilla) contain milk, as does the milk supplied with a coffee bar. The black coffees, such as Classic, House Blend, Colombia and Decaf, are sold without milk.</p>
 <h2>Cold coffee for a simcha</h2>
@@ -275,8 +275,8 @@ ${c.barTable.en}
 <p>For questions about a specific product's kashrus, <a href="${WA}">message us on WhatsApp</a>.</p>`,
     },
     faq: {
-      he: [['מי נותן את הכשרות?', 'ועד הכשרות של הרב שמואל ויינער, רב קהל זכרון נתן צבי.'], ['יש אפשרות בלי חלב לבר הקפה?', 'כן, אפשר להחליף לחלב שיבולת שועל או שקדים.']],
-      en: [['Who gives the kosher supervision?', 'The Vaad HaKashrus of Rabbi Shmuel Weiner, Rav of Kehal Zichron Nosson Tzvi.'], ['Can a coffee bar come without regular milk?', 'Yes, you can swap to oat or almond milk.']],
+      he: [['מי נותן את הכשרות?', 'הבד״ץ של העדה החרדית ירושלים.'], ['יש אפשרות בלי חלב לבר הקפה?', 'כן, אפשר להחליף לחלב שיבולת שועל או שקדים.']],
+      en: [['Who gives the kosher supervision?', 'The Badatz of the Edah HaChareidis, Jerusalem.'], ['Can a coffee bar come without regular milk?', 'Yes, you can swap to oat or almond milk.']],
     },
   },
   coffee: {
@@ -327,8 +327,8 @@ ${c.barTable.en}
 <p>All our products are <a href="/cold-brew/kosher">kosher under supervision</a>. Like it cold? We also have a guide to <a href="/iced-coffee">iced coffee at home</a>.</p>`,
     },
     faq: {
-      he: [['אתם מוכרים פולי קפה או קפסולות?', 'לא. אנחנו מוכרים קפה קר מוכן לשתייה, בבקבוקים ובג׳ריקנים.'], ['לאן אתם שולחים?', 'לכל הארץ. המחיר נקבע לפי העיר ומופיע בקופה.'], ['הקפה כשר?', 'כן, בהשגחת ועד הכשרות של הרב שמואל ויינער.']],
-      en: [['Do you sell coffee beans or capsules?', 'No. We sell ready-to-drink cold coffee, in bottles and jugs.'], ['Where do you deliver?', 'Across Israel. The price depends on your city and appears at checkout.'], ['Is the coffee kosher?', 'Yes, under the Vaad HaKashrus of Rabbi Shmuel Weiner.']],
+      he: [['אתם מוכרים פולי קפה או קפסולות?', 'לא. אנחנו מוכרים קפה קר מוכן לשתייה, בבקבוקים ובג׳ריקנים.'], ['לאן אתם שולחים?', 'לכל הארץ. המחיר נקבע לפי העיר ומופיע בקופה.'], ['הקפה כשר?', 'כן, בהשגחת הבד״ץ העדה החרדית ירושלים.']],
+      en: [['Do you sell coffee beans or capsules?', 'No. We sell ready-to-drink cold coffee, in bottles and jugs.'], ['Where do you deliver?', 'Across Israel. The price depends on your city and appears at checkout.'], ['Is the coffee kosher?', 'Yes, under the supervision of the Badatz Edah HaChareidis, Jerusalem.']],
     },
   },
   'iced-coffee': {

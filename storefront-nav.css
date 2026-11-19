@@ -286,15 +286,19 @@ body.promo-banner .page { padding-top:calc(var(--promo-h, 38px) + 80px) !importa
 
 /* Kashrut seal (storefront-engage.js) */
 .kosher-chip { display:inline-flex; align-items:center; gap:6px; background:none; border:0; padding:0; font:inherit; font-size:.72rem; color:#6b7178; cursor:pointer; }
-.kosher-chip img { width:22px; height:22px; object-fit:contain; }
+.kosher-chip img { width:auto; height:22px; object-fit:contain; }
 .kosher-chip:hover { color:#1a1a1a; }
 .kosher-chip.on-dark { margin-top:14px; color:rgba(255,255,255,.6); }
-.kosher-chip.on-dark img { width:30px; height:30px; filter:invert(1); opacity:.85; }
+.kosher-chip.on-dark img { width:auto; height:30px; filter:invert(1); opacity:.85; }
 .kosher-chip.on-dark:hover { color:#fff; }
 .kashrut-view { position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; padding:16px; }
 .kashrut-view.open { display:flex; }
 .kashrut-card { background:#fff; border-radius:18px; padding:22px 20px 18px; max-width:340px; width:100%; text-align:center; }
-.kashrut-card img { width:100%; max-width:260px; height:auto; }
+.kashrut-card img { width:100%; max-width:280px; height:auto; }
+/* Badatz seal at the top of the site, next to the logo */
+.nav-badatz { display:inline-flex; align-items:center; background:none; border:0; padding:0 0 0 2px; margin:0; cursor:pointer; flex-shrink:0; }
+.nav-badatz img { height:42px; width:auto; display:block; }
+@media (max-width:640px) { .nav-badatz img { height:38px; } }
 .kashrut-card p { font-size:.82rem; color:#5f656d; margin:12px 0 14px; line-height:1.5; }
 
 /* "By continuing to payment you agree to…" under the pay button (storefront-engage.js) */
