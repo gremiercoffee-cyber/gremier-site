@@ -72,7 +72,7 @@
     const okPhone = typeof isValidPhone === 'function' ? isValidPhone(val('coPhone')) : !!val('coPhone');
     if (!val('coName') || !okEmail || !okPhone) return false;
     if (pickup) return true;
-    return !!(val('coAddr') && cityName() && ($('coAptNA')?.checked || (val('coApt') && val('coFloor'))));
+    return !!(val('coAddr') && cityName());   // apartment and floor are optional
   }
 
   function render() {
@@ -93,7 +93,7 @@
     const card = $('coSavedCard');
     if (!compact) { card.innerHTML = ''; window.GremierAddresses?.decorate(); return; }
     const pickup = $('shipPickup')?.checked;
-    const apt = $('coAptNA')?.checked ? '' : `, ${T('Apt', 'דירה')} ${esc(val('coApt'))}, ${T('Floor', 'קומה')} ${esc(val('coFloor'))}`;
+    const apt = $('coAptNA')?.checked ? '' : (val('coApt') ? `, ${T('Apt', 'דירה')} ${esc(val('coApt'))}` : '') + (val('coFloor') ? `, ${T('Floor', 'קומה')} ${esc(val('coFloor'))}` : '');
     card.innerHTML = `
       <div class="co-saved-head"><span class="co-sec-title">${pickup ? T('Your details', 'הפרטים שלך') : T('Deliver to', 'משלוח אל')}</span>
         <button type="button" class="co-link" data-co-edit>${T('Edit', 'עריכה')}</button></div>

@@ -336,7 +336,8 @@
     placeTermsNote();
     arriveFromReferral();
     arriveFromFeedbackEmail();
-    whenLanguageSet(() => setTimeout(feedbackCard, 3000));
+    // Not during the first look at the page: after the first tap, scroll or key (or 20 seconds).
+    whenLanguageSet(() => (window.GremierAfterFirstTouch ? window.GremierAfterFirstTouch(() => setTimeout(feedbackCard, 3000)) : setTimeout(feedbackCard, 3000)));
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();

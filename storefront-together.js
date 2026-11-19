@@ -49,7 +49,7 @@
       el = document.createElement('section');
       el.id = 'pdTogether';
       el.className = 'pd-together';
-      row.after(el);
+      (row.closest('.pd-buybar') || row).after(el);   // after the buy bar, never inside it
     }
     return el;
   }

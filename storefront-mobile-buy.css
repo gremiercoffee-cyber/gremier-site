@@ -1,0 +1,58 @@
+/* Mobile buying, fewer steps (Nov 2026). See storefront-mobile-buy.js. */
+
+/* ── Product sheet: the buy bar ── */
+#pdBuyBar { position:sticky; bottom:0; z-index:4; background:#fff; }
+.pd-buy-mode { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:3px; margin-bottom:8px; background:var(--bg3,#f4f2ee); border-radius:10px; }
+.pd-buy-mode[hidden] { display:none; }
+.pd-buy-mode button { border:0; background:transparent; border-radius:8px; padding:8px 6px; font:inherit; font-size:.8rem; line-height:1.2; color:var(--text2,#6b6b6b); cursor:pointer; }
+.pd-buy-mode button.on { background:#fff; color:#1a1a1a; font-weight:600; box-shadow:0 1px 4px rgba(0,0,0,.12); }
+/* The toggle lives in the bar, so the copy in the sheet is hidden (its subscription choices still show there). */
+#pdDrawer.gm-has-mode #pdSubscriptionSection .subscription-modes { display:none; }
+#pdSubscriptionSection:has(> .subscription-modes:only-child) { display:none !important; }
+.gm-btn-price { white-space:nowrap; }
+@media (max-width:767px) {
+  #pdDrawer { padding-bottom:0; }
+  #pdBuyBar { margin:8px -20px 0; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--border,#e8e3dc); box-shadow:0 -8px 22px rgba(0,0,0,.07); }
+  #pdBuyBar .pd-qty-row { margin:0; }
+  #pdBuyBar .pd-add-btn { padding:13px 10px; font-size:.9rem; letter-spacing:.02em; text-transform:none; border-radius:999px; }
+  #pdBuyBar .pd-qty { border-radius:999px; }
+}
+
+/* ── Shipping prices by area ── */
+.gm-pd-rates { margin:-6px 0 16px; padding:10px 12px; border:1px solid var(--border,#e8e3dc); border-radius:10px; font-size:.78rem; }
+.gm-rates-title { font-weight:600; color:#1a1a1a; margin-bottom:4px; }
+.gm-rates { list-style:none; margin:0; padding:0; }
+.gm-rates li { display:flex; justify-content:space-between; gap:10px; padding:4px 0; border-top:1px dashed var(--border,#e8e3dc); color:var(--text2,#6b6b6b); line-height:1.35; }
+.gm-rates li:first-child { border-top:0; }
+.gm-rates li b { font-weight:500; color:#1a1a1a; }
+.gm-rates li span { text-align:end; white-space:nowrap; }
+.gm-rates-fold { margin:0 0 8px; font-size:.78rem; }
+.gm-rates-fold summary { cursor:pointer; color:var(--text2,#6b6b6b); text-decoration:underline; text-underline-offset:3px; list-style:none; }
+.gm-rates-fold summary::-webkit-details-marker { display:none; }
+.gm-rates-fold summary::after { content:' ▾'; }
+.gm-rates-fold[open] summary::after { content:' ▴'; }
+.gm-rates-fold .gm-rates { margin-top:6px; padding:6px 10px; background:#fff; border:1px solid var(--border,#e8e3dc); border-radius:10px; }
+
+/* ── Shop category chips: fade where there is more to swipe ── */
+#catFilter { scroll-behavior:smooth; }
+#catFilter.gm-more-end { -webkit-mask-image:linear-gradient(to var(--gm-end,left), #000 calc(100% - 46px), transparent); mask-image:linear-gradient(to var(--gm-end,left), #000 calc(100% - 46px), transparent); }
+#catFilter.gm-more-end.gm-more-start { -webkit-mask-image:linear-gradient(to var(--gm-end,left), transparent, #000 34px, #000 calc(100% - 46px), transparent); mask-image:linear-gradient(to var(--gm-end,left), transparent, #000 34px, #000 calc(100% - 46px), transparent); }
+#catFilter.gm-more-start:not(.gm-more-end) { -webkit-mask-image:linear-gradient(to var(--gm-end,left), transparent, #000 34px); mask-image:linear-gradient(to var(--gm-end,left), transparent, #000 34px); }
+body:not(.rtl) #catFilter { --gm-end:right; }
+
+/* ── Cookie notice: one slim bar on phones ── */
+@media (max-width:640px) {
+  .journey-consent { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px; left:8px; right:8px; width:auto; bottom:calc(72px + env(safe-area-inset-bottom)); box-shadow:0 6px 20px #17161426; }
+  .journey-consent strong { display:none; }
+  .journey-consent p { flex:1; margin:0; font-size:11px; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .journey-consent > div { display:flex; gap:6px; margin:0; flex-shrink:0; }
+  .journey-consent button { padding:7px 11px; font-size:12px; min-height:0; margin:0; white-space:nowrap; }
+}
+
+/* ── Checkout on phones: the pay button sits on its own strip and never covers what you type ── */
+@media (max-width:640px) {
+  #checkoutOverlay .modal { scroll-padding-bottom:110px; }
+  #checkoutOverlay #t-co-submit { bottom:10px; box-shadow:0 8px 22px rgba(0,0,0,.22), 0 0 0 10px #f5f6f7, 0 22px 0 10px #f5f6f7; }
+  /* While the keyboard is up, the button waits at the end of the form instead of floating over it. */
+  html.gm-typing #checkoutOverlay #t-co-submit { position:relative; bottom:auto; box-shadow:0 8px 22px rgba(0,0,0,.22); }
+}

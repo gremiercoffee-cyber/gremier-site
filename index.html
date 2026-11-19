@@ -25,7 +25,9 @@
   <meta property="og:url" content="https://gremiercoffee.co.il/"><meta property="og:image" content="https://gremiercoffee.co.il/icon-512.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Gremier Coffee","alternateName":["Gremier Coffee Co.","גרמיר קפה"],"url":"https://gremiercoffee.co.il/"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Gremier Coffee Co.","alternateName":"גרמיר קפה","url":"https://gremiercoffee.co.il/","logo":"https://gremiercoffee.co.il/icon-512.png","email":"gremiercoffee@gmail.com","description":"Cold brew coffee slow-brewed in Jerusalem and delivered across Israel: liter bottles, minis, 5L jugs and coffee bars for events. Kosher.","foundingDate":"2024","sameAs":["https://www.instagram.com/gremiercoffee"],"contactPoint":{"@type":"ContactPoint","telephone":"+972-55-270-3413","contactType":"customer service","availableLanguage":["English","Hebrew"]},"areaServed":[{"@type":"Country","name":"Israel"},{"@type":"City","name":"Jerusalem"},{"@type":"City","name":"Beit Shemesh"},{"@type":"City","name":"Beitar Illit"}]}</script>
-  <link rel="preload" as="image" href="/logo.png"/>
+  <link rel="preload" as="image" href="/logo-192.webp" type="image/webp"/>
+  <script>document.documentElement.classList.add('gm-quiet');</script>
+  <style>html.gm-quiet #chatFabWrapper{visibility:hidden;opacity:0}</style>
   <link rel="stylesheet" href="/storefront-boot.css?v=20261028-3"/>
   <script src="/storefront-boot.js?v=20261028-2"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -390,7 +392,7 @@
     .co-na-toggle input:checked + .co-na-dot { border-color:#1a1a1a; background:#1a1a1a; }
     .co-na-toggle input:checked + .co-na-dot::after { content:''; position:absolute; inset:0; margin:auto; width:6px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg) translate(-1px,-1px); }
     .co-na-toggle input:focus-visible + .co-na-dot { box-shadow:0 0 0 3px rgba(0,0,0,.12); }
-    #coAptRow.co-disabled { opacity:.45; pointer-events:none; }
+    #coAptRow.co-disabled { display:none; }
     .form-label { display:block; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:7px; }
     .form-input { width:100%; background:#f7f5f2; border:1px solid var(--border); color:#1a1a1a; padding:11px 14px; font-family:'DM Sans',sans-serif; font-size:.88rem; border-radius:2px; outline:none; transition:border-color .2s; }
     .form-input:focus { border-color:#1a1a1a; }
@@ -802,11 +804,12 @@
 <link rel="stylesheet" href="/storefront-reveal.css?v=20261029-3"/>
 <link rel="stylesheet" href="/storefront-journeys.css?v=20261102-2"/>
 <link rel="stylesheet" href="/storefront-together.css?v=20261103-1"/>
+<link rel="stylesheet" href="/storefront-mobile-buy.css?v=20261119-1"/>
 <link rel="stylesheet" href="/storefront-home-flow.css?v=20261111-2"/>
 </head>
 <body>
 <div id="gremierBoot" role="status" aria-live="polite" aria-label="Loading Gremier Coffee">
- <div class="boot-scene"><div class="boot-aura" aria-hidden="true"></div><div class="boot-core" aria-hidden="true"></div><div class="boot-burst" aria-hidden="true"></div><div class="boot-streak" aria-hidden="true"></div><img class="boot-logo" src="/logo.png" alt="" width="100" height="100" fetchpriority="high"><div class="boot-name-mask"><span class="boot-name">Gremier</span></div><span class="boot-coffee">Coffee</span></div>
+ <div class="boot-scene"><div class="boot-aura" aria-hidden="true"></div><div class="boot-core" aria-hidden="true"></div><div class="boot-burst" aria-hidden="true"></div><div class="boot-streak" aria-hidden="true"></div><img class="boot-logo" src="/logo-192.webp" alt="" width="100" height="100" fetchpriority="high"><div class="boot-name-mask"><span class="boot-name">Gremier</span></div><span class="boot-coffee">Coffee</span></div>
  <button id="bootSkip" type="button">Continue to site</button>
 </div>
 <script>window.GremierBoot?.start();</script>
@@ -875,7 +878,7 @@
 <a onclick="showPage('giftcards');closeMobileMenu()">Gift Cards 🎁</a></div>
 <nav>
   <span class="nav-logo-wrap" onclick="showPage('home')">
-    <img src="/logo.png" alt="Gremier Coffee Co." class="nav-logo-img"/>
+    <img src="/logo-192.webp" alt="Gremier Coffee Co." class="nav-logo-img"/>
     <span class="nav-logo-text">Gremier <span>Coffee Co.</span></span>
   </span>
   <ul class="nav-links">
@@ -916,7 +919,7 @@
     <div class="hero-bg"></div>
     <div class="hero-content">
       <div class="hero-brand">
-        <img src="/logo.png" alt="Gremier Coffee Co." class="hero-logo"/>
+        <img src="/logo-192.webp" alt="Gremier Coffee Co." class="hero-logo"/>
         <div class="hero-title-wrap">
           <h1 class="hero-title" id="t-hero-title">Cold Brew<br><em id="t-hero-em" style="color:#1a1a1a;font-style:italic;">Delivered.</em></h1>
         </div>
@@ -928,7 +931,7 @@
   <div class="discovery-routes" aria-label="Shop coffee or build a coffee bar">
     <a class="discovery-route discovery-shop" href="#shop" onclick="event.preventDefault();showPage('shop')">
       <div class="discovery-copy"><div class="discovery-eye" data-discovery-en="The shop" data-discovery-he="החנות">The shop</div><h2 data-discovery-en="Stock your fridge." data-discovery-he="מלאו את המקרר בקפה.">Stock your fridge.</h2><p data-discovery-en="Your favourite cold brew, ready whenever you are." data-discovery-he="הקולד ברו האהוב עליכם, מוכן מתי שתרצו.">Your favourite cold brew, ready whenever you are.</p></div>
-      <div class="discovery-visual"><img src="/hero/shop-collection-v4.webp" alt="Gremier House Blend, Classic and Colombia cold brew, caramel syrup, caramel and vanilla cream latte four-packs and a selection of iced coffees" decoding="async"></div>
+      <div class="discovery-visual"><img src="/hero/shop-collection-v4.webp" srcset="/hero/shop-collection-v4-600.webp 600w, /hero/shop-collection-v4.webp 1536w" sizes="(max-width:640px) 50vw, 560px" alt="Gremier House Blend, Classic and Colombia cold brew, caramel syrup, caramel and vanilla cream latte four-packs and a selection of iced coffees" decoding="async"></div>
       <div class="discovery-footer"><span id="t-hero-shop" data-discovery-en="Shop the collection" data-discovery-he="לכל הקולקציה">Shop the collection</span><span class="discovery-arrow" aria-hidden="true">↗</span></div>
     </a>
     <a class="discovery-route discovery-bar" href="#coffeebars/build" onclick="openCoffeeBarFromHome(event)">
@@ -1102,6 +1105,7 @@
       <select id="pdGuestSelect" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:#1a1a1a;padding:10px 13px;font-family:'DM Sans',sans-serif;font-size:.87rem;border-radius:3px;outline:none" onchange="pdOnGuestChange(this)"></select>
     </div>
     <a class="pd-wa-link" id="pdWhatsApp" href="" target="_blank" rel="noopener" style="display:none">💬 Have questions? Message us on WhatsApp →</a>
+    <div class="pd-buybar pd-actions" id="pdBuyBar"><div class="pd-buy-mode" id="pdBuyMode" hidden></div>
     <div class="pd-qty-row">
       <div class="pd-qty">
         <button onclick="pdChangeQty(-1)">−</button>
@@ -1109,6 +1113,7 @@
         <button onclick="pdChangeQty(1)">+</button>
       </div>
       <button class="pd-add-btn" onclick="pdAddToCart()" id="pdAddBtn">Add to Cart</button>
+    </div>
     </div>
   </div>
   </div>
@@ -1223,8 +1228,8 @@
       <div class="form-group"><label class="form-label" id="t-co-addr">Street Address</label><input class="form-input" id="coAddr" type="text" placeholder="Street and number, then choose from the list"/></div>
       <div class="form-group">
         <div class="form-row-2" id="coAptRow">
-          <div><label class="form-label" id="t-co-apt">Apartment *</label><input class="form-input" id="coApt" type="text" placeholder="Apt / unit"/></div>
-          <div><label class="form-label" id="t-co-floor">Floor *</label><input class="form-input" id="coFloor" type="text" placeholder="Floor"/></div>
+          <div><label class="form-label" id="t-co-apt">Apartment (optional)</label><input class="form-input" id="coApt" type="text" placeholder="Apt / unit"/></div>
+          <div><label class="form-label" id="t-co-floor">Floor (optional)</label><input class="form-input" id="coFloor" type="text" placeholder="Floor"/></div>
         </div>
         <label class="co-na-toggle" for="coAptNA">
           <input type="checkbox" id="coAptNA" onchange="toggleAptNA()"/>
@@ -1304,9 +1309,9 @@
             </div>
           </div>
         </div>
-        <div id="deliveryFeeRow" style="display:none;margin-top:10px;display:flex;justify-content:space-between;font-size:.84rem;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div id="deliveryFeeRow" style="display:none;margin-top:10px;justify-content:space-between;font-size:.84rem;padding:8px 0;border-bottom:1px solid var(--border)">
           <span style="color:var(--text2)" id="t-delivery-fee">Delivery fee</span>
-          <span style="color:#1a1a1a" id="deliveryFeeAmt">₪0</span>
+          <span style="color:#1a1a1a" id="deliveryFeeAmt"></span>
         </div>
         <div id="freeDeliveryNote" style="display:none;font-size:.76rem;color:#4caf72;margin-top:6px">✓ Free delivery on this order!</div>
         <div id="shabbatDeliveryNote" style="display:none;font-size:.76rem;color:#c9a96e;margin-top:6px"></div>
@@ -1362,7 +1367,7 @@
   <div class="footer-grid">
     <div>
       <div class="footer-brand" style="display:flex;align-items:center;gap:12px">
-        <img src="/logo.png" alt="Gremier Coffee Co." style="height:48px;width:48px;object-fit:contain;border-radius:50%;flex-shrink:0"/>
+        <img src="/logo-192.webp" alt="Gremier Coffee Co." style="height:48px;width:48px;object-fit:contain;border-radius:50%;flex-shrink:0"/>
         <span>Gremier <span style="color:#888;font-weight:400">Coffee Co.</span></span>
       </div>
       <p class="footer-desc" id="t-ft-desc">Slow-brewed cold brew for home, the office and events.</p>
@@ -1526,7 +1531,7 @@ const T = {
     'co-title':'Checkout','co-sub':'Fill in your details, then continue to secure payment.',
     'co-name':'Full Name','co-entrance':'Entrance / building (optional)','co-instr':'Delivery instructions (optional)','co-delivery-note':"🚚 We'll do our best to bring your order to your door, or at least your building. If the driver needs someone to receive it, they'll contact you on the way.",'co-phone':'Phone','co-email':'Email',
     'co-city':'City','co-city-hint':'Type to search — all Israeli cities & towns','co-city-ph':'Start typing your city…',
-    'co-addr':'Street Address','co-apt':'Apartment *','co-floor':'Floor *','co-apt-na':'Private house — not applicable','co-notes':'Notes (optional)',
+    'co-addr':'Street Address','co-apt':'Apartment (optional)','co-floor':'Floor (optional)','co-apt-na':'Private house — not applicable','co-notes':'Notes (optional)',
     'pay-title':'Secure payment',
     'pay-sub':'You\'ll continue to PayMe\'s secure page to pay by card, bit, Apple Pay or Google Pay. Your order is confirmed only after payment.',
     'co-submit':'Proceed to Payment','co-cancel':'Cancel',
@@ -1579,7 +1584,7 @@ const T = {
     'co-title':'תשלום','co-sub':'מלאו את הפרטים והמשיכו לתשלום מאובטח.',
     'co-name':'שם מלא','co-entrance':'כניסה / בניין (לא חובה)','co-instr':'הוראות למשלוח (לא חובה)','co-delivery-note':'🚚 נשתדל להביא את ההזמנה עד הדלת, או לפחות עד הבניין. אם השליח יצטרך שמישהו יקבל את המשלוח, הוא ייצור איתכם קשר בדרך.','co-phone':'טלפון','co-email':'אימייל',
     'co-city':'עיר','co-city-hint':'הקלידו לחיפוש — כל הישובים בישראל','co-city-ph':'הקלידו שם ישוב…',
-    'co-addr':'רחוב ומספר בית','co-apt':'דירה *','co-floor':'קומה *','co-apt-na':'בית פרטי — לא רלוונטי','co-notes':'הערות (אופציונלי)',
+    'co-addr':'רחוב ומספר בית','co-apt':'דירה (לא חובה)','co-floor':'קומה (לא חובה)','co-apt-na':'בית פרטי — לא רלוונטי','co-notes':'הערות (אופציונלי)',
     'pay-title':'תשלום מאובטח',
     'pay-sub':'תועברו לדף תשלום מאובטח של PayMe. ההזמנה תאושר רק לאחר התשלום.',
     'co-submit':'המשך לתשלום','co-cancel':'ביטול',
@@ -3058,12 +3063,8 @@ async function submitOrder() {
   const aptNA = document.getElementById('coAptNA')?.checked;
   const apt = document.getElementById('coApt').value.trim();
   const floor = document.getElementById('coFloor').value.trim();
-  if (!isPickup && !aptNA && (!apt || !floor)) {
-    alert(lang==='he'
-      ? 'אנא מלאו מספר דירה וקומה, או סמנו בית פרטי'
-      : 'Please enter apartment and floor, or tick “Private house”'); return;
-  }
-  const aptSuffix = aptNA ? '' : `, ${lang==='he'?'דירה':'Apt'} ${apt}, ${lang==='he'?'קומה':'Floor'} ${floor}`;
+  // Apartment and floor are optional: only what was filled in goes on the address.
+  const aptSuffix = aptNA ? '' : (apt ? `, ${lang==='he'?'דירה':'Apt'} ${apt}` : '') + (floor ? `, ${lang==='he'?'קומה':'Floor'} ${floor}` : '');
   if (!isValidEmail(email)) {
     alert(lang==='he'?'אנא הזינו כתובת אימייל תקינה':'Please enter a valid email address'); return;
   }
@@ -4217,10 +4218,13 @@ function updateDeliveryPrice() {
   }
 
  if (!selectedCheckoutCity) {
-    if (feeRow) feeRow.style.display = 'none';
+    // No city yet: say how it's priced instead of "—" or ₪0.
+    const byCity = lang==='he' ? 'לפי עיר' : 'by city';
+    if (feeRow) { feeRow.style.display = 'flex'; document.getElementById('deliveryFeeAmt').textContent = lang==='he' ? 'יחושב לפי עיר' : 'Calculated by city'; }
     if (freeNote) freeNote.style.display = 'none';
-    document.getElementById('shipRegularPrice').textContent = '—';
-    document.getElementById('shipExpeditedPrice').textContent = '—';
+    document.getElementById('shipRegularPrice').textContent = '· ' + byCity;
+    document.getElementById('shipExpeditedPrice').textContent = '· ' + byCity;
+    const evNoCity = document.getElementById('shipEventPrice'); if (evNoCity) evNoCity.textContent = '· ' + byCity;
     refreshGiftCardDiscount(0);
     const summaryTotal = document.getElementById('coSummaryTotal');
     if (summaryTotal) {
@@ -5305,7 +5309,7 @@ async function sendChatMessageText(text) {
 
   // ── Saved details: device + (signed in) the customer's own profile ──
   function detailsComplete(d) {
-    return !!(d && d.name && d.phone && d.email && d.addr && d.city && (d.aptNA || (d.apt && d.floor)));
+    return !!(d && d.name && d.phone && d.email && d.addr && d.city);
   }
   async function syncProfileDetails() {
     if (typeof currentUser === 'undefined' || !currentUser) return;
@@ -5476,7 +5480,7 @@ async function sendChatMessageText(text) {
     const fee = regularFee(d.city);
     const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
     const city = he() ? (d.city.he || d.city.en) : (d.city.en || d.city.he);
-    const apt = d.aptNA ? '' : `, ${T('Apt', 'דירה')} ${esc(d.apt)}`;
+    const apt = d.aptNA || !d.apt ? '' : `, ${T('Apt', 'דירה')} ${esc(d.apt)}`;
     const feeTxt = fee === null ? '' : fee === 0 ? T('Free delivery', 'משלוח חינם') : `${T('Delivery', 'משלוח')} ₪${fee}`;
     const total = fee === null ? subtotal : subtotal + fee;
     footer.insertAdjacentHTML('afterbegin', `<div id="expressBox" class="express-box">
@@ -5753,11 +5757,11 @@ async function sendChatMessageText(text) {
 })();
 </script>
 <script src="/address-picker.js?v=20261109-1"></script>
-<script src="/storefront-checkout.js?v=20261111-1"></script>
+<script src="/storefront-checkout.js?v=20261119-1"></script>
 <script src="/storefront-coffee-bar-offers.js?v=20261111-1"></script>
 <script src="/storefront-addresses.js?v=20261104-1"></script>
-<script src="/storefront-cart.js?v=20261111-2"></script>
-<script src="/storefront-engage.js?v=20261111-1"></script>
+<script src="/storefront-cart.js?v=20261119-1"></script>
+<script src="/storefront-engage.js?v=20261119-1"></script>
 <script src="/storefront-compare.js?v=20261103-3"></script>
 <script src="/storefront-pack-layout.js?v=20261119-1"></script>
 <script src="/storefront-packs.js?v=20261119-1"></script>
@@ -5771,11 +5775,12 @@ async function sendChatMessageText(text) {
 <script src="/storefront-planner.js?v=20261113-3"></script>
 <script src="/storefront-bar-chat.js?v=20261101-layout2"></script>
 <script src="/storefront-promo.js?v=20261111-2"></script>
-<script src="/storefront-together.js?v=20261103-2"></script>
+<script src="/storefront-together.js?v=20261119-1"></script>
 <script src="/storefront-gift.js?v=20261025-3"></script>
 <script src="/storefront-app.js?v=20261025-1"></script>
 <script src="/storefront-reveal.js?v=20261029-3"></script>
 <script src="/storefront-journeys.js?v=20261111-1"></script>
+<script src="/storefront-mobile-buy.js?v=20261119-1"></script>
 <link rel="stylesheet" href="/storefront-raffle.css?v=20261117-4"/>
 <script src="/storefront-raffle.js?v=20261117-4" defer></script>
 <link rel="stylesheet" href="/storefront-elle.css?v=20261118-2"/>

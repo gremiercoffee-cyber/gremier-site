@@ -23,8 +23,9 @@
   function freeDeliveryHtml() {
     const g = gap();
     if (!g) return '';
-    if (g.left <= 0) return `<div class="cx-free done">${T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>`;
-    return `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם ב${g.where}`) : T(`Add ₪${g.left} more for free delivery`, `עוד ₪${g.left} ומשלוח חינם`)}</span>
+    const rates = window.GremierShipRates ? window.GremierShipRates.details() : '';   // every area's prices, folded
+    if (g.left <= 0) return `<div class="cx-free done">${T('✓ Free delivery on this order', '✓ משלוח חינם להזמנה הזו')}${g.where ? ' · ' + esc(g.where) : ''}</div>` + rates;
+    return rates + `<div class="cx-free"><span>${g.where ? T(`Add ₪${g.left} more for free delivery in ${g.where}`, `עוד ₪${g.left} ומשלוח חינם ב${g.where}`) : T(`Add ₪${g.left} more for free delivery`, `עוד ₪${g.left} ומשלוח חינם`)}</span>
       <div class="cx-bar"><i style="width:${Math.min(100, Math.round((g.subtotal / g.freeAbove) * 100))}%"></i></div></div>`;
   }
   // How far the cart is from free delivery. With the city known, its own threshold; before that, the
@@ -138,8 +139,11 @@
     body.querySelectorAll('.pv-suggest').forEach((el) => el.remove());   // replaces the older syrup-only suggestion
     if (!cart.some((i) => i.is_subscription)) body.insertAdjacentHTML('beforeend', suggestionsHtml());
     footer?.querySelector('.cx-free')?.remove();
+    const wasOpen = !!footer?.querySelector('.gm-rates-fold')?.open;
+    footer?.querySelectorAll('.gm-rates-fold').forEach((el) => el.remove());
     const free = freeDeliveryHtml();
     if (free && footer) footer.insertAdjacentHTML('afterbegin', free);
+    if (wasOpen) { const f = footer?.querySelector('.gm-rates-fold'); if (f) f.open = true; }
     // How they can pay, under the buttons.
     footer?.querySelector('.cx-trust')?.remove();
     footer?.insertAdjacentHTML('beforeend', `<div class="cx-trust">🔒 ${T('Secure payment', 'תשלום מאובטח')}: ${T('card', 'כרטיס')} · bit · Apple Pay · Google Pay</div>`);
