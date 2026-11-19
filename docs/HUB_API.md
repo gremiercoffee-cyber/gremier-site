@@ -46,6 +46,15 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 | `finance_overview` | `from`, `to` (YYYY-MM) | month by month: official FinBot books where imported (income, cost of sales, expenses by category, top suppliers, net) and live app sales / inbox expenses. Never add the two bases together |
 | `finance_open_items` | – | what needs sorting: expense documents to fix, money stores owe, paid orders without a receipt, refunds without a credit document, personal donation receipts |
 | `marketing_results` | `from`, `to` (YYYY-MM-DD) | website paid orders, tracking links, coupons, referrals, traffic sources, best sellers. Aggregates only |
+| `marketing_activity` | `from`, `to` (≤92 days) | what marketing we did: Status app posts (product, campaign, feedback, 48h lift), group posts per group, raffles, campaigns (read from the Status app's `/api/hub/marketing` with `STATUS_HUB_FEED_SECRET` = its `HUB_FEED_SECRET`), the marketing log and tracking links made |
+| `marketing_audit` | `from`, `to` (≤92 days) | marketing vs website sales: each logged activity vs the usual days before, coupon/tracking-link sales, cost per order, overlaps; Status posts by product; raffles; what can't be measured |
+
+**Marketing log** (scope `marketing` — "Read + marketing log only" in Connected apps — or `write`)
+
+| action | args | does |
+|---|---|---|
+| `log_marketing` | `start_day`, `end_day`, `channel`, `title`, `details`, `cost`, `coupon_code`, `link_code`, `url` | records a marketing activity no app records (paid listings, pop-ups, tastings, ads…) in `marketing_log` |
+| `remove_marketing_log` | `id` | hides a wrong entry |
 
 **Write** (needs `write` scope; every write lands in the timeline credited to `app:<key name>`)
 

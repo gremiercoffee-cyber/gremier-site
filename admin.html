@@ -10389,7 +10389,11 @@ PayMe goes back to charging on the regular billing day.`)) return;
         <h3><span>New key</span></h3>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <input class="form-input" id="appKeyName" placeholder="App name, e.g. Widget or Secretary" style="flex:1;min-width:200px" maxlength="40"/>
-          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem"><input type="checkbox" id="appKeyWrite" checked> Can log & change things</label>
+          <select class="form-input" id="appKeyAccess" style="width:auto;font-size:.85rem">
+            <option value="write">Can log & change things</option>
+            <option value="marketing">Read + marketing log only</option>
+            <option value="read">Read only</option>
+          </select>
           <button class="btn btn-amber btn-sm" onclick="appsCreateKey()">Create key</button>
         </div>
         <div id="appKeyShown"></div>
@@ -10438,7 +10442,7 @@ PayMe goes back to charging on the regular billing day.`)) return;
     if (error) { box.innerHTML = `<div class="hub-empty">⚠️ ${esc(error.message)}</div>`; return; }
     if (!data.length) { box.innerHTML = '<div class="hub-card"><div class="hub-empty">No connected apps yet.</div></div>'; return; }
     box.innerHTML = '<div class="hub-grid">' + data.map((k) => `<div class="hub-card" style="${k.revoked_at ? 'opacity:.55' : ''}">
-      <h3><span>${esc(k.name)}</span>${k.revoked_at ? '<span class="hub-pill bad">Off</span>' : `<span class="hub-pill ok">${k.scopes.includes('write') ? 'Read + log' : 'Read only'}</span>`}</h3>
+      <h3><span>${esc(k.name)}</span>${k.revoked_at ? '<span class="hub-pill bad">Off</span>' : `<span class="hub-pill ok">${k.scopes.includes('write') ? 'Read + log' : k.scopes.includes('marketing') ? 'Read + marketing log' : 'Read only'}</span>`}</h3>
       <div style="font-size:.8rem;line-height:1.7;color:var(--text2)"><code>${esc(k.key_prefix)}…</code><br>Created ${when(k.created_at)} · Last used ${when(k.last_used_at)}</div>
       ${k.revoked_at ? '' : `<button class="btn btn-red btn-sm" style="margin-top:10px" onclick="appsRevokeKey('${k.id}', ${esc(JSON.stringify(k.name))})">Switch off</button>`}
     </div>`).join('') + '</div>';
@@ -10446,7 +10450,8 @@ PayMe goes back to charging on the regular billing day.`)) return;
   window.appsCreateKey = async function () {
     const name = document.getElementById('appKeyName').value.trim();
     if (!name) return showToast('Give the app a name');
-    const scopes = document.getElementById('appKeyWrite').checked ? ['read', 'write'] : ['read'];
+    const access = document.getElementById('appKeyAccess').value;
+    const scopes = access === 'read' ? ['read'] : ['read', access];
     const { res, data } = await callAdminFunction('admin-tools', { action: 'create_api_key', name, scopes });
     if (!res.ok || !data.key) return alert('Could not create key: ' + (data.error || res.status));
     document.getElementById('appKeyName').value = '';

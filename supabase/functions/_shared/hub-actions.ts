@@ -11,6 +11,7 @@ import { websiteBehavior, websiteLostVisits, websiteOverview } from "./hub-websi
 import { financeOpenItems, financeOverview } from "./hub-finance.ts";
 import { marketingResults } from "./hub-cmo.ts";
 import { briefing } from "./hub-briefing.ts";
+import { logMarketing, marketingActivity, marketingAudit, removeMarketingLog } from "./hub-marketing-audit.ts";
 import { cleanText } from "./security.ts";
 
 export { HubError };
@@ -32,6 +33,13 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   briefing: { properties: { role: { type: "string", enum: ["vice_ceo", "cfo", "coo", "cmo", "cdo"], description: "Whose briefing (vice_ceo = everyone's headlines)" } }, required: ["role"] },
   finance_overview: { properties: { from: str("YYYY-MM, default 5 months ago"), to: str("YYYY-MM, default this month") } },
   finance_open_items: { properties: {} },
+  marketing_activity: { properties: { from: str("YYYY-MM-DD, default 14 days ago"), to: str("YYYY-MM-DD, default today (max 92 days)") } },
+  marketing_audit: { properties: { from: str("YYYY-MM-DD, default 28 days ago"), to: str("YYYY-MM-DD, default today (max 92 days)") } },
+  log_marketing: { properties: { start_day: str("YYYY-MM-DD the activity started (default today)"), end_day: str("YYYY-MM-DD it ended, for listings/ads that run several days"),
+    channel: str("Where, e.g. Jerusalem Butler, Instagram ad, pop-up, store tasting, flyer, influencer"), title: str("What exactly, e.g. 'Paid listing: newsletter + website, Chanukah gift box'"),
+    details: str("Anything useful: audience, offer, who arranged it"), cost: num("Cost in ILS (omit if free)"), coupon_code: str("Coupon code used only for this activity, if any"),
+    link_code: str("Tracking link code made in the admin app, if any"), url: str("Link to the listing/post, if any") }, required: ["channel", "title"] },
+  remove_marketing_log: { properties: { id: str("Entry id from marketing_activity") }, required: ["id"] },
   marketing_results: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
   website_overview: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
   website_behavior: { properties: { from: str("YYYY-MM-DD, default 7 days ago"), to: str("YYYY-MM-DD, default today") } },
@@ -56,7 +64,7 @@ export async function sha256(text: string): Promise<string> {
 
 type Sb = ReturnType<typeof createClient>;
 type Ctx = { sb: Sb; app: string; scopes: string[] };
-type Handler = { scope: "read" | "write"; describe: string; run: (ctx: Ctx, args: Record<string, unknown>) => Promise<unknown> };
+type Handler = { scope: "read" | "write" | "marketing"; describe: string; run: (ctx: Ctx, args: Record<string, unknown>) => Promise<unknown> };
 
 export const ACTIONS: Record<string, Handler> = {
   // ── read ──
@@ -76,6 +84,10 @@ export const ACTIONS: Record<string, Handler> = {
   website_overview: { scope: "read", describe: "Website traffic and the visit → cart → checkout → pay → paid funnel, with sources, devices, first/last pages, most viewed pages and products, and daily conversion. Anonymous. Args: from, to.", run: ({ sb }, a) => websiteOverview(sb, a) },
   website_behavior: { scope: "read", describe: "Where people get lost on the website: most clicked buttons (and how often those visits buy), clicks on things that do nothing, frustrated repeat clicks, scroll depth, time per section, checkout fields reached, page errors; phone vs computer. Args: from, to.", run: ({ sb }, a) => websiteBehavior(sb, a) },
   website_lost_visits: { scope: "read", describe: "Recent visits that did NOT buy, step by step (pages, products, clicks, scroll, checkout fields) to see where each got stuck. Anonymous, last 30 days. Args: days, limit, reached (cart|checkout|product|any).", run: ({ sb }, a) => websiteLostVisits(sb, a) },
+  marketing_activity: { scope: "read", describe: "What marketing we did in a period: WhatsApp Status posts (product, campaign, your worked/didn't feedback, 48h sales lift), group posts, raffles and campaigns from the Status app, plus the marketing log (paid listings like Jerusalem Butler, pop-ups, tastings, ads…) and tracking links made. Args: from, to.", run: ({ sb }, a) => marketingActivity(sb, a) },
+  marketing_audit: { scope: "read", describe: "Marketing vs sales: each logged activity's website sales vs usual days, coupon and tracking-link sales, cost per order and return on cost, overlaps; Status posts by product with sales lift; days with vs without posts; raffles; what can't be measured. Args: from, to.", run: ({ sb }, a) => marketingAudit(sb, a) },
+  log_marketing: { scope: "marketing", describe: "Record a marketing activity no app records (paid listing, pop-up, tasting, flyer, influencer, ad, samples) so it can be audited against sales. Only when Yoni tells you about it; never invent entries. Args: start_day, end_day, channel, title, details, cost, coupon_code, link_code, url.", run: ({ sb, app }, a) => logMarketing(sb, a, app) },
+  remove_marketing_log: { scope: "marketing", describe: "Remove a wrong marketing log entry (Yoni asked, or it was a duplicate). Args: id.", run: ({ sb, app }, a) => removeMarketingLog(sb, a, app) },
   marketing_inventory: { scope: "read", describe: "Bottled stock per website product.", run: ({ sb }) => marketingInventory(sb) },
   // ── write ──
   start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|unfiltered|houseBlend|colombia|decaf; unfiltered uses Classic beans), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },
@@ -128,11 +140,14 @@ export async function authenticateKey(sb: Sb, key: string): Promise<{ id: string
   return { id: k.id, name: k.name, scopes: k.scopes as string[] };
 }
 
+/** "marketing" (the marketing log only) is allowed for marketing keys and full write keys. */
+export const canUse = (scopes: string[], scope: string) => scopes.includes(scope) || (scope === "marketing" && scopes.includes("write"));
+
 /** Run one action for an app, enforcing scope, and credit its timeline entries to the app. */
 export async function runAction(sb: Sb, app: { name: string; scopes: string[] }, action: string, args: Record<string, unknown>) {
   const h = ACTIONS[action];
   if (!h) throw new HubError("unknown_action", `Unknown action "${action}"`);
-  if (!app.scopes.includes(h.scope)) throw new HubError("forbidden", `This key can't ${h.scope}`);
+  if (!canUse(app.scopes, h.scope)) throw new HubError("forbidden", `This key can't ${h.scope === "marketing" ? "write the marketing log" : h.scope}`);
   const started = new Date(Date.now() - 2000).toISOString();
   const result = await h.run({ sb, app: app.name, scopes: app.scopes }, args) as Record<string, unknown>;
   const refs = Array.isArray(result?.refs) ? result.refs as string[] : [];

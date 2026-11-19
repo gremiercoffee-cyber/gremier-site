@@ -7,7 +7,7 @@
 // Docs:     docs/HUB_API.md
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ACTIONS, authenticateKey, getServiceRoleKey, HubError, runAction, SCHEMAS } from "../_shared/hub-actions.ts";
+import { ACTIONS, authenticateKey, canUse, getServiceRoleKey, HubError, runAction, SCHEMAS } from "../_shared/hub-actions.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
       return respond(rpc(id, {}));
     case "tools/list": {
       const tools = Object.entries(ACTIONS)
-        .filter(([name, h]) => name !== "widget_config" && app.scopes.includes(h.scope))
+        .filter(([name, h]) => name !== "widget_config" && canUse(app.scopes, h.scope))
         .map(([name, h]) => ({
           name,
           description: h.describe,

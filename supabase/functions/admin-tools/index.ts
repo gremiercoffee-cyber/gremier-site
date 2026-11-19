@@ -854,7 +854,7 @@ Deno.serve(async (req) => {
         // A connected-app key: shown once, only its hash is stored.
         const name = String(body.name || "").replace(/[^\w \-֐-׿]/g, "").trim().slice(0, 40);
         if (!name) return json({ error: "name_required" }, 400);
-        const scopes = (Array.isArray(body.scopes) ? body.scopes : ["read"]).filter((x: unknown) => x === "read" || x === "write");
+        const scopes = (Array.isArray(body.scopes) ? body.scopes : ["read"]).filter((x: unknown) => x === "read" || x === "write" || x === "marketing");
         if (!scopes.includes("read")) scopes.unshift("read");
         const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         const bytes = crypto.getRandomValues(new Uint8Array(40));

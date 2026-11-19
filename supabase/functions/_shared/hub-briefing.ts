@@ -4,6 +4,7 @@ import { readOutlook } from "./hub-outlook.ts";
 import { readSummary } from "./hub-ops.ts";
 import { financeOpenItems, financeOverview } from "./hub-finance.ts";
 import { marketingResults } from "./hub-cmo.ts";
+import { marketingAudit } from "./hub-marketing-audit.ts";
 import { websiteBehavior, websiteOverview } from "./hub-website.ts";
 
 type Sb = any;
@@ -32,8 +33,11 @@ async function coo(sb: Sb) {
   return { today: compact(summary, 6), outlook: compact(outlook, 8) };
 }
 async function cmo(sb: Sb) {
-  const [week, before] = await Promise.all([safe(() => marketingResults(sb, { from: day(6), to: day(0) })), safe(() => marketingResults(sb, { from: day(13), to: day(7) }))]);
-  return { this_week: compact(week, 5), week_before: { website_paid_orders: before.website_paid_orders } };
+  const [week, before, audit] = await Promise.all([safe(() => marketingResults(sb, { from: day(6), to: day(0) })), safe(() => marketingResults(sb, { from: day(13), to: day(7) })),
+    safe(() => marketingAudit(sb, { from: day(13), to: day(0) }))]);
+  return { this_week: compact(week, 5), week_before: { website_paid_orders: before.website_paid_orders },
+    marketing_vs_sales_last_14_days: audit.unavailable ? audit : { website_sales: audit.website_sales, logged_activities: compact(audit.logged_activities, 6), status_posts: compact(audit.status_posts, 6),
+      raffles: compact(audit.raffles, 3), not_measurable: compact(audit.not_measurable, 5) } };
 }
 async function cdo(sb: Sb) {
   const [week, before, behaviour] = await Promise.all([safe(() => websiteOverview(sb, { from: day(6), to: day(0) })), safe(() => websiteOverview(sb, { from: day(13), to: day(7) })), safe(() => websiteBehavior(sb, { from: day(6), to: day(0) }))]);
