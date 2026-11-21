@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {forbidden,isServiceOrAdmin} from '../_shared/security.ts';
+import {forbidden,isServiceOrAdmin,isServiceRequest} from '../_shared/security.ts';
 import {sendWebPushToAdmins} from '../_shared/web-push.ts';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type,x-expense-ingress','Access-Control-Allow-Methods':'POST,OPTIONS'};
 const json=(b:unknown,status=200)=>new Response(JSON.stringify(b),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -112,15 +112,19 @@ Deno.serve(async req=>{
    if(Number(req.headers.get('content-length'))>22*1024*1024)return json({error:'maximum_file_size_20mb'},413);
    const form=await req.formData(),file=form.get('file');if(!(file instanceof File)||file.size<5||file.size>20*1024*1024)throw Error('maximum_file_size_20mb');
    if(incoming&&String(form.get('recipient')||'').toLowerCase()!=='gremiercoffee+expenses@gmail.com')throw Error('wrong_expense_recipient');
+   // Sent through the Gremier Hub (e.g. a photo given to the Grok bot): only the Hub calls with the service key.
+   const hub=!incoming&&form.get('via')==='hub'&&await isServiceRequest(req),clip=(v:unknown,n:number)=>String(v??'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n)||null;
+   const extra=hub?{category:clip(form.get('category'),80),note:clip(form.get('note'),300)}:{};
    const bytes=new Uint8Array(await file.arrayBuffer()),type=mime(bytes),sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(x=>x.toString(16).padStart(2,'0')).join('');
-   const prior=await db.from('expense_inbox_files').select('id').eq('sha256',sha).maybeSingle();if(prior.error)throw Error('inbox_unavailable');if(prior.data){if(incoming)await db.from('expense_inbox_settings').update({email_last_received_at:new Date().toISOString()}).eq('id',1);await notify(db);return json({saved:true,duplicate:true,id:prior.data.id});}
+   const prior=await db.from('expense_inbox_files').select('id').eq('sha256',sha).maybeSingle();if(prior.error)throw Error('inbox_unavailable');if(prior.data){if(incoming)await db.from('expense_inbox_settings').update({email_last_received_at:new Date().toISOString()}).eq('id',1);if(hub&&(extra as any).category)await db.from('expense_inbox_files').update(extra).eq('id',prior.data.id).is('category',null);await notify(db);return json({saved:true,duplicate:true,id:prior.data.id});}
    const id=crypto.randomUUID(),path=`${id}/original.${type==='application/pdf'?'pdf':type.split('/')[1]}`;
    const uploaded=await db.storage.from('expense-inbox').upload(path,bytes,{contentType:type,upsert:false});if(uploaded.error)throw Error('upload_failed');
-   const result=await db.from('expense_inbox_files').insert({id,storage_path:path,original_name:file.name.slice(0,200),mime_type:type,size_bytes:bytes.length,sha256:sha,source:incoming?'email':'upload',
-    source_reference:incoming?String(form.get('reference')||'').slice(0,250):null,sender:incoming?'gremiercoffee+expenses@gmail.com':null});
+   const result=await db.from('expense_inbox_files').insert({id,storage_path:path,original_name:file.name.slice(0,200),mime_type:type,size_bytes:bytes.length,sha256:sha,source:incoming?'email':hub?'bot':'upload',
+    source_reference:incoming?String(form.get('reference')||'').slice(0,250):null,sender:incoming?'gremiercoffee+expenses@gmail.com':hub?clip(form.get('app'),80):null,...extra});
    if(result.error){await db.storage.from('expense-inbox').remove([path]);if(result.error.code==='23505')return json({saved:true,duplicate:true});throw Error('upload_record_failed');}
    if(incoming)await db.from('expense_inbox_settings').update({email_last_received_at:new Date().toISOString()}).eq('id',1);
-   // Read the amount in the background, so saving stays quick.
+   // The Hub waits for the reading so the bot can say what was filed; everything else reads in the background.
+   if(hub&&form.get('wait')==='1'){await readDocument(db,id).catch(()=>null);const doc=await db.from('expense_inbox_files').select('supplier,doc_date,total_minor,vat_minor,currency,read_status,doc_kind,status').eq('id',id).maybeSingle();await notify(db);return json({saved:true,id,document:doc.data||null});}
    (globalThis as any).EdgeRuntime?.waitUntil?.(readDocument(db,id));
    await notify(db);return json({saved:true,id});
   }

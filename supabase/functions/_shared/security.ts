@@ -88,6 +88,13 @@ async function isServiceKey(token: string, url: string): Promise<boolean> {
   }
 }
 
+// True only for the project's service key (server-to-server calls such as the Gremier Hub), never a signed-in admin.
+export async function isServiceRequest(req: Request): Promise<boolean> {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+  return serviceKeys().includes(token) || await isServiceKey(token, Deno.env.get("SUPABASE_URL") ?? "");
+}
+
 export async function isServiceOrAdmin(req: Request): Promise<boolean> {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;

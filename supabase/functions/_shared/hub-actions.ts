@@ -13,6 +13,7 @@ import { marketingResults } from "./hub-cmo.ts";
 import { briefing } from "./hub-briefing.ts";
 import { logMarketing, marketingActivity, marketingAudit, removeMarketingLog } from "./hub-marketing-audit.ts";
 import { cleanText } from "./security.ts";
+import { EXPENSE_CATEGORIES, fileExpense } from "./hub-expenses.ts";
 
 export { HubError };
 
@@ -55,6 +56,7 @@ export const SCHEMAS: Record<string, { properties: Record<string, unknown>; requ
   schedule_store_delivery: { properties: { store: str("Store name (fuzzy match)"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "product_key → bottles" }, date: str("YYYY-MM-DD, today or later"), time: str("HH:MM, optional") }, required: ["store", "quantities", "date"] },
   reschedule_job: { properties: { job_id: str("Open job id (from schedule)"), date: str("New YYYY-MM-DD"), time: str("New HH:MM, or empty to clear"), quantities: { type: "object", additionalProperties: { type: "integer" }, description: "New planned amounts (deliveries only)" } }, required: ["job_id"] },
   log_note: { properties: { text: str("What to record in the timeline") }, required: ["text"] },
+  file_expense: { properties: { image_base64: str("The exact photo or PDF the user sent, base64-encoded (a data: URL is fine). JPEG, PNG, WebP or PDF, up to 15 MB. Never a description or a re-drawn image."), category: str("Expense category the user said, ideally one of: " + EXPENSE_CATEGORIES.join(", ")), note: str("Optional note from the user, e.g. what it was for"), file_name: str("Optional file name") }, required: ["image_base64"] },
 };
 
 export async function sha256(text: string): Promise<string> {
@@ -64,7 +66,7 @@ export async function sha256(text: string): Promise<string> {
 
 type Sb = ReturnType<typeof createClient>;
 type Ctx = { sb: Sb; app: string; scopes: string[] };
-type Handler = { scope: "read" | "write" | "marketing"; describe: string; run: (ctx: Ctx, args: Record<string, unknown>) => Promise<unknown> };
+type Handler = { scope: "read" | "write" | "marketing" | "expenses"; describe: string; run: (ctx: Ctx, args: Record<string, unknown>) => Promise<unknown> };
 
 export const ACTIONS: Record<string, Handler> = {
   // ── read ──
@@ -88,6 +90,7 @@ export const ACTIONS: Record<string, Handler> = {
   marketing_audit: { scope: "read", describe: "Marketing vs sales: each logged activity's website sales vs usual days, coupon and tracking-link sales, cost per order and return on cost, overlaps; Status posts by product with sales lift; days with vs without posts; raffles; what can't be measured. Args: from, to.", run: ({ sb }, a) => marketingAudit(sb, a) },
   log_marketing: { scope: "marketing", describe: "Record a marketing activity no app records (paid listing, pop-up, tasting, flyer, influencer, ad, samples) so it can be audited against sales. Only when Yoni tells you about it; never invent entries. Args: start_day, end_day, channel, title, details, cost, coupon_code, link_code, url.", run: ({ sb, app }, a) => logMarketing(sb, a, app) },
   remove_marketing_log: { scope: "marketing", describe: "Remove a wrong marketing log entry (Yoni asked, or it was a duplicate). Args: id.", run: ({ sb, app }, a) => removeMarketingLog(sb, a, app) },
+  file_expense: { scope: "expenses", describe: "File an expense the user sent you as a photo or PDF (receipt, tax invoice): it goes into the admin app's expense inbox, exactly like emailing it, and is read for supplier, date, total and VAT. Pass the original file's bytes as base64, plus the category the user named and any note. Reply with what was read; if a field came back empty, say so. Args: image_base64, category, note, file_name.", run: ({ app }, a) => fileExpense(app, a) },
   marketing_inventory: { scope: "read", describe: "Bottled stock per website product.", run: ({ sb }) => marketingInventory(sb) },
   // ── write ──
   start_brew: { scope: "write", describe: "Start a brew now. Args: product (classic|unfiltered|houseBlend|colombia|decaf; unfiltered uses Classic beans), kg (1|1.5|2|3, default 3). Deducts beans, schedules the drain.", run: ({ sb }, a) => startBrew(sb, a as any) },
@@ -141,13 +144,13 @@ export async function authenticateKey(sb: Sb, key: string): Promise<{ id: string
 }
 
 /** "marketing" (the marketing log only) is allowed for marketing keys and full write keys. */
-export const canUse = (scopes: string[], scope: string) => scopes.includes(scope) || (scope === "marketing" && scopes.includes("write"));
+export const canUse = (scopes: string[], scope: string) => scopes.includes(scope) || ((scope === "marketing" || scope === "expenses") && scopes.includes("write"));
 
 /** Run one action for an app, enforcing scope, and credit its timeline entries to the app. */
 export async function runAction(sb: Sb, app: { name: string; scopes: string[] }, action: string, args: Record<string, unknown>) {
   const h = ACTIONS[action];
   if (!h) throw new HubError("unknown_action", `Unknown action "${action}"`);
-  if (!canUse(app.scopes, h.scope)) throw new HubError("forbidden", `This key can't ${h.scope === "marketing" ? "write the marketing log" : h.scope}`);
+  if (!canUse(app.scopes, h.scope)) throw new HubError("forbidden", `This key can't ${h.scope === "marketing" ? "write the marketing log" : h.scope === "expenses" ? "file expenses" : h.scope}`);
   const started = new Date(Date.now() - 2000).toISOString();
   const result = await h.run({ sb, app: app.name, scopes: app.scopes }, args) as Record<string, unknown>;
   const refs = Array.isArray(result?.refs) ? result.refs as string[] : [];

@@ -318,8 +318,8 @@
  // Each document as people sort it: who was paid and how much; the file name stays out of the way (Open shows the document).
  const docRead=f=>f.read_status==='read'||f.read_status==='manual'||(f.read_status==='no_tax_invoice'&&f.total_minor!=null);
  const docRow=(f,check,actions)=>{const read=docRead(f),who=read&&f.supplier?f.supplier:f.read_status==='not_expense'?'Not a receipt':read?'Supplier not shown':f.read_status==='failed'?'Couldn’t read this one':'Reading…';
-  const when=[f.doc_date||(f.created_at||'').slice(0,10),f.doc_kind==='donation_receipt'?'Donation receipt':'',f.source==='email'?'Email':f.source?'Upload':'',foreign(f)].filter(Boolean).join(' · ');
-  const why=f.hold_reason?`<small class="ex-hold" dir="auto">${esc(f.hold_reason)}</small>`:'';
+  const when=[f.doc_date||(f.created_at||'').slice(0,10),f.doc_kind==='donation_receipt'?'Donation receipt':'',f.source==='email'?'Email':f.source==='bot'?'Grok bot':f.source?'Upload':'',f.category||'',foreign(f)].filter(Boolean).join(' · ');
+  const why=(f.hold_reason?`<small class="ex-hold" dir="auto">${esc(f.hold_reason)}</small>`:'')+(f.note?`<small dir="auto">${esc(f.note)}</small>`:'');
   return `<div class="ex-doc"><label class="ex-doc-main">${check}<span><b dir="auto">${esc(who)}</b><small>${esc(when)}</small>${why}</span></label><button type="button" class="ex-doc-amt" data-expense-amount="${esc(f.id)}" title="Correct supplier, amount or date">${read?money(f.total_minor):'Add amount'} <span aria-hidden="true">✎</span></button>${actions?`<div class="ex-row-actions">${actions}</div>`:''}</div>`;};
  const amountButton=f=>`<button type="button" class="ex-amount" data-expense-amount="${esc(f.id)}" title="Correct the amount" dir="auto">${esc(amountLabel(f))} ✎</button>`;
  function bindAmounts(host){
@@ -332,7 +332,7 @@
  async function loadExpenses(){
   setup();const token=++expenseSeq;status('expenseStatus','Loading expense inbox…');
   try{
-   const [files,settings]=await Promise.all([pages('expense_inbox_files','id,original_name,mime_type,size_bytes,source,status,created_at,filed_at,shared_at,batch_id,supplier,doc_date,doc_kind,total_minor,vat_minor,read_status,hold_reason,orig_total_minor,orig_currency,fx_rate,fx_date','created_at'),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
+   const [files,settings]=await Promise.all([pages('expense_inbox_files','id,original_name,mime_type,size_bytes,source,status,created_at,filed_at,shared_at,batch_id,supplier,doc_date,doc_kind,total_minor,vat_minor,read_status,hold_reason,orig_total_minor,orig_currency,fx_rate,fx_date,category,note','created_at'),sbc().from('expense_inbox_settings').select('*').eq('id',1).single()]);
    if(token!==expenseSeq)return;if(settings.error)throw Error('Expense settings unavailable');expenseFiles=files;expenseSettings=settings.data;
    const pending=files.filter(f=>f.status==='pending');get('expenseQueueTitle').textContent=`Waiting · ${pending.length}`;
    const per=expenseSettings.batch_size===5?5:shareFileLimit,chunks=[];

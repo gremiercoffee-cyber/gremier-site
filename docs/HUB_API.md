@@ -75,6 +75,7 @@ accepts `?key=ghk_…` for MCP clients that can't send headers).
 worker id from `production_people`) — never guess it. Unknown product keys are rejected rather than
 creating a new stock line. Every stock change is logged as `Stock: <product> before → after`.
 | `log_note` | `text` | adds a note to the timeline |
+| `file_expense` | `image_base64` (photo or PDF, base64 or data: URL, ≤15 MB), `category`, `note`, `file_name` | files an expense the user sent the bot into the admin expense inbox (same as emailing it), reads supplier/date/total/VAT and returns them. Scope `expenses` (any `write` key has it). Refuses data that isn't a real JPEG/PNG/WebP/PDF; the same file twice is reported as a duplicate |
 
 Product keys: `classic_liter, sweetened_classic, house_blend, colombia_liter, decaf_liter,
 classic_mini, vanilla_mini, original_mini, caramel_mini, house_blend_mini, vanilla_syrup,
