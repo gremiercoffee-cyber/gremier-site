@@ -31,7 +31,12 @@
  const LINK='gremier_link_v1';
  function captureLink(){try{const url=new URL(location.href),code=url.searchParams.get('l');if(!/^[a-z0-9]{6,12}$/.test(code||''))return;sessionStorage.setItem(LINK,code);if(allowed())write(LINK,{code,at:Date.now()});url.searchParams.delete('l');history.replaceState(history.state,'',url.pathname+url.search+url.hash);}catch{}}
  function linkCode(){try{const now=sessionStorage.getItem(LINK);if(now)return now;}catch{}const saved=allowed()?read(LINK):null;return saved&&Date.now()-saved.at<7*86400000?saved.code:null;}
- function context(){const base=ensure()?{visitor_id:visitor,session_id:session.id}:null,link_code=linkCode();return link_code?{...base,link_code}:base;}
+ // Which website sent this visit (just its name, e.g. thejerusalembutler.com), kept for the visit so the order
+ // can say where it came from even when analytics were declined. Payment and sign-in pages don't count as a source.
+ const FROM='gremier_from_v1';
+ function captureFrom(){try{if(sessionStorage.getItem(FROM))return;const h=new URL(document.referrer).hostname.replace(/^www\./,'').toLowerCase();if(!h||h===location.hostname.replace(/^www\./,'')||/(^|\.)(payme\.io|paymeservice\.com|accounts\.google\.com|supabase\.co|gremiercoffee\.co\.il)$/.test(h))return;sessionStorage.setItem(FROM,h.slice(0,100));}catch{}}
+ function cameFrom(){try{return sessionStorage.getItem(FROM)||null;}catch{return null;}}
+ function context(){const base=ensure()?{visitor_id:visitor,session_id:session.id}:null,link_code=linkCode(),came_from=cameFrom();return link_code||came_from?{...base,...(link_code?{link_code}:{}),...(came_from?{came_from}:{})}:base;}
  function track(kind,details={}){
   if(!ensure())return;
   const key=kind+JSON.stringify(details);
@@ -204,7 +209,7 @@
   setTimeout(sectionsNow,1500);clarity();
   document.addEventListener('click',e=>{if(e.target.closest?.('[data-analytics-choice="accepted"]'))setTimeout(clarity,50);else if(e.target.closest?.('[data-analytics-choice="declined"]')){iq=[];try{root.clarity?.('consent',false);}catch{}}},true);
  }
- captureLink();
+ captureLink();captureFrom();
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startBehaviour);else startBehaviour();
  root.GremierJourneys={track,context,choices:()=>banner(true),flush};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();

@@ -522,6 +522,18 @@ Deno.serve(async (req) => {
 
     const couponDiscountValue = appliedCouponCode ? Math.max(0, discount - gcDiscount) : 0;
 
+    // Where the order came from: a tracking link (?l=code / gremiercoffee.co.il/go/code), or else the website that
+    // sent the visit (e.g. thejerusalembutler.com). A site with its own tracking link (ref "site:<name>") gets that
+    // link's credit, so a partner's orders count even when they link without our code.
+    const givenLink = String(body.analytics_context?.link_code || "");
+    const cameFrom = String(body.analytics_context?.came_from || "").toLowerCase().replace(/^www\./, "");
+    const cameFromOk = /^[a-z0-9.-]{3,100}$/.test(cameFrom) ? cameFrom : "";
+    let orderLinkCode = /^[a-z0-9]{6,12}$/.test(givenLink) ? givenLink : "";
+    if (!orderLinkCode && cameFromOk) {
+      const site = await admin.from("tracking_links").select("code").eq("ref", `site:${cameFromOk}`).maybeSingle();
+      if (site.data?.code) orderLinkCode = site.data.code;
+    }
+
     const insertPayload: Record<string, unknown> = {
       user_id: userId,
       customer_name: customerName,
@@ -546,7 +558,8 @@ Deno.serve(async (req) => {
         zone_name: delivery.zone?.name_en || "",
         pricing_source: delivery.source,
         site_lang: body.site_lang === "he" ? "he" : body.site_lang === "en" ? "en" : null,
-        ...(/^[a-z0-9]{6,12}$/.test(String(body.analytics_context?.link_code || "")) ? { link_code: body.analytics_context.link_code } : {}),
+        ...(orderLinkCode ? { link_code: orderLinkCode } : {}),
+        ...(cameFromOk ? { came_from: cameFromOk } : {}),
         ...(shabbatPromo ? { shabbat_promo: true } : {}),
         server_priced: true,
         gift_card_id: giftCardId,

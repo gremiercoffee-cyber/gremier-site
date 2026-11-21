@@ -2,7 +2,7 @@
 (function(root){
  'use strict';
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- const NAMES={group:'Groups',group_status:'Group status',status:'My Status',instagram:'Instagram'};
+ const NAMES={group:'Groups',group_status:'Group status',status:'My Status',instagram:'Instagram',listing:'Paid listing'};
  const num=n=>Number(n||0).toLocaleString('en-IL');
  const shekels=n=>'₪'+Math.round(Number(n||0)).toLocaleString('en-IL');
  function byChannel(links){return Object.keys(NAMES).map(channel=>{const rows=links.filter(l=>l.channel===channel);return {channel,name:NAMES[channel],posts:rows.length,clicks:rows.reduce((s,l)=>s+l.clicks,0),paid:rows.reduce((s,l)=>s+l.paid,0),revenue:rows.reduce((s,l)=>s+Number(l.revenue||0),0)};});}
